@@ -7,6 +7,7 @@ import {
 } from "../../auth/browser-session.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import {
+  connectors,
   executionSteps,
   executions,
   sessions,
@@ -42,7 +43,25 @@ beforeAll(async () => {
 afterAll(async () => {
   await ctx.cleanup();
 });
-async function fixture(withRead: boolean | "path" | "analytics" = false) {
+async function fixture(withRead: boolean | "path" | "analytics" | "analytics-tenant" = false) {
+  const analytics = withRead === "analytics" || withRead === "analytics-tenant";
+  const [analyticsConnector] =
+    withRead === "analytics-tenant"
+      ? await ctx.testDb.db
+          .insert(connectors)
+          .values({
+            tenant_id: ctx.tenantId,
+            slug: `analytics-${sequence + 1}`,
+            display_name: "Analytics",
+            driver: "http",
+            auth_type: "none",
+            environment: "dev",
+            base_url: "https://analyticsdata.googleapis.com",
+            template_slug: "google-analytics",
+            template_source: "tenant" as const,
+          })
+          .returning()
+      : [];
   const raw = Buffer.from(
     "From: sender@example.test\r\nTo: recipient@example.test\r\nSubject: Report\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\nReport",
   ).toString("base64url");
@@ -55,23 +74,22 @@ async function fixture(withRead: boolean | "path" | "analytics" = false) {
             {
               id: "read",
               kind: "request" as const,
-              method: withRead === "analytics" ? ("POST" as const) : ("GET" as const),
-              body:
-                withRead === "analytics"
-                  ? {
-                      dateRanges: [{ startDate: "yesterday", endDate: "yesterday" }],
-                      metrics: [{ name: "activeUsers" }],
-                    }
-                  : undefined,
-              url:
-                withRead === "analytics"
-                  ? "https://analyticsdata.googleapis.com/v1beta/properties/123:runReport"
-                  : withRead === "path"
-                    ? // biome-ignore lint/suspicious/noTemplateCurlyInString: bounded identifier
-                      "https://metrics.example.test/v2/projects/${input.window}/resources"
-                    : "https://metrics.example.test/history",
+              method: analytics ? ("POST" as const) : ("GET" as const),
+              ...(analyticsConnector ? { connector_id: analyticsConnector.id } : {}),
+              body: analytics
+                ? {
+                    dateRanges: [{ startDate: "yesterday", endDate: "yesterday" }],
+                    metrics: [{ name: "activeUsers" }],
+                  }
+                : undefined,
+              url: analytics
+                ? "https://analyticsdata.googleapis.com/v1beta/properties/123:runReport"
+                : withRead === "path"
+                  ? // biome-ignore lint/suspicious/noTemplateCurlyInString: bounded identifier
+                    "https://metrics.example.test/v2/projects/${input.window}/resources"
+                  : "https://metrics.example.test/history",
               query:
-                withRead === "path" || withRead === "analytics"
+                withRead === "path" || analytics
                   ? undefined
                   : {
                       host_id: "fixed-resource",
@@ -516,6 +534,27 @@ test("documented Analytics report reads execute in preview while email remains h
     expect(reads).toBe(1);
     expect((await f.inspect()).eligible_for_repeated_runs).toBe(true);
     expect((await inspectScheduleAutomation(f.schedule, ctx.testDb.db)).ready).toBe(false);
+  });
+});
+
+test("documented Analytics report reads execute in preview through a connector bound to a tenant template", async () => {
+  const f = await fixture("analytics-tenant");
+  let reads = 0;
+  const remote = Object.assign(
+    async (url: string | URL | Request, init?: RequestInit) => {
+      expect(String(url)).toBe(
+        "https://analyticsdata.googleapis.com/v1beta/properties/123:runReport",
+      );
+      expect(init?.method).toBe("POST");
+      reads++;
+      return Response.json({ rows: [] });
+    },
+    { preconnect: () => {} },
+  ) as typeof fetch;
+  await withSelfHostedDriverFetchForTests(remote, async () => {
+    await f.automaticPrepare();
+    expect(reads).toBe(1);
+    expect((await f.inspect()).eligible_for_repeated_runs).toBe(true);
   });
 });
 

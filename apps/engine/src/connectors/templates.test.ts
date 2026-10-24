@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
-import { loadBuiltinTemplates, ProbeEndpointSchema } from "./templates.ts";
+import {
+  loadBuiltinTemplates,
+  ProbeDiagnosticsSchema,
+  ProbeEndpointSchema,
+  ReadOperationSchema,
+} from "./templates.ts";
 
 const templates = loadBuiltinTemplates();
 
@@ -575,5 +580,71 @@ describe("connector-template catalog — Anthropic and Google Analytics 4", () =
       for (const step of recipe.workflow.steps as Array<{ kind: string; side_effects?: string }>)
         if (step.kind === "request") expect(step.side_effects).toBe("read");
     }
+  });
+});
+
+describe("connector-template provider metadata", () => {
+  test("only the analytics template declares a read POST operation", () => {
+    expect(templates.filter((t) => t.read_operations.length > 0).map((t) => t.slug)).toEqual([
+      "google-analytics",
+    ]);
+  });
+
+  test("read operations must name a bare https origin and an anchored valid path pattern", () => {
+    const valid = {
+      method: "POST",
+      origin: "https://api.example.test",
+      path_pattern: "^/v1/reports:run$",
+    };
+    expect(ReadOperationSchema.safeParse(valid).success).toBe(true);
+    for (const invalid of [
+      { ...valid, method: "PUT" },
+      { ...valid, origin: "http://api.example.test" },
+      { ...valid, origin: "https://api.example.test/v1" },
+      { ...valid, path_pattern: "/v1/reports:run" },
+      { ...valid, path_pattern: "^/v1/reports:run" },
+      { ...valid, path_pattern: "^/v1/(reports$" },
+    ])
+      expect(ReadOperationSchema.safeParse(invalid).success).toBe(false);
+  });
+
+  test("every googleapis template declares the api_disabled probe diagnostic", () => {
+    const google = templates.filter((t) => /googleapis\.com/.test(t.base_url ?? ""));
+    expect(google.length).toBeGreaterThan(0);
+    for (const template of google)
+      expect(template.probe_diagnostics?.remote_api_disabled).toEqual({
+        error_reason: "accessNotConfigured",
+        service_host: "{api}.googleapis.com",
+        action_url: "https://console.cloud.google.com/apis/library/{service}",
+      });
+    expect(
+      templates
+        .filter((t) => t.probe_diagnostics !== null && !google.includes(t))
+        .map((t) => t.slug),
+    ).toEqual([]);
+  });
+
+  test("probe diagnostics require the service placeholders", () => {
+    const valid = {
+      remote_api_disabled: {
+        error_reason: "disabled",
+        service_host: "{api}.example.test",
+        action_url: "https://console.example.test/{service}",
+      },
+    };
+    expect(ProbeDiagnosticsSchema.safeParse(valid).success).toBe(true);
+    expect(
+      ProbeDiagnosticsSchema.safeParse({
+        remote_api_disabled: { ...valid.remote_api_disabled, service_host: "api.example.test" },
+      }).success,
+    ).toBe(false);
+    expect(
+      ProbeDiagnosticsSchema.safeParse({
+        remote_api_disabled: {
+          ...valid.remote_api_disabled,
+          action_url: "https://console.example.test/",
+        },
+      }).success,
+    ).toBe(false);
   });
 });

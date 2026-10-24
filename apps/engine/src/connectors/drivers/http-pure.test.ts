@@ -253,7 +253,7 @@ describe("classifyHttpProbeStatus — status-only buckets", () => {
   });
 });
 
-describe("classifyHttpProbeStatus — Google accessNotConfigured body upgrade", () => {
+describe("classifyHttpProbeStatus — template-declared api_disabled diagnostic", () => {
   const accessNotConfiguredBody = {
     error: {
       message: "Access Not Configured. Drive API has not been used in project 123 before.",
@@ -261,8 +261,11 @@ describe("classifyHttpProbeStatus — Google accessNotConfigured body upgrade", 
     },
   };
 
-  test("403 + accessNotConfigured body upgrades to remote_api_disabled with a deep link", () => {
-    const connector = makeConnector({ base_url: "https://www.googleapis.com/drive/v3" });
+  test("403 + declared error reason upgrades to remote_api_disabled with the template's action link", () => {
+    const connector = makeConnector({
+      template_slug: "google-drive",
+      base_url: "https://www.googleapis.com/drive/v3",
+    });
     const result = classifyHttpProbeStatus(403, connector, accessNotConfiguredBody);
     expect(result.code).toBe("remote_api_disabled");
     expect(result.provider_action_url).toBe(
@@ -270,18 +273,88 @@ describe("classifyHttpProbeStatus — Google accessNotConfigured body upgrade", 
     );
   });
 
-  test("404 + accessNotConfigured body also upgrades (older Google APIs return 404)", () => {
-    const result = classifyHttpProbeStatus(404, makeConnector(), accessNotConfiguredBody);
+  test("404 + declared error reason also upgrades", () => {
+    const result = classifyHttpProbeStatus(
+      404,
+      makeConnector({ template_slug: "google-drive" }),
+      accessNotConfiguredBody,
+    );
     expect(result.code).toBe("remote_api_disabled");
   });
 
+  test("the pinned template snapshot's diagnostic wins over the built-in template", () => {
+    const template = getBuiltinTemplate("google-sheets");
+    if (!template) throw new Error("expected a template fixture");
+    const result = classifyHttpProbeStatus(
+      403,
+      makeConnector({
+        template_slug: "google-sheets",
+        template_snapshot: {
+          ...template,
+          probe_diagnostics: {
+            remote_api_disabled: {
+              error_reason: "serviceDisabled",
+              service_host: "{api}.example.test",
+              action_url: "https://console.example.test/enable/{service}",
+            },
+          },
+        },
+      }),
+      { error: { message: "Sheets API is off.", errors: [{ reason: "serviceDisabled" }] } },
+    );
+    expect(result).toEqual({
+      code: "remote_api_disabled",
+      provider_action_url: "https://console.example.test/enable/sheets.example.test",
+    });
+  });
+
+  test("an unbound connector on a host a built-in diagnostic declares still upgrades with its action link", () => {
+    expect(
+      classifyHttpProbeStatus(
+        403,
+        makeConnector({ base_url: "https://gmail.googleapis.com/gmail/v1" }),
+        {
+          error: { message: "Access Not Configured.", errors: [{ reason: "accessNotConfigured" }] },
+        },
+      ),
+    ).toEqual({
+      code: "remote_api_disabled",
+      provider_action_url: "https://console.cloud.google.com/apis/library/gmail.googleapis.com",
+    });
+    expect(
+      classifyHttpProbeStatus(
+        403,
+        makeConnector({ template_slug: "notion", base_url: "https://www.googleapis.com" }),
+        accessNotConfiguredBody,
+      ).code,
+    ).toBe("remote_api_disabled");
+  });
+
+  test("a connector on a host no template diagnostic declares keeps the generic status classification", () => {
+    expect(classifyHttpProbeStatus(403, makeConnector(), accessNotConfiguredBody)).toEqual({
+      code: "scope_insufficient",
+    });
+    expect(
+      classifyHttpProbeStatus(
+        403,
+        makeConnector({ base_url: "https://googleapis.com.evil.test" }),
+        accessNotConfiguredBody,
+      ),
+    ).toEqual({ code: "scope_insufficient" });
+  });
+
   test("403 + unrelated body falls back to scope_insufficient", () => {
-    const result = classifyHttpProbeStatus(403, makeConnector(), { error: "nope" });
+    const result = classifyHttpProbeStatus(403, makeConnector({ template_slug: "google-drive" }), {
+      error: "nope",
+    });
     expect(result.code).toBe("scope_insufficient");
   });
 
-  test("403 + accessNotConfigured body with no extractable api_name and a non-googleapis base_url has no deep link", () => {
-    const connector = makeConnector({ base_url: "https://api.internal-service.test" });
+  test("declared error reason with no extractable api_name and a foreign base_url has no action link", () => {
+    const connector = makeConnector({
+      template_slug: "google-drive",
+      base_url: "https://api.internal-service.test",
+    });
     const result = classifyHttpProbeStatus(403, connector, {
       error: {
         message: "Access is not configured for this project.",
@@ -293,7 +366,9 @@ describe("classifyHttpProbeStatus — Google accessNotConfigured body upgrade", 
   });
 
   test("403 + body without an errors array is not upgraded", () => {
-    const result = classifyHttpProbeStatus(403, makeConnector(), { error: { message: "x" } });
+    const result = classifyHttpProbeStatus(403, makeConnector({ template_slug: "google-drive" }), {
+      error: { message: "x" },
+    });
     expect(result.code).toBe("scope_insufficient");
   });
 });

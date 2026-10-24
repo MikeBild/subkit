@@ -16,6 +16,7 @@ const googleDriveConnector = {
   driver: "http",
   environment: "dev",
   base_url: "https://www.googleapis.com",
+  template_slug: "google-workspace",
 } as unknown as ConnectorView;
 
 describe("classifyHttpProbeStatus — status-only (G10)", () => {
@@ -94,6 +95,20 @@ describe("classifyHttpProbeStatus — body-aware (H3)", () => {
     expect(classifyHttpProbeStatus(403, stubConnector, { error: "string-not-object" }).code).toBe(
       "scope_insufficient",
     );
+  });
+
+  test("the same body on a connector without a declared provider host is not upgraded", () => {
+    const r = classifyHttpProbeStatus(403, stubConnector, driveAccessNotConfiguredBody);
+    expect(r).toEqual({ code: "scope_insufficient" });
+  });
+
+  test("an unbound connector on a declared provider host keeps the upgrade", () => {
+    const r = classifyHttpProbeStatus(
+      403,
+      { ...googleDriveConnector, template_slug: null } as ConnectorView,
+      driveAccessNotConfiguredBody,
+    );
+    expect(r.code).toBe("remote_api_disabled");
   });
 
   test("500 with accessNotConfigured body still classifies as 5xx (body upgrade gated on 4xx)", () => {

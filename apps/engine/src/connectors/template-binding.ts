@@ -4,7 +4,7 @@ import { getOAuth2ClientCredential } from "../credentials/service.ts";
 import type { Executor } from "../db/client.ts";
 import { getTemplateOAuthCredentials } from "./template-credentials.ts";
 import { parseTemplateSnapshot } from "./template-resolver.ts";
-import { getBuiltinTemplate } from "./templates.ts";
+import { getBuiltinTemplate, loadBuiltinTemplates, type ProbeDiagnostics } from "./templates.ts";
 import type { ConnectorView } from "./types.ts";
 
 type ConnectorConfig = Record<string, unknown>;
@@ -76,6 +76,48 @@ export function getConnectorProbeEndpoint(
     if (fromBuiltin != null) return fromBuiltin;
   }
   return null;
+}
+
+export function serviceHostMatches(pattern: string, host: string): boolean {
+  const [prefix = "", suffix = ""] = pattern.split("{api}");
+  const label = host.slice(prefix.length, host.length - suffix.length);
+  return (
+    host.length > prefix.length + suffix.length &&
+    host.startsWith(prefix) &&
+    host.endsWith(suffix) &&
+    /^[a-z0-9-]+$/.test(label)
+  );
+}
+
+function baseUrlHostname(baseUrl: unknown): string | null {
+  if (typeof baseUrl !== "string" || baseUrl.length === 0) return null;
+  try {
+    return new URL(baseUrl).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+export function getConnectorProbeDiagnostics(
+  connector: Pick<ConnectorView, "template_snapshot"> & {
+    template_slug?: string | null;
+    base_url?: string | null;
+  },
+): ProbeDiagnostics | null {
+  const fromSnapshot = getConnectorTemplateSnapshot(connector)?.probe_diagnostics;
+  if (fromSnapshot != null) return fromSnapshot;
+  const fromSlug = connector.template_slug
+    ? getBuiltinTemplate(connector.template_slug)?.probe_diagnostics
+    : null;
+  if (fromSlug != null) return fromSlug;
+  const host = baseUrlHostname(connector.base_url);
+  if (!host) return null;
+  return (
+    loadBuiltinTemplates().find((template) => {
+      const pattern = template.probe_diagnostics?.remote_api_disabled?.service_host;
+      return pattern !== undefined && serviceHostMatches(pattern, host);
+    })?.probe_diagnostics ?? null
+  );
 }
 
 export function getConnectorCapabilities(

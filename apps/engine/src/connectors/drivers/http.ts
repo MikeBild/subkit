@@ -14,7 +14,11 @@ import { assertEgressAllowedResolved, assertRobotsAllowed } from "../egress-guar
 import { requestUsedStoredCredential } from "../reauth.ts";
 import { connectorHeaderPolicy, requestHeaderViolations } from "../request-header-policy.ts";
 import { scraperUserAgent } from "../scraper-user-agent.ts";
-import { getConnectorProbeEndpoint } from "../template-binding.ts";
+import {
+  getConnectorProbeDiagnostics,
+  getConnectorProbeEndpoint,
+  serviceHostMatches,
+} from "../template-binding.ts";
 import { type ProbeEndpoint, ProbeEndpointSchema } from "../templates.ts";
 import type { ConnectorView } from "../types.ts";
 import { settleOnAbort } from "./abort-boundary.ts";
@@ -927,7 +931,10 @@ export interface HttpProbeResult {
   response_headers?: Record<string, string>;
 }
 
-function detectAccessNotConfiguredBody(body: unknown): {
+function detectErrorReasonBody(
+  body: unknown,
+  reason: string,
+): {
   matched: boolean;
   api_name?: string;
 } {
@@ -936,9 +943,7 @@ function detectAccessNotConfiguredBody(body: unknown): {
   if (!err || typeof err !== "object") return { matched: false };
   const errors = (err as { errors?: unknown }).errors;
   const reasonMatches = (val: unknown): boolean =>
-    typeof val === "object" &&
-    val !== null &&
-    (val as { reason?: unknown }).reason === "accessNotConfigured";
+    typeof val === "object" && val !== null && (val as { reason?: unknown }).reason === reason;
   if (Array.isArray(errors) && errors.some(reasonMatches)) {
     const message = (err as { message?: unknown }).message;
     const apiNameMatch =
@@ -949,20 +954,24 @@ function detectAccessNotConfiguredBody(body: unknown): {
   return { matched: false };
 }
 
-function googleEnableApiDeepLink(connector: ConnectorView, api_name?: string): string | undefined {
-  const baseUrl =
-    typeof connector.base_url === "string" && connector.base_url.length > 0
-      ? connector.base_url
-      : null;
+function apiDisabledActionUrl(
+  connector: ConnectorView,
+  diagnostic: { service_host: string; action_url: string },
+  api_name?: string,
+): string | undefined {
   let service: string | undefined;
   if (api_name) {
-    service = `${api_name.toLowerCase()}.googleapis.com`;
-  } else if (baseUrl && /googleapis\.com/.test(baseUrl)) {
-    const hostMatch = /https?:\/\/([a-z0-9-]+\.googleapis\.com)/i.exec(baseUrl);
-    service = hostMatch?.[1];
+    service = diagnostic.service_host.replace("{api}", api_name.toLowerCase());
+  } else if (typeof connector.base_url === "string" && connector.base_url.length > 0) {
+    try {
+      const host = new URL(connector.base_url).hostname.toLowerCase();
+      if (serviceHostMatches(diagnostic.service_host, host)) service = host;
+    } catch {
+      service = undefined;
+    }
   }
   if (!service) return undefined;
-  return `https://console.cloud.google.com/apis/library/${service}`;
+  return diagnostic.action_url.replace("{service}", service);
 }
 
 export function classifyHttpProbeStatus(
@@ -970,13 +979,14 @@ export function classifyHttpProbeStatus(
   connector: ConnectorView,
   body?: unknown,
 ): { code: HttpProbeResult["error_code"]; provider_action_url?: string } {
-  if ((status === 403 || status === 404 || status === 400) && body !== undefined) {
-    const ancBody = detectAccessNotConfiguredBody(body);
-    if (ancBody.matched) {
-      const deepLink = googleEnableApiDeepLink(connector, ancBody.api_name);
+  const apiDisabled = getConnectorProbeDiagnostics(connector)?.remote_api_disabled;
+  if ((status === 403 || status === 404 || status === 400) && body !== undefined && apiDisabled) {
+    const detected = detectErrorReasonBody(body, apiDisabled.error_reason);
+    if (detected.matched) {
+      const actionUrl = apiDisabledActionUrl(connector, apiDisabled, detected.api_name);
       return {
         code: "remote_api_disabled",
-        ...(deepLink ? { provider_action_url: deepLink } : {}),
+        ...(actionUrl ? { provider_action_url: actionUrl } : {}),
       };
     }
   }

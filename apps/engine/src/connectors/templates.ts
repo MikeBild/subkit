@@ -116,6 +116,52 @@ export const ProbeEndpointSchema = z
   .openapi("ConnectorTemplateProbeEndpoint");
 export type ProbeEndpoint = z.infer<typeof ProbeEndpointSchema>;
 
+export const ProbeDiagnosticsSchema = z
+  .object({
+    remote_api_disabled: z
+      .object({
+        error_reason: z.string().min(1),
+        service_host: z.string().regex(/^[a-z0-9.-]*\{api\}[a-z0-9.-]*$/),
+        action_url: z.string().url().includes("{service}"),
+      })
+      .optional(),
+  })
+  .openapi("ConnectorTemplateProbeDiagnostics");
+export type ProbeDiagnostics = z.infer<typeof ProbeDiagnosticsSchema>;
+
+export const ReadOperationSchema = z
+  .object({
+    method: z.literal("POST"),
+    origin: z
+      .string()
+      .url()
+      .refine((value) => value.startsWith("https://") && new URL(value).origin === value, {
+        message: "read operation origin must be a bare https origin",
+      }),
+    path_pattern: z
+      .string()
+      .min(3)
+      .refine((value) => value.startsWith("^") && value.endsWith("$"), {
+        message: "read operation path_pattern must be anchored with ^ and $",
+      })
+      .refine(
+        (value) => {
+          try {
+            new RegExp(value);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        { message: "read operation path_pattern must be a valid regular expression" },
+      ),
+  })
+  .openapi("ConnectorTemplateReadOperation");
+export type ReadOperation = z.infer<typeof ReadOperationSchema>;
+
+export const ResourceUrlParserEnum = z.enum(["atlassian_cloud", "notion"]);
+export type ResourceUrlParser = z.infer<typeof ResourceUrlParserEnum>;
+
 export const CredentialHintSchema = z
   .object({
     field: z.string().min(1),
@@ -327,6 +373,9 @@ export const ConnectorTemplateSchema = z
     keywords: z.array(z.string()).default([]),
     inline_schema: InlineSchemaSchema.nullable(),
     probe_endpoint: ProbeEndpointSchema.nullable(),
+    probe_diagnostics: ProbeDiagnosticsSchema.nullable().default(null),
+    read_operations: z.array(ReadOperationSchema).default([]),
+    resource_url_parser: ResourceUrlParserEnum.nullable().default(null),
     credential_hints: z.array(CredentialHintSchema).default([]),
     base_url_options: z.array(BaseUrlOptionSchema).default([]),
     pagination_defaults: PaginationDefaultsSchema.nullable(),
@@ -497,6 +546,16 @@ export function loadCompiledTemplates(): CompiledTemplate[] {
     })),
   ) as CompiledTemplate[];
   return compiledCache;
+}
+
+let readOperationsCache: ReadOperation[] | null = null;
+
+export function loadBuiltinReadOperations(): ReadOperation[] {
+  if (readOperationsCache) return readOperationsCache;
+  readOperationsCache = Object.freeze(
+    loadBuiltinTemplates().flatMap((template) => template.read_operations),
+  ) as ReadOperation[];
+  return readOperationsCache;
 }
 
 export function getBuiltinTemplate(slug: string): ConnectorTemplate | null {

@@ -25070,6 +25070,14 @@ export interface components {
                 keywords: string[];
                 inline_schema: components["schemas"]["ConnectorTemplateInlineSchema"];
                 probe_endpoint: components["schemas"]["ConnectorTemplateProbeEndpoint"];
+                probe_diagnostics?: components["schemas"]["ConnectorTemplateProbeDiagnostics"];
+                /** @default [] */
+                read_operations: components["schemas"]["ConnectorTemplateReadOperation"][];
+                /**
+                 * @default null
+                 * @enum {string|null}
+                 */
+                resource_url_parser: "atlassian_cloud" | "notion" | null;
                 /** @default [] */
                 credential_hints: components["schemas"]["ConnectorTemplateCredentialHint"][];
                 /** @default [] */
@@ -25162,6 +25170,22 @@ export interface components {
                 [key: string]: string;
             };
         } | null;
+        /** @default null */
+        ConnectorTemplateProbeDiagnostics: {
+            remote_api_disabled?: {
+                error_reason: string;
+                service_host: string;
+                /** Format: uri */
+                action_url: string;
+            };
+        } | null;
+        ConnectorTemplateReadOperation: {
+            /** @enum {string} */
+            method: "POST";
+            /** Format: uri */
+            origin: string;
+            path_pattern: string;
+        };
         ConnectorTemplateCredentialHint: {
             field: string;
             label: string;
@@ -25289,6 +25313,14 @@ export interface components {
             keywords: string[];
             inline_schema: components["schemas"]["ConnectorTemplateInlineSchema"];
             probe_endpoint: components["schemas"]["ConnectorTemplateProbeEndpoint"];
+            probe_diagnostics?: components["schemas"]["ConnectorTemplateProbeDiagnostics"];
+            /** @default [] */
+            read_operations: components["schemas"]["ConnectorTemplateReadOperation"][];
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            resource_url_parser: "atlassian_cloud" | "notion" | null;
             /** @default [] */
             credential_hints: components["schemas"]["ConnectorTemplateCredentialHint"][];
             /** @default [] */
@@ -25345,6 +25377,14 @@ export interface components {
             keywords: string[];
             inline_schema: components["schemas"]["ConnectorTemplateInlineSchema"];
             probe_endpoint: components["schemas"]["ConnectorTemplateProbeEndpoint"];
+            probe_diagnostics?: components["schemas"]["ConnectorTemplateProbeDiagnostics"];
+            /** @default [] */
+            read_operations: components["schemas"]["ConnectorTemplateReadOperation"][];
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            resource_url_parser: "atlassian_cloud" | "notion" | null;
             /** @default [] */
             credential_hints: components["schemas"]["ConnectorTemplateCredentialHint"][];
             /** @default [] */

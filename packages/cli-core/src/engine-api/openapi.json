@@ -14473,6 +14473,28 @@
                 "probe_endpoint": {
                   "$ref": "#/components/schemas/ConnectorTemplateProbeEndpoint"
                 },
+                "probe_diagnostics": {
+                  "$ref": "#/components/schemas/ConnectorTemplateProbeDiagnostics"
+                },
+                "read_operations": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConnectorTemplateReadOperation"
+                  },
+                  "default": []
+                },
+                "resource_url_parser": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "atlassian_cloud",
+                    "notion",
+                    null
+                  ],
+                  "default": null
+                },
                 "credential_hints": {
                   "type": "array",
                   "items": {
@@ -14856,6 +14878,61 @@
         "required": [
           "method",
           "path"
+        ]
+      },
+      "ConnectorTemplateProbeDiagnostics": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "remote_api_disabled": {
+            "type": "object",
+            "properties": {
+              "error_reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "service_host": {
+                "type": "string",
+                "pattern": "^[a-z0-9.-]*\\{api\\}[a-z0-9.-]*$"
+              },
+              "action_url": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "required": [
+              "error_reason",
+              "service_host",
+              "action_url"
+            ]
+          }
+        },
+        "default": null
+      },
+      "ConnectorTemplateReadOperation": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "POST"
+            ]
+          },
+          "origin": {
+            "type": "string",
+            "format": "uri"
+          },
+          "path_pattern": {
+            "type": "string",
+            "minLength": 3
+          }
+        },
+        "required": [
+          "method",
+          "origin",
+          "path_pattern"
         ]
       },
       "ConnectorTemplateCredentialHint": {
@@ -15338,6 +15415,28 @@
           "probe_endpoint": {
             "$ref": "#/components/schemas/ConnectorTemplateProbeEndpoint"
           },
+          "probe_diagnostics": {
+            "$ref": "#/components/schemas/ConnectorTemplateProbeDiagnostics"
+          },
+          "read_operations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorTemplateReadOperation"
+            },
+            "default": []
+          },
+          "resource_url_parser": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "atlassian_cloud",
+              "notion",
+              null
+            ],
+            "default": null
+          },
           "credential_hints": {
             "type": "array",
             "items": {
@@ -15575,6 +15674,28 @@
           },
           "probe_endpoint": {
             "$ref": "#/components/schemas/ConnectorTemplateProbeEndpoint"
+          },
+          "probe_diagnostics": {
+            "$ref": "#/components/schemas/ConnectorTemplateProbeDiagnostics"
+          },
+          "read_operations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorTemplateReadOperation"
+            },
+            "default": []
+          },
+          "resource_url_parser": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "atlassian_cloud",
+              "notion",
+              null
+            ],
+            "default": null
           },
           "credential_hints": {
             "type": "array",

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { getBuiltinTemplate, loadBuiltinReadOperations } from "../../connectors/templates.ts";
 import { isDocumentedReadOperation } from "../steps/request/read-operations.ts";
 
 const request = {
@@ -7,6 +8,7 @@ const request = {
   headers: {},
   body: { metrics: [{ name: "activeUsers" }] },
 };
+
 test("documented read POST identity is checked against the final request", () => {
   expect(isDocumentedReadOperation(request)).toBe(true);
   for (const url of [
@@ -23,8 +25,39 @@ test("documented read POST identity is checked against the final request", () =>
     expect(isDocumentedReadOperation({ ...request, url })).toBe(false);
   expect(isDocumentedReadOperation({ ...request, method: "DELETE" })).toBe(false);
   expect(isDocumentedReadOperation({ ...request, unsupported_body: true })).toBe(false);
+  expect(isDocumentedReadOperation({ ...request, body: [] })).toBe(false);
   expect(
     isDocumentedReadOperation({ ...request, headers: { "X-HTTP-Method-Override": "DELETE" } }),
   ).toBe(false);
   expect(isDocumentedReadOperation(undefined)).toBe(false);
+});
+
+test("read POST exceptions come from built-in template metadata, whatever the connector binding", () => {
+  expect(getBuiltinTemplate("google-analytics")?.read_operations).toEqual([
+    {
+      method: "POST",
+      origin: "https://analyticsdata.googleapis.com",
+      path_pattern: "^/v1beta/properties/[1-9][0-9]*:runReport$",
+    },
+  ]);
+  const analytics = getBuiltinTemplate("google-analytics")?.read_operations[0];
+  if (!analytics) throw new Error("expected a template read operation");
+  expect(loadBuiltinReadOperations()).toContainEqual(analytics);
+  expect(isDocumentedReadOperation(request)).toBe(true);
+  expect(
+    isDocumentedReadOperation({
+      ...request,
+      url: "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+      body: { raw: "x" },
+    }),
+  ).toBe(false);
+});
+
+test("every built-in read operation is a POST anchored to a bare https origin", () => {
+  for (const operation of loadBuiltinReadOperations()) {
+    expect(operation.method).toBe("POST");
+    expect(new URL(operation.origin).origin).toBe(operation.origin);
+    expect(operation.path_pattern.startsWith("^")).toBe(true);
+    expect(operation.path_pattern.endsWith("$")).toBe(true);
+  }
 });
