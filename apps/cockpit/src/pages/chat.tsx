@@ -1143,7 +1143,11 @@ function ChatMessage({
           const sensitiveTestRun = chatSensitiveTestRun(tool);
           if (sensitiveTestRun)
             return (
-              <ChatTestRunCard key={`${message.id}-test-run-${partIndex}`} run={sensitiveTestRun} />
+              <ChatTestRunCard
+                key={`${message.id}-test-run-${partIndex}`}
+                run={sensitiveTestRun}
+                saved={savedPreviews.get(tool.toolCallId) ?? null}
+              />
             );
           const sensitivePreview = chatSensitivePreview(tool);
           if (sensitivePreview)

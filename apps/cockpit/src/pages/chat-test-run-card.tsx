@@ -1,8 +1,20 @@
-import { ChatCard, type Fact } from "@/components/cockpit/patterns";
+import { contextualHref } from "@/app/installation-context";
+import { absolute, workflowRunHref } from "@/app/links";
+import { Button, ChatCard, type Fact } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
+import type { ChatWorkflowRef } from "./chat-preview-cards";
+import { ChatCardTitle, ChatWorkflowMention } from "./chat-sensitive-preview-card";
 import type { ChatSensitiveTestRun } from "./chat-test-run";
 
-export function ChatTestRunCard({ run }: { run: ChatSensitiveTestRun }) {
+export function ChatTestRunCard({
+  run,
+  saved = null,
+  testId = "chat-test-run-card",
+}: {
+  run: ChatSensitiveTestRun;
+  saved?: ChatWorkflowRef | null;
+  testId?: string;
+}) {
   const { t } = useI18n();
   const facts: Fact[] = [
     {
@@ -33,13 +45,35 @@ export function ChatTestRunCard({ run }: { run: ChatSensitiveTestRun }) {
           },
         ]),
   ];
+  const title = t(run.succeeded ? "chat.testRun.succeeded" : "chat.testRun.failed");
+  const verifiable = run.succeeded && saved !== null;
   return (
     <ChatCard
-      testId="chat-test-run-card"
-      title={t(run.succeeded ? "chat.testRun.succeeded" : "chat.testRun.failed")}
+      testId={testId}
+      title={
+        saved ? (
+          <ChatCardTitle
+            title={title}
+            mention={<ChatWorkflowMention workflow={saved} testId={`${testId}-workflow`} />}
+          />
+        ) : (
+          title
+        )
+      }
       line={t("chat.testRun.confidential")}
       facts={facts}
-      action={null}
+      action={
+        verifiable && saved ? (
+          <Button asChild className="w-full sm:w-auto">
+            <a
+              href={contextualHref(absolute(workflowRunHref(saved.id)))}
+              data-testid={`${testId}-verify`}
+            >
+              {t("chat.preview.verify")}
+            </a>
+          </Button>
+        ) : null
+      }
     />
   );
 }
