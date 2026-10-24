@@ -17,7 +17,7 @@ import {
   ValidationError,
 } from "../../config/loader.ts";
 import { type ConfigLeaf, findLeafByPath } from "../../config/walk.ts";
-import { CATALOG_MODEL_PROVIDERS, modelCatalogView } from "../../llm/model-catalog-view.ts";
+import { CATALOG_MODEL_PROVIDERS, modelCatalogView } from "../../llm/index.ts";
 import { logger } from "../../logging/index.ts";
 import {
   activateRuntimeRevision,
