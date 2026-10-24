@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 interface RuntimeNoticeManifest {
   runtime: { version: string; revision: string };
   scope: string;
+  correspondingSource?: string;
   files: Array<{
     component: string;
     revision: string;
@@ -24,12 +25,19 @@ export async function renderRuntimeNotices(
     throw new Error("Runtime notice manifest does not match the build toolchain");
   if (!manifest.scope?.trim() || !Array.isArray(manifest.files) || !manifest.files.length)
     throw new Error("Runtime notice inventory is empty");
+  if (
+    manifest.correspondingSource !== undefined &&
+    !manifest.correspondingSource.includes(manifest.runtime.revision)
+  )
+    throw new Error("Corresponding source statement does not name the runtime revision");
   const parts = [
     "",
     "NATIVE RUNTIME NOTICE DRAFT — NOT A DISTRIBUTION APPROVAL",
     `Bun ${version} (${revision})`,
     manifest.scope,
   ];
+  if (manifest.correspondingSource)
+    parts.push("", "RELINKING AND CORRESPONDING SOURCE", manifest.correspondingSource);
   const seen = new Set<string>();
   for (const file of [...manifest.files].sort((a, b) => a.path.localeCompare(b.path, "en"))) {
     if (

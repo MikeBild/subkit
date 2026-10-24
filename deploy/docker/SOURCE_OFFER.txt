@@ -1,0 +1,31 @@
+SubKit container image: written offer for corresponding source
+
+The SubKit container image is built on the pinned Playwright base image
+(mcr.microsoft.com/playwright, Ubuntu 24.04 "noble"). Besides SubKit (MIT, see
+LICENSE and THIRD_PARTY_NOTICES.txt) it contains Ubuntu operating system packages,
+Node.js and the Playwright browser builds (Chromium, Firefox, WebKit). Some of
+these components are licensed under the GNU GPL, the GNU LGPL or the Mozilla
+Public License. BASE_IMAGE_INVENTORY.txt in this directory lists every installed
+package with its version, its source package and its license file, and the
+installed Playwright browser builds.
+
+Where to obtain the source:
+- Ubuntu packages: the source package and version named in BASE_IMAGE_INVENTORY.txt,
+  from the Ubuntu archive (http://archive.ubuntu.com/ubuntu, deb-src entries;
+  `apt-get source <package>=<version>`) or from Launchpad
+  (https://launchpad.net/ubuntu/+source/<package>). The license of each package
+  is in /usr/share/doc/<package>/copyright inside this image.
+- Playwright browsers: the upstream projects Chromium (https://www.chromium.org),
+  Firefox (https://www.mozilla.org/firefox) and WebKit (https://webkit.org), and
+  the Playwright browser patches in https://github.com/microsoft/playwright at the
+  release named by the image tag.
+- Bun runtime components inside the SubKit executables: see "RELINKING AND
+  CORRESPONDING SOURCE" in THIRD_PARTY_NOTICES.txt.
+
+Written offer: for at least three years after this image is distributed, the
+SubKit maintainers provide on request the complete corresponding source code of
+the GPL- and LGPL-licensed components contained in this image, for no more than
+the cost of physically performing the distribution. Send the request to the
+SubKit maintainers named in the SubKit LICENSE through the support channel of
+this distribution. Once the SubKit repository is public, these sources will also
+be linked from it.

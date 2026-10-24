@@ -81,6 +81,23 @@ COPY --from=builder /out/sk /usr/local/bin/sk.bin
 COPY --from=cli-binaries /out/binaries /usr/local/share/subkit/binaries
 COPY LICENSE /usr/local/share/subkit/LICENSE
 COPY --from=builder /out/THIRD_PARTY_NOTICES.txt /usr/local/share/subkit/THIRD_PARTY_NOTICES.txt
+COPY deploy/docker/SOURCE_OFFER.txt /usr/local/share/subkit/SOURCE_OFFER.txt
+RUN set -eu; \
+    out=/usr/local/share/subkit/BASE_IMAGE_INVENTORY.txt; \
+    { \
+      echo "Base image OS packages: package, version, source package, source version, license file"; \
+      dpkg-query -W -f='${binary:Package}\t${Version}\t${source:Package}\t${source:Version}\t${Package}\n' \
+        | while IFS="$(printf '\t')" read -r pkg ver src srcver name; do \
+            lic="/usr/share/doc/$name/copyright"; [ -f "$lic" ] || lic="missing"; \
+            printf '%s\t%s\t%s\t%s\t%s\n' "$pkg" "$ver" "$src" "$srcver" "$lic"; \
+          done | LC_ALL=C sort; \
+      echo; \
+      echo "Playwright browser builds in /ms-playwright"; \
+      test -d /ms-playwright; ls -1 /ms-playwright | LC_ALL=C sort; \
+      echo; \
+      echo "Node.js: $(node --version 2>/dev/null || echo absent)"; \
+    } > "$out"; \
+    test -s "$out"
 COPY deploy/docker/subkit-wrap.sh /usr/local/bin/subkit-wrap.sh
 COPY deploy/docker/entrypoint.sh /usr/local/bin/subkit-entrypoint.sh
 RUN cp /usr/local/share/subkit/LICENSE /usr/local/share/subkit/binaries/LICENSE \

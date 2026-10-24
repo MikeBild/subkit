@@ -69,3 +69,16 @@ test("rejects traversal, duplicate entries and empty inventories", async () => {
     ).rejects.toThrow();
   }
 });
+
+test("renders the relinking statement and binds it to the runtime revision", async () => {
+  const { path, manifest } = await fixture();
+  const statement = "Relink with Bun runtime-revision; written offer for three years";
+  await writeFile(path, JSON.stringify({ ...manifest, correspondingSource: statement }));
+  const output = await renderRuntimeNotices(path, "runtime-version", "runtime-revision");
+  expect(output).toContain("RELINKING AND CORRESPONDING SOURCE");
+  expect(output).toContain(statement);
+  await writeFile(path, JSON.stringify({ ...manifest, correspondingSource: "Relink with Bun" }));
+  await expect(renderRuntimeNotices(path, "runtime-version", "runtime-revision")).rejects.toThrow(
+    "runtime revision",
+  );
+});
