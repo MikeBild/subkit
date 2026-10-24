@@ -1,0 +1,17 @@
+[
+  {
+    "model": "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
+    "revision": "2c4055b12046f11709e9df2c122e59ffbdc2f900",
+    "upstream": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 (https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2); ONNX conversion and quantization by Xenova (https://huggingface.co/Xenova/paraphrase-multilingual-MiniLM-L12-v2)",
+    "license": "Apache-2.0",
+    "attribution": "paraphrase-multilingual-MiniLM-L12-v2 by the sentence-transformers project (Nils Reimers, Iryna Gurevych: Making Monolingual Sentence Embeddings Multilingual using Knowledge Distillation, EMNLP 2020). SubKit ships the converted weights and tokenizer unmodified.",
+    "qualification": "The pinned assets (config, tokenizer, special tokens, quantized ONNX weights) carry no license file; config _name_or_path names the upstream model. The license follows the upstream model card and is not verified from the shipped files; confirm both model cards at the pinned revision before distribution.",
+    "files": [
+      {
+        "path": "paraphrase-multilingual-MiniLM-L12-v2__Apache-2.0.txt",
+        "source": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+        "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+      }
+    ]
+  }
+]

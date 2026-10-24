@@ -6,6 +6,7 @@ import { join } from "node:path";
 import {
   collectNotices,
   noticeInputs,
+  renderModelNotices,
   renderNoticeDraft,
   supplementNotices,
 } from "../third-party-notices.ts";
@@ -138,4 +139,72 @@ test("rejects conflicting notices for duplicate package identities", async () =>
       "node_modules/nested/node_modules/example/index.js",
     ]),
   ).rejects.toThrow("Conflicting");
+});
+
+test("records an applied license and statement without supplemental files", async () => {
+  const root = await fixture("Dual license text");
+  const manifest = join(root, "manifest.json");
+  const entry = {
+    name: "example",
+    version: "1",
+    qualification: "Dual-licensed; elects MIT",
+    license: "MIT",
+    statement: "Distributed unmodified; source at the pinned package archive",
+  };
+  await writeFile(manifest, JSON.stringify([entry]));
+  const packages = await collectNotices(root, ["node_modules/example/index.js"]);
+  const supplemented = await supplementNotices(packages, manifest);
+  expect(supplemented[0]?.applied).toBe("MIT");
+  const draft = renderNoticeDraft(supplemented);
+  expect(draft).toContain("Applied license: MIT");
+  expect(draft).toContain(`Statement: ${entry.statement}`);
+  expect(packages[0]?.applied).toBeUndefined();
+  await writeFile(manifest, JSON.stringify([{ ...entry, license: "MIT; rm" }]));
+  await expect(supplementNotices(packages, manifest)).rejects.toThrow("license");
+  await writeFile(
+    manifest,
+    JSON.stringify([{ name: "example", version: "1", qualification: "nothing applied" }]),
+  );
+  await expect(supplementNotices(packages, manifest)).rejects.toThrow("evidence");
+});
+
+test("binds model notices to the pinned embedding assets and verifies the license text", async () => {
+  const root = await fixture();
+  const text = "Apache License text";
+  const assets = join(root, "assets.json");
+  const manifest = join(root, "models.json");
+  await writeFile(
+    assets,
+    JSON.stringify({
+      model: "org/model",
+      revision: "abc",
+      files: [{ local: "model.onnx", sha256: "f".repeat(64) }],
+    }),
+  );
+  await writeFile(join(root, "model-license.txt"), text);
+  const entry = {
+    model: "org/model",
+    revision: "abc",
+    upstream: "upstream/model",
+    license: "Apache-2.0",
+    attribution: "Model authors",
+    qualification: "Per upstream model card",
+    files: [
+      {
+        path: "model-license.txt",
+        source: "https://example.test/LICENSE",
+        sha256: createHash("sha256").update(text).digest("hex"),
+      },
+    ],
+  };
+  await writeFile(manifest, JSON.stringify([entry]));
+  const rendered = await renderModelNotices(manifest, assets);
+  expect(rendered).toContain("org/model@abc");
+  expect(rendered).toContain(`Asset: model.onnx SHA-256: ${"f".repeat(64)}`);
+  expect(rendered).toContain(text);
+  await writeFile(manifest, JSON.stringify([{ ...entry, revision: "other" }]));
+  await expect(renderModelNotices(manifest, assets)).rejects.toThrow("pinned");
+  await writeFile(manifest, JSON.stringify([entry]));
+  await writeFile(join(root, "model-license.txt"), "changed");
+  await expect(renderModelNotices(manifest, assets)).rejects.toThrow("checksum");
 });

@@ -164,5 +164,136 @@
       }
     ],
     "qualification": "Repository license at a revision declaring this exact package version; npm omits the text. Legal distribution approval remains separate."
+  },
+  {
+    "name": "boolbase",
+    "version": "1.0.0",
+    "qualification": "The package ships no license text. Canonical ISC text from the SPDX License List with the holder named by the package.json author field (Felix Boehm); the declared license is ISC. Legal distribution approval remains separate.",
+    "files": [
+      {
+        "path": "boolbase__ISC.txt",
+        "source": "https://spdx.org/licenses/ISC.html",
+        "sha256": "759e2145b37e053a737b884294175b54111ae3c7101434dc81a6a3343527fc9b"
+      }
+    ]
+  },
+  {
+    "name": "http_ece",
+    "version": "1.2.0",
+    "qualification": "The package ships no license text. Canonical MIT text from the SPDX License List with the holder named by the package.json author field (Martin Thomson); the declared license is MIT. Legal distribution approval remains separate.",
+    "files": [
+      {
+        "path": "http_ece__MIT.txt",
+        "source": "https://spdx.org/licenses/MIT.html",
+        "sha256": "d3d938de61e589ee1a65025aee8e76cf82b1996d00f6072048606508c50b7911"
+      }
+    ]
+  },
+  {
+    "name": "node-html-markdown",
+    "version": "2.0.0",
+    "qualification": "The package ships no license text. Canonical MIT text from the SPDX License List with the holder named by the package.json author field (Ron S.); the declared license is MIT. Legal distribution approval remains separate.",
+    "files": [
+      {
+        "path": "node-html-markdown__MIT.txt",
+        "source": "https://spdx.org/licenses/MIT.html",
+        "sha256": "27daa01303d1a69d6291734968254cb04b5f8e891c2de04b2ae4de628cf61ac0"
+      }
+    ]
+  },
+  {
+    "name": "react-remove-scroll-bar",
+    "version": "2.3.8",
+    "qualification": "The package ships no license text. Canonical MIT text from the SPDX License List with the holder named by the package.json author field (Anton Korzunov); the declared license is MIT. Legal distribution approval remains separate.",
+    "files": [
+      {
+        "path": "react-remove-scroll-bar__MIT.txt",
+        "source": "https://spdx.org/licenses/MIT.html",
+        "sha256": "3772841819809db7594b8c2fe10ffc4e0971f72a186cdd33ca9bc63d50e5c4d3"
+      }
+    ]
+  },
+  {
+    "name": "@jsquash/jpeg",
+    "version": "1.6.0",
+    "qualification": "Codec license shipped inside the package below the package root; it covers the bundled WebAssembly codec. Legal distribution approval remains separate.",
+    "files": [
+      {
+        "path": "@jsquash__jpeg__codec-LICENSE.txt",
+        "source": "node_modules/.bun/@jsquash+jpeg@1.6.0/node_modules/@jsquash/jpeg/codec/LICENSE.codec.md",
+        "sha256": "8213556ea36ce3a0f2883db06238463e2452fdad68e3d2e2e4ace2189477a37e"
+      }
+    ]
+  },
+  {
+    "name": "@jsquash/png",
+    "version": "3.1.1",
+    "qualification": "Codec license shipped inside the package below the package root; it covers the bundled WebAssembly codec. Legal distribution approval remains separate.",
+    "files": [
+      {
+        "path": "@jsquash__png__codec-LICENSE.txt",
+        "source": "node_modules/.bun/@jsquash+png@3.1.1/node_modules/@jsquash/png/codec/LICENSE.codec.md",
+        "sha256": "e293d1dddc9785200b1f58a4f5293543cf8566d9e0b8a3c02fad955035b19f42"
+      }
+    ]
+  },
+  {
+    "name": "@jsquash/resize",
+    "version": "2.1.1",
+    "qualification": "Codec license shipped inside the package below the package root; it covers the bundled WebAssembly codec. Legal distribution approval remains separate.",
+    "files": [
+      {
+        "path": "@jsquash__resize__resize-LICENSE.txt",
+        "source": "node_modules/.bun/@jsquash+resize@2.1.1/node_modules/@jsquash/resize/lib/resize/LICENSE.codec.md",
+        "sha256": "373fec335329f8e4c9c8839871606e6ed5bfaa513a4dea2ebee4b7a418853320"
+      },
+      {
+        "path": "@jsquash__resize__hqx-LICENSE.txt",
+        "source": "node_modules/.bun/@jsquash+resize@2.1.1/node_modules/@jsquash/resize/lib/hqx/LICENSE.codec.md",
+        "sha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1"
+      },
+      {
+        "path": "@jsquash__resize__magic-kernel-LICENSE.txt",
+        "source": "node_modules/.bun/@jsquash+resize@2.1.1/node_modules/@jsquash/resize/lib/magic-kernel/LICENSE.codec.md",
+        "sha256": "21e492c2fb8be34abe00c1b5c4b15139e061ddfaa236adc4c0d4ff70ccd329b2"
+      }
+    ]
+  },
+  {
+    "name": "@jsquash/webp",
+    "version": "1.5.0",
+    "qualification": "Codec license shipped inside the package below the package root; it covers the bundled WebAssembly codec. Legal distribution approval remains separate.",
+    "files": [
+      {
+        "path": "@jsquash__webp__codec-LICENSE.txt",
+        "source": "node_modules/.bun/@jsquash+webp@1.5.0/node_modules/@jsquash/webp/codec/LICENSE.codec.md",
+        "sha256": "e293d1dddc9785200b1f58a4f5293543cf8566d9e0b8a3c02fad955035b19f42"
+      }
+    ]
+  },
+  {
+    "name": "dompurify",
+    "version": "3.4.13",
+    "license": "Apache-2.0",
+    "qualification": "Dual-licensed (MPL-2.0 OR Apache-2.0); SubKit elects Apache-2.0. Legal distribution approval remains separate."
+  },
+  {
+    "name": "jszip",
+    "version": "3.10.1",
+    "license": "MIT",
+    "qualification": "Dual-licensed (MIT OR GPL-3.0-or-later); SubKit elects MIT. Legal distribution approval remains separate."
+  },
+  {
+    "name": "qrcode-terminal",
+    "version": "0.12.0",
+    "license": "Apache-2.0",
+    "qualification": "package.json declares the legacy licenses entry \"Apache 2.0\"; normalized to the SPDX identifier Apache-2.0. Legal distribution approval remains separate."
+  },
+  {
+    "name": "web-push",
+    "version": "3.6.7",
+    "license": "MPL-2.0",
+    "statement": "Covered Software under the Mozilla Public License 2.0, distributed unmodified. Source Code Form: https://registry.npmjs.org/web-push/-/web-push-3.6.7.tgz (npm package web-push@3.6.7) and https://github.com/web-push-libs/web-push.",
+    "qualification": "MPL-2.0 source availability for the unmodified upstream package. Legal distribution approval remains separate."
   }
 ]

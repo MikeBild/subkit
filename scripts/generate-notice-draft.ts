@@ -5,6 +5,7 @@ import { renderRuntimeNotices } from "./runtime-notices.ts";
 import {
   collectNotices,
   noticeInputs,
+  renderModelNotices,
   renderNoticeDraft,
   supplementNotices,
 } from "./third-party-notices.ts";
@@ -72,7 +73,9 @@ const packages = await supplementNotices(
 if (!packages.length) throw new Error("Notice inventory is empty");
 const runtimeManifest = join(root, "vendor/runtime-notices/manifest.json");
 const runtime = await renderRuntimeNotices(runtimeManifest, Bun.version, Bun.revision);
-const draft = renderNoticeDraft(packages) + runtime;
+const modelManifest = join(root, "vendor/notices/models.json");
+const models = await renderModelNotices(modelManifest, join(root, "vendor/embedding-assets.json"));
+const draft = renderNoticeDraft(packages) + runtime + models;
 const missing = packages
   .filter((item) => !item.texts.length)
   .map((item) => `${item.name}@${item.version}`);
@@ -103,10 +106,12 @@ await writeFile(
       lockSha256: hash(await readFile(join(root, "bun.lock"))),
       manifestSha256: hash(await readFile(join(root, "vendor/notices/manifest.json"))),
       runtimeManifestSha256: hash(await readFile(runtimeManifest)),
+      modelManifestSha256: hash(await readFile(modelManifest)),
       draftSha256: hash(draft),
       packages: packages.map((item) => ({
         name: item.name,
         version: item.version,
+        license: item.applied ?? item.license ?? null,
         notices: item.texts.map(({ name, sha256 }) => ({ name, sha256 })),
       })),
       missing,

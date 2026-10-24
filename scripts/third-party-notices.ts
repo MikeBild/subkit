@@ -7,6 +7,8 @@ export interface NoticePackage {
   name: string;
   version: string;
   license: unknown;
+  applied?: string;
+  statements?: string[];
   texts: Array<{ name: string; sha256: string; text: string }>;
 }
 
@@ -14,6 +16,18 @@ interface SupplementalNotice {
   name: string;
   version: string;
   qualification: string;
+  license?: string;
+  statement?: string;
+  files?: Array<{ path: string; sha256: string; source: string }>;
+}
+
+interface ModelNotice {
+  model: string;
+  revision: string;
+  upstream: string;
+  license: string;
+  qualification: string;
+  attribution: string;
   files: Array<{ path: string; sha256: string; source: string }>;
 }
 
@@ -27,9 +41,20 @@ export async function supplementNotices(
   for (const entry of entries) {
     const item = result.find((item) => item.name === entry.name && item.version === entry.version);
     if (!item) continue;
-    if (!Array.isArray(entry.files) || !entry.files.length || !entry.qualification?.trim())
+    const files = entry.files ?? [];
+    if (
+      !Array.isArray(files) ||
+      !entry.qualification?.trim() ||
+      (!files.length && !entry.license?.trim() && !entry.statement?.trim())
+    )
       throw new Error("Supplemental notice evidence is missing");
-    for (const file of entry.files) {
+    if (entry.license !== undefined) {
+      if (!/^[A-Za-z0-9.+-]+( (OR|AND) [A-Za-z0-9.+-]+)*$/.test(entry.license))
+        throw new Error("Invalid applied license expression");
+      item.applied = entry.license;
+    }
+    if (entry.statement?.trim()) item.statements = [...(item.statements ?? []), entry.statement];
+    for (const file of files) {
       if (!file.path || /[/\\]/.test(file.path) || !file.source?.trim())
         throw new Error("Invalid supplemental notice path or source");
       const bytes = await readFile(join(dirname(manifest), file.path));
@@ -122,9 +147,61 @@ export function renderNoticeDraft(packages: NoticePackage[]): string {
   for (const item of packages) {
     parts.push("", "=".repeat(72), `${item.name}@${item.version}`);
     parts.push(`Declared license: ${JSON.stringify(item.license ?? null)}`);
+    if (item.applied) parts.push(`Applied license: ${item.applied}`);
+    for (const statement of item.statements ?? []) parts.push(`Statement: ${statement}`);
     if (!item.texts.length) parts.push("UNVERIFIED: no installed notice text found");
     for (const notice of item.texts)
       parts.push(`File: ${notice.name}`, `SHA-256: ${notice.sha256}`, notice.text);
+  }
+  return `${parts.join("\n")}\n`;
+}
+
+export async function renderModelNotices(manifest: string, assets: string): Promise<string> {
+  const entries = JSON.parse(await readFile(manifest, "utf8")) as ModelNotice[];
+  const pinned = JSON.parse(await readFile(assets, "utf8")) as {
+    model: string;
+    revision: string;
+    files: Array<{ local: string; sha256: string }>;
+  };
+  if (!Array.isArray(entries) || !entries.length)
+    throw new Error("Model notice inventory is empty");
+  const parts = ["", "EMBEDDED MODEL NOTICE DRAFT — NOT A DISTRIBUTION APPROVAL"];
+  for (const entry of entries) {
+    if (entry.model !== pinned.model || entry.revision !== pinned.revision)
+      throw new Error("Model notice does not match the pinned embedding assets");
+    if (
+      !entry.upstream?.trim() ||
+      !entry.license?.trim() ||
+      !entry.qualification?.trim() ||
+      !entry.attribution?.trim() ||
+      !Array.isArray(entry.files) ||
+      !entry.files.length
+    )
+      throw new Error("Model notice evidence is missing");
+    parts.push(
+      "",
+      "=".repeat(72),
+      `${entry.model}@${entry.revision}`,
+      `Upstream model: ${entry.upstream}`,
+      `Applied license: ${entry.license}`,
+      `Attribution: ${entry.attribution}`,
+      `Qualification: ${entry.qualification}`,
+      ...pinned.files.map((file) => `Asset: ${file.local} SHA-256: ${file.sha256}`),
+    );
+    for (const file of entry.files) {
+      if (!file.path || /[/\\]/.test(file.path) || !file.source?.startsWith("https://"))
+        throw new Error("Invalid model notice path or source");
+      const bytes = await readFile(join(dirname(manifest), file.path));
+      const hash = createHash("sha256").update(bytes).digest("hex");
+      if (hash !== file.sha256 || !bytes.toString("utf8").trim())
+        throw new Error("Model notice checksum mismatch or empty text");
+      parts.push(
+        `File: ${file.path}`,
+        `Source: ${file.source}`,
+        `SHA-256: ${hash}`,
+        bytes.toString("utf8"),
+      );
+    }
   }
   return `${parts.join("\n")}\n`;
 }
@@ -164,7 +241,11 @@ if (import.meta.main) {
     Bun.version,
     Bun.revision,
   );
-  process.stdout.write(renderNoticeDraft(packages) + runtime);
+  const models = await renderModelNotices(
+    join(import.meta.dir, "../vendor/notices/models.json"),
+    join(import.meta.dir, "../vendor/embedding-assets.json"),
+  );
+  process.stdout.write(renderNoticeDraft(packages) + runtime + models);
   process.stderr.write(
     `${packages.length} packages; ${packages.filter((item) => !item.texts.length).length} missing notices. Draft only.\n`,
   );
