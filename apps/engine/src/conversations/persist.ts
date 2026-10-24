@@ -29,6 +29,7 @@ import {
   buildElidedToolOutputStub,
   isReplayCriticalToolOutput,
   TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS,
+  TOOL_OUTPUT_VERBATIM_TURNS,
 } from "./tool-output-elision.ts";
 import type { ToolCallOutcome } from "./tools/result-payload.ts";
 import { rememberRaw, truncateForLlm } from "./tools/truncate.ts";
@@ -36,8 +37,6 @@ import { rememberRaw, truncateForLlm } from "./tools/truncate.ts";
 const MAX_REPLAY_MESSAGES = 24;
 const MAX_REPLAY_TOKENS = 12_000;
 const REPLAY_TAIL_MESSAGES = 16;
-
-const TOOL_OUTPUT_VERBATIM_TURNS = 3;
 
 const ELIDED_SQL_MARKER = "__sk_elided_in_sql";
 

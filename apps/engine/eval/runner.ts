@@ -309,7 +309,9 @@ function loadPromptSizeReference(): PromptSizeReference {
 }
 
 function printPromptSize(report: PromptSizeReport): void {
-  console.log("\nPrompt size per chat step (system prompt tokens):");
+  console.log(
+    "\nPrompt size per chat step (system prompt plus load_skill results in history, tokens):",
+  );
   for (const step of report.steps) {
     const single =
       step.single_skill_tokens !== undefined ? `  single skill=${step.single_skill_tokens}` : "";

@@ -9,8 +9,10 @@ import {
   loadActivationCatalog,
   reaffirmLoadedForTurn,
 } from "../../src/conversations/skill-autoload.ts";
+import { TOOL_OUTPUT_VERBATIM_TURNS } from "../../src/conversations/tool-output-elision.ts";
 import type { Db } from "../../src/db/client.ts";
 import { tenants } from "../../src/db/schema/index.ts";
+import { countTokens } from "../../src/llm/accounting/index.ts";
 import { assembleEnhancedPrompt } from "../../src/llm/core/context-assembler.ts";
 import {
   applySkillSeeds,
@@ -27,7 +29,13 @@ type StepEvent =
 interface ChatStep {
   id: string;
   user_turn: string;
+  needs: string[];
   events: StepEvent[];
+}
+
+export interface SkillLoad {
+  slug: string;
+  turn: number;
 }
 
 interface Input {
@@ -41,9 +49,42 @@ interface Input {
 
 interface StepMeasure {
   tokens: number;
+  system_tokens: number;
+  skill_result_tokens: number;
   loaded: string[];
+  visible: string[];
   trimmed: number;
-  core_in_system: boolean;
+}
+
+export function visibleLoads(
+  loads: readonly SkillLoad[],
+  turn: number,
+  window: number = TOOL_OUTPUT_VERBATIM_TURNS,
+): SkillLoad[] {
+  return loads.filter((load) => load.turn <= turn && load.turn > turn - window);
+}
+
+export function planSkillLoads(
+  needsPerTurn: readonly (readonly string[])[],
+  window: number = TOOL_OUTPUT_VERBATIM_TURNS,
+): SkillLoad[] {
+  const loads: SkillLoad[] = [];
+  for (const [index, needs] of needsPerTurn.entries()) {
+    const turn = index + 1;
+    const visible = new Set(visibleLoads(loads, turn - 1, window - 1).map((load) => load.slug));
+    for (const slug of new Set(needs)) {
+      if (!visible.has(slug)) loads.push({ slug, turn });
+    }
+  }
+  return loads;
+}
+
+export function singleSkillNeeds(
+  needs: readonly string[],
+  familyPrefix: string,
+  coreSlug: string,
+): string[] {
+  return [...new Set(needs.map((slug) => (slug.startsWith(familyPrefix) ? coreSlug : slug)))];
 }
 
 const AUDIENCE = "chat" as const;
@@ -110,7 +151,28 @@ function applyToolEvents(
   return entries;
 }
 
-async function replay(db: Db, tenant_id: string, input: Input): Promise<Map<string, StepMeasure>> {
+function loadResultTokens(skill: SeededSkill | undefined): number {
+  if (!skill) return 0;
+  return countTokens(
+    JSON.stringify({
+      ok: true,
+      data: {
+        slug: skill.slug,
+        skill: { title: skill.title, body: skill.body, scope: skill.scope },
+      },
+    }),
+  );
+}
+
+async function replay(
+  db: Db,
+  tenant_id: string,
+  input: Input,
+  skills: readonly SeededSkill[],
+  needsPerTurn: readonly (readonly string[])[],
+): Promise<Map<string, StepMeasure>> {
+  const bySlug = new Map(skills.map((skill) => [skill.slug, skill]));
+  const loads = planSkillLoads(needsPerTurn);
   const catalog = await loadActivationCatalog(tenant_id, db);
   const baseline = new Set(listBaselineSlugs(catalog));
   const out = new Map<string, StepMeasure>();
@@ -148,11 +210,18 @@ async function replay(db: Db, tenant_id: string, input: Input): Promise<Map<stri
       },
       db,
     );
+    const visible = visibleLoads(loads, turn);
+    const skillResultTokens = visible.reduce(
+      (sum, load) => sum + loadResultTokens(bySlug.get(load.slug)),
+      0,
+    );
     out.set(step.id, {
-      tokens: prompt.token_counts.total,
+      tokens: prompt.token_counts.total + skillResultTokens,
+      system_tokens: prompt.token_counts.total,
+      skill_result_tokens: skillResultTokens,
       loaded: recency.fullBodySet,
+      visible: [...new Set(visible.map((load) => load.slug))],
       trimmed: prompt.dropped_sections.length,
-      core_in_system: prompt.system.includes(input.core_marker),
     });
     loaded = applyToolEvents(step.events, catalog, loaded, turn, input.surface);
   }
@@ -185,24 +254,33 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
     c.check(tools.has(tool), `the replayed conversation never reaches ${tool}`);
   }
 
+  const knownSlugs = new Set(seeds.skills.map((skill) => skill.slug));
+  for (const step of input.steps) {
+    c.check(step.needs.length > 0, `step ${step.id} names no skill it needs`);
+    for (const slug of step.needs) {
+      c.check(knownSlugs.has(slug), `step ${step.id} needs unknown skill ${slug}`);
+    }
+  }
+  const singleSkills = singleSkillCatalog(seeds.skills, input.family_prefix, input.core_slug);
+  const splitNeeds = input.steps.map((step) => step.needs);
+  const singleNeeds = splitNeeds.map((needs) =>
+    singleSkillNeeds(needs, input.family_prefix, input.core_slug),
+  );
+
   const { split, single } = await withAuthoringEvalEnv("prompt_size_per_step", async (env) => {
     const singleTenant = await insertTenant(env.db, "t-eval-prompt-size-single-skill");
     await applySkillSeeds(seeds.skills, env.tenant_id, env.db);
-    await applySkillSeeds(
-      singleSkillCatalog(seeds.skills, input.family_prefix, input.core_slug),
-      singleTenant,
-      env.db,
-    );
+    await applySkillSeeds(singleSkills, singleTenant, env.db);
     return {
-      split: await replay(env.db, env.tenant_id, input),
-      single: await replay(env.db, singleTenant, input),
+      split: await replay(env.db, env.tenant_id, input, seeds.skills, splitNeeds),
+      single: await replay(env.db, singleTenant, input, singleSkills, singleNeeds),
     };
   });
 
   const metrics: Record<string, number> = {};
   const splitTokens: number[] = [];
   const singleTokens: number[] = [];
-  let coreInSystemSteps = 0;
+  let smallerSteps = 0;
   for (const step of input.steps) {
     const after = split.get(step.id);
     const before = single.get(step.id);
@@ -212,24 +290,36 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
     }
     metrics[`prompt_tokens_step_${step.id}`] = after.tokens;
     metrics[`single_skill_prompt_tokens_step_${step.id}`] = before.tokens;
+    metrics[`skill_result_tokens_step_${step.id}`] = after.skill_result_tokens;
+    metrics[`single_skill_result_tokens_step_${step.id}`] = before.skill_result_tokens;
     splitTokens.push(after.tokens);
     singleTokens.push(before.tokens);
-    if (after.core_in_system) coreInSystemSteps += 1;
     c.check(
       after.loaded.includes(input.core_slug),
       `step ${step.id} lost the core recipe: ${JSON.stringify(after.loaded)}`,
     );
+    for (const slug of step.needs) {
+      c.check(
+        after.visible.includes(slug),
+        `step ${step.id} does not carry the body of ${slug}: ${JSON.stringify(after.visible)}`,
+      );
+    }
     c.check(
-      before.loaded.includes(input.core_slug),
-      `step ${step.id} does not load the single authoring skill, so it measures nothing`,
+      before.visible.includes(input.core_slug),
+      `step ${step.id} does not carry the single authoring skill body, so it measures nothing`,
     );
+    c.check(
+      after.tokens < before.tokens,
+      `step ${step.id} is not smaller than the single skill: ${after.tokens} >= ${before.tokens}`,
+    );
+    if (after.tokens < before.tokens) smallerSteps += 1;
     c.check(after.trimmed === 0, `step ${step.id} trimmed ${after.trimmed} prompt sections`);
   }
   metrics.prompt_tokens_step_mean = mean(splitTokens);
   metrics.single_skill_prompt_tokens_step_mean = mean(singleTokens);
   metrics.prompt_tokens_step_max = Math.max(0, ...splitTokens);
   metrics.single_skill_prompt_tokens_step_max = Math.max(0, ...singleTokens);
-  metrics.core_body_in_system_steps = coreInSystemSteps;
+  metrics.smaller_than_single_skill_steps = smallerSteps;
   if (c.failed) return { pass: false, reason: c.failed, metrics };
   return { pass: true, metrics };
 }
