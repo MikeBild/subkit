@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   type AuthorityPages,
   withAuthorityRevoked,
+  withAuthorityUntilRevoked,
   withProvisionalAuthority,
 } from "./optimistic-authorities";
 import type { WorkflowAuthority, WorkflowAuthorityPreview } from "./workflow-authorities";
@@ -25,6 +26,29 @@ describe("optimistic approvals", () => {
       revoked_at: "2026-10-03T10:00:00.000Z",
       ready_for_new_run: false,
     });
+  });
+
+  test("an approval made open-ended reads as until revoked at once, the others untouched", () => {
+    const data: AuthorityPages = {
+      pages: [
+        {
+          items: ["a", "b"].map(
+            (id) =>
+              ({
+                ...authority(id),
+                valid_until: "2026-11-19T09:00:00.000Z",
+                max_runs: null,
+                open_ended: false,
+              }) as WorkflowAuthority,
+          ),
+          next_cursor: null,
+        },
+      ],
+      pageParams: [null],
+    };
+    const [a, b] = withAuthorityUntilRevoked(data, "b")?.pages[0]?.items ?? [];
+    expect(a).toMatchObject({ id: "a", valid_until: "2026-11-19T09:00:00.000Z" });
+    expect(b).toMatchObject({ id: "b", valid_until: null, open_ended: true });
   });
 
   test("a granted approval stands newest until the engine answers", () => {

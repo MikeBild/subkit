@@ -159,3 +159,15 @@ export const DEFAULT_GRANT_LIMIT: GrantLimit = "until_revoked";
 export function grantLimitBounds(limit: GrantLimit): { runs: null; hours: string | null } {
   return { runs: null, hours: limit === "7d" ? "168" : limit === "30d" ? "720" : null };
 }
+
+const DAY_MS = 86_400_000;
+
+export function untilRevokedOffer(
+  authority: WorkflowAuthority,
+  now: number,
+  canWrite: boolean,
+): { days: number } | null {
+  if (!canWrite || authority.valid_until === null || authority.revoked_at !== null) return null;
+  if (observedAuthorityState(authority, now) !== "approved") return null;
+  return { days: Math.max(1, Math.ceil((Date.parse(authority.valid_until) - now) / DAY_MS)) };
+}

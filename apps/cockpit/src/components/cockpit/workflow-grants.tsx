@@ -3,6 +3,11 @@ import { useState } from "react";
 import { apiRequest } from "@/api/client";
 import { useActorDirectory } from "@/app/actor-directory";
 import { actorDirectoryName } from "@/app/actor-directory-model";
+import {
+  MakeUntilRevoked,
+  UntilRevokedDone,
+  UntilRevokedHint,
+} from "@/components/cockpit/authority-until-revoked";
 import type { WorkflowAutomation } from "@/components/cockpit/automation-panel";
 import { useConnectorNames, useConnectorServices } from "@/components/cockpit/connector-names";
 import { GrantEffectReview } from "@/components/cockpit/grant-effect-review";
@@ -35,6 +40,7 @@ import {
   authorityHeadline,
   authorityVersionLabel,
   observedAuthorityState,
+  untilRevokedOffer,
   type WorkflowAuthority,
   type WorkflowAuthorityPreview,
 } from "@/lib/workflow-authorities";
@@ -339,10 +345,14 @@ function ActiveGrant({
   authority,
   automation,
   onOpen,
+  madeUntilRevoked,
+  onUntilRevoked,
 }: {
   authority: WorkflowAuthority;
   automation: WorkflowAutomation;
   onOpen(): void;
+  madeUntilRevoked: boolean;
+  onUntilRevoked(): void;
 }) {
   const { t, dateTime } = useI18n();
   const directory = useActorDirectory(true);
@@ -350,29 +360,52 @@ function ActiveGrant({
   const model = useAuthorityModel(grantPreview(authority), automation, false);
   const state = observedAuthorityState(authority, automation.now);
   const version = authorityVersionLabel(authority.workflow_version_id, automation.versions);
+  const title = t("workflowApprovals.active.title", {
+    version: version.text,
+    environment: environmentWord(authority.execution_environment),
+  });
+  const offer = untilRevokedOffer(authority, automation.now, automation.canWrite);
   return (
     <section className="flex flex-col gap-3" data-testid="authority-current">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">
-          {t("workflowApprovals.active.title", {
-            version: version.text,
-            environment: environmentWord(authority.execution_environment),
-          })}
-        </span>
+        <span className="font-medium">{title}</span>
         <StatusBadge state={badgeState(state)} label={t(AUTHORITY_STATE_KEYS[state])} />
-        <span className="text-xs text-muted-foreground">
-          {t("workflowApprovals.active.granted", {
-            when: dateTime(authority.created_at),
-            who:
-              actorDirectoryName(directory, "user", authority.created_by) ?? t("audit.actor.user"),
-          })}
+        <span className="text-xs text-muted-foreground" data-testid="authority-current-validity">
+          {[
+            authority.valid_until === null
+              ? t("workflowApprovals.validity.untilRevoked")
+              : t("workflowApprovals.validity.until", { until: dateTime(authority.valid_until) }),
+            t("workflowApprovals.active.granted", {
+              when: dateTime(authority.created_at),
+              who:
+                actorDirectoryName(directory, "user", authority.created_by) ??
+                t("audit.actor.user"),
+            }),
+          ].join(" · ")}
         </span>
-        <span className="ml-auto">
+        <span className="ml-auto flex items-center gap-2">
+          {offer ? (
+            <MakeUntilRevoked
+              authority={authority}
+              subject={title}
+              tiles={model?.tiles ?? null}
+              onDone={onUntilRevoked}
+            />
+          ) : null}
           <ActionButton size="sm" onClick={onOpen} testId="authority-current-open">
             {t("workflowApprovals.details")}
           </ActionButton>
+          {automation.canWrite && !authority.revoked_at ? (
+            <RevokeApproval
+              authority={authority}
+              versionText={version.text}
+              testId="authority-current"
+            />
+          ) : null}
         </span>
       </div>
+      {offer ? <UntilRevokedHint days={offer.days} /> : null}
+      {madeUntilRevoked && authority.valid_until === null ? <UntilRevokedDone /> : null}
       <GrantEffectReview model={model} growth={undefined} problems={[]} loading={false} />
     </section>
   );
@@ -389,6 +422,7 @@ export function WorkflowApprovals({
   const directory = useActorDirectory(true);
   const environmentWord = useEnvironmentWord();
   const [openId, setOpenId] = useSearchParamState("grant", "");
+  const [madeUntilRevoked, setMadeUntilRevoked] = useState(false);
   const setOpen = (authority: WorkflowAuthority | null) => setOpenId(authority?.id ?? "");
   const { state } = automation;
   if (!state)
@@ -465,7 +499,13 @@ export function WorkflowApprovals({
       {prepared ? (
         <PendingVersion automation={automation} offersApproval={offersApproval} />
       ) : grant ? (
-        <ActiveGrant authority={grant} automation={automation} onOpen={() => setOpen(grant)} />
+        <ActiveGrant
+          authority={grant}
+          automation={automation}
+          onOpen={() => setOpen(grant)}
+          madeUntilRevoked={madeUntilRevoked}
+          onUntilRevoked={() => setMadeUntilRevoked(true)}
+        />
       ) : (
         <DataState
           state="empty"

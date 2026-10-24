@@ -183,6 +183,45 @@ test("browser grant, reload and revoke preserve the exact boundary", async () =>
   });
 });
 
+test("a browser makes a time-limited approval apply until revoked; an agent cannot", async () => {
+  const f = await fixture();
+  const granted = await app.request(`${f.base}/execution-authorities`, {
+    method: "POST",
+    headers: browserHeaders,
+    body: JSON.stringify(f.body),
+  });
+  expect(granted.status).toBe(201);
+  const authority = (await granted.json()) as { id: string };
+  const path = `${f.base}/execution-authorities/${authority.id}`;
+  const body = JSON.stringify({ expected_manifest_digest: f.body.expected_manifest_digest });
+  const machine = await app.request(`${path}/until-revoked`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${ctx.apiKey}`, "content-type": "application/json" },
+    body,
+  });
+  expect(machine.status).toBe(403);
+  expect(await machine.json()).toMatchObject({ code: "human_session_required" });
+  const replaced = await app.request(`${path}/until-revoked`, {
+    method: "POST",
+    headers: browserHeaders,
+    body,
+  });
+  expect(replaced.status).toBe(200);
+  const successor = (await replaced.json()) as { id: string };
+  expect(successor).toMatchObject({
+    state: "approved",
+    valid_until: null,
+    max_runs: 1,
+    effect_manifest_digest: f.body.expected_manifest_digest,
+    target_constraints: { targets: ["https://example.test/api/messages"] },
+  });
+  expect(successor.id).not.toBe(authority.id);
+  expect(await (await app.request(path, { headers: browserHeaders })).json()).toMatchObject({
+    state: "superseded",
+    superseded_by: successor.id,
+  });
+});
+
 test("an approval until revoked reads as open-ended; the next preview names no growth", async () => {
   const f = await fixture();
   const { valid_until: _until, max_runs: _runs, ...openEnded } = f.body;

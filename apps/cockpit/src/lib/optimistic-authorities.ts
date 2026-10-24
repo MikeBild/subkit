@@ -34,6 +34,24 @@ export function withAuthorityRevoked(
   };
 }
 
+export function withAuthorityUntilRevoked(
+  data: AuthorityPages | undefined,
+  id: string,
+): AuthorityPages | undefined {
+  if (!data) return data;
+  return {
+    ...data,
+    pages: data.pages.map((page) => ({
+      ...page,
+      items: page.items.map((authority) =>
+        authority.id === id
+          ? { ...authority, valid_until: null, open_ended: authority.max_runs === null }
+          : authority,
+      ),
+    })),
+  };
+}
+
 export function withProvisionalAuthority(
   data: AuthorityPages | undefined,
   review: WorkflowAuthorityPreview,

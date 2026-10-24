@@ -39,6 +39,7 @@ export function ConfirmDialog({
   object,
   verb,
   consequence,
+  points,
   destructive = false,
   pending = false,
   onConfirm,
@@ -49,6 +50,7 @@ export function ConfirmDialog({
   object: string;
   verb: string;
   consequence: string;
+  points?: readonly string[];
   destructive?: boolean;
   pending?: boolean;
   onConfirm(): void | Promise<void>;
@@ -81,6 +83,16 @@ export function ConfirmDialog({
           >
             {consequence}
           </AlertDialogDescription>
+          {points && points.length > 0 ? (
+            <ul
+              className="list-disc space-y-1 pl-5 text-sm text-muted-foreground"
+              data-testid={`${testId}-points`}
+            >
+              {points.map((point) => (
+                <li key={point}>{point}</li>
+              ))}
+            </ul>
+          ) : null}
         </div>
         <AlertDialogFooter className={DIALOG_FOOT}>
           <AlertDialogCancel variant="ghost" disabled={working} data-testid={`${testId}-cancel`}>
