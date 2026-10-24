@@ -175,3 +175,49 @@ describe("the workspace scope", () => {
     expect(pageScope({ kind: "area", area: "ai" }, false, {}, tenantItems)).toBe("global");
   });
 });
+
+describe("the AI overview sentence", () => {
+  const sentenceFacts = (items: SettingItem[]) => ({
+    items,
+    pendingRestart: [],
+    budgetConsumedShare: null,
+    canWrite: true,
+    providerName: (provider: string) => (provider === "openai" ? "OpenAI" : "Anthropic"),
+    modelName: (_provider: string, model: string) => model || "Standardmodell von OpenAI",
+    budgetText: (tokens: number) => String(tokens),
+    spentText: null,
+    resetDate: "",
+    apiKeyName: "API-Schlüssel",
+  });
+
+  test("names the provider's default model without repeating the provider", async () => {
+    const { areaSentences } = await import("@/pages/settings-areas");
+    const base = [item("llm.provider", "openai"), item("llm.model", "")];
+    expect(areaSentences("ai", sentenceFacts(base))).toEqual([
+      { key: "settings.overview.ai.defaultModelNoFallback", values: { provider: "OpenAI" } },
+    ]);
+    expect(
+      areaSentences("ai", sentenceFacts([...base, item("llm.fallback_provider", "anthropic")])),
+    ).toEqual([
+      {
+        key: "settings.overview.ai.defaultModelWithFallback",
+        values: { provider: "OpenAI", fallbackProvider: "Anthropic" },
+      },
+    ]);
+  });
+
+  test("keeps the chosen model in the sentence", async () => {
+    const { areaSentences } = await import("@/pages/settings-areas");
+    expect(
+      areaSentences(
+        "ai",
+        sentenceFacts([item("llm.provider", "openai"), item("llm.model", "GPT-4.1 mini")]),
+      ),
+    ).toEqual([
+      {
+        key: "settings.overview.ai.noFallback",
+        values: { provider: "OpenAI", model: "GPT-4.1 mini" },
+      },
+    ]);
+  });
+});

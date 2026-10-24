@@ -215,20 +215,33 @@ export function areaSentences(area: SettingAreaId, facts: AreaSentenceFacts): Ar
     const providerName = facts.providerName(provider);
     if (providerKeyState(items, provider, true) === "missing")
       return [{ key: "settings.overview.ai.keyMissing", values: { provider: providerName } }];
-    const model = facts.modelName(provider, stringValue(items, "llm.model"));
+    const chosenModel = stringValue(items, "llm.model");
+    const model = facts.modelName(provider, chosenModel);
     const fallback = stringValue(items, "llm.fallback_provider");
-    return fallback
-      ? [
-          {
-            key: "settings.overview.ai.withFallback",
-            values: {
-              provider: providerName,
-              model,
-              fallbackProvider: facts.providerName(fallback),
+    if (fallback) {
+      const fallbackProvider = facts.providerName(fallback);
+      return chosenModel
+        ? [
+            {
+              key: "settings.overview.ai.withFallback",
+              values: { provider: providerName, model, fallbackProvider },
             },
+          ]
+        : [
+            {
+              key: "settings.overview.ai.defaultModelWithFallback",
+              values: { provider: providerName, fallbackProvider },
+            },
+          ];
+    }
+    return chosenModel
+      ? [{ key: "settings.overview.ai.noFallback", values: { provider: providerName, model } }]
+      : [
+          {
+            key: "settings.overview.ai.defaultModelNoFallback",
+            values: { provider: providerName },
           },
-        ]
-      : [{ key: "settings.overview.ai.noFallback", values: { provider: providerName, model } }];
+        ];
   }
   if (area === "costs") {
     const budget = itemValue(items, "tokens.monthly_budget");

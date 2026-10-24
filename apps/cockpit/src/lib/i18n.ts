@@ -1743,6 +1743,10 @@ const EN = {
     "Uses {provider} with {model}. No replacement if {provider} fails.",
   "settings.overview.ai.withFallback":
     "Uses {provider} with {model}. If the service fails, {fallbackProvider} steps in.",
+  "settings.overview.ai.defaultModelNoFallback":
+    "Uses {provider} with its default model. No replacement if {provider} fails.",
+  "settings.overview.ai.defaultModelWithFallback":
+    "Uses {provider} with its default model. If the service fails, {fallbackProvider} steps in.",
   "settings.overview.costs.noLimit": "No monthly limit. The AI can cause unlimited costs.",
   "settings.overview.costs.limit": "At most {amount} per month. Used this month: {spent}.",
   "settings.overview.costs.limitOnly": "At most {amount} per month.",
@@ -7799,6 +7803,10 @@ const DE: Record<TranslationKey, string> = {
     "Nutzt {provider} mit {model}. Kein Ersatz, falls {provider} ausfällt.",
   "settings.overview.ai.withFallback":
     "Nutzt {provider} mit {model}. Fällt der Dienst aus, springt {fallbackProvider} ein.",
+  "settings.overview.ai.defaultModelNoFallback":
+    "Nutzt {provider} mit dessen Standardmodell. Kein Ersatz, falls {provider} ausfällt.",
+  "settings.overview.ai.defaultModelWithFallback":
+    "Nutzt {provider} mit dessen Standardmodell. Fällt der Dienst aus, springt {fallbackProvider} ein.",
   "settings.overview.costs.noLimit": "Kein Monatslimit. Die KI kann unbegrenzt Kosten verursachen.",
   "settings.overview.costs.limit":
     "Höchstens {amount} pro Monat. Diesen Monat verbraucht: {spent}.",
