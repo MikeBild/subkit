@@ -1,0 +1,1 @@
+ALTER TABLE "workflow_versions" ADD COLUMN "spec" jsonb;
