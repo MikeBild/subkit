@@ -265,4 +265,4 @@ Absence of a report-delivery boundary is missing evidence, NOT proof of malforme
 
 ## Focused authoring skills
 
-Topic rules live in the `workflow-authoring-*` skills of the skill index. Each autoloads on its tools, step kinds, diagnosis codes or phrases; otherwise `load_skill` the matching one before acting on its topic.
+Topic rules live in the `workflow-authoring-*` skills of the skill index. Their tools, step kinds, diagnosis codes or phrases mark them loaded and unlock their tools, but their rules reach you only through `load_skill`. Call `load_skill('workflow-authoring-<topic>')` before acting on its topic: `structures` for loops, `for_each`, branches and parallel steps, `transforms` for transform code, `repair` for patches and diagnoses, `automation` and `schedules` for triggers and activation, `boundaries` for effect and request limits, `product-callers` for product identity, storage scope and Supabase, `transactional-mail`, `output-format` and `loop-examples`.

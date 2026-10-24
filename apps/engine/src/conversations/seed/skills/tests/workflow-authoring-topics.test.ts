@@ -34,6 +34,7 @@ describe("workflow-authoring core and topic skills", () => {
 
   test("the core names the topic skills so they can be loaded on demand", () => {
     expect(core?.body).toContain("`workflow-authoring-*`");
+    expect(core?.body).toContain("reach you only through `load_skill`");
   });
 
   test("the core carries the sensitive execution rules every preview and save needs", () => {
