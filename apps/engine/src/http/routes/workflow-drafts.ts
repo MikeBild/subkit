@@ -162,7 +162,12 @@ function assertSpecOrigin(
   spec: WorkflowSpec | undefined,
 ): void {
   if (spec?.origin !== "person") return;
-  if (principal.kind === "user" && principal.auth_source?.kind === "browser_session") return;
+  if (
+    principal.kind === "user" &&
+    (principal.auth_source?.kind === "browser_session" ||
+      principal.credential_origin === "cli_oauth_session")
+  )
+    return;
   throw new HttpError(
     403,
     "human_confirmation_required",

@@ -12,6 +12,7 @@ import {
 
 let ctx: HttpTestServer;
 const readKey = "wf_live_draft_read_only_test_key_00001";
+const cliKey = "wf_live_clisess_draft_test_key_00000001";
 beforeAll(async () => {
   ctx = await createHttpTestServer("workflow_drafts");
   await ctx.db.insert(apiKeys).values({
@@ -20,6 +21,14 @@ beforeAll(async () => {
     prefix: readKey.slice(0, 12),
     token_sha256: createHash("sha256").update(readKey).digest("hex"),
     scopes: ["workflow:read"],
+  });
+  await ctx.db.insert(apiKeys).values({
+    tenant_id: ctx.tenantId,
+    user_id: ctx.userId,
+    prefix: cliKey.slice(0, 12),
+    token_sha256: createHash("sha256").update(cliKey).digest("hex"),
+    scopes: ["workflow:read", "workflow:write"],
+    credential_origin: "cli_oauth_session",
   });
 });
 afterAll(async () => {
@@ -309,4 +318,17 @@ test("only a signed-in person can save a spec as stated by a person", async () =
   });
   expect(viaSession.status).toBe(201);
   expect(WorkflowDraftSchema.parse(await viaSession.json()).spec?.origin).toBe("person");
+});
+
+test("a person signed in through sk can save a spec as stated by a person", async () => {
+  const viaCli = await fetch(`${ctx.baseUrl}/v1/workflows/drafts`, {
+    method: "POST",
+    headers: headers(cliKey),
+    body: JSON.stringify({
+      definition: definition("api-spec-person-cli"),
+      spec: spec("Person goal from sk", "person"),
+    }),
+  });
+  expect(viaCli.status).toBe(201);
+  expect(WorkflowDraftSchema.parse(await viaCli.json()).spec?.origin).toBe("person");
 });
