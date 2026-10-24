@@ -162,3 +162,33 @@ describe("renderAuthoringContextBlock", () => {
     expect(block!).not.toContain("## Guided next step");
   });
 });
+
+describe("renderAuthoringContextBlock · consistency warnings", () => {
+  test("the authoring context lists warnings with their rule_id only when there are some", () => {
+    const draft = {
+      workflow: {
+        name: "Ops daily digest",
+        slug: "ops-daily-digest",
+        steps: [{ id: "shape", kind: "transform", expression: "return 1;" }],
+      },
+    } as unknown as DraftDocument;
+    const clean = renderAuthoringContextBlock({
+      draft,
+      user_message: "",
+      workflow_validation: { ok: true, errors: [], warnings: [] },
+    });
+    expect(clean).not.toContain("Consistency warnings");
+    const flagged = renderAuthoringContextBlock({
+      draft,
+      user_message: "",
+      workflow_validation: {
+        ok: true,
+        errors: [],
+        warnings: [{ path: "slug", rule_id: "slug-prefix", message: "slug breaks the prefix" }],
+      },
+    });
+    expect(flagged).toContain("- Validation: ok (0 errors)");
+    expect(flagged).toContain("- Consistency warnings: 1 (not blocking");
+    expect(flagged).toContain("[slug-prefix] slug: slug breaks the prefix");
+  });
+});
