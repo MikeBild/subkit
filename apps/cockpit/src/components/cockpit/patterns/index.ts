@@ -96,6 +96,7 @@ export {
   rowsByGroup,
   type TableGrouping,
 } from "./table-grouping";
+export type { TableSelection } from "./table-selection";
 export { TemplateCard, type TemplateCardProps, TemplateGrid } from "./template-card";
 export { Timeline, type TimelineGroup, type TimelineItem, type TimelineTone } from "./timeline";
 export { TimelineGroupingTabs } from "./timeline-grouping-tabs";
