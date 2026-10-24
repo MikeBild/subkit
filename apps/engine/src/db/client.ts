@@ -136,6 +136,6 @@ export async function assertSearchPath(pool: {
   if (schema === EXPECTED_SCHEMA) return;
   throw new Error(
     `database search_path resolves to ${schema ?? "no schema"} instead of ${EXPECTED_SCHEMA}. ` +
-      `Set it on the role: ALTER ROLE <role> SET search_path = ${EXPECTED_SCHEMA}, pg_catalog, public;`,
+      `The engine sets search_path on every connection, so check that schema ${EXPECTED_SCHEMA} exists and the database role may use it.`,
   );
 }

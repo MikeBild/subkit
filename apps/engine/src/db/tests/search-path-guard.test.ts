@@ -28,7 +28,7 @@ describe("assertSearchPath", () => {
 
   test("names the remedy so an operator can act on the message alone", async () => {
     await expect(assertSearchPath(poolReturning("public"))).rejects.toThrow(
-      /ALTER ROLE <role> SET search_path = subkit, pg_catalog, public;/,
+      /sets search_path on every connection, so check that schema subkit exists/,
     );
   });
 });
