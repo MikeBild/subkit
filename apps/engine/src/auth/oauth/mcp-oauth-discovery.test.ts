@@ -233,6 +233,49 @@ describe("POST /v1/oauth/register — redirect_uri validation", () => {
     expect(body.error).toBe("invalid_client_metadata");
   });
 
+  test("rejects an oversized redirect_uris array with one bounded issue", async () => {
+    const res = await fetch(`${ctx.baseUrl}/v1/oauth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ redirect_uris: Array.from({ length: 50_000 }, () => 0) }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string; error_description: string };
+    expect(body.error).toBe("invalid_client_metadata");
+    expect(body.error_description.length).toBeLessThan(1_000);
+  });
+
+  test("rejects an oversized grant_types array before it reaches persistence", async () => {
+    for (const element of [0, "authorization_code"]) {
+      const res = await fetch(`${ctx.baseUrl}/v1/oauth/register`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          redirect_uris: ["https://myapp.example.com/cb"],
+          grant_types: Array.from({ length: 50_000 }, () => element),
+        }),
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string; error_description: string };
+      expect(body.error).toBe("invalid_client_metadata");
+      expect(body.error_description.length).toBeLessThan(1_000);
+    }
+  });
+
+  test("rejects an oversized scope before it reaches persistence", async () => {
+    const res = await fetch(`${ctx.baseUrl}/v1/oauth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        redirect_uris: ["https://myapp.example.com/cb"],
+        scope: "mcp:read ".repeat(100_000),
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("invalid_client_metadata");
+  });
+
   test("rejects token_endpoint_auth_method=client_secret_basic with 400 invalid_client_metadata", async () => {
     const res = await fetch(`${ctx.baseUrl}/v1/oauth/register`, {
       method: "POST",
