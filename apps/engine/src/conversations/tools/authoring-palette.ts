@@ -325,6 +325,10 @@ export function collectSyntheticWorkflowSlugs(toolNames: Iterable<string>): Set<
   return slugs;
 }
 
+function keepsHeldPreview(reason: ExecutionToolGateDecision["reason"]): boolean {
+  return reason === "authoring_no_target" || reason === "explicit_no_live_effects";
+}
+
 export function applyExecutionToolGate(
   tools: Record<string, unknown>,
   decision: ExecutionToolGateDecision,
@@ -333,8 +337,7 @@ export function applyExecutionToolGate(
   if (decision.exposeExecution) return 0;
   let removed = 0;
   for (const name of Object.keys(tools)) {
-    if (name === "dry_run_step" && decision.reason === "authoring_no_target") continue;
-    if (HELD_PREVIEW_TOOLS.has(name) && decision.reason === "explicit_no_live_effects") continue;
+    if (HELD_PREVIEW_TOOLS.has(name) && keepsHeldPreview(decision.reason)) continue;
     if (isExecutionToolName(name, syntheticWorkflowSlugs)) {
       delete tools[name];
       removed += 1;
