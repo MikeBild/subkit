@@ -108,6 +108,7 @@ export function boundaryGrowth(
   granted: WorkflowEffectManifest,
   next: WorkflowEffectManifest,
   evidence?: ReadInheritanceEvidence,
+  relaxed?: Map<string, string[]>,
 ): BoundaryGrowth[] {
   const growth = new Map<string, BoundaryGrowth>();
   const add = (kind: BoundaryGrowth["kind"], effect: Effect) => {
@@ -135,17 +136,29 @@ export function boundaryGrowth(
       add("new_target", effect);
       continue;
     }
-    const sameShape = sameTarget.filter(
-      (candidate) =>
-        (evidence ? readEffectInherits(effect, candidate, evidence, SUB_BOUNDARIES) : null) ??
-        sameConfiguration(effect, candidate),
-    );
+    const sameShape = sameTarget.flatMap((candidate) => {
+      const read = evidence
+        ? readEffectInherits(effect, candidate, evidence, SUB_BOUNDARIES)
+        : null;
+      if (read === null)
+        return sameConfiguration(effect, candidate) ? [{ candidate, keys: [] }] : [];
+      return read ? [{ candidate, keys: read.relaxed }] : [];
+    });
     if (sameShape.length === 0) {
       add("changed_boundary", effect);
       continue;
     }
-    if (!sameShape.some((candidate) => effectCovered(effect, candidate)))
+    const covering = sameShape.filter((shape) => effectCovered(effect, shape.candidate));
+    if (covering.length === 0) {
       add("wider_effect", effect);
+      continue;
+    }
+    const keys = covering.reduce((a, b) => (b.keys.length < a.keys.length ? b : a)).keys;
+    if (relaxed && keys.length > 0)
+      relaxed.set(
+        effect.step_id,
+        [...new Set([...(relaxed.get(effect.step_id) ?? []), ...keys])].sort(),
+      );
   }
   if (!isDeepStrictEqual(granted.caller_guards ?? null, next.caller_guards ?? null)) {
     const entry = {
@@ -191,10 +204,13 @@ async function judgeCarry(db: Executor, parent: AuthorityRow, to_version_id: str
     granted.workflow_version_id,
     to_version_id,
   );
+  const relaxed = new Map<string, string[]>();
+  const growth = boundaryGrowth(granted, preview.manifest, evidence ?? undefined, relaxed);
   return {
     preview,
     granted,
-    growth: boundaryGrowth(granted, preview.manifest, evidence ?? undefined),
+    growth,
+    relaxed_keys: Object.fromEntries([...relaxed].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))),
   };
 }
 
@@ -291,7 +307,7 @@ export async function carryApprovalsForward(
         const environment = parent.execution_environment;
         const judged = await judgeCarry(sp, parent, input.to_version_id);
         if (!judged) continue;
-        const { preview, granted, growth } = judged;
+        const { preview, granted, growth, relaxed_keys } = judged;
         if (growth.length > 0) {
           outcome.growth[environment] = [...(outcome.growth[environment] ?? []), ...growth];
           continue;
@@ -345,6 +361,9 @@ export async function carryApprovalsForward(
           effect_manifest_digest: preview.digest,
           max_runs: remaining,
           valid_until: parent.valid_until?.toISOString() ?? null,
+          inheritance_basis:
+            Object.keys(relaxed_keys).length > 0 ? ("read_relaxed" as const) : ("exact" as const),
+          relaxed_keys,
         };
         await auditAwait(
           {

@@ -218,6 +218,8 @@ describe("an approval follows a version whose boundary does not grow", () => {
       previous_version_id: f.v1,
       workflow_version_id: next.id,
       max_runs: 6,
+      inheritance_basis: "exact",
+      relaxed_keys: {},
     });
     const params = {
       tenant_id: f.tenant_id,
@@ -251,6 +253,88 @@ describe("an approval follows a version whose boundary does not grow", () => {
     const f = await fixture(({ main }) => [post(main)]);
     await version(f.tenant_id, f.workflow_id, f.next++, [post(f.ids.main)]);
     expect(await grantsOf(f.workflow_id)).toHaveLength(1);
+  });
+});
+
+async function inheritedAudit(tenant_id: string) {
+  const [audit] = await ctx.db
+    .select({ metadata: auditLog.metadata })
+    .from(auditLog)
+    .where(
+      and(eq(auditLog.tenant_id, tenant_id), eq(auditLog.action, "workflow.authority_inherited")),
+    );
+  return audit?.metadata;
+}
+
+const search = (connector_id: string, query: Record<string, string>): Step => ({
+  id: "search",
+  kind: "request",
+  connector_id,
+  method: "GET",
+  path: "/issues",
+  query,
+});
+
+const ITEMS_QUERY = "query Items($owner: String!) { user(login: $owner) { id } }";
+const items = (
+  connector_id: string,
+  variables: Record<string, unknown>,
+  query = ITEMS_QUERY,
+): Step => ({
+  id: "items",
+  kind: "request",
+  connector_id,
+  method: "POST",
+  path: "/graphql",
+  graphql: { query, variables },
+});
+
+describe("a read approval follows changed literal request values", () => {
+  test("a changed literal query value carries and is audited as a relaxed read", async () => {
+    const f = await fixture(({ main }) => [search(main, { state: "open", sort: "created" })]);
+    const next = await activate(f, [search(f.ids.main, { state: "closed", sort: "created" })]);
+    expect(next.outcome.growth).toEqual({});
+    expect(next.outcome.inherited).toHaveLength(1);
+    expect(await inheritedAudit(f.tenant_id)).toMatchObject({
+      inheritance_basis: "read_relaxed",
+      relaxed_keys: { search: ["query.state"] },
+    });
+  });
+
+  test("a changed GraphQL variable value on the same query document carries", async () => {
+    const f = await fixture(({ main }) => [items(main, { owner: "acme" })]);
+    const next = await activate(f, [items(f.ids.main, { owner: "someone-else" })]);
+    expect(next.outcome.growth).toEqual({});
+    expect(next.outcome.inherited).toHaveLength(1);
+    expect(await inheritedAudit(f.tenant_id)).toMatchObject({
+      inheritance_basis: "read_relaxed",
+      relaxed_keys: { items: ["graphql.variables.owner"] },
+    });
+  });
+
+  test("an added query key asks a person again", async () => {
+    const f = await fixture(({ main }) => [search(main, { state: "open" })]);
+    const next = await activate(f, [search(f.ids.main, { state: "open", assignee: "*" })]);
+    expect(next.outcome.inherited).toEqual([]);
+    expect(next.outcome.growth.dev?.map((entry) => entry.kind)).toEqual(["changed_boundary"]);
+  });
+
+  test("a literal query value beside a reviewed query boundary asks a person again", async () => {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: an authored runtime placeholder
+    const since = "${input.since}";
+    const f = await fixture(({ main }) => [search(main, { state: "open", since })]);
+    const next = await activate(f, [search(f.ids.main, { state: "all", since })]);
+    expect(next.outcome.inherited).toEqual([]);
+    expect(next.outcome.growth.dev?.map((entry) => entry.kind)).toEqual(["changed_boundary"]);
+  });
+
+  test("a changed GraphQL document asks a person again", async () => {
+    const f = await fixture(({ main }) => [items(main, { owner: "acme" })]);
+    const next = await activate(f, [
+      items(f.ids.main, { owner: "acme" }, ITEMS_QUERY.replace("{ id }", "{ id email }")),
+    ]);
+    expect(next.outcome.inherited).toEqual([]);
+    expect(next.outcome.growth.dev?.map((entry) => entry.kind)).toEqual(["changed_boundary"]);
   });
 });
 
