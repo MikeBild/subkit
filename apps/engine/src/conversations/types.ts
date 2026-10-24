@@ -62,7 +62,7 @@ export interface TurnUsage {
     failures: number;
     messages: number;
     recipe_bodies: number;
-    skill_candidates: number;
+    conventions: number;
     total: number;
   };
 }

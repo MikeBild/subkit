@@ -97,6 +97,7 @@ import {
   type ReferencedSkill,
   sessionSnapshot,
   skillBodyChange,
+  skillConventionsView,
   skillTargetIds,
 } from "./intake-model";
 
@@ -685,6 +686,15 @@ export function ProposalCard({
         (entry) => skills.get(entry.skill_id)?.title ?? t("intake.target.selectedSkillName"),
       )
     : [];
+  const conventions = skillTarget ? skillConventionsView(skillTarget, existingSkill, t) : null;
+  const conventionDetails = conventions
+    ? [
+        conventions.rules.length
+          ? `${t("intake.proposal.rules")}: ${conventions.rules.join("; ")}.`
+          : t("intake.proposal.rulesNone"),
+        `${t("intake.proposal.ruleDomains", { domains: conventions.domains })}.`,
+      ]
+    : [];
   const confirmationDetails = [
     skillTarget
       ? knownTargetName
@@ -693,6 +703,7 @@ export function ProposalCard({
       : t("intake.proposal.confirmHelp", { target: targetName }),
     ...(skillLines.length ? [`${skillLines.map((entry) => entry.line).join(". ")}.`] : []),
     ...(archived.length ? [t("intake.proposal.archives", { skills: archived.join(", ") })] : []),
+    ...conventionDetails,
     ...(targetCategory ? [`${t("intake.proposal.category")}: ${targetCategory}`] : []),
     ...(targetTags ? [`${t("intake.proposal.tags")}: ${targetTags}`] : []),
   ].join(" ");
@@ -742,6 +753,25 @@ export function ProposalCard({
             body={proposal.revision.body}
           />
         ))}
+      {conventions ? (
+        <div className="text-sm" data-testid={`intake-proposal-${proposal.id}-rules`}>
+          {conventions.rules.length ? (
+            <>
+              <p className="font-medium">{t("intake.proposal.rules")}</p>
+              <ul className="mt-1 grid gap-1">
+                {conventions.rules.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p className="font-medium">{t("intake.proposal.rulesNone")}</p>
+          )}
+          <p className="mt-1 text-muted-foreground">
+            {t("intake.proposal.ruleDomains", { domains: conventions.domains })}
+          </p>
+        </div>
+      ) : null}
       <CollapsibleSection
         label={t("intake.proposal.review")}
         defaultOpen={focused && skillLines.every((entry) => entry.id === "new")}

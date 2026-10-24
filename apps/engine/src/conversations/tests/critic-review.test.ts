@@ -3,19 +3,23 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
+import { recordCriticRubricItems } from "../../observability/instrumentation.ts";
 import {
   getMetrics,
   METRIC_NAMES,
   resetMetricsRegistryForTests,
 } from "../../observability/metrics.ts";
+import type { AppliedConvention } from "../../skills/conventions.ts";
 import { attributeCriticReview } from "../authoring-critic/attribution.ts";
 import {
+  CRITIC_RUBRIC_HEADING,
   type CriticAgentOutcome,
   classifyCriticVerdict,
   RENDERED_STEPS_CAP,
   type RunCriticAgentParams,
   renderDraftForCritic,
   reviewDraftWithCritic,
+  rubricFromVerdict,
 } from "../authoring-critic/critic-agent.ts";
 import { consecutiveCriticRejectionsFromRows } from "../authoring-critic/streak.ts";
 import type { WorkflowDraftDocument } from "../types.ts";
@@ -307,5 +311,130 @@ describe("reviewDraftWithCritic", () => {
     });
     expect(outcome.result).toBe("fail_open");
     expect(outcome.fail_open_reason).toContain("db down");
+  });
+});
+
+const TIMEZONE_CONVENTION: AppliedConvention = {
+  level: "global",
+  skill_id: "00000000-0000-4000-8000-0000000000c3",
+  skill_title: "Tenant conventions",
+  skill_version: 2,
+  rule: {
+    rule_id: "tenant-timezone",
+    type: "timezone",
+    statement: "Schedules run in Europe/Berlin.",
+    payload: { value: "Europe/Berlin" },
+  },
+};
+
+const LOCALE_CONVENTION: AppliedConvention = {
+  ...TIMEZONE_CONVENTION,
+  rule: {
+    rule_id: "tenant-locale",
+    type: "locale",
+    statement: "Texts are German.",
+    payload: { tag: "de-DE" },
+  },
+};
+
+describe("convention rubric", () => {
+  test("renders a rubric line per rule only when conventions apply", () => {
+    const withRules = renderDraftForCritic(draft(3), "Daily digest", [TIMEZONE_CONVENTION]);
+    expect(withRules).toContain(CRITIC_RUBRIC_HEADING);
+    expect(withRules).toContain(
+      '- tenant-timezone [timezone] Schedules run in Europe/Berlin. {"value":"Europe/Berlin"}',
+    );
+    expect(renderDraftForCritic(draft(3), "Daily digest")).not.toContain(CRITIC_RUBRIC_HEADING);
+  });
+
+  test("renders the trigger only with a rubric so a schedule timezone can be checked", () => {
+    const scheduled = draft(3, {
+      trigger: { kind: "schedule", cron: "0 7 * * *", tz: "Europe/Berlin" },
+    });
+    expect(renderDraftForCritic(scheduled, "Daily digest", [TIMEZONE_CONVENTION])).toContain(
+      '"tz":"Europe/Berlin"',
+    );
+    expect(renderDraftForCritic(scheduled, "Daily digest")).not.toContain("Trigger:");
+  });
+
+  test("parses rubric items and keeps passed independent of them", () => {
+    const outcome = classifyCriticVerdict({
+      passed: true,
+      repairs: [],
+      rationale: "Fine.",
+      rubric: [
+        { rule_id: "tenant-timezone", status: "fail", note: "No tz on the schedule." },
+        { rule_id: "tenant-timezone", status: "bogus" },
+      ],
+    });
+    expect(outcome.outcome).toBe("pass");
+    if (outcome.outcome !== "pass") throw new Error("expected pass");
+    expect(outcome.verdict.rubric).toEqual([
+      { rule_id: "tenant-timezone", status: "fail", note: "No tz on the schedule." },
+    ]);
+  });
+
+  test("a verdict without a rubric still parses", () => {
+    const outcome = classifyCriticVerdict({ passed: true, repairs: [], rationale: "Fine." });
+    expect(outcome.outcome).toBe("pass");
+  });
+
+  test("missing rubric items are unchecked, never pass, and unknown rule_ids are dropped", () => {
+    const verdict = {
+      passed: true,
+      repairs: [],
+      rationale: "Fine.",
+      rubric: [
+        { rule_id: "tenant-locale", status: "pass" as const, note: "German." },
+        { rule_id: "invented", status: "pass" as const, note: "" },
+      ],
+    };
+    expect(rubricFromVerdict([TIMEZONE_CONVENTION, LOCALE_CONVENTION], verdict)).toEqual([
+      { rule_id: "tenant-timezone", status: "unchecked", note: "" },
+      { rule_id: "tenant-locale", status: "pass", note: "German." },
+    ]);
+    expect(rubricFromVerdict([TIMEZONE_CONVENTION], null)).toEqual([
+      { rule_id: "tenant-timezone", status: "unchecked", note: "" },
+    ]);
+  });
+});
+
+describe("rubric reporting", () => {
+  beforeEach(() => {
+    resetMetricsRegistryForTests();
+  });
+
+  test("the critic report carries rubric warnings only when there are some", () => {
+    const warning = { rule_id: "tenant-timezone", status: "fail" as const, note: "No tz." };
+    const reviewed = attributeCriticReview({
+      review: { result: "pass", gating_reason: "step_count", pass: 1, rubric_warnings: [warning] },
+      returnedPass: 1,
+      deadlineExceeded: false,
+    });
+    expect(reviewed).toMatchObject({ rubric_warnings: [warning] });
+    const quiet = attributeCriticReview({
+      review: { result: "pass", gating_reason: "step_count", pass: 1, rubric_warnings: [] },
+      returnedPass: 1,
+      deadlineExceeded: false,
+    });
+    expect("rubric_warnings" in quiet).toBe(false);
+  });
+
+  test("counts rubric items per status and folds unknown statuses into other", () => {
+    recordCriticRubricItems(["pass", "fail", "n_a", "unchecked", "unchecked", "bogus"]);
+    const entry = getMetrics()
+      .snapshot()
+      .find((s) => s.name === METRIC_NAMES.CRITIC_RUBRIC_ITEMS_TOTAL);
+    const samples = (entry?.samples ?? []) as Array<{
+      labels: Record<string, string>;
+      value: number;
+    }>;
+    const count = (status: string) =>
+      samples.filter((s) => s.labels.status === status).reduce((acc, s) => acc + s.value, 0);
+    expect(count("pass")).toBe(1);
+    expect(count("fail")).toBe(1);
+    expect(count("n_a")).toBe(1);
+    expect(count("unchecked")).toBe(2);
+    expect(count("other")).toBe(1);
   });
 });

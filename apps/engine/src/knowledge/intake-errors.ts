@@ -21,3 +21,10 @@ export class IntakeProposalConflictError extends IntakeConflictError {
     this.name = "IntakeProposalConflictError";
   }
 }
+
+export class IntakeConfirmationActorError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "IntakeConfirmationActorError";
+  }
+}

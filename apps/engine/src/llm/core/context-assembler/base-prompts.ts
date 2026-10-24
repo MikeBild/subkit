@@ -72,6 +72,7 @@ const BASE_SYSTEM_PROMPTS: Record<
     "If everything looks reasonable, return passed:true with an empty repairs array.",
     "Cap repairs at 5 short, imperative sentences. Each item must be actionable in a single edit.",
     "rationale is a one-paragraph explanation of the call; keep it under 800 characters.",
+    "When the input lists a convention rubric, report every listed rule_id in rubric with status pass, fail or n_a and a short note; a failed convention is a warning and never decides passed on its own.",
   ].join(" "),
 };
 

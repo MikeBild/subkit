@@ -165,6 +165,7 @@ import sql0144CockpitPushBrowserSubscriptions from "./0144_cockpit_push_browser_
 import sql0145CatalogCategoryLockScope from "./0145_catalog_category_lock_scope.sql" with { type: "text" };
 import sql0146FileVersions from "./0146_file_versions.sql" with { type: "text" };
 import sql0147WorkflowVersionSpec from "./0147_workflow_version_spec.sql" with { type: "text" };
+import sql0148SkillConventions from "./0148_skill_conventions.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -337,6 +338,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0145_catalog_category_lock_scope": sql0145CatalogCategoryLockScope,
   "0146_file_versions": sql0146FileVersions,
   "0147_workflow_version_spec": sql0147WorkflowVersionSpec,
+  "0148_skill_conventions": sql0148SkillConventions,
 };
 
 const journal = journalMeta as unknown as Journal;

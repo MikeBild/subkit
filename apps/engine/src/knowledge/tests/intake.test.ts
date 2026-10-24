@@ -31,6 +31,7 @@ import {
   setIntakeDefaultCategory,
 } from "../index.ts";
 import {
+  IntakeConfirmationActorError,
   IntakeConflictError,
   IntakeNotFoundError,
   IntakeProposalConflictError,
@@ -1547,5 +1548,56 @@ describe.skipIf(skip)("session intake and skill targets", () => {
         ctx.testDb.db,
       ),
     ).toEqual(next);
+  });
+});
+
+describe.skipIf(skip)("skill rules in intake confirmation", () => {
+  test("a system account cannot publish skill rules even with every permission", async () => {
+    const item = await createClip();
+    const proposal = await createIntakeProposal(
+      {
+        tenant_id: ctx.tenantId,
+        actor,
+        item_ids: [item.id],
+        title: "Delegated conventions",
+        body: "Conventions prepared by a system account.",
+        target: {
+          skill: {
+            new: { title: "Delegated conventions", scope: "global", tags: [], category: "ops" },
+            supersedes: [],
+            rules: [
+              {
+                rule_id: "delegated-timezone",
+                type: "timezone",
+                statement: "Schedules use Europe/Berlin.",
+                payload: { value: "Europe/Berlin" },
+              },
+            ],
+          },
+        },
+      },
+      ctx.testDb.db,
+    );
+    await expect(
+      confirmIntakeProposal(
+        {
+          tenant_id: ctx.tenantId,
+          actor,
+          id: proposal.id,
+          expected_revision: proposal.current_revision,
+          digest: proposal.revision.digest,
+        },
+        ctx.testDb.db,
+      ),
+    ).rejects.toBeInstanceOf(IntakeConfirmationActorError);
+    expect(
+      await ctx.testDb.db
+        .select({ id: skills.id })
+        .from(skills)
+        .where(and(eq(skills.tenant_id, ctx.tenantId), eq(skills.title, "Delegated conventions"))),
+    ).toEqual([]);
+    expect((await getIntakeProposal(ctx.tenantId, proposal.id, ctx.testDb.db))?.status).toBe(
+      "draft",
+    );
   });
 });

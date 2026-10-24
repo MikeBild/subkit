@@ -26278,6 +26278,16 @@ export interface components {
              * @enum {string}
              */
             applies_to: "chat" | "authoring" | "both";
+            /**
+             * @description Confirmed tenant conventions of this skill. Read-only here: only a confirmed intake proposal publishes them.
+             * @default []
+             */
+            rules: components["schemas"]["SkillRule"][];
+            /**
+             * @description Catalog categories the rules apply to; empty applies them wherever the skill applies. Read-only here.
+             * @default []
+             */
+            domains: string[];
             /** @enum {string} */
             status: "draft" | "active" | "archived";
             /** @enum {string} */
@@ -26359,6 +26369,144 @@ export interface components {
              */
             kind: "diagnosis";
             codes: string[];
+        };
+        SkillRule: components["schemas"]["SkillRuleNaming"] | components["schemas"]["SkillRuleTimezone"] | components["schemas"]["SkillRuleLocale"] | components["schemas"]["SkillRuleCurrency"] | components["schemas"]["SkillRuleDeliveryDefault"] | components["schemas"]["SkillRuleConnectorPreference"] | components["schemas"]["SkillRuleGlossaryTerm"] | components["schemas"]["SkillRuleFieldSemantics"] | components["schemas"]["SkillRulePitfall"];
+        SkillRuleNaming: {
+            /** @description Stable identifier of the rule; it stays the same across skill versions. */
+            rule_id: string;
+            /** @description The convention in one sentence, as a reviewer reads it. */
+            statement: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "naming";
+            payload: {
+                applies_to: string;
+                pattern: string;
+                example: string;
+            };
+        };
+        SkillRuleTimezone: {
+            /** @description Stable identifier of the rule; it stays the same across skill versions. */
+            rule_id: string;
+            /** @description The convention in one sentence, as a reviewer reads it. */
+            statement: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "timezone";
+            payload: {
+                value: string;
+            };
+        };
+        SkillRuleLocale: {
+            /** @description Stable identifier of the rule; it stays the same across skill versions. */
+            rule_id: string;
+            /** @description The convention in one sentence, as a reviewer reads it. */
+            statement: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "locale";
+            payload: {
+                tag: string;
+            };
+        };
+        SkillRuleCurrency: {
+            /** @description Stable identifier of the rule; it stays the same across skill versions. */
+            rule_id: string;
+            /** @description The convention in one sentence, as a reviewer reads it. */
+            statement: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "currency";
+            payload: {
+                code: string;
+            };
+        };
+        SkillRuleDeliveryDefault: {
+            /** @description Stable identifier of the rule; it stays the same across skill versions. */
+            rule_id: string;
+            /** @description The convention in one sentence, as a reviewer reads it. */
+            statement: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "delivery_default";
+            payload: {
+                /** Format: uuid */
+                connector_id: string;
+                channel: string;
+            };
+        };
+        SkillRuleConnectorPreference: {
+            /** @description Stable identifier of the rule; it stays the same across skill versions. */
+            rule_id: string;
+            /** @description The convention in one sentence, as a reviewer reads it. */
+            statement: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "connector_preference";
+            /** @description Tie-breaker between candidate connectors within the same environment only. */
+            payload: {
+                /** Format: uuid */
+                connector_id: string;
+                /** @enum {string} */
+                environment: "dev" | "prod";
+            };
+        };
+        SkillRuleGlossaryTerm: {
+            /** @description Stable identifier of the rule; it stays the same across skill versions. */
+            rule_id: string;
+            /** @description The convention in one sentence, as a reviewer reads it. */
+            statement: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "glossary_term";
+            payload: {
+                term: string;
+                meaning: string;
+            };
+        };
+        SkillRuleFieldSemantics: {
+            /** @description Stable identifier of the rule; it stays the same across skill versions. */
+            rule_id: string;
+            /** @description The convention in one sentence, as a reviewer reads it. */
+            statement: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "field_semantics";
+            payload: {
+                field: string;
+                meaning: string;
+                unit?: string;
+            };
+        };
+        SkillRulePitfall: {
+            /** @description Stable identifier of the rule; it stays the same across skill versions. */
+            rule_id: string;
+            /** @description The convention in one sentence, as a reviewer reads it. */
+            statement: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "pitfall";
+            payload: {
+                text: string;
+            };
         };
         SkillListResponse: {
             items: components["schemas"]["Skill"][];
@@ -26703,7 +26851,7 @@ export interface components {
             category?: components["schemas"]["CatalogCategory"];
             tags?: string[];
         };
-        /** @description Skill destination for a repeatable practice or convention. Name either new (a new active skill; give it the domain:<name> tag of its domain so coding-agent briefings for that domain find it) or skill_id with the expected_version you read (changes and activates that skill). supersedes lists each skill this one consolidates with the expected_version you read; they are archived on confirmation and the proposal goes stale when one of them changes. */
+        /** @description Skill destination for a repeatable practice or convention. Name either new (a new active skill; give it the domain:<name> tag of its domain so coding-agent briefings for that domain find it) or skill_id with the expected_version you read (changes and activates that skill). supersedes lists each skill this one consolidates with the expected_version you read; they are archived on confirmation and the proposal goes stale when one of them changes. rules and domains carry typed tenant conventions (timezone, locale, currency, naming, delivery_default, connector_preference, glossary_term, field_semantics, pitfall); only the confirming person publishes them. */
         IntakeSkillTarget: {
             skill: {
                 /** Format: uuid */
@@ -26716,6 +26864,10 @@ export interface components {
                     skill_id: string;
                     expected_version: number;
                 }[];
+                /** @description Typed conventions published with this skill. Omit to keep the skill's current rules; [] removes them; a list replaces all of them. Every rule change needs a new review. */
+                rules?: components["schemas"]["SkillRule"][];
+                /** @description Catalog categories the rules apply to (workflow and connector categories). Omit to keep them; [] applies the rules wherever the skill applies. */
+                domains?: string[];
             };
         };
         IntakeNewSkill: {

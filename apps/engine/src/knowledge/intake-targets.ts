@@ -1,5 +1,7 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { type Actor, auditActor } from "../audit/actor.ts";
+import { auditAwait } from "../audit/audit.ts";
+import { AuditAction } from "../audit/types.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { connectors } from "../db/schema/connectors.ts";
 import type {
@@ -11,11 +13,18 @@ import type {
 import { knowledgeSources } from "../db/schema/knowledge_sources.ts";
 import { skills } from "../db/schema/skills.ts";
 import { workflows } from "../db/schema/workflows.ts";
-import { archiveSkill, createSkill, getSkill, updateSkill } from "../skills/service.ts";
+import {
+  archiveSkill,
+  createSkill,
+  getSkill,
+  type SkillConventionsWrite,
+  updateSkill,
+} from "../skills/service.ts";
 import { parseBundle } from "./bundle.ts";
 import { getKnowledgeSource } from "./catalog.ts";
 import { getKnowledgeSourceContent } from "./content.ts";
 import {
+  IntakeConfirmationActorError,
   IntakeConflictError,
   IntakeNotFoundError,
   IntakeProposalConflictError,
@@ -274,15 +283,35 @@ async function lockedSkill(tx: Executor, tenant_id: string, id: string) {
   return rows[0] ?? null;
 }
 
+function conventionsOf(target: IntakeSkillTarget): SkillConventionsWrite | null {
+  const { rules, domains } = target.skill;
+  if (rules === undefined && domains === undefined) return null;
+  return {
+    ...(rules !== undefined ? { rules } : {}),
+    ...(domains !== undefined ? { domains } : {}),
+  };
+}
+
+function conventionsState(skill: { rules: { rule_id: string }[]; domains: string[] } | null) {
+  return skill
+    ? { rule_ids: skill.rules.map((rule) => rule.rule_id), domains: skill.domains }
+    : { rule_ids: [], domains: [] };
+}
+
 async function publishSkill(
   tx: Executor,
   tenant_id: string,
   actor: Actor,
+  proposal_id: string,
   revision: IntakeProposalRevisionView,
   target: IntakeSkillTarget,
 ): Promise<{ id: string; superseded_skill_ids: string[] }> {
   const skillActor = auditActor(actor);
   const { skill_id, expected_version, supersedes } = target.skill;
+  const conventions = conventionsOf(target);
+  if (conventions && actor.kind !== "user")
+    throw new IntakeConfirmationActorError("only a signed-in person publishes skill rules");
+  const before = skill_id && conventions ? await getSkill(tenant_id, skill_id, tx) : null;
   for (const entry of supersedes) {
     const superseded = await lockedSkill(tx, tenant_id, entry.skill_id);
     if (
@@ -304,6 +333,7 @@ async function publishSkill(
       skillActor.actor_id,
       tx,
       skillActor.actor_type,
+      conventions ?? undefined,
     );
     if (!updated) throw new IntakeProposalConflictError("skill target has changed");
     id = updated.id;
@@ -326,11 +356,34 @@ async function publishSkill(
         },
         actor_id: skillActor.actor_id,
         actor_type: skillActor.actor_type,
+        ...(conventions ? { conventions } : {}),
       },
       tx,
     );
     id = created.id;
   } else throw new IntakeProposalConflictError("skill target names no skill");
+  if (conventions) {
+    const after = await getSkill(tenant_id, id, tx);
+    await auditAwait(
+      {
+        tenant_id,
+        ...skillActor,
+        action: AuditAction.SKILL_RULES_PUBLISHED,
+        resource_type: "skill",
+        resource_id: id,
+        result: "success",
+        before: conventionsState(before),
+        after: conventionsState(after),
+        metadata: {
+          proposal_id,
+          revision: revision.revision,
+          digest: revision.digest,
+          skill_version: after?.version ?? null,
+        },
+      },
+      tx,
+    );
+  }
   const supersededIds = supersedes.map((entry) => entry.skill_id);
   for (const superseded of supersededIds)
     await archiveSkill(tenant_id, superseded, skillActor.actor_id, tx, skillActor.actor_type);
@@ -345,7 +398,14 @@ export async function publishIntakeRevision(
   revision: IntakeProposalRevisionView,
 ): Promise<PublishedIntakeTarget> {
   if (isSkillTarget(revision.target)) {
-    const published = await publishSkill(tx, tenant_id, actor, revision, revision.target);
+    const published = await publishSkill(
+      tx,
+      tenant_id,
+      actor,
+      proposal_id,
+      revision,
+      revision.target,
+    );
     return { kind: "skill", ...published };
   }
   return {

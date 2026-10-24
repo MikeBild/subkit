@@ -11,7 +11,6 @@ function hashId(id: string): string {
 
 function callRecordLlmContextAssembled(overrides: {
   included_skill_id_hashes?: string[];
-  included_candidate_id_hashes?: string[];
   included_recipe_slugs?: string[];
   included_prior_workflow_slugs?: string[];
   included?: {
@@ -20,7 +19,7 @@ function callRecordLlmContextAssembled(overrides: {
     docs?: number;
     failures?: number;
     recipe_bodies?: number;
-    candidates?: number;
+    conventions?: number;
     prior_workflows?: number;
   };
 }): void {
@@ -39,11 +38,10 @@ function callRecordLlmContextAssembled(overrides: {
       docs: overrides.included?.docs ?? 0,
       failures: overrides.included?.failures ?? 0,
       recipe_bodies: overrides.included?.recipe_bodies ?? 0,
-      candidates: overrides.included?.candidates ?? 0,
+      conventions: overrides.included?.conventions ?? 0,
       prior_workflows: overrides.included?.prior_workflows ?? 0,
     },
     included_skill_id_hashes: overrides.included_skill_id_hashes ?? [],
-    included_candidate_id_hashes: overrides.included_candidate_id_hashes ?? [],
     included_recipe_slugs: overrides.included_recipe_slugs ?? [],
     included_prior_workflow_slugs: overrides.included_prior_workflow_slugs ?? [],
     dropped_sections: [],
@@ -55,7 +53,7 @@ function callRecordLlmContextAssembled(overrides: {
       failures: 0,
       messages: 500,
       recipe_bodies: 0,
-      skill_candidates: 0,
+      conventions: 0,
       prior_workflows: 0,
     },
   });
@@ -123,20 +121,6 @@ describe("recordLlmContextAssembled — log line hash arrays capped at 12", () =
     }
   });
 
-  test("candidate id hashes appear in log entry", () => {
-    const hashes = [hashId("cand-a"), hashId("cand-b")];
-    callRecordLlmContextAssembled({
-      included_candidate_id_hashes: hashes,
-      included: { candidates: 2 },
-    });
-
-    const entries = logRing.tail({ action: "context.assembled", limit: 5 });
-    const lastEntry = entries[0]!;
-    const fieldHashes = lastEntry.fields.included_candidate_id_hashes as string[];
-    expect(fieldHashes).toHaveLength(2);
-    expect(fieldHashes).toContain(hashId("cand-a"));
-  });
-
   test("recipe slugs appear in log entry as raw values (not hashes)", () => {
     const slugs = ["stripe-charge-succeeded", "slack-notify"];
     callRecordLlmContextAssembled({
@@ -152,18 +136,16 @@ describe("recordLlmContextAssembled — log line hash arrays capped at 12", () =
     expect(fieldSlugs).not.toContain(hashId("stripe-charge-succeeded"));
   });
 
-  test("skill/candidate hashes + raw recipe slugs + new counts present in log line", () => {
+  test("skill hashes + raw recipe slugs + new counts present in log line", () => {
     const skillHashes = [hashId("skill-1"), hashId("skill-2")];
-    const candidateHashes = [hashId("cand-1")];
     const recipeSlugs = ["recipe-1", "recipe-2", "recipe-3"];
 
     callRecordLlmContextAssembled({
       included_skill_id_hashes: skillHashes,
-      included_candidate_id_hashes: candidateHashes,
       included_recipe_slugs: recipeSlugs,
       included: {
         skills: 2,
-        candidates: 1,
+        conventions: 1,
         recipe_bodies: 3,
         knowledge: 4,
         docs: 2,
@@ -177,13 +159,13 @@ describe("recordLlmContextAssembled — log line hash arrays capped at 12", () =
     const f = lastEntry.fields;
 
     expect(Array.isArray(f.included_skill_id_hashes)).toBe(true);
-    expect(Array.isArray(f.included_candidate_id_hashes)).toBe(true);
+    expect(f.included_candidate_id_hashes).toBeUndefined();
     expect(Array.isArray(f.included_recipe_slugs)).toBe(true);
     expect(f.included_recipe_slugs).toContain("recipe-1");
 
     expect(f.included_recipe_bodies).toBe(3);
     expect(f.included_recipes_bodies).toBeUndefined();
-    expect(f.included_candidates).toBe(1);
+    expect(f.included_conventions).toBe(1);
   });
 
   test("no metric label carries a hash value (cardinality protection)", () => {

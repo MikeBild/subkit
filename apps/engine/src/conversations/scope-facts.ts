@@ -32,8 +32,8 @@ export async function resolveScopeFactsForConversation(
       }
     }
 
-    const referencedIds = collectConnectorIds(toolInput);
-    for (const [id, paths] of collectConnectorIds(draft.workflow)) {
+    const referencedIds = collectConnectorPaths(toolInput);
+    for (const [id, paths] of collectConnectorPaths(draft.workflow)) {
       const known = referencedIds.get(id) ?? new Set<string>();
       for (const path of paths) known.add(path);
       referencedIds.set(id, known);
@@ -92,7 +92,11 @@ function inferTemplateSlugs(
   return out;
 }
 
-function collectConnectorIds(input: unknown): Map<string, Set<string>> {
+export function collectConnectorIds(input: unknown): Set<string> {
+  return new Set(collectConnectorPaths(input).keys());
+}
+
+function collectConnectorPaths(input: unknown): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>();
   walk(input, out, 0);
   return out;

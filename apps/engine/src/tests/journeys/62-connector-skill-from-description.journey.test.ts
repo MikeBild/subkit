@@ -231,7 +231,6 @@ describe("journey: connector authored from a description proposes its skill", ()
     expect(text).toContain("skill_candidates");
 
     const prompt = await assembleConverse();
-    expect(prompt.included_candidate_ids).not.toContain(candidate.id);
     expect(prompt.system).not.toContain("metabase://databases");
   });
 

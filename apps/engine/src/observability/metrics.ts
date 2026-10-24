@@ -99,7 +99,6 @@ export const METRIC_NAMES = {
   LLM_CONTEXT_ASSEMBLED_TOTAL: "llm_context_assembled_total",
   LLM_CONTEXT_DROPPED_SECTIONS_TOTAL: "llm_context_dropped_sections_total",
   LLM_CONTEXT_TOTAL_TOKENS: "llm_context_total_tokens",
-  LLM_LIST_PROPOSED_FOR_AUTHORING_DURATION_MS: "llm_list_proposed_for_authoring_duration_ms",
   LLM_CONTEXT_SECTION_LOAD_FAILURES_TOTAL: "llm_context_section_load_failures_total",
   AUTHORING_GATE_BLOCKS_TOTAL: "subkit_authoring_gate_blocks_total",
   TOOL_CIRCUIT_OPEN_TOTAL: "subkit_tool_circuit_open_total",
@@ -108,6 +107,7 @@ export const METRIC_NAMES = {
   WORKFLOW_SCHEDULE_NOT_BOUND_TOTAL: "subkit_workflow_schedule_not_bound_total",
   WORKFLOW_TRIGGER_KIND_TOTAL: "subkit_workflow_trigger_kind_total",
   CRITIC_RUNS_TOTAL: "subkit_critic_runs_total",
+  CRITIC_RUBRIC_ITEMS_TOTAL: "subkit_critic_rubric_items_total",
   PREVIEW_JUDGE_VERDICTS_TOTAL: "subkit_preview_judge_verdicts_total",
   WORKFLOWS_LAST_EXECUTED_AT_WRITE_FAILED_TOTAL:
     "subkit_workflows_last_executed_at_write_failed_total",
@@ -522,6 +522,11 @@ function buildRegistry(): MetricsRegistry {
     labels: ["result", "tool"],
   });
   reg.registerCounter({
+    name: METRIC_NAMES.CRITIC_RUBRIC_ITEMS_TOTAL,
+    help: "Convention rubric items per reviewed draft. `status` is `pass`, `fail` (a warning; it never rejects the draft), `n_a` (the draft does not touch the rule) or `unchecked` (the critic omitted the rule or failed open). A high unchecked share means the confirmed conventions are not being reviewed.",
+    labels: ["status"],
+  });
+  reg.registerCounter({
     name: METRIC_NAMES.PREVIEW_JUDGE_VERDICTS_TOTAL,
     help: "Preview-judge verdicts after a green dry-run. `verdict` is passes / partial / failed / skipped; `blocked=true` means the verdict blocked the auto-commit (false for breaker-degraded advisory verdicts and skips). A high skipped rate means goals are not reaching drafts; a high blocked rate flags either a miscalibrated judge or systematically goal-missing previews.",
     labels: ["verdict", "blocked"],
@@ -561,12 +566,6 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.LLM_CONTEXT_TOTAL_TOKENS,
     help: "Total prompt tokens emitted from context-assembly per call (pre-completion).",
     labels: ["flow"],
-    buckets: HISTOGRAM_DURATION_BUCKETS_MS,
-  });
-  reg.registerHistogram({
-    name: METRIC_NAMES.LLM_LIST_PROPOSED_FOR_AUTHORING_DURATION_MS,
-    help: "Wall-clock duration of the authoring-time proposed-candidate fan-out (up to 3 indexed queries + evidence batch).",
-    labels: ["scope_hint"],
     buckets: HISTOGRAM_DURATION_BUCKETS_MS,
   });
   reg.registerCounter({

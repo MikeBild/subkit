@@ -9,7 +9,7 @@ import {
 import { actorOf } from "../../audit/index.ts";
 import * as intake from "../../knowledge/index.ts";
 import { can } from "../../rbac/index.ts";
-import { ConflictError, NotFoundError } from "../errors.ts";
+import { ConflictError, HttpError, NotFoundError } from "../errors.ts";
 import { requireAuth, requireSignedInPerson } from "../middleware/auth.ts";
 import { ensurePermission, requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -415,6 +415,8 @@ const rejectProposalRoute = createRoute({
 
 function rethrowIntakeError(error: unknown): never {
   if (error instanceof intake.IntakeNotFoundError) throw new NotFoundError("intake resource");
+  if (error instanceof intake.IntakeConfirmationActorError)
+    throw new HttpError(403, "human_confirmation_required", error.message);
   if (error instanceof intake.IntakeConflictError) {
     throw new ConflictError(error.message, { reason: error.name });
   }

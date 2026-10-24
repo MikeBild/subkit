@@ -9,8 +9,6 @@ import { DOMAIN_TAG_PREFIX } from "../../../knowledge/tags.ts";
 import { logger } from "../../../logging/logger.ts";
 import { getMetrics, METRIC_NAMES } from "../../../observability/metrics.ts";
 import { listLatestShapes } from "../../../schema-versions/service.ts";
-import { listProposedForAuthoring } from "../../../skill-candidates/service.ts";
-import type { SkillCandidateView } from "../../../skill-candidates/types.ts";
 import { findSimilarActive, type PriorWorkflowRef } from "../../../workflows/prior-workflows.ts";
 import { countTokens } from "../../accounting/index.ts";
 import type {
@@ -22,7 +20,6 @@ import type {
 import {
   formatConnectorSchemaSummaries,
   formatProbeShapeExamples,
-  formatSkillCandidates,
   PRIOR_WORKFLOWS_TOP_K,
   PROBE_SHAPE_MAX_CONNECTORS,
   PROBE_SHAPE_MAX_ENDPOINTS_PER_CONNECTOR,
@@ -32,7 +29,6 @@ import {
   RECIPE_BODY_HYBRID_SOFT_CAP,
   type RecipeBodyView,
   renderRecipeBody,
-  SKILL_CANDIDATES_SECTION_CAP,
 } from "./formatters.ts";
 
 export async function loadConnectorAuthoringAids(
@@ -619,102 +615,6 @@ function reportMalformedRecipe(): void {
       section: "recipe_bodies",
     });
   } catch {}
-}
-
-const WARNED_TENANTS_LRU_CAP = 256;
-const proposedCandidatesFailureState = {
-  warnedTenants: new Set<string>(),
-};
-
-export async function loadProposedCandidates(
-  tenant_id: string,
-  scope_hints: { connector_id?: string; workflow_id?: string },
-  exec: Executor,
-): Promise<SkillCandidateView[]> {
-  try {
-    return await listProposedForAuthoring(tenant_id, scope_hints, exec);
-  } catch (err) {
-    try {
-      getMetrics().inc(METRIC_NAMES.LLM_CONTEXT_SECTION_LOAD_FAILURES_TOTAL, {
-        section: "skill_candidates",
-      });
-    } catch {}
-    const errorMessage = err instanceof Error ? err.message : String(err);
-    const payload = {
-      module: "llm",
-      action: "llm.context.proposed_candidates_skipped",
-      msg: "proposed-candidate load failed during context assembly",
-      tenant_id,
-      ...(scope_hints.connector_id ? { connector_id: scope_hints.connector_id } : {}),
-      ...(scope_hints.workflow_id ? { workflow_id: scope_hints.workflow_id } : {}),
-      error: errorMessage,
-    };
-    if (proposedCandidatesFailureState.warnedTenants.has(tenant_id)) {
-      logger.debug(payload);
-    } else {
-      if (proposedCandidatesFailureState.warnedTenants.size >= WARNED_TENANTS_LRU_CAP) {
-        const oldest = proposedCandidatesFailureState.warnedTenants.values().next().value;
-        if (oldest !== undefined) {
-          proposedCandidatesFailureState.warnedTenants.delete(oldest);
-        }
-      }
-      proposedCandidatesFailureState.warnedTenants.add(tenant_id);
-      logger.warn(payload);
-    }
-    return [];
-  }
-}
-
-export function trimCandidatesToBudget(candidates: SkillCandidateView[]): {
-  survivors: SkillCandidateView[];
-  section: string | null;
-  trimmed: number;
-  oversized_item_id: string | null;
-} {
-  if (candidates.length === 0) {
-    return { survivors: [], section: null, trimmed: 0, oversized_item_id: null };
-  }
-  const cap = SKILL_CANDIDATES_SECTION_CAP;
-  const survivors = [...candidates];
-  let trimmed = 0;
-
-  while (survivors.length > 0) {
-    const sectionBase = formatSkillCandidates(survivors);
-    if (sectionBase === null) break;
-    const notice =
-      trimmed > 0
-        ? `\n\n_${trimmed} more candidate${trimmed === 1 ? "" : "s"} elided — token budget_`
-        : "";
-    const candidate = `${sectionBase}${notice}`;
-    if (countTokens(candidate) <= cap) {
-      return { survivors, section: candidate, trimmed, oversized_item_id: null };
-    }
-    if (survivors.length === 1) {
-      const only = survivors[0];
-      if (!only) break;
-      const targetTokens = Math.ceil(cap * 0.9);
-      let lo = 0;
-      let hi = only.body.length;
-      let bestBody = "";
-      while (lo < hi) {
-        const mid = Math.floor((lo + hi + 1) / 2);
-        const slice = `${only.body.slice(0, mid)}\n\n_… candidate body truncated for section cap_`;
-        const probe = formatSkillCandidates([{ ...only, body: slice }]);
-        if (probe !== null && countTokens(probe) <= targetTokens) {
-          bestBody = slice;
-          lo = mid;
-        } else {
-          hi = mid - 1;
-        }
-      }
-      survivors[0] = { ...only, body: bestBody };
-      const finalSection = formatSkillCandidates(survivors);
-      return { survivors, section: finalSection, trimmed, oversized_item_id: only.id };
-    }
-    survivors.pop();
-    trimmed += 1;
-  }
-  return { survivors: [], section: null, trimmed, oversized_item_id: null };
 }
 
 export function buildPriorWorkflowRankingQuery(

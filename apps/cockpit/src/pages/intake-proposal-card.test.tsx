@@ -6,6 +6,7 @@ import type { IntakeProposal, IntakeProposalTarget } from "@/api/intake";
 import { translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
 import { ProposalCard } from "./intake";
+import type { ReferencedSkill } from "./intake-model";
 
 const value = {
   locale: "de",
@@ -48,7 +49,7 @@ function proposal(target: IntakeProposalTarget): IntakeProposal {
 function render(
   target: IntakeProposalTarget,
   permissions: readonly string[],
-  skills: Record<string, { title: string; version: number; body: string; status?: string }> = {},
+  skills: Record<string, ReferencedSkill> = {},
   bindings: Record<string, string | number> = {},
 ) {
   const client = new QueryClient();
@@ -262,5 +263,91 @@ describe("rejecting a proposal", () => {
     );
     client.clear();
     expect(html).not.toContain('data-testid="intake-proposal-proposal-reject"');
+  });
+
+  test("the card and the confirmation show every typed rule and where it applies", () => {
+    const target: IntakeProposalTarget = {
+      skill: {
+        new: { title: "Konventionen", scope: "global", tags: [], category: "betrieb" },
+        supersedes: [],
+        rules: [
+          {
+            rule_id: "tenant-timezone",
+            type: "timezone",
+            statement: "Schedules use UTC.",
+            payload: { value: "UTC" },
+          },
+          {
+            rule_id: "avoid-retry",
+            type: "pitfall",
+            statement: "Never retry payments.",
+            payload: { text: "Payments are not idempotent." },
+          },
+        ],
+      },
+    };
+    const html = render(target, SKILL_WRITER);
+    expect(html).toContain('data-testid="intake-proposal-proposal-rules"');
+    expect(html).toContain("tenant-timezone · timezone: Schedules use UTC. (value=UTC)");
+    expect(html).toContain(
+      "avoid-retry · pitfall: Never retry payments. (text=Payments are not idempotent.)",
+    );
+    expect(html).toContain("Regeln gelten in: überall, wo der Skill gilt");
+  });
+
+  test("an update that leaves domains out shows the domains the skill already has", () => {
+    const target: IntakeProposalTarget = {
+      skill: {
+        skill_id: SKILL,
+        expected_version: 3,
+        supersedes: [],
+        rules: [
+          {
+            rule_id: "tenant-timezone",
+            type: "timezone",
+            statement: "Schedules use Europe/Berlin.",
+            payload: { value: "Europe/Berlin" },
+          },
+        ],
+      },
+    };
+    const html = render(target, SKILL_WRITER, {
+      [SKILL]: { title: "Konventionen", version: 3, body: "Rollback first.", domains: ["betrieb"] },
+    });
+    expect(html).toContain("tenant-timezone · timezone: Schedules use Europe/Berlin.");
+    expect(html).toContain("Regeln gelten in: betrieb");
+  });
+
+  test("an empty rule list says the existing rules are removed, an omitted one shows nothing", () => {
+    const existing = {
+      [SKILL]: {
+        title: "Konventionen",
+        version: 3,
+        body: "Rollback first.",
+        rules: [
+          {
+            rule_id: "tenant-timezone",
+            type: "timezone" as const,
+            statement: "Schedules use UTC.",
+            payload: { value: "UTC" },
+          },
+        ],
+      },
+    };
+    const cleared = render(
+      { skill: { skill_id: SKILL, expected_version: 3, supersedes: [], rules: [] } },
+      SKILL_WRITER,
+      existing,
+    );
+    expect(cleared).toContain(
+      "Nach der Bestätigung gelten keine Regeln; bestehende Regeln werden entfernt.",
+    );
+    expect(cleared).not.toContain("Schedules use UTC.");
+    const untouched = render(
+      { skill: { skill_id: SKILL, expected_version: 3, supersedes: [] } },
+      SKILL_WRITER,
+      existing,
+    );
+    expect(untouched).not.toContain('data-testid="intake-proposal-proposal-rules"');
   });
 });

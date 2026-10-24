@@ -1,5 +1,10 @@
 import { z } from "@hono/zod-openapi";
-import { SkillScopeSchema, skillScopeViolation } from "../skills/types.ts";
+import {
+  SkillDomainsSchema,
+  SkillRulesSchema,
+  SkillScopeSchema,
+  skillScopeViolation,
+} from "../skills/types.ts";
 import { CategorySchema } from "./catalog-metadata.ts";
 
 const IntakeTagsSchema = z.array(z.string().min(1).max(40)).max(20);
@@ -38,6 +43,12 @@ export const IntakeSkillTargetSchema = z
           )
           .max(20)
           .default([]),
+        rules: SkillRulesSchema.optional().describe(
+          "Typed conventions published with this skill. Omit to keep the skill's current rules; [] removes them; a list replaces all of them. Every rule change needs a new review.",
+        ),
+        domains: SkillDomainsSchema.optional().describe(
+          "Catalog categories the rules apply to (workflow and connector categories). Omit to keep them; [] applies the rules wherever the skill applies.",
+        ),
       })
       .strict()
       .superRefine((value, ctx) => {
@@ -76,7 +87,7 @@ export const IntakeSkillTargetSchema = z
   })
   .strict()
   .describe(
-    "Skill destination for a repeatable practice or convention. Name either new (a new active skill; give it the domain:<name> tag of its domain so coding-agent briefings for that domain find it) or skill_id with the expected_version you read (changes and activates that skill). supersedes lists each skill this one consolidates with the expected_version you read; they are archived on confirmation and the proposal goes stale when one of them changes.",
+    "Skill destination for a repeatable practice or convention. Name either new (a new active skill; give it the domain:<name> tag of its domain so coding-agent briefings for that domain find it) or skill_id with the expected_version you read (changes and activates that skill). supersedes lists each skill this one consolidates with the expected_version you read; they are archived on confirmation and the proposal goes stale when one of them changes. rules and domains carry typed tenant conventions (timezone, locale, currency, naming, delivery_default, connector_preference, glossary_term, field_semantics, pitfall); only the confirming person publishes them.",
   )
   .openapi("IntakeSkillTarget");
 

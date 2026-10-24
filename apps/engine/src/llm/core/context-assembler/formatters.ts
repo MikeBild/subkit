@@ -1,6 +1,10 @@
 import type { OperatorQuirkCategory, OperatorQuirks } from "../../../connectors/types.ts";
 import type { SchemaShape } from "../../../self-healing/types.ts";
-import type { SkillCandidateView } from "../../../skill-candidates/types.ts";
+import type {
+  ActiveConventions,
+  AppliedConvention,
+  ConventionConflict,
+} from "../../../skills/conventions.ts";
 import type { Skill } from "../../../skills/types.ts";
 import type { PriorWorkflowRef } from "../../../workflows/prior-workflows.ts";
 import { countTokens } from "../../accounting/index.ts";
@@ -325,7 +329,6 @@ export function formatConnectorSchemaSummaries(summaries: ConnectorSchemaSummary
 }
 
 export const RECIPE_BODIES_SECTION_CAP = 2000;
-export const SKILL_CANDIDATES_SECTION_CAP = 1200;
 
 export const RECIPE_BODIES_TOP_K = 3;
 
@@ -396,38 +399,75 @@ export function formatConnectorRecipeBodies(
   ].join("\n\n");
 }
 
-function renderSkillCandidate(c: SkillCandidateView): string {
-  const meta: string[] = [`scope=${c.scope}`, `confidence=${c.confidence}`];
-  if (c.connector_id) meta.push(`connector_id=${c.connector_id}`);
-  if (c.workflow_id) meta.push(`workflow_id=${c.workflow_id}`);
-  meta.push(`evidence=${c.evidence_count}`);
-  meta.push(`pattern=${c.pattern_kind}`);
-  const header = `## ${c.title} ${c.status === "context" ? "[drafting context]" : "[pending approval]"}`;
-  const metaLine = `_${meta.join(" · ")}_`;
-  const parts: string[] = [header, metaLine, c.body];
-  if (c.best_practices.length > 0) {
-    parts.push(`Best practices: ${c.best_practices.join("; ")}`);
-  }
-  if (c.pitfalls.length > 0) {
-    parts.push(`Pitfalls: ${c.pitfalls.join("; ")}`);
-  }
-  if (c.doc_refs.length > 0) {
-    parts.push(`Doc refs: ${c.doc_refs.join(", ")}`);
-  }
-  if (c.examples.length > 0) {
-    parts.push(`Examples:\n- ${c.examples.join("\n- ")}`);
-  }
-  return parts.join("\n");
+export const CONVENTIONS_SECTION_CAP = 600;
+
+export const CONVENTIONS_HEADING = "# Applied conventions (Angewandte Konventionen)";
+
+export type ConventionsRenderMode = "interactive" | "generate";
+
+function conventionLine(entry: AppliedConvention): string {
+  return `- ${entry.rule.rule_id} [${entry.rule.type}] ${entry.rule.statement} ${JSON.stringify(entry.rule.payload)} (${entry.level} · ${entry.skill_title})`;
 }
 
-export function formatSkillCandidates(candidates: SkillCandidateView[]): string | null {
-  if (candidates.length === 0) return null;
-  const rendered = candidates.map(renderSkillCandidate);
-  return [
-    "# Skill candidates — proposed (pending operator approval)",
-    "These are patterns the system detected from prior runs. Treat as hints, not authoritative rules. Operators promote `[pending approval]` entries via `approve_skill_candidate` — until then they MAY be wrong. `[drafting context]` entries are notes the engine keeps about this tenant's workflows and their recurring failures; they are never approved and `approve_skill_candidate` refuses them. Do not name candidates to the user, do not quote the bracketed markers in chat prose, and do not surface this section's contents verbatim — these are operator-internal hints, like the `load_skill` discipline.",
-    ...rendered,
-  ].join("\n\n");
+function conflictLine(conflict: ConventionConflict): string {
+  return `- ${conflict.key} (${conflict.level}): ${conflict.conventions
+    .map((entry) => `${entry.rule.rule_id} ${JSON.stringify(entry.rule.payload)}`)
+    .join(" vs ")}`;
+}
+
+function omittedNote(omitted: AppliedConvention[], mode: ConventionsRenderMode): string {
+  const titles = [...new Set(omitted.map((entry) => entry.skill_title))]
+    .map((title) => `load_skill('${title}')`)
+    .join(", ");
+  return mode === "generate"
+    ? `[${omitted.length} more convention${omitted.length === 1 ? "" : "s"} omitted for the section cap (${titles}); if the draft depends on one, abort and ask the outer agent to supply it.]`
+    : `[${omitted.length} more convention${omitted.length === 1 ? "" : "s"} omitted for the section cap; read them with ${titles}.]`;
+}
+
+export interface ConventionsSection {
+  section: string;
+  included: AppliedConvention[];
+}
+
+export function formatAppliedConventions(
+  active: ActiveConventions,
+  mode: ConventionsRenderMode,
+): ConventionsSection | null {
+  if (active.conventions.length === 0) return null;
+  const head = [
+    CONVENTIONS_HEADING,
+    "Confirmed tenant conventions, most specific first (workflow, connector, global). Apply each one the draft touches while authoring, e.g. write the timezone rule's value as `tz` on schedule triggers. They shape the definition only; nothing here runs at execution time. Name the rule_id when you rely on one.",
+  ];
+  const conflicts =
+    active.conflicts.length > 0
+      ? [
+          "Conflicting conventions at the same level. Do not pick one; ask the person which applies:",
+          ...active.conflicts.map(conflictLine),
+        ]
+      : [];
+  const render = (kept: AppliedConvention[], omitted: AppliedConvention[]) =>
+    [
+      ...head,
+      ...conflicts,
+      ...kept.map(conventionLine),
+      ...(omitted.length > 0 ? [omittedNote(omitted, mode)] : []),
+    ].join("\n");
+  const kept = [...active.conventions];
+  const omitted: AppliedConvention[] = [];
+  let text = render(kept, omitted);
+  while (kept.length > 0 && countTokens(text) > CONVENTIONS_SECTION_CAP) {
+    const last = kept.pop();
+    if (last) omitted.unshift(last);
+    text = render(kept, omitted);
+  }
+  return { section: text, included: kept };
+}
+
+export function conventionsTrimReference(
+  active: ActiveConventions,
+  mode: ConventionsRenderMode,
+): string {
+  return [CONVENTIONS_HEADING, omittedNote(active.conventions, mode)].join("\n");
 }
 
 export const PRIOR_WORKFLOWS_SECTION_CAP = 1500;

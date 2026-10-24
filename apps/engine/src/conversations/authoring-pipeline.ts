@@ -465,6 +465,11 @@ export async function runAuthoringPipeline(
       tool: "author_workflow",
       draft: toWorkflowDraftDocument(candidate),
       goal,
+      convention_scope: {
+        connector_ids: connectors.map((c) => c.id),
+        workflow_id: ctx.workflow_id,
+        categories: domains,
+      },
       tenant_id: ctx.tenant_id,
       conversation_id: ctx.conversation_id,
       recentDriftCount: ctx.getDraft().latest_preview?.warnings?.length ?? 0,
@@ -478,7 +483,12 @@ export async function runAuthoringPipeline(
       db: ctx.db,
       signal: deadlineSignal,
     });
-    criticState.review = { result: outcome.result, gating_reason: outcome.gating_reason, pass };
+    criticState.review = {
+      result: outcome.result,
+      gating_reason: outcome.gating_reason,
+      pass,
+      rubric_warnings: outcome.rubric_warnings,
+    };
     if (outcome.result !== "reject" || outcome.rationale === null) return null;
     return {
       rejection: {

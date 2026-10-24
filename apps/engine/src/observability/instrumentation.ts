@@ -668,6 +668,17 @@ export function recordCriticRun(args: { result: string; tool: string }): void {
   });
 }
 
+const CRITIC_RUBRIC_STATUSES = new Set<string>(["pass", "fail", "n_a", "unchecked"]);
+
+export function recordCriticRubricItems(statuses: readonly string[]): void {
+  safe(() => {
+    for (const status of statuses)
+      getMetrics().inc(METRIC_NAMES.CRITIC_RUBRIC_ITEMS_TOTAL, {
+        status: CRITIC_RUBRIC_STATUSES.has(status) ? status : "other",
+      });
+  });
+}
+
 const PREVIEW_JUDGE_VERDICTS = new Set<string>(["passes", "partial", "failed", "skipped"]);
 
 export function recordPreviewJudgeVerdict(args: { verdict: string; blocked: boolean }): void {
@@ -782,11 +793,10 @@ export function recordLlmContextAssembled(args: {
     docs: number;
     failures: number;
     recipe_bodies: number;
-    candidates: number;
+    conventions: number;
     prior_workflows: number;
   };
   included_skill_id_hashes: string[];
-  included_candidate_id_hashes: string[];
   included_recipe_slugs: string[];
   included_prior_workflow_slugs: string[];
   dropped_sections: string[];
@@ -798,7 +808,7 @@ export function recordLlmContextAssembled(args: {
     failures: number;
     messages: number;
     recipe_bodies: number;
-    skill_candidates: number;
+    conventions: number;
     prior_workflows: number;
   };
 }): void {
@@ -839,10 +849,9 @@ export function recordLlmContextAssembled(args: {
       included_docs: args.included.docs,
       included_failures: args.included.failures,
       included_recipe_bodies: args.included.recipe_bodies,
-      included_candidates: args.included.candidates,
+      included_conventions: args.included.conventions,
       included_prior_workflows: args.included.prior_workflows,
       included_skill_id_hashes: args.included_skill_id_hashes,
-      included_candidate_id_hashes: args.included_candidate_id_hashes,
       included_recipe_slugs: args.included_recipe_slugs,
       included_prior_workflow_slugs: args.included_prior_workflow_slugs,
       dropped_sections: args.dropped_sections,

@@ -6078,6 +6078,10 @@ const EN = {
     "A skill this suggestion refers to can no longer be loaded. Revise the suggestion in chat before confirming it.",
   "intake.proposal.needsRights": "You lack the rights for this. Ask a person with the admin role.",
   "intake.proposal.archives": "Archived after confirmation: {skills}.",
+  "intake.proposal.rules": "Rules in effect after confirmation",
+  "intake.proposal.rulesNone": "No rules after confirmation; existing rules are removed.",
+  "intake.proposal.ruleDomains": "Rules apply in: {domains}",
+  "intake.proposal.ruleDomainsEverywhere": "everywhere the skill applies",
   "intake.proposal.stale":
     "This suggestion changed. Review the current content before confirming it.",
   "installation.install": "Install this workspace",
@@ -12320,6 +12324,11 @@ const DE: Record<TranslationKey, string> = {
     "Ein Skill, auf den sich dieser Vorschlag bezieht, lässt sich nicht mehr laden. Überarbeite den Vorschlag im Chat, bevor du bestätigst.",
   "intake.proposal.needsRights": "Dafür fehlen dir die Rechte. Frag einen Administrator.",
   "intake.proposal.archives": "Nach der Bestätigung archiviert: {skills}.",
+  "intake.proposal.rules": "Regeln, die nach der Bestätigung gelten",
+  "intake.proposal.rulesNone":
+    "Nach der Bestätigung gelten keine Regeln; bestehende Regeln werden entfernt.",
+  "intake.proposal.ruleDomains": "Regeln gelten in: {domains}",
+  "intake.proposal.ruleDomainsEverywhere": "überall, wo der Skill gilt",
   "intake.proposal.stale":
     "Dieser Vorschlag hat sich geändert. Prüfe den aktuellen Inhalt, bevor du bestätigst.",
   "installation.install": "Arbeitsbereich installieren",

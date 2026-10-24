@@ -1,10 +1,21 @@
 import type { Executor } from "../../db/client.ts";
 import { invoke } from "../../llm/core/invoke.ts";
 import { logger } from "../../logging/logger.ts";
-import { recordCriticRun } from "../../observability/instrumentation.ts";
+import { recordCriticRubricItems, recordCriticRun } from "../../observability/instrumentation.ts";
+import {
+  type AppliedConvention,
+  type ConventionScope,
+  loadActiveConventions,
+} from "../../skills/conventions.ts";
+import { collectConnectorIds } from "../scope-facts.ts";
 import type { WorkflowDraftDocument } from "../types.ts";
 import { type GatingDecision, resolveCriticGate } from "./gating.ts";
-import { type AuthoringCriticVerdict, AuthoringCriticVerdictSchema } from "./types.ts";
+import {
+  type AuthoringCriticVerdict,
+  AuthoringCriticVerdictSchema,
+  type CriticRubricItem,
+  RUBRIC_CAP,
+} from "./types.ts";
 
 export const RENDERED_STEPS_CAP = 4096;
 export const RENDERED_GOAL_CAP = 2000;
@@ -26,8 +37,27 @@ function cap(text: string, limit: number): string {
   return `${text.slice(0, limit)}\n…[truncated; original ${text.length} chars]`;
 }
 
-export function renderDraftForCritic(draft: WorkflowDraftDocument, goal?: string | null): string {
+export const CRITIC_RUBRIC_HEADING =
+  "Convention rubric (confirmed tenant conventions). Check each rule against the draft and report every rule_id in rubric[] with status pass, fail or n_a (the draft does not touch it) and a short note. A failed rule is a warning; it does not decide passed:";
+
+function rubricConventions(conventions: readonly AppliedConvention[]): AppliedConvention[] {
+  const seen = new Set<string>();
+  return conventions
+    .filter((entry) => {
+      if (seen.has(entry.rule.rule_id)) return false;
+      seen.add(entry.rule.rule_id);
+      return true;
+    })
+    .slice(0, RUBRIC_CAP);
+}
+
+export function renderDraftForCritic(
+  draft: WorkflowDraftDocument,
+  goal?: string | null,
+  conventions: readonly AppliedConvention[] = [],
+): string {
   const trimmedGoal = typeof goal === "string" ? goal.trim() : "";
+  const rubric = rubricConventions(conventions);
   return [
     trimmedGoal.length > 0
       ? `Goal (verbatim from the user):\n${cap(trimmedGoal, RENDERED_GOAL_CAP)}`
@@ -44,6 +74,18 @@ export function renderDraftForCritic(draft: WorkflowDraftDocument, goal?: string
       ? `output_transform_function: ${cap(draft.output_transform_function, RENDERED_TRANSFORM_CAP)}`
       : "",
     `Steps (${draft.steps.length}):\n${cap(JSON.stringify(draft.steps, null, 2), RENDERED_STEPS_CAP)}`,
+    rubric.length > 0 && draft.trigger
+      ? `Trigger: ${cap(JSON.stringify(draft.trigger), RENDERED_SCHEMA_CAP)}`
+      : "",
+    rubric.length > 0
+      ? [
+          CRITIC_RUBRIC_HEADING,
+          ...rubric.map(
+            (entry) =>
+              `- ${entry.rule.rule_id} [${entry.rule.type}] ${entry.rule.statement} ${JSON.stringify(entry.rule.payload)}`,
+          ),
+        ].join("\n")
+      : "",
   ]
     .filter((s) => s.length > 0)
     .join("\n\n");
@@ -57,6 +99,7 @@ export type CriticAgentOutcome =
 export interface RunCriticAgentParams {
   draft: WorkflowDraftDocument;
   goal?: string | null;
+  conventions?: readonly AppliedConvention[];
   tenant_id: string;
   db?: Executor;
   signal?: AbortSignal;
@@ -81,8 +124,21 @@ export function classifyCriticVerdict(object: unknown): CriticAgentOutcome {
   return { outcome: "reject", verdict };
 }
 
+export function rubricFromVerdict(
+  conventions: readonly AppliedConvention[],
+  verdict: AuthoringCriticVerdict | null,
+): CriticRubricItem[] {
+  const reported = new Map((verdict?.rubric ?? []).map((item) => [item.rule_id, item]));
+  return rubricConventions(conventions).map((entry) => {
+    const item = reported.get(entry.rule.rule_id);
+    return item
+      ? { rule_id: item.rule_id, status: item.status, note: item.note }
+      : { rule_id: entry.rule.rule_id, status: "unchecked", note: "" };
+  });
+}
+
 export async function runCriticAgent(params: RunCriticAgentParams): Promise<CriticAgentOutcome> {
-  const draftText = renderDraftForCritic(params.draft, params.goal);
+  const draftText = renderDraftForCritic(params.draft, params.goal, params.conventions);
   try {
     const result = await invoke<AuthoringCriticVerdict>(
       {
@@ -113,6 +169,8 @@ export interface CriticOutcome {
   gating_reason: GatingDecision["reason"];
   repairs: string[];
   rationale: string | null;
+  rubric: CriticRubricItem[];
+  rubric_warnings: CriticRubricItem[];
   fail_open_reason?: string;
 }
 
@@ -120,6 +178,7 @@ export interface ReviewDraftWithCriticParams {
   tool: CriticTool;
   draft: WorkflowDraftDocument;
   goal?: string | null;
+  convention_scope?: ConventionScope;
   tenant_id: string;
   conversation_id: string;
   recentDriftCount: number;
@@ -139,6 +198,7 @@ const SKIPPED_RESULT: Record<GatingDecision["reason"], CriticRunResult> = {
 
 function emit(params: ReviewDraftWithCriticParams, outcome: CriticOutcome): CriticOutcome {
   recordCriticRun({ result: outcome.result, tool: params.tool });
+  recordCriticRubricItems(outcome.rubric.map((item) => item.status));
   const fields = {
     module: "conversations",
     action: "authoring_critic.run",
@@ -151,6 +211,8 @@ function emit(params: ReviewDraftWithCriticParams, outcome: CriticOutcome): Crit
     step_count: params.draft.steps.length,
     has_goal: typeof params.goal === "string" && params.goal.trim().length > 0,
     repair_count: outcome.repairs.length,
+    rubric_count: outcome.rubric.length,
+    rubric_warning_rule_ids: outcome.rubric_warnings.map((item) => item.rule_id),
     ...(outcome.fail_open_reason ? { fail_open_reason: outcome.fail_open_reason } : {}),
   };
   if (outcome.result === "fail_open") logger.warn(fields);
@@ -175,6 +237,8 @@ export async function reviewDraftWithCritic(
       gating_reason: "step_count",
       repairs: [],
       rationale: null,
+      rubric: [],
+      rubric_warnings: [],
       fail_open_reason: `gate_failed: ${err instanceof Error ? err.message : String(err)}`,
     });
   }
@@ -184,11 +248,15 @@ export async function reviewDraftWithCritic(
       gating_reason: gate.reason,
       repairs: [],
       rationale: null,
+      rubric: [],
+      rubric_warnings: [],
     });
   }
+  const conventions = await draftConventions(params);
   const agent = await (params.runAgent ?? runCriticAgent)({
     draft: params.draft,
     ...(params.goal !== undefined ? { goal: params.goal } : {}),
+    ...(conventions.length > 0 ? { conventions } : {}),
     tenant_id: params.tenant_id,
     ...(params.db ? { db: params.db } : {}),
     ...(params.signal ? { signal: params.signal } : {}),
@@ -199,13 +267,44 @@ export async function reviewDraftWithCritic(
       gating_reason: gate.reason,
       repairs: [],
       rationale: null,
+      rubric: rubricFromVerdict(conventions, null),
+      rubric_warnings: [],
       fail_open_reason: agent.reason,
     });
   }
+  const rubric = rubricFromVerdict(conventions, agent.verdict);
   return emit(params, {
     result: agent.outcome,
     gating_reason: gate.reason,
     repairs: agent.outcome === "reject" ? agent.verdict.repairs : [],
     rationale: agent.verdict.rationale,
+    rubric,
+    rubric_warnings: rubric.filter((item) => item.status === "fail"),
   });
+}
+
+async function draftConventions(params: ReviewDraftWithCriticParams): Promise<AppliedConvention[]> {
+  const scope = params.convention_scope;
+  if (!scope) return [];
+  try {
+    const active = await loadActiveConventions(
+      params.tenant_id,
+      {
+        ...scope,
+        connector_ids: [...(scope.connector_ids ?? []), ...collectConnectorIds(params.draft.steps)],
+      },
+      params.db,
+    );
+    return active.conventions;
+  } catch (err) {
+    logger.warn({
+      module: "conversations",
+      action: "authoring_critic.conventions_skipped",
+      msg: "convention rubric could not be loaded; the critic runs without it",
+      tenant_id: params.tenant_id,
+      conversation_id: params.conversation_id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return [];
+  }
 }

@@ -1037,6 +1037,13 @@
       "when": 1792835176501,
       "tag": "0147_workflow_version_spec",
       "breakpoints": true
+    },
+    {
+      "idx": 148,
+      "version": "7",
+      "when": 1792846159360,
+      "tag": "0148_skill_conventions",
+      "breakpoints": true
     }
   ]
 }

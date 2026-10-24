@@ -280,12 +280,12 @@ describe.skipIf(skip)("budget-baseline — four guards", () => {
     }
   });
 
-  test("G4: outcome substrate — drift-context fixtures contain seeded candidate title", () => {
+  test("G4: drift-context fixtures keep the seeded proposed candidate out of the prompt", () => {
     const driftContext = fixtureResults.filter((r) => r.expected_outcome.kind === "drift-context");
     for (const r of driftContext) {
       const title = r.expected_outcome.candidate_title;
       if (title) {
-        expect(r.system).toContain(title);
+        expect(r.system).not.toContain(title);
       }
     }
   });

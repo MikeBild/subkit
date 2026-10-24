@@ -6,6 +6,7 @@ import {
   recordAuthoringContextSkillsUsed,
   recordLlmContextAssembled,
 } from "../../observability/instrumentation.ts";
+import { loadActiveConventions, NO_CONVENTIONS } from "../../skills/conventions.ts";
 import { retrieveApplicableSkills } from "../../skills/service.ts";
 import { type Skill, skillOfferedTo } from "../../skills/types.ts";
 import { listWorkflowToolSlugs } from "../../workflows/catalog.ts";
@@ -24,6 +25,8 @@ import { type CacheBlocks, splitPromptIntoBlocks } from "./cache-blocks.ts";
 import { basePromptFor, type ConversationSurface } from "./context-assembler/base-prompts.ts";
 import {
   applyRuntimeTemplate,
+  conventionsTrimReference,
+  formatAppliedConventions,
   formatChunk,
   formatConnectorRecipes,
   formatFailure,
@@ -35,7 +38,6 @@ import {
   formatSkillIndex,
   formatUserMemory,
   type RecipeBodyView,
-  SKILL_CANDIDATES_SECTION_CAP,
   selectOperatorQuirkCategories,
   trimPriorWorkflowsToBudget,
 } from "./context-assembler/formatters.ts";
@@ -49,10 +51,8 @@ import {
   loadKnowledgeChunks,
   loadLatestPreview,
   loadPriorWorkflows,
-  loadProposedCandidates,
   loadTopRecipeBodies,
   logRecipeBodyFallbacks,
-  trimCandidatesToBudget,
   trimRecipeBodiesToBudget,
 } from "./context-assembler/loaders.ts";
 import { promptSkillAudience } from "./context-assembler/skill-audience.ts";
@@ -92,7 +92,7 @@ export interface BudgetReport {
     docs: number;
     failures: number;
     recipe_bodies: number;
-    candidates: number;
+    conventions: number;
     prior_workflows: number;
   };
   dropped_sections: string[];
@@ -113,7 +113,7 @@ export async function assembleEnhancedPrompt(
   EnhancedPrompt & {
     dropped_sections: string[];
     included_recipe_slugs: string[];
-    included_candidate_ids: string[];
+    included_convention_rule_ids: string[];
     included_prior_workflow_slugs: string[];
   }
 > {
@@ -286,37 +286,24 @@ export async function assembleEnhancedPrompt(
     }
   }
 
-  let skillCandidatesBlock: string | null = null;
-  let skillCandidatesOversizedItemId: string | null = null;
-  let skillCandidateSurvivorIds: string[] = [];
-  if (p.flow === "converse") {
-    const candidates = await loadProposedCandidates(
-      p.tenant_id,
-      {
-        ...(p.connector_id ? { connector_id: p.connector_id } : {}),
-        ...(p.workflow_id ? { workflow_id: p.workflow_id } : {}),
-      },
-      db,
-    );
-    if (candidates.length > 0) {
-      const trimmed = trimCandidatesToBudget(candidates);
-      skillCandidatesBlock = trimmed.section;
-      skillCandidatesOversizedItemId = trimmed.oversized_item_id;
-      skillCandidateSurvivorIds = trimmed.survivors.map((c) => c.id);
-    }
-  }
-
-  if (skillCandidatesOversizedItemId !== null) {
-    logger.warn({
-      module: "llm",
-      action: "llm.context.section_oversized_item",
-      msg: "candidate body exceeded section cap; body truncated for fit",
-      tenant_id: p.tenant_id,
-      section: "skill_candidates",
-      item_id: skillCandidatesOversizedItemId,
-      cap_tokens: SKILL_CANDIDATES_SECTION_CAP,
-    });
-  }
+  const conventionsMode = generating ? "generate" : "interactive";
+  const activeConventions =
+    p.flow === "generate" || p.flow === "converse"
+      ? await loadActiveConventions(
+          p.tenant_id,
+          {
+            connector_ids: scopedConnectorIds,
+            workflow_id: p.workflow_id ?? null,
+            categories: p.domains ?? [],
+          },
+          db,
+        )
+      : NO_CONVENTIONS;
+  const conventionsSection = formatAppliedConventions(activeConventions, conventionsMode);
+  let conventionsBlock = conventionsSection?.section ?? null;
+  const conventionsTrimRef = conventionsSection
+    ? conventionsTrimReference(activeConventions, conventionsMode)
+    : null;
 
   const runtimeBlock = p.runtime_context
     ? renderRuntimeContextBlock({
@@ -373,6 +360,7 @@ export async function assembleEnhancedPrompt(
     if (priorWorkflowsBlock) sections.push(priorWorkflowsBlock);
     if (connectorIndexBlock) sections.push(connectorIndexBlock);
     if (workflowIndexBlock) sections.push(workflowIndexBlock);
+    if (conventionsBlock) sections.push(conventionsBlock);
     for (const s of loadedSkills) sections.push(formatSkill(s, p.runtime_context));
     const loadedIndexBlock = formatSkillIndex(
       "Loaded",
@@ -381,7 +369,6 @@ export async function assembleEnhancedPrompt(
       generating ? "catalog" : "interactive",
     );
     if (loadedIndexBlock) sections.push(loadedIndexBlock);
-    if (skillCandidatesBlock) vol(skillCandidatesBlock);
     for (const kc of knowledgeChunks) sections.push(formatKnowledgeChunk(kc));
     if (userMemory) vol(formatUserMemory(userMemory));
     for (const c of chunks) sections.push(formatChunk(c));
@@ -465,6 +452,9 @@ export async function assembleEnhancedPrompt(
     } else if (authoringContext) {
       authoringContext = "";
       trimmed.push("authoring_context");
+    } else if (conventionsBlock && conventionsTrimRef && conventionsBlock !== conventionsTrimRef) {
+      conventionsBlock = conventionsTrimRef;
+      trimmed.push("applied_conventions");
     } else if (
       !generating &&
       loadedSkills.length > 0 &&
@@ -488,9 +478,6 @@ export async function assembleEnhancedPrompt(
     } else if (!generating && connectorSkills.length > 0) {
       connectorSkills.length = 0;
       trimmed.push("connector_skill_index");
-    } else if (skillCandidatesBlock) {
-      skillCandidatesBlock = null;
-      trimmed.push("skill_candidates");
     } else if (priorWorkflowsBlock) {
       priorWorkflowsBlock = null;
       priorWorkflowsSurvivors = [];
@@ -553,8 +540,7 @@ export async function assembleEnhancedPrompt(
   const includedSkills = [...globalSkills, ...connectorSkills, ...workflowSkills, ...loadedSkills];
   const recipeBodiesTokens =
     connectorRecipeBodiesBlock !== null ? countTokens(connectorRecipeBodiesBlock) : 0;
-  const skillCandidatesTokens =
-    skillCandidatesBlock !== null ? countTokens(skillCandidatesBlock) : 0;
+  const conventionsTokens = conventionsBlock !== null ? countTokens(conventionsBlock) : 0;
   const priorWorkflowsTokens = priorWorkflowsBlock !== null ? countTokens(priorWorkflowsBlock) : 0;
   const ambientSkillTokens =
     countTokens(formatSkillIndex("Global", globalSkills, p.runtime_context, skillIndexMode) ?? "") +
@@ -572,7 +558,10 @@ export async function assembleEnhancedPrompt(
     connectorRecipeBodiesBlock !== null
       ? connectorRecipeBodiesSurvivors.map((r) => r.recipe_slug)
       : [];
-  const includedCandidateIds = skillCandidatesBlock !== null ? skillCandidateSurvivorIds : [];
+  const includedConventionRuleIds =
+    conventionsSection && conventionsBlock === conventionsSection.section
+      ? conventionsSection.included.map((entry) => entry.rule.rule_id)
+      : [];
   const includedPriorWorkflowSlugs =
     priorWorkflowsBlock !== null ? priorWorkflowsSurvivors.map((r) => r.slug) : [];
   return {
@@ -588,7 +577,7 @@ export async function assembleEnhancedPrompt(
       messages: messagesTokens,
       total,
       recipe_bodies: recipeBodiesTokens,
-      skill_candidates: skillCandidatesTokens,
+      conventions: conventionsTokens,
       prior_workflows: priorWorkflowsTokens,
       references: referencedEntitiesBlock ? countTokens(referencedEntitiesBlock) : 0,
     },
@@ -600,7 +589,7 @@ export async function assembleEnhancedPrompt(
     included_knowledge_chunks: knowledgeChunks,
     dropped_sections: trimmed,
     included_recipe_slugs: includedRecipeSlugs,
-    included_candidate_ids: includedCandidateIds,
+    included_convention_rule_ids: includedConventionRuleIds,
     included_prior_workflow_slugs: includedPriorWorkflowSlugs,
   };
 }
@@ -619,7 +608,7 @@ export async function assembleContext(
   const {
     dropped_sections,
     included_recipe_slugs,
-    included_candidate_ids,
+    included_convention_rule_ids,
     included_prior_workflow_slugs,
     ...promptWithoutDropped
   } = prompt;
@@ -636,7 +625,7 @@ export async function assembleContext(
       docs: prompt.included_chunk_ids.length,
       failures: includedFailureCount,
       recipe_bodies: included_recipe_slugs.length,
-      candidates: included_candidate_ids.length,
+      conventions: included_convention_rule_ids.length,
       prior_workflows: included_prior_workflow_slugs.length,
     },
     dropped_sections,
@@ -655,7 +644,6 @@ export async function assembleContext(
     messages_tokens: budget_report.messages_tokens,
     included: budget_report.included,
     included_skill_id_hashes: idHashes(prompt.included_skill_ids),
-    included_candidate_id_hashes: idHashes(included_candidate_ids),
     included_recipe_slugs: included_recipe_slugs.slice(0, 12),
     included_prior_workflow_slugs: included_prior_workflow_slugs.slice(0, 12),
     dropped_sections: budget_report.dropped_sections,
@@ -676,11 +664,6 @@ export async function assembleContext(
     tenant_id: params.tenant_id,
     source: "catalog",
     count: promotedSkillCount,
-  });
-  recordAuthoringContextSkillsUsed({
-    tenant_id: params.tenant_id,
-    source: "candidate",
-    count: budget_report.included.candidates,
   });
 
   return {
