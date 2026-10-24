@@ -163,6 +163,35 @@ describe("execution-tool gate against a real palette", () => {
     expect(palette[`wf_${LOOKALIKE_SLUG}`]).toBeUndefined();
   });
 
+  for (const surface of [undefined, "web", "mcp", "sk_headless"] as const) {
+    test(`new-workflow authoring on surface ${surface ?? "default"} keeps the held workflow preview and hides live runs`, async () => {
+      const palette = await buildRealPalette();
+      const slugs = collectSyntheticWorkflowSlugs(Object.keys(palette));
+      palette.dry_run_workflow = {};
+      palette.dry_run_step = {};
+      palette.save_workflow_draft = {};
+      palette.rerun_execution = {};
+      const gate = resolveExecutionToolGate({
+        hasBoundSavedWorkflow: false,
+        explicitlyNamedWorkflowSlug: resolveNamedWorkflowSlug(
+          "Build a new workflow that greets the caller.",
+          slugs,
+        ),
+        ...(surface ? { surface } : {}),
+      });
+
+      applyExecutionToolGate(palette, gate, slugs);
+
+      expect(gate).toEqual({ exposeExecution: false, reason: "authoring_no_target" });
+      expect(palette.dry_run_workflow).toBeDefined();
+      expect(palette.dry_run_step).toBeDefined();
+      expect(palette.save_workflow_draft).toBeDefined();
+      expect(palette.run_workflow).toBeUndefined();
+      expect(palette.rerun_execution).toBeUndefined();
+      expect(Object.keys(palette).some((name) => name.startsWith("wf_"))).toBe(false);
+    });
+  }
+
   test("explicit no-run request removes single-step draft preview", async () => {
     const palette = await buildRealPalette();
     const slugs = collectSyntheticWorkflowSlugs(Object.keys(palette));
