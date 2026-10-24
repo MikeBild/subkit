@@ -60,6 +60,7 @@ export type {
 export type {
   ConnectorResolutionSummary,
   ExecutionCost,
+  RunEnvironment,
   RunExecutionBody,
   RunExecutionResponse,
   RunExecutionStepSummary,

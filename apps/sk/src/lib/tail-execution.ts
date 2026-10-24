@@ -13,6 +13,7 @@ export async function tailExecution(
   client: EngineClient,
   executionId: string,
   out: { write: (s: string) => unknown } = process.stdout,
+  onFrame?: (payload: Record<string, unknown>) => void,
 ): Promise<string | null> {
   const resp = await client.streamExecution(executionId);
   if (!resp.body) throw new Error("execution stream returned no body");
@@ -28,6 +29,7 @@ export async function tailExecution(
       }
     }
     out.write(`${JSON.stringify({ type: frame.event, ...payload })}\n`);
+    onFrame?.(payload);
     if (TERMINAL_EVENTS.has(frame.event)) {
       terminal = frame.event.slice("execution.".length);
     }

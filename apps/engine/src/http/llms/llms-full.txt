@@ -4634,6 +4634,7 @@ Preview a draft WorkflowDef by dry-running it via runExecution (source=draft). N
 - `<file>` (positional, required) — Path to WorkflowDef JSON
 - `--input` (string) — Input JSON string
 - `--name` (string) — Optional label (goes to executions.source_ref)
+- `--environment` (string, default: dev) — Where the run executes: dev (default) or prod. Sent as the x-subkit-environment header; write steps need a connector bound to this environment.
 
 #### `sk workflows get`
 
@@ -4684,6 +4685,7 @@ Preview a draft WorkflowDef by dry-running it via runExecution (source=draft). N
 - `<file>` (positional, required) — Path to WorkflowDef JSON
 - `--input` (string) — Input JSON string
 - `--name` (string) — Optional label (goes to executions.source_ref)
+- `--environment` (string, default: dev) — Where the run executes: dev (default) or prod. Sent as the x-subkit-environment header; write steps need a connector bound to this environment.
 
 #### `sk workflows restore`
 
@@ -4705,6 +4707,7 @@ Run a saved workflow, an inline draft definition, or a single step
 - `--slug` (string) — Optional workflow_slug for --step runs (cosmetic)
 - `--follow` — Queue the run and stream its progress live (step-by-step JSON lines). Saved workflows only.
 - `--idempotency-key` (string) — Make this trigger safe to repeat: a second run with the same key is not started, the first run's id comes back instead. Saved workflows only.
+- `--environment` (string, default: dev) — Where the run executes: dev (default) or prod. Sent as the x-subkit-environment header; write steps need a connector bound to this environment.
 
 #### `sk workflows update`
 

@@ -1,7 +1,10 @@
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
+import type { InvokeEnvironment } from "@shared/invoke-snippet.ts";
 import type { EngineClient } from "../engine-client.ts";
 
 export type ExecutionCost = components["schemas"]["ExecutionCost"];
+
+export type RunEnvironment = InvokeEnvironment;
 
 export type RunExecutionBody =
   | {
@@ -71,11 +74,18 @@ export interface RunExecutionResponse {
 }
 
 export const executionsMethods = {
-  runExecution(this: EngineClient, body: RunExecutionBody): Promise<RunExecutionResponse> {
+  runExecution(
+    this: EngineClient,
+    body: RunExecutionBody,
+    opts: { environment?: RunEnvironment } = {},
+  ): Promise<RunExecutionResponse> {
     return this.request<RunExecutionResponse>(
       "POST",
       "/v1/executions",
       body as Record<string, unknown>,
+      undefined,
+      undefined,
+      opts.environment ? { "x-subkit-environment": opts.environment } : undefined,
     );
   },
 

@@ -11,6 +11,7 @@ import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import {
   EngineClient,
+  type RunEnvironment,
   type RunExecutionBody,
   type RunExecutionResponse,
 } from "../engine-client.ts";
@@ -33,6 +34,12 @@ import {
   SOLUTIONS_VERTICAL,
   type WorkflowSource,
 } from "../lib/recipe-source.ts";
+import {
+  environmentMismatchHint,
+  invalidRunEnvironmentMessage,
+  parseRunEnvironment,
+  RUN_ENVIRONMENT_ARG,
+} from "../lib/run-environment.ts";
 import { exitCodeForTerminalStatus, tailExecution } from "../lib/tail-execution.ts";
 import { computeStepBottlenecks, humanMs } from "../render/format.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
@@ -89,13 +96,17 @@ function intentFromBody(body: Record<string, unknown>): WorkflowIntent {
   };
 }
 
-function printRunResult(result: RunExecutionResponse): void {
-  printJson(result);
+function printRunResult(result: RunExecutionResponse, environment: RunEnvironment): void {
+  printJson(result.idempotent_replay ? result : { ...result, environment });
   if (result.idempotent_replay) {
     process.stderr.write(
-      `\n${pc.dim("note:")} nothing new was started — an earlier run already used this idempotency key\n`,
+      `\n${pc.dim("note:")} nothing new was started — an earlier run already used this idempotency key; it kept its own environment\n`,
     );
+  } else {
+    process.stderr.write(`\n${pc.dim("environment:")} ${environment}\n`);
   }
+  const mismatchHint = environmentMismatchHint(result, environment);
+  if (mismatchHint) process.stderr.write(`\n${pc.yellow("hint:")} ${mismatchHint}\n`);
   const warnings = (result.warnings ?? []) as Array<{
     step_key?: string;
     code?: string;
@@ -392,8 +403,14 @@ const runCommand = defineCommand({
       description:
         "Make this trigger safe to repeat: a second run with the same key is not started, the first run's id comes back instead. Saved workflows only.",
     },
+    environment: RUN_ENVIRONMENT_ARG,
   },
   async run({ args }) {
+    const environment = parseRunEnvironment(args.environment);
+    if (!environment) {
+      process.stderr.write(`${invalidRunEnvironmentMessage(args.environment)}\n`);
+      process.exit(1);
+    }
     const client = makeClient();
     const { readFileSync } = await import("node:fs");
 
@@ -465,7 +482,7 @@ const runCommand = defineCommand({
           ...(input !== undefined ? { input } : {}),
           request_source: "cli" as const,
         };
-        printRunResult(await client.runExecution(body));
+        printRunResult(await client.runExecution(body, { environment }), environment);
         return;
       }
 
@@ -481,7 +498,7 @@ const runCommand = defineCommand({
           ...(input !== undefined ? { input } : {}),
           request_source: "cli" as const,
         };
-        printRunResult(await client.runExecution(body));
+        printRunResult(await client.runExecution(body, { environment }), environment);
         return;
       }
 
@@ -499,15 +516,26 @@ const runCommand = defineCommand({
         request_source: "cli",
       };
       if (args.follow) {
-        const queued = await client.runExecution({ ...body, async: true });
+        const queued = await client.runExecution({ ...body, async: true }, { environment });
         if (queued.idempotent_replay) {
           process.stderr.write(
             `execution ${queued.execution_id} already started under this idempotency key (${queued.status}) — following\n`,
           );
         } else {
-          process.stderr.write(`execution ${queued.execution_id} queued — following\n`);
+          process.stderr.write(
+            `execution ${queued.execution_id} queued in ${environment} — following\n`,
+          );
         }
-        const terminal = await tailExecution(client, queued.execution_id);
+        let mismatchHint: string | null = null;
+        const terminal = await tailExecution(
+          client,
+          queued.execution_id,
+          process.stdout,
+          (frame) => {
+            mismatchHint ??= environmentMismatchHint(frame, environment);
+          },
+        );
+        if (mismatchHint) process.stderr.write(`\n${pc.yellow("hint:")} ${mismatchHint}\n`);
         if (terminal !== "succeeded") {
           process.stderr.write(
             `\n${pc.dim("Tip:")} sk executions get ${queued.execution_id} shows the full result\n`,
@@ -516,7 +544,7 @@ const runCommand = defineCommand({
         process.exitCode = exitCodeForTerminalStatus(terminal);
         return;
       }
-      printRunResult(await client.runExecution(body));
+      printRunResult(await client.runExecution(body, { environment }), environment);
       process.stderr.write(
         `\n${pc.dim("Tip:")} sk workflows invoke-snippet ${workflowId} --lang node\n`,
       );
@@ -566,8 +594,14 @@ const previewCommand = defineCommand({
     file: { type: "positional", required: true, description: "Path to WorkflowDef JSON" },
     input: { type: "string", description: "Input JSON string" },
     name: { type: "string", description: "Optional label (goes to executions.source_ref)" },
+    environment: RUN_ENVIRONMENT_ARG,
   },
   async run({ args }) {
+    const environment = parseRunEnvironment(args.environment);
+    if (!environment) {
+      process.stderr.write(`${invalidRunEnvironmentMessage(args.environment)}\n`);
+      process.exit(1);
+    }
     const { readFileSync } = await import("node:fs");
     const client = makeClient();
     let input: unknown;
@@ -591,7 +625,7 @@ const previewCommand = defineCommand({
         ...(input !== undefined ? { input } : {}),
         request_source: "cli" as const,
       };
-      printRunResult(await client.runExecution(body));
+      printRunResult(await client.runExecution(body, { environment }), environment);
     } catch (err) {
       reportCommandError(err);
     }
