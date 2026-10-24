@@ -889,7 +889,7 @@ export interface paths {
         };
         /**
          * The Übersicht's operations figures over one window
-         * @description Runs that started in the window and their success rate, the enabled connectors healthy now, and the share of repairs decided in the window that were applied — the cockpit's operations bar reads its run, success, connector and repair figures from here, each with the cockpit list it counts.
+         * @description Runs that started in the window and their success rate, the enabled connectors healthy now, the share of repairs decided in the window that were applied, and per LLM flow the share of prompt tokens read from the prompt cache — the cockpit's operations bar reads its run, success, connector and repair figures from here, each with the cockpit list it counts.
          */
         get: {
             parameters: {
@@ -21887,6 +21887,17 @@ export interface components {
                 applied: number;
                 applied_percent: number | null;
                 href: string;
+            };
+            /** @description Prompt-cache reads against prompt tokens per LLM flow in the window, largest prompt volume first. */
+            prompt_cache: {
+                flows: {
+                    flow: string;
+                    calls: number;
+                    prompt_tokens: number;
+                    cache_read_tokens: number;
+                    /** @description Share of the flow's prompt tokens read from the provider prompt cache. */
+                    cache_read_percent: number | null;
+                }[];
             };
         };
         StatsQualityResponse: {

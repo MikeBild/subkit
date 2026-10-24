@@ -58,6 +58,25 @@ export const OperatingFiguresResponse = z
       applied_percent: z.number().int().nullable(),
       href: z.string(),
     }),
+    prompt_cache: z
+      .object({
+        flows: z.array(
+          z.object({
+            flow: z.string(),
+            calls: z.number().int(),
+            prompt_tokens: z.number(),
+            cache_read_tokens: z.number(),
+            cache_read_percent: z
+              .number()
+              .int()
+              .nullable()
+              .describe("Share of the flow's prompt tokens read from the provider prompt cache."),
+          }),
+        ),
+      })
+      .describe(
+        "Prompt-cache reads against prompt tokens per LLM flow in the window, largest prompt volume first.",
+      ),
   })
   .openapi("OperatingFigures");
 
@@ -67,7 +86,7 @@ const route = createRoute({
   tags: ["Stats"],
   summary: "The Übersicht's operations figures over one window",
   description:
-    "Runs that started in the window and their success rate, the enabled connectors healthy now, and the share of repairs decided in the window that were applied — the cockpit's operations bar reads its run, success, connector and repair figures from here, each with the cockpit list it counts.",
+    "Runs that started in the window and their success rate, the enabled connectors healthy now, the share of repairs decided in the window that were applied, and per LLM flow the share of prompt tokens read from the prompt cache — the cockpit's operations bar reads its run, success, connector and repair figures from here, each with the cockpit list it counts.",
   security: [{ bearerAuth: [] }],
   request: { query: OperatingFiguresQuery },
   responses: {
