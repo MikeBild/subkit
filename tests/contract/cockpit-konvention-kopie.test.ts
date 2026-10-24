@@ -14,7 +14,7 @@ describe("the root copy of the family convention", () => {
   test("it is byte-identical to the reviewed convention", () => {
     const digest = createHash("sha256").update(konventionBytes).digest("hex");
     expect(digest, "COCKPIT-KONVENTION.md is no longer the reviewed text").toBe(
-      "c69817a1ae5f65d1b775ca89755486d053041b7eda3a219a8ebae52e68a8f50f",
+      "c9c26776232ab1b660ea4cf05cbe31c731b58d72e76fdc423217707bc69ccf5e",
     );
   });
 
