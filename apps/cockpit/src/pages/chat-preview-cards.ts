@@ -170,10 +170,14 @@ function resultData(output: unknown): Record<string, unknown> | null {
   return record(output.data) ? output.data : output;
 }
 
+const SENSITIVE_SAVE_VERIFICATIONS = new Set<unknown>(["schema_only", "metadata_only"]);
+
 function sensitiveSaveRef(call: ChatToolCallRecord): ChatWorkflowRef | null {
   if (call.tool !== "save_workflow_draft") return null;
   const data = resultData(call.output);
-  return data?.runtime_verification === "schema_only" ? workflowRefOf(data) : null;
+  return data && SENSITIVE_SAVE_VERIFICATIONS.has(data.runtime_verification)
+    ? workflowRefOf(data)
+    : null;
 }
 
 export function savedSensitivePreviews(

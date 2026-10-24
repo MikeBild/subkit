@@ -2,10 +2,15 @@ import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { type Locale, translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
+import type { ChatWorkflowRef } from "./chat-preview-cards";
 import type { ChatSensitiveTestRun } from "./chat-test-run";
 import { ChatTestRunCard } from "./chat-test-run-card";
 
-function render(run: ChatSensitiveTestRun, locale: Locale): string {
+function render(
+  run: ChatSensitiveTestRun,
+  locale: Locale,
+  saved: ChatWorkflowRef | null = null,
+): string {
   const value = {
     locale,
     preference: locale,
@@ -16,7 +21,7 @@ function render(run: ChatSensitiveTestRun, locale: Locale): string {
   } as I18nValue;
   return renderToStaticMarkup(
     <I18nContext.Provider value={value}>
-      <ChatTestRunCard run={run} />
+      <ChatTestRunCard run={run} saved={saved} testId="t" />
     </I18nContext.Provider>,
   );
 }
@@ -45,4 +50,21 @@ test("a failed run without checks names the failure and omits the check", () => 
   expect(html).toContain("Trial run failed");
   expect(html).toContain("1 ok · 1 failed · 0 held back");
   expect(html).not.toContain("chat-test-run-checks");
+});
+
+const savedRef: ChatWorkflowRef = { id: "wf-1", label: "upraft-auth-notify" };
+
+test("a saved successful test run offers the Cockpit check in German and English", () => {
+  const de = render(run, "de", savedRef);
+  expect(de).toContain('href="/cockpit/workflows/wf-1#workflow-run"');
+  expect(de).toContain("Im Cockpit selbst prüfen");
+  expect(de).toContain("@upraft-auth-notify");
+  expect(de).toContain("w-full");
+  expect(de).toContain("sm:w-auto");
+  expect(render(run, "en", savedRef)).toContain("Check it yourself in the Cockpit");
+});
+
+test("an unsaved or failed test run offers no Cockpit check", () => {
+  expect(render(run, "en")).not.toContain("t-verify");
+  expect(render({ ...run, succeeded: false }, "en", savedRef)).not.toContain("t-verify");
 });

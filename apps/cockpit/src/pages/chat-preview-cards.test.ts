@@ -206,6 +206,16 @@ test("a later schema-only save marks the newest preview before it as saved, also
   ).toEqual({ id: "wf-1", label: "upraft-auth-notify" });
 });
 
+test("a later metadata-only save marks the newest preview before it as saved", () => {
+  const metadata = { ...saved, runtime_verification: "metadata_only" };
+  expect([
+    ...savedSensitivePreviews([
+      call("p", "dry_run_workflow", preview, 1),
+      call("s", "save_workflow_draft", { ok: true, data: metadata }, 2),
+    ]).entries(),
+  ]).toEqual([["p", { id: "wf-1", label: "upraft-auth-notify" }]]);
+});
+
 test("a save of another workflow leaves a preview of a known workflow unsaved", () => {
   const other = { ...preview, target_ref: { kind: "workflow", id: "wf-9", slug: "other" } };
   expect(
@@ -222,7 +232,6 @@ test("other verifications, pending, failed or anonymous saves mark no preview as
       call("p", "dry_run_workflow", preview, 1),
       call("s", "save_workflow_draft", output, 2),
     ]).size;
-  expect(marks({ ...saved, runtime_verification: "metadata_only" })).toBe(0);
   expect(marks({ ...saved, runtime_verification: "not_performed" })).toBe(0);
   expect(marks({ ...saved, runtime_verification: undefined })).toBe(0);
   expect(marks({ pending: true, status: "awaiting_confirmation", elicitation_id: "e" })).toBe(0);
