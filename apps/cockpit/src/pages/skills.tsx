@@ -15,11 +15,11 @@ import {
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
-import { listProposedSkillCandidates, type SkillCandidate } from "@/api/decisions";
+import { listProposedSkillCandidates } from "@/api/decisions";
 import { listIntakeClips } from "@/api/intake";
 import type { components } from "@/api/schema";
 import { useActorDirectory } from "@/app/actor-directory";
-import { type ActorDirectory, actorDirectoryName, actorLabel } from "@/app/actor-directory-model";
+import { type ActorDirectory, actorDirectoryName } from "@/app/actor-directory-model";
 import {
   absolute,
   chatNewHref,
@@ -91,12 +91,8 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import { useSearchParamState } from "@/lib/use-search-param-state";
-import { ORIGIN_LABEL, skillDecision } from "@/pages/decisions-model";
 import { documentUnderTitle } from "@/pages/knowledge-sources-model";
 import { keptVersionCount } from "@/pages/knowledge-versions-model";
-import { isDetectedPattern } from "@/pages/skill-proposal-model";
-import { SkillProposalRowActions } from "@/pages/skill-proposal-row-actions";
-import { SkillProposalSheet } from "@/pages/skill-proposal-sheet";
 import {
   SKILL_APPLIES_TO,
   SKILL_TEMPLATES,
@@ -112,6 +108,7 @@ import {
   skillScopeKey,
   skillScopePhraseKey,
   skillStateLabelKey,
+  skillsListView,
   skillsLoadState,
   skillTemplateFromSearch,
   skillTemplateKeys,
@@ -162,30 +159,6 @@ function StateBadge({ status }: { status: string }) {
       label={t(skillStateLabelKey(status))}
     />
   );
-}
-
-type SkillRow = { kind: "skill"; skill: Skill } | { kind: "proposal"; candidate: SkillCandidate };
-
-function rowTitle(row: SkillRow): string {
-  return row.kind === "skill" ? row.skill.title : row.candidate.title;
-}
-
-function rowAddress(row: SkillRow): string | null {
-  return row.kind === "skill" ? recordHref("skills", row.skill.id) : null;
-}
-
-function rowScope(row: SkillRow): string {
-  return row.kind === "skill" ? skillScope(row.skill) : row.candidate.scope;
-}
-
-function rowWhere(row: SkillRow): string | null {
-  return row.kind === "skill" ? row.skill.applies_to : null;
-}
-
-function proposalLine(candidate: SkillCandidate, directory: ActorDirectory, t: Translate): string {
-  const reason = t(ORIGIN_LABEL[skillDecision(candidate).origin]);
-  const author = actorLabel(directory, candidate.proposed_by, t);
-  return author ? `${reason} · ${t("proposal.by", { name: author })}` : reason;
 }
 
 function newSkillHref(template?: SkillTemplate): string {
@@ -243,12 +216,10 @@ function SkillsOnboarding({ canWrite }: { canWrite: boolean }) {
 export function SkillsPage({ permissions }: { permissions: readonly string[] }) {
   const { t, dateTime } = useI18n();
   const navigate = useNavigate();
-  const client = useQueryClient();
   const live = useLiveQueryOptions();
   const canRead = permissions.includes("skill:read");
   const canWrite = permissions.includes("skill:write");
   const canChat = permissions.includes("conversation:write");
-  const [proposalId, setProposalId] = useState<string | null>(null);
   const [search, setSearch] = useSearchParamState("q", "");
   const [groupMode, setGroupMode] = useSearchParamState("group", "category");
   const q = useDebouncedValue(search).trim();
@@ -274,42 +245,22 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
     enabled: canRead,
     ...live,
   });
-  const open = (proposals.data?.items ?? []).filter(isDetectedPattern);
-  const proposal = open.find((candidate) => candidate.id === proposalId) ?? null;
-  const directory = useActorDirectory(canRead && open.length > 0);
-  const decided = () => {
-    void client.invalidateQueries({ queryKey: PROPOSALS_KEY });
-    void client.invalidateQueries({ queryKey: ["catalog"] });
-    void client.invalidateQueries({ queryKey: ["decisions"] });
-    void client.invalidateQueries({ queryKey: ["attention"] });
-  };
   const title = t("nav.skills");
 
-  const columns = useMemo<CockpitColumn<SkillRow>[]>(() => {
-    const column = tableColumns<SkillRow>({ t, dateTime });
+  const columns = useMemo<CockpitColumn<Skill>[]>(() => {
+    const column = tableColumns<Skill>({ t, dateTime });
     return [
       column.custom(
         "title",
-        (row) => rowTitle(row),
+        (skill) => skill.title,
         t("skills.column.name"),
-        (row) =>
-          row.kind === "skill" ? (
-            <CatalogNameCell
-              name={row.skill.title}
-              record={row.skill}
-              hideCategory={groupMode === "category"}
-            />
-          ) : (
-            <span className="flex min-w-0 flex-col">
-              <span className="truncate">{rowTitle(row)}</span>
-              <span
-                className="truncate text-xs text-muted-foreground"
-                data-testid={`skill-proposal-row-target-${row.candidate.id}`}
-              >
-                {proposalLine(row.candidate, directory, t)}
-              </span>
-            </span>
-          ),
+        (skill) => (
+          <CatalogNameCell
+            name={skill.title}
+            record={skill}
+            hideCategory={groupMode === "category"}
+          />
+        ),
         {
           sortable: true,
           width: "w-[36%]",
@@ -317,22 +268,17 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
       ),
       column.custom(
         "status",
-        (row) => (row.kind === "skill" ? row.skill.status : "proposed"),
+        (skill) => skill.status,
         t("resource.field.status"),
-        (row) =>
-          row.kind === "skill" ? (
-            <StateBadge status={row.skill.status} />
-          ) : (
-            <StatusBadge state="proposed" label={t("skills.state.proposed")} />
-          ),
+        (skill) => <StateBadge status={skill.status} />,
         { sortable: true, width: "w-[14%]" },
       ),
       {
         ...column.custom(
           "scope",
-          (row) => rowScope(row),
+          (skill) => skillScope(skill),
           t("skills.column.scope"),
-          (row) => t(skillScopeKey(rowScope(row))),
+          (skill) => t(skillScopeKey(skillScope(skill))),
           { sortable: true, width: "w-[14%]" },
         ),
         meta: { width: "w-[14%]", priority: "low" },
@@ -340,24 +286,19 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
       {
         ...column.custom(
           "applies_to",
-          (row) => rowWhere(row) ?? "",
+          (skill) => skill.applies_to ?? "",
           t("skills.column.where"),
-          (row) => {
-            const where = rowWhere(row);
-            return where ? t(skillWhereKey(where)) : MISSING;
-          },
+          (skill) => (skill.applies_to ? t(skillWhereKey(skill.applies_to)) : MISSING),
           { width: "w-[18%]" },
         ),
         meta: { width: "w-[18%]", priority: "low" },
       },
-      column.date(
-        "updated_at",
-        (row) => (row.kind === "skill" ? row.skill.updated_at : row.candidate.updated_at),
-        t("skills.column.changed"),
-        { sortable: true, width: "w-[18%]" },
-      ),
+      column.date("updated_at", (skill) => skill.updated_at, t("skills.column.changed"), {
+        sortable: true,
+        width: "w-[18%]",
+      }),
     ];
-  }, [t, dateTime, directory, groupMode]);
+  }, [t, dateTime, groupMode]);
 
   if (!canRead)
     return (
@@ -372,15 +313,15 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
       </Page>
     );
 
-  const rows: SkillRow[] = [
-    ...(q || categoryFilter.category || origin.active
-      ? []
-      : open.map((candidate) => ({ kind: "proposal" as const, candidate }))),
-    ...list.items.map((skill) => ({ kind: "skill" as const, skill })),
-  ];
   const { pending, failed } = skillsLoadState([list.query, proposals]);
-  const empty =
-    !pending && !failed && rows.length === 0 && !q && !categoryFilter.category && !origin.active;
+  const filtered = Boolean(q || categoryFilter.category || origin.active);
+  const view = skillsListView({
+    skills: list.items,
+    candidates: proposals.data?.items ?? [],
+    filtered,
+    settled: !pending && !failed,
+  });
+  const empty = view.onboarding;
   const newButton = (testId: string) =>
     canWrite ? (
       <Button asChild>
@@ -422,13 +363,9 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
         <SkillsOnboarding canWrite={canWrite} />
       ) : (
         <div className="flex flex-col gap-3">
-          {rows.length > 0 || origin.active || q || categoryFilter.category ? (
+          {view.summary ? (
             <CatalogSummary
-              text={skillsLine(
-                t,
-                list.total ?? list.items.length,
-                q || categoryFilter.category || origin.active ? 0 : open.length,
-              )}
+              text={skillsLine(t, list.total ?? list.items.length, view.proposals)}
               help={t("skills.summaryHelp")}
               testId="skills-summary"
               kind="skill"
@@ -436,7 +373,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
           ) : null}
           <DataTable
             columns={columns}
-            data={rows}
+            data={view.rows}
             groupingTabs={
               <>
                 <GroupingTabs
@@ -467,29 +404,23 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
               groupMode === "all"
                 ? undefined
                 : groupMode === "category"
-                  ? catalogCategoryGrouping<SkillRow>({
-                      getCategory: (row) =>
-                        recordCategory(row.kind === "skill" ? row.skill : row.candidate),
+                  ? catalogCategoryGrouping<Skill>({
+                      getCategory: (skill) => recordCategory(skill),
                       otherLabel: t("catalog.categoryOther"),
                       ...(q || origin.active
                         ? {}
                         : { counts: categoryCounts(categoryFilter.usage) }),
-                      needsAttention: (row) => row.kind === "proposal",
                     })
                   : {
-                      getKey: (row) =>
+                      getKey: (skill) =>
                         groupMode === "scope"
-                          ? t(skillScopeKey(rowScope(row)))
-                          : row.kind === "skill"
-                            ? t(skillStateLabelKey(row.skill.status))
-                            : t("skills.state.proposed"),
+                          ? t(skillScopeKey(skillScope(skill)))
+                          : t(skillStateLabelKey(skill.status)),
                     }
             }
             infinite={list.infinite}
             total={list.total}
-            getRowId={(row) =>
-              row.kind === "skill" ? row.skill.id : `proposal:${row.candidate.id}`
-            }
+            getRowId={(skill) => skill.id}
             toolbar={
               <>
                 <FilterBar
@@ -542,40 +473,18 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
                 },
               },
             }}
-            hasActiveFilters={Boolean(q || categoryFilter.category || origin.active)}
+            hasActiveFilters={filtered}
             sorting={sorting}
             onSortingChange={setSorting}
-            onOpen={(row) => {
-              if (row.kind === "proposal") setProposalId(row.candidate.id);
-              else void navigate({ to: recordHref("skills", row.skill.id) });
-            }}
-            rowHref={rowAddress}
-            rowLabel={(row) =>
-              row.kind === "proposal"
-                ? t("skills.openProposal", { name: rowTitle(row) })
-                : rowTitle(row)
-            }
+            onOpen={(skill) => void navigate({ to: recordHref("skills", skill.id) })}
+            rowHref={(skill) => recordHref("skills", skill.id)}
+            rowLabel={(skill) => skill.title}
             columnsLabel={t("catalog.columns")}
             actionsLabel={t("common.actions")}
-            rowActions={(row) =>
-              row.kind === "proposal" ? (
-                <SkillProposalRowActions
-                  candidate={row.candidate}
-                  permissions={permissions}
-                  onDecided={decided}
-                />
-              ) : null
-            }
             collectionId="skills"
           />
         </div>
       )}
-      <SkillProposalSheet
-        candidate={proposal}
-        permissions={permissions}
-        onClose={() => setProposalId(null)}
-        onDecided={decided}
-      />
     </Page>
   );
 }

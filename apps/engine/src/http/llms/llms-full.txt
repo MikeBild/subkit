@@ -1783,6 +1783,16 @@ For a source, it also counts conversations in which a knowledge tool read or fou
 For a skill, it also counts conversations that loaded the skill.
 Click a conversation to open it. If there is none yet, start one with **Ask in chat**.
 
+### Decide skill proposals
+
+SubKit proposes skills from recurring patterns. You decide them on the **Skill candidates** page, not in the skills table.
+
+1. Open **Skills** and click **… proposals open** in the header.
+2. Click a candidate and review its content and scope.
+3. Choose **Accept** or **Discard**. To decide several candidates at once, select them in the list.
+
+Discarding needs `skill:write`; accepting also needs `skill:activate`. SubKit does not propose a discarded candidate again.
+
 ### Replace a file
 
 1. Open **Files** and click the file.

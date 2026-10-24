@@ -1,9 +1,14 @@
-import type { SkillCandidate } from "@/api/decisions";
+import { useMutation } from "@tanstack/react-query";
+import { useState } from "react";
+import { toast } from "sonner";
+import { approveSkillCandidate, rejectSkillCandidate, type SkillCandidate } from "@/api/decisions";
 import { useActorDirectory } from "@/app/actor-directory";
 import { actorLabel } from "@/app/actor-directory-model";
 import { absolute, recordHref } from "@/app/links";
 import { useNameIndex } from "@/app/use-decisions";
 import {
+  Button,
+  ConfirmDialog,
   type Fact,
   FactList,
   FilePreview,
@@ -16,8 +21,76 @@ import { skillTargetName } from "@/lib/name-index";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import { ORIGIN_LABEL, skillDecision } from "@/pages/decisions-model";
 import { documentUnderTitle } from "@/pages/knowledge-sources-model";
-import { SkillProposalActions } from "@/pages/skill-proposal-row-actions";
+import { mayApproveProposal } from "@/pages/skill-proposal-model";
 import { skillScopeKey } from "@/pages/skills-model";
+
+type ProposalFacts = Pick<SkillCandidate, "id" | "title" | "reviewable" | "review_digest">;
+
+export function SkillProposalActions({
+  candidate,
+  permissions,
+  onDecided,
+}: {
+  candidate: ProposalFacts;
+  permissions: readonly string[];
+  onDecided(): void;
+}) {
+  const { t } = useI18n();
+  const [discarding, setDiscarding] = useState(false);
+  const name = hideTechnicalIdentifiers(candidate.title, t("tool.referenceHiddenInline"));
+  const accept = useMutation({
+    mutationFn: () => approveSkillCandidate(candidate.id, candidate.review_digest ?? ""),
+    onSuccess: () => {
+      toast.success(t("skills.accepted", { name: candidate.title }));
+      onDecided();
+    },
+    onError: () => toast.error(t("common.actionFailed")),
+  });
+  const discard = useMutation({
+    mutationFn: () => rejectSkillCandidate(candidate.id, t("skills.rejectReason")),
+    onSuccess: () => {
+      toast.success(t("skills.rejected", { name: candidate.title }));
+      setDiscarding(false);
+      onDecided();
+    },
+    onError: () => toast.error(t("common.actionFailed")),
+  });
+  if (!permissions.includes("skill:write") || !candidate.reviewable || !candidate.review_digest)
+    return null;
+  return (
+    <span className="flex items-center gap-2">
+      <Button
+        variant="outline"
+        disabled={accept.isPending || discard.isPending}
+        onClick={() => setDiscarding(true)}
+        data-testid="skill-proposal-reject"
+      >
+        {t("skills.reject")}
+      </Button>
+      {mayApproveProposal(permissions) ? (
+        <Button
+          pending={accept.isPending}
+          disabled={discard.isPending}
+          onClick={() => accept.mutate()}
+          data-testid="skill-proposal-accept"
+        >
+          {t("skills.accept")}
+        </Button>
+      ) : null}
+      <ConfirmDialog
+        open={discarding}
+        onOpenChange={(open) => !discard.isPending && setDiscarding(open)}
+        object={t("skills.proposalObject")}
+        verb={t("skills.reject")}
+        consequence={t("skills.rejectConsequence", { name })}
+        destructive
+        pending={discard.isPending}
+        onConfirm={() => discard.mutateAsync().then(() => undefined)}
+        testId="skill-proposal-reject-confirm"
+      />
+    </span>
+  );
+}
 
 export function SkillProposalSheet({
   candidate,
@@ -92,7 +165,6 @@ export function SkillProposalSheet({
         action={
           candidate && decidable ? (
             <SkillProposalActions
-              placement="sheet"
               candidate={candidate}
               permissions={permissions}
               onDecided={() => {

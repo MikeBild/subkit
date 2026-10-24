@@ -1,6 +1,8 @@
+import type { SkillCandidate } from "@/api/decisions";
 import type { components } from "@/api/schema";
 import type { TranslationKey } from "@/lib/i18n";
 import { computeLineDiff, type FocusedRow, focusDiff } from "@/lib/line-diff";
+import { isDetectedPattern } from "@/pages/skill-proposal-model";
 
 export type SkillAppliesTo = "chat" | "authoring" | "both";
 
@@ -62,6 +64,28 @@ export function skillStateLabelKey(status: string): TranslationKey {
   if (status === "active") return "skills.state.active";
   if (status === "draft") return "skills.state.draft";
   return "skills.state.disabled";
+}
+
+export interface SkillsListView<S> {
+  rows: S[];
+  proposals: number;
+  onboarding: boolean;
+  summary: boolean;
+}
+
+export function skillsListView<S>(input: {
+  skills: S[];
+  candidates: readonly Pick<SkillCandidate, "pattern_kind">[];
+  filtered: boolean;
+  settled: boolean;
+}): SkillsListView<S> {
+  const proposals = input.filtered ? 0 : input.candidates.filter(isDetectedPattern).length;
+  return {
+    rows: input.skills,
+    proposals,
+    onboarding: input.settled && !input.filtered && input.skills.length === 0 && proposals === 0,
+    summary: input.skills.length > 0 || input.filtered || proposals > 0,
+  };
 }
 
 type ListQueryState = { isPending: boolean; error: unknown; failureReason: unknown };

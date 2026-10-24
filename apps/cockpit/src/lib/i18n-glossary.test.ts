@@ -71,7 +71,9 @@ describe("approval glossary", () => {
     }
     expect(CATALOGS.de["chat.liveTest.title"]).toBe("Einzellauf");
     expect(CATALOGS.de["tool.name.dryRunWorkflow"]).toBe("Probelauf eines Workflows");
-    expect(CATALOGS.de["skills.rejected"]).toBe("Vorschlag abgelehnt: {name}");
+    expect(CATALOGS.de["skills.rejected"]).toBe("Vorschlag verworfen: {name}");
+    expect(CATALOGS.de["skills.reject"]).toBe("Verwerfen");
+    expect(CATALOGS.en["skills.reject"]).toBe("Discard");
   });
 
   test("audit names a standing approval Freigabe", () => {

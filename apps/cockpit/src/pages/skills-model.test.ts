@@ -8,6 +8,7 @@ import {
   skillScope,
   skillScopeKey,
   skillScopePhraseKey,
+  skillsListView,
   skillsLoadState,
   skillTemplateFromSearch,
   skillTemplateKeys,
@@ -200,5 +201,40 @@ describe("skill versions agree with the engine history", () => {
     expect(skillChangedAt({ version: 6, updated_at: "2026-10-22T08:00:00Z" }, rows)).toBe(
       "2026-10-22T08:00:00Z",
     );
+  });
+});
+
+describe("skills table", () => {
+  const skills = [{ id: "skill" }];
+  const candidates = [
+    { pattern_kind: "success_pattern" },
+    { pattern_kind: "session_learning" },
+  ] as const;
+
+  test("lists only skills; detected proposals are only counted for the candidates link", () => {
+    const view = skillsListView({ skills, candidates, filtered: false, settled: true });
+    expect(view.rows).toEqual(skills);
+    expect(view.proposals).toBe(1);
+    expect(view.summary).toBe(true);
+  });
+
+  test("open proposals keep the candidates link visible when no skill exists yet", () => {
+    const view = skillsListView({ skills: [], candidates, filtered: false, settled: true });
+    expect(view.rows).toEqual([]);
+    expect(view.onboarding).toBe(false);
+    expect(view.summary).toBe(true);
+  });
+
+  test("without skills or proposals the page onboards", () => {
+    const view = skillsListView({ skills: [], candidates: [], filtered: false, settled: true });
+    expect(view.onboarding).toBe(true);
+    expect(view.summary).toBe(false);
+  });
+
+  test("a filtered list counts no proposals and never onboards", () => {
+    const view = skillsListView({ skills: [], candidates, filtered: true, settled: true });
+    expect(view.proposals).toBe(0);
+    expect(view.onboarding).toBe(false);
+    expect(view.summary).toBe(true);
   });
 });

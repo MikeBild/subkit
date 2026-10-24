@@ -41,6 +41,16 @@ Bei einer Quelle zählen auch Unterhaltungen, in denen ein Wissenswerkzeug die Q
 Bei einem Skill zählen auch Unterhaltungen, die den Skill geladen haben.
 Klicke auf eine Unterhaltung, um sie zu öffnen. Gibt es noch keine, startest du mit **Im Chat fragen** eine neue.
 
+### Skill-Vorschläge entscheiden
+
+SubKit schlägt Skills aus wiederkehrenden Mustern vor. Du entscheidest sie auf der Seite **Skill-Kandidaten**, nicht in der Skill-Tabelle.
+
+1. Öffne **Skills** und klicke im Kopf auf **… Vorschläge offen**.
+2. Klicke auf einen Kandidaten und prüfe Inhalt und Geltungsbereich.
+3. Wähle **Übernehmen** oder **Verwerfen**. Mehrere Kandidaten wählst du in der Liste aus und entscheidest sie gemeinsam.
+
+Zum Verwerfen brauchst du `skill:write`, zum Übernehmen zusätzlich `skill:activate`. Einen verworfenen Kandidaten schlägt SubKit nicht noch einmal vor.
+
 ### Eine Datei ersetzen
 
 1. Öffne **Dateien** und klicke auf die Datei.
