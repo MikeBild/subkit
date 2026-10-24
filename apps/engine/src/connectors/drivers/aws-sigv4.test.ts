@@ -10,7 +10,7 @@ describe("signSigV4Request", () => {
     signSigV4Request({
       method: "POST",
       url: new URL(
-        "https://qjz627ik5b4xjya4cibaba6ai.appsync-api.eu-central-1.amazonaws.com/graphql",
+        "https://exampleapi0000000000000000.appsync-api.eu-central-1.amazonaws.com/graphql",
       ),
       headers,
       body: JSON.stringify({ query: "{ _meta { schemaVersion } }" }),
