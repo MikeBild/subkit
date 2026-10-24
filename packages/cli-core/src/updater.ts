@@ -386,6 +386,10 @@ export function rollbackTo(config: UpdaterConfig, target: string | "previous"): 
   };
 }
 
+export function prepareDownloadedBinary(path: string, platform: NodeJS.Platform): void {
+  if (platform !== "win32") chmodSync(path, 0o755);
+}
+
 export async function performUpdate(
   config: UpdaterConfig,
   info: UpdateInfo,
@@ -487,24 +491,7 @@ export async function performUpdate(
     const execPath = process.execPath;
     const isWindows = process.platform === "win32";
 
-    if (!isWindows) {
-      chmodSync(tmpPath, 0o755);
-    }
-
-    if (process.platform === "darwin") {
-      const { execSync } = await import("node:child_process");
-      try {
-        execSync(`codesign --remove-signature "${tmpPath}" 2>/dev/null || true`, {
-          stdio: "ignore",
-        });
-        execSync(`codesign --sign - --force "${tmpPath}"`, { stdio: "ignore" });
-      } catch (err) {
-        const cause = err instanceof Error ? err.message : String(err);
-        throw new Error(
-          `macOS codesign failed for ${tmpPath} — install Xcode command-line tools (xcode-select --install) or check spctl: ${cause}`,
-        );
-      }
-    }
+    prepareDownloadedBinary(tmpPath, process.platform);
 
     retainCurrentBinary(config, fromVersion, execPath);
 

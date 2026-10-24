@@ -1,6 +1,15 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, sign as cryptoSign, generateKeyPairSync } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getTestNow } from "../../../../apps/engine/src/test-helpers/determinism/clock.ts";
@@ -13,6 +22,7 @@ import {
   parseChecksum,
   performUpdate,
   platformArch,
+  prepareDownloadedBinary,
   pruneRetainedVersions,
   readCache,
   rollbackTo,
@@ -755,5 +765,22 @@ describe("rollbackTo", () => {
   test("throws when no retained binaries exist", () => {
     const cfg = makeConfig({ currentVersion: "2.0.0" });
     expect(() => rollbackTo(cfg, "previous")).toThrow(/no retained binaries/);
+  });
+});
+
+describe("prepareDownloadedBinary", () => {
+  test("keeps the verified bytes so the installed binary still matches SHA256SUMS", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sk-prepare-"));
+    try {
+      const path = join(dir, "sk");
+      copyFileSync(existsSync("/usr/bin/true") ? "/usr/bin/true" : process.execPath, path);
+      const before = createHash("sha256").update(readFileSync(path)).digest("hex");
+      prepareDownloadedBinary(path, process.platform);
+      const after = createHash("sha256").update(readFileSync(path)).digest("hex");
+      expect(after).toBe(before);
+      if (process.platform !== "win32") expect(statSync(path).mode & 0o777).toBe(0o755);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
