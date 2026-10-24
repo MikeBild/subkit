@@ -33,15 +33,22 @@ type DraftErrorCode =
   | "not_found"
   | "draft_base_not_observed"
   | "draft_conflict"
+  | "version_conflict"
   | "slug_conflict";
 export type SaveWorkflowDraftResult =
-  | { draft: WorkflowDraftView; errors?: never; code?: never }
-  | { draft?: never; errors: string[]; code: DraftErrorCode };
+  | { draft: WorkflowDraftView; errors?: never; code?: never; details?: never }
+  | {
+      draft?: never;
+      errors: string[];
+      code: DraftErrorCode;
+      details?: Record<string, unknown>;
+    };
 
 export interface SaveWorkflowDraftInput extends VersionActor {
   tenant_id: string;
   workflow_id?: string;
   expected_draft_version_id?: string | null;
+  expected_current_version_id?: string | null;
   def: unknown;
   scope_index?: typeof workflowVersions.$inferInsert.scope_index;
   actor_id: string | null;
@@ -97,6 +104,35 @@ export async function getWorkflowDraft(
   return row ? draftView(row.wf, row.version) : null;
 }
 
+async function versionConflict(
+  tx: Executor,
+  wf: typeof workflows.$inferSelect,
+  expected: string | null,
+): Promise<SaveWorkflowDraftResult> {
+  const [current] = wf.current_version_id
+    ? await tx
+        .select({ version: workflowVersions.version })
+        .from(workflowVersions)
+        .where(
+          and(
+            eq(workflowVersions.tenant_id, wf.tenant_id),
+            eq(workflowVersions.workflow_id, wf.id),
+            eq(workflowVersions.id, wf.current_version_id),
+          ),
+        )
+        .limit(1)
+    : [];
+  return {
+    code: "version_conflict",
+    errors: ["a newer workflow version was saved meanwhile; reload before saving"],
+    details: {
+      expected_current_version_id: expected,
+      current_version_id: wf.current_version_id,
+      current_version: current?.version ?? null,
+    },
+  };
+}
+
 export async function saveWorkflowDraft(
   input: SaveWorkflowDraftInput,
   exec: Executor = getDb(),
@@ -143,6 +179,12 @@ export async function saveWorkflowDraft(
         wf = existing;
         if (wf.draft_version_id !== input.expected_draft_version_id) {
           return { code: "draft_conflict", errors: ["the draft changed; reload before saving"] };
+        }
+        if (
+          input.expected_current_version_id !== undefined &&
+          wf.current_version_id !== input.expected_current_version_id
+        ) {
+          return await versionConflict(tx, wf, input.expected_current_version_id);
         }
         if (wf.draft_version_id) {
           const previous = await getWorkflowDraft(input.tenant_id, wf.id, tx);

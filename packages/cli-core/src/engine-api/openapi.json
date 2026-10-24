@@ -10316,6 +10316,14 @@
               "null"
             ],
             "format": "uuid"
+          },
+          "expected_current_version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The active version id this draft was based on, or null when the workflow had none. The save is refused with 409 and reason version_conflict when another version became active meanwhile; omit to skip this check."
           }
         },
         "required": [
@@ -41854,7 +41862,7 @@
             }
           },
           "409": {
-            "description": "Draft or slug changed",
+            "description": "Draft, active version or slug changed",
             "content": {
               "application/json": {
                 "schema": {
@@ -41959,7 +41967,7 @@
             }
           },
           "409": {
-            "description": "Draft or slug changed",
+            "description": "Draft, active version or slug changed",
             "content": {
               "application/json": {
                 "schema": {
@@ -42043,7 +42051,7 @@
             }
           },
           "409": {
-            "description": "Draft or slug changed",
+            "description": "Draft, active version or slug changed",
             "content": {
               "application/json": {
                 "schema": {
@@ -42129,7 +42137,7 @@
             }
           },
           "409": {
-            "description": "Draft or slug changed",
+            "description": "Draft, active version or slug changed",
             "content": {
               "application/json": {
                 "schema": {
@@ -42224,7 +42232,7 @@
             }
           },
           "409": {
-            "description": "Draft or slug changed",
+            "description": "Draft, active version or slug changed",
             "content": {
               "application/json": {
                 "schema": {

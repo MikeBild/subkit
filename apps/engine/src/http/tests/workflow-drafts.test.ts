@@ -79,6 +79,63 @@ test("draft create, reload and optimistic update never arm a schedule", async ()
   expect(writes[0]?.metadata).toMatchObject({ request_source: "api" });
 });
 
+test("a draft based on an older version is refused once the CLI saved a newer one", async () => {
+  const created = await fetch(`${ctx.baseUrl}/v1/workflows`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify(definition("stale-base")),
+  });
+  expect(created.status).toBe(201);
+  const first = (await created.json()) as { id: string; current_version_id: string };
+  const cli = await fetch(`${ctx.baseUrl}/v1/workflows/${first.id}`, {
+    method: "PUT",
+    headers: headers(),
+    body: JSON.stringify(definition("stale-base", "return 2;")),
+  });
+  expect(cli.status).toBe(200);
+  const second = (await cli.json()) as {
+    current_version_id: string;
+    current_version: number;
+    draft_version_id: string | null;
+  };
+  expect(second.current_version).toBe(2);
+  expect(second.draft_version_id).toBeNull();
+  const url = `${ctx.baseUrl}/v1/workflows/${first.id}/draft`;
+  const stale = await fetch(url, {
+    method: "PUT",
+    headers: headers(),
+    body: JSON.stringify({
+      definition: definition("stale-base", "return 3;"),
+      expected_draft_version_id: null,
+      expected_current_version_id: first.current_version_id,
+    }),
+  });
+  expect(stale.status).toBe(409);
+  expect(await stale.json()).toMatchObject({
+    code: "conflict",
+    details: {
+      reason: "version_conflict",
+      expected_current_version_id: first.current_version_id,
+      current_version_id: second.current_version_id,
+      current_version: 2,
+    },
+  });
+  expect((await fetch(url, { headers: headers() })).status).toBe(404);
+  const fresh = await fetch(url, {
+    method: "PUT",
+    headers: headers(),
+    body: JSON.stringify({
+      definition: definition("stale-base", "return 3;"),
+      expected_draft_version_id: null,
+      expected_current_version_id: second.current_version_id,
+    }),
+  });
+  expect(fresh.status).toBe(200);
+  const draft = WorkflowDraftSchema.parse(await fresh.json());
+  expect(draft.version).toBe(3);
+  expect(draft.current_version_id).toBe(second.current_version_id);
+});
+
 test("draft routes require authentication, write permission and valid definitions", async () => {
   const url = `${ctx.baseUrl}/v1/workflows/drafts`;
   const body = JSON.stringify({ definition: definition("denied-draft") });

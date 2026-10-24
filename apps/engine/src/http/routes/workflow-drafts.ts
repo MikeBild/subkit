@@ -30,7 +30,7 @@ const failures = {
   },
   404: { description: "Draft not found", content: { "application/json": { schema: ErrorSchema } } },
   409: {
-    description: "Draft or slug changed",
+    description: "Draft, active version or slug changed",
     content: { "application/json": { schema: ErrorSchema } },
   },
 };
@@ -160,7 +160,7 @@ function unwrap(result: SaveWorkflowDraftResult) {
   if (result.draft) return result.draft;
   if (result.code === "not_found") throw new NotFoundError("workflow");
   if (result.code === "invalid_definition") throw new BadRequestError(result.errors.join("; "));
-  throw new ConflictError(result.errors.join("; "), { reason: result.code });
+  throw new ConflictError(result.errors.join("; "), { reason: result.code, ...result.details });
 }
 
 export function registerWorkflowDraftRoutes(app: OpenAPIHono<AppEnv>): void {
@@ -198,6 +198,9 @@ export function registerWorkflowDraftRoutes(app: OpenAPIHono<AppEnv>): void {
         actor_type: principal.kind,
         workflow_id: c.req.valid("param").id,
         expected_draft_version_id: body.expected_draft_version_id,
+        ...(body.expected_current_version_id !== undefined
+          ? { expected_current_version_id: body.expected_current_version_id }
+          : {}),
         def: body.definition,
         ...(body.category !== undefined ? { metadata: { category: body.category } } : {}),
         request_source: c.get("request_source") ?? "api",

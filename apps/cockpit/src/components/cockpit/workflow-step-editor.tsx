@@ -566,6 +566,98 @@ const STEP_FORM_ERRORS = {
   branchOverlap: "stepEditor.branchOverlap",
 } as const satisfies Record<StepFormError, TranslationKey>;
 
+export function stepSaveConflict(error: unknown): boolean {
+  if (!(error instanceof ApiError) || error.status !== 409) return false;
+  const reason = error.details?.reason;
+  return reason === "draft_conflict" || reason === "version_conflict";
+}
+
+export function stepSaveRequest(
+  record: RecordValue,
+  steps: readonly unknown[],
+  waitingDefinition?: RecordValue,
+): { base: RecordValue; body: RecordValue } {
+  const base = definitionForStepSave(
+    record,
+    Array.isArray(record.steps) ? record.steps : [],
+    waitingDefinition,
+  );
+  return {
+    base,
+    body: {
+      definition: { ...base, steps: [...steps] },
+      expected_draft_version_id:
+        typeof record.draft_version_id === "string" ? record.draft_version_id : null,
+      ...(Object.hasOwn(record, "current_version_id")
+        ? {
+            expected_current_version_id:
+              typeof record.current_version_id === "string" ? record.current_version_id : null,
+          }
+        : {}),
+    },
+  };
+}
+
+export function StepSaveBarView({
+  changes,
+  conflict,
+  pending,
+  onSave,
+  onDiscard,
+  onReload,
+}: {
+  changes: number;
+  conflict: boolean;
+  pending: boolean;
+  onSave: () => void;
+  onDiscard: () => void;
+  onReload: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div
+      className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2 text-sm shadow-sm"
+      data-slot="savebar"
+      data-state={conflict ? "conflict" : "dirty"}
+      data-testid="step-savebar"
+    >
+      <span role={conflict ? "alert" : undefined}>
+        {conflict
+          ? t("stepEditor.conflict")
+          : t(changes === 1 ? "stepEditor.unsaved.one" : "stepEditor.unsaved.other", {
+              count: changes,
+            })}
+      </span>
+      <span className="flex items-center gap-2">
+        {conflict ? (
+          <ActionButton variant="primary" onClick={onReload} testId="step-savebar-reload">
+            {t("stepEditor.reload")}
+          </ActionButton>
+        ) : (
+          <>
+            <ActionButton
+              variant="ghost"
+              onClick={onDiscard}
+              disabled={pending}
+              testId="step-savebar-discard"
+            >
+              {t("common.discard")}
+            </ActionButton>
+            <ActionButton
+              variant="primary"
+              pending={pending}
+              onClick={onSave}
+              testId="step-savebar-save"
+            >
+              {t("common.save")}
+            </ActionButton>
+          </>
+        )}
+      </span>
+    </div>
+  );
+}
+
 export function StepSaveBar({
   workflowId,
   record,
@@ -577,6 +669,10 @@ export function StepSaveBar({
 }) {
   const { t } = useI18n();
   const client = useQueryClient();
+  const [conflict, setConflict] = useState(false);
+  useEffect(() => {
+    if (!draft.dirty) setConflict(false);
+  }, [draft.dirty]);
   const save = useMutation({
     mutationFn: async () => {
       const expected = typeof record.draft_version_id === "string" ? record.draft_version_id : null;
@@ -587,20 +683,10 @@ export function StepSaveBar({
         );
         waitingDefinition = waiting.definition as unknown as RecordValue;
       }
-      const base = definitionForStepSave(
-        record,
-        Array.isArray(record.steps) ? record.steps : [],
-        waitingDefinition,
-      );
+      const { base, body } = stepSaveRequest(record, draft.steps, waitingDefinition);
       const saved = await apiRequest<WorkflowDraft>(
         `/v1/workflows/${encodeURIComponent(workflowId)}/draft`,
-        {
-          method: "PUT",
-          body: JSON.stringify({
-            definition: { ...base, steps: draft.steps },
-            expected_draft_version_id: expected,
-          }),
-        },
+        { method: "PUT", body: JSON.stringify(body) },
       );
       return {
         saved,
@@ -646,45 +732,33 @@ export function StepSaveBar({
       await client.invalidateQueries({ queryKey: ["catalog-detail", "workflows", workflowId] });
       await invalidateWorkflowAutomation(client, workflowId);
     },
-    onError: (error) =>
+    onError: (error) => {
+      if (stepSaveConflict(error)) {
+        setConflict(true);
+        return;
+      }
       toast.error(
-        error instanceof ApiError && error.code === "draft_conflict"
-          ? t("stepEditor.conflict")
-          : error instanceof ApiError && error.message
-            ? t("stepEditor.refused", { reason: error.message })
-            : t("common.actionFailed"),
-      ),
+        error instanceof ApiError && error.message
+          ? t("stepEditor.refused", { reason: error.message })
+          : t("common.actionFailed"),
+      );
+    },
   });
+  const reload = async () => {
+    draft.discard();
+    setConflict(false);
+    await client.invalidateQueries({ queryKey: ["catalog-detail", "workflows", workflowId] });
+    await invalidateWorkflowAutomation(client, workflowId);
+  };
   if (!draft.dirty) return null;
   return (
-    <div
-      className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2 text-sm shadow-sm"
-      data-slot="savebar"
-      data-testid="step-savebar"
-    >
-      <span>
-        {t(draft.changes === 1 ? "stepEditor.unsaved.one" : "stepEditor.unsaved.other", {
-          count: draft.changes,
-        })}
-      </span>
-      <span className="flex items-center gap-2">
-        <ActionButton
-          variant="ghost"
-          onClick={draft.discard}
-          disabled={save.isPending}
-          testId="step-savebar-discard"
-        >
-          {t("common.discard")}
-        </ActionButton>
-        <ActionButton
-          variant="primary"
-          pending={save.isPending}
-          onClick={() => save.mutate()}
-          testId="step-savebar-save"
-        >
-          {t("common.save")}
-        </ActionButton>
-      </span>
-    </div>
+    <StepSaveBarView
+      changes={draft.changes}
+      conflict={conflict}
+      pending={save.isPending}
+      onSave={() => save.mutate()}
+      onDiscard={draft.discard}
+      onReload={() => void reload()}
+    />
   );
 }

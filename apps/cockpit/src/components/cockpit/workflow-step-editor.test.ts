@@ -1,5 +1,45 @@
 import { expect, test } from "bun:test";
-import { definitionForStepSave, definitionFromRecord, insertStep } from "./workflow-step-editor";
+import { ApiError } from "@/api/client";
+import {
+  definitionForStepSave,
+  definitionFromRecord,
+  insertStep,
+  stepSaveConflict,
+  stepSaveRequest,
+} from "./workflow-step-editor";
+
+test("a step save names the active version its draft is based on", () => {
+  const record = {
+    current_version_id: "11111111-1111-4111-8111-111111111111",
+    draft_version_id: null,
+    steps: [{ id: "old", kind: "transform" }],
+    definition: { name: "Briefing", steps: [{ id: "old", kind: "transform" }] },
+  };
+  const { body } = stepSaveRequest(record, [{ id: "new", kind: "transform" }]);
+  expect(body).toEqual({
+    definition: { name: "Briefing", steps: [{ id: "new", kind: "transform" }] },
+    expected_draft_version_id: null,
+    expected_current_version_id: "11111111-1111-4111-8111-111111111111",
+  });
+  expect(
+    stepSaveRequest({ ...record, current_version_id: null }, []).body.expected_current_version_id,
+  ).toBeNull();
+});
+
+test("a refused stale step save is a conflict, other failures are not", () => {
+  const refusal = (status: number, reason?: string) =>
+    new ApiError(
+      status,
+      { code: "conflict", message: "changed", ...(reason ? { details: { reason } } : {}) },
+      null,
+    );
+  expect(stepSaveConflict(refusal(409, "version_conflict"))).toBe(true);
+  expect(stepSaveConflict(refusal(409, "draft_conflict"))).toBe(true);
+  expect(stepSaveConflict(refusal(409, "slug_conflict"))).toBe(false);
+  expect(stepSaveConflict(refusal(409))).toBe(false);
+  expect(stepSaveConflict(refusal(400, "version_conflict"))).toBe(false);
+  expect(stepSaveConflict(new Error("offline"))).toBe(false);
+});
 
 test("step editing preserves every active workflow definition field", () => {
   const original = {

@@ -5082,7 +5082,9 @@ const EN = {
   "stepEditor.unsaved.one": "{count} unsaved change",
   "stepEditor.unsaved.other": "{count} unsaved changes",
   "stepEditor.saved": "{version} saved · waiting for approval",
-  "stepEditor.conflict": "The workflow changed meanwhile; reload and edit again.",
+  "stepEditor.conflict":
+    "A newer version of this workflow was saved meanwhile. Your changes stay here until you reload; reloading shows the newer version and drops them.",
+  "stepEditor.reload": "Reload",
   "stepEditor.refused": "Not saved: {reason}",
   "schedule.createTitle": "Create schedule",
   "schedule.editTitle": "Edit schedule",
@@ -11220,7 +11222,8 @@ const DE: Record<TranslationKey, string> = {
   "stepEditor.unsaved.other": "{count} ungespeicherte Änderungen",
   "stepEditor.saved": "{version} gespeichert · wartet auf Freigabe",
   "stepEditor.conflict":
-    "Der Workflow hat sich inzwischen geändert; neu laden und erneut bearbeiten.",
+    "Inzwischen wurde eine neuere Version dieses Workflows gespeichert. Deine Änderungen bleiben hier, bis du neu lädst; danach siehst du die neuere Version und deine Änderungen sind weg.",
+  "stepEditor.reload": "Neu laden",
   "stepEditor.refused": "Nicht gespeichert: {reason}",
   "schedule.createTitle": "Zeitplan anlegen",
   "schedule.editTitle": "Zeitplan bearbeiten",

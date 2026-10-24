@@ -40,6 +40,14 @@ export const CreateWorkflowDraftSchema = DraftBodySchema.extend({
 
 export const UpdateWorkflowDraftSchema = DraftBodySchema.extend({
   expected_draft_version_id: z.string().uuid().nullable(),
+  expected_current_version_id: z
+    .string()
+    .uuid()
+    .nullable()
+    .optional()
+    .describe(
+      "The active version id this draft was based on, or null when the workflow had none. The save is refused with 409 and reason version_conflict when another version became active meanwhile; omit to skip this check.",
+    ),
 })
   .strict()
   .openapi("UpdateWorkflowDraft");

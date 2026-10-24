@@ -7604,7 +7604,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Draft or slug changed */
+                /** @description Draft, active version or slug changed */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -7694,7 +7694,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Draft or slug changed */
+                /** @description Draft, active version or slug changed */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -7766,7 +7766,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Draft or slug changed */
+                /** @description Draft, active version or slug changed */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -7848,7 +7848,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Draft or slug changed */
+                /** @description Draft, active version or slug changed */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -7937,7 +7937,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Draft or slug changed */
+                /** @description Draft, active version or slug changed */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -24029,6 +24029,11 @@ export interface components {
             category?: components["schemas"]["CatalogCategory"];
             /** Format: uuid */
             expected_draft_version_id: string | null;
+            /**
+             * Format: uuid
+             * @description The active version id this draft was based on, or null when the workflow had none. The save is refused with 409 and reason version_conflict when another version became active meanwhile; omit to skip this check.
+             */
+            expected_current_version_id?: string | null;
         };
         WorkflowBoundaryProposals: {
             proposals: {
