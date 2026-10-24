@@ -64,6 +64,14 @@ describe("tenant branding image admission", () => {
     expect(meta.icc).toBeUndefined();
   });
 
+  test("leaves no global location behind after loading the image codecs", async () => {
+    await normalizeBrandingImage(input(await image("png"), "image/png"));
+    expect(Object.hasOwn(globalThis, "location")).toBe(false);
+    expect(new URL("https://otlp.example.test/v1/traces", globalThis.location?.href).href).toBe(
+      "https://otlp.example.test/v1/traces",
+    );
+  });
+
   test("normalizes progressive JPEG", async () => {
     const bytes = await sharp({
       create: { width: 32, height: 16, channels: 4, background: "#2563eb" },

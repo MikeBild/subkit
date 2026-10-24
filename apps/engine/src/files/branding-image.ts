@@ -12,6 +12,20 @@ import resizeWasm from "@jsquash/resize/lib/resize/pkg/squoosh_resize_bg.wasm" w
 import webpDecoderWasm from "@jsquash/webp/codec/dec/webp_dec.wasm" with { type: "file" };
 import decodeWebp, { init as initWebpDecode } from "@jsquash/webp/decode.js";
 
+function clearCodecLocation(): void {
+  const location: unknown = Reflect.get(globalThis, "location");
+  if (
+    location !== null &&
+    typeof location === "object" &&
+    Object.keys(location).length === 1 &&
+    Reflect.get(location, "href") === ""
+  ) {
+    Reflect.deleteProperty(globalThis, "location");
+  }
+}
+
+clearCodecLocation();
+
 export const BRANDING_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 export const BRANDING_IMAGE_MAX_PIXELS = 4_000_000;
 export const BRANDING_IMAGE_MAX_EDGE = 512;
@@ -376,6 +390,8 @@ export async function normalizeBrandingImage(input: {
     return new Uint8Array(await encodePng(normalized));
   } catch {
     throw new BrandingImageError();
+  } finally {
+    clearCodecLocation();
   }
 }
 
@@ -401,5 +417,7 @@ export async function normalizeBrandingAppIcon(input: {
     return { icon_192, icon_512 };
   } catch {
     throw new BrandingImageError();
+  } finally {
+    clearCodecLocation();
   }
 }
