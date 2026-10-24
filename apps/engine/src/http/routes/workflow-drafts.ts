@@ -11,7 +11,6 @@ import {
   saveWorkflowDraft,
   UpdateWorkflowDraftSchema,
   WorkflowDraftSchema,
-  type WorkflowSpec,
 } from "../../workflows/index.ts";
 import { BadRequestError, ConflictError, HttpError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
@@ -157,28 +156,12 @@ const applyProposals = createRoute({
   },
 });
 
-function assertSpecOrigin(
-  principal: ReturnType<typeof requireAuth>,
-  spec: WorkflowSpec | undefined,
-): void {
-  if (spec?.origin !== "person") return;
-  if (
-    principal.kind === "user" &&
-    (principal.auth_source?.kind === "browser_session" ||
-      principal.credential_origin === "cli_oauth_session")
-  )
-    return;
-  throw new HttpError(
-    403,
-    "human_confirmation_required",
-    "only a signed-in person can state a spec as their own; send origin chat or derived",
-  );
-}
-
 function unwrap(result: SaveWorkflowDraftResult) {
   if (result.draft) return result.draft;
   if (result.code === "not_found") throw new NotFoundError("workflow");
   if (result.code === "invalid_definition") throw new BadRequestError(result.errors.join("; "));
+  if (result.code === "human_confirmation_required")
+    throw new HttpError(403, result.code, result.errors.join("; "));
   throw new ConflictError(result.errors.join("; "), { reason: result.code, ...result.details });
 }
 
@@ -192,7 +175,6 @@ export function registerWorkflowDraftRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(create, async (c) => {
     const principal = requireAuth(c);
     const body = c.req.valid("json");
-    assertSpecOrigin(principal, body.spec);
     if (body.recipe) assertRecipeOrigin(body.recipe, body.definition);
     const result = await saveWorkflowDraft(
       {
@@ -201,6 +183,7 @@ export function registerWorkflowDraftRoutes(app: OpenAPIHono<AppEnv>): void {
         actor_type: principal.kind,
         def: body.definition,
         ...(body.spec !== undefined ? { spec: body.spec } : {}),
+        spec_authority: principal,
         request_source: c.get("request_source") ?? "api",
         ...(body.category !== undefined ? { metadata: { category: body.category } } : {}),
         ...(body.recipe ? { audit_metadata: recipeAuditMetadata(body.recipe) } : {}),
@@ -212,7 +195,6 @@ export function registerWorkflowDraftRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(update, async (c) => {
     const principal = requireAuth(c);
     const body = c.req.valid("json");
-    assertSpecOrigin(principal, body.spec);
     const result = await saveWorkflowDraft(
       {
         tenant_id: principal.tenant_id,
@@ -225,6 +207,7 @@ export function registerWorkflowDraftRoutes(app: OpenAPIHono<AppEnv>): void {
           : {}),
         def: body.definition,
         ...(body.spec !== undefined ? { spec: body.spec } : {}),
+        spec_authority: principal,
         ...(body.category !== undefined ? { metadata: { category: body.category } } : {}),
         request_source: c.get("request_source") ?? "api",
       },
