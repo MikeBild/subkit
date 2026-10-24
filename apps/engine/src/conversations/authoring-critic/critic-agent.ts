@@ -74,7 +74,9 @@ export function renderDraftForCritic(
       ? `output_transform_function: ${cap(draft.output_transform_function, RENDERED_TRANSFORM_CAP)}`
       : "",
     `Steps (${draft.steps.length}):\n${cap(JSON.stringify(draft.steps, null, 2), RENDERED_STEPS_CAP)}`,
-    draft.trigger ? `Trigger: ${cap(JSON.stringify(draft.trigger), RENDERED_SCHEMA_CAP)}` : "",
+    rubric.length > 0 && draft.trigger
+      ? `Trigger: ${cap(JSON.stringify(draft.trigger), RENDERED_SCHEMA_CAP)}`
+      : "",
     rubric.length > 0
       ? [
           CRITIC_RUBRIC_HEADING,

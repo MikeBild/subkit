@@ -347,11 +347,14 @@ describe("convention rubric", () => {
     expect(renderDraftForCritic(draft(3), "Daily digest")).not.toContain(CRITIC_RUBRIC_HEADING);
   });
 
-  test("renders the trigger so a schedule timezone can be checked", () => {
+  test("renders the trigger only with a rubric so a schedule timezone can be checked", () => {
     const scheduled = draft(3, {
       trigger: { kind: "schedule", cron: "0 7 * * *", tz: "Europe/Berlin" },
     });
-    expect(renderDraftForCritic(scheduled, "Daily digest")).toContain('"tz":"Europe/Berlin"');
+    expect(renderDraftForCritic(scheduled, "Daily digest", [TIMEZONE_CONVENTION])).toContain(
+      '"tz":"Europe/Berlin"',
+    );
+    expect(renderDraftForCritic(scheduled, "Daily digest")).not.toContain("Trigger:");
   });
 
   test("parses rubric items and keeps passed independent of them", () => {
