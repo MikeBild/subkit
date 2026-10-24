@@ -18256,6 +18256,22 @@
             ],
             "default": "both"
           },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkillRule"
+            },
+            "default": [],
+            "description": "Confirmed tenant conventions of this skill. Read-only here: only a confirmed intake proposal publishes them."
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "description": "Catalog categories the rules apply to; empty applies them wherever the skill applies. Read-only here."
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -18546,6 +18562,498 @@
           "kind",
           "codes"
         ]
+      },
+      "SkillRule": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/SkillRuleNaming"
+          },
+          {
+            "$ref": "#/components/schemas/SkillRuleTimezone"
+          },
+          {
+            "$ref": "#/components/schemas/SkillRuleLocale"
+          },
+          {
+            "$ref": "#/components/schemas/SkillRuleCurrency"
+          },
+          {
+            "$ref": "#/components/schemas/SkillRuleDeliveryDefault"
+          },
+          {
+            "$ref": "#/components/schemas/SkillRuleConnectorPreference"
+          },
+          {
+            "$ref": "#/components/schemas/SkillRuleGlossaryTerm"
+          },
+          {
+            "$ref": "#/components/schemas/SkillRuleFieldSemantics"
+          },
+          {
+            "$ref": "#/components/schemas/SkillRulePitfall"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "naming": "#/components/schemas/SkillRuleNaming",
+            "timezone": "#/components/schemas/SkillRuleTimezone",
+            "locale": "#/components/schemas/SkillRuleLocale",
+            "currency": "#/components/schemas/SkillRuleCurrency",
+            "delivery_default": "#/components/schemas/SkillRuleDeliveryDefault",
+            "connector_preference": "#/components/schemas/SkillRuleConnectorPreference",
+            "glossary_term": "#/components/schemas/SkillRuleGlossaryTerm",
+            "field_semantics": "#/components/schemas/SkillRuleFieldSemantics",
+            "pitfall": "#/components/schemas/SkillRulePitfall"
+          }
+        }
+      },
+      "SkillRuleNaming": {
+        "type": "object",
+        "properties": {
+          "rule_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+([._-][a-z0-9]+)*$",
+            "description": "Stable identifier of the rule; it stays the same across skill versions."
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "The convention in one sentence, as a reviewer reads it."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "naming"
+            ]
+          },
+          "payload": {
+            "type": "object",
+            "properties": {
+              "applies_to": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "pattern": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "example": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "applies_to",
+              "pattern",
+              "example"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "rule_id",
+          "statement",
+          "type",
+          "payload"
+        ],
+        "additionalProperties": false
+      },
+      "SkillRuleTimezone": {
+        "type": "object",
+        "properties": {
+          "rule_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+([._-][a-z0-9]+)*$",
+            "description": "Stable identifier of the rule; it stays the same across skill versions."
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "The convention in one sentence, as a reviewer reads it."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "timezone"
+            ]
+          },
+          "payload": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            },
+            "required": [
+              "value"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "rule_id",
+          "statement",
+          "type",
+          "payload"
+        ],
+        "additionalProperties": false
+      },
+      "SkillRuleLocale": {
+        "type": "object",
+        "properties": {
+          "rule_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+([._-][a-z0-9]+)*$",
+            "description": "Stable identifier of the rule; it stays the same across skill versions."
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "The convention in one sentence, as a reviewer reads it."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "locale"
+            ]
+          },
+          "payload": {
+            "type": "object",
+            "properties": {
+              "tag": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 35
+              }
+            },
+            "required": [
+              "tag"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "rule_id",
+          "statement",
+          "type",
+          "payload"
+        ],
+        "additionalProperties": false
+      },
+      "SkillRuleCurrency": {
+        "type": "object",
+        "properties": {
+          "rule_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+([._-][a-z0-9]+)*$",
+            "description": "Stable identifier of the rule; it stays the same across skill versions."
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "The convention in one sentence, as a reviewer reads it."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "currency"
+            ]
+          },
+          "payload": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 3
+              }
+            },
+            "required": [
+              "code"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "rule_id",
+          "statement",
+          "type",
+          "payload"
+        ],
+        "additionalProperties": false
+      },
+      "SkillRuleDeliveryDefault": {
+        "type": "object",
+        "properties": {
+          "rule_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+([._-][a-z0-9]+)*$",
+            "description": "Stable identifier of the rule; it stays the same across skill versions."
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "The convention in one sentence, as a reviewer reads it."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "delivery_default"
+            ]
+          },
+          "payload": {
+            "type": "object",
+            "properties": {
+              "connector_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "channel": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "connector_id",
+              "channel"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "rule_id",
+          "statement",
+          "type",
+          "payload"
+        ],
+        "additionalProperties": false
+      },
+      "SkillRuleConnectorPreference": {
+        "type": "object",
+        "properties": {
+          "rule_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+([._-][a-z0-9]+)*$",
+            "description": "Stable identifier of the rule; it stays the same across skill versions."
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "The convention in one sentence, as a reviewer reads it."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "connector_preference"
+            ]
+          },
+          "payload": {
+            "type": "object",
+            "properties": {
+              "connector_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "environment": {
+                "type": "string",
+                "enum": [
+                  "dev",
+                  "prod"
+                ]
+              }
+            },
+            "required": [
+              "connector_id",
+              "environment"
+            ],
+            "additionalProperties": false,
+            "description": "Tie-breaker between candidate connectors within the same environment only."
+          }
+        },
+        "required": [
+          "rule_id",
+          "statement",
+          "type",
+          "payload"
+        ],
+        "additionalProperties": false
+      },
+      "SkillRuleGlossaryTerm": {
+        "type": "object",
+        "properties": {
+          "rule_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+([._-][a-z0-9]+)*$",
+            "description": "Stable identifier of the rule; it stays the same across skill versions."
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "The convention in one sentence, as a reviewer reads it."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "glossary_term"
+            ]
+          },
+          "payload": {
+            "type": "object",
+            "properties": {
+              "term": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "meaning": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              }
+            },
+            "required": [
+              "term",
+              "meaning"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "rule_id",
+          "statement",
+          "type",
+          "payload"
+        ],
+        "additionalProperties": false
+      },
+      "SkillRuleFieldSemantics": {
+        "type": "object",
+        "properties": {
+          "rule_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+([._-][a-z0-9]+)*$",
+            "description": "Stable identifier of the rule; it stays the same across skill versions."
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "The convention in one sentence, as a reviewer reads it."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "field_semantics"
+            ]
+          },
+          "payload": {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "meaning": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "unit": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              }
+            },
+            "required": [
+              "field",
+              "meaning"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "rule_id",
+          "statement",
+          "type",
+          "payload"
+        ],
+        "additionalProperties": false
+      },
+      "SkillRulePitfall": {
+        "type": "object",
+        "properties": {
+          "rule_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+([._-][a-z0-9]+)*$",
+            "description": "Stable identifier of the rule; it stays the same across skill versions."
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "The convention in one sentence, as a reviewer reads it."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "pitfall"
+            ]
+          },
+          "payload": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "rule_id",
+          "statement",
+          "type",
+          "payload"
+        ],
+        "additionalProperties": false
       },
       "SkillListResponse": {
         "type": "object",
@@ -20046,6 +20554,25 @@
                 },
                 "maxItems": 20,
                 "default": []
+              },
+              "rules": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SkillRule"
+                },
+                "maxItems": 50,
+                "description": "Typed conventions published with this skill. Omit to keep the skill's current rules; [] removes them; a list replaces all of them. Every rule change needs a new review."
+              },
+              "domains": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40,
+                  "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+                },
+                "maxItems": 20,
+                "description": "Catalog categories the rules apply to (workflow and connector categories). Omit to keep them; [] applies the rules wherever the skill applies."
               }
             },
             "additionalProperties": false
@@ -20055,7 +20582,7 @@
           "skill"
         ],
         "additionalProperties": false,
-        "description": "Skill destination for a repeatable practice or convention. Name either new (a new active skill; give it the domain:<name> tag of its domain so coding-agent briefings for that domain find it) or skill_id with the expected_version you read (changes and activates that skill). supersedes lists each skill this one consolidates with the expected_version you read; they are archived on confirmation and the proposal goes stale when one of them changes."
+        "description": "Skill destination for a repeatable practice or convention. Name either new (a new active skill; give it the domain:<name> tag of its domain so coding-agent briefings for that domain find it) or skill_id with the expected_version you read (changes and activates that skill). supersedes lists each skill this one consolidates with the expected_version you read; they are archived on confirmation and the proposal goes stale when one of them changes. rules and domains carry typed tenant conventions (timezone, locale, currency, naming, delivery_default, connector_preference, glossary_term, field_semantics, pitfall); only the confirming person publishes them."
       },
       "IntakeNewSkill": {
         "type": "object",

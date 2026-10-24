@@ -10,6 +10,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { SkillRule } from "../../skills/types.ts";
 import { tenantId, timestamps } from "./_common.ts";
 
 const subkit = pgSchema("subkit");
@@ -84,6 +85,8 @@ export interface IntakeSkillTarget {
     expected_version?: number | undefined;
     new?: IntakeNewSkill | undefined;
     supersedes: { skill_id: string; expected_version: number }[];
+    rules?: SkillRule[] | undefined;
+    domains?: string[] | undefined;
   };
 }
 

@@ -415,6 +415,8 @@ const rejectProposalRoute = createRoute({
 
 function rethrowIntakeError(error: unknown): never {
   if (error instanceof intake.IntakeNotFoundError) throw new NotFoundError("intake resource");
+  if (error instanceof intake.IntakeConfirmationActorError)
+    throw new HttpError(403, "human_confirmation_required", error.message);
   if (error instanceof intake.IntakeConflictError) {
     throw new ConflictError(error.message, { reason: error.name });
   }
