@@ -223,12 +223,13 @@
         "source": "node_modules/.bun/@jsquash+jpeg@1.6.0/node_modules/@jsquash/jpeg/codec/LICENSE.codec.md",
         "sha256": "8213556ea36ce3a0f2883db06238463e2452fdad68e3d2e2e4ace2189477a37e"
       }
-    ]
+    ],
+    "statement": "This software is based in part on the work of the Independent JPEG Group."
   },
   {
     "name": "@jsquash/png",
     "version": "3.1.1",
-    "qualification": "Codec license shipped inside the package below the package root; it covers the bundled WebAssembly codec. Legal distribution approval remains separate.",
+    "qualification": "The package ships this codec license below its root; its text is byte-identical to the libwebp notice of @jsquash/webp, so the license of the compiled PNG codec remains unverified. Legal distribution approval remains separate.",
     "files": [
       {
         "path": "@jsquash__png__codec-LICENSE.txt",
