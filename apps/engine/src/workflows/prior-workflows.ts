@@ -66,7 +66,7 @@ function summariseStepAction(step: Record<string, unknown>): string | undefined 
   return undefined;
 }
 
-function buildStepTopology(def: WorkflowDef): PriorWorkflowRef["step_topology"] {
+export function buildStepTopology(def: WorkflowDef): PriorWorkflowRef["step_topology"] {
   return def.steps.map((rawStep) => {
     const step = rawStep as unknown as Record<string, unknown>;
     const kind = typeof step.kind === "string" ? step.kind : "unknown";
@@ -150,6 +150,15 @@ function scorePriorWorkflow(
     SCORE_W_STEP * stepOverlap +
     SCORE_W_AFFINITY * stepCountAffinity
   );
+}
+
+export async function listActiveWorkflowRefs(
+  tenant_id: string,
+  exec?: Executor,
+): Promise<PriorWorkflowRef[]> {
+  const opts: ListWorkflowsOptions = { status: "active", limit: PRIOR_WORKFLOWS_CANDIDATE_POOL };
+  const { rows } = await listWorkflows(tenant_id, opts, exec);
+  return rows.map(projectPriorWorkflowRef);
 }
 
 export async function findSimilarActive(

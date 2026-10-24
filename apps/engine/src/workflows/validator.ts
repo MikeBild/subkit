@@ -62,6 +62,7 @@ function collectTopLevelProps(schema: Record<string, unknown> | null | undefined
 export interface ValidationError {
   path: string;
   message: string;
+  rule_id?: string;
 }
 
 export interface ValidateOptions {
@@ -83,6 +84,7 @@ export interface ValidateWorkflowDefResult {
   ok: boolean;
   workflow?: WorkflowDef;
   errors: ValidationError[];
+  warnings?: ValidationError[];
   forward_refs?: ForwardRef[];
   placeholder_destinations?: DestinationPlaceholderViolation[];
 }

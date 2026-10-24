@@ -5,7 +5,10 @@ import {
   loadConnectorSystem,
 } from "../connectors/index.ts";
 import type { Executor } from "../db/client.ts";
+import { loadActiveConventions } from "../skills/conventions.ts";
+import { type ConsistencyContext, consistencyLintWarnings } from "./consistency-lint.ts";
 import type { ConnectorBaseUrls } from "./graphql-conversion.ts";
+import { listActiveWorkflowRefs } from "./prior-workflows.ts";
 import { WorkflowDefSchema } from "./types.ts";
 import { type ValidateOptions, validateWorkflowDef } from "./validator.ts";
 
@@ -139,13 +142,49 @@ function readReportDeliveryConnectorIds(input: unknown): string[] {
   });
 }
 
+export interface ConsistencyLintScope {
+  workflow_id?: string | null;
+}
+
+export type TenantValidateOptions = Pick<
+  ValidateOptions,
+  "allowForwardRefs" | "destinationTier" | "lintJavascript"
+> & { consistency?: ConsistencyLintScope };
+
+export async function loadConsistencyContext(
+  input: unknown,
+  tenantId: string,
+  db: Executor,
+  scope: ConsistencyLintScope = {},
+): Promise<ConsistencyContext | null> {
+  const parsed = WorkflowDefSchema.safeParse(input);
+  if (!parsed.success) return null;
+  const connectorIds = [
+    ...new Set(
+      parsed.data.steps.flatMap((step) =>
+        step.kind === "request" && step.connector_id ? [step.connector_id] : [],
+      ),
+    ),
+  ];
+  const [conventions, siblings] = await Promise.all([
+    loadActiveConventions(
+      tenantId,
+      { connector_ids: connectorIds, workflow_id: scope.workflow_id ?? null },
+      db,
+    ),
+    listActiveWorkflowRefs(tenantId, db),
+  ]);
+  return { conventions, siblings, workflowId: scope.workflow_id ?? null };
+}
+
 export async function validateTenantWorkflowDef(
   input: unknown,
   tenantId: string,
   db: Executor,
-  options: Pick<ValidateOptions, "allowForwardRefs" | "destinationTier" | "lintJavascript"> = {},
+  options: TenantValidateOptions = {},
 ) {
-  const [policies, graphqlTargets, baseUrls] = await Promise.all([
+  const { consistency, ...validateOptions } = options;
+  const [policies, graphqlTargets, baseUrls, consistencyContext] = await Promise.all([
     loadTenantWorkflowHeaderPolicies(input, tenantId, db),
     loadTenantWorkflowGraphqlTargets(input, tenantId, db),
     loadTenantConnectorBaseUrls(
@@ -156,13 +195,18 @@ export async function validateTenantWorkflowDef(
       tenantId,
       db,
     ),
+    consistency ? loadConsistencyContext(input, tenantId, db, consistency) : null,
   ]);
-  return validateWorkflowDef(input, {
-    ...options,
+  const result = validateWorkflowDef(input, {
+    ...validateOptions,
     connectorHeaderPolicies: policies,
     connectorGraphqlTargets: graphqlTargets,
     connectorBaseUrls: baseUrls,
   });
+  if (!consistencyContext) return result;
+  const parsed = WorkflowDefSchema.safeParse(input);
+  if (!parsed.success) return result;
+  return { ...result, warnings: consistencyLintWarnings(input, parsed.data, consistencyContext) };
 }
 
 export function validateTenantWorkflowDefForSave(
