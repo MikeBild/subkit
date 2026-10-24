@@ -106,11 +106,12 @@ function namingTargets(
 }
 
 function compilePattern(pattern: string): RegExp | null {
-  try {
-    return new RegExp(pattern, "u");
-  } catch {
-    return null;
+  for (const flags of ["u", ""]) {
+    try {
+      return new RegExp(pattern, flags);
+    } catch {}
   }
+  return null;
 }
 
 function namingWarnings(wf: WorkflowDef, rules: readonly SkillRule[]): ValidationError[] {

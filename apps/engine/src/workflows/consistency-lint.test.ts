@@ -92,6 +92,14 @@ describe("consistency lint · naming", () => {
     expect(lint(baseWorkflow, context([unknown, broken]))).toEqual([]);
   });
 
+  test("a pattern with an identity escape is still enforced", () => {
+    const escaped: SkillRule = {
+      ...namingRule,
+      payload: { ...namingRule.payload, pattern: "^fin\\-" },
+    };
+    expect(lint(baseWorkflow, context([escaped])).map((w) => w.rule_id)).toEqual(["slug-prefix"]);
+  });
+
   test("step ids are checked when the rule names them", () => {
     const rule: SkillRule = {
       rule_id: "step-snake",

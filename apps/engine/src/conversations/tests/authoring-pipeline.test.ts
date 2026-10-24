@@ -977,6 +977,24 @@ describe("runAuthoringPipeline — trigger preservation on edit (webhook-binding
   );
 });
 
+describe("runAuthoringPipeline — consistency warnings", () => {
+  tw("stashes the draft and reports a schedule without tz as a warning with rule_id", async () => {
+    getMockProvider().generateOverrides.generate = () => ({
+      ...VALID_DEF,
+      trigger: { kind: "schedule", cron: "0 9 * * *" },
+    });
+    const toolCtx = makeCtx();
+    const result = await runAuthoringPipeline({ ctx: toolCtx, goal: "run the digest daily" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+    expect(result.validation.warnings.map((w) => [w.path, w.rule_id])).toEqual([
+      ["trigger.tz", "consistency.schedule_tz"],
+    ]);
+    expect(toolCtx._draft.value?.workflow.trigger?.kind).toBe("schedule");
+    expect(fetchCalls).toBe(0);
+  });
+});
+
 describe("runAuthoringPipeline — semantic critic wire-in", () => {
   const DRIFT_FIXED_DEF = {
     ...VALID_DEF,
