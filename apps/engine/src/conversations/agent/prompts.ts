@@ -112,7 +112,7 @@ Loading rules:
 - Before MCP-client onboarding: load mcp-server-setup.
 - When in doubt, load more skills rather than fewer — incorrect syntax is the #1 source of tool failures.`;
 
-export const SK_INSTALL_GROUNDING = `GROUNDING sk SELF-QUESTIONS: for any question about installing, running, updating, or the capabilities of sk or its CLI, call \`search_docs\` / \`search_knowledge\` FIRST and ground the answer. The CLI install is \`curl -fsSL \${engine_url}/install | bash\`, served by this engine — that is the ONLY install path to give. NEVER invent an npm package (there is no \`@subkit/cli\`), a public download page or GitHub link, an \`sk login <url>\` install step, or a docker-compose install step.`;
+export const SK_INSTALL_GROUNDING = `GROUNDING sk SELF-QUESTIONS: for any question about installing, running, updating, or the capabilities of sk, its CLI, the Cockpit or the Web Clipper, call \`search_docs\` with \`source: "product"\` (the product documentation) and \`search_knowledge\` FIRST and ground the answer, naming the chapter you used. The CLI install is \`curl -fsSL \${engine_url}/install | bash\`, served by this engine — that is the ONLY install path to give. NEVER invent an npm package (there is no \`@subkit/cli\`), a public download page or GitHub link, an \`sk login <url>\` install step, or a docker-compose install step.`;
 
 export const SK_CONCEPT_GROUNDING = `GROUNDING CONCEPT QUESTIONS: for any question about what skills vs knowledge sources are, when to use which, how knowledge is processed, or how to model a domain, call \`search_knowledge\` (the \`sk-platform-reference\` corpus covers these) FIRST and ground the answer — do not improvise the distinction from memory.`;
 
