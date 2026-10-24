@@ -666,11 +666,6 @@ export function UsagePage() {
         label={`${t("usage.kpi.saved")} · ${period}`}
         testId="usage-kpi-cache"
         value={format.money(usage?.cacheSavings ?? 0)}
-        detail={
-          usage?.cacheShare != null
-            ? t("usage.kpi.cacheShare", { percent: format.percent(usage.cacheShare) })
-            : null
-        }
       />
       <PromptCacheTile
         read={promptCache.read}

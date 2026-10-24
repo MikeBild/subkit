@@ -32,12 +32,13 @@ So liest du den Trend:
 - **Neu**: im Zeitraum davor noch nicht genutzt.
 - **–**: Für den Zeitraum davor fehlen Daten.
 
-### Die vier Kacheln
+### Die fünf Kacheln
 
 - **Kosten**: geschätzte Kosten aller KI-Aufrufe im Zeitraum.
 - **KI-Aufrufe**: wie oft SubKit ein KI-Modell gefragt hat. Gibt es Fehler, steht darunter etwa **3 fehlgeschlagen**. Ein Klick öffnet die Fehlgeschlagenen KI-Aufrufe.
 - **Kontingent · Monat**: wie viel vom Monatskontingent verbraucht ist. Diese Kachel gilt immer für den laufenden Monat.
-- **Gespart durch Cache**: was wiederverwendete Eingaben gegenüber dem vollen Preis gespart haben, etwa „40 % der Eingaben aus dem Cache“.
+- **Gespart durch Cache**: was wiederverwendete Eingaben gegenüber dem vollen Preis gespart haben.
+- **Aus dem Zwischenspeicher**: welcher Anteil der Eingabe wiederverwendet statt neu bezahlt wurde. Darunter zeigt **Zwischenspeicher je Ablauf** den Anteil je Herkunft. Höher ist günstiger und schneller. **Ohne Daten** heißt: Der Anbieter meldet für diesen Ablauf keinen Zwischenspeicher.
 
 Unter dem Kontingent steht die Prognose. SubKit rechnet dafür den Verbrauch der letzten 7 Tage hoch:
 

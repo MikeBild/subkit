@@ -32,12 +32,13 @@ How to read the trend:
 - **New**: not used in the window before.
 - **–**: there is no data for the window before.
 
-### The four tiles
+### The five tiles
 
 - **Cost**: the estimated cost of all AI calls in the window.
 - **AI calls**: how often SubKit asked an AI model. When calls failed, it shows for example **3 failed**. A click opens the Failed AI calls.
 - **Budget · Month**: how much of the monthly budget is used. This tile always covers the current month.
-- **Saved by cache**: what reused input saved compared with full price, for example "40% of input from cache".
+- **Saved by cache**: what reused input saved compared with full price.
+- **From the cache**: the share of input that was reused instead of paid again. Below it, **Cache per flow** shows the share for each source. Higher is cheaper and faster. **No data** means the provider reports no cache for that flow.
 
 The forecast sits below the budget. SubKit projects it from the last 7 days:
 
