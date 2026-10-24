@@ -99,11 +99,23 @@ async function loadChromium(): Promise<PlaywrightChromiumLauncher> {
   }
 }
 
+export const PLAYWRIGHT_UNAVAILABLE_MESSAGE =
+  "browser discovery is not available: this engine has no Playwright module (the SubKit container image ships no browser); set SK_PLAYWRIGHT_ENTRY to an installed Playwright module to enable it";
+
 function isPlaywrightAvailable(): Promise<boolean> {
   if (!availabilityProbe) {
     availabilityProbe = loadChromium().then(
       () => true,
-      () => false,
+      (err: unknown) => {
+        log.info({
+          module: "connector",
+          action: "discovery.strategy.unavailable",
+          strategy: "playwright-crawl",
+          message: PLAYWRIGHT_UNAVAILABLE_MESSAGE,
+          reason: err instanceof Error ? err.message : String(err),
+        });
+        return false;
+      },
     );
   }
   return availabilityProbe;

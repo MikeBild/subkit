@@ -10,7 +10,7 @@ import { graphqlIntrospectStrategy } from "./graphql-introspect.ts";
 import { htmlScrapeStrategy } from "./html-scrape.ts";
 import { llmsTxtStrategy } from "./llms-txt.ts";
 import { openApiDirectStrategy } from "./openapi-direct.ts";
-import { playwrightCrawlStrategy } from "./playwright-crawl.ts";
+import { PLAYWRIGHT_UNAVAILABLE_MESSAGE, playwrightCrawlStrategy } from "./playwright-crawl.ts";
 import { postgresIntrospectStrategy } from "./postgres-introspect.ts";
 import { swaggerUiScrapeStrategy } from "./swagger-ui-scrape.ts";
 import {
@@ -27,6 +27,7 @@ export { llmsTxtStrategy } from "./llms-txt.ts";
 export { normalizeSpec, openApiDirectStrategy } from "./openapi-direct.ts";
 export {
   jaccardSimilarity,
+  PLAYWRIGHT_UNAVAILABLE_MESSAGE,
   parseSitemap,
   playwrightCrawlStrategy,
   scoreCandidate,
@@ -141,7 +142,10 @@ export async function discoverConnectorEndpoints(
       if (!canHandle) {
         warnings.push({
           code: "strategy_skipped",
-          message: `${strategy.name} declined ${scrubUrl(url)}`,
+          message:
+            strategy.name === "playwright-crawl"
+              ? PLAYWRIGHT_UNAVAILABLE_MESSAGE
+              : `${strategy.name} declined ${scrubUrl(url)}`,
         });
         continue;
       }

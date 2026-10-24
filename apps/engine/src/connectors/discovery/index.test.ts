@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
-import { discoverConnectorEndpoints } from "./index.ts";
+import { discoverConnectorEndpoints, PLAYWRIGHT_UNAVAILABLE_MESSAGE } from "./index.ts";
 import {
   DiscoveryError,
   type DiscoveryResult,
@@ -90,6 +90,26 @@ describe("discoverConnectorEndpoints — fallback chain", () => {
     expect(result.endpoints).toHaveLength(1);
     expect(result.warnings.length).toBeGreaterThanOrEqual(1);
     expect(result.warnings.some((w) => w.code === "openapi-direct:http_404")).toBe(true);
+  });
+
+  seamTest("names the missing browser runtime when browser discovery is unavailable", async () => {
+    const browser: DiscoveryStrategy = {
+      name: "playwright-crawl",
+      canHandle: () => false,
+      fetch: () => Promise.reject(new Error("should never be invoked")),
+    };
+    let caught: DiscoveryError | null = null;
+    try {
+      await discoverConnectorEndpoints({
+        ingestion_url: "https://api.example.com/docs",
+        strategies: [browser],
+      });
+    } catch (e) {
+      if (e instanceof DiscoveryError) caught = e;
+    }
+    expect(caught?.code).toBe("all_strategies_failed");
+    expect(caught?.message).toContain(`strategy_skipped: ${PLAYWRIGHT_UNAVAILABLE_MESSAGE}`);
+    expect(PLAYWRIGHT_UNAVAILABLE_MESSAGE).toContain("SK_PLAYWRIGHT_ENTRY");
   });
 
   test("throws all_strategies_failed when every strategy fails", async () => {
