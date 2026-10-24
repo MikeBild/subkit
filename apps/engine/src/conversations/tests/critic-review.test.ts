@@ -3,6 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
+import { recordCriticRubricItems } from "../../observability/instrumentation.ts";
 import {
   getMetrics,
   METRIC_NAMES,
@@ -392,5 +393,45 @@ describe("convention rubric", () => {
     expect(rubricFromVerdict([TIMEZONE_CONVENTION], null)).toEqual([
       { rule_id: "tenant-timezone", status: "unchecked", note: "" },
     ]);
+  });
+});
+
+describe("rubric reporting", () => {
+  beforeEach(() => {
+    resetMetricsRegistryForTests();
+  });
+
+  test("the critic report carries rubric warnings only when there are some", () => {
+    const warning = { rule_id: "tenant-timezone", status: "fail" as const, note: "No tz." };
+    const reviewed = attributeCriticReview({
+      review: { result: "pass", gating_reason: "step_count", pass: 1, rubric_warnings: [warning] },
+      returnedPass: 1,
+      deadlineExceeded: false,
+    });
+    expect(reviewed).toMatchObject({ rubric_warnings: [warning] });
+    const quiet = attributeCriticReview({
+      review: { result: "pass", gating_reason: "step_count", pass: 1, rubric_warnings: [] },
+      returnedPass: 1,
+      deadlineExceeded: false,
+    });
+    expect("rubric_warnings" in quiet).toBe(false);
+  });
+
+  test("counts rubric items per status and folds unknown statuses into other", () => {
+    recordCriticRubricItems(["pass", "fail", "n_a", "unchecked", "unchecked", "bogus"]);
+    const entry = getMetrics()
+      .snapshot()
+      .find((s) => s.name === METRIC_NAMES.CRITIC_RUBRIC_ITEMS_TOTAL);
+    const samples = (entry?.samples ?? []) as Array<{
+      labels: Record<string, string>;
+      value: number;
+    }>;
+    const count = (status: string) =>
+      samples.filter((s) => s.labels.status === status).reduce((acc, s) => acc + s.value, 0);
+    expect(count("pass")).toBe(1);
+    expect(count("fail")).toBe(1);
+    expect(count("n_a")).toBe(1);
+    expect(count("unchecked")).toBe(2);
+    expect(count("other")).toBe(1);
   });
 });
