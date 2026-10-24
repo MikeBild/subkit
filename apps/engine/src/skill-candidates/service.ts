@@ -16,6 +16,7 @@ import { invalidateTenantState } from "../operator/index.ts";
 import { createSkill, retireReplacedConnectorSkills } from "../skills/service.ts";
 import { now } from "../utils/clock.ts";
 import { initialCandidateStatus, skillReviewDigest, toView } from "./candidate-view.ts";
+import { measureCorrectionEffectiveness } from "./correction-effectiveness.ts";
 import { collectCorrectionIntake } from "./correction-intake.ts";
 import {
   detectFailurePatterns,
@@ -460,6 +461,7 @@ export async function runPatternAnalysis(
     detectSuccessPatterns(params.tenant_id, db),
   ]);
   const corrections = await collectCorrectionIntake(params.tenant_id, db);
+  const effectiveness = await measureCorrectionEffectiveness(params.tenant_id, db);
 
   const allSignals = [...repairSignals, ...failureSignals, ...successSignals];
   let proposed = 0;
@@ -487,6 +489,7 @@ export async function runPatternAnalysis(
     success_signals: successSignals.length,
     corrections_collected: corrections.collected,
     corrections_appended: corrections.evidence_appended,
+    corrections_measured: effectiveness.measured,
   });
 
   return {
