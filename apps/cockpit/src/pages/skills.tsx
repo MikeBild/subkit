@@ -20,7 +20,14 @@ import { listIntakeClips } from "@/api/intake";
 import type { components } from "@/api/schema";
 import { useActorDirectory } from "@/app/actor-directory";
 import { type ActorDirectory, actorDirectoryName, actorLabel } from "@/app/actor-directory-model";
-import { absolute, chatNewHref, connectorHref, recordHref, workflowHref } from "@/app/links";
+import {
+  absolute,
+  chatNewHref,
+  connectorHref,
+  recordHref,
+  skillCandidatesHref,
+  workflowHref,
+} from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useDirtyGuard } from "@/app/version-notice";
 import { CatalogSummary, useCatalogCreatedBy } from "@/components/cockpit/catalog-categories";
@@ -128,10 +135,23 @@ const TEMPLATE_ICONS: Record<SkillTemplate, LucideIcon> = {
   company: Building2,
 };
 
-function skillsLine(t: Translate, skills: number, proposals: number): string {
+export function skillsLine(t: Translate, skills: number, proposals: number): ReactNode {
   const count = t(skills === 1 ? "skills.summary.one" : "skills.summary.other", { count: skills });
   if (proposals === 0) return count;
-  return `${count} · ${t(proposals === 1 ? "skills.proposals.one" : "skills.proposals.other", { count: proposals })}`;
+  return (
+    <>
+      {count} ·{" "}
+      <a
+        href={absolute(skillCandidatesHref())}
+        className="underline underline-offset-2"
+        data-testid="skills-review-candidates"
+      >
+        {t(proposals === 1 ? "skills.proposals.one" : "skills.proposals.other", {
+          count: proposals,
+        })}
+      </a>
+    </>
+  );
 }
 
 function StateBadge({ status }: { status: string }) {
