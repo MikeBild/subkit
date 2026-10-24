@@ -34,6 +34,7 @@ import { ForbiddenState } from "@/components/failure-state";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useSearchParamState } from "@/lib/use-search-param-state";
+import { usePromptCacheFlows } from "@/pages/operations-bar";
 import {
   executionStatsEndpoint,
   isStatsWindow,
@@ -50,6 +51,7 @@ import {
   windowBounds,
   windowBucket,
 } from "@/pages/operations-figures";
+import { PromptCacheSection, PromptCacheTile } from "@/pages/prompt-cache";
 import { workspaceSettingEndpoint } from "@/pages/settings-save";
 import { OriginChartSvg, OriginChartTable, OriginLegend } from "@/pages/usage-chart";
 import {
@@ -227,6 +229,7 @@ export function UsagePage() {
     "conversation",
   );
   const lastSeven = useLlmQuery(allowed, seven);
+  const promptCache = usePromptCacheFlows(bounds, allowed);
   const status = useQuery({
     queryKey: ["usage-status"],
     enabled: allowed,
@@ -603,74 +606,76 @@ export function UsagePage() {
     />
   );
 
-  const tiles = flowNow.isPending ? (
-    <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-      {[0, 1, 2, 3].map((index) => (
-        <TileSkeleton key={index} />
-      ))}
-    </div>
-  ) : (
-    <section
-      aria-label={t("usage.kpi.label")}
-      className="grid grid-cols-2 gap-2 lg:grid-cols-4"
-      data-testid="usage-kpis"
-    >
-      <KpiTile
-        label={`${t("resource.usage.cost")} · ${period}`}
-        testId="usage-kpi-cost"
-        prefix={
-          usage?.cost && usage.cost.unpricedCalls > 0 ? t("overview.operations.atLeast") : null
-        }
-        value={
-          usage?.cost
-            ? format.money(usage.cost.amount)
-            : usage && usage.calls > 0
-              ? undefined
-              : format.money(0)
-        }
-        note={usage && usage.calls > 0 && !usage.cost ? t("usage.kpi.costUnknown") : undefined}
-        detail={
-          usage?.cost && usage.cost.unpricedCalls > 0 ? (
-            t("overview.operations.unpricedCalls", {
-              calls: format.count(usage.cost.unpricedCalls),
-            })
-          ) : (
-            <TrendText trend={costTrend} window={bounds.window} testId="usage-cost-trend" />
-          )
-        }
-      />
-      <KpiTile
-        label={`${t("usage.calls")} · ${period}`}
-        testId="usage-kpi-calls"
-        value={format.count(usage?.calls ?? 0)}
-        detail={
-          usage && usage.failedCalls > 0 ? (
-            <button
-              type="button"
-              className="relative underline underline-offset-2 hover:text-foreground pointer-coarse:after:absolute pointer-coarse:after:-inset-y-3.5 pointer-coarse:after:-inset-x-1"
-              onClick={() => openSheet({ kind: "failed" })}
-              data-testid="usage-failed-open"
-            >
-              {t("overview.operations.failedCount", { count: format.count(usage.failedCalls) })}
-            </button>
-          ) : (
-            <TrendText trend={callsTrend} window={bounds.window} />
-          )
-        }
-      />
-      {budgetTile}
-      <KpiTile
-        label={`${t("usage.kpi.saved")} · ${period}`}
-        testId="usage-kpi-cache"
-        value={format.money(usage?.cacheSavings ?? 0)}
-        detail={
-          usage?.cacheShare != null
-            ? t("usage.kpi.cacheShare", { percent: format.percent(usage.cacheShare) })
-            : null
-        }
-      />
-    </section>
-  );
+  const tiles =
+    flowNow.isPending || promptCache.pending ? (
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        {[0, 1, 2, 3, 4].map((index) => (
+          <TileSkeleton key={index} />
+        ))}
+      </div>
+    ) : (
+      <section
+        aria-label={t("usage.kpi.label")}
+        className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
+        data-testid="usage-kpis"
+      >
+        <KpiTile
+          label={`${t("resource.usage.cost")} · ${period}`}
+          testId="usage-kpi-cost"
+          prefix={
+            usage?.cost && usage.cost.unpricedCalls > 0 ? t("overview.operations.atLeast") : null
+          }
+          value={
+            usage?.cost
+              ? format.money(usage.cost.amount)
+              : usage && usage.calls > 0
+                ? undefined
+                : format.money(0)
+          }
+          note={usage && usage.calls > 0 && !usage.cost ? t("usage.kpi.costUnknown") : undefined}
+          detail={
+            usage?.cost && usage.cost.unpricedCalls > 0 ? (
+              t("overview.operations.unpricedCalls", {
+                calls: format.count(usage.cost.unpricedCalls),
+              })
+            ) : (
+              <TrendText trend={costTrend} window={bounds.window} testId="usage-cost-trend" />
+            )
+          }
+        />
+        <KpiTile
+          label={`${t("usage.calls")} · ${period}`}
+          testId="usage-kpi-calls"
+          value={format.count(usage?.calls ?? 0)}
+          detail={
+            usage && usage.failedCalls > 0 ? (
+              <button
+                type="button"
+                className="relative underline underline-offset-2 hover:text-foreground pointer-coarse:after:absolute pointer-coarse:after:-inset-y-3.5 pointer-coarse:after:-inset-x-1"
+                onClick={() => openSheet({ kind: "failed" })}
+                data-testid="usage-failed-open"
+              >
+                {t("overview.operations.failedCount", { count: format.count(usage.failedCalls) })}
+              </button>
+            ) : (
+              <TrendText trend={callsTrend} window={bounds.window} />
+            )
+          }
+        />
+        {budgetTile}
+        <KpiTile
+          label={`${t("usage.kpi.saved")} · ${period}`}
+          testId="usage-kpi-cache"
+          value={format.money(usage?.cacheSavings ?? 0)}
+          detail={
+            usage?.cacheShare != null
+              ? t("usage.kpi.cacheShare", { percent: format.percent(usage.cacheShare) })
+              : null
+          }
+        />
+        <PromptCacheTile read={promptCache.read} period={period} onRetry={promptCache.retry} />
+      </section>
+    );
 
   const hintText = (hint: UsageHint): string => {
     if (hint.kind === "runCost")
@@ -1090,6 +1095,7 @@ export function UsagePage() {
             {hintSection}
             {chartSection}
             {breakdownSection}
+            <PromptCacheSection read={promptCache.read} onRetry={promptCache.retry} />
           </>
         )}
         {techSection}
