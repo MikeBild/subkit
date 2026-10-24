@@ -8304,6 +8304,16 @@
           },
           "definition": {
             "$ref": "#/components/schemas/WorkflowDef"
+          },
+          "spec": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -8312,7 +8322,8 @@
           "version",
           "digest",
           "current_version_id",
-          "definition"
+          "definition",
+          "spec"
         ]
       },
       "WorkflowDef": {
@@ -10255,6 +10266,174 @@
         ],
         "additionalProperties": false
       },
+      "WorkflowSpec": {
+        "type": "object",
+        "properties": {
+          "goal": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "What the workflow is for; null while unknown."
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowSpecField"
+            },
+            "maxItems": 50
+          },
+          "outputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowSpecField"
+            },
+            "maxItems": 50
+          },
+          "delivery": {
+            "$ref": "#/components/schemas/WorkflowSpecDelivery"
+          },
+          "conventions_applied": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowSpecConvention"
+            },
+            "maxItems": 50
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowSpecEvidence"
+            },
+            "maxItems": 50
+          },
+          "open_questions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "maxItems": 50
+          },
+          "origin": {
+            "$ref": "#/components/schemas/WorkflowSpecOrigin"
+          }
+        },
+        "required": [
+          "goal",
+          "inputs",
+          "outputs",
+          "delivery",
+          "conventions_applied",
+          "evidence",
+          "open_questions",
+          "origin"
+        ],
+        "additionalProperties": false,
+        "description": "Purpose and acceptance of a workflow version. Versioned with the workflow and never part of its executed definition."
+      },
+      "WorkflowSpecField": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "WorkflowSpecDelivery": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "channel": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Where the result goes, for example email, slack or a file."
+          },
+          "destination": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "The concrete recipient, address or location."
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "channel"
+        ],
+        "additionalProperties": false
+      },
+      "WorkflowSpecConvention": {
+        "type": "object",
+        "properties": {
+          "skill_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The skill the convention comes from."
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "The convention as applied to this workflow."
+          }
+        },
+        "required": [
+          "note"
+        ],
+        "additionalProperties": false
+      },
+      "WorkflowSpecEvidence": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Where the evidence comes from, for example a connector or document."
+          },
+          "locator": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "The exact place inside the source."
+          }
+        },
+        "required": [
+          "source",
+          "locator"
+        ],
+        "additionalProperties": false
+      },
+      "WorkflowSpecOrigin": {
+        "type": "string",
+        "enum": [
+          "person",
+          "chat",
+          "derived"
+        ],
+        "description": "Who stated the spec: a person, the authoring chat, or derived from existing material. Only a person's statement counts as confirmed."
+      },
       "CreateWorkflowDraft": {
         "type": "object",
         "properties": {
@@ -10263,6 +10442,16 @@
           },
           "category": {
             "$ref": "#/components/schemas/CatalogCategory"
+          },
+          "spec": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowSpec"
+              },
+              {
+                "description": "The spec stored with the new draft version; omit to keep the spec of the version this draft is based on."
+              }
+            ]
           },
           "recipe": {
             "$ref": "#/components/schemas/RecipeOrigin"
@@ -10309,6 +10498,16 @@
           },
           "category": {
             "$ref": "#/components/schemas/CatalogCategory"
+          },
+          "spec": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowSpec"
+              },
+              {
+                "description": "The spec stored with the new draft version; omit to keep the spec of the version this draft is based on."
+              }
+            ]
           },
           "expected_draft_version_id": {
             "type": [
