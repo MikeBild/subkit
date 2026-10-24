@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq, isNull, or } from "drizzle-orm";
 import { conversations, workflows } from "../../db/schema/index.ts";
+import { specQuestions } from "../authoring-spec.ts";
 import { persistedWorkflowResource } from "../authoring-state/summary.ts";
 import { hasInProgressWorkflowDraft, startNewWorkflowDraft } from "../authoring-state.ts";
 import { hydrateBoundWorkflow } from "../draft.ts";
@@ -136,6 +137,7 @@ export const openWorkflowDraftTool: ConversationTool = {
     await ctx.setDraft(opened);
     ctx.workflow_id = workflow.id;
     clearLastPreview({ tenant_id: ctx.tenant_id, conversation_id: ctx.conversation_id });
+    const questions = specQuestions(opened.workflow);
     return {
       ok: true,
       data: buildDraftMutationPayload(opened, {
@@ -145,6 +147,15 @@ export const openWorkflowDraftTool: ConversationTool = {
           target,
           steps: opened.workflow.steps.length,
           step_ids: opened.workflow.steps.map((step) => step.id),
+          spec: opened.workflow.spec ?? null,
+          ...(questions
+            ? {
+                requires_user_input: true,
+                spec_questions: questions.questions,
+                user_prompt: questions.user_prompt,
+                next_hint: questions.next_action,
+              }
+            : {}),
         },
       }),
     };

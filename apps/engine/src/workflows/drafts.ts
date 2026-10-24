@@ -20,7 +20,9 @@ import { type VersionActor, versionAuthorColumns } from "./version-author.ts";
 import {
   carriedSpecColumns,
   loadVersionSpec,
+  personOriginRefused,
   readStoredSpec,
+  type SpecAuthority,
   type SpecCarrier,
   workflowSpecDigest,
 } from "./version-spec.ts";
@@ -43,7 +45,8 @@ type DraftErrorCode =
   | "draft_base_not_observed"
   | "draft_conflict"
   | "version_conflict"
-  | "slug_conflict";
+  | "slug_conflict"
+  | "human_confirmation_required";
 export type SaveWorkflowDraftResult =
   | { draft: WorkflowDraftView; errors?: never; code?: never; details?: never }
   | {
@@ -60,6 +63,7 @@ export interface SaveWorkflowDraftInput extends VersionActor {
   expected_current_version_id?: string | null;
   def: unknown;
   spec?: unknown;
+  spec_authority?: SpecAuthority;
   scope_index?: typeof workflowVersions.$inferInsert.scope_index;
   actor_id: string | null;
   actor_type?: "user" | "system_account" | "system";
@@ -67,6 +71,11 @@ export interface SaveWorkflowDraftInput extends VersionActor {
   audit_metadata?: Record<string, unknown>;
   metadata?: CatalogMetadataPatch;
 }
+
+const PERSON_ORIGIN_REFUSAL: SaveWorkflowDraftResult = {
+  code: "human_confirmation_required",
+  errors: ["only a signed-in person can state a spec as their own; send origin chat or derived"],
+};
 
 function draftView(
   wf: typeof workflows.$inferSelect,
@@ -164,6 +173,9 @@ export async function saveWorkflowDraft(
       ),
     };
   }
+  if (!input.workflow_id && personOriginRefused(requestedSpec?.data, null, input.spec_authority)) {
+    return PERSON_ORIGIN_REFUSAL;
+  }
   const validation = await validateTenantWorkflowDefForSave(input.def, input.tenant_id, exec, {
     destinationTier: "tokens",
   });
@@ -213,6 +225,9 @@ export async function saveWorkflowDraft(
           workflow_id: wf.id,
           version_id: wf.draft_version_id ?? wf.current_version_id,
         });
+        if (personOriginRefused(requestedSpec?.data, baseSpec?.spec, input.spec_authority)) {
+          return PERSON_ORIGIN_REFUSAL;
+        }
         const nextSpec = requestedSpec ? requestedSpec.data : (baseSpec?.spec ?? null);
         if (wf.draft_version_id) {
           const previous = await getWorkflowDraft(input.tenant_id, wf.id, tx);

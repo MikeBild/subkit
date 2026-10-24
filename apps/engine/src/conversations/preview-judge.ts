@@ -30,7 +30,7 @@ export type PreviewJudgeVerdict = z.infer<typeof JudgeVerdictSchema>;
 
 export type PreviewJudgeOutcome =
   | { verdict: "passes" | "partial" | "failed"; reason: string; missing: string[] }
-  | { verdict: "skipped"; reason: "no_goal" | "judge_unavailable" };
+  | { verdict: "skipped"; reason: "no_goal" | "judge_unavailable"; next_action?: string };
 
 export interface JudgeStepArtifact {
   step_id: string;
@@ -40,8 +40,18 @@ export interface JudgeStepArtifact {
   held_request?: unknown;
 }
 
+export interface JudgeAcceptance {
+  outputs: Array<{ name: string; description?: string | undefined }>;
+  delivery: {
+    channel: string;
+    destination?: string | undefined;
+    description?: string | undefined;
+  } | null;
+}
+
 export interface JudgePreviewParams {
   goal: string;
+  acceptance?: JudgeAcceptance | null;
   definition_summary: string;
   step_artifacts: JudgeStepArtifact[];
   final_output?: unknown;
@@ -170,6 +180,23 @@ function renderFinalOutputSection(params: JudgePreviewParams): string[] {
   ];
 }
 
+export function renderJudgeAcceptance(acceptance: JudgeAcceptance | null | undefined): string[] {
+  if (!acceptance || (acceptance.outputs.length === 0 && !acceptance.delivery)) return [];
+  const delivery = acceptance.delivery;
+  return [
+    "Acceptance criteria from the workflow's spec (part of the goal; judge the output against them):",
+    ...acceptance.outputs.map(
+      (field) => `- output \`${field.name}\`${field.description ? `: ${field.description}` : ""}`,
+    ),
+    ...(delivery
+      ? [
+          `- delivery via ${delivery.channel}${delivery.destination ? ` to ${delivery.destination}` : ""}${delivery.description ? `: ${delivery.description}` : ""}`,
+        ]
+      : []),
+    "",
+  ];
+}
+
 function buildJudgePrompt(params: JudgePreviewParams): string {
   return [
     "Judge whether a workflow's previewed output satisfies the user's goal.",
@@ -179,6 +206,7 @@ function buildJudgePrompt(params: JudgePreviewParams): string {
     params.goal,
     '"""',
     "",
+    ...renderJudgeAcceptance(params.acceptance),
     "Workflow definition (step ids, kinds, descriptions):",
     params.definition_summary,
     "",

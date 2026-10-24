@@ -23,7 +23,7 @@ import {
   type VersionAuthor,
   versionAuthorColumns,
 } from "./version-author.ts";
-import { carriedSpecColumns } from "./version-spec.ts";
+import { loadVersionSpec, readStoredSpec, workflowSpecDigest } from "./version-spec.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
 
 export interface VersionView {
@@ -149,6 +149,15 @@ export async function restoreWorkflowVersion(
         and(eq(workflowVersions.tenant_id, tenant_id), eq(workflowVersions.workflow_id, id)),
       )) as Array<{ max_version: number }>;
     const next = (restoreRows[0]?.max_version ?? 0) + 1;
+    const currentSpec =
+      (
+        await loadVersionSpec(tx, {
+          tenant_id,
+          workflow_id: id,
+          version_id: locked.current_version_id,
+        })
+      )?.spec ?? null;
+    const restoredSpec = target.spec ?? currentSpec;
     const [v] = await tx
       .insert(workflowVersions)
       .values({
@@ -157,7 +166,7 @@ export async function restoreWorkflowVersion(
         workflow_id: id,
         version: next,
         dag: definitionWithoutDescription(target.dag),
-        ...carriedSpecColumns(target),
+        spec: restoredSpec,
         note: `restored from v${version}`,
       })
       .returning();
@@ -186,6 +195,31 @@ export async function restoreWorkflowVersion(
       },
       tx,
     );
+    const specBefore = workflowSpecDigest(currentSpec);
+    const specAfter = workflowSpecDigest(restoredSpec);
+    if (specBefore !== specAfter) {
+      await auditAwait(
+        {
+          tenant_id,
+          ...resolvedActor,
+          action: AuditAction.DRAFT_SPEC_UPDATED,
+          resource_type: "workflow",
+          resource_id: id,
+          result: "success",
+          before: {
+            version_id: locked.current_version_id,
+            spec_digest: currentSpec ? specBefore : null,
+          },
+          after: { version_id: v.id, spec_digest: restoredSpec ? specAfter : null },
+          metadata: {
+            version: next,
+            restored_from: version,
+            origin: readStoredSpec(restoredSpec)?.origin ?? null,
+          },
+        },
+        tx,
+      );
+    }
     await emitWorkflowLifecycle(tx, {
       tenant_id,
       type: "workflow.version_restored",

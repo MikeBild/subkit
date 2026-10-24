@@ -1,6 +1,9 @@
 import { logger } from "../logging/logger.ts";
 import { recordPreviewJudgeVerdict } from "../observability/instrumentation.ts";
+import type { WorkflowSpec } from "../workflows/draft-schemas.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
+import { workflowSpecDigest } from "../workflows/version-spec.ts";
+import { SPEC_GOAL_GUIDANCE } from "./authoring-spec.ts";
 import {
   buildJudgeDefinitionSummary,
   buildJudgeStepArtifacts,
@@ -16,7 +19,11 @@ export interface PreviewJudgeGateResult {
   judgeOutcome: PreviewJudgeOutcome | null;
   judgeBlocked: boolean;
   nextJudgeBreaker: JudgeBreakerState | undefined;
-  warning: { step_key: null; code: "judge_goal_mismatch"; message: string } | null;
+  warning: {
+    step_key: null;
+    code: "judge_goal_mismatch" | "judge_goal_unconfirmed";
+    message: string;
+  } | null;
   doneSignal: {
     attempts: number;
     missing: string[];
@@ -40,6 +47,8 @@ export async function runPreviewJudgeGate(p: {
   conversation_id: string;
   db: import("../db/client.ts").Db;
   goal: string | null;
+  goal_confirmed?: boolean;
+  spec?: WorkflowSpec | null;
   definition: WorkflowDef;
   steps: ReadonlyArray<Record<string, unknown>>;
   run_steps: Parameters<typeof buildJudgeStepArtifacts>[0];
@@ -55,7 +64,7 @@ export async function runPreviewJudgeGate(p: {
   let doneSignal: PreviewJudgeGateResult["doneSignal"] = null;
 
   if (!p.goal) {
-    judgeOutcome = { verdict: "skipped", reason: "no_goal" };
+    judgeOutcome = { verdict: "skipped", reason: "no_goal", next_action: SPEC_GOAL_GUIDANCE };
     logger.warn({
       module: "conversation_tool",
       action: "judge.no_goal",
@@ -67,7 +76,9 @@ export async function runPreviewJudgeGate(p: {
     return { judgeOutcome, judgeBlocked, nextJudgeBreaker, warning: null, doneSignal };
   }
 
-  const fingerprint = workflowDefinitionFingerprint(p.definition);
+  const fingerprint = p.spec
+    ? `${workflowDefinitionFingerprint(p.definition)}:${workflowSpecDigest(p.spec).slice(0, 16)}`
+    : workflowDefinitionFingerprint(p.definition);
   const priorBlocks = p.prior_breaker?.blocks_since_commit ?? 0;
   const memo = p.prior_breaker?.last_verdict ?? null;
 
@@ -85,6 +96,7 @@ export async function runPreviewJudgeGate(p: {
   } else {
     judgeOutcome = await judgePreview({
       goal: p.goal,
+      ...(p.spec ? { acceptance: { outputs: p.spec.outputs, delivery: p.spec.delivery } } : {}),
       definition_summary: buildJudgeDefinitionSummary(p.steps as Array<Record<string, unknown>>),
       step_artifacts: buildJudgeStepArtifacts(p.run_steps),
       final_output: p.final_output,
@@ -108,6 +120,37 @@ export async function runPreviewJudgeGate(p: {
       last_verdict: toVerdictMemo(fingerprint, judgeOutcome),
     };
     return { judgeOutcome, judgeBlocked, nextJudgeBreaker, warning: null, doneSignal };
+  }
+
+  if (p.goal_confirmed === false) {
+    logger.info({
+      module: "conversation_tool",
+      action: "judge.advisory_unconfirmed_goal",
+      msg: "preview judge found gaps against a goal no person has confirmed — reported as a hint, commit not blocked",
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      verdict: judgeOutcome.verdict,
+      fingerprint,
+    });
+    recordPreviewJudgeVerdict({ verdict: judgeOutcome.verdict, blocked: false });
+    nextJudgeBreaker = {
+      blocks_since_commit: priorBlocks,
+      last_verdict: toVerdictMemo(fingerprint, judgeOutcome),
+    };
+    return {
+      judgeOutcome,
+      judgeBlocked,
+      nextJudgeBreaker,
+      warning: {
+        step_key: null,
+        code: "judge_goal_unconfirmed",
+        message:
+          `preview output may not satisfy the workflow's recorded goal (verdict: ${judgeOutcome.verdict}): ${judgeOutcome.reason}` +
+          (judgeOutcome.missing.length > 0 ? ` Missing: ${judgeOutcome.missing.join("; ")}.` : "") +
+          " No person has confirmed this goal, so this is a hint, not a block: confirm the goal with the user before relying on it.",
+      },
+      doneSignal,
+    };
   }
 
   if (priorBlocks >= JUDGE_BREAKER_MAX_BLOCKS) {

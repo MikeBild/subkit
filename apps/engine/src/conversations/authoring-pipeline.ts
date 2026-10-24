@@ -95,6 +95,7 @@ import {
   runConnectorPreflights,
 } from "./authoring-preflight.ts";
 import { resolveGenerationAbort, type UserPromptPayload } from "./authoring-regrounding.ts";
+import { authoredWorkflowSpec } from "./authoring-spec.ts";
 import { withWorkflowDraft } from "./authoring-state.ts";
 import {
   buildGroundingIndex,
@@ -916,9 +917,19 @@ export async function runAuthoringPipeline(
   );
   if (deadlineSignal.aborted) deadlineExceeded = true;
 
+  const priorWorkflow = currentDraft.workflow;
   const extra: Record<string, unknown> = {
     goal,
     connector_ids: connectors.map((c) => c.id),
+    spec: authoredWorkflowSpec({
+      prior:
+        priorWorkflow?.slug !== undefined && priorWorkflow.slug === workflowDraft.slug
+          ? priorWorkflow.spec
+          : null,
+      goal,
+      definition: workflowDraft,
+      ...(params.input_example !== undefined ? { input_example: params.input_example } : {}),
+    }),
   };
   const merged = { ...workflowDraft, ...extra } as WorkflowDraftDocument;
   const nextDraft = withWorkflowDraft(currentDraft, merged, "workflow_authored_one_shot");

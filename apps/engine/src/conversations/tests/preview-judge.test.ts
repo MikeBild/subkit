@@ -2,6 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { EngineClient } from "../../engine-client/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { WorkflowDefSchema } from "../../workflows/types.ts";
+import { SPEC_GOAL_GUIDANCE } from "../authoring-spec.ts";
 import {
   normalizeDraftDocument,
   startNewWorkflowDraft,
@@ -16,6 +18,7 @@ import {
   judgePreview,
   workflowDefinitionFingerprint,
 } from "../preview-judge.ts";
+import { runPreviewJudgeGate } from "../preview-judge-gate.ts";
 import { dryRunWorkflowTool } from "../tools/dry-run-workflow.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { saveWorkflowDraftTool } from "../tools/save-workflow-draft.ts";
@@ -41,7 +44,7 @@ beforeEach(() => {
 interface JudgeEnvelope {
   auto_committed?: boolean;
   classification?: string;
-  judge?: { verdict: string; reason: string; missing?: string[] };
+  judge?: { verdict: string; reason: string; missing?: string[]; next_action?: string };
   judge_done?: {
     committed_as_is?: boolean;
     escalate?: boolean;
@@ -198,7 +201,11 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect((data as { next_best_actions?: string[] }).next_best_actions).toEqual([
       "save_workflow_draft",
     ]);
-    expect(data.judge).toEqual({ verdict: "skipped", reason: "no_goal" });
+    expect(data.judge).toEqual({
+      verdict: "skipped",
+      reason: "no_goal",
+      next_action: SPEC_GOAL_GUIDANCE,
+    });
     expect(getMockProvider().calls.filter((c) => c.flow === "judge").length).toBe(0);
   });
 
@@ -215,7 +222,11 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect(data.auto_committed).toBe(false);
     expect(data.save_required).toBe(true);
     expect(data.next_best_actions).toEqual(["save_workflow_draft"]);
-    expect(data.judge).toEqual({ verdict: "skipped", reason: "no_goal" });
+    expect(data.judge).toEqual({
+      verdict: "skipped",
+      reason: "no_goal",
+      next_action: SPEC_GOAL_GUIDANCE,
+    });
     expect(getMockProvider().calls.filter((c) => c.flow === "judge").length).toBe(0);
   });
 
@@ -231,7 +242,11 @@ describe("preview judge · dry_run_workflow wiring", () => {
     const data = result.data as JudgeEnvelope & { save_required?: boolean };
     expect(data.auto_committed).toBe(true);
     expect(data.save_required).toBeUndefined();
-    expect(data.judge).toEqual({ verdict: "skipped", reason: "no_goal" });
+    expect(data.judge).toEqual({
+      verdict: "skipped",
+      reason: "no_goal",
+      next_action: SPEC_GOAL_GUIDANCE,
+    });
   });
 
   test("UNATTENDED does NOT weaken the quality gate: a failed verdict STILL blocks the auto-commit", async () => {
@@ -266,7 +281,11 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect(data.auto_committed).toBe(false);
     expect(data.save_required).toBe(true);
     expect(data.next_best_actions).toEqual(["save_workflow_draft"]);
-    expect(data.judge).toEqual({ verdict: "skipped", reason: "no_goal" });
+    expect(data.judge).toEqual({
+      verdict: "skipped",
+      reason: "no_goal",
+      next_action: SPEC_GOAL_GUIDANCE,
+    });
   });
 
   test("judge infrastructure error, human present: skipped with judge_unavailable and NOT auto-committed", async () => {
@@ -404,6 +423,78 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect(callsAfterSecond).toBe(1);
     expect(toolCtx.current().state?.judge_breaker?.blocks_since_commit).toBe(2);
     expect((second.data as JudgeEnvelope).judge?.verdict).toBe("failed");
+  });
+
+  test("a changed spec resets the breaker and re-judges an unchanged definition", async () => {
+    getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
+    const base = wrongContentDraft("judge-spec-memo", GOAL);
+    const spec = {
+      goal: GOAL,
+      inputs: [],
+      outputs: [{ name: "html" }],
+      delivery: null,
+      conventions_applied: [],
+      evidence: [],
+      open_questions: [],
+      origin: "chat" as const,
+    };
+    const toolCtx = makeCtx({ ...base, workflow: { ...base.workflow, spec } });
+
+    await dryRunWorkflowTool.execute(toolCtx, { input: null });
+    expect(getMockProvider().calls.filter((c) => c.flow === "judge")).toHaveLength(1);
+    expect(toolCtx.current().state?.judge_breaker?.blocks_since_commit).toBe(1);
+
+    await toolCtx.setDraft(
+      withWorkflowDraft(toolCtx.current(), {
+        ...toolCtx.current().workflow,
+        spec: { ...spec, outputs: [{ name: "html" }, { name: "projects" }] },
+      }),
+    );
+    expect(toolCtx.current().state?.judge_breaker ?? null).toBeNull();
+
+    await dryRunWorkflowTool.execute(toolCtx, { input: null });
+    const judgeCalls = getMockProvider().calls.filter((c) => c.flow === "judge");
+    expect(judgeCalls).toHaveLength(2);
+    expect(JSON.stringify(judgeCalls[1])).toContain("output `projects`");
+  });
+
+  test("a memoized verdict is not reused once the definition carries a spec", async () => {
+    getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
+    const definition = WorkflowDefSchema.parse({
+      name: "judge-spec-fingerprint",
+      slug: "judge-spec-fingerprint",
+      steps: [{ id: "shape", kind: "transform", language: "javascript", expression: "return 1;" }],
+    });
+    const gate = await runPreviewJudgeGate({
+      tenant_id: ctx.tenant_id,
+      conversation_id: uuid(),
+      db: ctx.testDb.db,
+      goal: GOAL,
+      spec: {
+        goal: GOAL,
+        inputs: [],
+        outputs: [{ name: "html" }],
+        delivery: null,
+        conventions_applied: [],
+        evidence: [],
+        open_questions: [],
+        origin: "chat",
+      },
+      definition,
+      steps: definition.steps as unknown as Array<Record<string, unknown>>,
+      run_steps: [],
+      prior_breaker: {
+        blocks_since_commit: 0,
+        last_verdict: {
+          fingerprint: workflowDefinitionFingerprint(definition),
+          verdict: "passes",
+          reason: "memo",
+          missing: [],
+        },
+      },
+    });
+    expect(gate.judgeOutcome?.verdict).toBe("failed");
+    expect(getMockProvider().calls.filter((c) => c.flow === "judge")).toHaveLength(1);
   });
 
   test("explicit save still works after a failed verdict (judge gates AUTO-commit only)", async () => {

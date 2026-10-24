@@ -14,6 +14,7 @@ import { isSensitivePayload } from "../execution/sensitive-payload.ts";
 import { workflowUsesSandboxedJs } from "../workflows/runtime-annotation.ts";
 import { buildScopeAtStep } from "../workflows/scope-shape.ts";
 import { WorkflowDefSchema } from "../workflows/types.ts";
+import { readStoredSpec, workflowSpecDigest } from "../workflows/version-spec.ts";
 import { normalizeWorkflowDraft } from "./authoring-state/normalize.ts";
 import {
   bindPersistedWorkflow,
@@ -171,7 +172,7 @@ export async function hydrateBoundWorkflow(
     }
     if (state && saved?.ok === true && ref?.version_id) {
       const [version] = await exec
-        .select({ dag: workflowVersions.dag })
+        .select({ dag: workflowVersions.dag, spec: workflowVersions.spec })
         .from(workflowVersions)
         .where(
           and(
@@ -204,11 +205,16 @@ export async function hydrateBoundWorkflow(
           current.data.runtime = persisted.data.runtime;
         }
       }
+      const sameSpec =
+        workflowSpecDigest(normalized.workflow?.spec) ===
+        workflowSpecDigest(readStoredSpec(version?.spec));
       const sameDefinition =
-        current.success && persisted.success
+        sameSpec &&
+        (current.success && persisted.success
           ? canonicalJson(current.data) === canonicalJson(persisted.data)
           : version &&
-            canonicalJson(normalized.workflow) === canonicalJson(workflowDraftFromDag(version.dag));
+            canonicalJson(normalized.workflow) ===
+              canonicalJson(workflowDraftFromDag(version.dag)));
       if (sameDefinition) {
         const checkpoint = state.checkpoints.workflow_persisted;
         if (checkpoint) checkpoint.mutation_seq = state.workflow_mutation_seq;
@@ -246,7 +252,11 @@ export async function hydrateBoundWorkflow(
   const selectedVersionId = workflow.draft_version_id ?? workflow.current_version_id;
   if (selectedVersionId) {
     const versionRows = await exec
-      .select({ version: workflowVersions.version, dag: workflowVersions.dag })
+      .select({
+        version: workflowVersions.version,
+        dag: workflowVersions.dag,
+        spec: workflowVersions.spec,
+      })
       .from(workflowVersions)
       .where(
         and(
@@ -258,6 +268,9 @@ export async function hydrateBoundWorkflow(
       .limit(1);
     version = versionRows[0]?.version ?? null;
     hydratedWorkflow = versionRows[0]?.dag ? workflowDraftFromDag(versionRows[0].dag) : null;
+    const storedSpec = readStoredSpec(versionRows[0]?.spec);
+    if (hydratedWorkflow && storedSpec)
+      hydratedWorkflow = { ...hydratedWorkflow, spec: storedSpec };
   }
   const draftToBind: DraftDocument =
     hydratedWorkflow && hydratedWorkflow.steps.length > 0

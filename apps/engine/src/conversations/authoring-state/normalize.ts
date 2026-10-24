@@ -2,6 +2,7 @@ import { toPublicConnector } from "../../connectors/public-view.ts";
 import type { ConnectorView } from "../../connectors/types.ts";
 import { isRecord } from "../../utils/type-guards.ts";
 import { WORKFLOW_DEF_FIELD_KEYS, type WorkflowTrigger } from "../../workflows/types.ts";
+import { readStoredSpec } from "../../workflows/version-spec.ts";
 import type {
   AuthoringCheckpointKey,
   AuthoringCheckpointRecord,
@@ -117,6 +118,7 @@ export function normalizeWorkflowDraft(raw: unknown): WorkflowDraftDocument {
   const slug = pickString("slug");
   const description = pickString("description");
   const goal = pickString("goal");
+  const spec = readStoredSpec(base.spec);
   const outputTransform = pickString("output_transform");
   const derivedFromSkillId = pickString("derived_from_skill_id");
   const normalized: WorkflowDraftDocument = {
@@ -124,6 +126,7 @@ export function normalizeWorkflowDraft(raw: unknown): WorkflowDraftDocument {
     ...(slug ? { slug } : {}),
     ...(description ? { description } : {}),
     ...(goal ? { goal } : {}),
+    ...(spec ? { spec } : {}),
     ...(derivedFromSkillId
       ? { derived_from_skill_id: derivedFromSkillId }
       : base.derived_from_skill_id === null
@@ -157,6 +160,7 @@ export function normalizeWorkflowDraft(raw: unknown): WorkflowDraftDocument {
     "name",
     "slug",
     "description",
+    "spec",
     "derived_from_skill_id",
     "input_schema",
     "input_schema_sample",

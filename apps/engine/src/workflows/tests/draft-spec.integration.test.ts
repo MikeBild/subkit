@@ -41,7 +41,7 @@ function definition(slug: string, value = 1) {
   };
 }
 
-function spec(goal: string): WorkflowSpec {
+function spec(goal: string, origin: WorkflowSpec["origin"] = "chat"): WorkflowSpec {
   return {
     goal,
     inputs: [{ name: "account", description: "The account to report on" }],
@@ -50,7 +50,7 @@ function spec(goal: string): WorkflowSpec {
     conventions_applied: [{ note: "Amounts in EUR" }],
     evidence: [{ source: "runbook", locator: "section 2" }],
     open_questions: [],
-    origin: "person",
+    origin,
   };
 }
 
@@ -121,7 +121,7 @@ test("a draft stores its spec and audits the change with the spec digests", asyn
     version_id: draft.version_id,
     spec_digest: workflowSpecDigest(spec("Report open invoices")),
   });
-  expect(audits[0]?.metadata).toMatchObject({ origin: "person", request_source: "api" });
+  expect(audits[0]?.metadata).toMatchObject({ origin: "chat", request_source: "api" });
 });
 
 test("a pure spec edit creates a new inert draft version with the same definition digest", async () => {
@@ -325,4 +325,141 @@ test("updating, rotating and restoring a workflow keep the spec of the version t
   const restored = await restoreWorkflowVersion(tenant_id, workflow_id, 2, null, ctx.db);
   if (!restored?.current_version_id) throw new Error("restore failed");
   expect(await versionSpec(restored.current_version_id)).toEqual(spec("Version goal"));
+});
+
+const browserPerson = {
+  kind: "user",
+  auth_source: { kind: "browser_session", session_id: "session" },
+} as const;
+
+test("saving a spec as stated by a person needs a signed-in person in the core save path", async () => {
+  const viaKey = await saveWorkflowDraft(
+    {
+      tenant_id,
+      def: definition("spec-person-core"),
+      spec: spec("Person goal", "person"),
+      spec_authority: { kind: "user", auth_source: { kind: "api_key" } },
+      actor_id: null,
+      request_source: "api",
+    },
+    ctx.db,
+  );
+  expect(viaKey.code).toBe("human_confirmation_required");
+  const [leaked] = await ctx.db
+    .select({ id: workflows.id })
+    .from(workflows)
+    .where(and(eq(workflows.tenant_id, tenant_id), eq(workflows.slug, "spec-person-core")));
+  expect(leaked).toBeUndefined();
+
+  const chat = unwrap(
+    await saveWorkflowDraft(
+      {
+        tenant_id,
+        def: definition("spec-person-core"),
+        spec: spec("Chat goal"),
+        actor_id: null,
+        request_source: "tool-chain",
+      },
+      ctx.db,
+    ),
+  );
+  const raised = await saveWorkflowDraft(
+    {
+      tenant_id,
+      workflow_id: chat.workflow_id,
+      expected_draft_version_id: chat.version_id,
+      def: definition("spec-person-core"),
+      spec: spec("Chat goal", "person"),
+      actor_id: null,
+      request_source: "tool-chain",
+    },
+    ctx.db,
+  );
+  expect(raised.code).toBe("human_confirmation_required");
+
+  const confirmed = unwrap(
+    await saveWorkflowDraft(
+      {
+        tenant_id,
+        workflow_id: chat.workflow_id,
+        expected_draft_version_id: chat.version_id,
+        def: definition("spec-person-core"),
+        spec: spec("Chat goal", "person"),
+        spec_authority: browserPerson,
+        actor_id: null,
+        request_source: "ui",
+      },
+      ctx.db,
+    ),
+  );
+  expect(confirmed.spec?.origin).toBe("person");
+
+  const carried = unwrap(
+    await saveWorkflowDraft(
+      {
+        tenant_id,
+        workflow_id: chat.workflow_id,
+        expected_draft_version_id: confirmed.version_id,
+        def: definition("spec-person-core", 2),
+        spec: spec("Chat goal", "person"),
+        actor_id: null,
+        request_source: "api",
+      },
+      ctx.db,
+    ),
+  );
+  expect(carried.spec?.origin).toBe("person");
+  expect(carried.version_id).not.toBe(confirmed.version_id);
+});
+
+test("restoring a version without a spec keeps the current spec", async () => {
+  const created = await createWorkflow(
+    { tenant_id, def: definition("spec-restore-empty"), actor_id: null },
+    ctx.db,
+  );
+  if (!created.workflow) throw new Error(created.errors.join("; "));
+  const workflow_id = created.workflow.id;
+  const updated = await updateWorkflow(
+    { tenant_id, id: workflow_id, def: definition("spec-restore-empty", 2), actor_id: null },
+    ctx.db,
+  );
+  if (!updated?.workflow) throw new Error("update failed");
+  await setCurrentSpec(workflow_id, spec("Current goal"));
+
+  const restored = await restoreWorkflowVersion(tenant_id, workflow_id, 1, null, ctx.db);
+  if (!restored?.current_version_id) throw new Error("restore failed");
+  expect(await versionSpec(restored.current_version_id)).toEqual(spec("Current goal"));
+  expect(await specAudits(workflow_id)).toHaveLength(0);
+});
+
+test("restoring a version with another spec audits the spec change", async () => {
+  const created = await createWorkflow(
+    { tenant_id, def: definition("spec-restore-audit"), actor_id: null },
+    ctx.db,
+  );
+  if (!created.workflow) throw new Error(created.errors.join("; "));
+  const workflow_id = created.workflow.id;
+  await setCurrentSpec(workflow_id, spec("First goal"));
+  const updated = await updateWorkflow(
+    { tenant_id, id: workflow_id, def: definition("spec-restore-audit", 2), actor_id: null },
+    ctx.db,
+  );
+  if (!updated?.workflow?.current_version_id) throw new Error("update failed");
+  const replacedVersionId = updated.workflow.current_version_id;
+  await setCurrentSpec(workflow_id, spec("Second goal"));
+
+  const restored = await restoreWorkflowVersion(tenant_id, workflow_id, 1, null, ctx.db);
+  if (!restored?.current_version_id) throw new Error("restore failed");
+  expect(await versionSpec(restored.current_version_id)).toEqual(spec("First goal"));
+  const audits = await specAudits(workflow_id);
+  expect(audits).toHaveLength(1);
+  expect(audits[0]?.before).toEqual({
+    version_id: replacedVersionId,
+    spec_digest: workflowSpecDigest(spec("Second goal")),
+  });
+  expect(audits[0]?.after).toEqual({
+    version_id: restored.current_version_id,
+    spec_digest: workflowSpecDigest(spec("First goal")),
+  });
+  expect(audits[0]?.metadata).toMatchObject({ restored_from: 1, origin: "chat" });
 });
