@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { verifyWorkflow } from "../../conversations/verifier.ts";
 import { validateBareIterationIdentifiers } from "../reference-validator.ts";
 import { executableDefinition, readStoredDefinition } from "../stored-definition.ts";
 import { validateWorkflowDef } from "../validator.ts";
@@ -155,36 +154,6 @@ describe("validateBareIterationIdentifiers — authoring lint", () => {
       { id: "gate", kind: "branch", when: "$item.rows[item > 2]", then_steps: [], else_steps: [] },
     ]);
     expect(errors).toHaveLength(0);
-  });
-});
-
-describe("conversations verifier — build-time rejection", () => {
-  test("item_var declaration + bare loop-body branch.when are both error findings", () => {
-    const report = verifyWorkflow({
-      name: "declares-item-var",
-      steps: [
-        { id: "get", kind: "transform", language: "javascript", expression: "return [1];" },
-        { id: "iter", kind: "loop", over: "get.data", item_var: "num", body: ["gate"] },
-        { id: "gate", kind: "branch", when: "item > 2", then_steps: [], else_steps: [] },
-      ],
-    });
-    const codes = report.errors.map((e) => e.code);
-    expect(codes).toContain("item_var_retired");
-    expect(codes).toContain("bare_iteration_identifier");
-    const bare = report.errors.find((e) => e.code === "bare_iteration_identifier");
-    expect(bare?.message).toContain("$item > 2");
-  });
-
-  test("canonical $item draft verifies clean", () => {
-    const report = verifyWorkflow({
-      name: "ok",
-      steps: [
-        { id: "get", kind: "transform", language: "javascript", expression: "return [1];" },
-        { id: "iter", kind: "loop", over: "get.data", body: ["gate"] },
-        { id: "gate", kind: "branch", when: "$item > 2", then_steps: [], else_steps: [] },
-      ],
-    });
-    expect(report.errors).toHaveLength(0);
   });
 });
 

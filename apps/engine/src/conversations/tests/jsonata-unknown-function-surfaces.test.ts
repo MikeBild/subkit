@@ -15,7 +15,6 @@ import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { buildGenerationPrompt, JSONATA_ARGMAX_IDIOM } from "../authoring-pipeline.ts";
 import { evaluateJsonataSite } from "../recorded-eval.ts";
 import { repairTransformExpression } from "../transform-repair.ts";
-import { verifyWorkflow } from "../verifier.ts";
 
 let ctx: TestDb;
 let tenant_id: string;
@@ -72,7 +71,7 @@ function repairPrompts(): string[] {
 }
 
 describe("unknown JSONata function · one message on every surface", () => {
-  test("validator, verifier and recorded-eval agree on the message and the site", async () => {
+  test("validator and recorded-eval agree on the message and the site", async () => {
     const validator = validateWorkflowDef({
       name: "surfaces",
       steps: STEPS,
@@ -80,14 +79,6 @@ describe("unknown JSONata function · one message on every surface", () => {
     });
     expect(validator.ok).toBe(false);
     expect(validator.errors).toContainEqual({ path: "output_transform", message: MESSAGE });
-
-    const verifier = verifyWorkflow({ steps: STEPS, output_transform: INDEX_OF });
-    expect(verifier.errors).toContainEqual({
-      severity: "error",
-      code: "jsonata_unknown_function",
-      message: MESSAGE,
-      path: "output_transform",
-    });
 
     const recorded = await evaluateJsonataSite(
       {
@@ -108,11 +99,12 @@ describe("unknown JSONata function · one message on every surface", () => {
   });
 
   test("built-ins and := bound functions raise no unknown-function finding", () => {
-    const report = verifyWorkflow({
+    const validator = validateWorkflowDef({
+      name: "bound-functions",
       steps: STEPS,
       output_transform: "($f := function($x) { $x }; $map($scope.fetch.data, $f))",
     });
-    expect(report.errors.filter((e) => e.code === "jsonata_unknown_function")).toEqual([]);
+    expect(validator.errors.filter((e) => e.path === "output_transform")).toEqual([]);
   });
 });
 
