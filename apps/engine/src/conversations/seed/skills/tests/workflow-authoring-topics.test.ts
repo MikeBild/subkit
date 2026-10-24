@@ -20,6 +20,15 @@ describe("workflow-authoring core and topic skills", () => {
     expect(core?.body.length ?? Infinity).toBeLessThanOrEqual(21_000);
   });
 
+  test("the split sends generation no more than two percent beyond the single skill's guidance", () => {
+    const singleSkillBodyChars = 97_112;
+    const rendered = family.reduce(
+      (sum, skill) => sum + `# Skill: ${skill.title} (${skill.scope})\n${skill.body}`.length + 2,
+      0,
+    );
+    expect(rendered).toBeLessThanOrEqual(Math.round(singleSkillBodyChars * 1.02));
+  });
+
   test("every topic skill is a stable, visible global skill with its own activation rules", () => {
     expect(topics.length).toBeGreaterThanOrEqual(10);
     for (const skill of topics) {
