@@ -7,6 +7,9 @@
 - Product, architecture, design, operating concepts and dated evidence: [Wiki](https://github.com/MikeBild/subkit/wiki).
 - Keep project management entirely in GitHub. Do not create repository TODOs, roadmaps, status reports or handoffs.
 - Issues and Wiki pages: goal first, short sentences, useful checklists, source links; no text walls or duplicate status lists.
+- Every issue states "Fertig, wenn" (one checkable sentence) and "Nicht Teil davon". Keep at most three issues in progress; finish before starting the next.
+- Fix a finding inside the current topic when it takes under 30 minutes; otherwise comment on an existing issue. Open a new issue only after the user agrees. Do not widen scope without asking.
+- Bundle several finished issues into one release instead of releasing each fix. One session owns a release and announces it before tagging.
 - Daily/weekly briefings read current GitHub main, Issues, Milestones and Project. Prefer private workflows only when the client can actually run and read them. Name sensitive-client limits and use authorized GitHub reads; never infer a run.
 
 ## Work
