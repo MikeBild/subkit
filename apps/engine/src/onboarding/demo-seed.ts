@@ -6,7 +6,7 @@ import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
-import { type VersionActor, versionAuthorColumns } from "../workflows/index.ts";
+import { carriedSpecColumns, type VersionActor, versionAuthorColumns } from "../workflows/index.ts";
 import { WorkflowDefSchema } from "../workflows/types.ts";
 
 export interface DemoWorkflowSpec {
@@ -149,6 +149,7 @@ export async function seedOnboardingDemo(
           workflow_id: wf.id,
           version: 1,
           dag: spec.dag as object,
+          ...carriedSpecColumns(null),
           note: "Seeded by onboarding-demo-seed.",
         })
         .returning();

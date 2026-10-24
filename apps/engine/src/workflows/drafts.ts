@@ -11,11 +11,19 @@ import { workflows, workflowVersions } from "../db/schema/index.ts";
 import type { RequestSource } from "../observability/service-metadata.ts";
 import { canonicalWorkflowJson as canonical, workflowJsonDigest } from "./canonical-json.ts";
 import { applySkillSchemaGate, applyStorageBindingGate } from "./commit-gates.ts";
+import { type WorkflowSpec, WorkflowSpecSchema } from "./draft-schemas.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
 import { slugConflictResult } from "./slug-conflict.ts";
 import { validateTenantWorkflowDefForSave } from "./tenant-validator.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { type VersionActor, versionAuthorColumns } from "./version-author.ts";
+import {
+  carriedSpecColumns,
+  loadVersionSpec,
+  readStoredSpec,
+  type SpecCarrier,
+  workflowSpecDigest,
+} from "./version-spec.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
 import { writeWorkflowMetadata } from "./workflow-metadata.ts";
 
@@ -26,6 +34,7 @@ export interface WorkflowDraftView {
   digest: string;
   current_version_id: string | null;
   definition: WorkflowDef;
+  spec: WorkflowSpec | null;
 }
 
 type DraftErrorCode =
@@ -50,6 +59,7 @@ export interface SaveWorkflowDraftInput extends VersionActor {
   expected_draft_version_id?: string | null;
   expected_current_version_id?: string | null;
   def: unknown;
+  spec?: unknown;
   scope_index?: typeof workflowVersions.$inferInsert.scope_index;
   actor_id: string | null;
   actor_type?: "user" | "system_account" | "system";
@@ -74,6 +84,7 @@ function draftView(
     digest: workflowJsonDigest(version.dag),
     current_version_id: wf.current_version_id,
     definition,
+    spec: readStoredSpec(version.spec),
   };
 }
 
@@ -143,6 +154,16 @@ export async function saveWorkflowDraft(
       errors: ["read the current draft version before updating"],
     };
   }
+  const requestedSpec =
+    input.spec === undefined ? undefined : WorkflowSpecSchema.safeParse(input.spec);
+  if (requestedSpec && !requestedSpec.success) {
+    return {
+      code: "invalid_definition",
+      errors: requestedSpec.error.issues.map(
+        (issue) => `spec${issue.path.map((part) => `.${String(part)}`).join("")}: ${issue.message}`,
+      ),
+    };
+  }
   const validation = await validateTenantWorkflowDefForSave(input.def, input.tenant_id, exec, {
     destinationTier: "tokens",
   });
@@ -173,6 +194,7 @@ export async function saveWorkflowDraft(
     return await exec.transaction(async (tx): Promise<SaveWorkflowDraftResult> => {
       await lockCatalogVocabulary(tx, input.tenant_id);
       let wf: typeof workflows.$inferSelect;
+      let baseSpec: SpecCarrier | null = null;
       if (input.workflow_id) {
         const existing = await lockWorkflowForVersionWrite(tx, input.tenant_id, input.workflow_id);
         if (!existing) return { code: "not_found", errors: ["workflow not found"] };
@@ -186,9 +208,19 @@ export async function saveWorkflowDraft(
         ) {
           return await versionConflict(tx, wf, input.expected_current_version_id);
         }
+        baseSpec = await loadVersionSpec(tx, {
+          tenant_id: input.tenant_id,
+          workflow_id: wf.id,
+          version_id: wf.draft_version_id ?? wf.current_version_id,
+        });
+        const nextSpec = requestedSpec ? requestedSpec.data : (baseSpec?.spec ?? null);
         if (wf.draft_version_id) {
           const previous = await getWorkflowDraft(input.tenant_id, wf.id, tx);
-          if (previous && previous.digest === workflowJsonDigest(def)) {
+          if (
+            previous &&
+            previous.digest === workflowJsonDigest(def) &&
+            workflowSpecDigest(baseSpec?.spec) === workflowSpecDigest(nextSpec)
+          ) {
             if (input.scope_index === undefined) return { draft: previous };
             const [stored] = await tx
               .select({ scope_index: workflowVersions.scope_index })
@@ -229,6 +261,9 @@ export async function saveWorkflowDraft(
             eq(workflowVersions.workflow_id, wf.id),
           ),
         );
+      const specColumns = requestedSpec
+        ? { spec: requestedSpec.data }
+        : carriedSpecColumns(baseSpec);
       const [version] = await tx
         .insert(workflowVersions)
         .values({
@@ -237,6 +272,7 @@ export async function saveWorkflowDraft(
           workflow_id: wf.id,
           version: Number(latest?.max ?? 0) + 1,
           dag: def,
+          ...specColumns,
           scope_index: input.scope_index ?? null,
         })
         .returning();
@@ -277,6 +313,35 @@ export async function saveWorkflowDraft(
         },
         tx,
       );
+      const specBefore = workflowSpecDigest(baseSpec?.spec);
+      const specAfter = workflowSpecDigest(version.spec);
+      if (specBefore !== specAfter) {
+        await auditAwait(
+          {
+            tenant_id: input.tenant_id,
+            ...resolveActor({
+              tenant_id: input.tenant_id,
+              actor_id: input.actor_id,
+              ...(input.actor_type !== undefined ? { actor_type: input.actor_type } : {}),
+            }),
+            action: AuditAction.DRAFT_SPEC_UPDATED,
+            resource_type: "workflow",
+            resource_id: wf.id,
+            result: "success",
+            before: {
+              version_id: wf.draft_version_id ?? wf.current_version_id,
+              spec_digest: baseSpec?.spec ? specBefore : null,
+            },
+            after: { version_id: version.id, spec_digest: specAfter },
+            metadata: {
+              version: version.version,
+              origin: readStoredSpec(version.spec)?.origin ?? null,
+              request_source: input.request_source,
+            },
+          },
+          tx,
+        );
+      }
       return { draft: draftView(wf, version) };
     });
   } catch (error) {

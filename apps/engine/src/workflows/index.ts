@@ -55,4 +55,10 @@ export * from "./tenant-validator.ts";
 export * from "./types.ts";
 export * from "./validator.ts";
 export { type VersionActor, versionAuthorColumns } from "./version-author.ts";
+export {
+  carriedSpecColumns,
+  readStoredSpec,
+  type SpecCarrier,
+  workflowSpecDigest,
+} from "./version-spec.ts";
 export * from "./versions.ts";

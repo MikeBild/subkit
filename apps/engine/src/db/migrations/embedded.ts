@@ -164,6 +164,7 @@ import sql0143CockpitPushRevokedSessionCleanup from "./0143_cockpit_push_revoked
 import sql0144CockpitPushBrowserSubscriptions from "./0144_cockpit_push_browser_subscriptions.sql" with { type: "text" };
 import sql0145CatalogCategoryLockScope from "./0145_catalog_category_lock_scope.sql" with { type: "text" };
 import sql0146FileVersions from "./0146_file_versions.sql" with { type: "text" };
+import sql0147WorkflowVersionSpec from "./0147_workflow_version_spec.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -335,6 +336,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0144_cockpit_push_browser_subscriptions": sql0144CockpitPushBrowserSubscriptions,
   "0145_catalog_category_lock_scope": sql0145CatalogCategoryLockScope,
   "0146_file_versions": sql0146FileVersions,
+  "0147_workflow_version_spec": sql0147WorkflowVersionSpec,
 };
 
 const journal = journalMeta as unknown as Journal;

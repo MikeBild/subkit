@@ -71,6 +71,7 @@ export const workflowVersions = pgTable(
       .references(() => workflows.id, { onDelete: "cascade" }),
     version: integer("version").notNull(),
     dag: jsonb("dag").notNull(),
+    spec: jsonb("spec").$type<Record<string, unknown>>(),
     author_user_id: uuid("author_user_id"),
     author_system_account_id: uuid("author_system_account_id"),
     note: text("note"),

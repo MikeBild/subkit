@@ -3,7 +3,12 @@ import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { apiKeys, auditLog, workflowsSchedules } from "../../db/schema/index.ts";
 import { WorkflowDraftSchema } from "../../workflows/index.ts";
-import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
+import {
+  browserSessionHeaders,
+  createHttpTestServer,
+  createSecondaryTenant,
+  type HttpTestServer,
+} from "./setup.ts";
 
 let ctx: HttpTestServer;
 const readKey = "wf_live_draft_read_only_test_key_00001";
@@ -229,4 +234,79 @@ test("the derived limits reach every surface through one endpoint, and change no
     headers: headers(),
   });
   expect(((await after.json()) as { version_id: string }).version_id).toBe(draft.version_id);
+});
+
+function spec(goal: string, origin: "person" | "chat" | "derived" = "chat") {
+  return {
+    goal,
+    inputs: [],
+    outputs: [{ name: "report", description: "The weekly report" }],
+    delivery: { channel: "email" },
+    conventions_applied: [],
+    evidence: [],
+    open_questions: ["Which mailbox receives the report?"],
+    origin,
+  };
+}
+
+test("a draft spec round-trips through create, update and read, and stays with its tenant", async () => {
+  const created = await fetch(`${ctx.baseUrl}/v1/workflows/drafts`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ definition: definition("api-spec-draft"), spec: spec("First goal") }),
+  });
+  expect(created.status).toBe(201);
+  const first = WorkflowDraftSchema.parse(await created.json());
+  expect(first.spec).toEqual(spec("First goal"));
+  const url = `${ctx.baseUrl}/v1/workflows/${first.workflow_id}/draft`;
+  const updated = await fetch(url, {
+    method: "PUT",
+    headers: headers(),
+    body: JSON.stringify({
+      definition: definition("api-spec-draft"),
+      expected_draft_version_id: first.version_id,
+      spec: spec("Second goal"),
+    }),
+  });
+  expect(updated.status).toBe(200);
+  const second = WorkflowDraftSchema.parse(await updated.json());
+  expect(second.version).toBe(first.version + 1);
+  expect(second.digest).toBe(first.digest);
+  const read = await fetch(url, { headers: headers(readKey) });
+  expect(WorkflowDraftSchema.parse(await read.json()).spec).toEqual(spec("Second goal"));
+  const other = await createSecondaryTenant(ctx, "spec-draft");
+  const foreign = await fetch(url, { headers: headers(other.admin.apiKey) });
+  expect(foreign.status).toBe(404);
+});
+
+test("an invalid spec is refused with 400", async () => {
+  const created = await fetch(`${ctx.baseUrl}/v1/workflows/drafts`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({
+      definition: definition("api-spec-invalid"),
+      spec: { ...spec("Goal"), extra: true },
+    }),
+  });
+  expect(created.status).toBe(400);
+});
+
+test("only a signed-in person can save a spec as stated by a person", async () => {
+  const body = JSON.stringify({
+    definition: definition("api-spec-person"),
+    spec: spec("Person goal", "person"),
+  });
+  const viaKey = await fetch(`${ctx.baseUrl}/v1/workflows/drafts`, {
+    method: "POST",
+    headers: headers(),
+    body,
+  });
+  expect(viaKey.status).toBe(403);
+  const viaSession = await fetch(`${ctx.baseUrl}/v1/workflows/drafts`, {
+    method: "POST",
+    headers: await browserSessionHeaders(ctx, ctx.userId),
+    body,
+  });
+  expect(viaSession.status).toBe(201);
+  expect(WorkflowDraftSchema.parse(await viaSession.json()).spec?.origin).toBe("person");
 });

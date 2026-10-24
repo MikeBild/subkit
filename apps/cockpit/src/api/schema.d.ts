@@ -23595,6 +23595,7 @@ export interface components {
             /** Format: uuid */
             current_version_id: string | null;
             definition: components["schemas"]["WorkflowDef"];
+            spec: components["schemas"]["WorkflowSpec"] | null;
         };
         WorkflowDef: {
             name: string;
@@ -24165,9 +24166,53 @@ export interface components {
              */
             attach_usage_as: string;
         };
+        /** @description Purpose and acceptance of a workflow version. Versioned with the workflow and never part of its executed definition. */
+        WorkflowSpec: {
+            /** @description What the workflow is for; null while unknown. */
+            goal: string | null;
+            inputs: components["schemas"]["WorkflowSpecField"][];
+            outputs: components["schemas"]["WorkflowSpecField"][];
+            delivery: components["schemas"]["WorkflowSpecDelivery"];
+            conventions_applied: components["schemas"]["WorkflowSpecConvention"][];
+            evidence: components["schemas"]["WorkflowSpecEvidence"][];
+            open_questions: string[];
+            origin: components["schemas"]["WorkflowSpecOrigin"];
+        };
+        WorkflowSpecField: {
+            name: string;
+            description?: string;
+        };
+        WorkflowSpecDelivery: {
+            /** @description Where the result goes, for example email, slack or a file. */
+            channel: string;
+            /** @description The concrete recipient, address or location. */
+            destination?: string;
+            description?: string;
+        } | null;
+        WorkflowSpecConvention: {
+            /**
+             * Format: uuid
+             * @description The skill the convention comes from.
+             */
+            skill_id?: string;
+            /** @description The convention as applied to this workflow. */
+            note: string;
+        };
+        WorkflowSpecEvidence: {
+            /** @description Where the evidence comes from, for example a connector or document. */
+            source: string;
+            /** @description The exact place inside the source. */
+            locator: string;
+        };
+        /**
+         * @description Who stated the spec: a person, the authoring chat, or derived from existing material. Only a person's statement counts as confirmed.
+         * @enum {string}
+         */
+        WorkflowSpecOrigin: "person" | "chat" | "derived";
         CreateWorkflowDraft: {
             definition: components["schemas"]["WorkflowDef"];
             category?: components["schemas"]["CatalogCategory"];
+            spec?: components["schemas"]["WorkflowSpec"] & unknown;
             recipe?: components["schemas"]["RecipeOrigin"];
         };
         /** @description The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills and files of a tenant; `GET /v1/categories` lists it. */
@@ -24180,6 +24225,7 @@ export interface components {
         UpdateWorkflowDraft: {
             definition: components["schemas"]["WorkflowDef"];
             category?: components["schemas"]["CatalogCategory"];
+            spec?: components["schemas"]["WorkflowSpec"] & unknown;
             /** Format: uuid */
             expected_draft_version_id: string | null;
             /**

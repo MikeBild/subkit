@@ -11,6 +11,7 @@ import { emitWorkflowLifecycle } from "./service.ts";
 import { validateTenantWorkflowDefForSave } from "./tenant-validator.ts";
 import { triggerOf } from "./trigger-bindings.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
+import { carriedSpecColumns } from "./version-spec.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
 
 export interface RotateWorkflowVersionInternalInput {
@@ -86,6 +87,7 @@ export async function rotateWorkflowVersionInternal(
       workflow_id: wf.id,
       version: next,
       dag: def,
+      ...carriedSpecColumns(current),
       note: input.note,
       ...(current.scope_index ? { scope_index: current.scope_index } : {}),
     })

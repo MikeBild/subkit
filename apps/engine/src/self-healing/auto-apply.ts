@@ -5,6 +5,7 @@ import type { PatchProposal } from "../llm/flows/repair.ts";
 import { log } from "../logging/logger.ts";
 import { carryApprovalsForward } from "../workflows/authority-inheritance.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
+import { carriedSpecColumns } from "../workflows/version-spec.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
 import {
   applyPatchToWorkflowDag,
@@ -104,6 +105,7 @@ export async function autoApplyPatch(
         WHERE ${workflowVersions.tenant_id} = ${params.tenant_id}
           AND ${workflowVersions.workflow_id} = ${params.workflow_id})`,
           dag: newDag,
+          ...carriedSpecColumns(currentVersion),
           note: `self-healing auto-apply of patch ${params.candidate_id}`,
         })
         .returning();
