@@ -1,10 +1,10 @@
 import { z } from "@hono/zod-openapi";
-import { parseAtlassianCloudResourceUrl } from "../../connectors/atlassian-tinyui.ts";
-import { parseNotionResourceUrl } from "../../connectors/notion-page-id.ts";
 import { baseUrlHost, compareConnectorOverlap } from "../../connectors/overlap.ts";
+import { resolveTemplateResourceUrl } from "../../connectors/resource-url.ts";
 import { listConnectors } from "../../connectors/service.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import { matchTemplatesByUrl } from "../../connectors/template-url-match.ts";
+import { loadBuiltinTemplates } from "../../connectors/templates.ts";
 import {
   allowedTemplateAuthTypes,
   inferTemplateRequiredFields,
@@ -26,8 +26,8 @@ export const matchConnectorTemplateByUrlTool: ConversationTool = {
     "Call this as soon as the operator pastes a concrete URL like https://api.stripe.com/v1/charges — before any manual connector setup.",
   example_input: { url: "https://api.stripe.com/v1/charges", limit: 3 },
   important_notes: [
-    "Top-level `resolved_resource` is set when the URL is an Atlassian Cloud or Notion resource.",
-    "`resolved_resource` shapes: `{ kind: 'confluence_tinyui', short, page_id }` (page_id is null when the shortlink fails to decode); `{ kind: 'confluence_page', page_id }`; `{ kind: 'jira_issue', key }`; `{ kind: 'notion_page', page_id }` (canonical dashed UUID extracted from the pasted Notion URL — pass it straight into the recipe's `page_id` field, do NOT author a URL-parsing transform).",
+    "Top-level `resolved_resource` is set when a connector template declares a resource URL parser that recognises the pasted URL.",
+    "`resolved_resource` carries a `kind` plus the decoded identifier (`page_id` or `key`; `page_id` is null when a shortlink fails to decode). Pass the identifier straight into the recipe's matching field; do NOT author a URL-parsing transform.",
     "Use the `resolved_resource` id when building the first request step so the dry-run hits the real resource — do NOT probe the API to discover a value the matcher already gave you.",
     "Each `matches[].existing_connector_candidates[]` entry is a saved connector on this tenant that already serves the URL host.",
     "Reuse-candidate scoring: driver + base_url_host + auth_type, score 1-3 (count of matching dimensions).",
@@ -69,8 +69,7 @@ export const matchConnectorTemplateByUrlTool: ConversationTool = {
         matched_segment,
       };
     });
-    const resolved_resource =
-      parseAtlassianCloudResourceUrl(args.url) ?? parseNotionResourceUrl(args.url);
+    const resolved_resource = resolveTemplateResourceUrl(args.url, loadBuiltinTemplates());
 
     const urlHost = baseUrlHost(args.url);
     const tenantConnectorList = urlHost

@@ -5357,6 +5357,7 @@
   {
     "version": 1,
     "slug": "confluence",
+    "resource_url_parser": "atlassian_cloud",
     "name": "Confluence",
     "driver": "http",
     "base_url": "https://api.atlassian.com/ex/confluence/{cloudId}/wiki/api/v2",
@@ -5572,6 +5573,13 @@
   {
     "version": 2,
     "slug": "firebase",
+    "probe_diagnostics": {
+      "remote_api_disabled": {
+        "error_reason": "accessNotConfigured",
+        "service_host": "{api}.googleapis.com",
+        "action_url": "https://console.cloud.google.com/apis/library/{service}"
+      }
+    },
     "name": "Firebase",
     "driver": "http",
     "base_url": "https://firestore.googleapis.com",
@@ -7119,6 +7127,20 @@
   {
     "version": 1,
     "slug": "google-analytics",
+    "probe_diagnostics": {
+      "remote_api_disabled": {
+        "error_reason": "accessNotConfigured",
+        "service_host": "{api}.googleapis.com",
+        "action_url": "https://console.cloud.google.com/apis/library/{service}"
+      }
+    },
+    "read_operations": [
+      {
+        "method": "POST",
+        "origin": "https://analyticsdata.googleapis.com",
+        "path_pattern": "^/v1beta/properties/[1-9][0-9]*:runReport$"
+      }
+    ],
     "name": "Google Analytics 4",
     "driver": "http",
     "base_url": "https://analyticsdata.googleapis.com",
@@ -7592,6 +7614,13 @@
   {
     "version": 1,
     "slug": "google-calendar",
+    "probe_diagnostics": {
+      "remote_api_disabled": {
+        "error_reason": "accessNotConfigured",
+        "service_host": "{api}.googleapis.com",
+        "action_url": "https://console.cloud.google.com/apis/library/{service}"
+      }
+    },
     "name": "Google Calendar",
     "driver": "http",
     "base_url": "https://www.googleapis.com/calendar/v3",
@@ -7685,6 +7714,13 @@
   {
     "version": 1,
     "slug": "google-search-console",
+    "probe_diagnostics": {
+      "remote_api_disabled": {
+        "error_reason": "accessNotConfigured",
+        "service_host": "{api}.googleapis.com",
+        "action_url": "https://console.cloud.google.com/apis/library/{service}"
+      }
+    },
     "name": "Google Search Console",
     "driver": "http",
     "base_url": "https://searchconsole.googleapis.com",
@@ -7767,6 +7803,13 @@
   {
     "version": 1,
     "slug": "google-chat",
+    "probe_diagnostics": {
+      "remote_api_disabled": {
+        "error_reason": "accessNotConfigured",
+        "service_host": "{api}.googleapis.com",
+        "action_url": "https://console.cloud.google.com/apis/library/{service}"
+      }
+    },
     "name": "Google Chat",
     "driver": "http",
     "base_url": "https://chat.googleapis.com/v1",
@@ -7860,6 +7903,13 @@
   {
     "version": 1,
     "slug": "google-cloud-storage",
+    "probe_diagnostics": {
+      "remote_api_disabled": {
+        "error_reason": "accessNotConfigured",
+        "service_host": "{api}.googleapis.com",
+        "action_url": "https://console.cloud.google.com/apis/library/{service}"
+      }
+    },
     "name": "Google Cloud Storage",
     "driver": "http",
     "base_url": "https://storage.googleapis.com/storage/v1",
@@ -7953,6 +8003,13 @@
   {
     "version": 1,
     "slug": "google-docs",
+    "probe_diagnostics": {
+      "remote_api_disabled": {
+        "error_reason": "accessNotConfigured",
+        "service_host": "{api}.googleapis.com",
+        "action_url": "https://console.cloud.google.com/apis/library/{service}"
+      }
+    },
     "name": "Google Docs",
     "driver": "http",
     "base_url": "https://docs.googleapis.com/v1",
@@ -8046,6 +8103,13 @@
   {
     "version": 1,
     "slug": "google-drive",
+    "probe_diagnostics": {
+      "remote_api_disabled": {
+        "error_reason": "accessNotConfigured",
+        "service_host": "{api}.googleapis.com",
+        "action_url": "https://console.cloud.google.com/apis/library/{service}"
+      }
+    },
     "name": "Google Drive",
     "driver": "http",
     "base_url": "https://www.googleapis.com/drive/v3",
@@ -8139,6 +8203,13 @@
   {
     "version": 1,
     "slug": "google-gmail",
+    "probe_diagnostics": {
+      "remote_api_disabled": {
+        "error_reason": "accessNotConfigured",
+        "service_host": "{api}.googleapis.com",
+        "action_url": "https://console.cloud.google.com/apis/library/{service}"
+      }
+    },
     "name": "Google Gmail",
     "driver": "http",
     "base_url": "https://gmail.googleapis.com/gmail/v1",
@@ -8232,6 +8303,13 @@
   {
     "version": 1,
     "slug": "google-sheets",
+    "probe_diagnostics": {
+      "remote_api_disabled": {
+        "error_reason": "accessNotConfigured",
+        "service_host": "{api}.googleapis.com",
+        "action_url": "https://console.cloud.google.com/apis/library/{service}"
+      }
+    },
     "name": "Google Sheets",
     "driver": "http",
     "base_url": "https://sheets.googleapis.com/v4",
@@ -8325,6 +8403,13 @@
   {
     "version": 1,
     "slug": "google-workspace",
+    "probe_diagnostics": {
+      "remote_api_disabled": {
+        "error_reason": "accessNotConfigured",
+        "service_host": "{api}.googleapis.com",
+        "action_url": "https://console.cloud.google.com/apis/library/{service}"
+      }
+    },
     "name": "Google Workspace",
     "driver": "http",
     "base_url": "https://www.googleapis.com",
@@ -9680,6 +9765,7 @@
   {
     "version": 1,
     "slug": "jira",
+    "resource_url_parser": "atlassian_cloud",
     "name": "Jira",
     "driver": "http",
     "base_url": "https://api.atlassian.com/ex/jira/{cloudId}/rest/api/3",
@@ -11158,6 +11244,7 @@
   {
     "version": 1,
     "slug": "notion",
+    "resource_url_parser": "notion",
     "name": "Notion",
     "driver": "http",
     "base_url": "https://api.notion.com/v1",
