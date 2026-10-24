@@ -2184,7 +2184,7 @@ Installierst du später neu, entsteht eine neue App-Adresse. Alte Links funktion
 | „Installierte Apps benötigen für die erneute Anmeldung ein bestehendes OIDC-Konto. …“ | Melde dich im normalen Cockpit an und öffne die App dort über **Arbeitsbereich installieren** erneut. |
 | „Browser-Berechtigung verweigert. Bitte in den Einstellungen erlauben.“ | Erlaube Benachrichtigungen für die Cockpit-Adresse in den Einstellungen deines Browsers. |
 | "Open the app, sign in and share again." | Starte die App, melde dich an und teile den Inhalt erneut. |
-| „Verwende ein nicht animiertes PNG, JPEG oder WebP mit maximal 2 MiB und 4 Megapixeln.“ | Lade als App-Icon ein quadratisches PNG mit mindestens 512 Pixeln Kantenlänge und höchstens 2 MiB hoch. |`}}},{slug:`maintain-sources-skills-and-files`,llms_path:`setup.md`,audience:`public`,section:`work`,order:10,generated:!1,locales:{en:{title:`Maintain sources, skills and files`,summary:`Compare earlier versions, restore them and find conversations about a source or a skill.`,headings:[{depth:2,text:`Maintain sources, skills and files`,anchor:`maintain-sources-skills-and-files`},{depth:3,text:`What you need`,anchor:`what-you-need`},{depth:3,text:`Compare versions of a source or a skill`,anchor:`compare-versions-of-a-source-or-a-skill`},{depth:3,text:`Restore an earlier version`,anchor:`restore-an-earlier-version`},{depth:3,text:`Find conversations about a source or a skill`,anchor:`find-conversations-about-a-source-or-a-skill`},{depth:3,text:`Replace a file`,anchor:`replace-a-file`},{depth:3,text:`Restore an earlier state of a file`,anchor:`restore-an-earlier-state-of-a-file`},{depth:3,text:`If something does not work`,anchor:`if-something-does-not-work`}],images:[],sha256:`c3bf99a3e52dbd05c4d27d94142e4f5f2303634f00e6f864c1d8a7b77c359533`,body:`## Maintain sources, skills and files
+| „Verwende ein nicht animiertes PNG, JPEG oder WebP mit maximal 2 MiB und 4 Megapixeln.“ | Lade als App-Icon ein quadratisches PNG mit mindestens 512 Pixeln Kantenlänge und höchstens 2 MiB hoch. |`}}},{slug:`maintain-sources-skills-and-files`,llms_path:`setup.md`,audience:`public`,section:`work`,order:10,generated:!1,locales:{en:{title:`Maintain sources, skills and files`,summary:`Compare earlier versions, restore them and find conversations about a source or a skill.`,headings:[{depth:2,text:`Maintain sources, skills and files`,anchor:`maintain-sources-skills-and-files`},{depth:3,text:`What you need`,anchor:`what-you-need`},{depth:3,text:`Compare versions of a source or a skill`,anchor:`compare-versions-of-a-source-or-a-skill`},{depth:3,text:`Restore an earlier version`,anchor:`restore-an-earlier-version`},{depth:3,text:`Find conversations about a source or a skill`,anchor:`find-conversations-about-a-source-or-a-skill`},{depth:3,text:`Decide skill proposals`,anchor:`decide-skill-proposals`},{depth:3,text:`Replace a file`,anchor:`replace-a-file`},{depth:3,text:`Restore an earlier state of a file`,anchor:`restore-an-earlier-state-of-a-file`},{depth:3,text:`If something does not work`,anchor:`if-something-does-not-work`}],images:[],sha256:`0e9b539c6d5e92717391421ab29feb565f619e05aad374691b968255d0cdc7d5`,body:`## Maintain sources, skills and files
 
 You find sources, skills and files in the Cockpit in the **Knowledge** group.
 SubKit keeps earlier states. You see what changed, and you bring back an earlier state.
@@ -2218,6 +2218,16 @@ The list shows conversations that name the source or the skill with an \`@\` ref
 For a source, it also counts conversations in which a knowledge tool read or found the source.
 For a skill, it also counts conversations that loaded the skill.
 Click a conversation to open it. If there is none yet, start one with **Ask in chat**.
+
+### Decide skill proposals
+
+SubKit proposes skills from recurring patterns. You decide them on the **Skill candidates** page, not in the skills table.
+
+1. Open **Skills** and click **… proposals open** in the header.
+2. Click a candidate and review its content and scope.
+3. Choose **Accept** or **Discard**. To decide several candidates at once, select them in the list.
+
+Discarding needs \`skill:write\`; accepting also needs \`skill:activate\`. SubKit does not propose a discarded candidate again.
 
 ### Replace a file
 
@@ -2257,7 +2267,7 @@ sk files restore <file-id> <version>
 | **Restore this version** is missing | You opened the current version. Open an earlier one. If the button is still missing, ask an administrator for the write permission for sources or skills. |
 | "This version has no saved state, so it cannot be restored." | Choose another version, or change the skill directly. |
 | The **Replaced** section is missing | The file was never replaced. It has no earlier versions yet. |
-| **Replace** is missing in the menu | Ask an administrator for \`file:write\`. |`},de:{title:`Quellen, Skills und Dateien pflegen`,summary:`Vergleiche frühere Versionen, stelle sie wieder her und finde Unterhaltungen zu einer Quelle oder einem Skill.`,headings:[{depth:2,text:`Quellen, Skills und Dateien pflegen`,anchor:`quellen-skills-und-dateien-pflegen`},{depth:3,text:`Was du brauchst`,anchor:`was-du-brauchst`},{depth:3,text:`Versionen einer Quelle oder eines Skills vergleichen`,anchor:`versionen-einer-quelle-oder-eines-skills-vergleichen`},{depth:3,text:`Eine frühere Version wiederherstellen`,anchor:`eine-frühere-version-wiederherstellen`},{depth:3,text:`Unterhaltungen zu einer Quelle oder einem Skill finden`,anchor:`unterhaltungen-zu-einer-quelle-oder-einem-skill-finden`},{depth:3,text:`Eine Datei ersetzen`,anchor:`eine-datei-ersetzen`},{depth:3,text:`Einen früheren Stand einer Datei wiederherstellen`,anchor:`einen-früheren-stand-einer-datei-wiederherstellen`},{depth:3,text:`Wenn etwas nicht klappt`,anchor:`wenn-etwas-nicht-klappt`}],images:[],sha256:`1d673668a22ddcb3947dfff8f21de18c77d45b8368a27569dc6bc54d7237b570`,body:`## Quellen, Skills und Dateien pflegen
+| **Replace** is missing in the menu | Ask an administrator for \`file:write\`. |`},de:{title:`Quellen, Skills und Dateien pflegen`,summary:`Vergleiche frühere Versionen, stelle sie wieder her und finde Unterhaltungen zu einer Quelle oder einem Skill.`,headings:[{depth:2,text:`Quellen, Skills und Dateien pflegen`,anchor:`quellen-skills-und-dateien-pflegen`},{depth:3,text:`Was du brauchst`,anchor:`was-du-brauchst`},{depth:3,text:`Versionen einer Quelle oder eines Skills vergleichen`,anchor:`versionen-einer-quelle-oder-eines-skills-vergleichen`},{depth:3,text:`Eine frühere Version wiederherstellen`,anchor:`eine-frühere-version-wiederherstellen`},{depth:3,text:`Unterhaltungen zu einer Quelle oder einem Skill finden`,anchor:`unterhaltungen-zu-einer-quelle-oder-einem-skill-finden`},{depth:3,text:`Skill-Vorschläge entscheiden`,anchor:`skill-vorschläge-entscheiden`},{depth:3,text:`Eine Datei ersetzen`,anchor:`eine-datei-ersetzen`},{depth:3,text:`Einen früheren Stand einer Datei wiederherstellen`,anchor:`einen-früheren-stand-einer-datei-wiederherstellen`},{depth:3,text:`Wenn etwas nicht klappt`,anchor:`wenn-etwas-nicht-klappt`}],images:[],sha256:`2101131106b77fc6fb611135f6dccc6fa1a893fe2ba11baf8328901dc52fba0f`,body:`## Quellen, Skills und Dateien pflegen
 
 Quellen, Skills und Dateien findest du im Cockpit in der Gruppe **Wissen**.
 SubKit bewahrt frühere Stände auf. Du siehst, was sich geändert hat, und holst einen früheren Stand zurück.
@@ -2291,6 +2301,16 @@ Die Liste zeigt Unterhaltungen, die die Quelle oder den Skill mit einem \`@\`-Ve
 Bei einer Quelle zählen auch Unterhaltungen, in denen ein Wissenswerkzeug die Quelle gelesen oder gefunden hat.
 Bei einem Skill zählen auch Unterhaltungen, die den Skill geladen haben.
 Klicke auf eine Unterhaltung, um sie zu öffnen. Gibt es noch keine, startest du mit **Im Chat fragen** eine neue.
+
+### Skill-Vorschläge entscheiden
+
+SubKit schlägt Skills aus wiederkehrenden Mustern vor. Du entscheidest sie auf der Seite **Skill-Kandidaten**, nicht in der Skill-Tabelle.
+
+1. Öffne **Skills** und klicke im Kopf auf **… Vorschläge offen**.
+2. Klicke auf einen Kandidaten und prüfe Inhalt und Geltungsbereich.
+3. Wähle **Übernehmen** oder **Verwerfen**. Mehrere Kandidaten wählst du in der Liste aus und entscheidest sie gemeinsam.
+
+Zum Verwerfen brauchst du \`skill:write\`, zum Übernehmen zusätzlich \`skill:activate\`. Einen verworfenen Kandidaten schlägt SubKit nicht noch einmal vor.
 
 ### Eine Datei ersetzen
 
@@ -2330,7 +2350,7 @@ sk files restore <file-id> <version>
 | **Diese Version wiederherstellen** fehlt | Du hast die aktuelle Version geöffnet. Öffne eine frühere. Fehlt der Button weiter, bitte eine Administratorin oder einen Administrator um das Schreibrecht für Quellen oder Skills. |
 | „Für diese Version ist kein Stand gespeichert; sie lässt sich nicht wiederherstellen.“ | Wähle eine andere Version oder ändere den Skill direkt. |
 | Der Bereich **Ersetzt** fehlt | Die Datei wurde noch nie ersetzt. Es gibt noch keine früheren Versionen. |
-| **Ersetzen** fehlt im Menü | Bitte eine Administratorin oder einen Administrator um \`file:write\`. |`}}},{slug:`usage-and-costs`,llms_path:`setup.md`,audience:`public`,section:`work`,order:11,generated:!1,locales:{en:{title:`Keep track of usage and costs`,summary:`See what AI calls cost and what for, and adjust the budget and prices.`,headings:[{depth:2,text:`Keep track of usage and costs`,anchor:`keep-track-of-usage-and-costs`},{depth:3,text:`What you need`,anchor:`what-you-need`},{depth:3,text:`Choose the time window`,anchor:`choose-the-time-window`},{depth:3,text:`The four tiles`,anchor:`the-four-tiles`},{depth:3,text:`Worth a look`,anchor:`worth-a-look`},{depth:3,text:`Cost by origin`,anchor:`cost-by-origin`},{depth:3,text:`Break down by`,anchor:`break-down-by`},{depth:3,text:`Open details`,anchor:`open-details`},{depth:3,text:`Adjust the budget`,anchor:`adjust-the-budget`},{depth:3,text:`Set a price`,anchor:`set-a-price`},{depth:3,text:`Export`,anchor:`export`},{depth:3,text:`Technical details`,anchor:`technical-details`},{depth:3,text:`The same numbers through the CLI or the API`,anchor:`the-same-numbers-through-the-cli-or-the-api`},{depth:3,text:`When something does not work`,anchor:`when-something-does-not-work`}],images:[],sha256:`9e625d745fc032911382bd4fa6359d8ae70bb536f4f3a2d1c7d583b50e81efc8`,body:`## Keep track of usage and costs
+| **Ersetzen** fehlt im Menü | Bitte eine Administratorin oder einen Administrator um \`file:write\`. |`}}},{slug:`usage-and-costs`,llms_path:`setup.md`,audience:`public`,section:`work`,order:11,generated:!1,locales:{en:{title:`Keep track of usage and costs`,summary:`See what AI calls cost and what for, and adjust the budget and prices.`,headings:[{depth:2,text:`Keep track of usage and costs`,anchor:`keep-track-of-usage-and-costs`},{depth:3,text:`What you need`,anchor:`what-you-need`},{depth:3,text:`Choose the time window`,anchor:`choose-the-time-window`},{depth:3,text:`The five tiles`,anchor:`the-five-tiles`},{depth:3,text:`Worth a look`,anchor:`worth-a-look`},{depth:3,text:`Cost by origin`,anchor:`cost-by-origin`},{depth:3,text:`Break down by`,anchor:`break-down-by`},{depth:3,text:`Open details`,anchor:`open-details`},{depth:3,text:`Adjust the budget`,anchor:`adjust-the-budget`},{depth:3,text:`Set a price`,anchor:`set-a-price`},{depth:3,text:`Export`,anchor:`export`},{depth:3,text:`Technical details`,anchor:`technical-details`},{depth:3,text:`The same numbers through the CLI or the API`,anchor:`the-same-numbers-through-the-cli-or-the-api`},{depth:3,text:`When something does not work`,anchor:`when-something-does-not-work`}],images:[],sha256:`d8fec51199772b167c9694f4decdb6c3edf3d581d43dde2deeda83e8b2a49c16`,body:`## Keep track of usage and costs
 
 The **Usage** page shows what AI calls cost, and what for.
 An AI call is one request from SubKit to an AI model. Every call costs money.
@@ -2356,12 +2376,13 @@ How to read the trend:
 - **New**: not used in the window before.
 - **–**: there is no data for the window before.
 
-### The four tiles
+### The five tiles
 
 - **Cost**: the estimated cost of all AI calls in the window.
 - **AI calls**: how often SubKit asked an AI model. When calls failed, it shows for example **3 failed**. A click opens the Failed AI calls.
 - **Budget · Month**: how much of the monthly budget is used. This tile always covers the current month.
-- **Saved by cache**: what reused input saved compared with full price, for example "40% of input from cache".
+- **Saved by cache**: what reused input saved compared with full price.
+- **From the cache**: the share of input that was reused instead of paid again. Below it, **Cache per flow** shows the share for each source. Higher is cheaper and faster. **No data** means the provider reports no cache for that flow.
 
 The forecast sits below the budget. SubKit projects it from the last 7 days:
 
@@ -2517,7 +2538,7 @@ sk stats llm --bucket day --from <from> --to <to> --group-by workflow
 | "Ask someone with the Admin role." instead of **Adjust budget** | You lack \`settings:write\`. Ask someone with the Admin role to change the budget. |
 | Chat, creating and fixes are paused | The monthly budget is used up. Raise it or wait for the first of the month. |
 | "The budget could not be read …" | Reload the page. This says nothing about whether a budget is set. |
-| "No AI calls in this window." | Choose **Show this month** or another window. |`},de:{title:`Nutzung und Kosten im Blick`,summary:`Sieh, was KI-Aufrufe kosten und wofür, und pass Kontingent und Preise an.`,headings:[{depth:2,text:`Nutzung und Kosten im Blick`,anchor:`nutzung-und-kosten-im-blick`},{depth:3,text:`Was du brauchst`,anchor:`was-du-brauchst`},{depth:3,text:`Den Zeitraum wählen`,anchor:`den-zeitraum-wählen`},{depth:3,text:`Die vier Kacheln`,anchor:`die-vier-kacheln`},{depth:3,text:`Auffälligkeiten`,anchor:`auffälligkeiten`},{depth:3,text:`Kosten nach Herkunft`,anchor:`kosten-nach-herkunft`},{depth:3,text:`Aufschlüsseln nach`,anchor:`aufschlüsseln-nach`},{depth:3,text:`Details öffnen`,anchor:`details-öffnen`},{depth:3,text:`Kontingent anpassen`,anchor:`kontingent-anpassen`},{depth:3,text:`Preis hinterlegen`,anchor:`preis-hinterlegen`},{depth:3,text:`Exportieren`,anchor:`exportieren`},{depth:3,text:`Technische Angaben`,anchor:`technische-angaben`},{depth:3,text:`Dieselben Zahlen per CLI oder API`,anchor:`dieselben-zahlen-per-cli-oder-api`},{depth:3,text:`Wenn etwas nicht klappt`,anchor:`wenn-etwas-nicht-klappt`}],images:[],sha256:`280129fdf8fe1cd69f321d14f1ee80a64a74955e3574843905a2b2a47d64cb34`,body:`## Nutzung und Kosten im Blick
+| "No AI calls in this window." | Choose **Show this month** or another window. |`},de:{title:`Nutzung und Kosten im Blick`,summary:`Sieh, was KI-Aufrufe kosten und wofür, und pass Kontingent und Preise an.`,headings:[{depth:2,text:`Nutzung und Kosten im Blick`,anchor:`nutzung-und-kosten-im-blick`},{depth:3,text:`Was du brauchst`,anchor:`was-du-brauchst`},{depth:3,text:`Den Zeitraum wählen`,anchor:`den-zeitraum-wählen`},{depth:3,text:`Die fünf Kacheln`,anchor:`die-fünf-kacheln`},{depth:3,text:`Auffälligkeiten`,anchor:`auffälligkeiten`},{depth:3,text:`Kosten nach Herkunft`,anchor:`kosten-nach-herkunft`},{depth:3,text:`Aufschlüsseln nach`,anchor:`aufschlüsseln-nach`},{depth:3,text:`Details öffnen`,anchor:`details-öffnen`},{depth:3,text:`Kontingent anpassen`,anchor:`kontingent-anpassen`},{depth:3,text:`Preis hinterlegen`,anchor:`preis-hinterlegen`},{depth:3,text:`Exportieren`,anchor:`exportieren`},{depth:3,text:`Technische Angaben`,anchor:`technische-angaben`},{depth:3,text:`Dieselben Zahlen per CLI oder API`,anchor:`dieselben-zahlen-per-cli-oder-api`},{depth:3,text:`Wenn etwas nicht klappt`,anchor:`wenn-etwas-nicht-klappt`}],images:[],sha256:`a78bbc951d4e3cadf070d90441dcb0e4b706dae9787ff759c0de8c7f182aa443`,body:`## Nutzung und Kosten im Blick
 
 Die Seite **Nutzung** zeigt, was KI-Aufrufe kosten und wofür.
 Ein KI-Aufruf ist eine Anfrage von SubKit an ein KI-Modell. Jeder Aufruf kostet.
@@ -2543,12 +2564,13 @@ So liest du den Trend:
 - **Neu**: im Zeitraum davor noch nicht genutzt.
 - **–**: Für den Zeitraum davor fehlen Daten.
 
-### Die vier Kacheln
+### Die fünf Kacheln
 
 - **Kosten**: geschätzte Kosten aller KI-Aufrufe im Zeitraum.
 - **KI-Aufrufe**: wie oft SubKit ein KI-Modell gefragt hat. Gibt es Fehler, steht darunter etwa **3 fehlgeschlagen**. Ein Klick öffnet die Fehlgeschlagenen KI-Aufrufe.
 - **Kontingent · Monat**: wie viel vom Monatskontingent verbraucht ist. Diese Kachel gilt immer für den laufenden Monat.
-- **Gespart durch Cache**: was wiederverwendete Eingaben gegenüber dem vollen Preis gespart haben, etwa „40 % der Eingaben aus dem Cache“.
+- **Gespart durch Cache**: was wiederverwendete Eingaben gegenüber dem vollen Preis gespart haben.
+- **Aus dem Zwischenspeicher**: welcher Anteil der Eingabe wiederverwendet statt neu bezahlt wurde. Darunter zeigt **Zwischenspeicher je Ablauf** den Anteil je Herkunft. Höher ist günstiger und schneller. **Ohne Daten** heißt: Der Anbieter meldet für diesen Ablauf keinen Zwischenspeicher.
 
 Unter dem Kontingent steht die Prognose. SubKit rechnet dafür den Verbrauch der letzten 7 Tage hoch:
 
