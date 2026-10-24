@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import {
   auditLog,
@@ -113,7 +113,7 @@ async function judgeObservations(
         inArray(verdict, [...JUDGE_VERDICTS]),
       ),
     )
-    .orderBy(asc(conversationToolCalls.created_at), asc(conversationToolCalls.id))
+    .orderBy(desc(conversationToolCalls.created_at), desc(conversationToolCalls.id))
     .limit(MAX_ROWS_PER_SOURCE);
   return rows.flatMap((row) =>
     row.verdict === "partial" || row.verdict === "failed"
@@ -155,7 +155,7 @@ async function transformObservations(
         gte(executionSteps.started_at, cutoff),
       ),
     )
-    .orderBy(asc(executionSteps.started_at), asc(executionSteps.id))
+    .orderBy(desc(executionSteps.started_at), desc(executionSteps.id))
     .limit(MAX_ROWS_PER_SOURCE);
   return rows.map((row) => {
     const label = workflowLabel(row.workflow_name);
@@ -170,15 +170,6 @@ async function transformObservations(
       captured_at: row.started_at ?? row.created_at,
     };
   });
-}
-
-interface DraftSave {
-  audit_id: string;
-  ts: Date;
-  actor_type: string;
-  workflow_id: string;
-  version: number | null;
-  request_source: string | null;
 }
 
 interface StepShape {
@@ -221,32 +212,32 @@ export function changedStepSummary(before: unknown, after: unknown): string[] {
   return [...line("changed", changed), ...line("added", added), ...line("removed", removed)];
 }
 
-function correctedPairs(saves: DraftSave[]): Array<{ before: DraftSave; after: DraftSave }> {
-  const pairs: Array<{ before: DraftSave; after: DraftSave }> = [];
-  for (let i = 1; i < saves.length; i++) {
-    const before = saves[i - 1];
-    const after = saves[i];
-    if (!before || !after || before.workflow_id !== after.workflow_id) continue;
-    if (before.request_source !== AUTHORING_SAVE_SOURCE) continue;
-    if (after.actor_type !== "user" || after.request_source === AUTHORING_SAVE_SOURCE) continue;
-    pairs.push({ before, after });
-  }
-  return pairs;
-}
-
 async function userEditObservations(
   tenant_id: string,
   db: Db,
   cutoff: Date,
 ): Promise<CorrectionObservation[]> {
-  const rows = await db
+  const saves = db
     .select({
-      audit_id: auditLog.id,
-      ts: auditLog.ts,
-      actor_type: auditLog.actor_type,
-      workflow_id: auditLog.resource_id,
-      version: sql<number | null>`(${auditLog.metadata} ->> 'version')::int`,
-      request_source: sql<string | null>`${auditLog.metadata} ->> 'request_source'`,
+      tenant_id: auditLog.tenant_id,
+      audit_id: sql<string>`${auditLog.id}`.as("audit_id"),
+      ts: sql<Date>`${auditLog.ts}`.as("ts"),
+      actor_type: sql<string>`${auditLog.actor_type}`.as("actor_type"),
+      workflow_id: sql<string>`${auditLog.resource_id}`.as("workflow_id"),
+      version: sql<number | null>`(${auditLog.metadata} ->> 'version')::int`.as("version"),
+      request_source: sql<string | null>`${auditLog.metadata} ->> 'request_source'`.as(
+        "request_source",
+      ),
+      prior_version: sql<
+        number | null
+      >`lag((${auditLog.metadata} ->> 'version')::int) over (partition by ${auditLog.resource_id} order by ${auditLog.ts}, ${auditLog.id})`.as(
+        "prior_version",
+      ),
+      prior_source: sql<
+        string | null
+      >`lag(${auditLog.metadata} ->> 'request_source') over (partition by ${auditLog.resource_id} order by ${auditLog.ts}, ${auditLog.id})`.as(
+        "prior_source",
+      ),
     })
     .from(auditLog)
     .where(
@@ -255,17 +246,37 @@ async function userEditObservations(
         eq(auditLog.resource_type, "workflow"),
         inArray(auditLog.action, ["workflow.created", "workflow.updated"]),
         eq(auditLog.result, "success"),
+        sql`${auditLog.resource_id} is not null`,
         sql`${auditLog.metadata} ? 'version'`,
         sql`coalesce(${auditLog.metadata} ->> 'kind', 'draft') = 'draft'`,
         gte(auditLog.ts, cutoff),
       ),
     )
-    .orderBy(asc(auditLog.resource_id), asc(auditLog.ts), asc(auditLog.id))
-    .limit(MAX_ROWS_PER_SOURCE * 4);
-  const saves = rows.flatMap((row): DraftSave[] =>
-    row.workflow_id ? [{ ...row, workflow_id: row.workflow_id }] : [],
-  );
-  const pairs = correctedPairs(saves).slice(0, MAX_ROWS_PER_SOURCE);
+    .as("saves");
+  const rows = await db
+    .select({
+      audit_id: saves.audit_id,
+      ts: sql<Date>`${saves.ts}`.mapWith(auditLog.ts),
+      workflow_id: saves.workflow_id,
+      version: saves.version,
+      request_source: saves.request_source,
+      prior_version: saves.prior_version,
+    })
+    .from(saves)
+    .where(
+      and(
+        eq(saves.tenant_id, tenant_id),
+        eq(saves.prior_source, AUTHORING_SAVE_SOURCE),
+        eq(saves.actor_type, "user"),
+        sql`${saves.request_source} is distinct from ${AUTHORING_SAVE_SOURCE}`,
+      ),
+    )
+    .orderBy(desc(saves.ts), desc(saves.audit_id))
+    .limit(MAX_ROWS_PER_SOURCE);
+  const pairs = rows.map((row) => ({
+    before: { workflow_id: row.workflow_id, version: row.prior_version },
+    after: row,
+  }));
   if (pairs.length === 0) return [];
   const workflowIds = [...new Set(pairs.map((pair) => pair.after.workflow_id))];
   const [names, versions] = await Promise.all([

@@ -25,7 +25,7 @@ import {
 import { saveWorkflowDraft } from "../../workflows/drafts.ts";
 import { updateWorkflow } from "../../workflows/service.ts";
 import { CORRECTION_AGENT, collectCorrectionIntake } from "../correction-intake.ts";
-import { changedStepSummary } from "../detectors/correction-pattern.ts";
+import { changedStepSummary, detectCorrectionPatterns } from "../detectors/correction-pattern.ts";
 import { runPatternAnalysis } from "../service.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
@@ -412,6 +412,123 @@ describe.skipIf(skip)("collectCorrectionIntake", () => {
     expect(first).toMatchObject({ collected: 20, deferred: 3 });
     expect(second).toMatchObject({ collected: 3, deferred: 0 });
     expect(await itemsOf(tenantId)).toHaveLength(23);
+  });
+});
+
+describe.skipIf(skip)("detectCorrectionPatterns under a flood of older rows", () => {
+  const FLOOD = 2_100;
+  const floodAt = (i: number) => new Date(RECENT.getTime() - (FLOOD - i) * 60_000);
+
+  async function insertChunked<T>(rows: T[], insert: (chunk: T[]) => Promise<unknown>) {
+    for (let i = 0; i < rows.length; i += 500) await insert(rows.slice(i, i + 500));
+  }
+
+  test("a newer judge verdict is seen behind many older verdicts", async () => {
+    const [conversation] = await testDb.db
+      .insert(conversations)
+      .values({ tenant_id: tenantId, target_workflow_id: workflowId, status: "active" })
+      .returning({ id: conversations.id });
+    if (!conversation) throw new Error("conversation seed failed");
+    await insertChunked(
+      Array.from({ length: 600 }, (_, i) => ({
+        tenant_id: tenantId,
+        conversation_id: conversation.id,
+        tool: "dry_run_workflow",
+        input: {},
+        output: { ok: false, judge: { verdict: "failed", reason: "empty", missing: [] } },
+        created_at: floodAt(i),
+      })),
+      (chunk) => testDb.db.insert(conversationToolCalls).values(chunk),
+    );
+    const fresh = await seedWorkflow(tenantId, "fresh", "Fresh report");
+    const freshConversation = await seedJudgeCall(tenantId, fresh, {
+      verdict: "partial",
+      reason: "missing total",
+      missing: ["total"],
+    });
+
+    const observations = await detectCorrectionPatterns(tenantId, testDb.db);
+
+    expect(observations.map((o) => o.occurrence_id)).toContain(`conversation:${freshConversation}`);
+  });
+
+  test("a newer transform error is seen behind a flood of older failures", async () => {
+    const executionIds = await testDb.db
+      .insert(executions)
+      .values(
+        Array.from({ length: 600 }, (_, i) => ({
+          tenant_id: tenantId,
+          workflow_id: workflowId,
+          status: "failed" as const,
+          request_source: "api",
+          execution_mode: "prod" as const,
+          started_at: floodAt(i),
+        })),
+      )
+      .returning({ id: executions.id, started_at: executions.started_at });
+    await insertChunked(executionIds, (chunk) =>
+      testDb.db.insert(executionSteps).values(
+        chunk.map((row) => ({
+          tenant_id: tenantId,
+          execution_id: row.id,
+          step_key: "shape_rows",
+          kind: "transform" as const,
+          status: "failed" as const,
+          error: { code: "sandbox_runtime" },
+          started_at: row.started_at,
+        })),
+      ),
+    );
+    const fresh = await seedWorkflow(tenantId, "fresh", "Fresh report");
+    const freshExecution = await seedTransformFailure(tenantId, fresh, "sandbox_timeout");
+
+    const observations = await detectCorrectionPatterns(tenantId, testDb.db);
+
+    expect(observations.map((o) => o.occurrence_id)).toContain(`execution:${freshExecution}`);
+  });
+
+  test("a person's correction on a late-sorting workflow is seen behind many draft saves", async () => {
+    const early = "00000000-0000-4000-8000-000000000001";
+    const late = "ffffffff-ffff-4fff-bfff-fffffffffff1";
+    await testDb.db.insert(workflows).values([
+      { id: early, tenant_id: tenantId, slug: "early", name: "Early", lifecycle: "draft" },
+      { id: late, tenant_id: tenantId, slug: "late", name: "Late", lifecycle: "draft" },
+    ]);
+    await insertChunked(
+      Array.from({ length: FLOOD }, (_, i) => ({
+        id: randomUUID(),
+        ts: floodAt(i),
+        tenant_id: tenantId,
+        actor_type: "user",
+        actor_id: randomUUID(),
+        action: "workflow.updated",
+        resource_type: "workflow",
+        resource_id: early,
+        result: "success",
+        metadata: { kind: "draft", version: i + 1, request_source: "api" },
+      })),
+      (chunk) => testDb.db.insert(auditLog).values(chunk),
+    );
+    await seedDraftSave(tenantId, late, {
+      version: 1,
+      request_source: "tool-chain",
+      actor_type: "user",
+      at: new Date(RECENT.getTime() - 60_000),
+      steps: [{ id: "shape", kind: "transform", expression: "return input;" }],
+    });
+    const auditId = await seedDraftSave(tenantId, late, {
+      version: 2,
+      request_source: "api",
+      actor_type: "user",
+      at: RECENT,
+      steps: [{ id: "shape", kind: "transform", expression: "return input.items;" }],
+    });
+
+    const observations = await detectCorrectionPatterns(tenantId, testDb.db);
+
+    const edit = observations.find((o) => o.occurrence_id === `audit:${auditId}`);
+    expect(edit?.excerpt).toContain("versions=1->2");
+    expect(edit?.excerpt).toContain("changed: shape (transform)");
   });
 });
 
