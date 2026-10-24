@@ -135,7 +135,7 @@ It also keeps the source address, author and publish date when the page provides
 - **Destination:** items go only to the engine you configured. For the transcript, the Web Clipper may also load the page and captions directly from YouTube.
 - **Originals stay:** the engine keeps the original captured snapshot. Later edits do not overwrite it, and the item stays linked to the knowledge or skill made from it.
 - **Credentials are replaced:** before saving, SubKit replaces recognizable credentials (API keys, tokens, private keys, signed-link signatures) with a marker. The values are never stored. Personal data is kept. Don't clip pages that show passwords or keys.
-- **Your API key** stays in the extension only until the browser closes and is not written to this device. A key made from the **Web Clipper** preset grants only collecting. Revoke it in the Cockpit when you no longer need it.
+- **Your API key** stays in the extension only until the browser closes and is not written to this device. A key made from the **Web Clipper** preset grants only viewing and editing collected items (`intake:read`, `intake:write`), including other people's clips in this workspace. Revoke it in the Cockpit when you no longer need it.
 - **Visibility:** items follow the permissions of your workspace. Categories are shared, not private.
 
 ### Install options

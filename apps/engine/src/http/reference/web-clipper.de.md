@@ -135,7 +135,7 @@ Dazu kommen Quelladresse, Autor und Veröffentlichungsdatum, sofern die Seite si
 - **Ziel:** Einträge gehen nur an die Engine, die du eingestellt hast. Für das Transkript lädt der Web Clipper eventuell Seite und Untertitel direkt von YouTube.
 - **Originale bleiben:** Die Engine bewahrt den ursprünglich erfassten Stand. Spätere Änderungen überschreiben ihn nicht, und der Eintrag bleibt mit dem daraus entstandenen Wissen oder Skill verknüpft.
 - **Zugangsdaten werden ersetzt:** Vor dem Speichern ersetzt SubKit erkennbare Zugangsdaten (API-Schlüssel, Tokens, private Schlüssel, Signaturen signierter Links) durch eine Markierung. Die Werte werden nie gespeichert. Personenbezogene Daten bleiben erhalten. Sammle keine Seiten, die Passwörter oder Schlüssel zeigen.
-- **Dein API-Schlüssel** bleibt nur bis zum Schließen des Browsers in der Erweiterung und wird nicht auf diesem Gerät gespeichert. Ein Schlüssel mit der Vorlage **Web Clipper** erlaubt nur das Sammeln. Widerrufe ihn im Cockpit, wenn du ihn nicht mehr brauchst.
+- **Dein API-Schlüssel** bleibt nur bis zum Schließen des Browsers in der Erweiterung und wird nicht auf diesem Gerät gespeichert. Ein Schlüssel mit der Vorlage **Web Clipper** erlaubt nur Anzeigen und Bearbeiten gesammelter Einträge (`intake:read`, `intake:write`), auch der Clips anderer Personen in diesem Arbeitsbereich. Widerrufe ihn im Cockpit, wenn du ihn nicht mehr brauchst.
 - **Sichtbarkeit:** Einträge folgen den Rechten deines Arbeitsbereichs. Kategorien sind gemeinsam, nicht privat.
 
 ### Installationsoptionen

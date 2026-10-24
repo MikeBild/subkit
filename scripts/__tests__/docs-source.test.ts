@@ -215,6 +215,22 @@ describe("German chapters", () => {
   });
 });
 
+describe("Web Clipper privacy", () => {
+  const referenceDir = join(import.meta.dir, "../../apps/engine/src/http/reference");
+
+  for (const lang of ["en", "de"] as const) {
+    test(`names the full scope of a preset key in ${lang}`, () => {
+      const clipper = loadChapters(referenceDir, lang).find((c) => c.slug === "web-clipper");
+      const keyLine = clipper?.body
+        .split("\n")
+        .find((line) => /^- \*\*(Your API key|Dein API-Schlüssel)\*\*/.test(line));
+      expect(keyLine).toBeDefined();
+      expect(keyLine).toContain("`intake:read`, `intake:write`");
+      expect(keyLine).not.toMatch(/grants only collecting|erlaubt nur das Sammeln/);
+    });
+  }
+});
+
 describe("docs bundle", () => {
   const referenceDir = join(import.meta.dir, "../../apps/engine/src/http/reference");
   const raw = readFileSync(
