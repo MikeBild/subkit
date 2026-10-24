@@ -12,7 +12,6 @@ import {
   recordLoopPatchToSkillCandidate,
   recordLoopSkillCandidatePromoted,
 } from "../observability/instrumentation.ts";
-import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 import { invalidateTenantState } from "../operator/index.ts";
 import { createSkill, retireReplacedConnectorSkills } from "../skills/service.ts";
 import { now } from "../utils/clock.ts";
@@ -31,7 +30,6 @@ import {
   type PatternSignal,
   type RejectSkillCandidateParams,
   type SkillCandidateEvidenceView,
-  type SkillCandidatePattern,
   type SkillCandidateStatus,
   type SkillCandidateView,
 } from "./types.ts";
@@ -113,90 +111,7 @@ export async function countSkillCandidates(
   return Number(row?.cnt ?? 0);
 }
 
-export const LIST_PROPOSED_FOR_AUTHORING_CAP = 8;
-
 const OPEN_STATUSES: SkillCandidateStatus[] = ["proposed", "context"];
-
-const AUTHORING_PROMPT_PATTERN_KINDS: ReadonlySet<SkillCandidatePattern> = new Set([
-  "repair_pattern",
-  "failure_pattern",
-  "success_pattern",
-  "chained_workflow_pattern",
-  "authoring_capability",
-]);
-
-export async function listProposedForAuthoring(
-  tenant_id: string,
-  scope_hints: { connector_id?: string; workflow_id?: string },
-  exec?: Executor,
-): Promise<SkillCandidateView[]> {
-  const db = exec ?? getDb();
-  const start = Date.now();
-  const scopeHint = scope_hints.workflow_id
-    ? "workflow"
-    : scope_hints.connector_id
-      ? "connector"
-      : "global";
-
-  const [globalRows, connectorRows, workflowRows] = await Promise.all([
-    listSkillCandidates({ tenant_id, statuses: OPEN_STATUSES, scope: "global", limit: 500 }, db),
-    scope_hints.connector_id
-      ? listSkillCandidates(
-          {
-            tenant_id,
-            statuses: OPEN_STATUSES,
-            scope: "connector",
-            connector_id: scope_hints.connector_id,
-            limit: 500,
-          },
-          db,
-        )
-      : Promise.resolve<SkillCandidateView[]>([]),
-    scope_hints.workflow_id
-      ? listSkillCandidates(
-          {
-            tenant_id,
-            statuses: OPEN_STATUSES,
-            scope: "workflow",
-            workflow_id: scope_hints.workflow_id,
-            limit: 500,
-          },
-          db,
-        )
-      : Promise.resolve<SkillCandidateView[]>([]),
-  ]);
-
-  const merged: SkillCandidateView[] = [...globalRows, ...connectorRows, ...workflowRows].filter(
-    (c) => AUTHORING_PROMPT_PATTERN_KINDS.has(c.pattern_kind),
-  );
-
-  const scopeSpecificity = (scope: SkillCandidateView["scope"]): number =>
-    scope === "workflow" ? 3 : scope === "connector" ? 2 : 1;
-  const confidenceRank = (c: SkillCandidateView["confidence"]): number =>
-    c === "high" ? 3 : c === "medium" ? 2 : 1;
-
-  const sorted = merged.sort((a, b) => {
-    const ds = scopeSpecificity(b.scope) - scopeSpecificity(a.scope);
-    if (ds !== 0) return ds;
-    const dc = confidenceRank(b.confidence) - confidenceRank(a.confidence);
-    if (dc !== 0) return dc;
-    const de = b.evidence_count - a.evidence_count;
-    if (de !== 0) return de;
-    if (a.created_at < b.created_at) return 1;
-    if (a.created_at > b.created_at) return -1;
-    return 0;
-  });
-
-  const out = sorted.slice(0, LIST_PROPOSED_FOR_AUTHORING_CAP);
-  try {
-    getMetrics().observe(
-      METRIC_NAMES.LLM_LIST_PROPOSED_FOR_AUTHORING_DURATION_MS,
-      Date.now() - start,
-      { scope_hint: scopeHint },
-    );
-  } catch {}
-  return out;
-}
 
 export async function getSkillCandidate(
   tenant_id: string,

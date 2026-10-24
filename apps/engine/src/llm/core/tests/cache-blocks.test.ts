@@ -15,7 +15,7 @@ function makePrompt(system: string): EnhancedPrompt {
       messages: 0,
       total: 0,
       recipe_bodies: 0,
-      skill_candidates: 0,
+      conventions: 0,
       prior_workflows: 0,
       references: 0,
     },

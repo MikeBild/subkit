@@ -28,7 +28,6 @@ function authoringHintFor(mode: "connector" | "workflow"): AuthoringPromptHint {
   };
 }
 
-const SECTION_SKILL_CANDIDATES = "skill_candidates";
 const SECTION_CONNECTOR_RECIPE_BODIES = "connector_recipe_bodies";
 const SECTION_CONNECTOR_RECIPES = "connector_recipes";
 
@@ -159,7 +158,7 @@ afterAll(async () => {
   if (!skip && ctx) await ctx.cleanup();
 }, 30_000);
 
-describe.skipIf(skip)("assembler render order — recipe bodies + skill candidates", () => {
+describe.skipIf(skip)("assembler render order — recipe bodies, no collected candidates", () => {
   test("connectorRecipeBodiesBlock appears after connectorRecipesBlock and before connector skills index", async () => {
     const prompt = await assembleEnhancedPrompt(
       {
@@ -190,7 +189,7 @@ describe.skipIf(skip)("assembler render order — recipe bodies + skill candidat
     }
   });
 
-  test("skillCandidatesBlock appears after the available recipes section", async () => {
+  test("proposed skill candidates never reach the prompt", async () => {
     const prompt = await assembleEnhancedPrompt(
       {
         tenant_id,
@@ -203,19 +202,13 @@ describe.skipIf(skip)("assembler render order — recipe bodies + skill candidat
       ctx.db,
     );
 
-    const sys = prompt.system;
-    const candidatesIdx = sys.indexOf("Skill candidates — proposed");
-    const recipesIdx = sys.indexOf("# Available recipes — connector");
-
-    expect(candidatesIdx).toBeGreaterThan(-1);
-
-    if (candidatesIdx > -1 && recipesIdx > -1) {
-      expect(candidatesIdx).toBeGreaterThan(recipesIdx);
-    }
+    expect(prompt.system).toContain("# Available recipes — connector");
+    expect(prompt.system).not.toContain("Skill candidates");
+    expect(prompt.system).not.toContain("Stripe rate limit backoff");
+    expect(prompt.token_counts.conventions).toBe(0);
   });
 
   test("drop ladder contains section names as string constants, not magic values", () => {
-    expect(SECTION_SKILL_CANDIDATES).toBe("skill_candidates");
     expect(SECTION_CONNECTOR_RECIPE_BODIES).toBe("connector_recipe_bodies");
     expect(SECTION_CONNECTOR_RECIPES).toBe("connector_recipes");
   });
@@ -256,45 +249,42 @@ describe.skipIf(skip)("assembler render order — recipe bodies + skill candidat
   });
 });
 
-describe.skipIf(skip)(
-  "workflow-scope contract — workflow_id unset means no workflow-scoped candidates",
-  () => {
-    test("workflow-scoped candidates are ABSENT when workflow_id is not provided", async () => {
-      const prompt = await assembleEnhancedPrompt(
-        {
-          tenant_id,
-          flow: "converse",
-          connector_id,
-          user_turns: [{ role: "user", content: "stripe rate limit" }],
-          max_tokens: 50_000,
-          model: "mock",
-        },
-        ctx.db,
-      );
+describe.skipIf(skip)("collected candidates stay out of the prompt at every scope", () => {
+  test("connector-scoped candidates are absent without a workflow_id", async () => {
+    const prompt = await assembleEnhancedPrompt(
+      {
+        tenant_id,
+        flow: "converse",
+        connector_id,
+        user_turns: [{ role: "user", content: "stripe rate limit" }],
+        max_tokens: 50_000,
+        model: "mock",
+      },
+      ctx.db,
+    );
 
-      expect(prompt.system).not.toContain("Workflow scope candidate");
+    expect(prompt.system).not.toContain("Workflow scope candidate");
+    expect(prompt.system).not.toContain("Stripe rate limit backoff");
+  });
 
-      expect(prompt.system).toContain("Stripe rate limit backoff");
-    });
+  test("workflow-scoped candidates are absent even when workflow_id matches", async () => {
+    const prompt = await assembleEnhancedPrompt(
+      {
+        tenant_id,
+        flow: "converse",
+        connector_id,
+        workflow_id,
+        user_turns: [{ role: "user", content: "stripe charge" }],
+        max_tokens: 50_000,
+        model: "mock",
+      },
+      ctx.db,
+    );
 
-    test("workflow-scoped candidates ARE present when workflow_id matches", async () => {
-      const prompt = await assembleEnhancedPrompt(
-        {
-          tenant_id,
-          flow: "converse",
-          connector_id,
-          workflow_id,
-          user_turns: [{ role: "user", content: "stripe charge" }],
-          max_tokens: 50_000,
-          model: "mock",
-        },
-        ctx.db,
-      );
-
-      expect(prompt.system).toContain("Workflow scope candidate");
-    });
-  },
-);
+    expect(prompt.system).not.toContain("Workflow scope candidate");
+    expect(prompt.system).not.toContain("Stripe rate limit backoff");
+  });
+});
 
 describe.skipIf(skip)("recorded endpoint samples — workflow-authoring mode gate", () => {
   const SAMPLES_HEADING = "# Recorded endpoint samples";
@@ -402,7 +392,6 @@ describe.skipIf(skip)("recorded endpoint samples — workflow-authoring mode gat
   });
 });
 
-const SECTION_SKILL_CANDIDATES_HEAVY = "skill_candidates";
 const SECTION_CONNECTOR_RECIPE_BODIES_HEAVY = "connector_recipe_bodies";
 
 const HEAVY_RECIPE_SNAPSHOT: Record<string, unknown> = {
@@ -500,7 +489,7 @@ describe.skipIf(skip)("drop ladder — deterministic overflow (heavy seed)", () 
     if (!skip && heavyCtx) await heavyCtx.cleanup();
   }, 30_000);
 
-  test("under tight budget, skill_candidates drops BEFORE connector_recipe_bodies (unconditional)", async () => {
+  test("under tight budget, connector_recipe_bodies drops and no candidate section exists", async () => {
     const prompt = await assembleEnhancedPrompt(
       {
         tenant_id: heavyTenantId,
@@ -514,15 +503,12 @@ describe.skipIf(skip)("drop ladder — deterministic overflow (heavy seed)", () 
     );
 
     const dropped = prompt.dropped_sections;
-    const skillCandIdx = dropped.indexOf(SECTION_SKILL_CANDIDATES_HEAVY);
-    const recipeBodiesIdx = dropped.indexOf(SECTION_CONNECTOR_RECIPE_BODIES_HEAVY);
-
-    expect(skillCandIdx).toBeGreaterThan(-1);
-    expect(recipeBodiesIdx).toBeGreaterThan(-1);
-    expect(skillCandIdx).toBeLessThan(recipeBodiesIdx);
+    expect(dropped).not.toContain("skill_candidates");
+    expect(dropped).toContain(SECTION_CONNECTOR_RECIPE_BODIES_HEAVY);
+    expect(prompt.system).not.toContain("Heavy candidate");
   });
 
-  test("recorded_endpoint_samples drops FIRST — before skill_candidates and connector_recipe_bodies", async () => {
+  test("recorded_endpoint_samples drops FIRST — before connector_recipe_bodies", async () => {
     const prompt = await assembleEnhancedPrompt(
       {
         tenant_id: heavyTenantId,
@@ -539,11 +525,9 @@ describe.skipIf(skip)("drop ladder — deterministic overflow (heavy seed)", () 
 
     const dropped = prompt.dropped_sections;
     const samplesIdx = dropped.indexOf("recorded_endpoint_samples");
-    const skillCandIdx = dropped.indexOf(SECTION_SKILL_CANDIDATES_HEAVY);
     const recipeBodiesIdx = dropped.indexOf(SECTION_CONNECTOR_RECIPE_BODIES_HEAVY);
 
     expect(samplesIdx).toBe(0);
-    expect(skillCandIdx).toBeGreaterThan(samplesIdx);
     if (recipeBodiesIdx > -1) {
       expect(recipeBodiesIdx).toBeGreaterThan(samplesIdx);
     }

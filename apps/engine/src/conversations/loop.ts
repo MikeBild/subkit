@@ -2207,7 +2207,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
         failures: prompt.token_counts.failures,
         messages: prompt.token_counts.messages,
         recipe_bodies: prompt.token_counts.recipe_bodies,
-        skill_candidates: prompt.token_counts.skill_candidates,
+        conventions: prompt.token_counts.conventions,
         prior_workflows: prompt.token_counts.prior_workflows,
         references: prompt.token_counts.references,
         total: prompt.token_counts.total,
@@ -2306,7 +2306,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
           breakdown_failures: breakdown.failures,
           breakdown_messages: breakdown.messages,
           breakdown_recipe_bodies: breakdown.recipe_bodies,
-          breakdown_skill_candidates: breakdown.skill_candidates,
+          breakdown_conventions: breakdown.conventions,
           breakdown_references: breakdown.references,
           breakdown_total: breakdown.total,
         }

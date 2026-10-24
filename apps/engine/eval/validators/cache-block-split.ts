@@ -16,7 +16,7 @@ export function validate(fixture: FixtureRecord): ValidationResult {
       messages: 0,
       total: 0,
       recipe_bodies: 0,
-      skill_candidates: 0,
+      conventions: 0,
     },
     included_skill_ids: [],
     included_chunk_ids: [],

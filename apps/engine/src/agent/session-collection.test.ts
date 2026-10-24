@@ -19,7 +19,7 @@ import {
   type AgentSessionAnalyzeJob,
   processAgentSessionAnalyzeJob,
 } from "../queue/handlers/agent-session-analyze.ts";
-import { listProposedForAuthoring } from "../skill-candidates/service.ts";
+import { loadActiveConventions, NO_CONVENTIONS } from "../skills/conventions.ts";
 import { listSkills } from "../skills/service.ts";
 import { buildAgentBriefing } from "./briefing.ts";
 import { collectSessionLearning } from "./sessions.ts";
@@ -203,7 +203,7 @@ describe("collected learnings stay out of ordinary retrieval", () => {
     expect(collected.outcome).toBe("collected");
     expect(await searchKnowledge({ tenant_id: tenantId, query: marker }, testDb.db)).toEqual([]);
     expect(await listSkills({ tenant_id: tenantId, q: marker }, testDb.db)).toEqual([]);
-    expect(await listProposedForAuthoring(tenantId, {}, testDb.db)).toEqual([]);
+    expect(await loadActiveConventions(tenantId, {}, testDb.db)).toEqual(NO_CONVENTIONS);
     const briefing = await buildAgentBriefing({
       tenant_id: tenantId,
       domains: ["blog-de"],

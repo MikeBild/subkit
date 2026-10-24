@@ -136,7 +136,7 @@ export interface EnhancedPrompt {
     messages: number;
     total: number;
     recipe_bodies: number;
-    skill_candidates: number;
+    conventions: number;
     prior_workflows: number;
     references: number;
   };
