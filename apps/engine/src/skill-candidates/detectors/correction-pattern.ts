@@ -255,7 +255,8 @@ async function userEditObservations(
         eq(auditLog.resource_type, "workflow"),
         inArray(auditLog.action, ["workflow.created", "workflow.updated"]),
         eq(auditLog.result, "success"),
-        sql`${auditLog.metadata} ->> 'kind' = 'draft'`,
+        sql`${auditLog.metadata} ? 'version'`,
+        sql`coalesce(${auditLog.metadata} ->> 'kind', 'draft') = 'draft'`,
         gte(auditLog.ts, cutoff),
       ),
     )

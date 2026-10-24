@@ -22,8 +22,11 @@ import {
   installClock,
   restoreClock,
 } from "../../test-helpers/determinism/clock.ts";
+import { saveWorkflowDraft } from "../../workflows/drafts.ts";
+import { updateWorkflow } from "../../workflows/service.ts";
 import { CORRECTION_AGENT, collectCorrectionIntake } from "../correction-intake.ts";
 import { changedStepSummary } from "../detectors/correction-pattern.ts";
+import { runPatternAnalysis } from "../service.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
 const RECENT = new Date(FROZEN_NOW - 24 * 60 * 60 * 1000);
@@ -308,6 +311,56 @@ describe.skipIf(skip)("collectCorrectionIntake", () => {
     expect(evidence?.excerpt).toContain("changed: shape (transform)");
     expect(evidence?.excerpt).toContain("added: notify (request)");
     expect(evidence?.excerpt).not.toContain("input.items");
+  });
+
+  test("a person's workflow update after an authoring draft save is collected", async () => {
+    const person = randomUUID();
+    const saved = await saveWorkflowDraft(
+      {
+        tenant_id: tenantId,
+        def: {
+          name: "Invoice export",
+          steps: [{ id: "shape", kind: "transform", expression: "return input;" }],
+        },
+        actor_id: person,
+        actor_type: "user",
+        request_source: "tool-chain",
+      },
+      testDb.db,
+    );
+    if (!saved.draft) throw new Error(`draft save failed: ${JSON.stringify(saved)}`);
+    const updated = await updateWorkflow(
+      {
+        tenant_id: tenantId,
+        id: saved.draft.workflow_id,
+        def: {
+          name: "Invoice export",
+          steps: [{ id: "shape", kind: "transform", expression: "return input.items;" }],
+        },
+        actor_id: person,
+        actor_type: "user",
+      },
+      testDb.db,
+    );
+    if ("errors" in updated) throw new Error(`update failed: ${updated.errors?.join("; ")}`);
+
+    await collectCorrectionIntake(tenantId, testDb.db);
+
+    const [item, ...rest] = await itemsOf(tenantId);
+    expect(rest).toHaveLength(0);
+    expect(item?.title).toBe("Person corrected 'Invoice export' after an authoring save");
+    const [evidence] = await evidenceOf(tenantId, item?.id ?? "");
+    expect(evidence?.excerpt).toContain("changed: shape (transform)");
+  });
+
+  test("the scheduled pattern analysis collects corrections", async () => {
+    await seedJudgeCall(tenantId, workflowId, { verdict: "failed", reason: "empty", missing: [] });
+
+    await runPatternAnalysis({ tenant_id: tenantId }, testDb.db);
+
+    const items = await itemsOf(tenantId);
+    expect(items).toHaveLength(1);
+    expect(items[0]?.original_snapshot).toMatchObject({ agent: CORRECTION_AGENT });
   });
 
   test("another tenant's corrections never reach this tenant's intake", async () => {
