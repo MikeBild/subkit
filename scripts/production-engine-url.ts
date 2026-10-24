@@ -56,6 +56,20 @@ export function reportedEngineUrl(deployments: Deployment[], since: Date): strin
   return newest?.url ?? null;
 }
 
+const FINISHED = new Set(["success", "failure", "error", "inactive"]);
+
+export function finishedWithoutUrl(deployments: Deployment[], since: Date): boolean {
+  const earliest = since.getTime() - CLOCK_MARGIN_MS;
+  const recent = deployments.filter((deployment) => Date.parse(deployment.created_at) >= earliest);
+  return (
+    recent.length > 0 &&
+    recent.every((deployment) =>
+      deployment.statuses.some((status) => FINISHED.has(status.state)),
+    ) &&
+    reportedEngineUrl(recent, since) === null
+  );
+}
+
 class Unreadable extends Error {}
 
 async function readDeployments(options: ResolveOptions): Promise<Deployment[] | null> {
@@ -119,6 +133,11 @@ export async function resolveProductionEngineUrl(options: ResolveOptions): Promi
       deployments = null;
     }
     candidate = deployments ? reportedEngineUrl(deployments, options.since) : candidate;
+    if (!candidate && deployments && finishedWithoutUrl(deployments, options.since))
+      return {
+        url: null,
+        reason: `the production deployment of ${options.repository} finished without reporting an engine URL`,
+      };
     if (candidate) {
       const identity = await servesSubkit(options, candidate);
       if (identity === true) return { url: candidate };

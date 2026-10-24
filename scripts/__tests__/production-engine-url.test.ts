@@ -156,12 +156,27 @@ describe("resolving the production engine url", () => {
     });
   });
 
+  test("skips right away when the deployment finished without reporting a url", async () => {
+    const { calls, resolved } = options({
+      [listUrl]: listed,
+      [statusesUrl]: {
+        status: 200,
+        body: [{ state: "success", environment_url: "", created_at: "2026-01-01T10:06:00Z" }],
+      },
+    });
+    expect(await resolveProductionEngineUrl(resolved)).toEqual({
+      url: null,
+      reason: `the production deployment of ${REPOSITORY} finished without reporting an engine URL`,
+    });
+    expect(calls.filter((url) => url === listUrl)).toHaveLength(1);
+  });
+
   test("skips with a reason when no deployment reports a url before the deadline", async () => {
     const { resolved } = options({
       [listUrl]: listed,
       [statusesUrl]: {
         status: 200,
-        body: [{ state: "success", environment_url: "", created_at: "2026-01-01T10:06:00Z" }],
+        body: [{ state: "in_progress", environment_url: "", created_at: "2026-01-01T10:06:00Z" }],
       },
     });
     expect(await resolveProductionEngineUrl(resolved)).toEqual({
