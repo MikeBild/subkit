@@ -1,5 +1,5 @@
 import type { Executor } from "../db/client.ts";
-import type { ListWorkflowsOptions } from "./catalog-view.ts";
+import { type ListWorkflowsOptions, WORKFLOW_LIST_MAX_LIMIT } from "./catalog-view.ts";
 import { listWorkflows, type WorkflowView } from "./service.ts";
 import type { WorkflowDef } from "./types.ts";
 
@@ -156,9 +156,19 @@ export async function listActiveWorkflowRefs(
   tenant_id: string,
   exec?: Executor,
 ): Promise<PriorWorkflowRef[]> {
-  const opts: ListWorkflowsOptions = { status: "active", limit: PRIOR_WORKFLOWS_CANDIDATE_POOL };
-  const { rows } = await listWorkflows(tenant_id, opts, exec);
-  return rows.map(projectPriorWorkflowRef);
+  const refs: PriorWorkflowRef[] = [];
+  for (let offset = 0; ; offset += WORKFLOW_LIST_MAX_LIMIT) {
+    const opts: ListWorkflowsOptions = {
+      status: "active",
+      sort: "created_at",
+      order: "asc",
+      limit: WORKFLOW_LIST_MAX_LIMIT,
+      offset,
+    };
+    const { rows, total } = await listWorkflows(tenant_id, opts, exec);
+    for (const row of rows) refs.push(projectPriorWorkflowRef(row));
+    if (rows.length < WORKFLOW_LIST_MAX_LIMIT || refs.length >= total) return refs;
+  }
 }
 
 export async function findSimilarActive(

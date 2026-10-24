@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { tenants } from "../../db/schema/index.ts";
+import { eq } from "drizzle-orm";
+import { tenants, workflows } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createSkill } from "../../skills/service.ts";
 import { createSeededRandom } from "../../test-helpers/determinism/random.ts";
@@ -91,6 +92,49 @@ describe("validateTenantWorkflowDef · consistency lint", () => {
       lintJavascript: true,
     });
     expect(plain.warnings).toBeUndefined();
+  });
+
+  test("finds an older active sibling behind a large catalog of newer workflows", async () => {
+    const tenant_id = await newTenant("large");
+    const created = await createWorkflow({ tenant_id, def: sibling, actor_id: null }, ctx.db);
+    if ("errors" in created) throw new Error(created.errors.join("; "));
+    await ctx.db
+      .update(workflows)
+      .set({ created_at: new Date("2020-01-01T00:00:00Z") })
+      .where(eq(workflows.id, created.workflow.id));
+    for (let i = 0; i < 60; i += 1) {
+      const filler = await createWorkflow(
+        {
+          tenant_id,
+          def: {
+            name: `Filler ${i}`,
+            slug: `filler-${i}`,
+            steps: [
+              {
+                id: "fetch",
+                kind: "request",
+                method: "GET",
+                url: `https://api.example.test/filler/${i}`,
+              },
+            ],
+          },
+          actor_id: null,
+        },
+        ctx.db,
+      );
+      if ("errors" in filler) throw new Error(filler.errors.join("; "));
+    }
+
+    const result = await validateTenantWorkflowDef(
+      { name: "Charges Digest", slug: draft.slug, steps: draft.steps },
+      tenant_id,
+      ctx.db,
+      { consistency: {} },
+    );
+    expect((result.warnings ?? []).map((w) => w.rule_id)).toEqual([
+      CONSISTENCY_RULE_IDS.duplicateName,
+      CONSISTENCY_RULE_IDS.duplicateSteps,
+    ]);
   });
 
   test("never applies another tenant's rules or workflows", async () => {
