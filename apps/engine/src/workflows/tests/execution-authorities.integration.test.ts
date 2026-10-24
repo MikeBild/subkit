@@ -880,6 +880,85 @@ test("changed draft or reviewed base cannot be activated or granted", async () =
   expect(workflow?.current_version_id).toBeNull();
 });
 
+test("a saved change older than the active version cannot be activated over it", async () => {
+  const f = await fixture();
+  const versionRow = (version: number, recipient: string) => ({
+    tenant_id: f.workflow.tenant_id,
+    workflow_id: f.workflow.id,
+    version,
+    dag: {
+      name: f.workflow.slug,
+      steps: [
+        {
+          id: "send",
+          kind: "request",
+          method: "POST",
+          url: "https://example.test/messages",
+          body: { recipient },
+        },
+      ],
+    },
+  });
+  const [draft] = await ctx.db
+    .insert(workflowVersions)
+    .values(versionRow(2, "draft@example.test"))
+    .returning();
+  const [newer] = await ctx.db
+    .insert(workflowVersions)
+    .values(versionRow(3, "newer@example.test"))
+    .returning();
+  if (!draft || !newer) throw new Error("missing version fixture");
+  await ctx.db
+    .update(workflows)
+    .set({ current_version_id: newer.id, draft_version_id: draft.id, lifecycle: "active" })
+    .where(and(eq(workflows.tenant_id, f.workflow.tenant_id), eq(workflows.id, f.workflow.id)));
+  const reviewed = await previewWorkflowAuthority(
+    {
+      tenant_id: f.workflow.tenant_id,
+      workflow_id: f.workflow.id,
+      workflow_version_id: draft.id,
+      execution_environment: "dev",
+    },
+    ctx.db,
+  );
+  await expect(
+    activateWorkflowDraft(
+      f.workflow.id,
+      {
+        workflow_version_id: draft.id,
+        expected_current_version_id: newer.id,
+        expected_manifest_digest: reviewed.digest,
+        execution_environment: "dev",
+      },
+      f.context,
+    ),
+  ).rejects.toMatchObject({ code: "authority_activation_changed" });
+  const { valid_until: _until, max_runs: _runs, ...openEnded } = f.input;
+  await expect(
+    grantWorkflowAuthority(
+      f.workflow.id,
+      {
+        ...openEnded,
+        workflow_version_id: draft.id,
+        expected_manifest_digest: reviewed.digest,
+        activation: { expected_current_version_id: newer.id },
+      },
+      f.context,
+    ),
+  ).rejects.toMatchObject({ code: "authority_activation_changed" });
+  const [workflow] = await ctx.db
+    .select()
+    .from(workflows)
+    .where(eq(workflows.tenant_id, f.workflow.tenant_id));
+  expect(workflow?.current_version_id).toBe(newer.id);
+  expect(workflow?.draft_version_id).toBe(draft.id);
+  const grants = await ctx.db
+    .select()
+    .from(workflowExecutionAuthorities)
+    .where(eq(workflowExecutionAuthorities.tenant_id, f.workflow.tenant_id));
+  expect(grants).toHaveLength(0);
+});
+
 test("activation remains unchanged when the reviewed effect digest is stale", async () => {
   const f = await fixture();
   await ctx.db

@@ -49,6 +49,14 @@ export async function activateReviewedDraft(
   if (!target) throw new Error("reviewed workflow version unavailable");
   const definition = executableDefinition(target.dag);
   const previous = expectedCurrent ? await readVersion(expectedCurrent) : null;
+  if (previous && previous.version > target.version) {
+    throw Object.assign(
+      new Error(
+        "A newer version became active after this change was saved; reload and save it again.",
+      ),
+      { code: "authority_activation_changed" },
+    );
+  }
   const stored = previous ? readStoredDefinition(previous.dag) : null;
   const oldDefinition = stored && !stored.invalid ? stored.definition : null;
   await tx
