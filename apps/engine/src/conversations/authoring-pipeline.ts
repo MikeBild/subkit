@@ -186,7 +186,7 @@ export type AuthoringPipelineResult =
   | {
       ok: true;
       definition: GeneratedWorkflow;
-      validation: { ok: boolean; errors: ValidationError[] };
+      validation: { ok: boolean; errors: ValidationError[]; warnings: ValidationError[] };
       recorded_eval: RecordedEvalReport;
       attempts: number;
       unresolved_connectors: string[];
@@ -846,6 +846,7 @@ export async function runAuthoringPipeline(
   const structural = await validateTenantWorkflowDef(workflowDraft, ctx.tenant_id, ctx.db, {
     destinationTier: "all",
     lintJavascript: true,
+    consistency: { workflow_id: ctx.workflow_id },
   });
   if (!structural.ok) {
     const structuralPlaceholders = structural.placeholder_destinations ?? [];
@@ -957,7 +958,11 @@ export async function runAuthoringPipeline(
   return {
     ok: true,
     definition,
-    validation: { ok: validationErrors.length === 0, errors: validationErrors },
+    validation: {
+      ok: validationErrors.length === 0,
+      errors: validationErrors,
+      warnings: structural.warnings ?? [],
+    },
     recorded_eval: recordedEval,
     attempts,
     unresolved_connectors: unresolved,

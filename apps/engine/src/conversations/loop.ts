@@ -538,6 +538,11 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
   const workflowValidation = await validateTenantWorkflowDef(draft.workflow, p.tenant_id, p.db, {
     allowForwardRefs: true,
     lintJavascript: true,
+    consistency: {
+      workflow_id:
+        workflowIdForTurn ??
+        (draft.summary?.active_target.kind === "workflow" ? draft.summary.active_target.id : null),
+    },
   });
   const authoringContext = [
     renderAuthoringContextBlock({

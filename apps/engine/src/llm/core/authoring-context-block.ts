@@ -14,7 +14,7 @@ import type {
 } from "../../conversations/types.ts";
 import { extractStepIdReferences } from "../../workflows/levenshtein.ts";
 import type { validateTenantWorkflowDef } from "../../workflows/tenant-validator.ts";
-import { validateWorkflowDef } from "../../workflows/validator.ts";
+import { type ValidationError, validateWorkflowDef } from "../../workflows/validator.ts";
 
 export interface AuthoringContextInput {
   draft: DraftDocument | null | undefined;
@@ -551,8 +551,9 @@ function renderValidationStateLines(
   workflowValidation?: AuthoringContextInput["workflow_validation"],
 ): string[] {
   const result = workflowValidation ?? validateWorkflowDef(workflow, { allowForwardRefs: true });
+  const consistency = renderConsistencyWarningLines(result.warnings ?? []);
   if (result.ok && result.errors.length === 0) {
-    return ["- Validation: ok (0 errors)"];
+    return ["- Validation: ok (0 errors)", ...consistency];
   }
   const errors = result.errors.slice(0, 8);
   const remaining = result.errors.length - errors.length;
@@ -566,6 +567,17 @@ function renderValidationStateLines(
   if (remaining > 0) {
     lines.push(`  - …and ${remaining} more — call \`validate_draft\` once for the full list`);
   }
+  return [...lines, ...consistency];
+}
+
+function renderConsistencyWarningLines(warnings: ValidationError[]): string[] {
+  if (warnings.length === 0) return [];
+  const shown = warnings.slice(0, 6);
+  const lines = [
+    `- Consistency warnings: ${warnings.length} (not blocking; follow each convention or tell the user why this draft deviates)`,
+    ...shown.map((w) => `  - [${w.rule_id ?? "consistency"}] ${w.path || "(root)"}: ${w.message}`),
+  ];
+  if (warnings.length > shown.length) lines.push(`  - …and ${warnings.length - shown.length} more`);
   return lines;
 }
 

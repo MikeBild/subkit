@@ -1,5 +1,5 @@
 import type { Executor } from "../db/client.ts";
-import type { ListWorkflowsOptions } from "./catalog-view.ts";
+import { type ListWorkflowsOptions, WORKFLOW_LIST_MAX_LIMIT } from "./catalog-view.ts";
 import { listWorkflows, type WorkflowView } from "./service.ts";
 import type { WorkflowDef } from "./types.ts";
 
@@ -66,7 +66,7 @@ function summariseStepAction(step: Record<string, unknown>): string | undefined 
   return undefined;
 }
 
-function buildStepTopology(def: WorkflowDef): PriorWorkflowRef["step_topology"] {
+export function buildStepTopology(def: WorkflowDef): PriorWorkflowRef["step_topology"] {
   return def.steps.map((rawStep) => {
     const step = rawStep as unknown as Record<string, unknown>;
     const kind = typeof step.kind === "string" ? step.kind : "unknown";
@@ -150,6 +150,25 @@ function scorePriorWorkflow(
     SCORE_W_STEP * stepOverlap +
     SCORE_W_AFFINITY * stepCountAffinity
   );
+}
+
+export async function listActiveWorkflowRefs(
+  tenant_id: string,
+  exec?: Executor,
+): Promise<PriorWorkflowRef[]> {
+  const refs: PriorWorkflowRef[] = [];
+  for (let offset = 0; ; offset += WORKFLOW_LIST_MAX_LIMIT) {
+    const opts: ListWorkflowsOptions = {
+      status: "active",
+      sort: "created_at",
+      order: "asc",
+      limit: WORKFLOW_LIST_MAX_LIMIT,
+      offset,
+    };
+    const { rows, total } = await listWorkflows(tenant_id, opts, exec);
+    for (const row of rows) refs.push(projectPriorWorkflowRef(row));
+    if (rows.length < WORKFLOW_LIST_MAX_LIMIT || refs.length >= total) return refs;
+  }
 }
 
 export async function findSimilarActive(
