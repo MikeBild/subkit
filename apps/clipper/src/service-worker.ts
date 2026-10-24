@@ -17,7 +17,7 @@ const storageAccess = chromeApi.storage.local.setAccessLevel({ accessLevel: "TRU
 let draftWrites = Promise.resolve();
 
 async function workerText(): Promise<WorkerCopy> {
-  const settings = await loadSettings(chromeApi.storage.local);
+  const settings = await loadSettings(chromeApi.storage);
   return workerCopy[settings.language === "en" ? "en" : "de"];
 }
 
@@ -133,7 +133,7 @@ async function captureFromTab(
 ): Promise<Draft> {
   await draftWrites;
   await storageAccess;
-  const settingsAtStart = await loadSettings(chromeApi.storage.local);
+  const settingsAtStart = await loadSettings(chromeApi.storage);
   if (!settingsAtStart.engineUrl) {
     await chromeApi.runtime.openOptionsPage();
     throw new Error((await workerText()).engineRequired);
@@ -144,7 +144,7 @@ async function captureFromTab(
   if (!tab.url || normalizeSourceUrl(tab.url) !== capturedUrl) {
     throw new Error((await workerText()).pageChanged);
   }
-  const settings = await loadSettings(chromeApi.storage.local);
+  const settings = await loadSettings(chromeApi.storage);
   if (settings.engineUrl !== settingsAtStart.engineUrl) {
     throw new Error((await workerText()).engineChanged);
   }

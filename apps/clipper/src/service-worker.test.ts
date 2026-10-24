@@ -47,6 +47,11 @@ const chromeBridge = {
       },
       setAccessLevel: async () => {},
     },
+    session: {
+      get: async () => ({}),
+      set: async () => {},
+      remove: async () => {},
+    },
   },
   runtime: {
     id: "clipper",

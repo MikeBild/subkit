@@ -133,7 +133,8 @@ export const copy: Record<"de" | "en", Copy> = {
     newCapture: "Neu erfassen",
     captureFailed: "Die Seite konnte nicht erfasst werden.",
     draftOtherEngine: "Dieser Entwurf gehört zu einer anderen Engine.",
-    needsSettings: "Lege zuerst eine Engine-Adresse und einen API-Schlüssel fest.",
+    needsSettings:
+      "Lege zuerst eine Engine-Adresse und einen API-Schlüssel fest. Nach einem Neustart des Browsers gibst du den Schlüssel erneut ein.",
     categoryRequired: "Gib eine gültige Kategorie ein.",
     needsClipApi: "Sammeln ist hier noch nicht verfügbar.",
     intakeUnavailable: "Sammeln ist gerade nicht verfügbar. Dein Entwurf bleibt gespeichert.",
@@ -193,7 +194,8 @@ export const copy: Record<"de" | "en", Copy> = {
     reopenCapture: "Öffne den Clipper über die Symbolleiste auf dieser Seite erneut.",
     help: "Hilfe",
     helpLabel: "Hilfe zum Web Clipper öffnen",
-    intro: "Deine Zugangsdaten bleiben in dieser Browser-Erweiterung.",
+    intro:
+      "Dein API-Schlüssel bleibt nur bis zum Schließen des Browsers in dieser Erweiterung und wird nicht auf dem Gerät gespeichert.",
     languageField: "Sprache",
     settingsTitle: "SubKit Clipper – Einstellungen",
   },
@@ -237,7 +239,8 @@ export const copy: Record<"de" | "en", Copy> = {
     newCapture: "Capture again",
     captureFailed: "The page could not be captured.",
     draftOtherEngine: "This draft belongs to a different engine.",
-    needsSettings: "Set an engine address and API key first.",
+    needsSettings:
+      "Set an engine address and API key first. After a browser restart, enter the key again.",
     categoryRequired: "Enter a valid category.",
     needsClipApi: "Collecting is not available here.",
     intakeUnavailable: "Collecting is currently unavailable. Your draft remains saved.",
@@ -295,7 +298,8 @@ export const copy: Record<"de" | "en", Copy> = {
     reopenCapture: "Open the clipper from the toolbar on this page again.",
     help: "Help",
     helpLabel: "Open Web Clipper help",
-    intro: "Your credentials stay in this browser extension.",
+    intro:
+      "Your API key stays in this extension only until the browser closes and is never written to this device.",
     languageField: "Language",
     settingsTitle: "SubKit Clipper settings",
   },

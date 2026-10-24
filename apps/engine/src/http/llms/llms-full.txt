@@ -806,12 +806,12 @@ The path is always the same: **collect → review in chat → confirm → knowle
 
 ### What you need
 
-- **Google Chrome.** Other browsers are untested.
+- **Google Chrome.** Microsoft Edge and other Chromium browsers are untested. Firefox is not supported: the extension uses a Chrome background service worker.
 - **The `sk` CLI**, signed in to your engine. See "Use the sk CLI on your machine".
 - **An engine address** that uses HTTPS. Plain HTTP works only on `localhost`, `127.0.0.1` or `[::1]`. In SubKit Cloud it is `https://subkit-cloud.mikebild.info`, without `/cockpit`.
 - **An account with `intake:read` and `intake:write`.** If it lacks them, ask an administrator.
 
-The Web Clipper is not in the Chrome Web Store. You install it from the CLI.
+The Web Clipper is not in the Chrome Web Store. You install it from the CLI or from a ZIP file of your engine.
 
 ### Install the extension
 
@@ -833,9 +833,20 @@ The installer copies your active profile's engine address into the extension. Yo
 
 If Chrome does not open, the command prints `sk: could not open Chrome automatically`. Open `chrome://extensions` yourself.
 
+### Install without the CLI
+
+Your engine also offers the extension as a ZIP file. It contains no engine address, so you enter it yourself.
+
+1. Download `<engine address>/install/clipper.zip`, for example `https://subkit-cloud.mikebild.info/install/clipper.zip`.
+2. Unpack the file into a folder you keep. Chrome loads the extension from that folder.
+3. In Chrome, open `chrome://extensions`, turn on **Developer mode** and select **Load unpacked** with the unpacked folder.
+4. When you connect, enter the **Engine address** yourself.
+
+To update, unpack the new ZIP file into the same folder and reload the extension.
+
 ### Update the extension
 
-After you update the `sk` CLI, install the Web Clipper again. Your connection settings stay.
+After you update the `sk` CLI, install the Web Clipper again. The engine address and language stay. Enter the API key again after the reload.
 
 1. Run `sk clipper install`.
 2. On `chrome://extensions`, reload the "SubKit Clipper" extension.
@@ -858,6 +869,8 @@ The Web Clipper signs in with its own API key.
 The Web Clipper checks the connection, loads your categories and confirms that the key may save items.
 
 If the engine address changes, you also need the key for the new engine. **Clear API key** removes the stored key from the extension.
+
+The Web Clipper keeps the API key only in the browser's session storage and never writes it to this device. After a browser restart or a reload of the extension, paste the key again. Keep it in a password manager, or create a new key with the **Web Clipper** preset.
 
 ### Collect a page
 
@@ -913,7 +926,7 @@ It also keeps the source address, author and publish date when the page provides
 - **Destination:** items go only to the engine you configured. For the transcript, the Web Clipper may also load the page and captions directly from YouTube.
 - **Originals stay:** the engine keeps the original captured snapshot. Later edits do not overwrite it, and the item stays linked to the knowledge or skill made from it.
 - **Credentials are replaced:** before saving, SubKit replaces recognizable credentials (API keys, tokens, private keys, signed-link signatures) with a marker. The values are never stored. Personal data is kept. Don't clip pages that show passwords or keys.
-- **Your API key** is stored in the extension on this device. Revoke it in the Cockpit when you no longer need it.
+- **Your API key** stays in the extension only until the browser closes and is not written to this device. A key made from the **Web Clipper** preset grants only collecting. Revoke it in the Cockpit when you no longer need it.
 - **Visibility:** items follow the permissions of your workspace. Categories are shared, not private.
 
 ### Install options
@@ -932,7 +945,7 @@ The Web Clipper shows messages in the selected language. **Help** in the popup a
 
 | What you see | What to do |
 | --- | --- |
-| "Set an engine address and API key first." or "Set an engine address before capturing." | Enter both in the settings (⚙) and save. |
+| "Set an engine address and API key first. …" or "Set an engine address before capturing." | Enter both in the settings (⚙) and save. After a browser restart, paste the key again. |
 | "The API key is invalid or expired. …" | Create a new key with the **Web Clipper** preset under **API access** and save it in the settings. |
 | "The API key lacks intake:read. …" or "… lacks intake:write. …" | Create a key with the **Web Clipper** preset under **API access**. Your draft stays. |
 | "The SubKit API could not be reached. …" | Check the engine address, your internet connection and whether Chrome may access the address. |

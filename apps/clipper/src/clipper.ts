@@ -1,6 +1,7 @@
 import type { CapturedClip, ClipMetadata, Draft, Settings, WriteAttempt } from "./types.ts";
 
 const settingsKey = "settings";
+const apiKeyKey = "apiKey";
 const draftKey = "draft";
 const draftsKey = "drafts";
 const draftPrefix = "draft:";
@@ -114,26 +115,41 @@ export function parseInstallConfig(value: unknown): string | undefined {
   }
 }
 
-export async function loadSettings(storage: {
-  get(keys?: string | string[]): Promise<Record<string, unknown>>;
-}): Promise<Settings> {
-  const stored = await storage.get(settingsKey);
-  const settings = stored[settingsKey];
-  return settings && typeof settings === "object" ? (settings as Settings) : {};
-}
-
-export async function saveSettings(
-  storage: { set(values: Record<string, unknown>): Promise<void> },
-  settings: Settings,
-): Promise<void> {
-  await storage.set({ [settingsKey]: settings });
-}
-
-type DraftStorage = {
+type StorageArea = {
   get(keys?: string | string[]): Promise<Record<string, unknown>>;
   set(values: Record<string, unknown>): Promise<void>;
   remove(keys: string | string[]): Promise<void>;
 };
+
+export type SettingsStorage = { local: StorageArea; session: StorageArea };
+
+async function sessionApiKey(storage: SettingsStorage): Promise<string | undefined> {
+  const value = (await storage.session.get(apiKeyKey))[apiKeyKey];
+  return typeof value === "string" && value ? value : undefined;
+}
+
+export async function loadSettings(storage: SettingsStorage): Promise<Settings> {
+  const stored = (await storage.local.get(settingsKey))[settingsKey];
+  const settings = stored && typeof stored === "object" ? (stored as Settings) : {};
+  const { apiKey: persistedKey, ...persisted } = settings;
+  if ("apiKey" in settings) {
+    if (typeof persistedKey === "string" && persistedKey && !(await sessionApiKey(storage))) {
+      await storage.session.set({ [apiKeyKey]: persistedKey });
+    }
+    await storage.local.set({ [settingsKey]: persisted });
+  }
+  const apiKey = await sessionApiKey(storage);
+  return { ...persisted, ...(apiKey ? { apiKey } : {}) };
+}
+
+export async function saveSettings(storage: SettingsStorage, settings: Settings): Promise<void> {
+  const { apiKey, ...persisted } = settings;
+  await storage.local.set({ [settingsKey]: persisted });
+  if (apiKey) await storage.session.set({ [apiKeyKey]: apiKey });
+  else await storage.session.remove(apiKeyKey);
+}
+
+type DraftStorage = StorageArea;
 
 function isDraft(value: unknown): value is Draft {
   return Boolean(value) && typeof value === "object" && typeof (value as Draft).id === "string";

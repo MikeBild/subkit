@@ -10,6 +10,11 @@ interface ChromeApi {
       remove(keys: string | string[]): Promise<void>;
       setAccessLevel(access: { accessLevel: "TRUSTED_CONTEXTS" }): Promise<void>;
     };
+    session: {
+      get(keys?: string | string[] | StorageRecord): Promise<StorageRecord>;
+      set(items: StorageRecord): Promise<void>;
+      remove(keys: string | string[]): Promise<void>;
+    };
   };
   runtime: {
     id: string;

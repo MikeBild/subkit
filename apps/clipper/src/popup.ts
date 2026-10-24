@@ -447,7 +447,7 @@ async function loadCategories(): Promise<void> {
   if (categoryInput) categoryInput.hidden = true;
   updateBusyState();
   try {
-    const settings = await loadSettings(chromeApi.storage.local);
+    const settings = await loadSettings(chromeApi.storage);
     if (request !== categoryLoad) return;
     if (
       !settings.engineUrl ||
@@ -524,7 +524,7 @@ async function save(): Promise<void> {
   updateBusyState();
   try {
     let current = await persist();
-    const settings = await loadSettings(chromeApi.storage.local);
+    const settings = await loadSettings(chromeApi.storage);
     if (!current || !settings.engineUrl || !settings.apiKey) {
       await chromeApi.runtime.openOptionsPage();
       return;
@@ -599,7 +599,7 @@ async function discardAndCapture(): Promise<void> {
 }
 
 async function initialize(): Promise<void> {
-  const settings = await loadSettings(chromeApi.storage.local);
+  const settings = await loadSettings(chromeApi.storage);
   text = copy[language(settings.language)];
   document.documentElement.lang = language(settings.language);
   applyText(text);

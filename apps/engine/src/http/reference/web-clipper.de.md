@@ -15,12 +15,12 @@ Der Weg ist immer gleich: **sammeln → im Chat prüfen → bestätigen → Wiss
 
 ### Was du brauchst
 
-- **Google Chrome.** Andere Browser sind nicht getestet.
+- **Google Chrome.** Microsoft Edge und andere Chromium-Browser sind nicht getestet. Firefox wird nicht unterstützt: Die Erweiterung nutzt einen Hintergrund-Service-Worker von Chrome.
 - **Die `sk`-CLI**, angemeldet an deiner Engine. Siehe „Die sk-CLI auf deinem Rechner verwenden“.
 - **Eine Engine-Adresse** mit HTTPS. Einfaches HTTP funktioniert nur mit `localhost`, `127.0.0.1` oder `[::1]`. In SubKit Cloud ist es `https://subkit-cloud.mikebild.info`, ohne `/cockpit`.
 - **Ein Konto mit `intake:read` und `intake:write`.** Fehlen sie, bitte eine Administratorin oder einen Administrator darum.
 
-Den Web Clipper gibt es nicht im Chrome Web Store. Du installierst ihn über die CLI.
+Den Web Clipper gibt es nicht im Chrome Web Store. Du installierst ihn über die CLI oder als ZIP-Datei deiner Engine.
 
 ### Die Erweiterung installieren
 
@@ -42,9 +42,20 @@ Der Installer übernimmt die Engine-Adresse deines aktiven Profils. Später trä
 
 Öffnet sich Chrome nicht, meldet der Befehl `sk: could not open Chrome automatically`. Öffne dann `chrome://extensions` selbst.
 
+### Ohne CLI installieren
+
+Deine Engine bietet die Erweiterung auch als ZIP-Datei an. Sie enthält keine Engine-Adresse; die trägst du selbst ein.
+
+1. Lade `<Engine-Adresse>/install/clipper.zip` herunter, zum Beispiel `https://subkit-cloud.mikebild.info/install/clipper.zip`.
+2. Entpacke die Datei in einen Ordner, den du behältst. Chrome lädt die Erweiterung aus diesem Ordner.
+3. Öffne in Chrome `chrome://extensions`, schalte den **Entwicklermodus** ein und wähle **Entpackte Erweiterung laden** mit dem entpackten Ordner.
+4. Trage beim Verbinden die **Engine-Adresse** selbst ein.
+
+Zum Aktualisieren entpackst du die neue ZIP-Datei in denselben Ordner und lädst die Erweiterung neu.
+
 ### Die Erweiterung aktualisieren
 
-Installiere den Web Clipper nach einem Update der `sk`-CLI erneut. Deine Verbindungseinstellungen bleiben erhalten.
+Installiere den Web Clipper nach einem Update der `sk`-CLI erneut. Engine-Adresse und Sprache bleiben erhalten. Den API-Schlüssel trägst du nach dem Neuladen erneut ein.
 
 1. Führe `sk clipper install` aus.
 2. Lade die Erweiterung „SubKit Clipper“ auf `chrome://extensions` neu.
@@ -67,6 +78,8 @@ Der Web Clipper meldet sich mit einem eigenen API-Schlüssel an.
 Der Web Clipper prüft die Verbindung, lädt deine Kategorien und bestätigt, dass der Schlüssel Einträge speichern darf.
 
 Ändert sich die Engine-Adresse, brauchst du auch den Schlüssel der neuen Engine. **API-Schlüssel löschen** entfernt den gespeicherten Schlüssel aus der Erweiterung.
+
+Der Web Clipper hält den API-Schlüssel nur im Sitzungsspeicher des Browsers und schreibt ihn nie auf dieses Gerät. Nach einem Neustart des Browsers oder einem Neuladen der Erweiterung fügst du den Schlüssel erneut ein. Bewahre ihn in einem Passwortmanager auf oder erstelle einen neuen Schlüssel mit der Vorlage **Web Clipper**.
 
 ### Eine Seite sammeln
 
@@ -122,7 +135,7 @@ Dazu kommen Quelladresse, Autor und Veröffentlichungsdatum, sofern die Seite si
 - **Ziel:** Einträge gehen nur an die Engine, die du eingestellt hast. Für das Transkript lädt der Web Clipper eventuell Seite und Untertitel direkt von YouTube.
 - **Originale bleiben:** Die Engine bewahrt den ursprünglich erfassten Stand. Spätere Änderungen überschreiben ihn nicht, und der Eintrag bleibt mit dem daraus entstandenen Wissen oder Skill verknüpft.
 - **Zugangsdaten werden ersetzt:** Vor dem Speichern ersetzt SubKit erkennbare Zugangsdaten (API-Schlüssel, Tokens, private Schlüssel, Signaturen signierter Links) durch eine Markierung. Die Werte werden nie gespeichert. Personenbezogene Daten bleiben erhalten. Sammle keine Seiten, die Passwörter oder Schlüssel zeigen.
-- **Dein API-Schlüssel** liegt in der Erweiterung auf diesem Gerät. Widerrufe ihn im Cockpit, wenn du ihn nicht mehr brauchst.
+- **Dein API-Schlüssel** bleibt nur bis zum Schließen des Browsers in der Erweiterung und wird nicht auf diesem Gerät gespeichert. Ein Schlüssel mit der Vorlage **Web Clipper** erlaubt nur das Sammeln. Widerrufe ihn im Cockpit, wenn du ihn nicht mehr brauchst.
 - **Sichtbarkeit:** Einträge folgen den Rechten deines Arbeitsbereichs. Kategorien sind gemeinsam, nicht privat.
 
 ### Installationsoptionen
@@ -141,7 +154,7 @@ Der Web Clipper zeigt Meldungen in der eingestellten Sprache. **Hilfe** im Popup
 
 | Was du siehst | Was du tust |
 | --- | --- |
-| „Lege zuerst eine Engine-Adresse und einen API-Schlüssel fest.“ oder „Lege vor dem Erfassen eine Engine-Adresse fest.“ | Trage beides in den Einstellungen (⚙) ein und speichere. |
+| „Lege zuerst eine Engine-Adresse und einen API-Schlüssel fest. …“ oder „Lege vor dem Erfassen eine Engine-Adresse fest.“ | Trage beides in den Einstellungen (⚙) ein und speichere. Nach einem Neustart des Browsers fügst du den Schlüssel erneut ein. |
 | „Der API-Schlüssel ist ungültig oder abgelaufen. …“ | Erstelle unter **API-Zugang** einen neuen Schlüssel mit der Vorlage **Web Clipper** und speichere ihn in den Einstellungen. |
 | „Dem API-Schlüssel fehlt intake:read. …“ oder „… fehlt intake:write. …“ | Erstelle unter **API-Zugang** einen Schlüssel mit der Vorlage **Web Clipper**. Dein Entwurf bleibt erhalten. |
 | „Die SubKit-API ist nicht erreichbar. …“ | Prüfe Engine-Adresse und Internetverbindung und ob Chrome auf die Adresse zugreifen darf. |

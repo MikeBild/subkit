@@ -34,7 +34,7 @@ async function installUrl(): Promise<string | undefined> {
 }
 
 async function initialize(): Promise<void> {
-  const settings = await loadSettings(chromeApi.storage.local);
+  const settings = await loadSettings(chromeApi.storage);
   const initialUrl = settings.engineUrl || (await installUrl());
   initialEngineUrl = initialUrl || "";
   if (engineUrl) engineUrl.value = initialUrl || "";
@@ -76,11 +76,11 @@ form?.addEventListener("submit", async (event) => {
     const origin = new URL(nextUrl).origin;
     const granted = await chromeApi.permissions.request({ origins: [`${origin}/*`] });
     if (!granted) throw new Error(text.permissionDenied);
-    const oldSettings = await loadSettings(chromeApi.storage.local);
+    const oldSettings = await loadSettings(chromeApi.storage);
     const urlChanged = oldSettings.engineUrl !== nextUrl;
     const enteredKey = apiKey?.value.trim() || undefined;
     if (urlChanged && !enteredKey) throw new Error(text.keyRequired);
-    await saveSettings(chromeApi.storage.local, {
+    await saveSettings(chromeApi.storage, {
       engineUrl: nextUrl,
       ...(enteredKey ? { apiKey: enteredKey } : {}),
       language: language?.value === "en" ? "en" : "de",
@@ -105,9 +105,9 @@ engineUrl?.addEventListener("input", () => {
 });
 
 clearKey?.addEventListener("click", async () => {
-  const settings = await loadSettings(chromeApi.storage.local);
+  const settings = await loadSettings(chromeApi.storage);
   const { apiKey: _, ...withoutKey } = settings;
-  await saveSettings(chromeApi.storage.local, withoutKey);
+  await saveSettings(chromeApi.storage, withoutKey);
   if (apiKey) apiKey.value = "";
   await chromeApi.runtime.sendMessage({ type: "settings-updated" });
   setStatus(text.keyCleared);

@@ -7,12 +7,14 @@ import {
   findDraft,
   listDrafts,
   loadDraft,
+  loadSettings,
   markdown,
   normalizeEngineUrl,
   normalizeSourceUrl,
   parseInstallConfig,
   persistedCollectionSlug,
   saveDraft,
+  saveSettings,
 } from "./clipper.ts";
 
 function draftStorage(initial: Record<string, unknown> = {}) {
@@ -176,4 +178,51 @@ test("install configuration accepts a valid address only", () => {
   );
   expect(parseInstallConfig({ engine_url: "http://engine.example" })).toBeUndefined();
   expect(parseInstallConfig({})).toBeUndefined();
+  expect(parseInstallConfig({ engine_url: null })).toBeUndefined();
+});
+
+test("the API key is kept in session storage and never written to local storage", async () => {
+  const storage = { local: draftStorage(), session: draftStorage() };
+  await saveSettings(storage, {
+    engineUrl: "https://engine.example",
+    apiKey: "sk_secret",
+    language: "en",
+  });
+  expect(JSON.stringify(storage.local.values)).not.toContain("sk_secret");
+  expect(storage.local.values).toEqual({
+    settings: { engineUrl: "https://engine.example", language: "en" },
+  });
+  expect(await loadSettings(storage)).toEqual({
+    engineUrl: "https://engine.example",
+    apiKey: "sk_secret",
+    language: "en",
+  });
+  await saveSettings(storage, { engineUrl: "https://engine.example", language: "en" });
+  expect(storage.session.values).toEqual({});
+  expect(await loadSettings(storage)).toEqual({
+    engineUrl: "https://engine.example",
+    language: "en",
+  });
+});
+
+test("a key stored on the device by an earlier install moves to session storage", async () => {
+  const storage = {
+    local: draftStorage({ settings: { engineUrl: "https://engine.example", apiKey: "sk_old" } }),
+    session: draftStorage(),
+  };
+  expect(await loadSettings(storage)).toEqual({
+    engineUrl: "https://engine.example",
+    apiKey: "sk_old",
+  });
+  expect(JSON.stringify(storage.local.values)).not.toContain("sk_old");
+  expect(storage.session.values).toEqual({ apiKey: "sk_old" });
+});
+
+test("a key entered in this session wins over one left on the device", async () => {
+  const storage = {
+    local: draftStorage({ settings: { engineUrl: "https://engine.example", apiKey: "sk_old" } }),
+    session: draftStorage({ apiKey: "sk_new" }),
+  };
+  expect((await loadSettings(storage)).apiKey).toBe("sk_new");
+  expect(JSON.stringify(storage.local.values)).not.toContain("sk_old");
 });
