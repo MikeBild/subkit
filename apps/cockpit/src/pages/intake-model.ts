@@ -276,7 +276,41 @@ export function mayConfirmIntakeProposal(
   return intakeConfirmPermissions(target).every((permission) => permissions.includes(permission));
 }
 
-export type ReferencedSkill = { title: string; version: number; body: string; status?: string };
+type SkillRule = NonNullable<IntakeSkillTarget["skill"]["rules"]>[number];
+
+export type ReferencedSkill = {
+  title: string;
+  version: number;
+  body: string;
+  status?: string;
+  rules?: SkillRule[];
+  domains?: string[];
+};
+
+export type SkillConventionsView = { rules: string[]; domains: string };
+
+function ruleLine(rule: SkillRule): string {
+  const payload = Object.entries(rule.payload)
+    .map(([key, value]) => `${key}=${String(value)}`)
+    .join(", ");
+  return `${rule.rule_id} · ${rule.type}: ${rule.statement} (${payload})`;
+}
+
+export function skillConventionsView(
+  target: IntakeSkillTarget,
+  existing: Pick<ReferencedSkill, "rules" | "domains"> | undefined,
+  t: Translate,
+): SkillConventionsView | null {
+  const { rules, domains } = target.skill;
+  if (rules === undefined && domains === undefined) return null;
+  const effectiveDomains = domains ?? existing?.domains ?? [];
+  return {
+    rules: (rules ?? existing?.rules ?? []).map(ruleLine),
+    domains: effectiveDomains.length
+      ? effectiveDomains.join(", ")
+      : t("intake.proposal.ruleDomainsEverywhere"),
+  };
+}
 
 type NewSkill = NonNullable<IntakeSkillTarget["skill"]["new"]>;
 
