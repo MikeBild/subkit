@@ -142,6 +142,10 @@ describe("DataTable", () => {
     expect(desktop).not.toContain("· 1<");
     expect(desktop.indexOf("Gamma")).toBeLessThan(desktop.indexOf("Alpha"));
     expect((html.match(/data-slot="group-toggle"/g) ?? []).length).toBe(4);
+    expect(desktop).toContain('data-testid="t-group-x"');
+    expect(desktop).toContain('data-testid="t-group-y"');
+    expect(html).toContain('data-testid="t-mobile-group-x"');
+    expect(html).toContain('data-testid="t-mobile-group-y"');
     expect(html).toContain('aria-expanded="true"');
     expect((html.match(/data-slot="badge-probe"/g) ?? []).length).toBe(4);
     expect(desktop).toContain("sticky top-9");

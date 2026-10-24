@@ -24,6 +24,7 @@ import {
   useState,
 } from "react";
 import { absolute, routerPath } from "@/app/links";
+import { slugify } from "@/components/cockpit/create-refusal";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -330,6 +331,7 @@ function GroupHeading({
   badge,
   collapsed,
   onToggle,
+  testId,
 }: {
   variant: "row" | "card";
   label: string;
@@ -337,6 +339,7 @@ function GroupHeading({
   badge?: ReactNode;
   collapsed: boolean | null;
   onToggle(): void;
+  testId: string;
 }) {
   const { t } = useI18n();
   const title = (
@@ -364,6 +367,7 @@ function GroupHeading({
           }}
           className="-ml-1 inline-flex min-w-0 items-center gap-1.5 rounded-sm px-1 py-0.5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11"
           data-slot="group-toggle"
+          data-testid={testId}
         >
           <ChevronDown
             aria-hidden="true"
@@ -594,6 +598,7 @@ export function DataTable<TData extends RowData>({
         badge={grouping.badge?.(key, groupMembers?.get(key) ?? [])}
         collapsed={collapseScope ? collapsedGroups.has(key) : null}
         onToggle={() => toggleCollapsed(key)}
+        testId={`${collectionId}-${variant === "card" ? "mobile-" : ""}group-${slugify(key)}`}
       />
     ) : null;
   const resultCount = queryText.trim() ? filteredData.length : (total ?? data.length);
