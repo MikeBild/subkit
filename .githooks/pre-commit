@@ -42,11 +42,14 @@ fi
 
 if [ -n "$has_ts" ]; then
   printf '%b[pre-commit] tsc --noEmit%b\n' "$yellow" "$reset"
-  if ! bun x tsc --noEmit > /tmp/subkit-pre-commit-tsc.log 2>&1; then
+  tsc_log=$(mktemp)
+  if ! bash scripts/typecheck.sh bun x tsc --noEmit > "$tsc_log" 2>&1; then
     printf '%b[pre-commit] typecheck failed — commit blocked:%b\n' "$red" "$reset"
-    cat /tmp/subkit-pre-commit-tsc.log | tail -40
+    tail -40 "$tsc_log"
+    rm -f "$tsc_log"
     exit 1
   fi
+  rm -f "$tsc_log"
 fi
 
 printf '%b[pre-commit] ok%b\n' "$green" "$reset"
