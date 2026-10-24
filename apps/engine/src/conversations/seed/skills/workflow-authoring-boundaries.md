@@ -3,7 +3,7 @@ slug: workflow-authoring-boundaries
 scope: global
 title: Workflow Effect Boundaries
 description: How to remedy `dynamic_request` and `destructive_effect` in an automation review: `s3.scope` for storage steps, `boundary` for http steps, declared `report_delivery`, and what a `call` step approval covers.
-activates_when: [{"kind":"diagnosis","codes":["dynamic_request","destructive_effect","unbound_workflow_call","boundary_contradicted_by_history","request_outside_declared_boundary","path_class_misplaced","child_unavailable","target_not_static","child_calls_workflow"]},{"kind":"tool","tool":"diagnose_workflow"},{"kind":"intent_keyword","word":"s3.scope"},{"kind":"intent_keyword","word":"max_body_bytes"},{"kind":"intent_keyword","word":"dynamic_request"},{"kind":"intent_keyword","word":"destructive_effect"}]
+activates_when: [{"kind":"diagnosis","codes":["dynamic_request","destructive_effect","unbound_workflow_call","boundary_contradicted_by_history","request_outside_declared_boundary","path_class_misplaced","child_unavailable","target_not_static","child_calls_workflow"]},{"kind":"tool","tool":"diagnose_workflow"},{"kind":"tool","tool":"review_workflow_automation"},{"kind":"intent_keyword","word":"s3.scope"},{"kind":"intent_keyword","word":"max_body_bytes"},{"kind":"intent_keyword","word":"dynamic_request"},{"kind":"intent_keyword","word":"destructive_effect"}]
 side_effects: read
 idempotency: none
 maturity: stable

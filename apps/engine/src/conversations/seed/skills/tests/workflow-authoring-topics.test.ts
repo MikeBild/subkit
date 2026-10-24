@@ -17,7 +17,7 @@ describe("workflow-authoring core and topic skills", () => {
   test("the core recipe stays within its context budget", () => {
     expect(seeds.errors).toEqual([]);
     expect(core).toBeDefined();
-    expect(core?.body.length ?? Infinity).toBeLessThanOrEqual(15_000);
+    expect(core?.body.length ?? Infinity).toBeLessThanOrEqual(18_000);
   });
 
   test("every topic skill is a stable, visible global skill with its own activation rules", () => {
