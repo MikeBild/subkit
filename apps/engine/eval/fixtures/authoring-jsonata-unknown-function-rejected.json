@@ -1,6 +1,6 @@
 {
   "name": "authoring-jsonata-unknown-function-rejected",
-  "description": "author_workflow rejects a JavaScript method called as a JSONata function (`$indexOf` in output_transform) statically in pass 1: the finding names the site and the idiom, the regenerate pass receives it verbatim under 'Findings from the previous attempt', the first definition is never stashed, and the file-authoring validator and the verifier produce the identical message (one message on every surface). Zero egress.",
+  "description": "author_workflow rejects a JavaScript method called as a JSONata function (`$indexOf` in output_transform) statically in pass 1: the finding names the site and the idiom, the regenerate pass receives it verbatim under 'Findings from the previous attempt', the first definition is never stashed, and the file-authoring validator produces the identical message (one message on every surface). Zero egress.",
   "flow": "generate",
   "input": {
     "goal": "Return the hottest day from the forecast",

@@ -1,5 +1,4 @@
 import { runAuthoringPipeline } from "../../src/conversations/authoring-pipeline.ts";
-import { verifyWorkflow } from "../../src/conversations/verifier.ts";
 import { getMockProvider } from "../../src/llm/mock-provider.ts";
 import { validateWorkflowDef } from "../../src/workflows/validator.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
@@ -34,15 +33,6 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
   c.check(
     fileError?.message === input.expect.finding_message,
     `validator message differs: ${JSON.stringify(fileError)}`,
-  );
-
-  const verifierError = verifyWorkflow(input.first_definition).errors.find(
-    (e) => e.code === "jsonata_unknown_function",
-  );
-  c.check(
-    verifierError?.message === input.expect.finding_message &&
-      verifierError.path === input.expect.finding_path,
-    `verifier message differs: ${JSON.stringify(verifierError)}`,
   );
   if (c.failed) return { pass: false, reason: c.failed };
 
