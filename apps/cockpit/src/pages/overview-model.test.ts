@@ -333,6 +333,17 @@ describe("the sentence", () => {
       since: null,
     });
     expect(
+      attentionSentence(
+        item({ reason: "risk_critical", kind: "llm_provider_quota", subject: null, since: null }),
+        de,
+        NOW,
+      ),
+    ).toEqual({
+      lead: "Kritisches Betriebssignal: Guthaben beim Sprachmodell-Anbieter aufgebraucht",
+      machine: null,
+      since: null,
+    });
+    expect(
       sentenceText(
         attentionSentence(
           item({ id: "skills", reason: "skills_proposed", subject: null, counts: { skills: 4 } }),

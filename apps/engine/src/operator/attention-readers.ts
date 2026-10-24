@@ -39,6 +39,7 @@ import {
 } from "./health-digest.ts";
 import { cockpitRunsHref } from "./operating-figures.ts";
 import { getOperationalOverview, type HealthState } from "./operational-overview.ts";
+import { type ProviderOutage, readProviderOutage } from "./provider-outage.ts";
 import { computeRiskSignals, type RiskSignal } from "./risk-signals.ts";
 
 export const attentionHref = {
@@ -730,10 +731,38 @@ const readBudget: TenantReader = async (db, tenantId) => {
     .map((signal) => signalItem(signal, "budget"));
 };
 
-const readRisk: TenantReader = async () =>
-  computeRiskSignals()
-    .filter((signal) => signal.severity === "critical")
-    .map((signal) => signalItem(signal, "risk"));
+function providerOutageItem(outage: ProviderOutage): Candidate {
+  return {
+    source: "risk",
+    item: {
+      id: `risk:${outage.kind}`,
+      class: outage.kind === "llm_provider_quota" ? "stopped" : "failing",
+      severity: "critical",
+      kind: outage.kind,
+      subject: null,
+      reason: "risk_critical",
+      trigger: null,
+      cause_class: null,
+      counts: { consecutive_failures: outage.failures },
+      since: outage.since,
+      deadline: null,
+      detail: outage.last_error?.slice(0, 300) ?? null,
+      actions: [
+        { verb: "open", href: attentionHref.settings, primary: true, permission: "settings:read" },
+      ],
+    },
+  };
+}
+
+const readRisk: TenantReader = async (db, tenantId, now) => {
+  const outage = await readProviderOutage(db, tenantId, now);
+  return [
+    ...(outage ? [providerOutageItem(outage)] : []),
+    ...computeRiskSignals()
+      .filter((signal) => signal.severity === "critical")
+      .map((signal) => signalItem(signal, "risk")),
+  ];
+};
 
 async function readFreshnessAndStatus(
   db: Db,

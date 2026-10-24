@@ -160,6 +160,8 @@ const SIGNAL_KEYS: Record<string, TranslationKey> = {
   llm_fallback: "overview.signal.llm_fallback",
   memory_high_water: "overview.signal.memory_high_water",
   token_budget: "overview.signal.token_budget",
+  llm_provider_quota: "overview.signal.llm_provider_quota",
+  llm_provider_unavailable: "overview.signal.llm_provider_unavailable",
 };
 
 export interface AttentionSentence {
@@ -382,6 +384,7 @@ export function actionLabelKey(action: AttentionAction, item: AttentionItem): Tr
       if (item.reason === "approval_expiring") return "overview.action.extend";
       if (item.reason === "secret_prepared") return "overview.action.openSettings";
       if (item.reason === "budget_critical") return "overview.action.openUsage";
+      if (item.kind.startsWith("llm_provider_")) return "overview.action.openSettings";
       if (item.subject?.kind === "connector") return "overview.action.openConnector";
       return "overview.action.openOperations";
     case "answer":
