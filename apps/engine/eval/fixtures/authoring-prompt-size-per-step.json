@@ -1,0 +1,103 @@
+{
+  "name": "authoring-prompt-size-per-step",
+  "description": "Prompt size per chat step across one authoring conversation that builds, previews, patches, previews again, saves and reviews automation. Each step replays the user turn and the tool calls the model makes in it through the real skill autoload and recency rules, then assembles the real converse system prompt from the shipped skill seeds in a test tenant. The same conversation runs again in a tenant where the workflow-authoring family is merged into one skill with the core's activation rules, as it shipped before the phase split. Every step must keep the core recipe loaded and trim nothing. The metrics carry the system-prompt tokens per step for both arms and how many steps render the core body; the runner reports them next to the PROD baseline in eval/baselines/prod-authoring.json. A smaller-than-single-skill assertion is deliberately absent: the converse prompt renders loaded global skills only as index lines, so neither arm carries a skill body and the split only adds index lines. Tool definitions and message history are not measured.",
+  "flow": "converse",
+  "failure_class": "prompt size per authoring chat step is not measured, so a phase split or a delivery change cannot be compared against the single-skill arm",
+  "depends_on": ["skill_autoload", "context_assembler"],
+  "input": {
+    "family_prefix": "workflow-authoring",
+    "core_slug": "workflow-authoring",
+    "core_marker": "## Authenticated caller contract",
+    "surface": "cockpit",
+    "required_tools": [
+      "author_workflow",
+      "dry_run_workflow",
+      "edit_workflow_patch",
+      "save_workflow_draft"
+    ],
+    "steps": [
+      {
+        "id": "build",
+        "user_turn": "Erstelle einen neuen Workflow, der jeden Montag den Wochenbericht per Mail an das Team schickt",
+        "events": [
+          {
+            "tool": "author_workflow",
+            "input": {
+              "goal": "Send the weekly status report by mail every Monday.",
+              "connector_slugs": ["gmail-team"]
+            }
+          }
+        ]
+      },
+      {
+        "id": "preview",
+        "user_turn": "Zeig mir eine Vorschau des Entwurfs mit den echten Daten",
+        "events": [
+          {
+            "tool": "dry_run_workflow",
+            "input": {}
+          }
+        ]
+      },
+      {
+        "id": "patch",
+        "user_turn": "Schick den Bericht für jedes Teammitglied einzeln statt als Sammelmail",
+        "events": [
+          {
+            "tool": "edit_workflow_patch",
+            "input": {
+              "step_patches": [
+                {
+                  "step_id": "send",
+                  "op": "add",
+                  "path": "/for_each",
+                  "value": {
+                    "items": "${steps.members.output}",
+                    "as": "member"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tool": "dry_run_workflow",
+            "input": {}
+          }
+        ]
+      },
+      {
+        "id": "preview_again",
+        "user_turn": "Prüfe die Vorschau bitte noch einmal mit der Änderung",
+        "events": [
+          {
+            "tool": "dry_run_workflow",
+            "input": {}
+          }
+        ]
+      },
+      {
+        "id": "save",
+        "user_turn": "Das sieht gut aus, bitte den Entwurf jetzt speichern",
+        "events": [
+          {
+            "tool": "save_workflow_draft",
+            "input": {}
+          }
+        ]
+      },
+      {
+        "id": "automation_review",
+        "user_turn": "Bereite den Workflow für den automatischen Betrieb vor",
+        "events": [
+          {
+            "tool": "review_workflow_automation",
+            "input": {}
+          },
+          {
+            "diagnoses": ["header_not_allowed"]
+          }
+        ]
+      }
+    ]
+  }
+}
