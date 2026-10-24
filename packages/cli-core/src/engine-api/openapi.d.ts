@@ -14253,6 +14253,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/skill-candidates/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve several detected skill candidates as active skills
+         * @description Only a signed-in person may approve in a batch. Each candidate is bound to the review digest the person saw, checked, approved and audited on its own; the result lists an outcome per candidate.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ApproveSkillCandidatesBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApproveSkillCandidatesResponse"];
+                    };
+                };
+                /** @description Not a signed-in person, or missing permission */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/skill-candidates/{id}/reject": {
         parameters: {
             query?: never;
@@ -26795,6 +26847,25 @@ export interface components {
             /** @enum {string} */
             status?: "draft" | "active";
             expected_review_digest?: string;
+        };
+        ApproveSkillCandidatesResponse: {
+            results: components["schemas"]["SkillCandidateApprovalResult"][];
+            approved: number;
+        };
+        SkillCandidateApprovalResult: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            outcome: "approved" | "changed_since_review" | "not_found" | "already_decided";
+            /** @description The active skill the candidate became, if approved. */
+            skill_id: string | null;
+        };
+        ApproveSkillCandidatesBody: {
+            candidates: {
+                /** Format: uuid */
+                id: string;
+                expected_review_digest: string;
+            }[];
         };
         RejectSkillCandidateBody: {
             reason?: string;

@@ -11,7 +11,7 @@ import { beginTenantWork } from "../../execution/tenant-work.ts";
 import { assertTenantActive, SelfServiceIdentityError } from "../../identity/self-service.ts";
 import { withContext } from "../../logging/context.ts";
 import { buildServiceMetadata } from "../../observability/service-metadata.ts";
-import { UnauthorizedError } from "../errors.ts";
+import { HttpError, UnauthorizedError } from "../errors.ts";
 import type { AppEnv } from "../openapi.ts";
 
 export function authMiddleware(registry: AuthProviderRegistry): MiddlewareHandler<AppEnv> {
@@ -113,4 +113,9 @@ export function requireAuth(c: {
     throw new UnauthorizedError();
   }
   return principal;
+}
+
+export function requireSignedInPerson(principal: ResolvedPrincipal, message: string): void {
+  if (principal.kind !== "user" || principal.auth_source?.kind !== "browser_session")
+    throw new HttpError(403, "human_confirmation_required", message);
 }

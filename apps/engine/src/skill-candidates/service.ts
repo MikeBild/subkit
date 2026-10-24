@@ -577,6 +577,23 @@ export async function runPatternAnalysis(
   };
 }
 
+export type SkillCandidateApprovalFailure =
+  | "not_found"
+  | "already_decided"
+  | "changed_since_review";
+
+export function approvalFailureOf(
+  current: Pick<SkillCandidateView, "status" | "pattern_kind"> | null,
+): SkillCandidateApprovalFailure {
+  if (
+    !current ||
+    current.status === "context" ||
+    (LEARNING_PATTERN_KINDS as readonly string[]).includes(current.pattern_kind)
+  )
+    return "not_found";
+  return current.status === "proposed" ? "changed_since_review" : "already_decided";
+}
+
 export interface ApproveSkillCandidateResult {
   candidate: SkillCandidateView;
   skill_id: string;
