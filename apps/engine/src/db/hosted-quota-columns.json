@@ -6908,6 +6908,11 @@
         "enum": null
       },
       {
+        "name": "intake_proposal_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
         "name": "window_start",
         "type": "timestamp with time zone",
         "enum": null
@@ -7091,6 +7096,16 @@
       {
         "name": "applies_to",
         "type": "text",
+        "enum": null
+      },
+      {
+        "name": "rules",
+        "type": "jsonb",
+        "enum": null
+      },
+      {
+        "name": "domains",
+        "type": "jsonb",
         "enum": null
       },
       {
@@ -8513,6 +8528,11 @@
       },
       {
         "name": "dag",
+        "type": "jsonb",
+        "enum": null
+      },
+      {
+        "name": "spec",
         "type": "jsonb",
         "enum": null
       },

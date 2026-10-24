@@ -15,6 +15,7 @@ import {
 import type { SkillRule } from "../../skills/types.ts";
 import { catalogMetadata, catalogMetadataConstraints, tenantId, timestamps } from "./_common.ts";
 import { tenants } from "./identity.ts";
+import { intakeProposals } from "./intake.ts";
 
 export const skillScopeEnum = pgEnum("skill_scope", ["global", "connector", "workflow"]);
 export const skillLifecycleEnum = pgEnum("skill_lifecycle", ["draft", "active", "archived"]);
@@ -179,9 +180,12 @@ export const skillEffectiveness = pgTable(
     skill_id: uuid("skill_id")
       .notNull()
       .references(() => skills.id, { onDelete: "cascade" }),
-    skill_candidate_id: uuid("skill_candidate_id")
-      .notNull()
-      .references(() => skillCandidates.id, { onDelete: "cascade" }),
+    skill_candidate_id: uuid("skill_candidate_id").references(() => skillCandidates.id, {
+      onDelete: "cascade",
+    }),
+    intake_proposal_id: uuid("intake_proposal_id").references(() => intakeProposals.id, {
+      onDelete: "cascade",
+    }),
     window_start: timestamp("window_start", { withTimezone: true }).notNull(),
     window_end: timestamp("window_end", { withTimezone: true }).notNull(),
     executions_before: integer("executions_before").notNull(),
@@ -190,5 +194,16 @@ export const skillEffectiveness = pgTable(
     failures_after: integer("failures_after").notNull(),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [index("skill_effectiveness_tenant_skill_idx").on(t.tenant_id, t.skill_id)],
+  (t) => [
+    index("skill_effectiveness_tenant_skill_idx").on(t.tenant_id, t.skill_id),
+    uniqueIndex("skill_effectiveness_tenant_skill_proposal_key").on(
+      t.tenant_id,
+      t.skill_id,
+      t.intake_proposal_id,
+    ),
+    check(
+      "skill_effectiveness_origin_check",
+      sql`(${t.skill_candidate_id} IS NULL) <> (${t.intake_proposal_id} IS NULL)`,
+    ),
+  ],
 );
