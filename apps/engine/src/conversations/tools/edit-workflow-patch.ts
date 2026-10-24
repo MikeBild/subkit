@@ -18,6 +18,7 @@ import {
 import type { WorkflowDef } from "../../workflows/types.ts";
 import { reviewDraftWithCritic } from "../authoring-critic/critic-agent.ts";
 import { loadConsecutiveCriticRejections } from "../authoring-critic/streak.ts";
+import { draftGoal } from "../authoring-spec.ts";
 import { persistedWorkflowResource } from "../authoring-state/summary.ts";
 import { getWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
 import { applyDiffsToConfig, type ToolDiff } from "../json-patch-apply.ts";
@@ -237,7 +238,7 @@ async function withPatchCriticReview(
   const outcome = await reviewDraftWithCritic({
     tool: "edit_workflow_patch",
     draft: workflow,
-    goal: workflow.goal ?? null,
+    goal: draftGoal(workflow).goal,
     convention_scope: {
       connector_ids: [
         ...(ctx.connector_id ? [ctx.connector_id] : []),
@@ -269,6 +270,7 @@ async function withPatchCriticReview(
       critic: {
         result: outcome.result,
         gating_reason: outcome.gating_reason,
+        has_spec: workflow.spec !== undefined,
         ...(outcome.rubric_warnings.length > 0 ? { rubric_warnings: outcome.rubric_warnings } : {}),
       },
       ...(outcome.result === "reject" && outcome.rationale !== null

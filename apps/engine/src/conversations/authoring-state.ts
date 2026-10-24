@@ -1,4 +1,6 @@
 import { isRecord } from "../utils/type-guards.ts";
+import { workflowSpecDigest } from "../workflows/version-spec.ts";
+import { reconcileDraftSpec } from "./authoring-spec.ts";
 import {
   CHECKPOINT_KEYS,
   createEmptyState,
@@ -157,10 +159,11 @@ function applyConnectorMutation(
 
 function applyWorkflowMutation(
   draft: DraftDocument,
-  workflow: WorkflowDraftDocument,
+  requested: WorkflowDraftDocument,
   last_action: string | null,
 ): DraftDocument {
   const normalized = normalizeDraftDocument(draft);
+  const workflow = reconcileDraftSpec(normalized.workflow, requested);
   const state = cloneState(normalized.state ?? createEmptyState("workflow"));
   state.mode = "workflow";
   state.stage = workflow.steps.length > 0 ? "workflow_draft_started" : "workflow_targeted";
@@ -170,7 +173,10 @@ function applyWorkflowMutation(
   }
   const priorGoal = normalized.workflow?.goal ?? null;
   const nextGoal = workflow.goal ?? null;
-  if (priorGoal !== nextGoal) {
+  if (
+    priorGoal !== nextGoal ||
+    workflowSpecDigest(normalized.workflow?.spec) !== workflowSpecDigest(workflow.spec)
+  ) {
     state.judge_breaker = null;
   }
   const latest_preview = normalized.latest_preview

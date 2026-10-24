@@ -21,6 +21,7 @@ import {
 } from "../../workflows/reference-validator.ts";
 import { buildScopeAtStep } from "../../workflows/scope-shape.ts";
 import type { StepDef, WorkflowDef } from "../../workflows/types.ts";
+import { draftGoal } from "../authoring-spec.ts";
 import { getWorkflowDraft, withJudgeBreaker, withLatestPreview } from "../authoring-state.ts";
 import { proposeDryRunRepairs, workflowOutputSite } from "../dry-run-repair.ts";
 import { commitWorkflowAtomic } from "../persistence/commit-workflow.ts";
@@ -636,12 +637,16 @@ export const dryRunWorkflowTool: ConversationTool = {
     let nextJudgeBreaker: JudgeBreakerState | undefined;
     let judgeDoneSignal: Awaited<ReturnType<typeof runPreviewJudgeGate>>["doneSignal"] = null;
     let judgeEscalate = false;
+    let judgeHint: string | null = null;
     if (dryRunGreen) {
+      const judgeGoal = draftGoal(draft);
       const gate = await runPreviewJudgeGate({
         tenant_id: ctx.tenant_id,
         conversation_id: ctx.conversation_id,
         db: ctx.db,
-        goal: typeof draft.goal === "string" && draft.goal.trim().length > 0 ? draft.goal : null,
+        goal: judgeGoal.goal,
+        goal_confirmed: judgeGoal.confirmed,
+        spec: draft.spec ?? null,
         definition,
         steps: steps as unknown as Array<Record<string, unknown>>,
         run_steps: run.steps,
@@ -656,7 +661,8 @@ export const dryRunWorkflowTool: ConversationTool = {
       nextJudgeBreaker = gate.nextJudgeBreaker;
       judgeDoneSignal = gate.doneSignal;
       judgeEscalate = gate.escalate === true;
-      if (gate.warning) runWarnings.push(gate.warning);
+      if (gate.warning?.code === "judge_goal_unconfirmed") judgeHint = gate.warning.message;
+      else if (gate.warning) runWarnings.push(gate.warning);
     }
 
     const persistedStepTracesUnstamped = run.steps.map((s) => {
@@ -871,6 +877,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           auto_committed: versionChanged,
           auto_commit_reason: "auto_persist_on_green_dry_run",
           ...(judgeOutcome ? { judge: judgeOutcome } : {}),
+          ...(judgeHint ? { judge_hint: judgeHint } : {}),
           ...(judgeDoneSignal
             ? {
                 judge_done: {
@@ -921,6 +928,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           next_best_actions: previewNextActions,
           next_prompt: previewNextPrompt,
           ...(judgeOutcome ? { judge: judgeOutcome } : {}),
+          ...(judgeHint ? { judge_hint: judgeHint } : {}),
           dry_run_summary: {
             steps_ran: run.steps.length,
             duration_ms: totalDryRunMs,
@@ -1005,6 +1013,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           next_best_actions: previewNextActions,
           next_prompt: previewNextPrompt,
           ...(judgeOutcome ? { judge: judgeOutcome } : {}),
+          ...(judgeHint ? { judge_hint: judgeHint } : {}),
           ...(judgeDoneSignal
             ? {
                 judge_done: {

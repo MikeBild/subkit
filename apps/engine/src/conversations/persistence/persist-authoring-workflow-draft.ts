@@ -95,6 +95,7 @@ export async function persistAuthoringWorkflowDraft(input: {
         ? { workflow_id: targetId, expected_draft_version_id: bound?.draft_version_id ?? null }
         : {}),
       def,
+      ...(fullDraft.workflow?.spec ? { spec: fullDraft.workflow.spec } : {}),
       scope_index: Object.keys(scope_index).length ? scope_index : null,
       actor_id: ctx.principal?.id ?? ctx.actor_id,
       ...(ctx.principal ? { actor_type: ctx.principal.kind } : {}),

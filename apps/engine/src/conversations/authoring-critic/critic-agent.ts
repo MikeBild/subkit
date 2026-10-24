@@ -51,6 +51,46 @@ function rubricConventions(conventions: readonly AppliedConvention[]): AppliedCo
     .slice(0, RUBRIC_CAP);
 }
 
+export function specFieldsPresent(draft: WorkflowDraftDocument): string[] {
+  const spec = draft.spec;
+  if (!spec) return [];
+  return [
+    ...(spec.goal ? ["goal"] : []),
+    ...(spec.inputs.length > 0 ? ["inputs"] : []),
+    ...(spec.outputs.length > 0 ? ["outputs"] : []),
+    ...(spec.delivery ? ["delivery"] : []),
+    ...(spec.conventions_applied.length > 0 ? ["conventions_applied"] : []),
+    ...(spec.open_questions.length > 0 ? ["open_questions"] : []),
+  ];
+}
+
+function renderSpecForCritic(draft: WorkflowDraftDocument): string {
+  const spec = draft.spec;
+  if (!spec) return "";
+  const fields = (items: ReadonlyArray<{ name: string; description?: string | undefined }>) =>
+    items.map((item) => `- ${item.name}${item.description ? `: ${item.description}` : ""}`);
+  const lines = [
+    ...(spec.inputs.length > 0 ? ["Inputs:", ...fields(spec.inputs)] : []),
+    ...(spec.outputs.length > 0 ? ["Expected outputs:", ...fields(spec.outputs)] : []),
+    ...(spec.delivery
+      ? [
+          `Delivery: ${spec.delivery.channel}${spec.delivery.destination ? ` to ${spec.delivery.destination}` : ""}${spec.delivery.description ? ` (${spec.delivery.description})` : ""}`,
+        ]
+      : []),
+    ...(spec.conventions_applied.length > 0
+      ? ["Conventions:", ...spec.conventions_applied.map((entry) => `- ${entry.note}`)]
+      : []),
+    ...(spec.open_questions.length > 0
+      ? ["Open questions (unresolved):", ...spec.open_questions.map((q) => `- ${q}`)]
+      : []),
+  ];
+  if (lines.length === 0) return "";
+  return cap(
+    `Spec (purpose and acceptance, origin ${spec.origin}):\n${lines.join("\n")}`,
+    RENDERED_SCHEMA_CAP,
+  );
+}
+
 export function renderDraftForCritic(
   draft: WorkflowDraftDocument,
   goal?: string | null,
@@ -62,6 +102,7 @@ export function renderDraftForCritic(
     trimmedGoal.length > 0
       ? `Goal (verbatim from the user):\n${cap(trimmedGoal, RENDERED_GOAL_CAP)}`
       : "Goal: not recorded on this draft; judge internal consistency only.",
+    renderSpecForCritic(draft),
     `Workflow: ${draft.name} (slug: ${draft.slug})`,
     draft.description ? `Description: ${draft.description}` : "",
     draft.output_schema
@@ -210,6 +251,8 @@ function emit(params: ReviewDraftWithCriticParams, outcome: CriticOutcome): Crit
     gating_reason: outcome.gating_reason,
     step_count: params.draft.steps.length,
     has_goal: typeof params.goal === "string" && params.goal.trim().length > 0,
+    has_spec: params.draft.spec !== undefined,
+    spec_fields: specFieldsPresent(params.draft),
     repair_count: outcome.repairs.length,
     rubric_count: outcome.rubric.length,
     rubric_warning_rule_ids: outcome.rubric_warnings.map((item) => item.rule_id),

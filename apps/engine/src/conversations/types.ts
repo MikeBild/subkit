@@ -256,6 +256,7 @@ export interface WorkflowDraftDocument {
   slug?: string;
   description?: string;
   goal?: string;
+  spec?: import("../workflows/draft-schemas.ts").WorkflowSpec;
   steps: Array<Record<string, unknown>>;
   input_schema?: Record<string, unknown>;
   input_schema_sample?: unknown;
