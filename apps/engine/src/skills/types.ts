@@ -1,12 +1,16 @@
 import { z } from "@hono/zod-openapi";
 import {
   AcceptDescriptionSchema,
+  CATEGORY_MAX_LENGTH,
+  CATEGORY_PATTERN,
   CatalogSourceSchema,
   CategorySchema,
   DescriptionSchema,
   descriptionAcceptanceValid,
   UNCATEGORIZED,
 } from "../api/catalog-metadata.ts";
+import { EnvironmentEnum } from "../connectors/types.ts";
+import { isIanaTimeZone } from "../workflows/types.ts";
 
 export const SkillScopeSchema = z.enum(["global", "connector", "workflow"]);
 
@@ -96,6 +100,172 @@ export const SkillActivationSchema = z
 
 const JsonSchemaRecord = z.record(z.string(), z.unknown());
 
+export const MAX_SKILL_RULES = 50;
+export const MAX_SKILL_DOMAINS = 20;
+export const RULE_STATEMENT_MAX_LENGTH = 300;
+
+function isLocaleTag(value: string): boolean {
+  try {
+    return Intl.getCanonicalLocales(value).length === 1;
+  } catch {
+    return false;
+  }
+}
+
+const CURRENCY_CODES = new Set(Intl.supportedValuesOf("currency"));
+
+const RuleText = z.string().trim().min(1).max(RULE_STATEMENT_MAX_LENGTH);
+
+const RuleFields = {
+  rule_id: z
+    .string()
+    .min(1)
+    .max(80)
+    .regex(/^[a-z0-9]+([._-][a-z0-9]+)*$/, "lowercase words joined by '.', '_' or '-'")
+    .describe("Stable identifier of the rule; it stays the same across skill versions."),
+  statement: RuleText.describe("The convention in one sentence, as a reviewer reads it."),
+};
+
+export const SkillRuleSchema = z
+  .discriminatedUnion("type", [
+    z
+      .object({
+        ...RuleFields,
+        type: z.literal("naming"),
+        payload: z
+          .object({
+            applies_to: z.string().trim().min(1).max(80),
+            pattern: z.string().trim().min(1).max(200),
+            example: z.string().trim().min(1).max(200),
+          })
+          .strict(),
+      })
+      .strict()
+      .openapi("SkillRuleNaming"),
+    z
+      .object({
+        ...RuleFields,
+        type: z.literal("timezone"),
+        payload: z
+          .object({
+            value: z.string().min(1).max(64).refine(isIanaTimeZone, "an IANA time zone name"),
+          })
+          .strict(),
+      })
+      .strict()
+      .openapi("SkillRuleTimezone"),
+    z
+      .object({
+        ...RuleFields,
+        type: z.literal("locale"),
+        payload: z
+          .object({ tag: z.string().min(2).max(35).refine(isLocaleTag, "a BCP 47 language tag") })
+          .strict(),
+      })
+      .strict()
+      .openapi("SkillRuleLocale"),
+    z
+      .object({
+        ...RuleFields,
+        type: z.literal("currency"),
+        payload: z
+          .object({
+            code: z
+              .string()
+              .length(3)
+              .refine((code) => CURRENCY_CODES.has(code), "an ISO 4217 currency code"),
+          })
+          .strict(),
+      })
+      .strict()
+      .openapi("SkillRuleCurrency"),
+    z
+      .object({
+        ...RuleFields,
+        type: z.literal("delivery_default"),
+        payload: z
+          .object({
+            connector_id: z.string().uuid(),
+            channel: z.string().trim().min(1).max(200),
+          })
+          .strict(),
+      })
+      .strict()
+      .openapi("SkillRuleDeliveryDefault"),
+    z
+      .object({
+        ...RuleFields,
+        type: z.literal("connector_preference"),
+        payload: z
+          .object({ connector_id: z.string().uuid(), environment: EnvironmentEnum })
+          .strict()
+          .describe("Tie-breaker between candidate connectors within the same environment only."),
+      })
+      .strict()
+      .openapi("SkillRuleConnectorPreference"),
+    z
+      .object({
+        ...RuleFields,
+        type: z.literal("glossary_term"),
+        payload: z.object({ term: z.string().trim().min(1).max(120), meaning: RuleText }).strict(),
+      })
+      .strict()
+      .openapi("SkillRuleGlossaryTerm"),
+    z
+      .object({
+        ...RuleFields,
+        type: z.literal("field_semantics"),
+        payload: z
+          .object({
+            field: z.string().trim().min(1).max(200),
+            meaning: RuleText,
+            unit: z.string().trim().min(1).max(40).optional(),
+          })
+          .strict(),
+      })
+      .strict()
+      .openapi("SkillRuleFieldSemantics"),
+    z
+      .object({
+        ...RuleFields,
+        type: z.literal("pitfall"),
+        payload: z.object({ text: RuleText }).strict(),
+      })
+      .strict()
+      .openapi("SkillRulePitfall"),
+  ])
+  .openapi("SkillRule");
+
+export const SkillRulesSchema = z
+  .array(SkillRuleSchema)
+  .max(MAX_SKILL_RULES)
+  .superRefine((rules, ctx) => {
+    const seen = new Set<string>();
+    rules.forEach((rule, index) => {
+      if (seen.has(rule.rule_id))
+        ctx.addIssue({
+          code: "custom",
+          message: `rule_id ${rule.rule_id} appears twice`,
+          path: [index, "rule_id"],
+        });
+      seen.add(rule.rule_id);
+    });
+  });
+
+export const SkillDomainsSchema = z
+  .array(
+    z
+      .string()
+      .min(1)
+      .max(CATEGORY_MAX_LENGTH)
+      .regex(CATEGORY_PATTERN, "a catalog category, e.g. `billing-reports`"),
+  )
+  .max(MAX_SKILL_DOMAINS)
+  .refine((domains) => new Set(domains).size === domains.length, "domains must be unique");
+
+export type SkillRule = z.infer<typeof SkillRuleSchema>;
+export type SkillRuleType = SkillRule["type"];
+
 export const SkillSchema = z
   .object({
     id: z.string(),
@@ -123,6 +293,18 @@ export const SkillSchema = z
     maturity: SkillMaturitySchema.default("stable"),
     tags: z.array(z.string().min(1)).default([]),
     applies_to: SkillAppliesToSchema.default("both"),
+    rules: z
+      .array(SkillRuleSchema)
+      .default([])
+      .describe(
+        "Confirmed tenant conventions of this skill. Read-only here: only a confirmed intake proposal publishes them.",
+      ),
+    domains: z
+      .array(z.string())
+      .default([])
+      .describe(
+        "Catalog categories the rules apply to; empty applies them wherever the skill applies. Read-only here.",
+      ),
     status: SkillLifecycleSchema,
     source: SkillSourceSchema,
     version: z.number().int().min(1),

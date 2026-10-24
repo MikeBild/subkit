@@ -829,7 +829,7 @@ export type WebhookTrigger = z.infer<typeof WebhookTriggerSchema>;
 export type ScheduleTrigger = z.infer<typeof ScheduleTriggerSchema>;
 export type WorkflowTrigger = z.infer<typeof TriggerSchema>;
 
-function isIanaTimeZone(value: string): boolean {
+export function isIanaTimeZone(value: string): boolean {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: value });
     return true;

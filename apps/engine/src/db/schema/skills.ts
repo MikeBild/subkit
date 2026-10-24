@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { SkillRule } from "../../skills/types.ts";
 import { catalogMetadata, catalogMetadataConstraints, tenantId, timestamps } from "./_common.ts";
 import { tenants } from "./identity.ts";
 
@@ -53,6 +54,8 @@ export const skills = pgTable(
     maturity: text("maturity").notNull().default("stable"),
     tags: jsonb("tags").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     applies_to: text("applies_to").$type<SkillAppliesTo>().notNull().default("both"),
+    rules: jsonb("rules").$type<SkillRule[]>().notNull().default(sql`'[]'::jsonb`),
+    domains: jsonb("domains").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     ...timestamps,
   },
   (t) => [
@@ -62,6 +65,8 @@ export const skills = pgTable(
     check("skills_idempotency_chk", sql`${t.idempotency} IN ('none','naturally','key_required')`),
     check("skills_maturity_chk", sql`${t.maturity} IN ('experimental','stable')`),
     check("skills_applies_to_chk", sql`${t.applies_to} IN ('chat','authoring','both')`),
+    check("skills_rules_array_chk", sql`jsonb_typeof(${t.rules}) = 'array'`),
+    check("skills_domains_array_chk", sql`jsonb_typeof(${t.domains}) = 'array'`),
     check(
       "skills_side_effects_chk",
       sql`${t.side_effects} IN ('none','read','write','destructive')`,

@@ -22,6 +22,7 @@ import {
   type SkillAudience,
   type SkillExamplesBlob,
   type SkillLifecycle,
+  type SkillRule,
   SkillSchema,
   type SkillScope,
   type SkillSource,
@@ -83,6 +84,8 @@ function rowToSkill(row: SkillRow): Skill {
     maturity: row.maturity as Skill["maturity"],
     tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
     applies_to: row.applies_to,
+    rules: Array.isArray(row.rules) ? row.rules : [],
+    domains: Array.isArray(row.domains) ? row.domains : [],
     status: row.lifecycle as SkillLifecycle,
     source: row.source as SkillSource,
     version: row.version,
@@ -96,11 +99,17 @@ function validateScope(input: Parameters<typeof skillScopeViolation>[0]): void {
   if (violation) throw new Error(violation);
 }
 
+export interface SkillConventionsWrite {
+  rules?: SkillRule[] | undefined;
+  domains?: string[] | undefined;
+}
+
 export interface CreateSkillParams {
   tenant_id: string;
   input: CreateSkillInput;
   actor_id?: string | null;
   actor_type?: AuditActorType;
+  conventions?: SkillConventionsWrite;
 }
 
 export async function createSkill(p: CreateSkillParams, exec?: Executor): Promise<Skill> {
@@ -141,6 +150,8 @@ export async function createSkill(p: CreateSkillParams, exec?: Executor): Promis
         maturity: p.input.maturity ?? "stable",
         tags: p.input.tags ?? [],
         applies_to: p.input.applies_to ?? "both",
+        rules: p.conventions?.rules ?? [],
+        domains: p.conventions?.domains ?? [],
       })
       .returning();
     const row = inserted[0];
@@ -312,6 +323,7 @@ export async function updateSkill(
   actor_id: string | null,
   exec?: Executor,
   actor_type?: AuditActorType,
+  conventions?: SkillConventionsWrite,
 ): Promise<Skill | null> {
   const actor = resolveSkillActor(actor_id, actor_type);
   const db = exec ?? getDb();
@@ -355,6 +367,8 @@ export async function updateSkill(
     if (patch.maturity !== undefined) set.maturity = patch.maturity;
     if (patch.tags !== undefined) set.tags = patch.tags;
     if (patch.applies_to !== undefined) set.applies_to = patch.applies_to;
+    if (conventions?.rules !== undefined) set.rules = conventions.rules;
+    if (conventions?.domains !== undefined) set.domains = conventions.domains;
     Object.assign(
       set,
       metadataChange(prior, {
