@@ -3,6 +3,10 @@ import { emitList, emitOne } from "@cli-core/format";
 import { defineCommand } from "citty";
 import { resolveProfile } from "../config.ts";
 import { EngineClient, type ScheduleEntry } from "../engine-client.ts";
+import {
+  type AutomationReadiness,
+  formatAutomationReadiness,
+} from "../render/automation-readiness.ts";
 
 function makeClient(): EngineClient {
   const { engine_url, api_key, active_tenant_id } = resolveProfile();
@@ -11,8 +15,17 @@ function makeClient(): EngineClient {
 
 const SCHEDULE_COLUMNS = ["workflow_slug", "cron", "timezone", "execution_mode", "paused", "id"];
 
-function emitSchedule(json: boolean, row: ScheduleEntry): void {
-  emitOne(json, row as unknown as Record<string, unknown>);
+function emitSchedule(
+  json: boolean,
+  row: ScheduleEntry & { automation_readiness?: AutomationReadiness },
+): void {
+  if (json) {
+    emitOne(json, row as unknown as Record<string, unknown>);
+    return;
+  }
+  const { automation_readiness, ...rest } = row;
+  emitOne(json, rest as unknown as Record<string, unknown>);
+  process.stderr.write(formatAutomationReadiness(automation_readiness));
 }
 
 const listCommand = defineCommand({

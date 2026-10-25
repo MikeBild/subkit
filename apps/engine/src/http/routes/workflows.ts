@@ -10,6 +10,7 @@ import {
 } from "../../api/catalog-metadata.ts";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
+import { logger } from "../../logging/index.ts";
 import { can } from "../../rbac/index.ts";
 import {
   bindingFor,
@@ -44,7 +45,7 @@ import {
   WorkflowDetailSchema,
   WorkflowListResponse,
 } from "./workflow-representation.ts";
-import { ScheduleEntry } from "./workflow-schedule-schemas.ts";
+import { AutomationReadinessSchema, ScheduleEntry } from "./workflow-schedule-schemas.ts";
 import { registerTransactionalMailRoutes } from "./workflow-transactional-mail.ts";
 import { registerWorkflowVersionRoutes } from "./workflow-versions.ts";
 
@@ -78,6 +79,10 @@ const CreateRequestBody = CreateBody.extend({
 }).openapi("CreateWorkflowRequest");
 
 type WorkflowBody = z.infer<typeof CreateBody>;
+
+const WorkflowSaveResponse = WorkflowDetailSchema.extend({
+  automation_readiness: AutomationReadinessSchema.optional(),
+}).openapi("WorkflowSaveResponse");
 
 function preserveOmittedTrigger(body: WorkflowBody, existing: svc.WorkflowView): WorkflowBody {
   if (Object.hasOwn(body, "trigger") || !existing.definition.trigger) return body;
@@ -129,7 +134,7 @@ const createRouteSpec = createRoute({
   responses: {
     201: {
       description: "Created",
-      content: { "application/json": { schema: WorkflowDetailSchema } },
+      content: { "application/json": { schema: WorkflowSaveResponse } },
     },
     400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
     422: {
@@ -164,7 +169,7 @@ const updateRoute = createRoute({
     body: { content: { "application/json": { schema: CreateBody } } },
   },
   responses: {
-    200: { description: "OK", content: { "application/json": { schema: WorkflowDetailSchema } } },
+    200: { description: "OK", content: { "application/json": { schema: WorkflowSaveResponse } } },
     400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
@@ -222,7 +227,11 @@ const deleteRoute = createRoute({
 
 const ScheduleUpsertResponse = ScheduleEntry.extend({
   upsert_status: z.enum(["created", "updated"]),
+  automation_readiness: AutomationReadinessSchema.optional(),
 }).openapi("ScheduleUpsertResponse");
+const ScheduleWriteResponse = ScheduleEntry.extend({
+  automation_readiness: AutomationReadinessSchema.optional(),
+}).openapi("ScheduleWriteResponse");
 const ScheduleInputSchema = z.union([
   z.string(),
   z.number(),
@@ -331,7 +340,7 @@ const updateScheduleRoute = createRoute({
     body: { content: { "application/json": { schema: ScheduleUpdateBody } } },
   },
   responses: {
-    200: { description: "OK", content: { "application/json": { schema: ScheduleEntry } } },
+    200: { description: "OK", content: { "application/json": { schema: ScheduleWriteResponse } } },
     400: {
       description: "Invalid cron",
       content: { "application/json": { schema: ErrorSchema } },
@@ -569,6 +578,29 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     };
   };
 
+  const automationReadinessFor = async (
+    db: Parameters<typeof listSchedules>[0],
+    tenant_id: string,
+    workflow: svc.WorkflowView | null,
+    source: "schedule_write" | "workflow_save",
+    environment?: "dev" | "prod",
+  ) => {
+    if (!workflow) return undefined;
+    const readiness = await svc.inspectAutomationReadiness(db, tenant_id, workflow, environment);
+    if (readiness.state !== "eligible")
+      logger.info({
+        module: "http",
+        action: "automation_readiness.not_eligible",
+        tenant_id,
+        workflow_id: workflow.id,
+        source,
+        environment: readiness.environment,
+        state: readiness.state,
+        issue_codes: readiness.issues.map((issue) => `${issue.step_id}:${issue.code}`),
+      });
+    return readiness;
+  };
+
   const rethrowScheduleError = (err: unknown): never => {
     const code = (err as { code?: string } | null)?.code;
     if (code === "invalid_cron") {
@@ -631,9 +663,19 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       db,
     );
+    const readiness = row.paused
+      ? undefined
+      : await automationReadinessFor(
+          db,
+          principal.tenant_id,
+          await svc.getWorkflow(principal.tenant_id, row.workflow_id, db),
+          "schedule_write",
+          row.execution_mode,
+        );
     const response = {
       ...(await serializeSchedule(c, principal.tenant_id, row)),
       upsert_status: status,
+      ...(readiness ? { automation_readiness: readiness } : {}),
     };
     return status === "created" ? c.json(response, 201) : c.json(response, 200);
   });
@@ -679,7 +721,22 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       db,
     );
-    return c.json(await serializeSchedule(c, principal.tenant_id, row), 200);
+    const readiness = row.paused
+      ? undefined
+      : await automationReadinessFor(
+          db,
+          principal.tenant_id,
+          await svc.getWorkflow(principal.tenant_id, row.workflow_id, db),
+          "schedule_write",
+          row.execution_mode,
+        );
+    return c.json(
+      {
+        ...(await serializeSchedule(c, principal.tenant_id, row)),
+        ...(readiness ? { automation_readiness: readiness } : {}),
+      },
+      200,
+    );
   });
 
   app.openapi(deleteScheduleRoute, async (c) => {
@@ -727,7 +784,18 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     if ("errors" in result) {
       throw new BadRequestError("invalid workflow", { errors: result.errors });
     }
-    return c.json(await serializeOne(result.workflow, principal.tenant_id, db), 201);
+    return c.json(
+      {
+        ...(await serializeOne(result.workflow, principal.tenant_id, db)),
+        automation_readiness: await automationReadinessFor(
+          db,
+          principal.tenant_id,
+          result.workflow,
+          "workflow_save",
+        ),
+      },
+      201,
+    );
   });
 
   app.openapi(validateRoute, async (c) => {
@@ -783,7 +851,18 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       }
       throw new BadRequestError("invalid workflow", { errors: result.errors });
     }
-    return c.json(await serializeOne(result.workflow, principal.tenant_id, db), 200);
+    return c.json(
+      {
+        ...(await serializeOne(result.workflow, principal.tenant_id, db)),
+        automation_readiness: await automationReadinessFor(
+          db,
+          principal.tenant_id,
+          result.workflow,
+          "workflow_save",
+        ),
+      },
+      200,
+    );
   });
 
   app.openapi(metadataRoute, async (c) => {

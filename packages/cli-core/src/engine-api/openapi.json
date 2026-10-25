@@ -11450,6 +11450,9 @@
                   "created",
                   "updated"
                 ]
+              },
+              "automation_readiness": {
+                "$ref": "#/components/schemas/AutomationReadiness"
               }
             },
             "required": [
@@ -11457,6 +11460,80 @@
             ]
           }
         ]
+      },
+      "AutomationReadiness": {
+        "type": "object",
+        "properties": {
+          "environment": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ]
+          },
+          "workflow_version_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "eligible",
+              "repair_required",
+              "verification_unavailable"
+            ]
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "step_id": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "step_id",
+                "code"
+              ]
+            }
+          },
+          "repair_guidance": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "step_id": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string"
+                },
+                "instruction": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "step_id",
+                "code",
+                "instruction"
+              ]
+            }
+          }
+        },
+        "required": [
+          "environment",
+          "workflow_version_id",
+          "state",
+          "issues",
+          "repair_guidance"
+        ],
+        "description": "Whether recurring runs of the saved version can be approved. repair_required means no human approval can unblock it: change the named steps as repair_guidance says."
       },
       "ScheduleCreateBody": {
         "type": "object",
@@ -11510,6 +11587,21 @@
         "required": [
           "workflow_id",
           "cron"
+        ]
+      },
+      "ScheduleWriteResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ScheduleEntry"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "automation_readiness": {
+                "$ref": "#/components/schemas/AutomationReadiness"
+              }
+            }
+          }
         ]
       },
       "ScheduleUpdateBody": {
@@ -11571,6 +11663,21 @@
         "required": [
           "id",
           "deleted"
+        ]
+      },
+      "WorkflowSaveResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/WorkflowDetail"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "automation_readiness": {
+                "$ref": "#/components/schemas/AutomationReadiness"
+              }
+            }
+          }
         ]
       },
       "CreateWorkflowRequest": {
@@ -15141,7 +15248,8 @@
                 "pattern": "^[a-z0-9.-]*\\{api\\}[a-z0-9.-]*$"
               },
               "action_url": {
-                "type": "string"
+                "type": "string",
+                "format": "uri"
               }
             },
             "required": [
@@ -43653,7 +43761,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkflowDetail"
+                  "$ref": "#/components/schemas/WorkflowSaveResponse"
                 }
               }
             }
@@ -43826,7 +43934,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ScheduleEntry"
+                  "$ref": "#/components/schemas/ScheduleWriteResponse"
                 }
               }
             }
@@ -44013,7 +44121,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkflowDetail"
+                  "$ref": "#/components/schemas/WorkflowSaveResponse"
                 }
               }
             }

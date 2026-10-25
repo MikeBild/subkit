@@ -41,6 +41,10 @@ import {
   RUN_ENVIRONMENT_ARG,
 } from "../lib/run-environment.ts";
 import { exitCodeForTerminalStatus, tailExecution } from "../lib/tail-execution.ts";
+import {
+  type AutomationReadiness,
+  formatAutomationReadiness,
+} from "../render/automation-readiness.ts";
 import { computeStepBottlenecks, humanMs } from "../render/format.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
 import type {
@@ -837,6 +841,12 @@ async function saveWorkflow(
         ...(previewExecutionId ? { preview_execution_id: previewExecutionId } : {}),
       };
       await renderSummary(summary, { jsonMode });
+      if (!jsonMode)
+        process.stderr.write(
+          formatAutomationReadiness(
+            created.automation_readiness as AutomationReadiness | undefined,
+          ),
+        );
 
       if (!jsonMode && summary.id !== "(unknown)") {
         process.stderr.write(

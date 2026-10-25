@@ -18,6 +18,21 @@ const ScheduleInputError = z
   })
   .nullable();
 
+export const AutomationReadinessSchema = z
+  .object({
+    environment: z.enum(["dev", "prod"]),
+    workflow_version_id: z.string().nullable(),
+    state: z.enum(["eligible", "repair_required", "verification_unavailable"]),
+    issues: z.array(z.object({ step_id: z.string(), code: z.string() })),
+    repair_guidance: z.array(
+      z.object({ step_id: z.string(), code: z.string(), instruction: z.string() }),
+    ),
+  })
+  .describe(
+    "Whether recurring runs of the saved version can be approved. repair_required means no human approval can unblock it: change the named steps as repair_guidance says.",
+  )
+  .openapi("AutomationReadiness");
+
 export const ScheduleEntry = z
   .object({
     id: z.string(),

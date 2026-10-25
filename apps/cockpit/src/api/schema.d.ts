@@ -8211,7 +8211,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["WorkflowDetail"];
+                        "application/json": components["schemas"]["WorkflowSaveResponse"];
                     };
                 };
                 /** @description Bad request */
@@ -8368,7 +8368,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ScheduleEntry"];
+                        "application/json": components["schemas"]["ScheduleWriteResponse"];
                     };
                 };
                 /** @description Invalid cron */
@@ -8530,7 +8530,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["WorkflowDetail"];
+                        "application/json": components["schemas"]["WorkflowSaveResponse"];
                     };
                 };
                 /** @description Bad request */
@@ -24426,6 +24426,24 @@ export interface components {
         ScheduleUpsertResponse: components["schemas"]["ScheduleEntry"] & {
             /** @enum {string} */
             upsert_status: "created" | "updated";
+            automation_readiness?: components["schemas"]["AutomationReadiness"];
+        };
+        /** @description Whether recurring runs of the saved version can be approved. repair_required means no human approval can unblock it: change the named steps as repair_guidance says. */
+        AutomationReadiness: {
+            /** @enum {string} */
+            environment: "dev" | "prod";
+            workflow_version_id: string | null;
+            /** @enum {string} */
+            state: "eligible" | "repair_required" | "verification_unavailable";
+            issues: {
+                step_id: string;
+                code: string;
+            }[];
+            repair_guidance: {
+                step_id: string;
+                code: string;
+                instruction: string;
+            }[];
         };
         ScheduleCreateBody: {
             /** Format: uuid */
@@ -24438,6 +24456,9 @@ export interface components {
             input?: string | number | boolean | null | unknown[] | {
                 [key: string]: unknown;
             };
+        };
+        ScheduleWriteResponse: components["schemas"]["ScheduleEntry"] & {
+            automation_readiness?: components["schemas"]["AutomationReadiness"];
         };
         ScheduleUpdateBody: {
             cron?: string;
@@ -24452,6 +24473,9 @@ export interface components {
         ScheduleDeleteResponse: {
             id: string;
             deleted: boolean;
+        };
+        WorkflowSaveResponse: components["schemas"]["WorkflowDetail"] & {
+            automation_readiness?: components["schemas"]["AutomationReadiness"];
         };
         CreateWorkflowRequest: components["schemas"]["CreateWorkflowBody"] & ({
             recipe?: components["schemas"]["RecipeOrigin"];
@@ -25374,6 +25398,7 @@ export interface components {
             remote_api_disabled?: {
                 error_reason: string;
                 service_host: string;
+                /** Format: uri */
                 action_url: string;
             };
         } | null;

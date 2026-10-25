@@ -16,6 +16,10 @@ export {
 export { isOpenEnded, remainingRuns } from "./authority-live.ts";
 export * from "./authority-observation.ts";
 export { suggestAuthorityBounds } from "./authority-suggestions.ts";
+export {
+  type AutomationReadiness,
+  inspectAutomationReadiness,
+} from "./automation-readiness.ts";
 export * from "./boundary-proposal.ts";
 export * from "./catalog-view.ts";
 export * from "./connector-refs.ts";
