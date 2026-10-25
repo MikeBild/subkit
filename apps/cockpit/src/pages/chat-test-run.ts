@@ -6,6 +6,7 @@ export interface ChatSensitiveTestRun {
   steps: { succeeded: number; failed: number; held: number };
   reads: Array<{ step: string; items: number; complete: boolean }>;
   checks: "passed" | "failed" | "none";
+  executionId: string | null;
 }
 
 const RESULT_STATES = new Set<ToolPart["state"]>(["output-available", "output-error"]);
@@ -46,5 +47,6 @@ export function chatSensitiveTestRun(tool: ToolPart): ChatSensitiveTestRun | nul
     steps: { succeeded, failed, held },
     reads,
     checks,
+    executionId: typeof data.execution_id === "string" ? data.execution_id : null,
   };
 }

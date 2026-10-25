@@ -1,5 +1,5 @@
 import { contextualHref } from "@/app/installation-context";
-import { absolute, workflowRunHref } from "@/app/links";
+import { absolute, runHref, workflowRunHref } from "@/app/links";
 import { Button, ChatCard, type Fact } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import type { ChatWorkflowRef } from "./chat-preview-cards";
@@ -9,10 +9,12 @@ import type { ChatSensitiveTestRun } from "./chat-test-run";
 export function ChatTestRunCard({
   run,
   saved = null,
+  latest = true,
   testId = "chat-test-run-card",
 }: {
   run: ChatSensitiveTestRun;
   saved?: ChatWorkflowRef | null;
+  latest?: boolean;
   testId?: string;
 }) {
   const { t } = useI18n();
@@ -46,7 +48,7 @@ export function ChatTestRunCard({
         ]),
   ];
   const title = t(run.succeeded ? "chat.testRun.succeeded" : "chat.testRun.failed");
-  const verifiable = run.succeeded && saved !== null;
+  const verifiable = run.succeeded && saved !== null && latest;
   return (
     <ChatCard
       testId={testId}
@@ -66,7 +68,9 @@ export function ChatTestRunCard({
         verifiable && saved ? (
           <Button asChild className="w-full sm:w-auto">
             <a
-              href={contextualHref(absolute(workflowRunHref(saved.id)))}
+              href={contextualHref(
+                absolute(run.executionId ? runHref(run.executionId) : workflowRunHref(saved.id)),
+              )}
               data-testid={`${testId}-verify`}
             >
               {t("chat.preview.verify")}

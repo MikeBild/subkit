@@ -65,7 +65,7 @@ import {
   ToolInput,
   ToolOutput,
 } from "@/components/ai-elements/tool";
-import { AutomationGrant, AutomationToolCard } from "@/components/cockpit/automation-grant";
+import { AutomationToolCard } from "@/components/cockpit/automation-grant";
 import { DiffCard } from "@/components/cockpit/diff-card";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { MentionChips, MentionPicker, useMentionInput } from "@/components/cockpit/mention-picker";
@@ -168,6 +168,7 @@ import { ChatChoiceCard } from "./chat-choice-card";
 import { ConversationList } from "./chat-conversation-list";
 import { type ChatForm, chatForm } from "./chat-form";
 import { ChatFormCard } from "./chat-form-card";
+import { HeldScheduleAction, heldScheduleCopy } from "./chat-held-schedule";
 import { ChatJudgeFindingsCard } from "./chat-judge-findings-card";
 import { applyLiveCall, elapsedMs, type LiveCall, reduceLiveCall } from "./chat-live-calls";
 import { conversationFailureKind, retryConversationRead } from "./chat-load-failure";
@@ -1147,6 +1148,7 @@ function ChatMessage({
                 key={`${message.id}-test-run-${partIndex}`}
                 run={sensitiveTestRun}
                 saved={savedPreviews.get(tool.toolCallId) ?? null}
+                latest={tool.toolCallId === latestPreviewCallId}
               />
             );
           const sensitivePreview = chatSensitivePreview(tool);
@@ -2409,23 +2411,24 @@ export function ChatPage() {
           },
         ]
       : []),
-    ...(heldTarget && targetWorkflowId
+    ...(heldTarget && targetWorkflowId && !showScheduleStep
       ? [
           {
-            label: t("chat.schedule.pending"),
+            label: t(heldScheduleCopy(heldTarget).title),
             value: (
               <span className="flex flex-col items-start gap-2">
-                <span>{t("chat.schedule.effect")}</span>
-                <AutomationGrant
+                <span>{t(heldScheduleCopy(heldTarget).line)}</span>
+                <HeldScheduleAction
+                  schedule={heldTarget}
                   conversationId={activeId ?? undefined}
                   workflowId={targetWorkflowId}
-                  environment={heldTarget.execution_mode}
                   testId="chat-context-review-schedule"
+                  busy={status !== "ready"}
                   onPrepareSingleRun={() => {
                     chatWorkspace.setOpen(false);
                     void submitTurn(t("chat.activation.singlePrompt"));
                   }}
-                  onAdjust={() => {
+                  onRepair={() => {
                     chatWorkspace.setOpen(false);
                     void submitTurn(t("authority.adjustPrompt"));
                   }}
@@ -2966,18 +2969,19 @@ export function ChatPage() {
                     {showScheduleStep && heldTarget && targetWorkflowId && (
                       <ChatCard
                         testId="chat-schedule-next-step"
-                        title={t("chat.schedule.pending")}
-                        line={t("chat.schedule.effect")}
+                        title={t(heldScheduleCopy(heldTarget).title)}
+                        line={t(heldScheduleCopy(heldTarget).line)}
                         action={
-                          <AutomationGrant
+                          <HeldScheduleAction
+                            schedule={heldTarget}
                             conversationId={activeId ?? undefined}
                             workflowId={targetWorkflowId}
-                            environment={heldTarget.execution_mode}
                             testId="chat-review-schedule"
+                            busy={status !== "ready"}
                             onPrepareSingleRun={() =>
                               void submitTurn(t("chat.activation.singlePrompt"))
                             }
-                            onAdjust={() => void submitTurn(t("authority.adjustPrompt"))}
+                            onRepair={() => void submitTurn(t("authority.adjustPrompt"))}
                           />
                         }
                       />

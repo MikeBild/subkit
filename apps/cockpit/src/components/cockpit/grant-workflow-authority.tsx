@@ -54,6 +54,18 @@ import {
   type WorkflowAuthorityPreview,
 } from "@/lib/workflow-authorities";
 
+const PREPARATION_REUSE_MS = 10 * 60_000;
+const recentPreparations = new Map<string, number>();
+
+export function preparationRecentlyRan(key: string, now: number): boolean {
+  const at = recentPreparations.get(key);
+  return at !== undefined && now - at < PREPARATION_REUSE_MS;
+}
+
+export function notePreparation(key: string, now: number): void {
+  recentPreparations.set(key, now);
+}
+
 export function GrantWorkflowAuthority({
   conversationId,
   workflowId,
@@ -239,11 +251,14 @@ export function GrantWorkflowAuthority({
           if (!isLatest(token)) throw superseded();
         }
       }
+      const preparationKey = `${workflowId}:${targetVersion}:${asked}`;
       if (
         !result.eligible_for_repeated_runs &&
         result.preparation_required &&
-        session.permissions.includes("workflow:run")
+        session.permissions.includes("workflow:run") &&
+        (input !== undefined || !preparationRecentlyRan(preparationKey, Date.now()))
       ) {
+        notePreparation(preparationKey, Date.now());
         setTrialStartedAt(Date.now());
         let outcome: { prepared: boolean; reason?: string; trigger?: { slug: string } };
         try {

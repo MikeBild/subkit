@@ -10,6 +10,7 @@ function render(
   run: ChatSensitiveTestRun,
   locale: Locale,
   saved: ChatWorkflowRef | null = null,
+  latest = true,
 ): string {
   const value = {
     locale,
@@ -21,7 +22,7 @@ function render(
   } as I18nValue;
   return renderToStaticMarkup(
     <I18nContext.Provider value={value}>
-      <ChatTestRunCard run={run} saved={saved} testId="t" />
+      <ChatTestRunCard run={run} saved={saved} latest={latest} testId="t" />
     </I18nContext.Provider>,
   );
 }
@@ -31,6 +32,7 @@ const run: ChatSensitiveTestRun = {
   steps: { succeeded: 2, failed: 0, held: 1 },
   reads: [{ step: "read", items: 120, complete: false }],
   checks: "passed",
+  executionId: null,
 };
 
 test("the German card shows status, step counts, reads and the check without contents", () => {
@@ -62,6 +64,13 @@ test("a saved successful test run offers the Cockpit check in German and English
   expect(de).toContain("w-full");
   expect(de).toContain("sm:w-auto");
   expect(render(run, "en", savedRef)).toContain("Check it yourself in the Cockpit");
+});
+
+test("the Cockpit check opens this test run, and an older card offers it no more", () => {
+  expect(render({ ...run, executionId: "run-7" }, "de", savedRef)).toContain(
+    'href="/cockpit?run=run-7"',
+  );
+  expect(render(run, "de", savedRef, false)).not.toContain("t-verify");
 });
 
 test("an unsaved or failed test run offers no Cockpit check", () => {

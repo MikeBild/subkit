@@ -38,6 +38,7 @@ test("a sensitive test run reads status, step counts, reads and checks", () => {
       steps: { succeeded: 2, failed: 0, held: 1 },
       reads: [{ step: "read", items: 120, complete: false }],
       checks: "passed",
+      executionId: null,
     });
 });
 
@@ -53,6 +54,7 @@ test("a failed run or failed check is reported as failed", () => {
     steps: { succeeded: 1, failed: 1, held: 1 },
     reads: [{ step: "read", items: 120, complete: false }],
     checks: "failed",
+    executionId: null,
   });
   expect(
     chatSensitiveTestRun(
@@ -76,7 +78,15 @@ test("a failed run reloaded from history as a tool error still shows the card", 
     steps: { succeeded: 1, failed: 1, held: 1 },
     reads: [{ step: "read", items: 120, complete: false }],
     checks: "passed",
+    executionId: null,
   });
+});
+
+test("the test run carries its execution so the Cockpit can open it", () => {
+  expect(
+    chatSensitiveTestRun(part({ data: { execution_id: "run-7", sensitive_test_run: summary } }))
+      ?.executionId,
+  ).toBe("run-7");
 });
 
 test("undefined checks are not claimed as passed", () => {

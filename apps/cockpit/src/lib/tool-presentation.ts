@@ -142,6 +142,7 @@ const ACTION_TOOLS: Record<string, TranslationKey> = {
   edit_workflow_patch: "tool.name.editWorkflowPatch",
   open_workflow_draft: "tool.name.openWorkflowDraft",
   save_workflow_draft: "tool.name.saveWorkflowDraft",
+  validate_draft: "tool.name.validateDraft",
   update_workflow: "tool.name.updateWorkflow",
   delete_workflow: "tool.name.deleteWorkflow",
   restore_workflow_version: "tool.name.restoreWorkflowVersion",

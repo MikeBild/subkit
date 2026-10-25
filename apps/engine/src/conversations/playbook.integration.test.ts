@@ -26,6 +26,7 @@ import {
   forkPlaybookDocument,
   PlaybookConflictError,
   readPlaybook,
+  settlePlaybookAtTurnEnd,
   updatePlaybook,
 } from "./playbook.ts";
 import {
@@ -921,5 +922,40 @@ describe("persisted playbook evidence and lifecycle", () => {
       expect((await readPlaybook(fixture.db, context))?.revision).toBe(1);
       expect((await readPlaybook(fixture.db, other))?.revision).toBe(2);
     });
+  });
+});
+
+describe("a turn that ends", () => {
+  test("leaves no step spinning: work in progress now waits for the user, audited once", async () => {
+    const context = await scope();
+    await updatePlaybook(fixture.db, context, {
+      expected_revision: 0,
+      plan: plan([
+        {
+          ...step({ kind: "resource_observed", resource: { type: "execution", id: actorId } }),
+          progress: "in_progress",
+        },
+      ]),
+    });
+    expect((await readPlaybook(fixture.db, context))?.steps[0]?.status).toBe("in_progress");
+    const settle = () =>
+      settlePlaybookAtTurnEnd(fixture.db, {
+        tenant_id: tenantId,
+        conversation_id: context.conversation_id,
+        actor: { actor_type: "user", actor_id: actorId },
+        request_source: "ui",
+      });
+    expect(await settle()).toBe(2);
+    const view = await readPlaybook(fixture.db, context);
+    expect(view?.steps[0]?.status).toBe("waiting_for_input");
+    expect(view?.revision).toBe(2);
+    expect(await settle()).toBeNull();
+    const audits = await fixture.db
+      .select({ reason: auditLog.reason })
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.tenant_id, tenantId), eq(auditLog.resource_id, context.conversation_id)),
+      );
+    expect(audits.filter((row) => row.reason === "playbook_turn_settled")).toHaveLength(1);
   });
 });

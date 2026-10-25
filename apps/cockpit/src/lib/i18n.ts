@@ -456,6 +456,9 @@ const EN = {
   "chat.schedule.pending": "Automatic runs still paused",
   "chat.schedule.effect": "Automatic runs for this workflow are not approved yet.",
   "chat.schedule.review": "Review next step",
+  "chat.schedule.repairTitle": "Change needed before automatic runs",
+  "chat.schedule.repairEffect":
+    "Some steps cannot be covered by any approval yet. Let the chat change them, then approve.",
   "chat.automationCard.authorized.title": "Automatic runs are approved",
   "chat.automationCard.authorized.hint":
     "The running version is approved. No further approval is needed now.",
@@ -559,7 +562,7 @@ const EN = {
   "authority.repairNone":
     "SubKit cannot work these out: {steps}. These steps have no recorded history to read, or what they did cannot be stated as a limit.",
   "authority.adjustPrompt":
-    "Prepare this workflow for automatic operation. Check the existing schedule and destinations; keep them unless I request a change. Perform the permitted checks yourself and save the prepared changes when allowed. Do not activate, authorize live effects, or run live. If a business decision is missing, ask one short question with clear options and a recommendation. Explain the result and next action briefly, without code or tool names.",
+    "Automatic runs of this workflow cannot be approved yet. Diagnose which steps block the approval and change exactly those steps so an approval can cover them; keep the schedule and destinations unless I ask otherwise. Check the change without live effects and save it as a draft. Do not activate or approve anything: a person approves in the dialog afterwards. If no permitted change exists, say plainly why and what works instead. If a business detail such as a sender or recipient is missing, ask one short question with clear options and a recommendation. Answer briefly, without code or tool names.",
   "authority.incompleteTitle": "Request details are incomplete",
   "authority.incompleteDescription":
     "Check again. If details are still missing, adjust the workflow before granting permission.",
@@ -3794,6 +3797,7 @@ const EN = {
   "tool.name.editWorkflowPatch": "Edited the workflow draft",
   "tool.name.openWorkflowDraft": "Opened a saved workflow as the draft",
   "tool.name.saveWorkflowDraft": "Saved the workflow draft",
+  "tool.name.validateDraft": "Checked the workflow draft",
   "tool.name.updateWorkflow": "Updated a workflow",
   "tool.name.deleteWorkflow": "Deleted a workflow",
   "tool.name.restoreWorkflowVersion": "Restored an earlier version",
@@ -6621,6 +6625,9 @@ const DE: Record<TranslationKey, string> = {
   "chat.schedule.pending": "Automatische Läufe noch blockiert",
   "chat.schedule.effect": "Automatische Läufe sind für diesen Ablauf noch nicht freigegeben.",
   "chat.schedule.review": "Nächsten Schritt prüfen",
+  "chat.schedule.repairTitle": "Umbau nötig vor automatischen Läufen",
+  "chat.schedule.repairEffect":
+    "Einige Schritte kann noch keine Freigabe abdecken. Lass sie im Chat umbauen, danach freigeben.",
   "chat.automationCard.authorized.title": "Automatische Läufe sind freigegeben",
   "chat.automationCard.authorized.hint":
     "Die laufende Version ist freigegeben. Du musst jetzt nichts weiter freigeben.",
@@ -6728,7 +6735,7 @@ const DE: Record<TranslationKey, string> = {
   "authority.repairNone":
     "Das kann SubKit nicht herleiten: {steps}. Zu diesen Schritten gibt es keine aufgezeichnete Historie, oder was sie taten, l\u00e4sst sich nicht als Grenze aussprechen.",
   "authority.adjustPrompt":
-    "Bereite diesen Ablauf für den automatischen Betrieb vor. Prüfe den bestehenden Zeitplan und die Ziele; ändere sie nur auf meinen Wunsch. Übernimm die erlaubten Prüfungen selbst und speichere die vorbereiteten Änderungen, soweit erlaubt. Nicht aktivieren, keine Live-Wirkungen freigeben oder ausführen. Fehlt eine fachliche Entscheidung, stelle eine kurze Frage mit klaren Auswahlmöglichkeiten und einer Empfehlung. Erkläre Ergebnis und nächsten Schritt kurz, ohne Code oder Tool-Namen.",
+    "Automatische Läufe dieses Ablaufs lassen sich noch nicht freigeben. Ermittle, welche Schritte die Freigabe blockieren, und baue genau diese Schritte so um, dass eine Freigabe sie abdecken kann; Zeitplan und Ziele bleiben, außer ich wünsche es anders. Prüfe die Änderung ohne Live-Wirkungen und speichere sie als Entwurf. Aktiviere nichts und gib nichts frei: Die Freigabe erteilt danach ein Mensch im Dialog. Ist kein zulässiger Umbau möglich, sage klar warum und was stattdessen geht. Fehlt eine fachliche Angabe wie Absender oder Empfänger, stelle eine kurze Frage mit klaren Auswahlmöglichkeiten und einer Empfehlung. Antworte knapp, ohne Code oder Tool-Namen.",
   "authority.incompleteTitle": "Anfragedetails fehlen",
   "authority.incompleteDescription":
     "Erneut prüfen. Fehlen weiterhin Details, den Workflow vor der Freigabe anpassen.",
@@ -10031,6 +10038,7 @@ const DE: Record<TranslationKey, string> = {
   "tool.name.editWorkflowPatch": "Workflow-Entwurf bearbeitet",
   "tool.name.openWorkflowDraft": "Gespeicherten Workflow als Entwurf geöffnet",
   "tool.name.saveWorkflowDraft": "Workflow-Entwurf gespeichert",
+  "tool.name.validateDraft": "Workflow-Entwurf geprüft",
   "tool.name.updateWorkflow": "Workflow geändert",
   "tool.name.deleteWorkflow": "Workflow gelöscht",
   "tool.name.restoreWorkflowVersion": "Frühere Version wiederhergestellt",

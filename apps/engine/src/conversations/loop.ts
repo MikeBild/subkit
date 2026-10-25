@@ -131,7 +131,7 @@ import {
   setToolCallParentMessage,
   updateMessageContent,
 } from "./persist.ts";
-import { PLAYBOOK_GUIDANCE, readPlaybook } from "./playbook.ts";
+import { PLAYBOOK_GUIDANCE, readPlaybook, settlePlaybookAtTurnEnd } from "./playbook.ts";
 import { closingProseQuestion } from "./prose-question.ts";
 import {
   type ConversationReference,
@@ -1760,6 +1760,32 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
       handoff: handoff.handoff,
       preview_evidence: handoff.evidence?.preview ?? null,
       locale,
+    });
+  }
+
+  try {
+    const settledRevision = await settlePlaybookAtTurnEnd(p.db, {
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      actor: { actor_type: engineClientActorType(p.principal, p.actor_id), actor_id: p.actor_id },
+      request_source: p.surface === "mcp" ? "mcp" : "ui",
+    });
+    if (settledRevision !== null)
+      log.info({
+        module: "conversation",
+        action: "playbook.turn_settled",
+        msg: "turn ended with playbook steps still in progress — they now wait for the user",
+        tenant_id: p.tenant_id,
+        conversation_id: p.conversation_id,
+        revision: settledRevision,
+      });
+  } catch (err) {
+    log.warn({
+      module: "conversation",
+      action: "playbook.turn_settle_failed",
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      error_message: err instanceof Error ? err.message : String(err),
     });
   }
 
