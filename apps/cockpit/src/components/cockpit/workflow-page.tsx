@@ -50,6 +50,7 @@ import { WorkflowApprovals } from "@/components/cockpit/workflow-grants";
 import { WorkflowInvocation } from "@/components/cockpit/workflow-invocation";
 import { WorkflowInputOutput } from "@/components/cockpit/workflow-io";
 import { WorkflowRuns } from "@/components/cockpit/workflow-runs";
+import { WorkflowSpecCard } from "@/components/cockpit/workflow-spec-card";
 import { StepSaveBar, useStepDraft } from "@/components/cockpit/workflow-step-editor";
 import {
   type FlowTrigger,
@@ -531,6 +532,9 @@ export function WorkflowPage({
             </>
           }
         >
+          {permissions.includes("workflow:read") ? (
+            <WorkflowSpecCard workflowId={id} draftVersionId={draftVersionId} canWrite={canWrite} />
+          ) : null}
           <WorkflowTestResult steps={steps} visible={build.saved || editor.dirty} />
           <WorkflowFlow
             key={`${id}:${build.versionId ?? "none"}`}

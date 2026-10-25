@@ -239,6 +239,7 @@ const ACTION_KEYS: Record<string, TranslationKey> = {
   "schedule.deleted": "audit.action.scheduleDeleted",
   "workflow.deleted": "audit.action.workflowDeleted",
   "workflow.version_restored": "audit.action.workflowRestored",
+  "draft.spec.updated": "audit.action.draftSpecUpdated",
   "knowledge_source.restored": "audit.action.knowledgeRestored",
   "knowledge_source.created": "audit.action.knowledgeCreated",
   "knowledge_source.updated": "audit.action.knowledgeUpdated",
