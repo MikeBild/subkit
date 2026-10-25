@@ -644,6 +644,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   if (
     (p.step.transactional_delivery || p.step.outbox_delivery) &&
     result.status === "succeeded" &&
+    !result.held &&
     !isConfirmedTransactionalMail(result)
   )
     result = {

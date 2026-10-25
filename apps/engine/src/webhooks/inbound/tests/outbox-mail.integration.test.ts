@@ -154,3 +154,30 @@ test("the reviewed daily limit stops further messages", async () => {
     sent: 0,
   });
 });
+
+test("a preview with a queued message holds the email and reserves nothing", async () => {
+  await author(10);
+  let sends = 0;
+  const fetcher = Object.assign(
+    async (url: string | URL | Request) => {
+      const target = String(url instanceof Request ? url.url : url);
+      if (target.startsWith(QUEUE))
+        return Response.json({ id: "mail-1", recipient: "eins@example.test" });
+      sends++;
+      return Response.json({ id: "gmail-message" });
+    },
+    { preconnect: () => {} },
+  ) as typeof fetch;
+  const result = await withSelfHostedDriverFetchForTests(fetcher, () =>
+    runExecution({
+      db: ctx.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id: ctx.workflowId },
+      input: {},
+      options: { hold_writes: true, execution_mode: "prod", request_source: "cli" },
+    }),
+  );
+  expect(result.status).toBe("succeeded");
+  expect(sends).toBe(0);
+  expect(await receipts()).toEqual([]);
+});
