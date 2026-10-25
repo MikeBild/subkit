@@ -1,1 +1,0 @@
-import{i as e}from"./index-m2eZp4gi.js";export{e as Mermaid};
