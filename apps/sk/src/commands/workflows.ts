@@ -762,12 +762,20 @@ async function saveWorkflow(
           }
         }
 
-        const preview: RunExecutionResponse = await client.runExecution({
-          source: "draft",
-          definition: body,
-          ...(input !== undefined ? { input } : {}),
-          request_source: "cli",
-        });
+        const environment = parseRunEnvironment(args.environment);
+        if (!environment) {
+          process.stderr.write(`${invalidRunEnvironmentMessage(args.environment)}\n`);
+          process.exit(1);
+        }
+        const preview: RunExecutionResponse = await client.runExecution(
+          {
+            source: "draft",
+            definition: body,
+            ...(input !== undefined ? { input } : {}),
+            request_source: "cli",
+          },
+          { environment },
+        );
 
         const previewWarnings = (preview.warnings ?? []) as ReadonlyArray<{
           step_key?: string;
@@ -787,6 +795,8 @@ async function saveWorkflow(
             { id: "save", label: "Save", status: "pending" },
           ];
           await renderTaskList(phases, { jsonMode });
+          const mismatchHint = environmentMismatchHint(preview, environment);
+          if (mismatchHint && !jsonMode) process.stderr.write(`${mismatchHint}\n`);
           process.exit(1);
         }
 
@@ -861,6 +871,11 @@ async function saveWorkflow(
 }
 
 const SAVE_ARGS = {
+  environment: {
+    ...RUN_ENVIRONMENT_ARG,
+    description:
+      "Where the pre-flight preview runs: dev (default) or prod. Use the environment the workflow's schedule or webhook runs in; writes stay held either way.",
+  },
   "skip-checks": {
     type: "boolean",
     description:
