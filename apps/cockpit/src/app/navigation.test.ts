@@ -63,8 +63,8 @@ describe("cockpit navigation contract", () => {
       "nav.group.knowledge",
       "nav.group.admin",
     ]);
-    expect(translate("de", "nav.group.admin")).toBe("Installation");
-    expect(translate("en", "nav.group.admin")).toBe("Installation");
+    expect(translate("de", "nav.group.admin")).toBe("Verwaltung");
+    expect(translate("en", "nav.group.admin")).toBe("Administration");
   });
 
   test("no entry for a page that was a second place for the same facts", () => {

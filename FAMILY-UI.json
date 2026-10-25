@@ -39,7 +39,6 @@
       "attention"
     ],
     "groups": [
-      "work",
       "automation",
       "knowledge",
       "installation"
@@ -47,55 +46,92 @@
     "labels": {
       "de": {
         "attention": "Übersicht",
-        "work": "Arbeit",
+        "chat": "Chat",
         "automation": "Automatisierung",
         "knowledge": "Wissen",
-        "installation": "Installation",
+        "installation": "Verwaltung",
+        "workflows": "Workflows",
+        "connectors": "Konnektoren",
+        "inbox": "Eingang",
+        "knowledgeSources": "Quellen",
+        "skills": "Skills",
+        "files": "Dateien",
         "runs": "Ausführungen",
         "usage": "Nutzung",
-        "settings": "Einstellungen",
-        "credentials": "Zugangsdaten",
+        "audit": "Audit",
         "people": "Personen & Rechte",
-        "notifications": "Benachrichtigungen",
-        "audit": "Audit"
+        "credentials": "API-Zugang",
+        "settings": "Einstellungen",
+        "notifications": "Benachrichtigungen"
       },
       "en": {
         "attention": "Overview",
-        "work": "Work",
+        "chat": "Chat",
         "automation": "Automation",
         "knowledge": "Knowledge",
-        "installation": "Installation",
+        "installation": "Administration",
+        "workflows": "Workflows",
+        "connectors": "Connectors",
+        "inbox": "Inbox",
+        "knowledgeSources": "Sources",
+        "skills": "Skills",
+        "files": "Files",
         "runs": "Runs",
         "usage": "Usage",
-        "settings": "Settings",
-        "credentials": "Credentials",
+        "audit": "Audit",
         "people": "People & access",
-        "notifications": "Notifications",
-        "audit": "Audit"
+        "credentials": "API access",
+        "settings": "Settings",
+        "notifications": "Notifications"
       }
     },
-    "badge": "attention-entry-count"
+    "badge": "attention-entry-count",
+    "ungroupedItems": [
+      "/",
+      "/chat"
+    ],
+    "groupItems": {
+      "automation": [
+        "/workflows",
+        "/connectors"
+      ],
+      "knowledge": [
+        "/intake",
+        "/knowledge",
+        "/skills",
+        "/files"
+      ],
+      "installation": [
+        "/usage",
+        "/audit",
+        "/people",
+        "/api-access",
+        "/settings"
+      ]
+    }
   },
   "geometry": {
     "sidebarExpandedPx": 256,
     "sidebarCollapsedPx": 48,
-    "headerPx": 56,
+    "headerPx": 48,
     "gutterDesktopPx": 24,
     "gutterMobilePx": 16,
     "readingColumnPx": 780,
-    "workingColumnPx": 1120,
-    "workbenchColumnPx": 1280,
-    "cardRadiusPx": 16,
+    "workingColumnPx": 1440,
+    "workbenchColumnPx": 1760,
+    "cardRadiusPx": 16.8,
     "cardGapPx": 16,
     "sectionGapPx": 24,
     "controlHeightPx": 32,
-    "tableRowMinPx": 44
+    "tableRowMinPx": 44,
+    "tabHeightPx": 36
   },
   "typography": {
     "pageTitle": "24px/32px 600",
     "sectionTitle": "16px/24px 600",
     "body": "14px/20px 400",
-    "meta": "12px/16px 400"
+    "meta": "12px/16px 400",
+    "articleBody": "14px/24px 400"
   },
   "surfaces": {
     "auth": [
@@ -395,7 +431,7 @@
   },
   "visualLanguage": {
     "spacingGridPx": 4,
-    "radius": "16px",
+    "radius": "16.8px",
     "border": "1px",
     "shadow": "none",
     "accent": "family",
