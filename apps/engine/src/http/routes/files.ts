@@ -60,7 +60,7 @@ import {
   recordFileDedupHit,
   recordFileScanResult,
 } from "../../observability/index.ts";
-import { can } from "../../rbac/index.ts";
+import { principalHolds } from "../../rbac/index.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission } from "../middleware/require-permission.ts";
@@ -1029,13 +1029,8 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     }
     const creators = await recordedFileCreators(db, principal.tenant_id, [row]);
     const creator = creators.get(row.id) ?? null;
-    const directory = await can(db, {
-      tenant_id: principal.tenant_id,
-      principal,
-      permission: "identity:read",
-      quiet: true,
-    });
-    const names = directory.allow
+    const directoryReadable = await principalHolds(db, principal, "identity:read");
+    const names = directoryReadable
       ? await fileCreatorNames(db, principal.tenant_id, row.id, creator)
       : { name: null, api_key_name: null };
     return c.json(

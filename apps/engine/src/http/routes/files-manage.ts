@@ -52,7 +52,7 @@ import {
   replaceFileContent,
 } from "../../files/versions.ts";
 import { logger } from "../../logging/index.ts";
-import { can } from "../../rbac/index.ts";
+import { principalHolds } from "../../rbac/index.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission } from "../middleware/require-permission.ts";
@@ -627,13 +627,7 @@ async function readableLinkKinds(
 ): Promise<Set<string>> {
   const kinds = new Set<string>();
   for (const [kind, permission] of Object.entries(LINK_READ_PERMISSIONS)) {
-    const decision = await can(db, {
-      tenant_id: principal.tenant_id,
-      principal,
-      permission,
-      quiet: true,
-    });
-    if (decision.allow) kinds.add(kind);
+    if (await principalHolds(db, principal, permission)) kinds.add(kind);
   }
   return kinds;
 }
