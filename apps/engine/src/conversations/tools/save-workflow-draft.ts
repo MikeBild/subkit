@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
-import { recordWorkflowCommitted, recordWorkflowUpdated } from "../../audit/recorders/index.ts";
+import { recordWorkflowCommitted } from "../../audit/recorders/index.ts";
 import { skills as skillsTable } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { getWorkflowDraft } from "../authoring-state.ts";
@@ -113,6 +113,11 @@ export const saveWorkflowDraftTool: ConversationTool = {
       ctx,
       forceCommit: args.force_commit,
       reason: auditReason,
+      extraAuditMetadata: {
+        ...(draftSlug ? { slug: draftSlug } : {}),
+        tool: "save_workflow_draft",
+        ...(gateBypassed ? { bypassed_prior_approval: true } : {}),
+      },
       ...(args.target_workflow_id ? { target_workflow_id: args.target_workflow_id } : {}),
       ...(args.expected_draft_version_id !== undefined
         ? { expected_draft_version_id: args.expected_draft_version_id }
@@ -150,21 +155,6 @@ export const saveWorkflowDraftTool: ConversationTool = {
           tool: "save_workflow_draft",
           latest_preview_summary: fullDraft.latest_preview?.summary ?? null,
           latest_preview_warnings: fullDraft.latest_preview?.warnings ?? [],
-        });
-      } else {
-        await recordWorkflowUpdated({
-          tenant_id: ctx.tenant_id,
-          ...auditActorFromToolContext(ctx),
-          executor: ctx.db,
-          workflow_id,
-          slug: typeof data.slug === "string" ? data.slug : "",
-          version,
-          workflow_version_id,
-          reason: auditReason,
-          source: "tool_call",
-          kind: "save_via_tool",
-          tool: "save_workflow_draft",
-          ...(gateBypassed ? { bypassed_prior_approval: true } : {}),
         });
       }
     }

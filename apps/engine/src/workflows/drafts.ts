@@ -314,6 +314,9 @@ export async function saveWorkflowDraft(
           resource_type: "workflow",
           resource_id: wf.id,
           result: "success",
+          ...(typeof input.audit_metadata?.reason === "string"
+            ? { reason: input.audit_metadata.reason }
+            : {}),
           before: {
             draft_version_id: wf.draft_version_id,
             current_version_id: wf.current_version_id,

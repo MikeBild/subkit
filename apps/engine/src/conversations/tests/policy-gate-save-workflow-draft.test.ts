@@ -666,5 +666,8 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
     expect((toolRow.metadata as Record<string, unknown>).bypassed_prior_approval).toBe(true);
 
     expect(rows.some((r) => r.reason === "manual_re_issue")).toBe(false);
+    expect(
+      rows.filter((r) => r.action === "workflow.updated" || r.action === "workflow.created"),
+    ).toHaveLength(1);
   });
 });
