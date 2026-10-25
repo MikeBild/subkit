@@ -75,7 +75,7 @@ export function computeRiskSignals(inputs: RiskInputs = {}): RiskSignal[] {
     }
   }
 
-  const poolWaiting = reg.gaugeSum(METRIC_NAMES.DB_POOL_WAITING_CONNECTIONS);
+  const poolWaiting = reg.gaugeSum(METRIC_NAMES.DB_POOL_SUSTAINED_WAITING_CONNECTIONS);
   if (poolTotal > 0) {
     const inUsePct = ((poolTotal - poolIdle) / poolTotal) * 100;
     if (poolWaiting > 0 || inUsePct >= predictive.pool_saturation_pct) {
@@ -87,10 +87,10 @@ export function computeRiskSignals(inputs: RiskInputs = {}): RiskSignal[] {
           ? `${poolWaiting} client${poolWaiting === 1 ? "" : "s"} waiting on a Postgres connection`
           : `Postgres pool ${Math.round(inUsePct)}% in use`,
         detail: critical
-          ? "The pool is exhausted — queries are queuing. Expect step timeouts; raise the pool size or shed scheduled load."
+          ? "The pool stayed exhausted for at least 15 seconds — queries are queuing. Expect step timeouts; raise the pool size or shed scheduled load."
           : `In-use connections crossed the ${predictive.pool_saturation_pct}% saturation line. Headroom is shrinking before peak.`,
         metric: critical
-          ? METRIC_NAMES.DB_POOL_WAITING_CONNECTIONS
+          ? METRIC_NAMES.DB_POOL_SUSTAINED_WAITING_CONNECTIONS
           : METRIC_NAMES.DB_POOL_TOTAL_CONNECTIONS,
         value: critical ? poolWaiting : Math.round(inUsePct),
         threshold: critical ? 0 : predictive.pool_saturation_pct,

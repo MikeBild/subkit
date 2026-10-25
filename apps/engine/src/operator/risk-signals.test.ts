@@ -18,11 +18,16 @@ import {
   METRIC_NAMES,
   resetMetricsRegistryForTests,
 } from "../observability/metrics.ts";
+import { _resetPoolWaitForTests } from "../observability/pool-wait.ts";
 import {
   _resetTransientRetryRateForTests,
   sampleTransientRetryRate,
 } from "../observability/transient-retry-rate.ts";
 import { computeRiskSignals, topRisk } from "./risk-signals.ts";
+
+function samplePool(stats: { total: number; idle: number; waiting: number }, times = 3): void {
+  for (let i = 0; i < times; i++) setDbPoolStats(stats);
+}
 
 async function ensureConfig(): Promise<void> {
   try {
@@ -41,6 +46,7 @@ beforeEach(async () => {
   resetMetricsRegistryForTests();
   _resetRssHighWaterForTests();
   _resetTransientRetryRateForTests();
+  _resetPoolWaitForTests();
   await ensureConfig();
 });
 
@@ -67,13 +73,38 @@ describe("computeRiskSignals — pool_saturation", () => {
     expect(s!.threshold).toBe(80);
   });
 
-  test("emits critical when waiting clients > 0", () => {
-    setDbPoolStats({ total: 10, idle: 2, waiting: 3 });
+  test("emits critical when clients kept waiting across the last three samples", () => {
+    samplePool({ total: 10, idle: 2, waiting: 3 });
     const signals = computeRiskSignals();
     const s = signals.find((r) => r.kind === "pool_saturation");
     expect(s).toBeDefined();
     expect(s!.severity).toBe("critical");
     expect(s!.value).toBe(3);
+    expect(s!.metric).toBe(METRIC_NAMES.DB_POOL_SUSTAINED_WAITING_CONNECTIONS);
+  });
+
+  test("a wait seen only at the first sample after boot is not saturation", () => {
+    setDbPoolStats({ total: 10, idle: 0, waiting: 1 });
+    expect(computeRiskSignals().find((r) => r.kind === "pool_saturation")?.severity).not.toBe(
+      "critical",
+    );
+    setDbPoolStats({ total: 10, idle: 6, waiting: 0 });
+    setDbPoolStats({ total: 10, idle: 6, waiting: 0 });
+    expect(computeRiskSignals().find((r) => r.kind === "pool_saturation")).toBeUndefined();
+  });
+
+  test("a wait that stops before the third sample never counts, and the floor is the smallest", () => {
+    setDbPoolStats({ total: 10, idle: 2, waiting: 4 });
+    setDbPoolStats({ total: 10, idle: 2, waiting: 2 });
+    setDbPoolStats({ total: 10, idle: 2, waiting: 0 });
+    expect(computeRiskSignals().find((r) => r.kind === "pool_saturation")?.severity).not.toBe(
+      "critical",
+    );
+    samplePool({ total: 10, idle: 2, waiting: 4 }, 2);
+    setDbPoolStats({ total: 10, idle: 2, waiting: 2 });
+    const s = computeRiskSignals().find((r) => r.kind === "pool_saturation");
+    expect(s?.severity).toBe("critical");
+    expect(s?.value).toBe(2);
   });
 
   test("no signal below threshold", () => {
@@ -199,7 +230,7 @@ describe("computeRiskSignals — memory_high_water", () => {
 
 describe("computeRiskSignals — sort order", () => {
   test("critical signals rank before warn signals", () => {
-    setDbPoolStats({ total: 10, idle: 2, waiting: 1 });
+    samplePool({ total: 10, idle: 2, waiting: 1 });
     for (let i = 0; i < 9; i++) {
       recordConnectorCall({ slug: "jira", health: "auth_failed" });
     }
@@ -212,7 +243,7 @@ describe("computeRiskSignals — sort order", () => {
 
 describe("topRisk", () => {
   test("returns the first (highest-severity) signal when signals are present", () => {
-    setDbPoolStats({ total: 10, idle: 2, waiting: 1 });
+    samplePool({ total: 10, idle: 2, waiting: 1 });
     const signals = computeRiskSignals();
     const top = topRisk(signals);
     expect(top).not.toBeNull();

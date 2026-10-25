@@ -56,6 +56,7 @@ export const METRIC_NAMES = {
   DB_POOL_TOTAL_CONNECTIONS: "db_pool_total_connections",
   DB_POOL_IDLE_CONNECTIONS: "db_pool_idle_connections",
   DB_POOL_WAITING_CONNECTIONS: "db_pool_waiting_connections",
+  DB_POOL_SUSTAINED_WAITING_CONNECTIONS: "db_pool_sustained_waiting_connections",
   DB_TRANSIENT_RETRIES_TOTAL: "db_transient_retries_total",
   DB_TRANSIENT_RETRY_RATE_PER_MIN: "db_transient_retry_rate_per_min",
   DLQ_JOB_COUNT: "dlq_job_count",
@@ -252,17 +253,22 @@ function buildRegistry(): MetricsRegistry {
 
   reg.registerGauge({
     name: METRIC_NAMES.DB_POOL_TOTAL_CONNECTIONS,
-    help: "Total connections in the shared Postgres pool (sampled every 60s).",
+    help: "Total connections in the shared Postgres pool (sampled every 5s).",
     labels: [],
   });
   reg.registerGauge({
     name: METRIC_NAMES.DB_POOL_IDLE_CONNECTIONS,
-    help: "Idle connections in the shared Postgres pool (sampled every 60s).",
+    help: "Idle connections in the shared Postgres pool (sampled every 5s).",
     labels: [],
   });
   reg.registerGauge({
     name: METRIC_NAMES.DB_POOL_WAITING_CONNECTIONS,
-    help: "Clients waiting for a connection from the shared Postgres pool — the leading saturation signal (sampled every 60s).",
+    help: "Clients waiting for a connection from the shared Postgres pool at the latest sample (sampled every 5s).",
+    labels: [],
+  });
+  reg.registerGauge({
+    name: METRIC_NAMES.DB_POOL_SUSTAINED_WAITING_CONNECTIONS,
+    help: "Clients that waited for a connection in each of the last three pool samples (15s). The saturation signal: one momentary wait, such as the burst at boot, never counts.",
     labels: [],
   });
   reg.registerCounter({

@@ -184,11 +184,21 @@ export function startBootHeartbeat(opts?: {
 
 export type PoolStatsProvider = () => { total: number; idle: number; waiting: number };
 
+const POOL_SAMPLE_INTERVAL_MS = 5_000;
+
 export function startMemorySampler(opts?: {
   intervalMs?: number;
+  poolIntervalMs?: number;
   poolStats?: PoolStatsProvider;
 }): () => void {
   const intervalMs = opts?.intervalMs ?? 60_000;
+  const poolIntervalMs = opts?.poolIntervalMs ?? POOL_SAMPLE_INTERVAL_MS;
+  const samplePool = (): void =>
+    safe(() => {
+      if (!opts?.poolStats) return;
+      const p = opts.poolStats();
+      setDbPoolStats({ total: p.total, idle: p.idle, waiting: p.waiting });
+    });
   const tick = (): void =>
     safe(() => {
       const m = readMemoryUsage();
@@ -199,10 +209,6 @@ export function startMemorySampler(opts?: {
       reg.set(METRIC_NAMES.PROCESS_MEMORY_EXTERNAL_BYTES, m.external, {});
       recordProcessRssHighWater(m.rss);
       sampleTransientRetryRate();
-      if (opts?.poolStats) {
-        const p = opts.poolStats();
-        setDbPoolStats({ total: p.total, idle: p.idle, waiting: p.waiting });
-      }
       log.process.memory({
         rss_mb: toMb(m.rss),
         heap_used_mb: toMb(m.heapUsed),
@@ -213,9 +219,15 @@ export function startMemorySampler(opts?: {
       });
     });
   const timer = setInterval(tick, intervalMs);
+  const poolTimer = setInterval(samplePool, poolIntervalMs);
   if (typeof timer.unref === "function") timer.unref();
+  if (typeof poolTimer.unref === "function") poolTimer.unref();
   tick();
-  return () => clearInterval(timer);
+  samplePool();
+  return () => {
+    clearInterval(timer);
+    clearInterval(poolTimer);
+  };
 }
 
 const ALLOC_DELTA_FLOOR_BYTES = 64 * 1024 * 1024;

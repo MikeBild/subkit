@@ -15,6 +15,7 @@ import {
   TOOL_POLICY_RULES,
 } from "./metric-label-allowlists.ts";
 import { getMetrics, METRIC_NAMES, type PatchCandidateDecision } from "./metrics.ts";
+import { observePoolWaiting } from "./pool-wait.ts";
 
 export type { TimeoutPhase };
 
@@ -165,6 +166,11 @@ export function setDbPoolStats(args: { total: number; idle: number; waiting: num
     reg.set(METRIC_NAMES.DB_POOL_TOTAL_CONNECTIONS, args.total, {});
     reg.set(METRIC_NAMES.DB_POOL_IDLE_CONNECTIONS, args.idle, {});
     reg.set(METRIC_NAMES.DB_POOL_WAITING_CONNECTIONS, args.waiting, {});
+    reg.set(
+      METRIC_NAMES.DB_POOL_SUSTAINED_WAITING_CONNECTIONS,
+      observePoolWaiting(args.waiting),
+      {},
+    );
   });
 }
 
