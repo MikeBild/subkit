@@ -106,9 +106,8 @@ const REMEDY_ORDER: Record<GateDiagnosis["remedy_kind"], number> = {
 async function readRepairFacts(
   db: Db,
   tenantId: string,
-  approvals: ReadonlyArray<ApprovalFact>,
+  awaiting: ReadonlyArray<{ workflow_id: string; environment: "dev" | "prod" }>,
 ): Promise<Map<string, NonNullable<AttentionItem["repair"]>>> {
-  const awaiting = approvals.filter((fact) => fact.kind === "awaiting");
   const repairs = new Map<string, NonNullable<AttentionItem["repair"]>>();
   if (awaiting.length === 0) return repairs;
   const rows = await db
@@ -194,6 +193,7 @@ async function readWorkflowFacts(
         workflow_id: workflows.id,
         name: workflows.name,
         hold: workflowsSchedules.admission_hold,
+        environment: workflowsSchedules.execution_mode,
       })
       .from(workflowsSchedules)
       .innerJoin(
@@ -251,15 +251,25 @@ async function readWorkflowFacts(
     sources.schedules = "answered";
     for (const fact of approvals.value.values())
       factFor(fact.workflow_id, fact.name).approval = fact;
-    const repairs = await readRepairFacts(db, tenantId, [...approvals.value.values()]);
-    for (const [id, repair] of repairs) factFor(id, null).repair = repair;
     const holds = [
       ...held.value.map((row) => ({ ...row, trigger: { kind: "schedule" as const, name: null } })),
       ...heldHooks.value.map((row) => ({
         ...row,
+        environment: "prod" as const,
         trigger: { kind: "inbound_hook" as const, name: row.slug },
       })),
     ];
+    const repairTargets = new Map<string, { workflow_id: string; environment: "dev" | "prod" }>();
+    for (const fact of approvals.value.values())
+      if (fact.kind === "awaiting") repairTargets.set(fact.workflow_id, fact);
+    for (const row of holds)
+      if (
+        row.hold?.reason_code === "execution_authority_required" &&
+        !repairTargets.has(row.workflow_id)
+      )
+        repairTargets.set(row.workflow_id, row);
+    const repairs = await readRepairFacts(db, tenantId, [...repairTargets.values()]);
+    for (const [id, repair] of repairs) factFor(id, null).repair = repair;
     for (const row of holds) {
       if (!row.hold) continue;
       const fact = factFor(row.workflow_id, row.name);
@@ -325,7 +335,8 @@ function workflowItem(fact: WorkflowFacts): Candidate {
   const lead = fact.groups[0] ?? null;
   const klass: AttentionClass = fact.held ? "stopped" : failures > 0 ? "failing" : "decide";
   const approval = !fact.held && failures === 0 && patches === 0 ? fact.approval : null;
-  const repair = approval?.kind === "awaiting" ? fact.repair : null;
+  const heldForRepair = fact.held?.reason_code === "execution_authority_required";
+  const repair = approval?.kind === "awaiting" || heldForRepair ? fact.repair : null;
   const reason: AttentionReason = fact.held
     ? fact.held.reason_code === "execution_authority_unavailable"
       ? "execution_authority_unavailable"
@@ -342,21 +353,28 @@ function workflowItem(fact: WorkflowFacts): Candidate {
   const id = `workflow:${fact.id}`;
 
   const actions: AttentionAction[] = [];
-  if (fact.held || patches > 0) {
+  if (patches > 0) {
     actions.push({
       verb: "review",
       href: attentionHref.review(id),
       primary: true,
       permission: "workflow:write",
     });
-  } else if (lead?.cause_class === "auth_failed" && lead.connector_id) {
+  } else if (fact.held && !repair) {
+    actions.push({
+      verb: "open",
+      href: attentionHref.automation(fact.id),
+      primary: true,
+      permission: "workflow:write",
+    });
+  } else if (!fact.held && lead?.cause_class === "auth_failed" && lead.connector_id) {
     actions.push({
       verb: "reauth",
       href: attentionHref.connector(lead.connector_id),
       primary: true,
       permission: "connector:oauth",
     });
-  } else if (lead) {
+  } else if (!fact.held && lead) {
     actions.push({
       verb: "chat",
       href: attentionHref.newChat(fact.id, lead.latest_execution_id),

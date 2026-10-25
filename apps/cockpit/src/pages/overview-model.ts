@@ -231,6 +231,8 @@ export function attentionSentence(
   switch (item.reason) {
     case "execution_authority_required":
     case "execution_authority_unavailable": {
+      if (item.reason === "execution_authority_required" && item.repair?.step_id)
+        return { lead: heldRepairSentence(item, subject, t), machine: null, since };
       const hook = item.trigger?.kind === "inbound_hook" ? item.trigger.name : null;
       if (!hook) return { lead: t(reasonKey, { subject }), machine: null, since };
       return {
@@ -330,28 +332,46 @@ export function attentionSentence(
   }
 }
 
-function repairSentence(item: AttentionItem, subject: string, t: Translate): string {
-  const version = item.approval ? `v${item.approval.version}` : "";
-  const repair = item.repair;
-  if (!repair?.step_id) return t("overview.reason.version_needs_repairBare", { subject, version });
+function repairCause(repair: NonNullable<AttentionItem["repair"]>, t: Translate): string {
   const own = `overview.repair.cause.${repair.code ?? ""}`;
-  const cause = t(
+  return t(
     Object.hasOwn(CATALOGS.en, own)
       ? (own as TranslationKey)
       : (`overview.repair.remedy.${repair.remedy_kind}` as TranslationKey),
   );
-  const sentence = t("overview.reason.version_needs_repair", {
-    subject,
-    version,
-    step: repair.step_id,
-    cause,
-  });
-  const more = repair.steps - 1;
+}
+
+function withMoreSteps(sentence: string, steps: number, t: Translate): string {
+  const more = steps - 1;
   if (more <= 0) return sentence;
   return t(more === 1 ? "overview.repair.more.one" : "overview.repair.more.many", {
     sentence,
     count: more,
   });
+}
+
+function heldRepairSentence(item: AttentionItem, subject: string, t: Translate): string {
+  const repair = item.repair;
+  if (!repair?.step_id) return t("overview.reason.execution_authority_required", { subject });
+  const sentence = t("overview.reason.execution_authority_requiredStep", {
+    subject,
+    step: repair.step_id,
+    cause: repairCause(repair, t),
+  });
+  return withMoreSteps(sentence, repair.steps, t);
+}
+
+function repairSentence(item: AttentionItem, subject: string, t: Translate): string {
+  const version = item.approval ? `v${item.approval.version}` : "";
+  const repair = item.repair;
+  if (!repair?.step_id) return t("overview.reason.version_needs_repairBare", { subject, version });
+  const sentence = t("overview.reason.version_needs_repair", {
+    subject,
+    version,
+    step: repair.step_id,
+    cause: repairCause(repair, t),
+  });
+  return withMoreSteps(sentence, repair.steps, t);
 }
 
 export function sentenceText(sentence: AttentionSentence): string {
@@ -374,8 +394,12 @@ export function actionLabelKey(action: AttentionAction, item: AttentionItem): Tr
     case "review":
       return "overview.action.review";
     case "open":
-      if (item.reason === "version_awaiting_approval") return "overview.action.approve";
-      if (item.reason === "version_needs_repair")
+      if (
+        item.reason === "version_awaiting_approval" ||
+        item.reason === "execution_authority_unavailable"
+      )
+        return "overview.action.approve";
+      if (item.reason === "version_needs_repair" || item.reason === "execution_authority_required")
         return item.repair?.remedy_kind === "prepare"
           ? "overview.action.prepare"
           : item.repair?.remedy_kind === "patch"
@@ -396,7 +420,10 @@ export function actionLabelKey(action: AttentionAction, item: AttentionItem): Tr
     case "open_runs":
       return "overview.action.openRuns";
     case "chat":
-      return item.reason === "version_needs_repair" ? "remedy.chat" : "overview.action.chat";
+      return item.reason === "version_needs_repair" ||
+        item.reason === "execution_authority_required"
+        ? "remedy.chat"
+        : "overview.action.chat";
     default:
       return "overview.action.openOperations";
   }
@@ -526,8 +553,8 @@ const COUNTED_SHORT_REASON_KEYS = {
 
 const STATE_OF_REASON: Record<AttentionItem["reason"], { state: string; label: TranslationKey }> = {
   awaiting_answer: { state: "pending", label: "overview.state.answer" },
-  execution_authority_required: { state: "pending", label: "workflowStrip.state.grant" },
-  execution_authority_unavailable: { state: "failed", label: "workflowStrip.state.stopped" },
+  execution_authority_required: { state: "needs_attention", label: "automation.state.repair" },
+  execution_authority_unavailable: { state: "pending", label: "workflowStrip.state.grant" },
   version_awaiting_approval: { state: "pending", label: "workflowStrip.state.grant" },
   version_needs_repair: { state: "needs_attention", label: "automation.state.repair" },
   approval_expiring: { state: "expiring", label: "workflowStrip.state.expiring" },
@@ -582,7 +609,10 @@ export function attentionRow(item: AttentionItem, t: Translate): AttentionRow {
           : item.reason === "intake_collected"
             ? (item.counts.intake ?? 1)
             : (item.repair?.steps ?? 1);
-  const counted = (COUNTED_SHORT_REASON_KEYS as Record<string, PluralKey>)[item.reason];
+  const counted =
+    item.reason === "execution_authority_required" && item.repair?.step_id
+      ? COUNTED_SHORT_REASON_KEYS.version_needs_repair
+      : (COUNTED_SHORT_REASON_KEYS as Record<string, PluralKey>)[item.reason];
   const key = counted
     ? pluralKey(counted, count)
     : (SHORT_REASON_KEYS as Record<string, TranslationKey>)[item.reason];

@@ -206,6 +206,43 @@ describe("the sentence", () => {
     }
   });
 
+  test("a hold that needs a change names the step, offers the chat repair and never Approve", () => {
+    const chat = {
+      verb: "chat" as const,
+      href: `/cockpit/chat/new?workflow_id=${W}`,
+      primary: true,
+      permission: "conversation:write",
+    };
+    const entry = item({
+      reason: "execution_authority_required",
+      class: "stopped",
+      severity: "critical",
+      trigger: { kind: "schedule", name: null },
+      repair: {
+        step_id: "send_email",
+        code: "dynamic_request",
+        remedy_kind: "author",
+        steps: 2,
+        candidate_id: null,
+        execution_id: null,
+      },
+      actions: [chat],
+    });
+    const lead = attentionSentence(entry, de, NOW).lead;
+    expect(lead).toContain("Schritt „send_email“ muss geändert werden");
+    expect(lead).toContain("1 weiterer Schritt");
+    expect(de(actionLabelKey(chat, entry))).toBe("Im Chat beheben");
+    const row = attentionRow(entry, de);
+    expect(row.badge.label).toBe("automation.state.repair");
+    expect(row.reason).toContain("send_email");
+    const waiting = attentionRow(
+      item({ reason: "execution_authority_unavailable", class: "stopped", actions: [] }),
+      de,
+    );
+    expect(waiting.badge.label).toBe("workflowStrip.state.grant");
+    expect(waiting.reason).toBe("Automatische Starts warten auf Freigabe");
+  });
+
   test("a version waiting for approval is said before anything is refused", () => {
     const waiting = (trigger: AttentionItem["trigger"]) =>
       item({

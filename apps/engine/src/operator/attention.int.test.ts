@@ -376,7 +376,10 @@ describe("every source, as an admin reads it", () => {
       verb: "review",
       href: `/cockpit?review=workflow:${wf.fail}`,
     });
-    expect(primary(`workflow:${wf.held}`)?.verb).toBe("review");
+    expect(primary(`workflow:${wf.held}`)).toMatchObject({
+      verb: "open",
+      href: `/cockpit/workflows/${wf.held}#workflow-automation`,
+    });
     expect(primary(`workflow:${wf.auth}`)).toMatchObject({
       verb: "reauth",
       href: `/cockpit/connectors/${brokenConnectorId}`,

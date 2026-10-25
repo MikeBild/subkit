@@ -1058,6 +1058,8 @@ const EN = {
     "{subject} is stopped: its schedule cannot be approved without a change to the workflow",
   "overview.reason.execution_authority_unavailable":
     "{subject} is stopped: its schedule waits for an approval",
+  "overview.reason.execution_authority_requiredStep":
+    "{subject} is stopped: step “{step}” must change before its automatic starts can be approved – {cause}",
   "overview.reason.execution_authority_requiredHook":
     "{subject} is stopped: it refuses calls from the webhook “{hook}” and cannot be approved without a change to the workflow",
   "overview.reason.execution_authority_unavailableHook":
@@ -5481,8 +5483,8 @@ const EN = {
   "runs.summaryTotal.other": "{count} runs",
   "runs.sheetTitle": "Run of {name}",
   "overview.short.awaiting_answer": "Waits for your answer",
-  "overview.short.execution_authority_required": "Automatic starts wait for approval",
-  "overview.short.execution_authority_unavailable": "The approval no longer fits",
+  "overview.short.execution_authority_required": "Change needed before approval",
+  "overview.short.execution_authority_unavailable": "Automatic starts wait for approval",
   "overview.short.version_awaiting_approval": "New version for production",
   "overview.short.version_needs_repair.one": "1 step blocked, first {step}",
   "overview.short.version_needs_repair.other": "{count} steps blocked, first {step}",
@@ -7232,6 +7234,8 @@ const DE: Record<TranslationKey, string> = {
     "{subject} ist angehalten: sein Zeitplan lässt sich ohne Änderung am Workflow nicht freigeben",
   "overview.reason.execution_authority_unavailable":
     "{subject} ist angehalten: sein Zeitplan wartet auf eine Freigabe",
+  "overview.reason.execution_authority_requiredStep":
+    "{subject} ist angehalten: Schritt „{step}“ muss geändert werden, bevor automatische Starts freigegeben werden können – {cause}",
   "overview.reason.execution_authority_requiredHook":
     "{subject} ist angehalten: er nimmt keine Aufrufe vom Webhook „{hook}“ an und lässt sich ohne Änderung am Workflow nicht freigeben",
   "overview.reason.execution_authority_unavailableHook":
@@ -11753,8 +11757,8 @@ const DE: Record<TranslationKey, string> = {
   "runs.summaryTotal.other": "{count} Läufe",
   "runs.sheetTitle": "Lauf von {name}",
   "overview.short.awaiting_answer": "Wartet auf deine Antwort",
-  "overview.short.execution_authority_required": "Automatische Starts warten auf Freigabe",
-  "overview.short.execution_authority_unavailable": "Die Freigabe passt nicht mehr",
+  "overview.short.execution_authority_required": "Umbau nötig vor der Freigabe",
+  "overview.short.execution_authority_unavailable": "Automatische Starts warten auf Freigabe",
   "overview.short.version_awaiting_approval": "Neue Version für Produktion",
   "overview.short.version_needs_repair.one": "1 Schritt blockiert, zuerst {step}",
   "overview.short.version_needs_repair.other": "{count} Schritte blockiert, zuerst {step}",

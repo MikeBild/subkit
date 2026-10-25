@@ -441,6 +441,33 @@ describe("a version no approval may cover", () => {
     expect(attentionLine(item as AttentionItem)).toContain('step "fetch_target"');
   });
 
+  test("a refused start of such a version stays stopped and names the step to change", async () => {
+    const wf = await workflow("held-unbounded");
+    await version(wf.workflow_id, 2, unbounded);
+    await schedule(wf.workflow_id, {
+      admission_hold: {
+        reason_code: "execution_authority_required",
+        observed_at: new Date(getTestNow()).toISOString(),
+      },
+    });
+    const [item, ...rest] = await itemsOf(wf.workflow_id);
+    expect(rest).toEqual([]);
+    expect(item).toMatchObject({
+      class: "stopped",
+      reason: "execution_authority_required",
+      repair: { step_id: "fetch_target", remedy_kind: "author", steps: 1 },
+    });
+    expect(item?.actions).toEqual([
+      {
+        verb: "chat",
+        href: `/cockpit/chat/new?workflow_id=${wf.workflow_id}`,
+        primary: true,
+        permission: "conversation:write",
+      },
+    ]);
+    expect(attentionLine(item as AttentionItem)).toContain('step "fetch_target"');
+  });
+
   test("a step a trial run unblocks leads to the panel where the trial run starts", async () => {
     const wf = await workflow("unprepared");
     await version(wf.workflow_id, 2, unprepared);
