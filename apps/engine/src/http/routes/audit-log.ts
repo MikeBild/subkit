@@ -69,6 +69,12 @@ const AuditEntrySchema = z
     after: z.unknown().nullable(),
     reason: z.string().nullable(),
     reason_redacted: z.boolean(),
+    details: z
+      .record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
+      .openapi({
+        description:
+          "Safe recorded facts of this action (versions, environment, validity, operation); never contents.",
+      }),
     metadata: z.record(z.string(), z.unknown()),
   })
   .openapi("AuditEntry");

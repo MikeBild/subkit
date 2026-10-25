@@ -47,6 +47,7 @@ export interface CreateExecutionParams {
   execution_authority_id?: string | null;
   tool_approval_id?: string | null;
   hold_writes?: boolean;
+  purpose?: "authority_preparation";
   workflow_id: string | null;
   workflow_version_id: string | null;
   source_kind: ExecutionSourceKind;
@@ -189,6 +190,9 @@ export async function createExecution(
           source_kind: params.source_kind,
           workflow_id: params.workflow_id,
           workflow_version_id: params.workflow_version_id,
+          execution_mode: params.execution_mode ?? "dev",
+          hold_writes: Boolean(params.hold_writes),
+          ...(params.purpose ? { purpose: params.purpose } : {}),
           ...(params.execution_authority_id
             ? { execution_authority_id: params.execution_authority_id }
             : {}),

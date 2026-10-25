@@ -97,3 +97,51 @@ test("historical credential IDs remain visible only as unverified recorded value
   expect(projected.recorded_api_key_id).toBe("55555555-5555-4555-8555-555555555555");
   expect(projected.recorded_session_id).toBe("66666666-6666-4666-8666-666666666666");
 });
+
+test("an approval and an activation show what they bound, never free text", () => {
+  const granted = projectAuditEntry({
+    ...entry,
+    action: "workflow.authority_granted",
+    resource_type: "workflow_execution_authority",
+    reason: "auto_mode_no_prior_approval",
+    metadata: {
+      request_source: "ui",
+      workflow_version_id: "88888888-8888-4888-8888-888888888888",
+      execution_environment: "prod",
+      valid_from: "2026-10-25T07:17:45.383Z",
+      valid_until: null,
+      max_runs: null,
+      open_ended: true,
+      effect_manifest_digest: "private-digest-canary",
+    },
+  });
+  expect(granted.details).toEqual({
+    workflow_version_id: "88888888-8888-4888-8888-888888888888",
+    execution_environment: "prod",
+    valid_from: "2026-10-25T07:17:45.383Z",
+    valid_until: null,
+    max_runs: null,
+    open_ended: true,
+  });
+  expect(granted.reason).toBe("auto_mode_no_prior_approval");
+  const saved = projectAuditEntry({
+    ...entry,
+    action: "workflow.updated",
+    resource_type: "workflow",
+    metadata: {
+      kind: "save_via_tool",
+      tool: "save_workflow_draft",
+      version: 3,
+      bypassed_prior_approval: true,
+      operation: "free text private-operation-canary\nwith a newline",
+    },
+  });
+  expect(saved.details).toEqual({
+    kind: "save_via_tool",
+    tool: "save_workflow_draft",
+    version: 3,
+    bypassed_prior_approval: true,
+  });
+  expect(JSON.stringify(saved)).not.toContain("private-operation-canary");
+  expect(projectAuditEntry(entry).details).toEqual({});
+});

@@ -29270,6 +29270,10 @@ export interface components {
             after?: unknown;
             reason: string | null;
             reason_redacted: boolean;
+            /** @description Safe recorded facts of this action (versions, environment, validity, operation); never contents. */
+            details: {
+                [key: string]: string | number | boolean | null;
+            };
             metadata: {
                 [key: string]: unknown;
             };

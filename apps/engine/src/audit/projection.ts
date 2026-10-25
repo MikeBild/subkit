@@ -13,6 +13,37 @@ const DISPLAY_FIELDS: Record<string, readonly string[]> = {
   skill: ["name", "title", "status"],
   file: ["filename", "status"],
 };
+const DETAIL_FIELDS: Record<string, readonly string[]> = {
+  "workflow.updated": [
+    "operation",
+    "kind",
+    "tool",
+    "version",
+    "workflow_version_id",
+    "previous_version_id",
+    "bypassed_prior_approval",
+  ],
+  "workflow.authority_granted": [
+    "workflow_version_id",
+    "execution_environment",
+    "valid_from",
+    "valid_until",
+    "max_runs",
+    "open_ended",
+  ],
+  "workflow.authority_revoked": ["workflow_version_id", "execution_environment"],
+  "schedule.admission.changed": ["state", "reason_code"],
+  "schedule.created": ["cron", "timezone", "execution_mode", "paused"],
+  "schedule.updated": ["cron", "timezone", "execution_mode", "paused"],
+  "execution.queued": [
+    "purpose",
+    "source_kind",
+    "workflow_version_id",
+    "execution_mode",
+    "hold_writes",
+  ],
+};
+const DETAIL_TEXT = /^[A-Za-z0-9 _.:*/+-]{1,64}$/;
 const CORRELATION_ID = /^[0-9a-f]{32}$/;
 const ACCESS_TYPES = [
   "api_key",
@@ -38,6 +69,12 @@ const SAFE_REASONS = new Set([
   "refresh_replayed",
   "manual_re_issue",
   "client_retired",
+  "auto_mode_no_prior_approval",
+  "manual_re_issue",
+  "force_save_override",
+  "playbook_updated",
+  "playbook_decision_applied",
+  "playbook_turn_settled",
 ]);
 
 function recordedId(value: unknown): string | null {
@@ -49,6 +86,26 @@ function safeDisplayValue(value: unknown): string | boolean | null {
   if (typeof value === "boolean") return value;
   if (typeof value !== "string" || value.length > 120) return null;
   return sanitizeForAudit(scrubSecrets(value) as string);
+}
+
+function detailValue(value: unknown): string | number | boolean | null | undefined {
+  if (value === null || typeof value === "boolean") return value;
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  if (typeof value !== "string") return undefined;
+  if (UUID.safeParse(value).success) return value;
+  if (!Number.isNaN(Date.parse(value)) && /^\d{4}-\d{2}-\d{2}T/.test(value)) return value;
+  return DETAIL_TEXT.test(value) ? value : undefined;
+}
+
+function recordedDetails(entry: AuditEntry): Record<string, string | number | boolean | null> {
+  const fields = DETAIL_FIELDS[entry.action] ?? [];
+  return Object.fromEntries(
+    fields.flatMap((field) => {
+      if (!Object.hasOwn(entry.metadata, field)) return [];
+      const value = detailValue(entry.metadata[field]);
+      return value === undefined ? [] : [[field, value]];
+    }),
+  );
 }
 
 function provenChanges(entry: AuditEntry): Array<{
@@ -147,6 +204,7 @@ export function projectAuditEntry(entry: AuditEntry): Record<string, unknown> {
     reason_redacted: Boolean(entry.reason && !reason),
     changed_fields: changes.map((change) => change.field),
     changes,
+    details: recordedDetails(entry),
     metadata: {
       ...(requestSource ? { request_source: requestSource } : {}),
       ...(originSource ? { origin_source: originSource } : {}),

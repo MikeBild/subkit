@@ -100,6 +100,7 @@ export async function prepareReportAuthority(
       authorization_context: authorizationContextFromPrincipal(principal),
       request_source: "ui",
       hold_writes: true,
+      purpose: "authority_preparation",
     });
   });
   if (executionId === null) return { prepared: false, reason: "preparation_in_flight" };

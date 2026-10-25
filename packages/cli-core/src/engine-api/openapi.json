@@ -31594,6 +31594,26 @@
           "reason_redacted": {
             "type": "boolean"
           },
+          "details": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "Safe recorded facts of this action (versions, environment, validity, operation); never contents."
+          },
           "metadata": {
             "type": "object",
             "additionalProperties": {}
@@ -31631,6 +31651,7 @@
           "user_agent",
           "reason",
           "reason_redacted",
+          "details",
           "metadata"
         ]
       },
