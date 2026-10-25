@@ -74,6 +74,8 @@ Bietet dir der Chat eine Freigabe an, öffnet sie denselben Dialog.
 | **Operationen und externe Ziele** | Welche Dienste und Adressen der Workflow erreicht. Jeder Dienst trägt das Logo seines Anbieters. |
 | **Gültigkeit** | Wie lange die Freigabe gilt: **7 Tage**, **30 Tage** oder **Bis auf Widerruf**. |
 
+**Wenn Freigeben fehlt.** Manche Schritte kann keine Freigabe abdecken, etwa eine Mail, deren Empfänger aus Daten stammt, oder ein Aufruf mit freier Adresse. Der Status lautet dann **Umbau nötig vor der Freigabe** und nennt den Schritt. Wähle **Im Chat beheben**: SubKit baut genau diese Schritte um, prüft sie ohne Live-Wirkungen und speichert einen Entwurf. Danach gibst du die neue Version frei. `sk workflows create`, `sk workflows update` und `sk schedules create` melden dasselbe als `automation: repair required`.
+
 ### Den Workflow starten
 
 1. Wähle auf der Workflow-Seite **Starten**.

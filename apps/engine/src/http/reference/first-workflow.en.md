@@ -74,6 +74,8 @@ If the chat offers an approval, it opens the same dialog.
 | **Operations and external targets** | Which services and addresses the workflow reaches. Each service shows its provider's logo. |
 | **Validity** | How long the approval applies: **7 days**, **30 days** or **Until revoked**. |
 
+**When Approve is missing.** Some steps cannot be covered by any approval, for example a mail whose recipient comes from data, or a request with a free address. The status then reads **Change needed before approval** and names the step. Select **Fix it in the chat**: SubKit changes exactly those steps, checks them without live effects and saves a draft. Approve the new version afterwards. `sk workflows create`, `sk workflows update` and `sk schedules create` print the same verdict as `automation: repair required`.
+
 ### Start the workflow
 
 1. On the workflow page, select **Start**.
