@@ -55,6 +55,7 @@ const ENTRY: AuditEntry = {
   workflow_id: null,
   changed_fields: [],
   changes: [],
+  details: {},
   correlation_id: null,
   action: "settings.changed",
   resource_type: "settings",
