@@ -253,9 +253,11 @@ export function formatLatestPreview(entries: LatestPreviewEntry[]): string {
 
 export const PROBE_SHAPE_MAX_ENDPOINTS_PER_CONNECTOR = 4;
 export const PROBE_SHAPE_MAX_CONNECTORS = 5;
-const PROBE_SHAPE_SUMMARY_MAX_CHARS = 360;
-const PROBE_SHAPE_MAX_OBJECT_KEYS = 8;
-const PROBE_SHAPE_MAX_DEPTH = 3;
+const PROBE_SHAPE_SUMMARY_MAX_CHARS = 2400;
+const PROBE_SHAPE_SECTION_MAX_CHARS = 8000;
+const PROBE_SHAPE_SUMMARY_MIN_CHARS = 360;
+const PROBE_SHAPE_MAX_OBJECT_KEYS = 48;
+const PROBE_SHAPE_MAX_DEPTH = 5;
 
 export interface ProbeShapeExample {
   connector_slug: string;
@@ -263,25 +265,57 @@ export interface ProbeShapeExample {
   shape: SchemaShape;
 }
 
-export function summarizeShape(shape: SchemaShape, depth = 0): string {
+export function summarizeShape(
+  shape: SchemaShape,
+  depth = 0,
+  maxDepth = PROBE_SHAPE_MAX_DEPTH,
+  grouped = false,
+): string {
   if (shape.type === "array") {
-    return `array<${summarizeShape(shape.items, depth + 1)}>`;
+    return `array<${summarizeShape(shape.items, depth + 1, maxDepth, grouped)}>`;
   }
   if (shape.type === "object") {
     const keys = Object.keys(shape.properties);
-    if (depth >= PROBE_SHAPE_MAX_DEPTH) return keys.length > 0 ? "object{…}" : "object";
+    if (depth >= maxDepth) return keys.length > 0 ? "object{…}" : "object";
     const shown = keys.slice(0, PROBE_SHAPE_MAX_OBJECT_KEYS);
     const more = keys.length > shown.length ? `, …+${keys.length - shown.length} more` : "";
     if (shown.length === 0) return "object";
-    const body = shown
-      .map((k) => {
-        const child = shape.properties[k];
-        return `${k}: ${child ? summarizeShape(child, depth + 1) : "unknown"}`;
-      })
-      .join(", ");
-    return `{ ${body}${more} }`;
+    const rendered = shown.map((k) => {
+      const child = shape.properties[k];
+      return [k, child ? summarizeShape(child, depth + 1, maxDepth, grouped) : "unknown"] as const;
+    });
+    if (grouped) {
+      const groups = new Map<string, string[]>();
+      for (const [k, summary] of rendered) {
+        const names = groups.get(summary);
+        if (names) names.push(k);
+        else groups.set(summary, [k]);
+      }
+      const body = [...groups.entries()]
+        .map(([summary, names]) => `${names.join(", ")}: ${summary}`)
+        .join(", ");
+      return `{ ${body}${more} }`;
+    }
+    return `{ ${rendered.map(([k, summary]) => `${k}: ${summary}`).join(", ")}${more} }`;
   }
   return shape.type;
+}
+
+export function fitShapeSummary(shape: SchemaShape, maxChars: number): string {
+  const attempts: Array<[number, boolean]> = [
+    [PROBE_SHAPE_MAX_DEPTH, false],
+    [PROBE_SHAPE_MAX_DEPTH, true],
+    [4, true],
+    [3, true],
+    [2, true],
+    [1, true],
+  ];
+  let last = "";
+  for (const [maxDepth, grouped] of attempts) {
+    last = summarizeShape(shape, 0, maxDepth, grouped);
+    if (last.length <= maxChars) return last;
+  }
+  return `${last.slice(0, maxChars)}…`;
 }
 
 export function formatProbeShapeExamples(examples: ProbeShapeExample[]): string | null {
@@ -299,14 +333,23 @@ export function formatProbeShapeExamples(examples: ProbeShapeExample[]): string 
     "Once a step runs in a preview, its recorded output is addressable as `$scope.<step_id>.data…`.",
     "",
   ];
-  for (const [slug, bucket] of [...byConnector.entries()].slice(0, PROBE_SHAPE_MAX_CONNECTORS)) {
+  const selected = [...byConnector.entries()]
+    .slice(0, PROBE_SHAPE_MAX_CONNECTORS)
+    .map(
+      ([slug, bucket]) => [slug, bucket.slice(0, PROBE_SHAPE_MAX_ENDPOINTS_PER_CONNECTOR)] as const,
+    );
+  const total = selected.reduce((n, [, bucket]) => n + bucket.length, 0);
+  const perEndpoint = Math.max(
+    PROBE_SHAPE_SUMMARY_MIN_CHARS,
+    Math.min(
+      PROBE_SHAPE_SUMMARY_MAX_CHARS,
+      Math.floor(PROBE_SHAPE_SECTION_MAX_CHARS / Math.max(total, 1)),
+    ),
+  );
+  for (const [slug, bucket] of selected) {
     lines.push(`## ${slug}`);
-    for (const example of bucket.slice(0, PROBE_SHAPE_MAX_ENDPOINTS_PER_CONNECTOR)) {
-      let summary = summarizeShape(example.shape);
-      if (summary.length > PROBE_SHAPE_SUMMARY_MAX_CHARS) {
-        summary = `${summary.slice(0, PROBE_SHAPE_SUMMARY_MAX_CHARS)}…`;
-      }
-      lines.push(`- ${example.endpoint_key}: ${summary}`);
+    for (const example of bucket) {
+      lines.push(`- ${example.endpoint_key}: ${fitShapeSummary(example.shape, perEndpoint)}`);
     }
   }
   return lines.join("\n");

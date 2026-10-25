@@ -123,7 +123,7 @@ function hostOf(rawUrl: string): string {
   }
 }
 
-function endpointKeyPath(path: string): string {
+export function endpointKeyPath(path: string): string {
   if (/^https?:\/\//i.test(path)) {
     try {
       return new URL(path).pathname;

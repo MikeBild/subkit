@@ -2,7 +2,7 @@ import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import type { DiscoveredEndpoint, DiscoveryResult } from "../connectors/discovery/types.ts";
 import type { Executor } from "../db/client.ts";
 import { connectors as connectorsTable, workflowExecutionAuthorities } from "../db/schema/index.ts";
-import { summarizeShape } from "../llm/core/context-assembler/formatters.ts";
+import { fitShapeSummary } from "../llm/core/context-assembler/formatters.ts";
 import { type GenerationNeed, isUserNeed } from "../llm/core/generation-abort.ts";
 import { logger } from "../logging/logger.ts";
 import { listLatestShapes } from "../schema-versions/service.ts";
@@ -11,7 +11,7 @@ import type { SchemaShape } from "../self-healing/types.ts";
 export const REGROUND_ROUTE_CAP = 120;
 const REGROUND_PINNED_ROUTES_MAX = 8;
 const REGROUND_SCHEMA_CAP_CHARS = 1_500;
-const REGROUND_SHAPE_CAP_CHARS = 1_200;
+const REGROUND_SHAPE_CAP_CHARS = 2_400;
 const REGROUND_SHAPE_SCAN = 100;
 const CHOICE_OPTIONS_MAX = 7;
 const AUTHORITY_SCAN = 500;
@@ -217,10 +217,7 @@ export function formatRegroundedEvidence(args: {
     }
   }
   for (const s of args.shapes) {
-    let summary = summarizeShape(s.shape);
-    if (summary.length > REGROUND_SHAPE_CAP_CHARS) {
-      summary = `${summary.slice(0, REGROUND_SHAPE_CAP_CHARS)}…`;
-    }
+    const summary = fitShapeSummary(s.shape, REGROUND_SHAPE_CAP_CHARS);
     lines.push(`- recorded response \`${s.connector_slug}\` ${s.endpoint_key}: ${summary}`);
   }
   if (args.raisedCapSlugs.length > 0) {

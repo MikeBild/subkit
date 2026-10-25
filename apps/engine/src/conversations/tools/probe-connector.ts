@@ -14,6 +14,7 @@ import { resolvePlaceholders } from "../../llm/substitution/resolver.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordSuccessShape } from "../../schema-versions/service.ts";
 import { DirectConnectorBindingError } from "../../tools/direct-connector-binding.ts";
+import { endpointKeyPath } from "./call-connector.ts";
 import { directConnectorGuard, preflightDirectConnector } from "./direct-connector-guard.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { resolveConversationPrincipal } from "./permission-gate.ts";
@@ -400,7 +401,7 @@ export const probeConnectorTool: ConversationTool = {
           {
             tenant_id: ctx.tenant_id,
             connector_id: connector.id,
-            endpoint_key: `${args.method} ${resolvedValue.path}`,
+            endpoint_key: `${args.method} ${endpointKeyPath(resolvedValue.path)}`,
             value: responseBody,
           },
           ctx.db,
