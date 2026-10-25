@@ -285,8 +285,8 @@ function compareDocuments(spec: Json, problems: string[], documents: Record<stri
         );
       }
     }
-    if (/Gruppe \*\*Verwaltung\*\*|heißt auf Deutsch \*\*„Verwaltung"\*\*/.test(konvention)) {
-      problems.push("COCKPIT-KONVENTION.md still names the admin group Verwaltung");
+    if (/Gruppe \*\*Installation\*\*|Admin-Gruppe heißt in beiden Sprachen/.test(konvention)) {
+      problems.push("COCKPIT-KONVENTION.md still names the admin group Installation");
     }
   }
   const designSystem = documents[".superdesign/design-system.md"];

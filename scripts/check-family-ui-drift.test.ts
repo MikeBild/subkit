@@ -35,7 +35,7 @@ describe("the family UI drift check", () => {
 
   test("a changed navigation label is reported", () => {
     const changed = spec();
-    changed.navigation.labels.de.installation = "Verwaltung";
+    changed.navigation.labels.de.installation = "Installation";
     const problems = collectFamilyUiDrift(changed, { "COCKPIT-KONVENTION.md": konvention });
     expect(problems.join("\n")).toContain("navigation.labels.de.installation");
   });
@@ -52,9 +52,9 @@ describe("the family UI drift check", () => {
     expect(collectFamilyUiDrift(spec(), { "COCKPIT-KONVENTION.md": stale }).join("\n")).toContain(
       "1760px",
     );
-    const renamed = `${konvention}\nDie Gruppe **Verwaltung** bleibt.`;
+    const renamed = `${konvention}\nDie Gruppe **Installation** bleibt.`;
     expect(collectFamilyUiDrift(spec(), { "COCKPIT-KONVENTION.md": renamed }).join("\n")).toContain(
-      "Verwaltung",
+      "Installation",
     );
   });
 
