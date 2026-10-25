@@ -78,8 +78,14 @@ Missing license assets, missing signatures or unsupported cryptography stop the 
 | Installer | What it checks | What it trusts |
 | --- | --- | --- |
 | `scripts/install.sh` | The signed checksum manifest, then the selected binary and both license assets | The pinned release public key |
-| `/install` from the engine | The binary, `LICENSE` and `THIRD_PARTY_NOTICES.txt` from the same engine bundle or an explicit mirror, against that source's checksum manifest | The engine or mirror you selected, not a GitHub release signature |
-| GitHub updater | Both signed license assets. It updates the notices beside the binary and keeps the existing ones with their checksums for rollback. | The pinned release public key |
+| `/install` from the engine | The binary, `LICENSE` and `THIRD_PARTY_NOTICES.txt` from the same engine bundle or an explicit mirror, against that source's checksum manifest | The engine or mirror you selected, not a release signature |
+| `sk update` | The signed checksum manifest of the release, then the binary and both license assets. It reads the version and files from the engine of your active profile and falls back to GitHub releases. It keeps the existing notices with their checksums for rollback. | The pinned release public key, whether the files come from your engine or from GitHub |
+
+### Update the CLI
+
+Run `sk update` to install the newest version. `sk update --check` only reports it.
+`sk` asks the engine of your active profile first, so a private repository or a missing GitHub token does not block the update. The engine serves the signed release checksums, and `sk` verifies them before it replaces the binary.
+Versions before 10.15.1 only ask GitHub. Install once again with `curl -fsSL <engine-url>/install | bash`; later updates then work without a token.
 
 Older retained versions without notice metadata cannot rebuild missing historical license files.
 Their rollback still works as before.

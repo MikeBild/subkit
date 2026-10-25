@@ -86,6 +86,16 @@ Gut zu wissen:
 - Eine Signatur bestätigt nur die Herkunft der Anfrage. Erst die Freigabe erlaubt dem Workflow das Senden.
 - Eine wiederholte Übergabe behält dieselben Daten und dieselbe ID und erneuert nur Zeitstempel und Signatur. Geänderter Inhalt unter derselben ID wird abgelehnt.
 
+### Eine E-Mail je Eintrag einer Warteschlange senden
+
+Ohne signierten Webhook, etwa wenn der Absender keinen ausgehenden Netzzugang hat, kann ein Workflow mit Zeitplan per `outbox_delivery` an den Empfänger der nächsten Nachricht aus einer Warteschlange mailen.
+Ein früherer, fester Lese-`GET`-Schritt liefert den nächsten Eintrag; der Mail-Schritt deklariert `{kind: "gmail_outbox", source_step_id, recipient_field, item_id_field, from, content_type: "text/plain", max_body_bytes, max_per_day}`. Nutze `execution_privacy: sensitive` und `max_retries: 0`.
+
+- Der Empfänger stammt nur aus dieser Antwort der Warteschlange im selben Lauf. Die Engine vergleicht ihn vor dem Senden mit der Nachricht.
+- Jeder Eintrag bekommt höchstens einen Versuch, über Workflow-Versionen und Läufe hinweg. Ein unklares Ergebnis wird nie automatisch erneut gesendet.
+- `max_per_day` begrenzt die Nachrichten innerhalb von 24 Stunden.
+- Wer die Warteschlange füllen kann, bestimmt die Empfänger. Gib nur eine Warteschlange frei, der du vertraust; der Freigabedialog nennt sie.
+
 ### Ergebnisse prüfen
 
 `GET /v1/workflows/{id}/transactional-mail-receipts?limit=20&offset=0` erfordert `workflow:read` für diesen Workflow.

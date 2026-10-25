@@ -194,6 +194,10 @@ visitor input. An authenticated on-demand invocation that merely labels its
 input as a webhook cannot use this profile. The existing fixed `gmail_report`
 profile is unchanged.
 
+`outbox_delivery` is the scheduled counterpart without a webhook: one email per
+queued message to the recipient an earlier fixed read-only GET step returned in
+the same run, one attempt per queue entry, capped by `max_per_day`.
+
 Standard Webhooks signs `webhook-id.webhook-timestamp.rawBody` using its dedicated
 secret. The existing five-minute timestamp window and event filter apply. Replays
 with identical stable input reuse the admitted execution; changed content under

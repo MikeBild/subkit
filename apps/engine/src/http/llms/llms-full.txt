@@ -521,8 +521,14 @@ Missing license assets, missing signatures or unsupported cryptography stop the 
 | Installer | What it checks | What it trusts |
 | --- | --- | --- |
 | `scripts/install.sh` | The signed checksum manifest, then the selected binary and both license assets | The pinned release public key |
-| `/install` from the engine | The binary, `LICENSE` and `THIRD_PARTY_NOTICES.txt` from the same engine bundle or an explicit mirror, against that source's checksum manifest | The engine or mirror you selected, not a GitHub release signature |
-| GitHub updater | Both signed license assets. It updates the notices beside the binary and keeps the existing ones with their checksums for rollback. | The pinned release public key |
+| `/install` from the engine | The binary, `LICENSE` and `THIRD_PARTY_NOTICES.txt` from the same engine bundle or an explicit mirror, against that source's checksum manifest | The engine or mirror you selected, not a release signature |
+| `sk update` | The signed checksum manifest of the release, then the binary and both license assets. It reads the version and files from the engine of your active profile and falls back to GitHub releases. It keeps the existing notices with their checksums for rollback. | The pinned release public key, whether the files come from your engine or from GitHub |
+
+### Update the CLI
+
+Run `sk update` to install the newest version. `sk update --check` only reports it.
+`sk` asks the engine of your active profile first, so a private repository or a missing GitHub token does not block the update. The engine serves the signed release checksums, and `sk` verifies them before it replaces the binary.
+Versions before 10.15.1 only ask GitHub. Install once again with `curl -fsSL <engine-url>/install | bash`; later updates then work without a token.
 
 Older retained versions without notice metadata cannot rebuild missing historical license files.
 Their rollback still works as before.
@@ -1253,6 +1259,12 @@ Without `--scopes`, the key gets the same scopes as your own access.
 `outcome.kind` summarizes the run, for example `succeeded`, `failed` or `held`.
 `sk executions result <execution-id>` shows the same result in your terminal.
 
+### Check whether a workflow can run automatically
+
+Saving a workflow (`POST /v1/workflows`, `PUT /v1/workflows/{id}`) and creating or changing a schedule (`POST /v1/schedules`, `PUT /v1/schedules/{id}`) answer with `automation_readiness`: `{environment, workflow_version_id, state, issues, repair_guidance}`.
+`state` is `eligible` when a person can approve recurring runs, `repair_required` when no approval can cover the named steps until they change, or `verification_unavailable`.
+Each `issues` entry names a `step_id` and a `code`; `repair_guidance` says how to change that step. A paused schedule gets no verdict.
+
 ### Page through lists
 
 Lists return one page at a time. `total` counts all matches.
@@ -1660,6 +1672,16 @@ Good to know:
 - Each original request gets at most one reply, across workflow versions and runs.
 - A signature only authenticates the request. Only the approval allows the workflow to send.
 - A retried handoff keeps the same payload and ID and renews only timestamp and signature. Changed content under the same ID is refused.
+
+### Send one email per queued message
+
+Without a signed webhook, for example when the sender has no outbound network access, a scheduled workflow can mail the recipient of the next queued message with `outbox_delivery`.
+An earlier fixed, read-only `GET` step returns the next queue entry; the email step declares `{kind: "gmail_outbox", source_step_id, recipient_field, item_id_field, from, content_type: "text/plain", max_body_bytes, max_per_day}`. Use `execution_privacy: sensitive` and `max_retries: 0`.
+
+- The recipient comes only from that queue response in the same run. The engine compares it with the message before sending.
+- Each queue entry gets at most one attempt, across workflow versions and runs. An unclear result is never resent automatically.
+- `max_per_day` caps the messages within any 24 hours.
+- Whoever can fill the queue chooses the recipients. Approve only a queue you trust; the approval dialog names it.
 
 ### Inspect outcomes
 
@@ -2680,7 +2702,7 @@ every API call.
 | `sk system` | `system:restart` | Engine process operations (restart) | `restart` |
 | `sk system-accounts` | `identity:read` | Manage system accounts | `create`, `delete`, `list` |
 | `sk tenants` | — | List tenants you belong to or switch the active one | — |
-| `sk update` | — | Update sk CLI to the latest version | — |
+| `sk update` | — | Update sk CLI to the latest version from your engine, falling back to GitHub releases | — |
 | `sk users` | `identity:read` | Manage identity users | `create`, `delete`, `get`, `invite`, `list`, `patch` |
 | `sk workflows` | `workflow:read` | Manage workflows | `create`, `delete`, `dry-run`, `get`, `history`, `invoke-snippet`, `list`, `patch`, `preview`, `restore`, `run`, `update`, `validate` |
 
@@ -4604,7 +4626,7 @@ List tenants you belong to or switch the active one
 
 ### `sk update`
 
-Update sk CLI to the latest version
+Update sk CLI to the latest version from your engine, falling back to GitHub releases
 
 - `--force` (default: false) — Force re-download even if already up to date
 - `--check` (default: false) — Check for updates without installing
@@ -5820,6 +5842,16 @@ Good to know:
 - Each original request gets at most one reply, across workflow versions and runs.
 - A signature only authenticates the request. Only the approval allows the workflow to send.
 - A retried handoff keeps the same payload and ID and renews only timestamp and signature. Changed content under the same ID is refused.
+
+### Send one email per queued message
+
+Without a signed webhook, for example when the sender has no outbound network access, a scheduled workflow can mail the recipient of the next queued message with `outbox_delivery`.
+An earlier fixed, read-only `GET` step returns the next queue entry; the email step declares `{kind: "gmail_outbox", source_step_id, recipient_field, item_id_field, from, content_type: "text/plain", max_body_bytes, max_per_day}`. Use `execution_privacy: sensitive` and `max_retries: 0`.
+
+- The recipient comes only from that queue response in the same run. The engine compares it with the message before sending.
+- Each queue entry gets at most one attempt, across workflow versions and runs. An unclear result is never resent automatically.
+- `max_per_day` caps the messages within any 24 hours.
+- Whoever can fill the queue chooses the recipients. Approve only a queue you trust; the approval dialog names it.
 
 ### Inspect outcomes
 

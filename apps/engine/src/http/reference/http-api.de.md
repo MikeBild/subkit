@@ -175,6 +175,12 @@ Ohne `--scopes` bekommt der Schlüssel dieselben Scopes wie dein eigener Zugang.
 `outcome.kind` fasst den Lauf zusammen, zum Beispiel `succeeded`, `failed` oder `held`.
 `sk executions result <execution-id>` zeigt dasselbe Ergebnis im Terminal.
 
+### Prüfen, ob ein Workflow automatisch laufen kann
+
+Beim Speichern eines Workflows (`POST /v1/workflows`, `PUT /v1/workflows/{id}`) und beim Anlegen oder Ändern eines Zeitplans (`POST /v1/schedules`, `PUT /v1/schedules/{id}`) enthält die Antwort `automation_readiness`: `{environment, workflow_version_id, state, issues, repair_guidance}`.
+`state` ist `eligible`, wenn ein Mensch wiederkehrende Läufe freigeben kann, `repair_required`, wenn keine Freigabe die genannten Schritte abdecken kann, bevor sie geändert sind, oder `verification_unavailable`.
+Jeder Eintrag in `issues` nennt `step_id` und `code`; `repair_guidance` sagt, wie du den Schritt änderst. Ein pausierter Zeitplan bekommt kein Urteil.
+
 ### Seitenweise lesen
 
 Listen liefern jeweils eine Seite. `total` zählt alle Treffer.

@@ -78,8 +78,14 @@ Fehlende Lizenzdateien, fehlende Signaturen oder nicht unterstützte Kryptografi
 | Installer | Was er prüft | Wem er vertraut |
 | --- | --- | --- |
 | `scripts/install.sh` | Das signierte Prüfsummen-Manifest, danach die gewählte Binärdatei und beide Lizenzdateien | Dem festgelegten öffentlichen Release-Schlüssel |
-| `/install` von der Engine | Die Binärdatei, `LICENSE` und `THIRD_PARTY_NOTICES.txt` aus demselben Engine-Bundle oder einem ausdrücklichen Mirror, gegen das Prüfsummen-Manifest dieser Quelle | Der gewählten Engine oder dem gewählten Mirror, nicht einer GitHub-Release-Signatur |
-| GitHub-Updater | Beide signierten Lizenzdateien. Er aktualisiert die Hinweise neben der Binärdatei und behält die bestehenden mit ihren Prüfsummen für den Rollback. | Dem festgelegten öffentlichen Release-Schlüssel |
+| `/install` von der Engine | Die Binärdatei, `LICENSE` und `THIRD_PARTY_NOTICES.txt` aus demselben Engine-Bundle oder einem ausdrücklichen Mirror, gegen das Prüfsummen-Manifest dieser Quelle | Der gewählten Engine oder dem gewählten Mirror, nicht einer Release-Signatur |
+| `sk update` | Das signierte Prüfsummen-Manifest des Releases, danach die Binärdatei und beide Lizenzdateien. Er liest Version und Dateien von der Engine deines aktiven Profils und fällt auf GitHub-Releases zurück. Die bestehenden Hinweise behält er mit ihren Prüfsummen für den Rollback. | Dem festgelegten öffentlichen Release-Schlüssel, egal ob die Dateien von deiner Engine oder von GitHub kommen |
+
+### Die CLI aktualisieren
+
+`sk update` installiert die neueste Version, `sk update --check` meldet sie nur.
+`sk` fragt zuerst die Engine deines aktiven Profils. Ein privates Repository oder ein fehlendes GitHub-Token blockiert das Update deshalb nicht. Die Engine liefert die signierten Release-Prüfsummen, und `sk` prüft sie, bevor es die Binärdatei ersetzt.
+Versionen vor 10.15.1 fragen nur GitHub. Installiere einmal neu mit `curl -fsSL <engine-url>/install | bash`; danach funktionieren Updates ohne Token.
 
 Ältere behaltene Versionen ohne Hinweis-Metadaten können fehlende historische Lizenzdateien nicht rekonstruieren.
 Das Rollback dieser Versionen funktioniert weiter wie bisher.

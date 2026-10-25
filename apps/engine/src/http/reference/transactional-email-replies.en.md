@@ -86,6 +86,16 @@ Good to know:
 - A signature only authenticates the request. Only the approval allows the workflow to send.
 - A retried handoff keeps the same payload and ID and renews only timestamp and signature. Changed content under the same ID is refused.
 
+### Send one email per queued message
+
+Without a signed webhook, for example when the sender has no outbound network access, a scheduled workflow can mail the recipient of the next queued message with `outbox_delivery`.
+An earlier fixed, read-only `GET` step returns the next queue entry; the email step declares `{kind: "gmail_outbox", source_step_id, recipient_field, item_id_field, from, content_type: "text/plain", max_body_bytes, max_per_day}`. Use `execution_privacy: sensitive` and `max_retries: 0`.
+
+- The recipient comes only from that queue response in the same run. The engine compares it with the message before sending.
+- Each queue entry gets at most one attempt, across workflow versions and runs. An unclear result is never resent automatically.
+- `max_per_day` caps the messages within any 24 hours.
+- Whoever can fill the queue chooses the recipients. Approve only a queue you trust; the approval dialog names it.
+
 ### Inspect outcomes
 
 `GET /v1/workflows/{id}/transactional-mail-receipts?limit=20&offset=0` requires `workflow:read` for that workflow.

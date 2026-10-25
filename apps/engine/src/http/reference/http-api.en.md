@@ -175,6 +175,12 @@ Without `--scopes`, the key gets the same scopes as your own access.
 `outcome.kind` summarizes the run, for example `succeeded`, `failed` or `held`.
 `sk executions result <execution-id>` shows the same result in your terminal.
 
+### Check whether a workflow can run automatically
+
+Saving a workflow (`POST /v1/workflows`, `PUT /v1/workflows/{id}`) and creating or changing a schedule (`POST /v1/schedules`, `PUT /v1/schedules/{id}`) answer with `automation_readiness`: `{environment, workflow_version_id, state, issues, repair_guidance}`.
+`state` is `eligible` when a person can approve recurring runs, `repair_required` when no approval can cover the named steps until they change, or `verification_unavailable`.
+Each `issues` entry names a `step_id` and a `code`; `repair_guidance` says how to change that step. A paused schedule gets no verdict.
+
 ### Page through lists
 
 Lists return one page at a time. `total` counts all matches.

@@ -16,7 +16,11 @@ const RollbackTargetSchema = z
   .regex(/^[A-Za-z0-9._+-]+$/, "--to= must look like a version (e.g. 4.2.0)");
 
 export const updateCommand = defineCommand({
-  meta: { name: "update", description: "Update sk CLI to the latest version" },
+  meta: {
+    name: "update",
+    description:
+      "Update sk CLI to the latest version from your engine, falling back to GitHub releases",
+  },
   args: {
     force: {
       type: "boolean",
