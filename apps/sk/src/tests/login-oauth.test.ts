@@ -186,6 +186,65 @@ describe("runCliOAuthLogin", () => {
     expect(fixture.paths).not.toContain("/v1/oauth/token");
   });
 
+  test("serves a SubKit success page at a clean URL without code or state", async () => {
+    const fixture = testClient();
+    let finalUrl = "";
+    let body = "";
+    let status = 0;
+    await runCliOAuthLogin({
+      engineUrl: ORIGIN,
+      client: fixture.client,
+      openBrowser: async (raw) => {
+        const authorization = new URL(raw);
+        const callback = authorization.searchParams.get("redirect_uri");
+        const state = authorization.searchParams.get("state");
+        if (!callback || !state) throw new Error("authorization URL is incomplete");
+        const response = await fetch(`${callback}?code=one-time-code&state=${state}`);
+        finalUrl = response.url;
+        status = response.status;
+        body = await response.text();
+        expect(finalUrl).not.toContain("one-time-code");
+        expect(finalUrl).not.toContain(state);
+        expect(body).not.toContain(state);
+      },
+    });
+    expect(status).toBe(200);
+    expect(new URL(finalUrl).search).toBe("");
+    expect(body).toContain("SubKit");
+    expect(body).toContain("Sign-in complete");
+    expect(body).toContain('name="viewport"');
+    expect(body).not.toContain("one-time-code");
+    expect(body).not.toContain("<script");
+  });
+
+  test("serves a SubKit error page at a clean URL without code or state", async () => {
+    const fixture = testClient();
+    let finalUrl = "";
+    let body = "";
+    let status = 0;
+    await expect(
+      runCliOAuthLogin({
+        engineUrl: ORIGIN,
+        client: fixture.client,
+        openBrowser: async (raw) => {
+          const callback = new URL(raw).searchParams.get("redirect_uri");
+          if (!callback) throw new Error("missing callback");
+          const response = await fetch(`${callback}?code=attacker-code&state=wrong-state`);
+          finalUrl = response.url;
+          status = response.status;
+          body = await response.text();
+        },
+      }),
+    ).rejects.toThrow("state mismatch");
+    expect(status).toBe(400);
+    expect(new URL(finalUrl).search).toBe("");
+    expect(finalUrl).not.toContain("attacker-code");
+    expect(finalUrl).not.toContain("wrong-state");
+    expect(body).toContain("Sign-in could not be completed");
+    expect(body).not.toContain("attacker-code");
+    expect(body).not.toContain("wrong-state");
+  });
+
   test("rejects cross-origin authorization-server endpoints", async () => {
     const fixture = testClient((url) => {
       if (url.pathname !== "/.well-known/oauth-authorization-server") return undefined;
