@@ -8,6 +8,7 @@ import {
 } from "@cli-core/index.ts";
 import { defineCommand } from "citty";
 import { z } from "zod";
+import { resolveProfile } from "../config.ts";
 
 const RollbackTargetSchema = z
   .string()
@@ -45,7 +46,17 @@ export const updateCommand = defineCommand({
   },
   async run({ args }) {
     const channel = args.channel === "beta" ? "beta" : ("stable" as const);
-    const config = defaultUpdaterConfig("sk", VERSION, channel);
+    const engineUrl = (() => {
+      try {
+        return resolveProfile().engine_url;
+      } catch {
+        return undefined;
+      }
+    })();
+    const config = {
+      ...defaultUpdaterConfig("sk", VERSION, channel),
+      ...(engineUrl ? { engineUrl } : {}),
+    };
 
     if (args.rollback) {
       let target: string | "previous" = "previous";

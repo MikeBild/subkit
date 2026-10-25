@@ -38,6 +38,7 @@ export interface UpdaterConfig {
   channel: "stable" | "beta";
   publicKey?: string;
   authToken?: string;
+  engineUrl?: string;
 }
 
 export interface UpdateInfo {
@@ -172,6 +173,52 @@ async function fetchLatestRelease(
   }
 }
 
+const ENGINE_NOTICES = ["LICENSE", "THIRD_PARTY_NOTICES.txt"] as const;
+
+async function fetchEngineRelease(
+  binaryName: string,
+  engineUrl: string,
+  fetchImpl: typeof fetch,
+): Promise<GitHubRelease | null> {
+  const pa = platformArch();
+  if (!pa) return null;
+  const base = engineUrl.replace(/\/+$/, "");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const health = await fetchImpl(`${base}/health`, { signal: controller.signal });
+    if (!health.ok) return null;
+    const { version } = (await health.json()) as { version?: unknown };
+    if (typeof version !== "string" || !/^\d+\.\d+\.\d+$/.test(version)) return null;
+    const signature = await fetchImpl(`${base}/install/sha256sums.sig`, {
+      signal: controller.signal,
+    });
+    if (!signature.ok) return null;
+    await signature.arrayBuffer();
+    return {
+      tag_name: `v${version}`,
+      prerelease: false,
+      body: "",
+      assets: [
+        {
+          name: `${binaryName}_${pa.os}_${pa.arch}${pa.ext}`,
+          browser_download_url: `${base}/install/${binaryName}-${pa.os}-${pa.arch}`,
+        },
+        { name: "SHA256SUMS", browser_download_url: `${base}/install/sha256sums` },
+        { name: "SHA256SUMS.sig", browser_download_url: `${base}/install/sha256sums.sig` },
+        ...ENGINE_NOTICES.map((name) => ({
+          name,
+          browser_download_url: `${base}/install/${name}`,
+        })),
+      ],
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function checkForUpdate(
   config: UpdaterConfig,
   force = false,
@@ -187,17 +234,22 @@ export async function checkForUpdate(
     }
   }
 
-  let release: Awaited<ReturnType<typeof fetchLatestRelease>>;
-  try {
-    release = await fetchLatestRelease(
-      config.githubRepo,
-      config.channel,
-      fetchImpl,
-      config.authToken,
-    );
-  } catch (err) {
-    if (force) throw err;
-    return null;
+  let release: Awaited<ReturnType<typeof fetchLatestRelease>> =
+    config.engineUrl && config.channel === "stable"
+      ? await fetchEngineRelease(config.binaryName, config.engineUrl, fetchImpl)
+      : null;
+  if (!release) {
+    try {
+      release = await fetchLatestRelease(
+        config.githubRepo,
+        config.channel,
+        fetchImpl,
+        config.authToken,
+      );
+    } catch (err) {
+      if (force) throw err;
+      return null;
+    }
   }
   if (!release) return null;
 

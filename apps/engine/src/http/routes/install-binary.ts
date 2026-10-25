@@ -6,6 +6,7 @@ import type { AppEnv } from "../openapi.ts";
 
 const DEFAULT_BINARIES_DIR = "/usr/local/share/subkit/binaries";
 const SUMS_FILENAME = "SHA256SUMS";
+const SIGNATURE_FILENAME = "SHA256SUMS.sig";
 
 const POINTER_BODY =
   "binary not bundled in this engine image — pull the engine-with-cli variant or fetch from https://github.com/MikeBild/subkit/releases\n";
@@ -99,6 +100,27 @@ const sumsRoute = createRoute({
   },
 });
 
+const signatureRoute = createRoute({
+  method: "get",
+  path: "/install/sha256sums.sig",
+  tags: ["install"],
+  summary: "Release signature of the bundled SHA256SUMS",
+  description:
+    "Returns the Ed25519 release signature over /install/sha256sums, so `sk update` verifies an engine-served binary exactly like a GitHub release asset. 404 when the bundle or its signature is absent.",
+  responses: {
+    200: {
+      description: "Detached Ed25519 signature",
+      content: {
+        "application/octet-stream": { schema: z.string().openapi({ format: "binary" }) },
+      },
+    },
+    404: {
+      description: "Signature unavailable",
+      content: { "text/plain": { schema: z.string() } },
+    },
+  },
+});
+
 const assetRoute = createRoute({
   method: "get",
   path: "/install/{asset}",
@@ -135,6 +157,21 @@ export function registerInstallBinaryRoute(app: OpenAPIHono<AppEnv>): void {
       return c.text(POINTER_BODY, 404, POINTER_HEADERS);
     }
     return c.text(manifest.sumsRaw, 200, {
+      "cache-control": "public, max-age=3600",
+    });
+  });
+
+  app.openapi(signatureRoute, async (c) => {
+    const dir = getBinariesDir();
+    let signature: Buffer;
+    try {
+      signature = await fs.readFile(path.join(dir, SIGNATURE_FILENAME));
+    } catch {
+      return c.text(POINTER_BODY, 404, POINTER_HEADERS);
+    }
+    return c.body(new Uint8Array(signature), 200, {
+      "content-type": "application/octet-stream",
+      "content-length": String(signature.length),
       "cache-control": "public, max-age=3600",
     });
   });

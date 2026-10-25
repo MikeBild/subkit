@@ -784,3 +784,60 @@ describe("prepareDownloadedBinary", () => {
     }
   });
 });
+
+describe("engine update source", () => {
+  const engine = "https://engine.example.test/";
+  const pa = platformArch()!;
+
+  test("a signed bundle on the configured engine is the stable update, without GitHub", async () => {
+    const seen: string[] = [];
+    const fetchImpl = makeFetchImpl((url) => {
+      seen.push(url);
+      if (url === "https://engine.example.test/health")
+        return Response.json({ status: "ok", version: "2.0.0" });
+      if (url === "https://engine.example.test/install/sha256sums.sig")
+        return new Response(new Uint8Array(64));
+      return new Response("unexpected", { status: 500 });
+    });
+    const info = await checkForUpdate(makeConfig({ engineUrl: engine }), true, fetchImpl);
+    expect(info?.version).toBe("2.0.0");
+    expect(info?.assets).toContainEqual({
+      name: `test-bin_${pa.os}_${pa.arch}${pa.ext}`,
+      url: `https://engine.example.test/install/test-bin-${pa.os}-${pa.arch}`,
+    });
+    expect(info?.assets.map((asset) => asset.name)).toEqual(
+      expect.arrayContaining([
+        "SHA256SUMS",
+        "SHA256SUMS.sig",
+        "LICENSE",
+        "THIRD_PARTY_NOTICES.txt",
+      ]),
+    );
+    expect(seen.some((url) => url.includes("api.github.com"))).toBe(false);
+  });
+
+  test("an engine without the release signature falls back to GitHub", async () => {
+    const fetchImpl = makeFetchImpl((url) => {
+      if (url.endsWith("/health")) return Response.json({ version: "2.0.0" });
+      if (url.endsWith("/install/sha256sums.sig")) return new Response("absent", { status: 404 });
+      if (url.includes("api.github.com")) return Response.json(makeGitHubResponse("v3.0.0"));
+      return new Response("unexpected", { status: 500 });
+    });
+    const info = await checkForUpdate(makeConfig({ engineUrl: engine }), true, fetchImpl);
+    expect(info?.version).toBe("3.0.0");
+  });
+
+  test("an engine-served binary still needs the release signature", async () => {
+    const release = buildSignedRelease({
+      binaryName: "test-bin",
+      binaryBytes: Buffer.from("engine-binary"),
+      tag: "v2.0.0",
+    });
+    const forged = makeFetchImpl((url) =>
+      url.endsWith("/SHA256SUMS.sig") ? new Response(new Uint8Array(64)) : release.fetchImpl(url),
+    );
+    await expect(performUpdate(makeConfig(), release.info, forged)).rejects.toThrow(
+      "signature verification failed",
+    );
+  });
+});

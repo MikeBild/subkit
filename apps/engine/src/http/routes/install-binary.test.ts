@@ -294,3 +294,18 @@ describe("manifest cache", () => {
     expect(hit.headers.get("x-subkit-sha256")).toBe(sha);
   });
 });
+
+describe("GET /install/sha256sums.sig", () => {
+  test("serves the release signature beside the bundled sums, and 404 without it", async () => {
+    const bundle = await mkBundle({ sk_darwin_arm64: new Uint8Array([1, 2, 3]) });
+    activeDir = bundle.dir;
+    process.env.SUBKIT_BINARIES_DIR = bundle.dir;
+    const missing = await buildApp().request("/install/sha256sums.sig");
+    expect(missing.status).toBe(404);
+    const signature = new Uint8Array(64).fill(7);
+    await fs.writeFile(path.join(bundle.dir, "SHA256SUMS.sig"), signature);
+    const served = await buildApp().request("/install/sha256sums.sig");
+    expect(served.status).toBe(200);
+    expect(new Uint8Array(await served.arrayBuffer())).toEqual(signature);
+  });
+});

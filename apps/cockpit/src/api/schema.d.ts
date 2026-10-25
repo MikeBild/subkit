@@ -302,6 +302,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/install/sha256sums.sig": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Release signature of the bundled SHA256SUMS
+         * @description Returns the Ed25519 release signature over /install/sha256sums, so `sk update` verifies an engine-served binary exactly like a GitHub release asset. 404 when the bundle or its signature is absent.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Detached Ed25519 signature */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/octet-stream": string;
+                    };
+                };
+                /** @description Signature unavailable */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/install/{asset}": {
         parameters: {
             query?: never;
