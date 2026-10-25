@@ -253,9 +253,9 @@ export function formatLatestPreview(entries: LatestPreviewEntry[]): string {
 
 export const PROBE_SHAPE_MAX_ENDPOINTS_PER_CONNECTOR = 4;
 export const PROBE_SHAPE_MAX_CONNECTORS = 5;
-const PROBE_SHAPE_SUMMARY_MAX_CHARS = 360;
-const PROBE_SHAPE_MAX_OBJECT_KEYS = 8;
-const PROBE_SHAPE_MAX_DEPTH = 3;
+const PROBE_SHAPE_SUMMARY_MAX_CHARS = 2400;
+const PROBE_SHAPE_MAX_OBJECT_KEYS = 48;
+const PROBE_SHAPE_MAX_DEPTH = 5;
 
 export interface ProbeShapeExample {
   connector_slug: string;

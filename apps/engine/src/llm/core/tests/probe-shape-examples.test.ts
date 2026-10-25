@@ -168,6 +168,48 @@ describe.skipIf(skip)("loadProbeShapeExamples — tenant isolation", () => {
 });
 
 describe("formatProbeShapeExamples / summarizeShape — pure render", () => {
+  test("a probed field survives in a wide response regardless of key order", () => {
+    const names = [
+      "apparent_temperature_max",
+      "apparent_temperature_min",
+      "precipitation_sum",
+      "rain_sum",
+      "showers_sum",
+      "snowfall_sum",
+      "sunrise",
+      "sunset",
+      "temperature_2m_max",
+      "temperature_2m_min",
+      "time",
+      "weather_code",
+      "wind_speed_10m_max",
+    ];
+    const series = { type: "array", items: { type: "number" } } as const;
+    const daily = {
+      type: "object",
+      properties: Object.fromEntries(names.map((n) => [n, series])),
+    } as const;
+    const section = formatProbeShapeExamples([
+      {
+        connector_slug: "open-meteo",
+        endpoint_key: "GET /v1/forecast",
+        shape: {
+          type: "object",
+          properties: {
+            daily,
+            daily_units: daily,
+            elevation: { type: "number" },
+            latitude: { type: "number" },
+            timezone: { type: "string" },
+          },
+        },
+      },
+    ]);
+    expect(section).toContain("temperature_2m_min: array<number>");
+    expect(section).toContain("wind_speed_10m_max: array<number>");
+    expect(section).toContain("timezone: string");
+  });
+
   test("summarizeShape renders a compact field-name summary", () => {
     expect(
       summarizeShape({

@@ -11,7 +11,7 @@ import type { SchemaShape } from "../self-healing/types.ts";
 export const REGROUND_ROUTE_CAP = 120;
 const REGROUND_PINNED_ROUTES_MAX = 8;
 const REGROUND_SCHEMA_CAP_CHARS = 1_500;
-const REGROUND_SHAPE_CAP_CHARS = 1_200;
+const REGROUND_SHAPE_CAP_CHARS = 2_400;
 const REGROUND_SHAPE_SCAN = 100;
 const CHOICE_OPTIONS_MAX = 7;
 const AUTHORITY_SCAN = 500;
