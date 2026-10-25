@@ -57,13 +57,36 @@ function validateEndpoint(raw: string, origin: string, expectedPath: string): st
   return endpoint.toString();
 }
 
-function successHtml(): string {
-  return "<!doctype html><meta charset=utf-8><title>SubKit CLI</title><p>Sign-in complete. You can close this tab.</p>";
+const DONE_PATH = "/signed-in";
+const FAILED_PATH = "/sign-in-failed";
+const RESULT_GRACE_MS = 5_000;
+
+const PAGE_STYLE =
+  ":root{color-scheme:light dark;--background:#fff;--foreground:#020817;--card:#fff;--muted-foreground:#64748b;--border:#e2e8f0;--primary:#0f172a;--primary-foreground:#f8fafc;--success:#059669;--destructive:#dc2626}" +
+  "@media(prefers-color-scheme:dark){:root{--background:#020817;--foreground:#f8fafc;--card:#0b1220;--muted-foreground:#94a3b8;--border:#1e293b;--primary:#f8fafc;--primary-foreground:#0f172a}}" +
+  "*{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;background:var(--background);color:var(--foreground);font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}" +
+  "main{width:100%;max-width:26rem;padding:32px 24px;border:1px solid var(--border);border-radius:12px;background:var(--card);text-align:center}" +
+  "svg{display:block;margin:0 auto 20px}h1{margin:0 0 8px;font-size:1.25rem;font-weight:600}p{margin:0;color:var(--muted-foreground);line-height:1.5}" +
+  ".status{display:inline-block;margin-bottom:12px;font-size:.875rem;font-weight:500}.ok{color:var(--success)}.bad{color:var(--destructive)}";
+
+const LOGO_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="40" height="40" role="img" aria-label="SubKit"><rect width="32" height="32" rx="7" fill="var(--primary)"/><g fill="none" stroke="var(--primary-foreground)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" transform="translate(5 5) scale(0.9167)"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/></g></svg>';
+
+function resultHtml(ok: boolean): string {
+  const status = ok ? "Signed in" : "Sign-in failed";
+  const title = ok ? "Sign-in complete" : "Sign-in could not be completed";
+  const body = ok
+    ? "You are signed in to the SubKit CLI. Close this tab and return to the CLI."
+    : "The SubKit CLI did not receive a valid sign-in. Close this tab, return to the CLI and run sk login again.";
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>SubKit CLI</title><style>${PAGE_STYLE}</style></head><body><main>${LOGO_SVG}<span class="status ${ok ? "ok" : "bad"}">${status}</span><h1>${title}</h1><p>${body}</p></main></body></html>`;
 }
 
-function errorHtml(): string {
-  return "<!doctype html><meta charset=utf-8><title>SubKit CLI</title><p>Sign-in could not be completed. Return to the terminal.</p>";
-}
+const RESULT_HEADERS = {
+  "cache-control": "no-store",
+  "content-type": "text/html; charset=utf-8",
+  "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:",
+  "referrer-policy": "no-referrer",
+} as const;
 
 async function startCallbackServer(
   timeoutMs: number,
@@ -83,9 +106,32 @@ async function startCallbackServer(
   const timer = setTimeout(() => rejectCallback?.(new Error("OAuth login timed out")), timeoutMs);
   timer.unref?.();
 
+  let settle: (() => void) | undefined;
+  let resultServed = false;
+  const settleOnce = () => {
+    const run = settle;
+    settle = undefined;
+    run?.();
+  };
+
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    if (req.method === "GET" && (url.pathname === DONE_PATH || url.pathname === FAILED_PATH)) {
+      const ok = url.pathname === DONE_PATH;
+      res.writeHead(ok ? 200 : 400, RESULT_HEADERS);
+      res.once("finish", () => {
+        resultServed = true;
+        settleOnce();
+      });
+      res.end(resultHtml(ok));
+      return;
+    }
     if (req.method !== "GET" || url.pathname !== CALLBACK_PATH) {
+      res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      res.end("Not found");
+      return;
+    }
+    if (settle || resultServed) {
       res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
       res.end("Not found");
       return;
@@ -93,28 +139,28 @@ async function startCallbackServer(
     const error = url.searchParams.get("error");
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
-    if (error || !code || !state || state !== expectedState) {
-      res.writeHead(400, {
-        "cache-control": "no-store",
-        "content-type": "text/html; charset=utf-8",
-      });
-      res.end(errorHtml());
-      clearTimeout(timer);
-      rejectCallback?.(
-        new Error(
-          error
-            ? `OAuth authorization failed: ${error}`
-            : state && state !== expectedState
-              ? "OAuth callback state mismatch"
-              : "OAuth callback is incomplete",
-        ),
-      );
-      return;
-    }
-    res.writeHead(200, { "cache-control": "no-store", "content-type": "text/html; charset=utf-8" });
-    res.end(successHtml());
+    const failed = Boolean(error || !code || !state || state !== expectedState);
     clearTimeout(timer);
-    resolveCallback?.({ code, state });
+    settle = failed
+      ? () =>
+          rejectCallback?.(
+            new Error(
+              error
+                ? `OAuth authorization failed: ${error}`
+                : state && state !== expectedState
+                  ? "OAuth callback state mismatch"
+                  : "OAuth callback is incomplete",
+            ),
+          )
+      : () => resolveCallback?.({ code: code as string, state: state as string });
+    const grace = setTimeout(settleOnce, RESULT_GRACE_MS);
+    grace.unref?.();
+    res.writeHead(303, {
+      "cache-control": "no-store",
+      "referrer-policy": "no-referrer",
+      location: failed ? FAILED_PATH : DONE_PATH,
+    });
+    res.end();
   });
 
   await new Promise<void>((resolve, reject) => {
