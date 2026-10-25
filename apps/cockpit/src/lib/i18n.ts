@@ -395,6 +395,11 @@ const EN = {
   "authority.content.scope":
     "Only new revisions of these items, up to 1 MB each, may be published to this site. Other items and removals are excluded.",
   "authority.content.targets": "Content and publication destination",
+  "authority.outbox.recipients": "Messages from a queue",
+  "authority.outbox.delivery":
+    "From {from} to the address in {field} of step {source}'s answer; one message per {item}, at most {bytes} request bytes and {perDay} messages a day.",
+  "authority.outbox.scope":
+    "Authorizes one email per queued message to whichever recipient that queue returns in the same run. Whoever can fill the queue chooses the recipients, so approve only a queue you trust. No CC/BCC and no automatic resend after an uncertain result.",
   "authority.transactional.recipients": "Replies to signed requests",
   "authority.transactional.delivery":
     "From {from} to the address in {field}; event {event} from {eventField}, request ID from {requestField}, at most {bytes} request bytes; signed source {hook}.",
@@ -6562,6 +6567,11 @@ const DE: Record<TranslationKey, string> = {
   "authority.content.scope":
     "Nur neue Versionen dieser Inhalte mit jeweils höchstens 1 MB dürfen auf dieser Website veröffentlicht werden. Weitere Inhalte und Löschungen sind ausgeschlossen.",
   "authority.content.targets": "Betroffene Inhalte und Veröffentlichungsziel",
+  "authority.outbox.recipients": "Nachrichten aus einer Warteschlange",
+  "authority.outbox.delivery":
+    "Von {from} an die Adresse aus {field} in der Antwort von Schritt {source}; eine Nachricht je {item}, höchstens {bytes} Anfrage-Bytes und {perDay} Nachrichten pro Tag.",
+  "authority.outbox.scope":
+    "Erlaubt eine E-Mail je Eintrag der Warteschlange an den Empfänger, den diese Warteschlange im selben Lauf liefert. Wer die Warteschlange füllen kann, bestimmt die Empfänger – gib nur eine Warteschlange frei, der du vertraust. Kein CC/BCC und kein automatischer Neuversand bei unklarem Ergebnis.",
   "authority.transactional.recipients": "Antworten auf signierte Anfragen",
   "authority.transactional.delivery":
     "Von {from} an die Adresse aus {field}; Ereignis {event} aus {eventField}, Anfrage-ID aus {requestField}, höchstens {bytes} Anfrage-Bytes; signierte Quelle {hook}.",

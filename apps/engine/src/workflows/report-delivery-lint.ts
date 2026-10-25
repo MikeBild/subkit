@@ -52,7 +52,7 @@ function sendTargets(step: RequestStep, baseUrls: ReadonlyArray<string>): string
 }
 
 function isGovernedReportDelivery(step: RequestStep, baseUrls: ReadonlyArray<string>): boolean {
-  if (step.transactional_delivery && !step.report_delivery) return false;
+  if ((step.transactional_delivery || step.outbox_delivery) && !step.report_delivery) return false;
   if (step.report_delivery) return true;
   return sendTargets(step, baseUrls).some((target) => supportsReportDelivery(step, target));
 }

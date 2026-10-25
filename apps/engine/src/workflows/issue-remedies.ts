@@ -185,7 +185,10 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
     'Declare the recipient on the step instead: `report_delivery: {kind: "gmail_report", to, from, ' +
     "content_type}`. A human approves that statement and the runtime still decodes the real message " +
     "and compares the recipient byte for byte, so a declaration that does not match is refused at " +
-    "the wire. The alternative is to make the branch reachable without the held write.",
+    "the wire. The alternative is to make the branch reachable without the held write. When the " +
+    "recipient changes every run because an earlier fixed GET step reads it from a queue, declare " +
+    "`outbox_delivery` instead (skill workflow-authoring-transactional-mail); a fixed " +
+    "`report_delivery` would send every message to that one address.",
   report_delivery_contradicted:
     "This step declares its recipient in `report_delivery`, and a preparation of this very " +
     "version reached the step with a message that contradicts it: either the message is outside " +

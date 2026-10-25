@@ -30,6 +30,7 @@ import {
   previewWorkflowAuthority,
   sameBoundaryReplacement,
 } from "../workflows/execution-authorities.ts";
+import { assertOutboxMessage } from "../workflows/outbox-delivery-boundary.ts";
 import { assertReadPath } from "../workflows/read-path-boundary.ts";
 import { assertReadQuery, assertReportDelivery } from "../workflows/report-delivery-boundary.ts";
 import { reportBoundariesFromManifest } from "../workflows/report-delivery-proposal.ts";
@@ -49,7 +50,11 @@ import { resolveDefinition } from "./resolve-definition.ts";
 import { isSensitivePayload, recoverExecutionPayload } from "./sensitive-payload.ts";
 import { createExecution } from "./state.ts";
 import { assertToolApprovalDispatch } from "./tool-approval-dispatch.ts";
-import { reserveTransactionalMail, transactionalWebhookAvailable } from "./transactional-mail.ts";
+import {
+  mailsReservedWithinDay,
+  reserveTransactionalMail,
+  transactionalWebhookAvailable,
+} from "./transactional-mail.ts";
 import type { RequestAuthoritySnapshot } from "./types.ts";
 
 const requestSnapshotSchema = z
@@ -359,7 +364,9 @@ export async function assertExecutionAuthorityCurrent(
     governing.push(root);
   }
   if (!authorityId) return;
-  let pendingMail: { request_id: string; step_id: string } | undefined;
+  let pendingMail:
+    | { request_id: string; step_id: string; request_source: "webhook" | "scheduler" }
+    | undefined;
   for (const row of governing) {
     if (row.abort_requested_at || !["queued", "running"].includes(row.status))
       fail(
@@ -410,6 +417,7 @@ export async function assertExecutionAuthorityCurrent(
       connector_id: _connector,
       request_max_attempts: _attempts,
       requires_transactional_authority: _transactional,
+      outbox_source: outboxSource,
       principal_id: _principal,
       referenced_authorities: referencedAuthorities,
       ...authoritySnapshot
@@ -475,7 +483,41 @@ export async function assertExecutionAuthorityCurrent(
         recoverExecutionPayload(execution.input, tenant_id, execution_id),
         snapshot.request,
       );
-      pendingMail = { request_id: event.request_id, step_id: effect.step_id };
+      pendingMail = {
+        request_id: event.request_id,
+        step_id: effect.step_id,
+        request_source: "webhook",
+      };
+    }
+    if (effect.outbox_delivery) {
+      if (
+        execution.parent_execution_id ||
+        execution.authority_root_execution_id ||
+        snapshot.request_max_attempts !== 1
+      )
+        fail(
+          "execution_authority_changed",
+          "Outbox delivery requires its reviewed recurring authority and one dispatch attempt",
+        );
+      const message = assertOutboxMessage(
+        effect.outbox_delivery,
+        boundary.workflow_id,
+        outboxSource,
+        snapshot.request,
+      );
+      if (
+        (await mailsReservedWithinDay(db, tenant_id, boundary.workflow_id)) >=
+        effect.outbox_delivery.max_per_day
+      )
+        fail(
+          "execution_authority_changed",
+          "Outbox delivery reached its reviewed daily limit; nothing was sent",
+        );
+      pendingMail = {
+        request_id: message.request_id,
+        step_id: effect.step_id,
+        request_source: "scheduler",
+      };
     }
 
     if (effect.content_publication?.kind === "content_revision")
@@ -540,12 +582,13 @@ export async function assertExecutionAuthorityCurrent(
       "execution_authority_changed",
       "the reserved execution no longer matches its approved effect boundary",
     );
-  if (pendingMail)
-    await reserveTransactionalMail(db, {
-      tenant_id,
-      workflow_id: boundary.workflow_id,
-      execution_id,
-      ...pendingMail,
-    });
+  if (pendingMail) {
+    const { request_source, ...mail } = pendingMail;
+    await reserveTransactionalMail(
+      db,
+      { tenant_id, workflow_id: boundary.workflow_id, execution_id, ...mail },
+      request_source,
+    );
+  }
   return { redirect: "manual" };
 }

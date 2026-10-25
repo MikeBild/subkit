@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { FileRefSchema } from "../api/files-schemas.ts";
+import { OutboxDeliveryBoundarySchema } from "./outbox-delivery-boundary.ts";
 import { ReportDeliveryBoundarySchema } from "./report-delivery-boundary.ts";
 import { RequestBoundaryScopeSchema } from "./request-boundary.ts";
 import { StorageScopeSchema } from "./storage-boundary.ts";
@@ -272,6 +273,7 @@ export const RequestStepSchema = z
     boundary: RequestBoundaryScopeSchema.optional(),
     report_delivery: ReportDeliveryBoundarySchema.optional(),
     transactional_delivery: TransactionalDeliveryBoundarySchema.optional(),
+    outbox_delivery: OutboxDeliveryBoundarySchema.optional(),
     headers: z
       .union([
         z.record(z.string(), z.string()),

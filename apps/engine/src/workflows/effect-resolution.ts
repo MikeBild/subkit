@@ -28,6 +28,7 @@ import {
   type ResolvedCall,
   type ResolvedEffectBinding,
 } from "./effect-manifest.ts";
+import { outboxSourceStep, supportsOutboxDelivery } from "./outbox-delivery-boundary.ts";
 import { factConnector, factVersion, type WorkflowReadFacts } from "./read-facts.ts";
 import { readPathBoundary, readPathTarget } from "./read-path-boundary.ts";
 import {
@@ -201,7 +202,8 @@ export async function resolveWorkflowEffectManifest(
           !binding.content_publication) ||
         (binding.target === "https://gmail.googleapis.com/gmail/v1/users/me/messages/send" &&
           !binding.report_delivery &&
-          !binding.transactional_delivery),
+          !binding.transactional_delivery &&
+          !binding.outbox_delivery),
     ),
     ...(options.include_review
       ? { execution_shape: authorityExecutionShape(definition, bindings, callShapes) }
@@ -333,7 +335,17 @@ async function resolveBindings(
       restDriver && supportsTransactionalDelivery(step, target)
         ? step.transactional_delivery
         : undefined;
-    if (reportEvidence === undefined && supportsReportDelivery(step, target) && !transactional)
+    const outbox =
+      restDriver && supportsOutboxDelivery(step, target) && outboxSourceStep(definition, step)
+        ? step.outbox_delivery
+        : undefined;
+    if (outbox && definition.execution_privacy !== "sensitive") unavailable_steps.push(step.id);
+    if (
+      reportEvidence === undefined &&
+      supportsReportDelivery(step, target) &&
+      !transactional &&
+      !outbox
+    )
       reportEvidence = await proposeReportDeliveryBoundaries(input, db, options.facts?.history);
     const statedDelivery =
       step.report_delivery && supportsReportDelivery(step, target) ? step.report_delivery : null;
@@ -361,7 +373,7 @@ async function resolveBindings(
       const profile = stricter
         ? contradicted
           ? "report_delivery_contradicted"
-          : declaredDelivery || transactional
+          : declaredDelivery || transactional || outbox
             ? null
             : profileRefusal(step.id, contentShape !== null, reportEvidence)
         : undefined;
@@ -397,9 +409,11 @@ async function resolveBindings(
       ...(storage ? { storage } : {}),
       ...(boundary ? { boundary } : {}),
       ...(transactional ? { transactional_delivery: transactional } : {}),
+      ...(outbox ? { outbox_delivery: outbox } : {}),
       ...(declaredDelivery
         ? { report_delivery: declaredDelivery }
         : !transactional &&
+            !outbox &&
             !contradicted &&
             reportEvidence?.boundaries[step.id] &&
             supportsReportDelivery(step, target)

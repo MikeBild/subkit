@@ -34,6 +34,7 @@ export interface RequestAuthoritySnapshot {
   requires_review?: boolean;
   request_max_attempts?: number;
   requires_transactional_authority?: boolean;
+  outbox_source?: { ok: boolean; recipient: unknown; item_id: unknown };
   principal_id?: string | null;
   request?: MaterializedRequest;
   step_id: string;

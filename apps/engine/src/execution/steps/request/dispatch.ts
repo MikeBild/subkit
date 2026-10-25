@@ -68,6 +68,7 @@ import {
   inspectContentRevisionRequest,
   inspectContentRevisionResponse,
 } from "../../../workflows/content-publication-boundary.ts";
+import { outboxSourceFacts } from "../../../workflows/outbox-delivery-boundary.ts";
 import {
   GMAIL_SEND_TARGET,
   inspectReportMessage,
@@ -641,7 +642,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     ownCredentials,
   );
   if (
-    p.step.transactional_delivery &&
+    (p.step.transactional_delivery || p.step.outbox_delivery) &&
     result.status === "succeeded" &&
     !isConfirmedTransactionalMail(result)
   )
@@ -653,7 +654,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         message: "Gmail did not confirm a message ID; inspect the receipt before any resend",
       },
     };
-  if (p.step.transactional_delivery && !p.ctx.hold_writes)
+  if ((p.step.transactional_delivery || p.step.outbox_delivery) && !p.ctx.hold_writes)
     await settleTransactionalMail(
       p.ctx.db,
       {
@@ -719,7 +720,17 @@ async function dispatchRequestStep(
       activeConnector?.base_url,
     ),
     request_max_attempts: max_attempts,
-    ...(p.step.transactional_delivery ? { requires_transactional_authority: true } : {}),
+    ...(p.step.transactional_delivery || p.step.outbox_delivery
+      ? { requires_transactional_authority: true }
+      : {}),
+    ...(p.step.outbox_delivery
+      ? {
+          outbox_source: outboxSourceFacts(
+            p.step.outbox_delivery,
+            resolvedScope?.[p.step.outbox_delivery.source_step_id],
+          ),
+        }
+      : {}),
     principal_id: p.ctx.principal?.id ?? null,
     configuration_digest: configurationDigest,
     credential_id: credential.credential_id,
@@ -733,7 +744,10 @@ async function dispatchRequestStep(
   };
   const beforeDispatch = async (credential = credentialSnapshot, request?: MaterializedRequest) => {
     try {
-      if (p.step.transactional_delivery && !p.ctx.before_external_request)
+      if (
+        (p.step.transactional_delivery || p.step.outbox_delivery) &&
+        !p.ctx.before_external_request
+      )
         throw Object.assign(
           new Error("Transactional email requires execution authority enforcement"),
           { code: "execution_authority_unavailable" },

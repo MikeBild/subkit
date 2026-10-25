@@ -57,6 +57,10 @@ export const PreparedDispatchSnapshotSchema = z
     connector_id: z.string().uuid().nullable(),
     requires_review: z.boolean(),
     requires_transactional_authority: z.boolean().optional(),
+    outbox_source: z
+      .object({ ok: z.boolean(), recipient: z.unknown(), item_id: z.unknown() })
+      .strict()
+      .optional(),
     request_max_attempts: z.number().int().min(1).max(20),
     principal_id: z.string().uuid().nullable(),
     configuration_digest: z.string().regex(/^[a-f0-9]{64}$/),

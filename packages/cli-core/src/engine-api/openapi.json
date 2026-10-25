@@ -6288,6 +6288,68 @@
                   ],
                   "additionalProperties": false
                 },
+                "outbox_delivery": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "gmail_outbox"
+                      ]
+                    },
+                    "source_step_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "description": "Earlier GET request step of this workflow that reads exactly one queued message from a fixed, approved address; the recipient is only ever taken from its response in the same run"
+                    },
+                    "recipient_field": {
+                      "type": "string",
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*){0,7}$",
+                      "description": "Dot path inside the source step's response data that holds the one recipient address, for example email or item.email"
+                    },
+                    "item_id_field": {
+                      "type": "string",
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*){0,7}$",
+                      "description": "Dot path inside the source step's response data that identifies the queued message; one dispatch attempt per workflow and item"
+                    },
+                    "from": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\\.[A-Za-z]{2,63}$"
+                    },
+                    "content_type": {
+                      "type": "string",
+                      "enum": [
+                        "text/plain"
+                      ]
+                    },
+                    "max_body_bytes": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 16384,
+                      "description": "Maximum UTF-8 serialized Gmail JSON request bytes"
+                    },
+                    "max_per_day": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 500,
+                      "description": "Most messages this workflow may send within any 24 hours"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "source_step_id",
+                    "recipient_field",
+                    "item_id_field",
+                    "from",
+                    "content_type",
+                    "max_body_bytes",
+                    "max_per_day"
+                  ],
+                  "additionalProperties": false
+                },
                 "content_publication": {
                   "anyOf": [
                     {
@@ -8826,6 +8888,68 @@
               "from",
               "content_type",
               "max_body_bytes"
+            ],
+            "additionalProperties": false
+          },
+          "outbox_delivery": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "gmail_outbox"
+                ]
+              },
+              "source_step_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Earlier GET request step of this workflow that reads exactly one queued message from a fixed, approved address; the recipient is only ever taken from its response in the same run"
+              },
+              "recipient_field": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*){0,7}$",
+                "description": "Dot path inside the source step's response data that holds the one recipient address, for example email or item.email"
+              },
+              "item_id_field": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*){0,7}$",
+                "description": "Dot path inside the source step's response data that identifies the queued message; one dispatch attempt per workflow and item"
+              },
+              "from": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\\.[A-Za-z]{2,63}$"
+              },
+              "content_type": {
+                "type": "string",
+                "enum": [
+                  "text/plain"
+                ]
+              },
+              "max_body_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 16384,
+                "description": "Maximum UTF-8 serialized Gmail JSON request bytes"
+              },
+              "max_per_day": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 500,
+                "description": "Most messages this workflow may send within any 24 hours"
+              }
+            },
+            "required": [
+              "kind",
+              "source_step_id",
+              "recipient_field",
+              "item_id_field",
+              "from",
+              "content_type",
+              "max_body_bytes",
+              "max_per_day"
             ],
             "additionalProperties": false
           },

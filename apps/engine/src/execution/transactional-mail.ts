@@ -61,6 +61,7 @@ export async function reserveTransactionalMail(
     execution_id: string;
     step_id: string;
   },
+  request_source: "webhook" | "scheduler" = "webhook",
 ) {
   await db.transaction(async (tx) => {
     const [receipt] = await tx
@@ -84,7 +85,7 @@ export async function reserveTransactionalMail(
         actor_type: "system",
         result: "success",
         metadata: {
-          request_source: "webhook",
+          request_source,
           step_id: input.step_id,
           request_id: input.request_id,
         },
@@ -92,6 +93,24 @@ export async function reserveTransactionalMail(
       tx,
     );
   });
+}
+
+export async function mailsReservedWithinDay(
+  db: Executor,
+  tenantId: string,
+  workflowId: string,
+): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(transactionalMailReceipts)
+    .where(
+      and(
+        eq(transactionalMailReceipts.tenant_id, tenantId),
+        eq(transactionalMailReceipts.workflow_id, workflowId),
+        sql`${transactionalMailReceipts.created_at} > clock_timestamp() - interval '24 hours'`,
+      ),
+    );
+  return row?.count ?? 0;
 }
 
 export function isConfirmedTransactionalMail(

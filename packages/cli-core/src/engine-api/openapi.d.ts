@@ -23101,6 +23101,23 @@ export interface components {
                     /** @description Maximum UTF-8 serialized Gmail JSON request bytes; derive from bounded template inputs */
                     max_body_bytes: number;
                 };
+                outbox_delivery?: {
+                    /** @enum {string} */
+                    kind: "gmail_outbox";
+                    /** @description Earlier GET request step of this workflow that reads exactly one queued message from a fixed, approved address; the recipient is only ever taken from its response in the same run */
+                    source_step_id: string;
+                    /** @description Dot path inside the source step's response data that holds the one recipient address, for example email or item.email */
+                    recipient_field: string;
+                    /** @description Dot path inside the source step's response data that identifies the queued message; one dispatch attempt per workflow and item */
+                    item_id_field: string;
+                    from: string;
+                    /** @enum {string} */
+                    content_type: "text/plain";
+                    /** @description Maximum UTF-8 serialized Gmail JSON request bytes */
+                    max_body_bytes: number;
+                    /** @description Most messages this workflow may send within any 24 hours */
+                    max_per_day: number;
+                };
                 content_publication?: {
                     /** @enum {string} */
                     kind: "content_revision";
@@ -23715,6 +23732,23 @@ export interface components {
                 content_type: "text/plain";
                 /** @description Maximum UTF-8 serialized Gmail JSON request bytes; derive from bounded template inputs */
                 max_body_bytes: number;
+            };
+            outbox_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_outbox";
+                /** @description Earlier GET request step of this workflow that reads exactly one queued message from a fixed, approved address; the recipient is only ever taken from its response in the same run */
+                source_step_id: string;
+                /** @description Dot path inside the source step's response data that holds the one recipient address, for example email or item.email */
+                recipient_field: string;
+                /** @description Dot path inside the source step's response data that identifies the queued message; one dispatch attempt per workflow and item */
+                item_id_field: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes */
+                max_body_bytes: number;
+                /** @description Most messages this workflow may send within any 24 hours */
+                max_per_day: number;
             };
             headers?: {
                 [key: string]: string;

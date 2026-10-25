@@ -4675,6 +4675,7 @@ Create a workflow from a JSON file (--file) or a solution recipe (--from-recipe 
 - `--file` (string) — Path to WorkflowDef JSON
 - `--from-recipe` (string) — Slug of a solution recipe; its connectors are bound to the ones you already have
 - `--bind` (string) — With --from-recipe: bind connectors yourself, as <template or placeholder>=<connector id or slug>[,…]; needed for templates without a fixed address such as http
+- `--environment` (string, default: dev) — Where the pre-flight preview runs: dev (default) or prod. Use the environment the workflow's schedule or webhook runs in; writes stay held either way.
 - `--skip-checks` — Skip the validate+preview pre-flight entirely (NOT recommended). Preview warnings never block; only validation errors and preview failures do.
 - `--input` (string) — Input JSON string passed to the preview dry-run. With --from-recipe it defaults to the recipe's sample input.
 - `--json` — JSON-only output (suppresses narration)
@@ -4773,6 +4774,7 @@ Update a workflow from a JSON file (PUT the full definition). Runs `validate` an
 
 - `<id>` (positional, required) — Workflow id
 - `--file` (string, required) — Path to WorkflowDef JSON
+- `--environment` (string, default: dev) — Where the pre-flight preview runs: dev (default) or prod. Use the environment the workflow's schedule or webhook runs in; writes stay held either way.
 - `--skip-checks` — Skip the validate+preview pre-flight entirely (NOT recommended). Preview warnings never block; only validation errors and preview failures do.
 - `--input` (string) — Input JSON string passed to the preview dry-run.
 - `--json` — JSON-only output (suppresses narration)

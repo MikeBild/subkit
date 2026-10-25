@@ -6,6 +6,11 @@ import {
   ContentPublicationBoundarySchema,
   supportsContentPublication,
 } from "./content-publication-boundary.ts";
+import {
+  OutboxDeliveryBoundarySchema,
+  outboxSourceStep,
+  supportsOutboxDelivery,
+} from "./outbox-delivery-boundary.ts";
 import { ReadPathBoundarySchema, readPathBoundary, readPathTarget } from "./read-path-boundary.ts";
 import {
   hasRuntimeValue,
@@ -47,6 +52,7 @@ export const ResolvedEffectBindingSchema = z
     rewrites_target: z.boolean(),
     report_delivery: ReportDeliveryBoundarySchema.optional(),
     transactional_delivery: TransactionalDeliveryBoundarySchema.optional(),
+    outbox_delivery: OutboxDeliveryBoundarySchema.optional(),
     content_publication: ContentPublicationBoundarySchema.optional(),
     read_path: ReadPathBoundarySchema.optional(),
     storage: StorageBoundarySchema.optional(),
@@ -268,7 +274,12 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       });
       const call_path: CallPath = [step.id];
       for (const effect of child.manifest.effects) {
-        if (effect.report_delivery || effect.transactional_delivery || effect.content_publication) {
+        if (
+          effect.report_delivery ||
+          effect.transactional_delivery ||
+          effect.outbox_delivery ||
+          effect.content_publication
+        ) {
           manifest.issues.push({ step_id: effect.step_id, code: "binding_mismatch", call_path });
         }
         manifest.effects.push({ ...effect, call_path });
@@ -379,6 +390,10 @@ export function compileWorkflowEffectManifest(raw: unknown): {
                 supportsTransactionalDelivery(step, binding.target) &&
                 workflowJsonDigest(binding.transactional_delivery) ===
                   workflowJsonDigest(step.transactional_delivery)) ||
+              (binding.outbox_delivery &&
+                supportsOutboxDelivery(step, binding.target) &&
+                workflowJsonDigest(binding.outbox_delivery) ===
+                  workflowJsonDigest(step.outbox_delivery)) ||
               (binding.report_delivery && supportsReportDelivery(step, binding.target))))
         )) ||
       hasRuntimeValue(binding.target) ||
@@ -394,6 +409,15 @@ export function compileWorkflowEffectManifest(raw: unknown): {
           !supportsTransactionalDelivery(step, binding.target) ||
           workflowJsonDigest(binding.transactional_delivery) !==
             workflowJsonDigest(step.transactional_delivery)))
+    )
+      issue("binding_mismatch");
+    if (
+      Boolean(binding.outbox_delivery) !== Boolean(step.outbox_delivery) ||
+      (binding.outbox_delivery &&
+        (definition.execution_privacy !== "sensitive" ||
+          !supportsOutboxDelivery(step, binding.target) ||
+          !outboxSourceStep(definition, step) ||
+          workflowJsonDigest(binding.outbox_delivery) !== workflowJsonDigest(step.outbox_delivery)))
     )
       issue("binding_mismatch");
     const effect = effectOf(step, binding);
@@ -414,6 +438,19 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       operation: operationOf(step, binding.driver),
       effect,
     });
+  }
+  for (const step of definition.steps) {
+    if (step.kind !== "request" || !step.outbox_delivery) continue;
+    const source = outboxSourceStep(definition, step);
+    const sourceEffect = source
+      ? manifest.effects.find((effect) => effect.step_id === source.id && !effect.call_path)
+      : undefined;
+    if (
+      !source ||
+      sourceEffect?.effect !== "read" ||
+      manifest.issues.some((entry) => entry.step_id === source.id && !entry.call_path)
+    )
+      manifest.issues.push({ step_id: step.id, code: "binding_mismatch" });
   }
   if (pins.length > 0) {
     manifest.calls = pins.sort((a, b) =>

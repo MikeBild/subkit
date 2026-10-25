@@ -465,6 +465,10 @@ export function GrantWorkflowAuthority({
     review?.manifest.effects.flatMap((effect) =>
       effect.transactional_delivery ? [effect.transactional_delivery] : [],
     ) ?? [];
+  const outboxDeliveries =
+    review?.manifest.effects.flatMap((effect) =>
+      effect.outbox_delivery ? [effect.outbox_delivery] : [],
+    ) ?? [];
   const recurringReport = deliveries.length > 0 && !unsupported;
   const publications =
     review?.manifest.effects.flatMap((effect) =>
@@ -840,6 +844,7 @@ export function GrantWorkflowAuthority({
             </Section>
           ))}
         <TransactionalDeliveryReview deliveries={transactionalDeliveries} />
+        <OutboxDeliveryReview deliveries={outboxDeliveries} />
         {recurringReport && (
           <Section
             testId="authority-report-boundary"
@@ -1207,6 +1212,37 @@ export function GrantWorkflowAuthority({
         />
       )}
     </>
+  );
+}
+
+export function OutboxDeliveryReview({
+  deliveries,
+}: {
+  deliveries: Array<
+    NonNullable<WorkflowAuthorityPreview["manifest"]["effects"][number]["outbox_delivery"]>
+  >;
+}) {
+  const { t } = useI18n();
+  return (
+    deliveries.length > 0 && (
+      <Section testId="authority-outbox-boundary" label={t("authority.outbox.recipients")}>
+        <div className="flex flex-col gap-1 text-sm">
+          <p>{t("authority.outbox.scope")}</p>
+          {deliveries.map((delivery, index) => (
+            <p key={`${delivery.source_step_id}:${index}`}>
+              {t("authority.outbox.delivery", {
+                from: delivery.from,
+                source: delivery.source_step_id,
+                field: delivery.recipient_field,
+                item: delivery.item_id_field,
+                bytes: delivery.max_body_bytes,
+                perDay: delivery.max_per_day,
+              })}
+            </p>
+          ))}
+        </div>
+      </Section>
+    )
   );
 }
 

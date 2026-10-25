@@ -2,13 +2,13 @@
 slug: workflow-authoring-transactional-mail
 scope: global
 title: Transactional Replies To Signed Requests
-description: The `transactional_delivery` Gmail profile: one reviewed email per verified Standard Webhooks or HMAC-signed request, its declaration, binding, receipts and limits.
-activates_when: [{"kind":"intent_keyword","word":"transactional"},{"kind":"intent_keyword","word":"transaktional"},{"kind":"intent_keyword","word":"transactional_delivery"},{"kind":"intent_keyword","word":"gmail_transactional"},{"kind":"intent_keyword","word":"signed request"},{"kind":"intent_keyword","word":"signierte anfrage"},{"kind":"intent_keyword","word":"confirmation email"},{"kind":"intent_keyword","word":"bestätigungsmail"},{"kind":"intent_keyword","word":"webhook-id"}]
+description: The `transactional_delivery` and `outbox_delivery` Gmail profiles: one reviewed email per verified signed request or per queued message read from a fixed address, their declarations, receipts and limits.
+activates_when: [{"kind":"intent_keyword","word":"transactional"},{"kind":"intent_keyword","word":"transaktional"},{"kind":"intent_keyword","word":"transactional_delivery"},{"kind":"intent_keyword","word":"gmail_transactional"},{"kind":"intent_keyword","word":"signed request"},{"kind":"intent_keyword","word":"signierte anfrage"},{"kind":"intent_keyword","word":"confirmation email"},{"kind":"intent_keyword","word":"bestätigungsmail"},{"kind":"intent_keyword","word":"webhook-id"},{"kind":"intent_keyword","word":"outbox"},{"kind":"intent_keyword","word":"outbox_delivery"},{"kind":"intent_keyword","word":"gmail_outbox"},{"kind":"intent_keyword","word":"warteschlange"},{"kind":"diagnosis","codes":["report_delivery_unreachable","report_delivery_unobserved"]}]
 side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow, email, webhook]
-version: 1
+version: 2
 ---
 
 # Transactional Replies To Signed Requests
@@ -77,3 +77,9 @@ endpoint includes no email address or message body and cannot trigger delivery.
 
 `get_workflow` includes the newest durable mail receipts for transactional email
 workflows; inspect these before diagnosing handoff or suggesting any resend.
+
+## Messages from a queue
+
+`outbox_delivery` (`kind: "gmail_outbox"`) mails one recipient per run, taken from
+the response of an earlier fixed read-only GET (`source_step_id`). Whoever fills
+that queue chooses the recipients; say so.
