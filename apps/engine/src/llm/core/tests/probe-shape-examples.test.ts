@@ -2,7 +2,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors, schemaVersions, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { recordSuccessShape } from "../../../schema-versions/service.ts";
+import type { SchemaShape } from "../../../self-healing/types.ts";
 import {
+  fitShapeSummary,
   formatProbeShapeExamples,
   PROBE_SHAPE_MAX_ENDPOINTS_PER_CONNECTOR,
   summarizeShape,
@@ -208,6 +210,49 @@ describe("formatProbeShapeExamples / summarizeShape — pure render", () => {
     expect(section).toContain("temperature_2m_min: array<number>");
     expect(section).toContain("wind_speed_10m_max: array<number>");
     expect(section).toContain("timezone: string");
+  });
+
+  test("a probed field survives when a wide response exceeds the summary cap", () => {
+    const names = Array.from(
+      { length: 40 },
+      (_, i) => `variable_${String(i).padStart(2, "0")}_long_name`,
+    );
+    const series = { type: "array", items: { type: "number" } } as const;
+    const block = {
+      type: "object",
+      properties: Object.fromEntries(names.map((n) => [n, series])),
+    } as const;
+    const shape = {
+      type: "object",
+      properties: { hourly: block, hourly_units: block, timezone: { type: "string" } },
+    } as const;
+    expect(summarizeShape(shape).length).toBeGreaterThan(2400);
+    const summary = fitShapeSummary(shape, 2400);
+    expect(summary.length).toBeLessThanOrEqual(2400);
+    expect(summary).toContain("variable_39_long_name");
+    expect(summary).toContain("timezone: string");
+  });
+
+  test("the section stays within a fixed budget however many wide endpoints were probed", () => {
+    const names = Array.from({ length: 48 }, (_, i) => `field_${i}_with_long_name`);
+    const shape: SchemaShape = {
+      type: "object",
+      properties: Object.fromEntries(
+        names.map((n) => [
+          n,
+          { type: "object", properties: { value: { type: "number" }, unit: { type: "string" } } },
+        ]),
+      ),
+    };
+    const examples = Array.from({ length: 5 }, (_, c) =>
+      Array.from({ length: 4 }, (_, e) => ({
+        connector_slug: `conn-${c}`,
+        endpoint_key: `GET /route-${e}`,
+        shape,
+      })),
+    ).flat();
+    const section = formatProbeShapeExamples(examples) ?? "";
+    expect(section.length).toBeLessThanOrEqual(8000 + 1500);
   });
 
   test("summarizeShape renders a compact field-name summary", () => {

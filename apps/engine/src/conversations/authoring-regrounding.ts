@@ -2,7 +2,7 @@ import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import type { DiscoveredEndpoint, DiscoveryResult } from "../connectors/discovery/types.ts";
 import type { Executor } from "../db/client.ts";
 import { connectors as connectorsTable, workflowExecutionAuthorities } from "../db/schema/index.ts";
-import { summarizeShape } from "../llm/core/context-assembler/formatters.ts";
+import { fitShapeSummary } from "../llm/core/context-assembler/formatters.ts";
 import { type GenerationNeed, isUserNeed } from "../llm/core/generation-abort.ts";
 import { logger } from "../logging/logger.ts";
 import { listLatestShapes } from "../schema-versions/service.ts";
@@ -217,10 +217,7 @@ export function formatRegroundedEvidence(args: {
     }
   }
   for (const s of args.shapes) {
-    let summary = summarizeShape(s.shape);
-    if (summary.length > REGROUND_SHAPE_CAP_CHARS) {
-      summary = `${summary.slice(0, REGROUND_SHAPE_CAP_CHARS)}…`;
-    }
+    const summary = fitShapeSummary(s.shape, REGROUND_SHAPE_CAP_CHARS);
     lines.push(`- recorded response \`${s.connector_slug}\` ${s.endpoint_key}: ${summary}`);
   }
   if (args.raisedCapSlugs.length > 0) {
