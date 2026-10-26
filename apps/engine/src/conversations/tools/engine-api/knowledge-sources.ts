@@ -41,7 +41,12 @@ export const listKnowledgeSourcesTool: ConversationTool = {
             categories: [...new Set(all.map((k) => k.category))].sort(),
             ...(rows.length === 0 && all.length > 0
               ? {
-                  hint: `No source in category '${args.category}', but the workspace has ${all.length} source(s) in other categories. Call list_knowledge_sources again without category before telling the person nothing was found.`,
+                  hint: `No source in category '${args.category}', but the workspace has ${all.length} source(s) in other categories, listed in sources_in_other_categories. Use them before telling the person nothing was found.`,
+                  sources_in_other_categories: all.slice(0, 25).map((k) => ({
+                    id: k.id,
+                    name: k.name,
+                    category: k.category,
+                  })),
                 }
               : {}),
           };

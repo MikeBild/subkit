@@ -34,7 +34,11 @@ describe("list_knowledge_sources with a category filter", () => {
     expect(data.category_filter).toBe("intake-test");
     expect(data.total_sources).toBe(2);
     expect(data.categories).toEqual(["platform", "te-ko2"]);
-    expect(String(data.hint)).toContain("without category");
+    expect(String(data.hint)).toContain("sources_in_other_categories");
+    expect(data.sources_in_other_categories).toEqual([
+      { id: sources[0]?.id, name: "TE-KO2", category: "te-ko2" },
+      { id: sources[1]?.id, name: "Platform", category: "platform" },
+    ]);
   });
 
   test("a matching filter lists the match and gives no hint", async () => {
@@ -42,6 +46,7 @@ describe("list_knowledge_sources with a category filter", () => {
     expect((data.sources as unknown[]).length).toBe(1);
     expect(data.total_sources).toBe(2);
     expect(data.hint).toBeUndefined();
+    expect(data.sources_in_other_categories).toBeUndefined();
   });
 
   test("without a filter the answer carries no filter context", async () => {
