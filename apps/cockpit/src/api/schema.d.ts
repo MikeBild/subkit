@@ -22350,8 +22350,8 @@ export interface components {
             provider: "anthropic" | "openai" | "gemini" | null;
             model: string;
             display_name: string;
-            input_per_mtok: number;
-            output_per_mtok: number;
+            input_per_mtok: number | null;
+            output_per_mtok: number | null;
             /** @enum {string} */
             price_source: "catalog" | "override";
             badges: {

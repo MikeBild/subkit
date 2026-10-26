@@ -2818,11 +2818,17 @@
             "type": "string"
           },
           "input_per_mtok": {
-            "type": "number",
+            "type": [
+              "number",
+              "null"
+            ],
             "minimum": 0
           },
           "output_per_mtok": {
-            "type": "number",
+            "type": [
+              "number",
+              "null"
+            ],
             "minimum": 0
           },
           "price_source": {
