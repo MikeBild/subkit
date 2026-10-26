@@ -23317,6 +23317,16 @@ export interface components {
             effect_changes?: components["schemas"]["AuthorityEffectChange"][];
             effect_changes_base?: components["schemas"]["AuthorityEffectChangesBase"];
             approval_carries_over: boolean;
+            environments: {
+                dev: components["schemas"]["WorkflowAuthorityEnvironmentAssessment"];
+                prod: components["schemas"]["WorkflowAuthorityEnvironmentAssessment"];
+            };
+            recommended_environment: {
+                /** @enum {string|null} */
+                environment: "dev" | "prod" | null;
+                /** @enum {string} */
+                reason: "only_possible" | "schedule" | "inbound_hook" | "existing_approval" | "started_manually" | "none_possible";
+            };
             schedules: {
                 cron: string;
                 timezone: string;
@@ -23400,6 +23410,16 @@ export interface components {
             workflow_version_id: string;
             version: number;
             approved: boolean;
+        };
+        WorkflowAuthorityEnvironmentAssessment: {
+            possible: boolean;
+            reasons: {
+                /** @enum {string} */
+                code: "connector_missing" | "connector_without_sign_in" | "connector_needs_sign_in_again" | "connector_switched_off";
+                step_id: string;
+                connector_id: string | null;
+                connector_name: string | null;
+            }[];
         };
         TransactionalMailReceipt: {
             /** Format: uuid */

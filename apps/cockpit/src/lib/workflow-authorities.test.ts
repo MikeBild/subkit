@@ -62,6 +62,8 @@ const preview: WorkflowAuthorityPreview = {
   },
   suggested_bounds_basis: { kind: "manual" },
   approval_carries_over: false,
+  environments: { dev: { possible: true, reasons: [] }, prod: { possible: true, reasons: [] } },
+  recommended_environment: { environment: "dev", reason: "started_manually" },
   execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
 };
 const expected = {

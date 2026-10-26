@@ -1,3 +1,4 @@
+import { approvalChoice } from "@shared/approval-choice.ts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -7,10 +8,10 @@ import { absolute, chatNewHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { useConnectorNames, useConnectorServices } from "@/components/cockpit/connector-names";
 import { GrantEffectReview } from "@/components/cockpit/grant-effect-review";
+import { GrantEnvironmentDecision } from "@/components/cockpit/grant-environment";
 import {
   GrantRemedyAction,
   GrantScopeWarnings,
-  loadGrantStartedIn,
   useGrantContext,
   useGrantRemedy,
 } from "@/components/cockpit/grant-notices";
@@ -39,10 +40,10 @@ import { authorityReviewModel, replacedVersion, reviewTitle } from "@/lib/author
 import { automationQueryKeys, invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import { carryOverChoice } from "@/lib/automation-state";
 import { existingGrant, grantScopeWarnings } from "@/lib/grant-context";
+import { reviewedEnvironment } from "@/lib/grant-decision";
 import { useI18n } from "@/lib/i18n-context";
 import { liveTestState } from "@/lib/live-test-result";
 import { type AuthorityPages, withProvisionalAuthority } from "@/lib/optimistic-authorities";
-import { environmentToCorrectTo, heldEnvironments } from "@/lib/resolved-environment";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import {
   acceptReview,
@@ -76,7 +77,6 @@ export function GrantWorkflowAuthority({
   onAdjust,
   reviewContent,
   initialEnvironment,
-  environmentChosen = false,
   versionLabel,
   disabled = false,
   triggerLabel,
@@ -95,7 +95,6 @@ export function GrantWorkflowAuthority({
   onAdjust?: () => void;
   reviewContent?: ReactNode;
   initialEnvironment?: "dev" | "prod";
-  environmentChosen?: boolean;
   versionLabel?: string;
   disabled?: boolean;
   triggerLabel?: string;
@@ -172,7 +171,7 @@ export function GrantWorkflowAuthority({
     return () => clearInterval(tick);
   }, [trialStartedAt]);
   const [review, setReview] = useState<WorkflowAuthorityPreview | null>(null);
-  const settled = useRef(false);
+  const [decision, setDecision] = useState<WorkflowAuthorityPreview | null>(null);
   const latestReview = useRef(0);
   const isLatest = (token: number) => token === latestReview.current;
   const [sample, setSample] = useState<{ slug: string; versionId: string } | null>(null);
@@ -200,13 +199,16 @@ export function GrantWorkflowAuthority({
       token,
       version,
       input,
+      pinned,
     }: {
       env: "dev" | "prod";
       token: number;
       version?: string;
       input?: unknown;
+      pinned: boolean;
     }): Promise<{
       review: WorkflowAuthorityPreview | null;
+      decision: WorkflowAuthorityPreview;
       versionId: string;
       environment: "dev" | "prod";
       token: number;
@@ -221,38 +223,23 @@ export function GrantWorkflowAuthority({
       let asked = env;
       let result = await preview(asked);
       if (!isLatest(token)) throw superseded();
-      if (
-        !settled.current &&
-        environmentToCorrectTo(
-          result,
+      let choice = approvalChoice(result, asked);
+      for (let round = 0; round < 2; round++) {
+        const belongs = reviewedEnvironment({
+          choice,
           asked,
-          heldEnvironments({ chosen: environmentChosen ? initialEnvironment : null }),
-        )
-      ) {
-        const runsIn = await loadGrantStartedIn(
-          client,
-          workflowId,
-          session.permissions.includes("schedule:read"),
-        );
+          pinned,
+          hint: initialEnvironment,
+        });
+        if (belongs === asked) break;
+        asked = belongs;
+        result = await preview(asked);
         if (!isLatest(token)) throw superseded();
-        const belongs = environmentToCorrectTo(
-          result,
-          asked,
-          heldEnvironments({
-            chosen: environmentChosen ? initialEnvironment : null,
-            runsIn,
-          }),
-        );
-        settled.current = true;
-        if (belongs) {
-          asked = belongs;
-          setEnvironment(belongs);
-          result = await preview(asked);
-          if (!isLatest(token)) throw superseded();
-        }
+        choice = approvalChoice(result, asked);
       }
       const preparationKey = `${workflowId}:${targetVersion}:${asked}`;
       if (
+        choice.kind !== "none" &&
         !result.eligible_for_repeated_runs &&
         result.preparation_required &&
         session.permissions.includes("workflow:run") &&
@@ -280,6 +267,7 @@ export function GrantWorkflowAuthority({
         if (outcome.reason === "input_required" && outcome.trigger)
           return {
             review: null,
+            decision: result,
             versionId: targetVersion,
             environment: asked,
             token,
@@ -296,24 +284,32 @@ export function GrantWorkflowAuthority({
         ) === "stale"
       )
         throw superseded();
-      return { review: result, versionId: targetVersion, environment: asked, token };
+      return {
+        review: result,
+        decision: result,
+        versionId: targetVersion,
+        environment: asked,
+        token,
+      };
     },
   });
-  function startReview(env: "dev" | "prod", version?: string, input?: unknown) {
+  function startReview(env: "dev" | "prod", version?: string, input?: unknown, pinned = true) {
     const token = latestReview.current + 1;
     latestReview.current = token;
     setReview(null);
+    if (!pinned) setDecision(null);
     setWriteChecked(false);
     setTrialElsewhere(false);
     setTrialStartedAt(null);
     prepare.reset();
     prepare.mutate(
-      { env, token, version, input },
+      { env, token, version, input, pinned },
       {
         onSuccess: (answer) => {
           if (!isLatest(answer.token)) return;
           setReviewVersionId(answer.versionId);
           setEnvironment(answer.environment);
+          setDecision(answer.decision);
           if (answer.sample) {
             setSample({ slug: answer.sample.slug, versionId: answer.versionId });
             setSampleText(answer.sample.text);
@@ -456,7 +452,8 @@ export function GrantWorkflowAuthority({
     sample && prepare.error instanceof ApiError && prepare.error.code === "input_schema_violation"
       ? prepare.error.message
       : null;
-  const unsupported = review && !review.eligible_for_repeated_runs;
+  const blocked = decision !== null && approvalChoice(decision, environment).kind === "none";
+  const unsupported = review && (blocked || !review.eligible_for_repeated_runs);
   const deliveries =
     review?.manifest.effects.flatMap((effect) =>
       effect.report_delivery ? [effect.report_delivery] : [],
@@ -567,15 +564,15 @@ export function GrantWorkflowAuthority({
     activateOnly.reset();
     setSample(null);
     if (value) {
-      settled.current = false;
       setRunAfter(false);
       setLimit(DEFAULT_GRANT_LIMIT);
       const opening = initialEnvironment ?? "dev";
       setEnvironment(opening);
-      startReview(opening);
+      startReview(opening, undefined, undefined, false);
     } else {
       latestReview.current += 1;
       setReview(null);
+      setDecision(null);
       setTrialStartedAt(null);
       prepare.reset();
     }
@@ -591,7 +588,7 @@ export function GrantWorkflowAuthority({
         sessionExpired ? "authority.sessionExpiredHint" : "authority.grantFailedDescription",
       )}`
     : null;
-  const confirmable = !unsupported && !carriesOver;
+  const confirmable = !blocked && !unsupported && !carriesOver;
   return (
     <>
       <FormDialog
@@ -608,7 +605,13 @@ export function GrantWorkflowAuthority({
             : unsupported
               ? t("authority.adjustDescription")
               : [
-                  t(environment === "prod" ? "authority.production" : "authority.development"),
+                  ...(blocked
+                    ? []
+                    : [
+                        t(
+                          environment === "prod" ? "authority.production" : "authority.development",
+                        ),
+                      ]),
                   ...(replaced !== null
                     ? [t("authority.review.replaces", { version: `v${replaced}` })]
                     : []),
@@ -781,7 +784,7 @@ export function GrantWorkflowAuthority({
         }
       >
         {reviewContent}
-        <GrantScopeWarnings warnings={scopeWarnings} />
+        <GrantScopeWarnings warnings={blocked ? [] : scopeWarnings} />
         {recurringContent &&
           publications.map((publication, index) => (
             <Section
@@ -881,7 +884,7 @@ export function GrantWorkflowAuthority({
             </div>
           </Section>
         )}
-        {unsupported && issues.length === 0 && !onSingleRun && (
+        {unsupported && !blocked && issues.length === 0 && !onSingleRun && (
           <p className="text-sm" data-testid="authority-needs-adjustment">
             {t("authority.unsupportedSteps", {
               steps: review?.unavailable_steps.join(", ") || t("authority.effects"),
@@ -943,33 +946,18 @@ export function GrantWorkflowAuthority({
           </p>
         )}
         <FieldGroup>
-          <Field>
-            <FieldLabel>{t("authority.environment")}</FieldLabel>
-            <SegmentedControl
-              label={t("authority.environment")}
-              value={environment}
-              onValueChange={(value) => {
-                if (busy || (value !== "dev" && value !== "prod") || value === environment) return;
-                settled.current = true;
+          {decision && (
+            <GrantEnvironmentDecision
+              preview={decision}
+              environment={environment}
+              busy={busy}
+              onSelect={(value) => {
                 setEnvironment(value);
                 grant.reset();
                 startReview(value);
               }}
-              testId="authority-environment"
-              options={[
-                {
-                  value: "prod",
-                  label: t("authority.production"),
-                  testId: "authority-environment-prod",
-                },
-                {
-                  value: "dev",
-                  label: t("authority.development"),
-                  testId: "authority-environment-dev",
-                },
-              ]}
             />
-          </Field>
+          )}
           {boundsVisible && (
             <Field>
               <FieldLabel className="flex items-center gap-1">

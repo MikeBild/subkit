@@ -605,6 +605,26 @@ const EN = {
   "authority.environment": "Environment",
   "authority.production": "Production",
   "authority.development": "Test",
+  "authority.decision.words": "Test is for trying things out. Production is live operation.",
+  "authority.decision.validFor": "Applies to {environment}.",
+  "authority.decision.reason.schedule": "The schedule starts it there.",
+  "authority.decision.reason.scheduleWhen": "The schedule starts it there, {when}.",
+  "authority.decision.reason.inbound_hook": "Calls from outside start it there.",
+  "authority.decision.reason.existing_approval": "It already has an approval there.",
+  "authority.decision.reason.started_manually": "You start it yourself.",
+  "authority.decision.choice.label": "What should the approval be for?",
+  "authority.decision.choice.dev": "Test: for trying it out. You start it yourself.",
+  "authority.decision.choice.prod":
+    "Production: live operation. Needed when a schedule or a call from outside starts it.",
+  "authority.decision.none.title": "Not possible yet",
+  "authority.decision.unnamedConnector": "A connector",
+  "authority.decision.block.connector_missing": "{connector} does not exist in {environment}.",
+  "authority.decision.block.connector_without_sign_in":
+    "{connector} has no sign-in in {environment}.",
+  "authority.decision.block.connector_needs_sign_in_again":
+    "{connector} must be signed in again in {environment}.",
+  "authority.decision.block.connector_switched_off":
+    "{connector} is switched off in {environment}.",
   "authority.window": "Valid from — until (local time)",
   "authority.requests": "Request contents",
   "authority.repairLine.one": "1 step without a stated target",
@@ -692,8 +712,7 @@ const EN = {
     "This step could not be tied to a connector, so there is no target to approve.",
   "authority.issue.binding_mismatch":
     "What this step declares and what it resolves to no longer agree.",
-  "authority.issue.environment_mismatch":
-    "This step resolves to a connector from another environment.",
+  "authority.issue.environment_mismatch": "This step uses a connector that does not exist here.",
   "authority.issue.dynamic_request":
     "Where this request goes is decided at run time and is not limited to anything reviewable.",
   "authority.issue.unknown_effect":
@@ -6797,6 +6816,26 @@ const DE: Record<TranslationKey, string> = {
   "authority.environment": "Umgebung",
   "authority.production": "Produktion",
   "authority.development": "Test",
+  "authority.decision.words": "Test ist zum Ausprobieren. Produktion ist der echte Betrieb.",
+  "authority.decision.validFor": "Gilt für {environment}.",
+  "authority.decision.reason.schedule": "Der Zeitplan startet ihn dort.",
+  "authority.decision.reason.scheduleWhen": "Der Zeitplan startet ihn dort, {when}.",
+  "authority.decision.reason.inbound_hook": "Aufrufe von außen starten ihn dort.",
+  "authority.decision.reason.existing_approval": "Dort gibt es schon eine Freigabe.",
+  "authority.decision.reason.started_manually": "Du startest ihn selbst.",
+  "authority.decision.choice.label": "Wofür soll die Freigabe gelten?",
+  "authority.decision.choice.dev": "Test: zum Ausprobieren. Du startest ihn selbst.",
+  "authority.decision.choice.prod":
+    "Produktion: der echte Betrieb. Nötig, wenn ein Zeitplan oder ein Aufruf von außen ihn startet.",
+  "authority.decision.none.title": "Noch nicht möglich",
+  "authority.decision.unnamedConnector": "Ein Konnektor",
+  "authority.decision.block.connector_missing": "{connector} gibt es in {environment} nicht.",
+  "authority.decision.block.connector_without_sign_in":
+    "{connector} hat in {environment} keine Anmeldung.",
+  "authority.decision.block.connector_needs_sign_in_again":
+    "{connector} muss in {environment} neu angemeldet werden.",
+  "authority.decision.block.connector_switched_off":
+    "{connector} ist in {environment} ausgeschaltet.",
   "authority.window": "Gültig von — bis (Ortszeit)",
   "authority.requests": "Anfrageinhalte",
   "authority.repairLine.one": "1 Schritt ohne festgelegtes Ziel",
@@ -6888,7 +6927,7 @@ const DE: Record<TranslationKey, string> = {
   "authority.issue.binding_mismatch":
     "Was dieser Schritt deklariert und wozu er sich auflöst, stimmt nicht mehr überein.",
   "authority.issue.environment_mismatch":
-    "Dieser Schritt löst sich auf einen Konnektor einer anderen Umgebung auf.",
+    "Dieser Schritt nutzt einen Konnektor, den es hier nicht gibt.",
   "authority.issue.dynamic_request":
     "Wohin diese Anfrage geht, entscheidet sich zur Laufzeit und ist durch nichts Prüfbares begrenzt.",
   "authority.issue.unknown_effect":

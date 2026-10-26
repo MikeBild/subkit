@@ -1,6 +1,11 @@
 import { z } from "@hono/zod-openapi";
 import { can } from "../../rbac/evaluator.ts";
+import {
+  assessVersionEnvironments,
+  describeAuthorityEnvironments,
+} from "../../workflows/authority-environments.ts";
 import { workflowJsonDigest } from "../../workflows/canonical-json.ts";
+import { getWorkflow } from "../../workflows/service.ts";
 import { inspectAutomationReview, savedChangeReviewPath } from "../automation-review.ts";
 import { conversationExecutionSuppression } from "../execution-suppression.ts";
 import type { ConversationTool, ToolContext } from "./index.ts";
@@ -24,6 +29,23 @@ async function liveExecutionSuppressed(ctx: ToolContext): Promise<boolean> {
   ).live;
 }
 
+async function environmentNote(ctx: ToolContext, workflow_id: string): Promise<string | null> {
+  const workflow = await getWorkflow(ctx.tenant_id, workflow_id, ctx.db);
+  const workflow_version_id = workflow?.draft_version_id ?? workflow?.current_version_id;
+  if (!workflow_version_id) return null;
+  try {
+    return describeAuthorityEnvironments(
+      await assessVersionEnvironments(ctx.db, {
+        tenant_id: ctx.tenant_id,
+        workflow_id,
+        workflow_version_id,
+      }),
+    );
+  } catch {
+    return null;
+  }
+}
+
 export async function buildAutomationReview(ctx: ToolContext, workflow_id: string) {
   const principal = ctx.principal ?? (await resolveConversationPrincipal(ctx));
   const allowed = async (permission: "schedule:read" | "inbound_hook:read" | "audit:read") =>
@@ -43,11 +65,13 @@ export async function buildAutomationReview(ctx: ToolContext, workflow_id: strin
   const base = resolvePublicBaseUrl();
   const review_url = hasContent ? `${base ?? ""}${savedChangeReviewPath(workflow_id)}` : undefined;
   const card = hasContent && rendersReviewCard(ctx.surface);
+  const environment_note = await environmentNote(ctx, workflow_id);
   return {
     kind: "workflow_automation_review" as const,
     presentation: card ? ("automation_readiness_card" as const) : ("text" as const),
     ...review,
     ...(review_url ? { review_url } : {}),
+    ...(environment_note ? { environment_note } : {}),
     next_action: card
       ? "Use the review card in this chat. It rechecks the latest saved version; there the person applies a saved change and allows bounded runs. Do not ask a generic confirmation, run or activate anything, or claim permission was granted. Only authorized schedule, webhook or activation state confirms completion."
       : review_url

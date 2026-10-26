@@ -5,6 +5,7 @@ import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient, type ExecutionCost } from "../engine-client.ts";
 import { executionOutcomeLine } from "../lib/execution-outcome.ts";
+import { heldRunBlock } from "../lib/held-run.ts";
 import { pickId } from "../lib/pick.ts";
 import { exitCodeForTerminalStatus, tailExecution } from "../lib/tail-execution.ts";
 import {
@@ -166,6 +167,8 @@ const getCommand = defineCommand({
           (execution as { outcome: Parameters<typeof executionOutcomeLine>[0] }).outcome,
         );
         if (outcomeLine) process.stderr.write(`\n${pc.dim("outcome:")} ${outcomeLine}\n`);
+        const held = heldRunBlock(client, execution as Parameters<typeof heldRunBlock>[1], steps);
+        if (held) process.stderr.write(`\n${pc.bold(pc.yellow(held))}\n`);
         if (execution.status === "failed") {
           printFailedStepErrors(steps);
         }
@@ -204,8 +207,10 @@ const resultCommand = defineCommand({
         printJson(output);
         return;
       }
+      const held = heldRunBlock(client, execution as Parameters<typeof heldRunBlock>[1], steps);
       const status = typeof execution.status === "string" ? execution.status : "unknown";
       process.stdout.write(`execution ${id} · ${status}\n`);
+      if (held) process.stderr.write(`\n${pc.bold(pc.yellow(held))}\n`);
       if (output === null || output === undefined) {
         const uri = last?.result_storage_uri;
         process.stdout.write(

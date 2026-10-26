@@ -41,6 +41,7 @@ const ALLOWED: Record<string, readonly Rule[]> = {
   "components/cockpit/decision-card.tsx": ["ui-import", "heading", "max-w"],
   "components/cockpit/diff-card.tsx": ["ui-import", "pre"],
   "components/cockpit/grant-notices.tsx": ["ui-import"],
+  "components/cockpit/grant-environment.tsx": ["ui-import"],
   "components/cockpit/grant-workflow-authority.tsx": ["ui-import"],
   "components/cockpit/icon-button.tsx": ["ui-import"],
   "components/cockpit/inbound-hook-review-card.tsx": ["ui-import", "heading"],

@@ -21,6 +21,7 @@ import {
   shortDescription,
 } from "../lib/catalog-metadata.ts";
 import { effectiveTriggerLabel, type TriggerFields } from "../lib/effective-trigger.ts";
+import { heldRunBlock, heldRunBlockForExecution } from "../lib/held-run.ts";
 import {
   INVOCATION_LOOKUP_TIMEOUT_MS,
   type LocalSnippetReason,
@@ -100,7 +101,11 @@ function intentFromBody(body: Record<string, unknown>): WorkflowIntent {
   };
 }
 
-function printRunResult(result: RunExecutionResponse, environment: RunEnvironment): void {
+function printRunResult(
+  result: RunExecutionResponse,
+  environment: RunEnvironment,
+  held?: { client: EngineClient; workflowId: string },
+): void {
   printJson(result.idempotent_replay ? result : { ...result, environment });
   if (result.idempotent_replay) {
     process.stderr.write(
@@ -111,6 +116,14 @@ function printRunResult(result: RunExecutionResponse, environment: RunEnvironmen
   }
   const mismatchHint = environmentMismatchHint(result, environment);
   if (mismatchHint) process.stderr.write(`\n${pc.yellow("hint:")} ${mismatchHint}\n`);
+  if (held) {
+    const block = heldRunBlock(
+      held.client,
+      { hold_writes: result.hold_writes === true, workflow_id: held.workflowId },
+      (result.steps ?? []) as unknown as Record<string, unknown>[],
+    );
+    if (block) process.stderr.write(`\n${pc.bold(pc.yellow(block))}\n`);
+  }
   const warnings = (result.warnings ?? []) as Array<{
     step_key?: string;
     code?: string;
@@ -540,6 +553,10 @@ const runCommand = defineCommand({
           },
         );
         if (mismatchHint) process.stderr.write(`\n${pc.yellow("hint:")} ${mismatchHint}\n`);
+        if (terminal === "succeeded") {
+          const held = await heldRunBlockForExecution(client, queued.execution_id);
+          if (held) process.stderr.write(`\n${pc.bold(pc.yellow(held))}\n`);
+        }
         if (terminal !== "succeeded") {
           process.stderr.write(
             `\n${pc.dim("Tip:")} sk executions get ${queued.execution_id} shows the full result\n`,
@@ -548,7 +565,10 @@ const runCommand = defineCommand({
         process.exitCode = exitCodeForTerminalStatus(terminal);
         return;
       }
-      printRunResult(await client.runExecution(body, { environment }), environment);
+      printRunResult(await client.runExecution(body, { environment }), environment, {
+        client,
+        workflowId,
+      });
       process.stderr.write(
         `\n${pc.dim("Tip:")} sk workflows invoke-snippet ${workflowId} --lang node\n`,
       );

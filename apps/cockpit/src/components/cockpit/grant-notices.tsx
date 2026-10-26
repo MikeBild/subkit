@@ -1,4 +1,4 @@
-import { type QueryClient, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
@@ -49,20 +49,6 @@ function ownSchedules(workflowId: string, list: ScheduleList | undefined) {
   return Array.isArray(list?.schedules)
     ? list.schedules.filter((entry) => entry.workflow_id === workflowId)
     : null;
-}
-
-export async function loadGrantStartedIn(
-  client: QueryClient,
-  workflowId: string,
-  mayReadSchedules: boolean,
-): Promise<ReviewEnvironment[]> {
-  const [schedules, workflow] = await Promise.all([
-    mayReadSchedules
-      ? client.fetchQuery(grantScheduleQuery(workflowId)).catch(() => undefined)
-      : undefined,
-    client.fetchQuery(grantWorkflowQuery(workflowId)).catch(() => undefined),
-  ]);
-  return triggerEnvironments(ownSchedules(workflowId, schedules), workflow?.webhooks_active);
 }
 
 export function useGrantContext(workflowId: string, open: boolean) {

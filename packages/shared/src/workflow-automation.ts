@@ -245,25 +245,66 @@ function productionFirst(environments: Iterable<ReviewEnvironment>): ReviewEnvir
   return (["prod", "dev"] as const).filter((environment) => set.has(environment));
 }
 
-function pendingRowEnvironments(status: AutomationStatusLike | null): ReviewEnvironment[] {
+export type EnvironmentContextReason = "schedule" | "inbound_hook" | "existing_approval";
+
+export interface EnvironmentDecision {
+  environment: ReviewEnvironment;
+  reason: EnvironmentContextReason;
+}
+
+interface EnvironmentSource {
+  environment: ReviewEnvironment;
+  kind: "schedule" | "hook";
+}
+
+function sourceDecision(
+  environment: ReviewEnvironment,
+  sources: readonly EnvironmentSource[],
+): EnvironmentDecision {
+  return {
+    environment,
+    reason: sources.some(
+      (source) => source.environment === environment && source.kind === "schedule",
+    )
+      ? "schedule"
+      : "inbound_hook",
+  };
+}
+
+function pendingRowSources(status: AutomationStatusLike | null): EnvironmentSource[] {
   if (!status) return [];
-  return productionFirst(
-    [...status.schedules, ...status.inbound_hooks]
+  return [
+    ...status.schedules
       .filter((row) => row.state !== "paused" && row.state !== "authorized")
-      .map((row) => row.environment),
-  );
+      .map((row) => ({ environment: row.environment, kind: "schedule" as const })),
+    ...status.inbound_hooks
+      .filter((row) => row.state !== "paused" && row.state !== "authorized")
+      .map((row) => ({ environment: row.environment, kind: "hook" as const })),
+  ];
+}
+
+function pendingRowEnvironments(status: AutomationStatusLike | null): ReviewEnvironment[] {
+  return productionFirst(pendingRowSources(status).map((source) => source.environment));
+}
+
+function startedSources(
+  input: Pick<AutomationInputs, "workflow" | "schedules">,
+): EnvironmentSource[] {
+  return [
+    ...automationTriggers(null, input.schedules)
+      .filter((trigger) => !trigger.paused)
+      .map((trigger) => ({ environment: trigger.environment, kind: trigger.kind })),
+    ...((input.workflow.webhooks_active ?? 0) > 0
+      ? [{ environment: "prod" as const, kind: "hook" as const }]
+      : []),
+  ];
 }
 
 function uncoveredEnvironments(
   input: Pick<AutomationInputs, "workflow" | "schedules" | "status" | "authorities" | "now">,
 ): ReviewEnvironment[] {
   if (input.status) return [];
-  const started = productionFirst([
-    ...automationTriggers(null, input.schedules)
-      .filter((trigger) => !trigger.paused)
-      .map((trigger) => trigger.environment),
-    ...((input.workflow.webhooks_active ?? 0) > 0 ? (["prod"] as const) : []),
-  ]);
+  const started = productionFirst(startedSources(input).map((source) => source.environment));
   return started.filter(
     (environment) =>
       !(input.authorities ?? []).some(
@@ -278,18 +319,37 @@ type EnvironmentInputs = Pick<
   "workflow" | "schedules" | "status" | "authorities" | "now" | "connectorEnvironment"
 >;
 
-function decidedEnvironment(input: EnvironmentInputs): ReviewEnvironment | null {
-  const [pending] = [...pendingRowEnvironments(input.status), ...uncoveredEnvironments(input)];
-  if (pending) return pending;
+export function automationEnvironmentDecision(
+  input: Omit<EnvironmentInputs, "connectorEnvironment">,
+): EnvironmentDecision | null {
+  const pendingRows = pendingRowEnvironments(input.status);
+  const [pending] = [...pendingRows, ...uncoveredEnvironments(input)];
+  if (pending)
+    return sourceDecision(
+      pending,
+      pendingRows.includes(pending) ? pendingRowSources(input.status) : startedSources(input),
+    );
   const triggers = automationTriggers(input.status, input.schedules);
   const running = triggers.filter((trigger) => !trigger.paused);
   const pool = running.length > 0 ? running : triggers;
-  if (pool.some((trigger) => trigger.environment === "prod")) return "prod";
-  if ((input.workflow.webhooks_active ?? 0) > 0) return "prod";
-  if (pool.length > 0) return "dev";
-  if (input.authorities === null || input.authorities.length > 0)
-    return reviewEnvironment(input.authorities ?? [], undefined, new Date(input.now));
+  if (pool.some((trigger) => trigger.environment === "prod")) return sourceDecision("prod", pool);
+  if ((input.workflow.webhooks_active ?? 0) > 0)
+    return { environment: "prod", reason: "inbound_hook" };
+  if (pool.length > 0) return sourceDecision("dev", pool);
+  if (input.authorities !== null && input.authorities.length > 0)
+    return {
+      environment: reviewEnvironment(input.authorities, undefined, new Date(input.now)),
+      reason: "existing_approval",
+    };
   return null;
+}
+
+function decidedEnvironment(input: EnvironmentInputs): ReviewEnvironment | null {
+  if (input.authorities === null) {
+    const decided = automationEnvironmentDecision(input);
+    return decided ? decided.environment : "dev";
+  }
+  return automationEnvironmentDecision(input)?.environment ?? null;
 }
 
 export function automationEnvironmentUndecided(input: EnvironmentInputs): boolean {

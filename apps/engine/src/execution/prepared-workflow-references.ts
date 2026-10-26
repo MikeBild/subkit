@@ -15,6 +15,53 @@ import {
   preparedReferenceRefusalMessage,
 } from "./connector-availability.ts";
 
+export interface WorkflowConnectorReferences {
+  ids: Map<string, string | null>;
+  slugs: Map<string, { credential: boolean; step_id: string | null }>;
+  refusals: Array<{ reason: ConnectorUnavailability; step_id: string | null }>;
+}
+
+export function emptyWorkflowConnectorReferences(): WorkflowConnectorReferences {
+  return { ids: new Map(), slugs: new Map(), refusals: [] };
+}
+
+export function collectWorkflowConnectorReferences(
+  definition: WorkflowDef,
+  into: WorkflowConnectorReferences = emptyWorkflowConnectorReferences(),
+  attributeTo: string | null = null,
+): WorkflowConnectorReferences {
+  const { ids, slugs, refusals } = into;
+  const stopped = () => refusals.some((refusal) => refusal.reason === "too_many_references");
+  function walk(value: unknown, own: string | null): void {
+    if (stopped()) return;
+    const step_id = attributeTo ?? own;
+    if (typeof value === "string") {
+      for (const token of parsePlaceholders(value).tokens) {
+        if (!token.slug) continue;
+        const seen = slugs.get(token.slug);
+        slugs.set(token.slug, {
+          credential: token.kind === "cred" || seen?.credential === true,
+          step_id: seen ? seen.step_id : step_id,
+        });
+      }
+    } else if (Array.isArray(value)) {
+      for (const child of value) walk(child, own);
+    } else if (value && typeof value === "object") {
+      const object = value as Record<string, unknown>;
+      if (object.kind === "request" && typeof object.connector_id === "string") {
+        if (!z.string().uuid().safeParse(object.connector_id).success)
+          refusals.push({ reason: "missing", step_id });
+        else if (!ids.has(object.connector_id)) ids.set(object.connector_id, step_id);
+      }
+      for (const child of Object.values(object)) walk(child, own);
+    }
+    if (ids.size + slugs.size > 1000) refusals.push({ reason: "too_many_references", step_id });
+  }
+  for (const step of definition.steps) walk(step, step.id);
+  walk({ ...definition, steps: [] }, null);
+  return into;
+}
+
 export async function capturePreparedWorkflowReferences(
   db: Executor,
   tenant: string,
@@ -33,33 +80,9 @@ export async function capturePreparedWorkflowReferences(
       environment,
       reason,
     });
-  const ids = new Map<string, string | null>();
-  const slugs = new Map<string, { credential: boolean; step_id: string | null }>();
-  function walk(value: unknown, step_id: string | null): void {
-    if (typeof value === "string") {
-      for (const token of parsePlaceholders(value).tokens) {
-        if (!token.slug) continue;
-        const seen = slugs.get(token.slug);
-        slugs.set(token.slug, {
-          credential: token.kind === "cred" || seen?.credential === true,
-          step_id: seen ? seen.step_id : step_id,
-        });
-      }
-    } else if (Array.isArray(value)) {
-      for (const child of value) walk(child, step_id);
-    } else if (value && typeof value === "object") {
-      const object = value as Record<string, unknown>;
-      if (object.kind === "request" && typeof object.connector_id === "string") {
-        if (!z.string().uuid().safeParse(object.connector_id).success)
-          refuse("missing", { step_id });
-        if (!ids.has(object.connector_id)) ids.set(object.connector_id, step_id);
-      }
-      for (const child of Object.values(object)) walk(child, step_id);
-    }
-    if (ids.size + slugs.size > 1000) refuse("too_many_references", { step_id });
-  }
-  for (const step of definition.steps) walk(step, step.id);
-  walk({ ...definition, steps: [] }, null);
+  const { ids, slugs, refusals } = collectWorkflowConnectorReferences(definition);
+  const [first] = refusals;
+  if (first) refuse(first.reason, { step_id: first.step_id });
   const selected = new Map<string, boolean>();
   const stepFor = new Map<string, string | null>();
   for (const [id, step_id] of [...ids].sort(([a], [b]) => a.localeCompare(b))) {

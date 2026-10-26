@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { environmentToCorrectTo, heldEnvironments, type ReviewLike } from "./resolved-environment";
+import { environmentToCorrectTo, type ReviewLike } from "./resolved-environment";
 
 const review = (
   issues: Array<[string, string]>,
@@ -117,16 +117,4 @@ test("an environment the workflow runs in or the reader chose is never left", ()
   expect(environmentToCorrectTo(devOnly, "prod", ["prod"])).toBeNull();
   expect(environmentToCorrectTo(devOnly, "prod", ["dev"])).toBe("dev");
   expect(environmentToCorrectTo(devOnly, "prod", [])).toBe("dev");
-});
-
-test("an environment handed in by the caller is held like one the reader picked", () => {
-  const devOnly = review([["read_mail", "environment_mismatch"]], [["read_mail", "dev"]]);
-  const held = heldEnvironments({ chosen: "prod", runsIn: [] });
-  expect(held).toEqual(["prod"]);
-  expect(environmentToCorrectTo(devOnly, "prod", held)).toBeNull();
-  expect(environmentToCorrectTo(devOnly, "prod", heldEnvironments({}))).toBe("dev");
-  expect(heldEnvironments({ chosen: "dev", ranIn: "prod", runsIn: ["dev"] })).toEqual([
-    "dev",
-    "prod",
-  ]);
 });

@@ -7085,6 +7085,52 @@
           "approval_carries_over": {
             "type": "boolean"
           },
+          "environments": {
+            "type": "object",
+            "properties": {
+              "dev": {
+                "$ref": "#/components/schemas/WorkflowAuthorityEnvironmentAssessment"
+              },
+              "prod": {
+                "$ref": "#/components/schemas/WorkflowAuthorityEnvironmentAssessment"
+              }
+            },
+            "required": [
+              "dev",
+              "prod"
+            ]
+          },
+          "recommended_environment": {
+            "type": "object",
+            "properties": {
+              "environment": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "dev",
+                  "prod",
+                  null
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "only_possible",
+                  "schedule",
+                  "inbound_hook",
+                  "existing_approval",
+                  "started_manually",
+                  "none_possible"
+                ]
+              }
+            },
+            "required": [
+              "environment",
+              "reason"
+            ]
+          },
           "schedules": {
             "type": "array",
             "items": {
@@ -7205,6 +7251,8 @@
           "unavailable_steps",
           "execution_shape",
           "approval_carries_over",
+          "environments",
+          "recommended_environment",
           "schedules",
           "suggested_bounds",
           "suggested_bounds_basis"
@@ -7475,6 +7523,56 @@
           "workflow_version_id",
           "version",
           "approved"
+        ]
+      },
+      "WorkflowAuthorityEnvironmentAssessment": {
+        "type": "object",
+        "properties": {
+          "possible": {
+            "type": "boolean"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "enum": [
+                    "connector_missing",
+                    "connector_without_sign_in",
+                    "connector_needs_sign_in_again",
+                    "connector_switched_off"
+                  ]
+                },
+                "step_id": {
+                  "type": "string"
+                },
+                "connector_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "connector_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "code",
+                "step_id",
+                "connector_id",
+                "connector_name"
+              ]
+            }
+          }
+        },
+        "required": [
+          "possible",
+          "reasons"
         ]
       },
       "TransactionalMailReceipt": {

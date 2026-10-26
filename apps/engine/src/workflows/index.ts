@@ -5,6 +5,12 @@ export {
   AuthorityEffectChangesBaseSchema,
   effectChanges,
 } from "./authority-changes.ts";
+export {
+  assessAuthorityEnvironments,
+  describeAuthorityEnvironments,
+  recommendAuthorityEnvironment,
+  reviewAuthorityEnvironments,
+} from "./authority-environments.ts";
 export { AuthorityExecutionShapeSchema } from "./authority-execution-shape.ts";
 export { type BoundaryGrowth, BoundaryGrowthSchema } from "./authority-growth.ts";
 export {

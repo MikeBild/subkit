@@ -71,6 +71,7 @@ export interface RunExecutionResponse {
   connector_resolutions?: ConnectorResolutionSummary[];
   warnings?: unknown[];
   idempotent_replay?: boolean;
+  hold_writes?: boolean;
 }
 
 export const executionsMethods = {

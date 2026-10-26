@@ -1,4 +1,8 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import {
+  ENVIRONMENT_BLOCK_CODES,
+  ENVIRONMENT_RECOMMENDATION_REASONS,
+} from "@shared/approval-choice.ts";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import { continueConversationDevLiveTest } from "../../conversations/index.ts";
@@ -38,6 +42,7 @@ import {
   prepareReportAuthority,
   previewWorkflowAuthority,
   referenceApprovedManifest,
+  reviewAuthorityEnvironments,
   revokeWorkflowAuthority,
   suggestAuthorityBounds,
   type WorkflowEffectManifest,
@@ -91,6 +96,19 @@ const authoritySchema = z
     ]),
   })
   .openapi("WorkflowExecutionAuthority");
+const environmentAssessmentSchema = z
+  .object({
+    possible: z.boolean(),
+    reasons: z.array(
+      z.object({
+        code: z.enum(ENVIRONMENT_BLOCK_CODES),
+        step_id: z.string(),
+        connector_id: z.string().nullable(),
+        connector_name: z.string().nullable(),
+      }),
+    ),
+  })
+  .openapi("WorkflowAuthorityEnvironmentAssessment");
 const previewSchema = z
   .object({
     manifest: WorkflowEffectManifestSchema,
@@ -143,6 +161,11 @@ const previewSchema = z
     effect_changes: z.array(AuthorityEffectChangeSchema).optional(),
     effect_changes_base: AuthorityEffectChangesBaseSchema.optional(),
     approval_carries_over: z.boolean(),
+    environments: z.object({ dev: environmentAssessmentSchema, prod: environmentAssessmentSchema }),
+    recommended_environment: z.object({
+      environment: z.enum(["dev", "prod"]).nullable(),
+      reason: z.enum(ENVIRONMENT_RECOMMENDATION_REASONS),
+    }),
     schedules: z.array(
       z.object({ cron: z.string(), timezone: z.string(), next_run_at: z.string().nullable() }),
     ),
@@ -791,9 +814,15 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
         version_id,
         execution_environment: reviewed.execution_environment,
       });
+      const choice = await reviewAuthorityEnvironments(
+        c.get("db"),
+        { tenant_id: principal.tenant_id, workflow_id: id, workflow_version_id: version_id },
+        new Date(now),
+      );
       return c.json(
         {
           ...result,
+          ...choice,
           ...(boundary_growth ? { boundary_growth } : {}),
           ...(changes ?? {}),
           approval_carries_over,
