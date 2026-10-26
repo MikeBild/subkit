@@ -278,7 +278,9 @@ export function getMockProvider(): MockProvider {
 export function cannedListUsersPlan(connector_id?: string): ConverseMockStep[] {
   return [
     { tool: "list_skills", args: {} },
-    { tool: "fetch_connector_docs", args: { query: "users" } },
+    connector_id
+      ? { tool: "fetch_connector_docs", args: { connector: connector_id, query: "users" } }
+      : { tool: "search_docs", args: { query: "users" } },
     {
       tool: "edit_workflow_patch",
       args: {
@@ -339,7 +341,12 @@ export function cannedListUsersPlan(connector_id?: string): ConverseMockStep[] {
 export function cannedListPrivateGithubReposPlan(connector_id?: string): ConverseMockStep[] {
   return [
     { tool: "list_skills", args: {} },
-    { tool: "fetch_connector_docs", args: { query: "github private repos" } },
+    connector_id
+      ? {
+          tool: "fetch_connector_docs",
+          args: { connector: connector_id, query: "github private repos" },
+        }
+      : { tool: "search_docs", args: { query: "github private repos" } },
     {
       tool: "edit_workflow_patch",
       args: {

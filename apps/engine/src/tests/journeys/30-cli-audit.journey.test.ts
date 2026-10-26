@@ -148,15 +148,16 @@ beforeAll(async () => {
     authorization: `Bearer ${ctx.apiKey}`,
     "content-type": "application/json",
   };
-  await fetch(`${ctx.baseUrl}/v1/workflows`, {
+  const workflowResponse = await fetch(`${ctx.baseUrl}/v1/workflows`, {
     method: "POST",
     headers,
     body: JSON.stringify({
       name: "audit-seed",
       slug: "audit-seed",
-      steps: [{ kind: "transform", id: "t", expression: "$input" }],
+      steps: [{ kind: "transform", id: "t", language: "javascript", expression: "return input;" }],
     }),
   });
+  expect(workflowResponse.status).toBe(201);
   await fetch(`${ctx.baseUrl}/v1/connectors`, {
     method: "POST",
     headers,

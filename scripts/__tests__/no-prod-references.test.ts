@@ -4,6 +4,20 @@ import { join } from "node:path";
 
 const root = join(import.meta.dir, "../..");
 const self = "scripts/__tests__/no-prod-references.test.ts";
+const publicProductDomain = "subkit.mikebild.dev";
+const operatorDomain =
+  /(?<![a-z0-9.-])(?:[a-z0-9-]+\.)*mikebild\.(?:dev|com)(?:\.[a-z0-9-]+)*(?![a-z0-9.-])/gi;
+
+function installationSpecificDomainLines(hits: string): string {
+  return hits
+    .split("\n")
+    .filter((line) =>
+      (line.match(operatorDomain) ?? []).some(
+        (domain) => domain.toLowerCase() !== publicProductDomain,
+      ),
+    )
+    .join("\n");
+}
 
 function gitGrep(args: string[]): string[] {
   try {
@@ -35,6 +49,17 @@ function outside(values: string[], allowed: Set<string>): string[] {
 }
 
 describe("no installation-specific references", () => {
+  test("allows only the exact public product domain", () => {
+    const allowed = "public: https://subkit.mikebild.dev/kontakt";
+    const root = "root: https://mikebild.dev";
+    const privateSubdomain = "private: https://ops.mikebild.dev";
+    const suffix = "suffix: https://subkit.mikebild.dev.evil";
+    const mixed = "mixed: https://subkit.mikebild.dev/kontakt https://ops.mikebild.com";
+    expect(
+      installationSpecificDomainLines([allowed, root, privateSubdomain, suffix, mixed].join("\n")),
+    ).toBe([root, privateSubdomain, suffix, mixed].join("\n"));
+  });
+
   test("the operator's domains appear in no tracked file", () => {
     const needle = ["mikebild", "(dev|com)"].join("\\.");
     let hits = "";
@@ -48,7 +73,8 @@ describe("no installation-specific references", () => {
       if (err.status === 1 && !err.stdout) return;
       throw error;
     }
-    expect(hits, `installation-specific domain reference(s) found:\n${hits}`).toBe("");
+    const forbidden = installationSpecificDomainLines(hits);
+    expect(forbidden, `installation-specific domain reference(s) found:\n${forbidden}`).toBe("");
   });
 
   test("AppSync endpoints in tracked files use synthetic API ids", () => {

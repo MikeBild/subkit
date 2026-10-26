@@ -44,6 +44,7 @@ const ALLOWED = new Set<string>([
   "apps/engine/src/conversations/tools/review-workflow-automation.ts",
   "apps/engine/src/conversations/playbook.ts",
   "apps/engine/src/conversations/playbook-evidence.ts",
+  "apps/engine/src/conversations/tools/sdk-wrap/pregate.ts",
   "apps/engine/src/http/routes/cockpit-events.ts",
   "apps/engine/src/http/routes/categories.ts",
   "apps/engine/src/http/routes/intake.ts",

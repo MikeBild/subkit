@@ -59,10 +59,17 @@ describe("openapi", () => {
     expect(spec.components.schemas.ExecutionRunStepSummary).toBeDefined();
   });
 
-  test("openapi carries no legacy Automation* schemas or /v1/automations paths", async () => {
+  test("openapi carries only workflow AutomationReadiness and no legacy automation paths", async () => {
     const res = await fetch(`${ctx.baseUrl}/openapi.json`);
-    const json = await res.text();
-    expect(json).not.toContain("Automation");
-    expect(json).not.toContain("/v1/automations");
+    const spec = (await res.json()) as {
+      paths: Record<string, unknown>;
+      components: { schemas: Record<string, unknown> };
+    };
+    expect(
+      Object.keys(spec.components.schemas).filter((name) => name.startsWith("Automation")),
+    ).toEqual(["AutomationReadiness"]);
+    expect(Object.keys(spec.paths).filter((path) => path.startsWith("/v1/automations"))).toEqual(
+      [],
+    );
   });
 });
