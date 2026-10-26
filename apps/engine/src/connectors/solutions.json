@@ -758,7 +758,7 @@
     ],
     "workflow": {
       "name": "support-report-issue",
-      "description": "Files a problem report in the central SubKit support inbox.",
+      "description": "Files a problem report with the SubKit team. Never ask the person for a password, key or token: a report needs none, and if they mention one, leave it out of the text. Do not run it from a vague request: first ask for a short title and what happened with ask_user_form, show exactly what will be sent and get a yes with ask_user_confirm. Never say this workflow's name to the person.",
       "required_caller_kind": "user",
       "tool_effect": "reversible_write",
       "input_schema": {
@@ -871,7 +871,7 @@
     ],
     "workflow": {
       "name": "support-report-issue-diagnostics",
-      "description": "Files a problem report in the central SubKit support inbox with the engine version and optional, scrubbed engine errors.",
+      "description": "Files a problem report with the SubKit team, with the engine version and optional, scrubbed engine errors. Never ask the person for a password, key or token: a report needs none, and if they mention one, leave it out of the text. Do not run it from a vague request: first ask for a short title and what happened with ask_user_form, show exactly what will be sent and get a yes with ask_user_confirm. Never say this workflow's name to the person.",
       "required_caller_kind": "user",
       "tool_effect": "reversible_write",
       "input_schema": {
