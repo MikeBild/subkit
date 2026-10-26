@@ -26942,6 +26942,8 @@ export interface components {
                     title: string;
                     /** Format: uri */
                     source_url: string | null;
+                    source_author?: string | null;
+                    published_at?: string | null;
                 }[];
                 /** Format: date-time */
                 created_at: string;

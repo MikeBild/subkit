@@ -21023,6 +21023,18 @@
                         "null"
                       ],
                       "format": "uri"
+                    },
+                    "source_author": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "published_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     }
                   },
                   "required": [
