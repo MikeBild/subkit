@@ -1,5 +1,13 @@
-import { describe, expect, it } from "bun:test";
-import { renderRuntimeContextBlock, resolveEngineUrl } from "../runtime-context.ts";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
+import {
+  engineUrlFromConfig,
+  renderRuntimeContextBlock,
+  resolveEngineUrl,
+} from "../runtime-context.ts";
 
 describe("renderRuntimeContextBlock", () => {
   it("returns null when no fields are set (no empty header burns cache space)", () => {
@@ -75,5 +83,46 @@ describe("resolveEngineUrl", () => {
     } finally {
       if (prev !== undefined) process.env.SUBKIT_PUBLIC_BASE_URL = prev;
     }
+  });
+});
+
+describe("resolveEngineUrl with a configured public base URL", () => {
+  let configDirectory: string;
+
+  beforeAll(async () => {
+    configDirectory = mkdtempSync(join(tmpdir(), "runtime-context-"));
+    _resetConfigForTests();
+    await loadConfig({
+      configPathOverride: join(configDirectory, "subkit.config.json"),
+      env: { DATABASE_URL: "postgres://localhost/runtime_context_fixture", NODE_ENV: "test" },
+    });
+  });
+
+  afterEach(async () => {
+    await setConfigKey("server.public_base_url", "", { force: true });
+  });
+
+  afterAll(() => {
+    _resetConfigForTests();
+    rmSync(configDirectory, { recursive: true, force: true });
+  });
+
+  it("prefers the public base URL over a proxied plain-http request origin", async () => {
+    await setConfigKey("server.public_base_url", "https://engine.example.test", { force: true });
+    expect(resolveEngineUrl({ url: "http://engine.example.test/v1/conversations" })).toBe(
+      "https://engine.example.test",
+    );
+  });
+
+  it("strips trailing slashes from the configured public base URL", async () => {
+    await setConfigKey("server.public_base_url", "https://engine.example.test/", { force: true });
+    expect(engineUrlFromConfig()).toBe("https://engine.example.test");
+    expect(resolveEngineUrl({ url: "not a url" })).toBe("https://engine.example.test");
+  });
+
+  it("falls back to the request origin without a public base URL", () => {
+    expect(resolveEngineUrl({ url: "http://127.0.0.1:3000/v1/conversations" })).toBe(
+      "http://127.0.0.1:3000",
+    );
   });
 });

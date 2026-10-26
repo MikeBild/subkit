@@ -31,16 +31,18 @@ export function renderRuntimeContextBlock(ctx: RuntimeContext): string | null {
 
 export function engineUrlFromConfig(): string | undefined {
   try {
-    const cfg = getConfig().server.public_base_url;
+    const cfg = getConfig().server.public_base_url?.replace(/\/+$/, "");
     if (cfg && cfg.length > 0) return cfg;
   } catch {}
   return undefined;
 }
 
 export function resolveEngineUrl(req: Request | { url: string }): string | undefined {
+  const configured = engineUrlFromConfig();
+  if (configured) return configured;
   try {
     const origin = new URL(req.url).origin;
     if (origin && origin !== "null") return origin;
   } catch {}
-  return engineUrlFromConfig();
+  return undefined;
 }
