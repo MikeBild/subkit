@@ -39,6 +39,15 @@ type Failure =
   | { kind: "approval"; environment: RunEnvironment }
   | { kind: "failed"; executionId: string | null };
 
+export interface RunWording {
+  title: string;
+  intro: string;
+  submit: string;
+  started: string;
+  refused: string;
+  fields: Record<string, { title: string; description: string }>;
+}
+
 const ENGINE_DEFAULT_ENVIRONMENT: RunEnvironment = "dev";
 
 export function RunWorkflowDialog({
@@ -53,7 +62,9 @@ export function RunWorkflowDialog({
   triggerTestId = "workflow-run-open",
   openRequest,
   openOnAnchor,
+  wording,
 }: {
+  wording?: RunWording;
   quiet?: boolean;
   disabled?: boolean;
   disabledReason?: string;
@@ -95,7 +106,10 @@ export function RunWorkflowDialog({
       ),
   });
   const form = inputForm(schema.data?.schema ?? null);
-  const fields = formFields(form);
+  const fields = formFields(form).map((field) => {
+    const own = wording?.fields[field.name];
+    return own ? { ...field, title: own.title, description: own.description } : field;
+  });
   const filled = values ?? formValuesFromInput(form, undefined);
   const built = buildFormSchemaInput(form, filled);
   const environment = liveEnvironment ?? ENGINE_DEFAULT_ENVIRONMENT;
@@ -132,7 +146,7 @@ export function RunWorkflowDialog({
       setOpen(false);
       setValues(null);
       setChecked(false);
-      toast.success(t("run.startedToast"));
+      toast.success(wording?.started ?? t("run.startedToast"));
       if (result.execution_id) sheets.run(result.execution_id);
     },
     onError: (error) => {
@@ -162,7 +176,8 @@ export function RunWorkflowDialog({
     },
   });
 
-  const failureFix = failure?.kind === "connector" ? connectorFix(failure.connector) : null;
+  const failureFix =
+    failure?.kind === "connector" && !wording ? connectorFix(failure.connector) : null;
   const repeats = failure !== null && failure.kind !== "failed";
 
   if (disabled)
@@ -194,17 +209,19 @@ export function RunWorkflowDialog({
           </Button>
         ) : undefined
       }
-      title={t("run.title", { name: workflowName })}
+      title={wording?.title ?? t("run.title", { name: workflowName })}
       size="wide"
       description={
-        liveEnvironment && approvedVersion != null
-          ? t("run.consequenceVersion", { version: approvedVersion })
-          : t(liveEnvironment ? "run.consequenceLive" : "run.consequencePreview")
+        wording
+          ? wording.intro
+          : liveEnvironment && approvedVersion != null
+            ? t("run.consequenceVersion", { version: approvedVersion })
+            : t(liveEnvironment ? "run.consequenceLive" : "run.consequencePreview")
       }
       submit={{
         label: run.isPending
           ? t("run.running")
-          : t(liveEnvironment ? "run.action" : "run.previewAction"),
+          : (wording?.submit ?? t(liveEnvironment ? "run.action" : "run.previewAction")),
         pending: run.isPending,
         disabled: liveEnvironment === undefined || repeats || schema.isPending,
         testId: "workflow-run-submit",
@@ -232,17 +249,19 @@ export function RunWorkflowDialog({
         <Alert variant="destructive" data-testid="workflow-run-error">
           <AlertDescription>
             <p>
-              {failure.kind === "connector"
-                ? `${blockedSentence(failure.environment, failure.connector)}.`
-                : failure.kind === "legacy"
-                  ? failure.steps.length > 0
-                    ? t("run.legacySteps", { steps: failure.steps.join(", ") })
-                    : t("run.legacy")
-                  : failure.kind === "approval"
-                    ? t("run.approvalMissing", {
-                        environment: environmentWord(failure.environment),
-                      })
-                    : t("run.failed")}
+              {wording
+                ? wording.refused
+                : failure.kind === "connector"
+                  ? `${blockedSentence(failure.environment, failure.connector)}.`
+                  : failure.kind === "legacy"
+                    ? failure.steps.length > 0
+                      ? t("run.legacySteps", { steps: failure.steps.join(", ") })
+                      : t("run.legacy")
+                    : failure.kind === "approval"
+                      ? t("run.approvalMissing", {
+                          environment: environmentWord(failure.environment),
+                        })
+                      : t("run.failed")}
             </p>
             {failureFix && (
               <a
@@ -253,7 +272,7 @@ export function RunWorkflowDialog({
                 {t(failureFix.labelKey)}
               </a>
             )}
-            {failure.kind === "failed" && failure.executionId && (
+            {!wording && failure.kind === "failed" && failure.executionId && (
               <a
                 href={absolute(runHref(failure.executionId))}
                 className="font-medium underline underline-offset-4"
