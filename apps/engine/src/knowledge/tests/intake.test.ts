@@ -31,6 +31,7 @@ import {
   sessionIntakeRequestId,
   setIntakeDefaultCategory,
 } from "../index.ts";
+import { proposalDigest } from "../intake-digest.ts";
 import {
   IntakeConfirmationActorError,
   IntakeConflictError,
@@ -848,6 +849,53 @@ describe.skipIf(skip)("knowledge intake", () => {
         "- [Video \\[talk\\] on recording](<https://video.example.test/watch?v=abc>) · Author: Channel Author · Published: 2026-09-01",
         "",
       ].join("\n"),
+    );
+  });
+
+  test("shows the clip author and publication date in the proposal without changing its digest", async () => {
+    const item = await createClip({
+      title: "Talk on recording",
+      source_url: "https://video.example.test/watch?v=def",
+      source_author: "Channel Author",
+      published_at: "2026-09-02",
+    });
+    const proposal = await createIntakeProposal(
+      {
+        tenant_id: ctx.tenantId,
+        actor,
+        item_ids: [item.id],
+        title: "Talk summary",
+        body: "Summary.",
+        target: { name: "Talk summary" },
+      },
+      ctx.testDb.db,
+    );
+    const [shown] = proposal.revision.items;
+    expect(shown).toMatchObject({
+      id: item.id,
+      source_url: "https://video.example.test/watch?v=def",
+      source_author: "Channel Author",
+      published_at: "2026-09-02",
+    });
+    const reread = await getIntakeProposal(ctx.tenantId, proposal.id, ctx.testDb.db);
+    expect(reread?.revision.items[0]).toMatchObject({
+      source_author: "Channel Author",
+      published_at: "2026-09-02",
+    });
+    expect(proposal.revision.digest).toBe(
+      proposalDigest({
+        title: "Talk summary",
+        body: "Summary.",
+        target: { name: "Talk summary" },
+        items: [
+          {
+            id: item.id,
+            version: item.version,
+            title: "Talk on recording",
+            source_url: "https://video.example.test/watch?v=def",
+          },
+        ],
+      }),
     );
   });
 

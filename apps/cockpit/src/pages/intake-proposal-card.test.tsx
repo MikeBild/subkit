@@ -21,7 +21,12 @@ const SKILL = "11111111-1111-4111-8111-111111111111";
 const OLD = "22222222-2222-4222-8222-222222222222";
 const SKILL_WRITER = ["intake:confirm", "skill:write", "skill:activate"];
 
-function proposal(target: IntakeProposalTarget): IntakeProposal {
+function proposal(
+  target: IntakeProposalTarget,
+  items: IntakeProposal["revision"]["items"] = [
+    { id: ITEM, version: 1, title: "Sitzung", source_url: null },
+  ],
+): IntakeProposal {
   return {
     id: "proposal",
     tenant_id: "tenant",
@@ -40,7 +45,7 @@ function proposal(target: IntakeProposalTarget): IntakeProposal {
       title: "Rollbacks zuerst",
       body: "Rollback first.\nThen fix.",
       target,
-      items: [{ id: ITEM, version: 1, title: "Sitzung", source_url: null }],
+      items,
       created_at: "2026-01-02T00:00:00.000Z",
     },
   };
@@ -51,6 +56,7 @@ function render(
   permissions: readonly string[],
   skills: Record<string, ReferencedSkill> = {},
   bindings: Record<string, string | number> = {},
+  items?: IntakeProposal["revision"]["items"],
 ) {
   const client = new QueryClient();
   for (const [id, skill] of Object.entries(skills))
@@ -74,7 +80,7 @@ function render(
     <QueryClientProvider client={client}>
       <I18nContext.Provider value={value}>
         <ProposalCard
-          proposal={proposal(target)}
+          proposal={proposal(target, items)}
           permissions={permissions}
           focused
           onConfirm={() => {}}
@@ -215,6 +221,38 @@ describe("intake proposal card", () => {
     const html = render(newSkill, SKILL_WRITER);
     expect(html).toContain(`/intake/${ITEM}`);
     expect(html).not.toContain('target="_blank"');
+  });
+
+  test("the review shows the source address, author and date that are stored with the knowledge", () => {
+    const html = render(
+      { name: "Produktwissen", category: "incident-review" },
+      ["intake:confirm", "knowledge:write"],
+      {},
+      {},
+      [
+        {
+          id: ITEM,
+          version: 1,
+          title: "Vortrag",
+          source_url: "https://video.example.test/watch?v=abc",
+          source_author: "Erika Muster",
+          published_at: "2026-09-01",
+        },
+      ],
+    );
+    expect(html).toContain("https://video.example.test/watch?v=abc");
+    expect(html).toContain("Autor: Erika Muster");
+    expect(html).toContain("Veröffentlicht: 2026-09-01");
+    expect(html).toContain("Wird als Quelle mit dem Wissen gespeichert");
+  });
+
+  test("an item without any source details adds no source line", () => {
+    const html = render({ name: "Produktwissen", category: "incident-review" }, [
+      "intake:confirm",
+      "knowledge:write",
+    ]);
+    expect(html).not.toContain("Wird als Quelle mit dem Wissen gespeichert");
+    expect(html).not.toContain("provenance");
   });
 
   test("a knowledge target keeps its name and category line", () => {

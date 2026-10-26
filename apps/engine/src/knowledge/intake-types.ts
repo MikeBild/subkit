@@ -41,6 +41,8 @@ export interface IntakeProposalItemView {
   version: number;
   title: string;
   source_url: string | null;
+  source_author?: string | null;
+  published_at?: string | null;
 }
 
 export interface IntakeProposalRevisionView {

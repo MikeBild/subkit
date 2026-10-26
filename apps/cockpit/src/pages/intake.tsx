@@ -788,9 +788,9 @@ export function ProposalCard({
             {t("intake.proposal.tags")}: {targetTags}
           </p>
         ) : null}
-        <ul className="mt-3 grid gap-1 text-sm">
+        <ul className="mt-3 grid gap-2 text-sm">
           {proposal.revision.items.map((item) => (
-            <li key={item.id}>
+            <li key={item.id} className="grid gap-0.5">
               <a
                 className="text-accent underline-offset-4 hover:underline"
                 href={absolute(recordHref("intake", item.id))}
@@ -798,9 +798,32 @@ export function ProposalCard({
               >
                 {item.title}
               </a>
+              {item.source_url || item.source_author || item.published_at ? (
+                <p
+                  className="text-xs text-muted-foreground"
+                  data-testid={`intake-proposal-${proposal.id}-provenance-${item.id}`}
+                >
+                  {[
+                    item.source_url,
+                    item.source_author
+                      ? t("intake.proposal.sourceAuthor", { author: item.source_author })
+                      : null,
+                    item.published_at
+                      ? t("intake.proposal.sourcePublished", { date: item.published_at })
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              ) : null}
             </li>
           ))}
         </ul>
+        {proposal.revision.items.some(
+          (item) => item.source_url || item.source_author || item.published_at,
+        ) ? (
+          <p className="mt-2 text-xs text-muted-foreground">{t("intake.proposal.provenance")}</p>
+        ) : null}
       </CollapsibleSection>
       {proposal.status === "draft" && skillMoved ? (
         <p

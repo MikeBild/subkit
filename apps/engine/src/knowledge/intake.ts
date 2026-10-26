@@ -511,11 +511,13 @@ async function proposalRevision(
     title: row.title,
     body: row.body,
     target: row.target,
-    items: joined.map(({ link }) => ({
+    items: joined.map(({ item, link }) => ({
       id: link.item_id,
       version: link.item_version,
       title: link.source_title,
       source_url: link.source_url,
+      source_author: item.original_snapshot.source_author ?? null,
+      published_at: item.original_snapshot.published_at ?? null,
     })),
     created_at: row.created_at.toISOString(),
   };

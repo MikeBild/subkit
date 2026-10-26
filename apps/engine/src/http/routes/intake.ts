@@ -100,6 +100,8 @@ const ProposalSchema = z
           version: z.number().int().positive(),
           title: z.string(),
           source_url: z.string().url().nullable(),
+          source_author: z.string().nullable().optional(),
+          published_at: z.string().nullable().optional(),
         }),
       ),
       created_at: z.string().datetime(),
