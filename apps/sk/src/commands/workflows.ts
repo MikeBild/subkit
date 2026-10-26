@@ -11,7 +11,6 @@ import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import {
   EngineClient,
-  type RunEnvironment,
   type RunExecutionBody,
   type RunExecutionResponse,
 } from "../engine-client.ts";
@@ -21,7 +20,7 @@ import {
   shortDescription,
 } from "../lib/catalog-metadata.ts";
 import { effectiveTriggerLabel, type TriggerFields } from "../lib/effective-trigger.ts";
-import { heldRunBlock, heldRunBlockForExecution } from "../lib/held-run.ts";
+import { heldRunBlockForExecution } from "../lib/held-run.ts";
 import {
   INVOCATION_LOOKUP_TIMEOUT_MS,
   type LocalSnippetReason,
@@ -41,12 +40,12 @@ import {
   parseRunEnvironment,
   RUN_ENVIRONMENT_ARG,
 } from "../lib/run-environment.ts";
+import { printRunResult } from "../lib/run-result.ts";
 import { exitCodeForTerminalStatus, tailExecution } from "../lib/tail-execution.ts";
 import {
   type AutomationReadiness,
   formatAutomationReadiness,
 } from "../render/automation-readiness.ts";
-import { computeStepBottlenecks, humanMs } from "../render/format.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
 import type {
   PlanStep,
@@ -99,65 +98,6 @@ function intentFromBody(body: Record<string, unknown>): WorkflowIntent {
     trigger: parseTrigger(definition.trigger),
     steps,
   };
-}
-
-function printRunResult(
-  result: RunExecutionResponse,
-  environment: RunEnvironment,
-  held?: { client: EngineClient; workflowId: string },
-): void {
-  printJson(result.idempotent_replay ? result : { ...result, environment });
-  if (result.idempotent_replay) {
-    process.stderr.write(
-      `\n${pc.dim("note:")} nothing new was started — an earlier run already used this idempotency key; it kept its own environment\n`,
-    );
-  } else {
-    process.stderr.write(`\n${pc.dim("environment:")} ${environment}\n`);
-  }
-  const mismatchHint = environmentMismatchHint(result, environment);
-  if (mismatchHint) process.stderr.write(`\n${pc.yellow("hint:")} ${mismatchHint}\n`);
-  if (held) {
-    const block = heldRunBlock(
-      held.client,
-      { hold_writes: result.hold_writes === true, workflow_id: held.workflowId },
-      (result.steps ?? []) as unknown as Record<string, unknown>[],
-    );
-    if (block) process.stderr.write(`\n${pc.bold(pc.yellow(block))}\n`);
-  }
-  const warnings = (result.warnings ?? []) as Array<{
-    step_key?: string;
-    code?: string;
-    message?: string;
-  }>;
-  if (warnings.length > 0) {
-    process.stderr.write(`\n${pc.dim("warnings:")}\n`);
-    for (const w of warnings) {
-      const step = w.step_key ?? "(run)";
-      const code = w.code ?? "unknown";
-      const msg = w.message ?? "";
-      process.stderr.write(`  ${pc.yellow("WARN")} step=${step} code=${code} msg=${msg}\n`);
-    }
-  }
-  const ranked = computeStepBottlenecks(
-    (result.steps ?? []) as unknown as Array<Record<string, unknown>>,
-  );
-  const slowest = ranked[0];
-  if (slowest) {
-    const conn = slowest.connector_slug ? ` ${pc.dim(`(${slowest.connector_slug})`)}` : "";
-    process.stderr.write(
-      `\n${pc.dim("slowest step:")} ${pc.cyan(slowest.step_key)} ` +
-        `${humanMs(slowest.duration_ms)} (${slowest.pct.toFixed(0)}% of run)${conn}\n`,
-    );
-  }
-  const rs = result.connector_resolutions ?? [];
-  if (rs.length === 0) return;
-  process.stderr.write(`\n${pc.dim("connector resolutions:")}\n`);
-  for (const r of rs) {
-    const env = `${r.requested_environment} → ${r.resolved_environment}`;
-    process.stderr.write(
-      `  ${pc.cyan(r.step_key)}  ${r.connector_slug} (${r.driver})  ${env}  ${pc.yellow(r.auth_method)}\n`,
-    );
-  }
 }
 
 function makeClient() {
