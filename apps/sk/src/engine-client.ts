@@ -131,6 +131,7 @@ export interface ClientOptions {
   fetchImpl?: FetchLike | undefined;
   user_agent?: string | undefined;
   debug_mode?: DebugMode | undefined;
+  language?: "de" | "en" | undefined;
 }
 
 export class EngineClient {
@@ -140,6 +141,7 @@ export class EngineClient {
   readonly fetchImpl: FetchLike;
   private readonly userAgent: string;
   private readonly debugMode: DebugMode;
+  private readonly language: "de" | "en" | null;
 
   constructor(opts: ClientOptions) {
     this.base = opts.engine_url.replace(/\/+$/, "");
@@ -148,6 +150,7 @@ export class EngineClient {
     this.fetchImpl = opts.fetchImpl ?? globalThis.fetch.bind(globalThis);
     this.userAgent = opts.user_agent ?? "sk-cli/0.0.1";
     this.debugMode = opts.debug_mode ?? "command";
+    this.language = opts.language ?? null;
   }
 
   headers(extra?: Record<string, string>, opts?: { traceId?: string }): Record<string, string> {
@@ -158,6 +161,7 @@ export class EngineClient {
       ...extra,
     };
     if (this.apiKey) h.authorization = `Bearer ${this.apiKey}`;
+    if (this.language) h["accept-language"] = this.language;
     if (this.tenant) h["x-subkit-tenant"] = this.tenant;
     if (opts?.traceId) h["x-sk-trace-id"] = opts.traceId;
     return h;

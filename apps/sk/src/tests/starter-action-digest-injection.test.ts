@@ -145,17 +145,40 @@ describe("intake review injection — without triage", () => {
     expect(label).not.toMatch(/proposed|learning|knowledge/i);
   });
 
+  test("dispatch submits the review prompt in German when the language is German", () => {
+    const previous = process.env.SK_LANG;
+    process.env.SK_LANG = "de";
+    try {
+      const actions = buildStarterTaskActions("admin", allowAll, null, pending(2, "Research"));
+      expect(actions[0]?.invoke).toEqual({
+        kind: "prompt",
+        prompt:
+          "Schau meine neuen Einträge in „Research“ durch. Welche davon helfen uns? Schlage vor, was wir übernehmen sollten, als Wissen oder als Skill, mit genauem Text, Quellen und Ziel zur Bestätigung.",
+      });
+    } finally {
+      if (previous === undefined) delete process.env.SK_LANG;
+      else process.env.SK_LANG = previous;
+    }
+  });
+
   test("dispatch submits the category-aware review prompt", () => {
-    const actions = buildStarterTaskActions("admin", allowAll, null, pending(2, "Research"));
-    expect(actions[0]?.id).toBe(REVIEW_INTAKE_ACTION_ID);
-    expect(actions[0]?.key).toBe("1");
-    expect(actions[0]?.requires).toBe("intake:read");
-    expect(actions[0]?.invoke).toEqual({
-      kind: "prompt",
-      prompt:
-        "Review my new items in “Research”. Which ones help us? Suggest what we should retain, as knowledge or as a skill, with the exact text, sources and destination for my confirmation.",
-    });
-    expect(actions[1]?.key).toBe("2");
+    const previous = process.env.SK_LANG;
+    process.env.SK_LANG = "en";
+    try {
+      const actions = buildStarterTaskActions("admin", allowAll, null, pending(2, "Research"));
+      expect(actions[0]?.id).toBe(REVIEW_INTAKE_ACTION_ID);
+      expect(actions[0]?.key).toBe("1");
+      expect(actions[0]?.requires).toBe("intake:read");
+      expect(actions[0]?.invoke).toEqual({
+        kind: "prompt",
+        prompt:
+          "Review my new items in “Research”. Which ones help us? Suggest what we should retain, as knowledge or as a skill, with the exact text, sources and destination for my confirmation.",
+      });
+      expect(actions[1]?.key).toBe("2");
+    } finally {
+      if (previous === undefined) delete process.env.SK_LANG;
+      else process.env.SK_LANG = previous;
+    }
   });
 
   test("terminal control sequences in the category name never reach label or prompt", () => {

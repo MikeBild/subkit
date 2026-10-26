@@ -16,7 +16,29 @@ export function terminalText(value: string): string {
   return value.replace(OSC_ESCAPE, "").replace(CSI_ESCAPE, "").replace(CONTROL_CHARACTER, " ");
 }
 
-export function intakeReviewPrompt(category: string): string {
+export type CliLocale = "de" | "en";
+
+export const SELECTED_ITEMS_LABEL = "these selected items";
+
+export function cliLocale(
+  env: Record<string, string | undefined> = process.env,
+  flag?: string,
+): CliLocale {
+  const candidates = [flag, env.SK_LANG, env.LC_ALL, env.LC_MESSAGES, env.LANG];
+  const chosen = candidates
+    .map((value) => value?.trim())
+    .find((value) => value && value !== "C" && value !== "POSIX");
+  return chosen?.toLowerCase().startsWith("de") ? "de" : "en";
+}
+
+export function intakeReviewPrompt(category: string, locale: CliLocale = "en"): string {
+  if (locale === "de") {
+    const scope =
+      category === SELECTED_ITEMS_LABEL
+        ? "die ausgewählten Einträge"
+        : `meine neuen Einträge in „${terminalText(category)}“`;
+    return `Schau ${scope} durch. Welche davon helfen uns? Schlage vor, was wir übernehmen sollten, als Wissen oder als Skill, mit genauem Text, Quellen und Ziel zur Bestätigung.`;
+  }
   return `Review my new items in “${terminalText(category)}”. Which ones help us? Suggest what we should retain, as knowledge or as a skill, with the exact text, sources and destination for my confirmation.`;
 }
 

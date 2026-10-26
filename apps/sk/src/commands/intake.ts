@@ -3,14 +3,25 @@ import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import { resolveProfile } from "../config.ts";
 import { EngineClient, type IntakeItem } from "../engine-client.ts";
-import { cockpitUrl, intakeReviewPrompt, terminalText } from "../lib/intake-review.ts";
+import {
+  cliLocale,
+  cockpitUrl,
+  intakeReviewPrompt,
+  SELECTED_ITEMS_LABEL,
+  terminalText,
+} from "../lib/intake-review.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_REVIEW_ITEMS = 100;
 
-function makeClient(): EngineClient {
+function makeClient(language?: string): EngineClient {
   const { engine_url, api_key, active_tenant_id } = resolveProfile();
-  return new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+  return new EngineClient({
+    engine_url,
+    api_key,
+    tenant: active_tenant_id,
+    language: cliLocale(process.env, language),
+  });
 }
 
 export function intakeCategory(value: string): string {
@@ -104,6 +115,7 @@ const reviewCommand = defineCommand({
   args: {
     category: { type: "string", description: "Shared category name" },
     items: { type: "string", description: "Comma-separated item UUIDs" },
+    lang: { type: "string", description: "Language of the review: de or en" },
     json: { type: "boolean", description: "JSON output" },
   },
   async run({ args }) {
@@ -111,11 +123,12 @@ const reviewCommand = defineCommand({
     try {
       if (args.category !== undefined && args.items !== undefined)
         throw new Error("use either --category or --items, not both");
-      const client = makeClient();
+      const locale = cliLocale(process.env, args.lang);
+      const client = makeClient(args.lang);
       if (args.items !== undefined) {
         const selectedIds = intakeItemIds(args.items);
         const outcome = await client.createConversation({
-          initial_message: intakeReviewPrompt("these selected items"),
+          initial_message: intakeReviewPrompt(SELECTED_ITEMS_LABEL, locale),
           intake_item_ids: selectedIds,
         });
         const url = cockpitConversationUrl(client, outcome.conversation.id);
@@ -143,7 +156,7 @@ const reviewCommand = defineCommand({
       if (selectedIds.length === 0)
         throw new Error(`category “${terminalText(category)}” has no collected items to review`);
       const outcome = await client.createConversation({
-        initial_message: intakeReviewPrompt(category),
+        initial_message: intakeReviewPrompt(category, locale),
         intake_item_ids: selectedIds,
       });
       const url = cockpitConversationUrl(client, outcome.conversation.id);

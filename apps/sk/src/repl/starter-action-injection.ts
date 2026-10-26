@@ -1,5 +1,10 @@
 import type { OperatorHealthDigest } from "../engine-client.ts";
-import { intakeReviewPrompt, type PendingIntake, terminalText } from "../lib/intake-review.ts";
+import {
+  cliLocale,
+  intakeReviewPrompt,
+  type PendingIntake,
+  terminalText,
+} from "../lib/intake-review.ts";
 import { totalFailureCount } from "../lib/operator-digest.ts";
 import type { PersonaProbe } from "../slash.ts";
 import { type StarterAction, starterActionsForPersona } from "./starter-actions.tsx";
@@ -42,7 +47,7 @@ export function intakeReviewAction(pending: PendingIntake): TaskAction {
     description: `Review collected items in “${category}” and propose what to retain. Nothing becomes knowledge or a skill until you confirm the proposal in Cockpit.`,
     category: "review",
     requires: REVIEW_INTAKE_PERMISSION,
-    invoke: { kind: "prompt", prompt: intakeReviewPrompt(pending.category) },
+    invoke: { kind: "prompt", prompt: intakeReviewPrompt(pending.category, cliLocale()) },
   };
 }
 

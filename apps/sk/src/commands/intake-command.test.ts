@@ -12,6 +12,7 @@ let previousWrite: typeof process.stdout.write;
 let previousError: typeof process.stderr.write;
 let output: string[];
 let requests: Request[];
+let previousLanguage: string | undefined;
 
 function response(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -61,6 +62,8 @@ function installEngine(items: readonly Record<string, unknown>[], createStatus =
 }
 
 beforeEach(() => {
+  previousLanguage = process.env.SK_LANG;
+  process.env.SK_LANG = "en";
   previousFetch = globalThis.fetch;
   previousWrite = process.stdout.write.bind(process.stdout);
   previousError = process.stderr.write.bind(process.stderr);
@@ -80,6 +83,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  if (previousLanguage === undefined) delete process.env.SK_LANG;
+  else process.env.SK_LANG = previousLanguage;
   globalThis.fetch = previousFetch;
   process.stdout.write = previousWrite;
   process.stderr.write = previousError;
@@ -143,6 +148,32 @@ describe("intake CLI commands", () => {
       "https://engine.test/gateway/cockpit/chat/10000000-0000-4000-8000-000000000002",
     );
     expect(requests.some((request) => request.path.includes("/confirm"))).toBeFalse();
+  });
+
+  test("starts the review in German when the language is German", async () => {
+    installEngine([item(ONE, "One")]);
+    await runCommand(intakeCommand, { rawArgs: ["review", "--lang", "de"] });
+    expect(requests.at(-1)).toEqual({
+      method: "POST",
+      path: "/gateway/v1/conversations",
+      body: {
+        initial_message:
+          "Schau meine neuen Einträge in „inbox“ durch. Welche davon helfen uns? Schlage vor, was wir übernehmen sollten, als Wissen oder als Skill, mit genauem Text, Quellen und Ziel zur Bestätigung.",
+        intake_item_ids: [ONE],
+      },
+    });
+  });
+
+  test("a selected-items review reads naturally in German", async () => {
+    installEngine([item(ONE, "One")]);
+    process.env.SK_LANG = "de_DE.UTF-8";
+    await runCommand(intakeCommand, { rawArgs: ["review", "--items", ONE] });
+    expect(requests.at(-1)).toMatchObject({
+      body: {
+        initial_message: expect.stringContaining("Schau die ausgewählten Einträge durch."),
+        intake_item_ids: [ONE],
+      },
+    });
   });
 
   test("uses an explicit category or explicit UUID selection", async () => {
