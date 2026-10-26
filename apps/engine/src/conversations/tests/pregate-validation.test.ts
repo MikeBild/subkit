@@ -247,7 +247,7 @@ async function seedKnowledgeSource(tenant_id: string, label: string): Promise<st
 
 function paletteCtx(options: { intakeReview: boolean; tools?: string[] }): ToolContext {
   return {
-    ...toolCtxFor(crypto.randomUUID()),
+    ...toolCtxFor("20000000-0000-4000-8000-000000000001"),
     getDraft: () =>
       ({
         workflow: { name: "", steps: [] },
@@ -347,7 +347,7 @@ describe("an id of another resource type names the right tool", () => {
       principal: {
         provider: "conversation_tool",
         kind: "user",
-        id: crypto.randomUUID(),
+        id: "20000000-0000-4000-8000-000000000002",
         tenant_id: ctx.tenant_id,
         roles: ["enduser"],
       },
