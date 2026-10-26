@@ -73,7 +73,10 @@ import {
   attentionRow,
   attentionSentence,
   entryActions,
+  opensReviewSheet,
   overviewView,
+  type ReviewAccess,
+  reviewForward,
   reviewNavigation,
   reviewSettles,
   reviewTarget,
@@ -168,7 +171,7 @@ function CompletingVerb({
         triggerVariant="outline"
       />
     );
-  if (primary.verb === "review")
+  if (opensReviewSheet(item, primary))
     return (
       <ActionButton size="sm" onClick={() => onReview(item.id)} testId={testId} data={data}>
         {t("overview.action.check")}
@@ -753,15 +756,17 @@ function ReviewBody({
   });
 
   const { primary } = item ? entryActions(item) : { primary: null as AttentionAction | null };
-  const elsewhere =
-    item && primary && primary.verb !== "review" ? (
+  const forward = (access: ReviewAccess) => {
+    const action = reviewForward(primary, access);
+    return item && action ? (
       <ActionButton
-        onClick={() => void navigate(routerTarget(primary.href))}
+        onClick={() => void navigate(routerTarget(action.href))}
         testId="attention-review-action"
       >
-        {t(actionLabelKey(primary, item))}
+        {t(actionLabelKey(action, item))}
       </ActionButton>
     ) : null;
+  };
 
   if (review.access !== "readable")
     return (
@@ -778,7 +783,7 @@ function ReviewBody({
               ? "attention-review-not-permitted"
               : "attention-review-nothing"
           }
-          action={elsewhere}
+          action={forward(review.access)}
         />
       </div>
     );
@@ -837,7 +842,7 @@ function ReviewBody({
           state="empty"
           line={t("overview.sheet.nothingOpen")}
           testId="attention-review-empty"
-          action={elsewhere}
+          action={forward(review.access)}
         />
       ) : null}
     </div>

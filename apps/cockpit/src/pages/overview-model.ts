@@ -1,4 +1,5 @@
 import type { components } from "@/api/schema";
+import { reviewFromUrl } from "@/app/links";
 import { growthLine } from "@/lib/authority-growth";
 import { causeClassKey } from "@/lib/cause-class";
 import { CONNECTOR_STRIP_KEYS } from "@/lib/connector-strip";
@@ -488,6 +489,27 @@ export function reviewAccess(target: ReviewTarget, permissions: readonly string[
   if (target.kind === "skills")
     return permissions.includes("skill:read") ? "readable" : "not_permitted";
   return "nothing";
+}
+
+function reviewLink(href: string): boolean {
+  const query = href.indexOf("?");
+  if (query < 0) return false;
+  return reviewFromUrl(href.slice(query).split("#")[0] ?? "") !== null;
+}
+
+export function opensReviewSheet(item: AttentionItem, action: AttentionAction): boolean {
+  if (action.verb !== "review") return false;
+  return reviewTarget(item.id).kind !== "other" || reviewLink(action.href);
+}
+
+export function reviewForward(
+  action: AttentionAction | null,
+  access: ReviewAccess,
+): AttentionAction | null {
+  if (!action?.href) return null;
+  if (action.verb !== "review") return action;
+  if (access !== "nothing" || reviewLink(action.href)) return null;
+  return action;
 }
 
 export function reviewSettles(review: {

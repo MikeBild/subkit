@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { routerPath, workflowAutomationHref } from "@/app/links";
+import { routerPath, routerTarget, workflowAutomationHref } from "@/app/links";
 import { type TranslationKey, translate } from "@/lib/i18n";
 import {
   type Attention,
@@ -11,10 +11,12 @@ import {
   attentionSentence,
   entryActions,
   entrySnapshot,
+  opensReviewSheet,
   overviewSections,
   overviewView,
   type ReviewHistory,
   reviewAccess,
+  reviewForward,
   reviewNavigation,
   reviewSettles,
   reviewTarget,
@@ -701,6 +703,54 @@ describe("what a review sheet may show", () => {
   test("any other entry has nothing to review in the sheet", () => {
     expect(reviewAccess(reviewTarget("connector:x"), ["connector:read"])).toBe("nothing");
     expect(reviewAccess(reviewTarget("workflow:stale"), ["workflow:read"])).toBe("nothing");
+  });
+
+  const intakeReview = {
+    verb: "review",
+    href: "/cockpit/intake?category=all",
+    primary: true,
+    permission: "intake:read",
+  } as const;
+  const collected = item({
+    id: "intake",
+    reason: "intake_collected",
+    subject: null,
+    counts: { intake: 12 },
+    actions: [intakeReview],
+  });
+  const workflowReview = {
+    verb: "review",
+    href: `/cockpit?review=workflow:${W}`,
+    primary: true,
+    permission: "workflow:write",
+  } as const;
+
+  test("collected material is reviewed in the Inbox, not in the sheet", () => {
+    expect(opensReviewSheet(collected, intakeReview)).toBe(false);
+    expect(routerTarget(intakeReview.href)).toEqual({
+      to: "/intake",
+      search: { category: "all" },
+    });
+  });
+
+  test("workflow fixes and skill proposals still open the sheet", () => {
+    expect(opensReviewSheet(item({ actions: [workflowReview] }), workflowReview)).toBe(true);
+    const skills = { ...workflowReview, href: "/cockpit?review=skills" };
+    expect(opensReviewSheet(item({ id: "skills", actions: [skills] }), skills)).toBe(true);
+  });
+
+  test("an empty sheet leads on to where the entry is handled", () => {
+    expect(reviewForward(intakeReview, "nothing")).toBe(intakeReview);
+    const chat = { ...intakeReview, verb: "chat", href: "/cockpit/chat/new" } as const;
+    expect(reviewForward(chat, "not_permitted")).toBe(chat);
+    expect(reviewForward(chat, "readable")).toBe(chat);
+  });
+
+  test("an empty sheet offers no link back to itself or past a missing permission", () => {
+    expect(reviewForward(workflowReview, "nothing")).toBeNull();
+    expect(reviewForward(intakeReview, "not_permitted")).toBeNull();
+    expect(reviewForward(intakeReview, "readable")).toBeNull();
+    expect(reviewForward(null, "nothing")).toBeNull();
   });
 });
 
