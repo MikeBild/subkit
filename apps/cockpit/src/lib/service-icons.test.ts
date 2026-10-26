@@ -21,6 +21,7 @@ const GENERIC_TEMPLATES = new Set([
   "http",
   "jina-reader",
   "oauth2-generic",
+  "subkit-support",
   "web-scraper",
   "xray-cloud",
 ]);
