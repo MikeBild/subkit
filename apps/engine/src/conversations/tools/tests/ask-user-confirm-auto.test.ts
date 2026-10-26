@@ -36,14 +36,25 @@ describe("ask_user_confirm — permission_mode=auto auto-resolve", () => {
     expect((result?.data as { auto_resolved?: boolean } | undefined)?.auto_resolved).not.toBe(true);
   });
 
-  test("external_write resolves confirmed:true in auto mode", async () => {
+  test("external_write is skipped in auto mode and says the user was not asked", async () => {
     const result = await askUserConfirmTool.execute(ctx({ permission_mode: "auto" }) as never, {
       question: "Run the request against prod?",
       kind: "external_write",
     });
     expect(result.ok).toBe(true);
-    expect((result.data as { confirmed: boolean }).confirmed).toBe(true);
-    expect((result.data as { performed: unknown }).performed).toBeNull();
+    expect(result.data).toMatchObject({
+      confirmed: false,
+      auto_skipped: true,
+      user_asked: false,
+      performed: null,
+    });
+    expect((result.data as { reason: string }).reason).toContain("NOT asked");
+    expect((result.data as { auto_resolved?: unknown }).auto_resolved).toBeUndefined();
+  });
+
+  test("the description tells the model an auto-skipped question is no confirmation", () => {
+    expect(askUserConfirmTool.description).toContain("auto_skipped=true");
+    expect(askUserConfirmTool.description).toContain("never claim the user confirmed");
   });
 
   test("destructive=true STILL pauses in auto mode (safety carve-out)", async () => {

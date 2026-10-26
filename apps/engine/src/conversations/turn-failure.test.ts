@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { APICallError } from "ai";
 import { DrizzleQueryError } from "drizzle-orm";
 import { HostedResourceCountError, HostedStorageQuotaError } from "../db/hosted-quota-errors.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../llm/errors.ts";
@@ -6,6 +7,7 @@ import { toLlmProviderError } from "../llm/provider-errors.ts";
 import {
   describeTurnFailure,
   LlmTimeoutError,
+  providerFailureNotice,
   timeoutPhaseOf,
   turnFailureFramePayload,
 } from "./turn-failure.ts";
@@ -169,4 +171,45 @@ test("provider tool schema rejection is not reported as a network outage", () =>
   expect(describeTurnFailure(new LlmProviderError("other", "connect ECONNREFUSED"), now).code).toBe(
     "llm_provider_unavailable",
   );
+});
+
+describe("providerFailureNotice", () => {
+  const missingModel = new APICallError({
+    message: "The model `gpt-unknown` does not exist or you do not have access to it.",
+    url: "https://api.openai.com/v1/responses",
+    requestBodyValues: {},
+    statusCode: 404,
+    isRetryable: false,
+  });
+
+  test("a missing model gives a short reply that points to the AI settings", () => {
+    const de = providerFailureNotice(missingModel, "de");
+    const en = providerFailureNotice(missingModel, "en");
+    expect(de).toContain("Einstellungen → KI & Kosten");
+    expect(de).toContain("Modell");
+    expect(en).toContain("Settings → AI & cost");
+    expect(en).not.toContain("gpt-unknown");
+  });
+
+  test("a missing model raised before the provider call is still explained", () => {
+    for (const message of [
+      "model_not_found: gpt-unknown",
+      "The model `gpt-4.1-mini` does not exist or you do not have access to it.",
+      "No such languageModel: openai:gpt-4.1-mini",
+    ])
+      expect(providerFailureNotice(new Error(message), "en")).toContain("configured AI model");
+  });
+
+  test("an unreachable provider points to the provider settings", () => {
+    expect(
+      providerFailureNotice(new LlmProviderError("other", "connect ECONNREFUSED"), "en"),
+    ).toContain("AI provider did not answer");
+  });
+
+  test("quota, rate limits, timeouts and internal failures stay silent", () => {
+    expect(providerFailureNotice(toLlmProviderError(new Error(QUOTA_SENTENCE)), "de")).toBeNull();
+    expect(providerFailureNotice(new LlmProviderError("rate_limit", "429"), "de")).toBeNull();
+    expect(providerFailureNotice(new LlmTimeoutError("total", 1_000), "de")).toBeNull();
+    expect(providerFailureNotice(new Error("boom"), "de")).toBeNull();
+  });
 });

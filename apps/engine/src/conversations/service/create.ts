@@ -42,6 +42,7 @@ export interface CreateConversationParams {
 }
 
 const PLAYGROUND_PRELOADED_SKILL = "workflow-authoring";
+const INTAKE_REVIEW_PRELOADED_SKILL = "intake-review-to-knowledge";
 
 function canonicalLabel(value: string, fallback: string): string {
   const normalized = value
@@ -157,9 +158,16 @@ export async function createConversation(
   }
   const catalog = await loadActivationCatalog(p.tenant_id, exec);
   const baselineSlugs = listBaselineSlugs(catalog);
-  const seedSlugs = playground
-    ? [...new Set([...baselineSlugs, PLAYGROUND_PRELOADED_SKILL])]
-    : baselineSlugs;
+  const seedSlugs = [
+    ...new Set([
+      ...baselineSlugs,
+      ...(playground ? [PLAYGROUND_PRELOADED_SKILL] : []),
+      ...(p.intake_item_ids?.length &&
+      catalog.some((skill) => skill.slug === INTAKE_REVIEW_PRELOADED_SKILL)
+        ? [INTAKE_REVIEW_PRELOADED_SKILL]
+        : []),
+    ]),
+  ];
   const [row] = await exec
     .insert(conversations)
     .values({

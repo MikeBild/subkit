@@ -6,12 +6,15 @@ import {
   auditLog,
   conversationElicitations,
   conversations,
+  knowledgeSources,
+  tenants,
   toolApprovals,
 } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
 import { getTool, type ToolContext } from "../tools/index.ts";
 import { wrapOne } from "../tools/sdk-wrap/invoke.ts";
+import { checkBeforeGate } from "../tools/sdk-wrap/pregate.ts";
 import type { TurnSignals } from "../tools/sdk-wrap.ts";
 import type { TurnEvent } from "../types.ts";
 
@@ -223,5 +226,156 @@ describe("a person is never asked to approve a call that cannot run", () => {
     expect(result.pause).toBeUndefined();
     expect(result.data).toMatchObject({ error: { code: "workflow_not_found" } });
     expect(await elicitationsOf(conversation_id)).toHaveLength(0);
+  });
+});
+
+async function seedKnowledgeSource(tenant_id: string, label: string): Promise<string> {
+  const [row] = await ctx.testDb.db
+    .insert(knowledgeSources)
+    .values({
+      tenant_id,
+      name: `Source ${label}`,
+      slug: `source-${label}`,
+      source_type: "file_upload",
+      source_uri: `${label}.md`,
+      version: "v1",
+    })
+    .returning({ id: knowledgeSources.id });
+  if (!row) throw new Error("seed knowledge source failed");
+  return row.id;
+}
+
+function paletteCtx(options: { intakeReview: boolean; tools?: string[] }): ToolContext {
+  return {
+    ...toolCtxFor(crypto.randomUUID()),
+    getDraft: () =>
+      ({
+        workflow: { name: "", steps: [] },
+        ...(options.intakeReview
+          ? { session: { intake_item_ids: ["10000000-0000-4000-8000-000000000001"] } }
+          : {}),
+      }) as never,
+    ...(options.tools ? { availableToolNames: new Set(options.tools) } : {}),
+  };
+}
+
+async function precheck(tool: string, toolCtx: ToolContext, args: Record<string, unknown>) {
+  const inner = getTool(tool);
+  if (!inner) throw new Error(`${tool} is not registered`);
+  const result = await checkBeforeGate(inner, toolCtx, args);
+  if (result.ok) throw new Error("expected a refusal");
+  return result.result as {
+    ok: false;
+    error_code?: string;
+    message?: string;
+    data?: Record<string, unknown>;
+    next_best_actions?: string[];
+  };
+}
+
+describe("an id of another resource type names the right tool", () => {
+  it("a knowledge source id passed to update_connector points to the knowledge tools", async () => {
+    const id = await seedKnowledgeSource(ctx.tenant_id, "cross-type");
+    const refusal = await precheck(
+      "update_connector",
+      paletteCtx({
+        intakeReview: false,
+        tools: ["update_connector", "update_knowledge_source", "get_knowledge_source"],
+      }),
+      { id, description: "changed" },
+    );
+    expect(refusal.error_code).toBe("connector_not_found");
+    expect(refusal.data).toMatchObject({ actual_resource_type: "knowledge_source" });
+    expect(refusal.message).toContain("existing knowledge source");
+    expect(refusal.message).toContain("update_knowledge_source");
+    expect(refusal.next_best_actions).toEqual(["update_knowledge_source", "get_knowledge_source"]);
+  });
+
+  it("in an intake review the removed edit tool is replaced by the normal-chat handoff", async () => {
+    const id = await seedKnowledgeSource(ctx.tenant_id, "intake-review");
+    const refusal = await precheck(
+      "update_connector",
+      paletteCtx({
+        intakeReview: true,
+        tools: ["update_connector", "update_knowledge_source", "get_knowledge_source"],
+      }),
+      { id, description: "changed" },
+    );
+    expect(refusal.data).toMatchObject({ actual_resource_type: "knowledge_source" });
+    expect(refusal.message).toContain("Use get_knowledge_source for this knowledge source.");
+    expect(refusal.message).toContain("normal chat");
+    expect(refusal.next_best_actions).toEqual(["get_knowledge_source"]);
+  });
+
+  it("a tool missing from the palette is never offered", async () => {
+    const id = await seedKnowledgeSource(ctx.tenant_id, "no-palette");
+    const refusal = await precheck(
+      "update_workflow",
+      paletteCtx({ intakeReview: false, tools: ["update_workflow"] }),
+      { id, description: "changed" },
+    );
+    expect(refusal.error_code).toBe("workflow_not_found");
+    expect(refusal.message).toContain("No knowledge source tool for this id is available");
+    expect(refusal.next_best_actions).toBeUndefined();
+  });
+
+  it("an unknown palette names the resource type without claiming a tool is missing", async () => {
+    const id = await seedKnowledgeSource(ctx.tenant_id, "unknown-palette");
+    const refusal = await precheck("update_connector", paletteCtx({ intakeReview: false }), {
+      id,
+      description: "changed",
+    });
+    expect(refusal.data).toMatchObject({ actual_resource_type: "knowledge_source" });
+    expect(refusal.message).toContain("Use a knowledge source tool for this id instead.");
+    expect(refusal.message).not.toContain("is available in this conversation");
+  });
+
+  it("an invented id in an intake review gets the generic refusal and the handoff", async () => {
+    const refusal = await precheck(
+      "update_workflow",
+      paletteCtx({ intakeReview: true, tools: ["update_workflow"] }),
+      { id: "00000000-0000-0000-0000-000000000000", description: "changed" },
+    );
+    expect(refusal.error_code).toBe("workflow_not_found");
+    expect(refusal.data?.actual_resource_type).toBeUndefined();
+    expect(refusal.message).toContain("normal chat");
+  });
+
+  it("a resource type the principal may not read is not revealed", async () => {
+    const enduser = (): ToolContext => ({
+      ...paletteCtx({ intakeReview: false, tools: ["get_skill", "get_connector"] }),
+      principal: {
+        provider: "conversation_tool",
+        kind: "user",
+        id: crypto.randomUUID(),
+        tenant_id: ctx.tenant_id,
+        roles: ["enduser"],
+      },
+    });
+    const hidden = await precheck("get_skill", enduser(), { id: ctx.connector_id });
+    expect(hidden.error_code).toBe("skill_not_found");
+    expect(hidden.data?.actual_resource_type).toBeUndefined();
+    expect(hidden.message).not.toContain("connector");
+    const readable = await seedKnowledgeSource(ctx.tenant_id, "enduser-readable");
+    const shown = await precheck("get_skill", enduser(), { id: readable });
+    expect(shown.error_code).toBe("skill_not_found");
+    expect(shown.data).toMatchObject({ actual_resource_type: "knowledge_source" });
+  });
+
+  it("a knowledge source of another tenant is not revealed", async () => {
+    const [other] = await ctx.testDb.db
+      .insert(tenants)
+      .values({ slug: "t-pregate-other", display_name: "Other tenant" })
+      .returning({ id: tenants.id });
+    if (!other) throw new Error("seed tenant failed");
+    const foreign = await seedKnowledgeSource(other.id, "foreign");
+    const refusal = await precheck(
+      "update_connector",
+      paletteCtx({ intakeReview: false, tools: ["update_knowledge_source"] }),
+      { id: foreign, description: "changed" },
+    );
+    expect(refusal.error_code).toBe("connector_not_found");
+    expect(refusal.data?.actual_resource_type).toBeUndefined();
+    expect(refusal.message).not.toContain("knowledge source");
   });
 });

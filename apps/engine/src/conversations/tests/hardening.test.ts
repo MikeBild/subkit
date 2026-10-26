@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
-import { llmUsage, tenants, userLlmSettings } from "../../db/schema/index.ts";
+import { conversationMessages, llmUsage, tenants, userLlmSettings } from "../../db/schema/index.ts";
 import { invoke } from "../../llm/core/invoke.ts";
 import type { LlmProviderError } from "../../llm/errors.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
@@ -24,6 +24,22 @@ beforeAll(async () => {
 afterAll(async () => {
   await ctx.cleanup();
 });
+
+async function providerFailureNotices(): Promise<string[]> {
+  const rows = await ctx.testDb.db
+    .select({ content: conversationMessages.content })
+    .from(conversationMessages)
+    .where(
+      and(
+        eq(conversationMessages.tenant_id, ctx.tenant_id),
+        eq(conversationMessages.role, "assistant"),
+      ),
+    );
+  return rows
+    .map((row) => row.content as { text?: string; _reason?: string })
+    .filter((content) => content._reason === "provider_failure_notice")
+    .map((content) => content.text ?? "");
+}
 
 describe("conversations/hardening", () => {
   test("wrapTools serializes concurrent tool invocations via toolChain", async () => {
@@ -160,6 +176,33 @@ describe("conversations/hardening", () => {
     expect(fallbackSuccess.length).toBeGreaterThanOrEqual(1);
   });
 
+  test("a provider that fails on primary and fallback leaves a visible reply pointing to the AI settings", async () => {
+    resetMockProvider();
+    await ctx.testDb.db
+      .update(tenants)
+      .set({ llm_primary: "notice-primary", llm_fallback: "notice-fallback" })
+      .where(eq(tenants.id, ctx.tenant_id));
+    getMockProvider().setFailure("notice-primary", "overloaded");
+    getMockProvider().setFailure("notice-fallback", "overloaded");
+
+    const before = (await providerFailureNotices()).length;
+    await expect(
+      createConversationWithTurn(
+        {
+          tenant_id: ctx.tenant_id,
+          actor_id: ctx.user_id,
+          connector_id: ctx.connector_id,
+          initial_message: "please list users from the api",
+        },
+        ctx.testDb.db,
+      ),
+    ).rejects.toMatchObject({ kind: "overloaded" } satisfies Partial<LlmProviderError>);
+
+    const notices = await providerFailureNotices();
+    expect(notices).toHaveLength(before + 1);
+    expect(notices.some((text) => text.includes("Settings → AI & cost"))).toBe(true);
+  });
+
   test("quota-exhausted on the same provider does not waste a fallback attempt", async () => {
     resetMockProvider();
     await ctx.testDb.db
@@ -168,6 +211,7 @@ describe("conversations/hardening", () => {
       .where(eq(tenants.id, ctx.tenant_id));
 
     getMockProvider().setFailure("quota-primary", "quota_exhausted");
+    const noticesBefore = (await providerFailureNotices()).length;
 
     await expect(
       createConversationWithTurn(
@@ -200,6 +244,7 @@ describe("conversations/hardening", () => {
       .from(llmUsage)
       .where(and(eq(llmUsage.tenant_id, ctx.tenant_id), eq(llmUsage.model, "quota-fallback")));
     expect(fallbackRows.length).toBe(0);
+    expect(await providerFailureNotices()).toHaveLength(noticesBefore);
   });
 
   test("system-account conversation ignores a colliding user's configured token cap", async () => {

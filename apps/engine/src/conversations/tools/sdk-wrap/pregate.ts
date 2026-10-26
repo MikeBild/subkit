@@ -1,4 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
+import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import type { Executor } from "../../../db/client.ts";
 import {
   apiKeys,
@@ -9,6 +10,7 @@ import {
   subscriptions,
   workflows,
 } from "../../../db/schema/index.ts";
+import { can } from "../../../rbac/evaluator.ts";
 import type {
   ConversationTool,
   ToolContext,
@@ -16,7 +18,16 @@ import type {
   ToolPrecheck,
   ToolResult,
 } from "../index.ts";
-import { checkToolPermission, type ToolPermissionResult } from "../permission-gate.ts";
+import {
+  checkToolPermission,
+  resolveConversationPrincipal,
+  type ToolPermissionResult,
+} from "../permission-gate.ts";
+import {
+  INTAKE_REVIEW_KNOWLEDGE_EDIT_NOTE,
+  INTAKE_REVIEW_REMOVED_TOOLS,
+  intakeReviewInProgress,
+} from "./intake-review-guard.ts";
 
 export function permissionRefusal(
   inner: ConversationTool,
@@ -130,9 +141,123 @@ const LOOKUP_TOOLS: Readonly<Record<string, readonly string[]>> = {
   connector: ["find_connector", "list_connectors"],
 };
 
-function resourceMissing(inner: ConversationTool, resourceType: string): ToolResult {
+const RESOURCE_TOOLS: Readonly<Record<string, readonly string[]>> = {
+  workflow: ["update_workflow", "get_workflow"],
+  connector: ["update_connector", "get_connector"],
+  knowledge_source: ["update_knowledge_source", "get_knowledge_source"],
+  skill: ["update_skill", "get_skill"],
+  subscription: ["update_subscription", "get_subscription"],
+  api_key: ["get_api_key"],
+  portal_token: [],
+};
+
+function canonicalResourceType(resourceType: string): string {
+  return resourceType === "knowledge" ? "knowledge_source" : resourceType;
+}
+
+function resourceLabel(resourceType: string): string {
+  return canonicalResourceType(resourceType).replace(/_/g, " ");
+}
+
+const RESOURCE_READ_PERMISSIONS: Readonly<Record<string, { action: string; type: string }>> = {
+  workflow: { action: "workflow:read", type: "workflow" },
+  connector: { action: "connector:read", type: "connector" },
+  knowledge_source: { action: "knowledge:read", type: "knowledge" },
+  skill: { action: "skill:read", type: "skill" },
+  subscription: { action: "subscription:read", type: "subscription" },
+  api_key: { action: "api_key:read", type: "api_key" },
+  portal_token: { action: "portal_token:read", type: "portal_token" },
+};
+
+async function mayReadResource(
+  ctx: ToolContext,
+  principal: ResolvedPrincipal | null,
+  type: string,
+  id: string,
+): Promise<boolean> {
+  if (!principal) return true;
+  const read = RESOURCE_READ_PERMISSIONS[type];
+  if (!read) return false;
+  const decision = await can(ctx.db, {
+    tenant_id: ctx.tenant_id,
+    principal,
+    permission: read.action,
+    resource: { type: read.type, id },
+    quiet: true,
+  });
+  return decision.allow;
+}
+
+async function actualResourceType(
+  ctx: ToolContext,
+  resourceType: string,
+  id: string,
+): Promise<string | null> {
+  if (!UUID_RE.test(id)) return null;
+  const own = canonicalResourceType(resourceType);
+  const principal = ctx.principal ?? (await resolveConversationPrincipal(ctx));
+  for (const type of Object.keys(RESOURCE_TOOLS)) {
+    if (type === own) continue;
+    const lookup = RESOURCE_LOOKUPS[type];
+    if (!lookup || !(await lookup(ctx.db, ctx.tenant_id, id))) continue;
+    return (await mayReadResource(ctx, principal, type, id)) ? type : null;
+  }
+  return null;
+}
+
+function inIntakeReview(ctx: ToolContext): boolean {
+  try {
+    return intakeReviewInProgress(ctx.getDraft());
+  } catch {
+    return false;
+  }
+}
+
+function resourceMissing(
+  inner: ConversationTool,
+  ctx: ToolContext,
+  resourceType: string,
+  actualType: string | null = null,
+): ToolResult {
   const error_code = `${resourceType}_not_found`;
-  const message = `${inner.name} names a ${resourceType.replace(/_/g, " ")} that does not exist in this tenant. Nothing ran and nobody was asked to approve it. Look the ${resourceType.replace(/_/g, " ")} up first; do not retry this reference.`;
+  const label = resourceLabel(resourceType);
+  const intakeReview = inIntakeReview(ctx);
+  if (actualType) {
+    const actualLabel = resourceLabel(actualType);
+    const candidates = RESOURCE_TOOLS[actualType] ?? [];
+    const removedByReview = intakeReview
+      ? candidates.filter((name) => INTAKE_REVIEW_REMOVED_TOOLS.includes(name))
+      : [];
+    const usable = candidates.filter(
+      (name) =>
+        name !== inner.name &&
+        !removedByReview.includes(name) &&
+        ctx.availableToolNames?.has(name) === true,
+    );
+    const guidance =
+      usable.length > 0
+        ? `Use ${usable.join(" or ")} for this ${actualLabel}.`
+        : ctx.availableToolNames === undefined
+          ? `Use a ${actualLabel} tool for this id instead.`
+          : `No ${actualLabel} tool for this id is available in this conversation; tell the person instead of trying another tool.`;
+    const message = [
+      `${inner.name} names a ${label} that does not exist in this tenant; the id belongs to an existing ${actualLabel}. Nothing ran and nobody was asked to approve it.`,
+      guidance,
+      `Do not call ${inner.name} with this id.`,
+      ...(removedByReview.length > 0 ? [INTAKE_REVIEW_KNOWLEDGE_EDIT_NOTE] : []),
+    ].join(" ");
+    return {
+      ok: false,
+      error_code,
+      message,
+      data: { error: { code: error_code, message }, actual_resource_type: actualType },
+      ...(usable.length > 0 ? { next_best_actions: usable } : {}),
+    };
+  }
+  const message = [
+    `${inner.name} names a ${label} that does not exist in this tenant. Nothing ran and nobody was asked to approve it. Look the ${label} up first; do not retry this reference.`,
+    ...(intakeReview ? [INTAKE_REVIEW_KNOWLEDGE_EDIT_NOTE] : []),
+  ].join(" ");
   const next = LOOKUP_TOOLS[resourceType];
   return {
     ok: false,
@@ -141,6 +266,18 @@ function resourceMissing(inner: ConversationTool, resourceType: string): ToolRes
     data: { error: { code: error_code, message } },
     ...(next ? { next_best_actions: [...next] } : {}),
   };
+}
+
+async function missingResource(
+  inner: ConversationTool,
+  ctx: ToolContext,
+  resourceType: string,
+  id: string,
+): Promise<ToolResult | null> {
+  const lookup = RESOURCE_LOOKUPS[resourceType];
+  if (!lookup) return null;
+  if (UUID_RE.test(id) && (await lookup(ctx.db, ctx.tenant_id, id))) return null;
+  return resourceMissing(inner, ctx, resourceType, await actualResourceType(ctx, resourceType, id));
 }
 
 async function namedResourceMissing(
@@ -152,22 +289,13 @@ async function namedResourceMissing(
   if (!permission) return null;
   if (permission.resolveResourceId) {
     const resolved = await permission.resolveResourceId(ctx, rawArgs);
-    if (resolved === null) return resourceMissing(inner, permission.resourceType);
-    const lookup = RESOURCE_LOOKUPS[permission.resourceType];
-    if (!lookup) return null;
-    if (!UUID_RE.test(resolved) || !(await lookup(ctx.db, ctx.tenant_id, resolved)))
-      return resourceMissing(inner, permission.resourceType);
-    return null;
+    if (resolved === null) return resourceMissing(inner, ctx, permission.resourceType);
+    return missingResource(inner, ctx, permission.resourceType, resolved);
   }
   if (!permission.resourceIdArg) return null;
   const named = rawArgs[permission.resourceIdArg];
   if (named === undefined || named === null) return null;
-  const lookup = RESOURCE_LOOKUPS[permission.resourceType];
-  if (!lookup) return null;
-  const id = String(named);
-  if (!UUID_RE.test(id) || !(await lookup(ctx.db, ctx.tenant_id, id)))
-    return resourceMissing(inner, permission.resourceType);
-  return null;
+  return missingResource(inner, ctx, permission.resourceType, String(named));
 }
 
 export async function checkBeforeGate(

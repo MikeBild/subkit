@@ -39,6 +39,9 @@ import graphqlConnectors from "../conversations/seed/skills/graphql-connectors.m
   type: "text",
 };
 import httpConnectors from "../conversations/seed/skills/http-connectors.md" with { type: "text" };
+import intakeReviewToKnowledge from "../conversations/seed/skills/intake-review-to-knowledge.md" with {
+  type: "text",
+};
 import knowledgeFindAndMaintain from "../conversations/seed/skills/knowledge-find-and-maintain.md" with {
   type: "text",
 };
@@ -130,6 +133,7 @@ export const EMBEDDED_SKILL_SEEDS: readonly EmbeddedSeedFile[] = [
   { file: "graphql-authoring-recipe.md", content: graphqlAuthoringRecipe },
   { file: "graphql-connectors.md", content: graphqlConnectors },
   { file: "http-connectors.md", content: httpConnectors },
+  { file: "intake-review-to-knowledge.md", content: intakeReviewToKnowledge },
   { file: "knowledge-find-and-maintain.md", content: knowledgeFindAndMaintain },
   { file: "mcp-server-setup.md", content: mcpServerSetup },
   { file: "mcp-tool-contract.md", content: mcpToolContract },

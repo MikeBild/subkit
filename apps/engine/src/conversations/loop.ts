@@ -158,8 +158,19 @@ import {
   resolveNamedWorkflowSlug,
 } from "./tools/authoring-palette.ts";
 import { getTool, listTools, type ToolContext } from "./tools/index.ts";
+import {
+  intakeReviewInProgress,
+  intakeReviewNote,
+  intakeSelectionStatus,
+  removeIntakeReviewTools,
+} from "./tools/sdk-wrap/intake-review-guard.ts";
 import { type TurnSignals, wrapTools } from "./tools/sdk-wrap.ts";
-import { LlmTimeoutError, timeoutBudgetOf, timeoutPhaseOf } from "./turn-failure.ts";
+import {
+  LlmTimeoutError,
+  providerFailureNotice,
+  timeoutBudgetOf,
+  timeoutPhaseOf,
+} from "./turn-failure.ts";
 import {
   classifyFallbackSynthesis,
   completionEvidenceGuard,
@@ -884,10 +895,15 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
   const tools = wrappedTools;
   let paletteSkills = loadedSkills;
 
-  if (draft.session?.intake_review_active || draft.session?.intake_item_ids?.length) {
-    delete tools.create_knowledge_source;
-    delete tools.update_knowledge_source;
-    delete tools.analyze_knowledge_source;
+  if (intakeReviewInProgress(draft)) {
+    removeIntakeReviewTools(tools, draft);
+    ctx.availableToolNames = new Set(Object.keys(tools));
+    const context = intakeReviewNote(await intakeSelectionStatus(p.db, p.tenant_id, draft));
+    prompt.system += `\n${context}`;
+    prompt.system_sections?.push({ text: context, volatile: true });
+    const extraTokens = countModelMessagesTokens([{ role: "system", content: context }]);
+    prompt.token_counts.system += extraTokens;
+    prompt.token_counts.total += extraTokens;
   }
 
   const syntheticWorkflowSlugs = collectSyntheticWorkflowSlugs(Object.keys(tools));
@@ -1149,11 +1165,8 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
                 p.permission_mode ?? null,
                 p.principal ?? null,
               );
-              if (draft.session?.intake_review_active || draft.session?.intake_item_ids?.length) {
-                delete refreshed.create_knowledge_source;
-                delete refreshed.update_knowledge_source;
-                delete refreshed.analyze_knowledge_source;
-              }
+              if (removeIntakeReviewTools(refreshed, ctx.getDraft()).length > 0)
+                ctx.availableToolNames = new Set(Object.keys(refreshed));
               applyExecutionToolGate(
                 refreshed,
                 executionGate,
@@ -1559,6 +1572,35 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
     if (streamTimeout.error) throw streamTimeout.error;
   }
 
+  const announceProviderFailure = async (err: unknown): Promise<void> => {
+    if (signals.lastAssistantText || turnAbortCtrl.signal.aborted) return;
+    const text = providerFailureNotice(err, p.locale ?? inferReplyLocale(ingestedUserMessage));
+    if (!text) return;
+    try {
+      const noticeId = await appendMessage(p.db, p.tenant_id, p.conversation_id, "assistant", {
+        text,
+        _synthetic: true,
+        _reason: "provider_failure_notice",
+      });
+      events.push({
+        type: "message",
+        role: "assistant",
+        content: { text },
+        id: noticeId,
+        parent_message_id: noticeId,
+      });
+      signals.lastAssistantText = text;
+      signals.lastAssistantMessageId = noticeId;
+    } catch (noticeErr) {
+      logger.warn({
+        module: "conversation",
+        action: "loop.provider_failure_notice_failed",
+        conversation_id: p.conversation_id,
+        error: noticeErr instanceof Error ? noticeErr.message : String(noticeErr),
+      });
+    }
+  };
+
   const attempts = resolveConversationAttemptRoutes(route, seedModel);
   let cancelled = false;
   try {
@@ -1602,6 +1644,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
         route.fallback === seedModel ||
         !shouldFallBack(primaryErr, route.provider, route.fallback_provider)
       ) {
+        await announceProviderFailure(providerErr ?? primaryErr);
         throw providerErr ?? primaryErr;
       }
       logger.warn({
@@ -1648,6 +1691,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
             classifyProviderError(fbErr) === "other" || fbErr instanceof LlmTimeoutError
               ? null
               : toLlmProviderError(fbErr);
+          await announceProviderFailure(typedFallbackErr ?? fbErr);
           throw typedFallbackErr ?? fbErr;
         }
       }

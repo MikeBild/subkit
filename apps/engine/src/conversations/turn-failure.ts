@@ -140,6 +140,32 @@ export function describeTurnFailure(error: unknown, now: Date = new Date()): Tur
   return { code: "internal", message: message || "internal_error", at };
 }
 
+const MODEL_UNAVAILABLE_RE =
+  /model_not_found|no such (?:language)?model|unknown model|invalid model|model\b[^\n]{0,160}?\b(?:does not exist|not found|is not supported|do(?:es)? not have access)/i;
+
+const PROVIDER_FAILURE_NOTICES = {
+  model: {
+    de: "Das eingestellte KI-Modell ist beim Anbieter nicht verfügbar, deshalb kam keine Antwort. Prüfe das Modell unter Einstellungen → KI & Kosten und sende deine Nachricht dann erneut.",
+    en: "The configured AI model is not available at the provider, so no answer was produced. Check the model under Settings → AI & cost, then send your message again.",
+  },
+  provider: {
+    de: "Der KI-Anbieter hat nicht geantwortet, deshalb kam keine Antwort. Prüfe Anbieter und Modell unter Einstellungen → KI & Kosten und sende deine Nachricht dann erneut.",
+    en: "The AI provider did not answer, so no answer was produced. Check the provider and model under Settings → AI & cost, then send your message again.",
+  },
+} as const;
+
+export function providerFailureNotice(error: unknown, locale: "de" | "en"): string | null {
+  const failure = describeTurnFailure(error);
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const status = (error as { statusCode?: unknown } | null)?.statusCode;
+  const modelUnavailable = MODEL_UNAVAILABLE_RE.test(message) || status === 404;
+  if (failure.code === "llm_provider_unavailable")
+    return PROVIDER_FAILURE_NOTICES[modelUnavailable ? "model" : "provider"][locale];
+  if (failure.code === "internal" && modelUnavailable)
+    return PROVIDER_FAILURE_NOTICES.model[locale];
+  return null;
+}
+
 export function turnFailureFramePayload(failure: TurnFailure): {
   code: string;
   message: string;

@@ -46,7 +46,7 @@ import {
   type ToolPolicies,
 } from "../../tool-policies.ts";
 import { assertConversationTurn } from "../../turns.ts";
-import type { DraftDocument, TurnEvent } from "../../types.ts";
+import type { TurnEvent } from "../../types.ts";
 import { withApprovalHandle, withoutApprovalHandle } from "../ask-user/commit-intent.ts";
 import { decodeAskUserPromptEscapes } from "../ask-user/decode-prompt-escapes.ts";
 import { isLiveExecutionTool, isWorkflowExecutionTool } from "../authoring-palette.ts";
@@ -70,6 +70,11 @@ import {
 } from "../truncate.ts";
 import { buildCapAlternatives } from "./error-recovery-hints.ts";
 import { prepareGate } from "./gate-subjects.ts";
+import {
+  INTAKE_REVIEW_BLOCKED_WRITES,
+  INTAKE_REVIEW_KNOWLEDGE_EDIT_NOTE,
+  intakeReviewBlocksWrite,
+} from "./intake-review-guard.ts";
 import { jsonSafeModelOutput } from "./json-safe-output.ts";
 import {
   buildConfirmedToolCallIntent,
@@ -95,24 +100,7 @@ import {
 
 const PRIOR_APPROVAL_WINDOW_MS = 5 * 60 * 1000;
 
-export const INTAKE_REVIEW_BLOCKED_WRITES = new Set([
-  "create_knowledge_source",
-  "update_knowledge_source",
-  "analyze_knowledge_source",
-  "delete_knowledge_source",
-  "save_learning",
-  "approve_skill_candidate",
-  "reject_skill_candidate",
-  "update_skill",
-  "delete_skill",
-]);
-
-export function intakeReviewBlocksWrite(draft: DraftDocument, tool: string): boolean {
-  return Boolean(
-    (draft.session?.intake_review_active || draft.session?.intake_item_ids?.length) &&
-      INTAKE_REVIEW_BLOCKED_WRITES.has(tool),
-  );
-}
+export { INTAKE_REVIEW_BLOCKED_WRITES, intakeReviewBlocksWrite };
 
 let heapSnapshotWritten = false;
 
@@ -231,8 +219,7 @@ export function wrapOne(
               error: "intake_review_requires_human_confirmation",
               error_code: "intake_review_requires_human_confirmation",
               next_best_actions: [],
-              message:
-                "This conversation is reviewing collected material. Create or revise an intake proposal; a person confirms the exact content, sources, and destination in the review before it becomes knowledge or a skill.",
+              message: `This conversation is reviewing collected material. Create or revise an intake proposal; a person confirms the exact content, sources, and destination in the review before it becomes knowledge or a skill. ${INTAKE_REVIEW_KNOWLEDGE_EDIT_NOTE}`,
             },
           };
         }
