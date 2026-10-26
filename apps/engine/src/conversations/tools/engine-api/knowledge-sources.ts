@@ -30,12 +30,25 @@ export const listKnowledgeSourcesTool: ConversationTool = {
   category: "tenant_read",
   permission: { action: "knowledge:read", resourceType: "knowledge" },
   async execute(ctx, args: z.infer<typeof ListInput>) {
-    const rows = (await ctx.engineClient.knowledgeSources.list()).filter(
-      (k) => args?.category === undefined || k.category === args.category,
-    );
+    const all = await ctx.engineClient.knowledgeSources.list();
+    const rows = all.filter((k) => args?.category === undefined || k.category === args.category);
+    const filtered =
+      args?.category === undefined
+        ? {}
+        : {
+            category_filter: args.category,
+            total_sources: all.length,
+            categories: [...new Set(all.map((k) => k.category))].sort(),
+            ...(rows.length === 0 && all.length > 0
+              ? {
+                  hint: `No source in category '${args.category}', but the workspace has ${all.length} source(s) in other categories. Call list_knowledge_sources again without category before telling the person nothing was found.`,
+                }
+              : {}),
+          };
     return {
       ok: true,
       data: {
+        ...filtered,
         sources: rows.map((k) => ({
           id: k.id,
           name: k.name,
