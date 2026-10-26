@@ -13,6 +13,7 @@ import { createDeterministicUuidFactory } from "../../test-helpers/determinism/i
 import { renameCategory } from "../../workflows/catalog-view.ts";
 import { upsertKnowledgeBundle } from "../bundle-service.ts";
 import { getKnowledgeSource, listKnowledgeSources } from "../catalog.ts";
+import { getKnowledgeSourceContent } from "../content.ts";
 import {
   confirmIntakeProposal as confirmWithAuthorization,
   createIntakeItem,
@@ -794,6 +795,60 @@ describe.skipIf(skip)("knowledge intake", () => {
     );
     expect(source?.category).toBe("product");
     expect(source?.tags).toEqual(["recording", "workflow"]);
+  });
+
+  test("keeps the clip source address, author and publication date in admitted knowledge", async () => {
+    const item = await createClip({
+      title: "Video [talk] on recording",
+      source_url: "https://video.example.test/watch?v=abc",
+      source_author: "Channel Author",
+      published_at: "2026-09-01",
+    });
+    const note = await createClip({
+      title: "Loose note",
+      source_url: undefined,
+      source_author: undefined,
+      published_at: undefined,
+    });
+    const proposal = await createIntakeProposal(
+      {
+        tenant_id: ctx.tenantId,
+        actor,
+        item_ids: [item.id, note.id],
+        title: "Recording talk summary",
+        body: "Model-written summary of the talk.",
+        target: { name: "Recording talk summary" },
+      },
+      ctx.testDb.db,
+    );
+    const admitted = await confirmIntakeProposal(
+      {
+        tenant_id: ctx.tenantId,
+        actor,
+        id: proposal.id,
+        expected_revision: proposal.current_revision,
+        digest: proposal.revision.digest,
+      },
+      ctx.testDb.db,
+    );
+    const content = await getKnowledgeSourceContent(
+      ctx.tenantId,
+      admitted?.confirmed_target_id ?? "",
+      ctx.testDb.db,
+    );
+    const document = content?.documents.find((entry) => entry.path === `/intake/${proposal.id}.md`);
+    expect(document?.content).toBe(
+      [
+        "# Recording talk summary",
+        "",
+        "Model-written summary of the talk.",
+        "",
+        "## Sources",
+        "",
+        "- [Video \\[talk\\] on recording](<https://video.example.test/watch?v=abc>) · Author: Channel Author · Published: 2026-09-01",
+        "",
+      ].join("\n"),
+    );
   });
 
   test("requires a fresh confirmation when a proposed target classification changes", async () => {

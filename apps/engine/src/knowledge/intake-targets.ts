@@ -1,18 +1,20 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { type Actor, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { connectors } from "../db/schema/connectors.ts";
-import type {
-  IntakeKnowledgeTarget,
-  IntakeProposalTarget,
-  IntakeSkillTarget,
-  IntakeTargetKind,
+import {
+  type IntakeKnowledgeTarget,
+  type IntakeProposalTarget,
+  type IntakeSkillTarget,
+  type IntakeTargetKind,
+  intakeItems,
 } from "../db/schema/intake.ts";
 import { knowledgeSources } from "../db/schema/knowledge_sources.ts";
 import { skills } from "../db/schema/skills.ts";
 import { workflows } from "../db/schema/workflows.ts";
+import { redactSecretShapes } from "../logging/scrub-secrets.ts";
 import {
   archiveSkill,
   createSkill,
@@ -193,8 +195,56 @@ export async function validateIntakeTarget(
     throw new IntakeConflictError("a new knowledge bundle needs a name");
 }
 
-function proposalMarkdown(revision: IntakeProposalRevisionView): string {
-  return `# ${revision.title.trim()}\n\n${revision.body.trim()}\n`;
+function provenanceValue(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  return redactSecretShapes(trimmed.replace(/\s+/g, " ")).text;
+}
+
+function escapeLinkText(value: string): string {
+  return value.replace(/[[\]\\]/g, (match) => `\\${match}`);
+}
+
+async function proposalSources(
+  tx: Executor,
+  tenant_id: string,
+  revision: IntakeProposalRevisionView,
+): Promise<string[]> {
+  const ids = revision.items.map((item) => item.id);
+  if (!ids.length) return [];
+  const rows = await tx
+    .select({ id: intakeItems.id, snapshot: intakeItems.original_snapshot })
+    .from(intakeItems)
+    .where(and(eq(intakeItems.tenant_id, tenant_id), inArray(intakeItems.id, ids)));
+  const snapshots = new Map(rows.map((row) => [row.id, row.snapshot]));
+  const lines: string[] = [];
+  for (const item of revision.items) {
+    const snapshot = snapshots.get(item.id);
+    const url = provenanceValue(item.source_url ?? snapshot?.source_url)
+      ?.replaceAll("<", "%3C")
+      .replaceAll(">", "%3E")
+      .replaceAll(" ", "%20");
+    const author = provenanceValue(snapshot?.source_author);
+    const published = provenanceValue(snapshot?.published_at);
+    if (!url && !author && !published) continue;
+    const title = escapeLinkText(
+      provenanceValue(item.title) ?? provenanceValue(snapshot?.title) ?? "",
+    );
+    const label = url ? (title ? `[${title}](<${url}>)` : `<${url}>`) : title;
+    const parts = [
+      ...(label ? [label] : []),
+      ...(author ? [`Author: ${author}`] : []),
+      ...(published ? [`Published: ${published}`] : []),
+    ];
+    lines.push(`- ${parts.join(" · ")}`);
+  }
+  return lines;
+}
+
+function proposalMarkdown(revision: IntakeProposalRevisionView, sources: string[]): string {
+  const document = `# ${revision.title.trim()}\n\n${revision.body.trim()}\n`;
+  if (!sources.length) return document;
+  return `${document}\n## Sources\n\n${sources.join("\n")}\n`;
 }
 
 export interface PublishedIntakeTarget {
@@ -211,7 +261,7 @@ async function publishKnowledge(
   revision: IntakeProposalRevisionView,
   target: IntakeKnowledgeTarget,
 ): Promise<string> {
-  const content = proposalMarkdown(revision);
+  const content = proposalMarkdown(revision, await proposalSources(tx, tenant_id, revision));
   const path = `/intake/${proposal_id}.md`;
   if ("knowledge_source_id" in target) {
     const source = await getKnowledgeSource(tenant_id, target.knowledge_source_id, tx);
