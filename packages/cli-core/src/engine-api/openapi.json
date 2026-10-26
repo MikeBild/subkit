@@ -15372,8 +15372,7 @@
                 "pattern": "^[a-z0-9.-]*\\{api\\}[a-z0-9.-]*$"
               },
               "action_url": {
-                "type": "string",
-                "format": "uri"
+                "type": "string"
               }
             },
             "required": [

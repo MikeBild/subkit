@@ -4906,7 +4906,7 @@ LLM configuration
 | `llm.providers.vertex.model` | string | `""` | tenant | no | no |  |
 | `llm.providers.vertex.private_key` | string | `""` | global | yes | no |  |
 | `llm.providers.vertex.project` | string | `""` | global | no | no |  |
-| `llm.suggestion_model` | string | `"claude-haiku-4-5"` | tenant | no | no | Small model used to generate post-turn suggestions |
+| `llm.suggestion_model` | string | `""` | tenant | no | no | Small model used to generate post-turn suggestions; empty uses the primary provider's default |
 | `llm.summarize_model` | string | `""` | tenant | no | no | Model used for summarization passes |
 | `llm.summarize_provider` | enum("mock" \| "anthropic" \| "openai" \| "gemini" \| "azure" \| "bedrock" \| "vertex" \| "ai_gateway") | `null` | tenant | no | no | Provider used for summarization passes |
 | `llm.web_search` | boolean | `true` | tenant | no | no | Allow the assistant to use Anthropic-native server-side web search (billed per search; Anthropic models only). Toggle off per tenant via /settings. |
