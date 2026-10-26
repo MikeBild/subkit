@@ -29,10 +29,10 @@ export interface RawStepResult {
 export function buildRawStepResults(steps: ReadonlyArray<RawStepResultSource>): RawStepResult[] {
   return steps.map((s) => {
     const input =
-      s.request_meta !== undefined && s.request_meta !== null
-        ? s.request_meta
-        : s.held_request !== undefined && s.held_request !== null
-          ? s.held_request
+      s.held_request !== undefined && s.held_request !== null
+        ? s.held_request
+        : s.kind === "request" && s.request_meta !== undefined && s.request_meta !== null
+          ? s.request_meta
           : null;
     const outputForLlm =
       s.output_preview !== undefined && s.output_preview !== null

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   CATALOG_MODEL_PROVIDERS,
+  catalogModelProvider,
   MODEL_BADGE_OUTPUT_PRICE,
   modelCatalogView,
 } from "../model-catalog-view.ts";
@@ -14,6 +15,13 @@ const price = (model: string, input: number, output: number) => ({
 });
 
 describe("modelCatalogView", () => {
+  test("recognises normalized OpenAI o-series ids without claiming custom names", () => {
+    expect(catalogModelProvider("openai:o3-mini")).toBe("openai");
+    expect(catalogModelProvider("o3")).toBe("openai");
+    expect(catalogModelProvider("o3deployment")).toBeNull();
+    expect(catalogModelProvider("own-model")).toBeNull();
+  });
+
   test("recommends exactly one model per catalog provider", () => {
     const { models } = modelCatalogView({});
     for (const provider of CATALOG_MODEL_PROVIDERS) {

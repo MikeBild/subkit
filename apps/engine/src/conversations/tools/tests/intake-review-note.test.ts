@@ -117,4 +117,9 @@ describe("the reply language of an intake review", () => {
     expect(intakeReviewNote("open", "Review my new items")).not.toContain("in German");
     expect(intakeReviewNote("open")).not.toContain("in German");
   });
+
+  test("a German request locale keeps short replies in German", () => {
+    expect(intakeReviewNote("open", "ja", "de")).toContain("Write your reply in German.");
+    expect(intakeReviewNote("open", "yes", "en")).not.toContain("in German");
+  });
 });

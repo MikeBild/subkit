@@ -60,6 +60,7 @@ function render(
   bindings: Record<string, string | number> = {},
   items?: IntakeProposal["revision"]["items"],
   overrides?: Partial<IntakeProposal>,
+  onReject?: () => void,
 ) {
   const client = new QueryClient();
   for (const [id, skill] of Object.entries(skills))
@@ -87,6 +88,7 @@ function render(
           permissions={permissions}
           focused
           onConfirm={() => {}}
+          onReject={onReject}
         />
       </I18nContext.Provider>
     </QueryClientProvider>,
@@ -283,6 +285,31 @@ describe("intake proposal card", () => {
     );
     expect(html).not.toContain("admitted-elsewhere");
     expect(confirmButton(html)).toBeNull();
+  });
+
+  test("only a draft proposal offers rejection", () => {
+    const permissions = ["intake:write"];
+    const onReject = () => {};
+    const draft = render(
+      { name: "Produktwissen", category: "incident-review" },
+      permissions,
+      {},
+      {},
+      undefined,
+      undefined,
+      onReject,
+    );
+    const stale = render(
+      { name: "Produktwissen", category: "incident-review" },
+      permissions,
+      {},
+      {},
+      undefined,
+      { status: "stale", stale_reason: "intake_item_admitted" },
+      onReject,
+    );
+    expect(draft).toContain('data-testid="intake-proposal-proposal-reject"');
+    expect(stale).not.toContain('data-testid="intake-proposal-proposal-reject"');
   });
 
   test("a knowledge target keeps its name and category line", () => {

@@ -231,10 +231,20 @@ describe("conversations/audit-trail", () => {
     const auditWorkflowCreated = await ctx.testDb.db
       .select()
       .from(auditLog)
-      .where(and(eq(auditLog.tenant_id, ctx.tenant_id), eq(auditLog.action, "workflow.created")));
-    const canonicalCreated = auditWorkflowCreated.filter((a) => a.reason === null);
-    expect(canonicalCreated.length).toBe(1);
-    expect((canonicalCreated[0]!.metadata as { kind: string }).kind).toBe("draft");
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenant_id),
+          eq(auditLog.action, "workflow.created"),
+          eq(auditLog.resource_id, committedWorkflowId as string),
+        ),
+      );
+    expect(auditWorkflowCreated).toHaveLength(1);
+    expect(auditWorkflowCreated[0]!.reason).toBe("auto_persist_on_confirmation");
+    expect(auditWorkflowCreated[0]!.metadata).toMatchObject({
+      kind: "draft",
+      source: "harness_auto_persist",
+      commit_intent_kind: "save_workflow_draft",
+    });
 
     const totalRecorded = usageFinal.reduce((acc, r) => acc + Number(r.total_tokens ?? 0), 0);
     expect(totalRecorded).toBeGreaterThan(0);

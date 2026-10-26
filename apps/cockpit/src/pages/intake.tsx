@@ -584,8 +584,8 @@ export function ProposalCard({
   focused?: boolean;
 }) {
   const { t, dateTime } = useI18n();
-  const [confirming, setConfirming] = useState(false);
-  const [rejecting, setRejecting] = useState(false);
+  const [confirmingRevision, setConfirmingRevision] = useState<number | null>(null);
+  const [rejectingRevision, setRejectingRevision] = useState<number | null>(null);
   const card = useRef<HTMLElement>(null);
   useEffect(() => {
     if (focused) card.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
@@ -708,7 +708,7 @@ export function ProposalCard({
     ...(targetTags ? [`${t("intake.proposal.tags")}: ${targetTags}`] : []),
   ].join(" ");
   const confirmLabel = t(skillTarget ? "intake.proposal.confirmSkill" : "intake.proposal.confirm");
-  const open = proposal.status === "draft" || proposal.status === "stale";
+  const open = proposal.status === "draft";
   return (
     <article
       ref={card}
@@ -857,13 +857,13 @@ export function ProposalCard({
           {t("intake.proposal.needsRights")}
         </p>
       ) : null}
-      {open && ((proposal.status === "draft" && canConfirm) || canReject) ? (
+      {open && (canConfirm || canReject) ? (
         <div className="flex flex-wrap gap-2" data-slot="proposal-actions">
-          {proposal.status === "draft" && canConfirm ? (
+          {canConfirm ? (
             <Button
               size="sm"
               disabled={!targetsLoaded || skillMoved || targetMissing}
-              onClick={() => setConfirming(true)}
+              onClick={() => setConfirmingRevision(proposal.current_revision)}
               data-testid={`intake-proposal-${proposal.id}-confirm`}
             >
               {confirmLabel}
@@ -873,7 +873,7 @@ export function ProposalCard({
             <Button
               size="sm"
               variant="outline"
-              onClick={() => setRejecting(true)}
+              onClick={() => setRejectingRevision(proposal.current_revision)}
               data-testid={`intake-proposal-${proposal.id}-reject`}
             >
               {t("intake.proposal.reject")}
@@ -903,8 +903,8 @@ export function ProposalCard({
         ) : null
       ) : null}
       <ConfirmDialog
-        open={confirming}
-        onOpenChange={setConfirming}
+        open={open && confirmingRevision === proposal.current_revision}
+        onOpenChange={(next) => setConfirmingRevision(next ? proposal.current_revision : null)}
         object={proposal.revision.title}
         verb={confirmLabel}
         consequence={confirmationDetails}
@@ -913,8 +913,8 @@ export function ProposalCard({
       />
       {canReject ? (
         <ConfirmDialog
-          open={rejecting}
-          onOpenChange={setRejecting}
+          open={open && rejectingRevision === proposal.current_revision}
+          onOpenChange={(next) => setRejectingRevision(next ? proposal.current_revision : null)}
           object={t("intake.proposal.rejectObject")}
           verb={t("intake.proposal.reject")}
           consequence={t("intake.proposal.rejectConsequence")}

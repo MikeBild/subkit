@@ -62,6 +62,13 @@ describe("saving a model of another provider family", () => {
     expect(await rejection("llm.model", "gpt-4.1")).toBeNull();
     expect(await rejection("llm.suggestion_model", "")).toBeNull();
     expect(await rejection("llm.model", "o3-mini")).toBeNull();
+    expect(await rejection("llm.model", "own-model")).toBeNull();
+  });
+
+  test("recognises OpenAI o-series models for provider validation", async () => {
+    await useConfig({ llm: { provider: "anthropic" } });
+    expect(await rejection("llm.model", "o3-mini")).toBeInstanceOf(ValidationError);
+    expect(await rejection("llm.model", "openai:o1-preview")).toBeInstanceOf(ValidationError);
   });
 
   test("checks fallback and summarize models against their own provider", async () => {

@@ -10,6 +10,7 @@ import {
 } from "../../db/schema/index.ts";
 import { createSkill, getSkill, updateSkill } from "../../skills/service.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { renameCategory } from "../../workflows/catalog-view.ts";
 import { upsertKnowledgeBundle } from "../bundle-service.ts";
 import { getKnowledgeSource, listKnowledgeSources } from "../catalog.ts";
@@ -70,6 +71,37 @@ function createClip(overrides: Partial<Parameters<typeof createIntakeItem>[0]> =
       ...overrides,
     },
     ctx.testDb.db,
+  );
+}
+
+async function holdIntakeItems(...ids: string[]) {
+  const client = await ctx.testDb.pool.connect();
+  await client.query("BEGIN");
+  await client.query(
+    "SELECT id FROM subkit.intake_items WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE",
+    [ids],
+  );
+  return {
+    async release() {
+      await client.query("COMMIT");
+      client.release();
+    },
+    async rollback() {
+      await client.query("ROLLBACK");
+      client.release();
+    },
+  };
+}
+
+async function waitForIntakeLockWaiters(count: number) {
+  await waitFor(
+    async () => {
+      const result = await ctx.testDb.pool.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%intake_items%'",
+      );
+      return Number(result.rows[0]?.count ?? 0) >= count;
+    },
+    { label: "intake lock waiters", sleepMs: 2 },
   );
 }
 
@@ -950,6 +982,170 @@ describe.skipIf(skip)("knowledge intake", () => {
         ctx.testDb.db,
       ),
     ).rejects.toThrow("proposal must be reviewed again before confirmation");
+  });
+
+  test("serializes sibling confirmations that share an intake item", async () => {
+    const item = await createClip({ title: "Shared confirmation source" });
+    const create = (title: string) =>
+      createIntakeProposal(
+        {
+          tenant_id: ctx.tenantId,
+          actor,
+          item_ids: [item.id],
+          title,
+          body: `${title} body.`,
+          target: { name: title },
+        },
+        ctx.testDb.db,
+      );
+    const [first, second] = await Promise.all([create("First sibling"), create("Second sibling")]);
+    const confirm = (proposal: typeof first) =>
+      confirmIntakeProposal(
+        {
+          tenant_id: ctx.tenantId,
+          actor,
+          id: proposal.id,
+          expected_revision: proposal.current_revision,
+          digest: proposal.revision.digest,
+        },
+        ctx.testDb.db,
+      );
+    const blocker = await holdIntakeItems(item.id);
+    let outcomes!: PromiseSettledResult<Awaited<ReturnType<typeof confirm>>>[];
+    let released = false;
+    try {
+      const pending = Promise.allSettled([confirm(first), confirm(second)]);
+      await waitForIntakeLockWaiters(2);
+      await blocker.release();
+      released = true;
+      outcomes = await pending;
+    } catch (error) {
+      if (!released) await blocker.rollback();
+      throw error;
+    }
+    expect(
+      outcomes.filter(
+        (outcome) => outcome.status === "fulfilled" && outcome.value?.status === "confirmed",
+      ),
+    ).toHaveLength(1);
+    expect(
+      outcomes.filter(
+        (outcome) =>
+          outcome.status === "rejected" && outcome.reason instanceof IntakeProposalConflictError,
+      ),
+    ).toHaveLength(1);
+    const proposals = await Promise.all([
+      getIntakeProposal(ctx.tenantId, first.id, ctx.testDb.db),
+      getIntakeProposal(ctx.tenantId, second.id, ctx.testDb.db),
+    ]);
+    expect(proposals.filter((proposal) => proposal?.status === "confirmed")).toHaveLength(1);
+    expect(
+      proposals.filter((proposal) => proposal?.stale_reason === "intake_item_admitted"),
+    ).toHaveLength(1);
+  });
+
+  test("serializes an item edit ahead of a waiting confirmation", async () => {
+    const item = await createClip({ title: "Editable confirmation source" });
+    const proposal = await createIntakeProposal(
+      {
+        tenant_id: ctx.tenantId,
+        actor,
+        item_ids: [item.id],
+        title: "Editable source proposal",
+        body: "Review the source before admission.",
+        target: { name: "Editable source knowledge" },
+      },
+      ctx.testDb.db,
+    );
+    const blocker = await holdIntakeItems(item.id);
+    let released = false;
+    try {
+      const patch = patchIntakeItem(
+        {
+          tenant_id: ctx.tenantId,
+          actor,
+          id: item.id,
+          expected_version: item.version,
+          body: "The source changed before admission.",
+        },
+        ctx.testDb.db,
+      );
+      await waitForIntakeLockWaiters(1);
+      const confirmation = confirmIntakeProposal(
+        {
+          tenant_id: ctx.tenantId,
+          actor,
+          id: proposal.id,
+          expected_revision: proposal.current_revision,
+          digest: proposal.revision.digest,
+        },
+        ctx.testDb.db,
+      );
+      await waitForIntakeLockWaiters(2);
+      await blocker.release();
+      released = true;
+      await expect(patch).resolves.toMatchObject({ version: item.version + 1 });
+      await expect(confirmation).rejects.toBeInstanceOf(IntakeProposalConflictError);
+    } catch (error) {
+      if (!released) await blocker.rollback();
+      throw error;
+    }
+    expect(await getIntakeProposal(ctx.tenantId, proposal.id, ctx.testDb.db)).toMatchObject({
+      status: "stale",
+      stale_reason: "intake_item_changed",
+    });
+  });
+
+  test("serializes reversed multi-item confirmation order", async () => {
+    const [firstItem, secondItem] = await Promise.all([createClip(), createClip()]);
+    const create = (title: string, item_ids: string[]) =>
+      createIntakeProposal(
+        {
+          tenant_id: ctx.tenantId,
+          actor,
+          item_ids,
+          title,
+          body: `${title} body.`,
+          target: { name: title },
+        },
+        ctx.testDb.db,
+      );
+    const [first, second] = await Promise.all([
+      create("Forward items", [firstItem.id, secondItem.id]),
+      create("Reverse items", [secondItem.id, firstItem.id]),
+    ]);
+    const blocker = await holdIntakeItems(firstItem.id, secondItem.id);
+    let released = false;
+    try {
+      const pending = Promise.allSettled(
+        [first, second].map((proposal) =>
+          confirmIntakeProposal(
+            {
+              tenant_id: ctx.tenantId,
+              actor,
+              id: proposal.id,
+              expected_revision: proposal.current_revision,
+              digest: proposal.revision.digest,
+            },
+            ctx.testDb.db,
+          ),
+        ),
+      );
+      await waitForIntakeLockWaiters(2);
+      await blocker.release();
+      released = true;
+      const outcomes = await pending;
+      expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+      expect(
+        outcomes.filter(
+          (outcome) =>
+            outcome.status === "rejected" && outcome.reason instanceof IntakeProposalConflictError,
+        ),
+      ).toHaveLength(1);
+    } catch (error) {
+      if (!released) await blocker.rollback();
+      throw error;
+    }
   });
 
   test("requires a fresh confirmation when a proposed target classification changes", async () => {

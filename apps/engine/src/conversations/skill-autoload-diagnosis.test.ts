@@ -45,12 +45,15 @@ describe("autoloadForDiagnoses", () => {
   });
 
   test("an unrelated diagnosis loads nothing, an already-loaded skill is not repeated", () => {
-    expect(autoloadForDiagnoses(["no_boundary"], shippedCatalog(), [])).not.toContain(
+    const catalog = shippedCatalog();
+    expect(autoloadForDiagnoses(["no_boundary"], catalog, [])).not.toContain("governed-delivery");
+    const diagnosis = ["report_delivery_unobserved"];
+    const activated = autoloadForDiagnoses(diagnosis, catalog, []);
+    expect(activated).toContain("governed-delivery");
+    expect(autoloadForDiagnoses(diagnosis, catalog, ["governed-delivery"])).not.toContain(
       "governed-delivery",
     );
-    expect(
-      autoloadForDiagnoses(["report_delivery_unobserved"], shippedCatalog(), ["governed-delivery"]),
-    ).toEqual([]);
+    expect(autoloadForDiagnoses(diagnosis, catalog, activated)).toEqual([]);
   });
 
   test("diagnosis rules never fire on a tool call or a user turn", () => {

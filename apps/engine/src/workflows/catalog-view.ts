@@ -1,5 +1,5 @@
 import type { WorkflowOperatingStatus } from "@shared/workflow-operating-status.ts";
-import { and, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   CATALOG_KINDS,
   type CatalogGroupBy,
@@ -301,6 +301,12 @@ export async function renameCategory(input: RenameCategoryInput, exec?: Executor
   }
   return db.transaction(async (tx) => {
     await lockCatalogVocabulary(tx, input.tenant_id);
+    await tx
+      .select({ id: intakeItems.id })
+      .from(intakeItems)
+      .where(and(eq(intakeItems.tenant_id, input.tenant_id), eq(intakeItems.category, input.from)))
+      .orderBy(asc(intakeItems.id))
+      .for("update");
     const rows = await tx
       .select()
       .from(catalogCategories)
@@ -518,14 +524,32 @@ export async function renameCategory(input: RenameCategoryInput, exec?: Executor
             eq(intakeCategoryDefaults.category, input.from),
           ),
         );
-      if (uniqueStaleIds.length)
+      const lockedStaleIds = uniqueStaleIds.length
+        ? await tx
+            .select({ id: intakeProposals.id })
+            .from(intakeProposals)
+            .where(
+              and(
+                eq(intakeProposals.tenant_id, input.tenant_id),
+                eq(intakeProposals.status, "draft"),
+                inArray(intakeProposals.id, uniqueStaleIds),
+              ),
+            )
+            .orderBy(asc(intakeProposals.id))
+            .for("update")
+        : [];
+      if (lockedStaleIds.length)
         await tx
           .update(intakeProposals)
           .set({ status: "stale", stale_reason: "category_renamed", updated_at: new Date() })
           .where(
             and(
               eq(intakeProposals.tenant_id, input.tenant_id),
-              inArray(intakeProposals.id, uniqueStaleIds),
+              eq(intakeProposals.status, "draft"),
+              inArray(
+                intakeProposals.id,
+                lockedStaleIds.map((row) => row.id),
+              ),
             ),
           );
     }

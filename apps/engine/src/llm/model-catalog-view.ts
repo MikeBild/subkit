@@ -130,13 +130,14 @@ export interface ModelCatalogView {
 const PROVIDER_PREFIXES: ReadonlyArray<readonly [string, CatalogModelProvider]> = [
   ["claude-", "anthropic"],
   ["gpt-", "openai"],
+  ["o", "openai"],
   ["gemini-", "gemini"],
 ];
 
 export function catalogModelProvider(model: string): CatalogModelProvider | null {
   const id = vendorModelId(model.includes(":") ? model.slice(model.indexOf(":") + 1) : model);
   for (const [prefix, provider] of PROVIDER_PREFIXES) {
-    if (id.startsWith(prefix)) return provider;
+    if (id.startsWith(prefix) && (prefix !== "o" || /^o\d+(?:-|$)/.test(id))) return provider;
   }
   return null;
 }

@@ -114,15 +114,16 @@ export function writesGerman(text: string | null | undefined): boolean {
   return words.filter((word) => GERMAN_WORDS.has(word)).length >= 2;
 }
 
-const GERMAN_REPLY_NOTE = "The person's latest message is in German. Write your reply in German.";
+const GERMAN_REPLY_NOTE = "Write your reply in German.";
 
 export function intakeReviewNote(
   status: IntakeSelectionStatus,
   latestUserMessage?: string | null,
+  locale?: "de" | "en",
 ): string {
   const base =
     status === "all_decided"
       ? `${INTAKE_REVIEW_KNOWLEDGE_EDIT_NOTE} ${ALL_DECIDED_NOTE}`
       : INTAKE_REVIEW_KNOWLEDGE_EDIT_NOTE;
-  return writesGerman(latestUserMessage) ? `${base} ${GERMAN_REPLY_NOTE}` : base;
+  return locale === "de" || writesGerman(latestUserMessage) ? `${base} ${GERMAN_REPLY_NOTE}` : base;
 }

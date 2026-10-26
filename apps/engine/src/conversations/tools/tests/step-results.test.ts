@@ -52,6 +52,35 @@ describe("buildRawStepResults", () => {
     });
   });
 
+  test("keeps held request input ahead of request metadata", () => {
+    const [result] = buildRawStepResults([
+      {
+        step_key: "send",
+        kind: "request",
+        status: "succeeded",
+        request_meta: { driver: "http", status: 202 },
+        held_request: { method: "POST", url: "https://api.test/send", body: { to: "x@y.z" } },
+      },
+    ]);
+    expect(result?.input).toEqual({
+      method: "POST",
+      url: "https://api.test/send",
+      body: { to: "x@y.z" },
+    });
+  });
+
+  test("does not expose transform sandbox metadata as step input", () => {
+    const [result] = buildRawStepResults([
+      {
+        step_key: "shape",
+        kind: "transform",
+        status: "succeeded",
+        request_meta: { driver: "sandbox", ticks: 1, peak_memory_bytes: 1024 },
+      },
+    ]);
+    expect(result?.input).toBeNull();
+  });
+
   test("surfaces the pre-selector raw envelope + step error when present", () => {
     const steps: RawStepResultSource[] = [
       {

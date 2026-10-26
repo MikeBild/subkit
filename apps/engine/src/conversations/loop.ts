@@ -901,6 +901,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
     const context = intakeReviewNote(
       await intakeSelectionStatus(p.db, p.tenant_id, draft),
       ingestedUserMessage,
+      p.locale,
     );
     prompt.system += `\n${context}`;
     prompt.system_sections?.push({ text: context, volatile: true });

@@ -360,10 +360,32 @@ async function staleDraftProposalsForItems(
     );
   const ids = [...new Set(rows.map((row) => row.id))];
   if (!ids.length) return;
+  const locked = await tx
+    .select({ id: intakeProposals.id })
+    .from(intakeProposals)
+    .where(
+      and(
+        eq(intakeProposals.tenant_id, tenant_id),
+        eq(intakeProposals.status, "draft"),
+        inArray(intakeProposals.id, ids),
+      ),
+    )
+    .orderBy(asc(intakeProposals.id))
+    .for("update");
+  if (!locked.length) return;
   await tx
     .update(intakeProposals)
     .set({ status: "stale", stale_reason: reason, updated_at: new Date() })
-    .where(and(eq(intakeProposals.tenant_id, tenant_id), inArray(intakeProposals.id, ids)));
+    .where(
+      and(
+        eq(intakeProposals.tenant_id, tenant_id),
+        eq(intakeProposals.status, "draft"),
+        inArray(
+          intakeProposals.id,
+          locked.map((row) => row.id),
+        ),
+      ),
+    );
 }
 
 export async function patchIntakeItem(
@@ -446,6 +468,7 @@ async function itemsForProposal(
   tenant_id: string,
   item_ids: string[],
   expected_item_versions?: Record<string, number> | undefined,
+  allowDecided = false,
 ): Promise<IntakeProposalItemView[]> {
   const unique = [...new Set(item_ids)];
   if (!unique.length) throw new IntakeConflictError("a proposal needs at least one intake item");
@@ -453,10 +476,11 @@ async function itemsForProposal(
     .select()
     .from(intakeItems)
     .where(and(eq(intakeItems.tenant_id, tenant_id), inArray(intakeItems.id, unique)))
+    .orderBy(asc(intakeItems.id))
     .for("update");
   if (rows.length !== unique.length)
     throw new IntakeConflictError("a proposal item was not found in this tenant");
-  if (rows.some((row) => row.state === "discarded" || row.state === "admitted"))
+  if (!allowDecided && rows.some((row) => row.state === "discarded" || row.state === "admitted"))
     throw new IntakeConflictError("discarded or admitted items cannot be proposed");
   if (
     expected_item_versions &&
@@ -464,12 +488,22 @@ async function itemsForProposal(
   ) {
     throw new IntakeConflictError("an intake item changed after it was read");
   }
-  return rows.map((row) => ({
-    id: row.id,
-    version: row.version,
-    title: row.title,
-    source_url: row.original_snapshot.source_url ?? null,
-  }));
+  const byId = new Map(
+    rows.map((row) => [
+      row.id,
+      {
+        id: row.id,
+        version: row.version,
+        title: row.title,
+        source_url: row.original_snapshot.source_url ?? null,
+      },
+    ]),
+  );
+  return unique.map((id) => {
+    const item = byId.get(id);
+    if (!item) throw new IntakeConflictError("a proposal item was not found in this tenant");
+    return item;
+  });
 }
 
 async function proposalRevision(
@@ -558,8 +592,8 @@ async function insertProposalRevision(
   p: CreateIntakeProposalParams,
   proposal_id: string,
   revision: number,
+  items: IntakeProposalItemView[],
 ): Promise<IntakeProposalRevisionView> {
-  const items = await itemsForProposal(tx, p.tenant_id, p.item_ids, p.expected_item_versions);
   await validateIntakeTarget(tx, p.tenant_id, p.target);
   const digest = proposalDigest({ title: p.title, body: p.body, target: p.target, items });
   const [row] = await tx
@@ -616,12 +650,13 @@ export async function createIntakeProposal(
 ): Promise<IntakeProposalView> {
   const db = exec ?? getDb();
   return (db as Db).transaction(async (tx) => {
+    const items = await itemsForProposal(tx, p.tenant_id, p.item_ids, p.expected_item_versions);
     const [proposal] = await tx
       .insert(intakeProposals)
       .values({ tenant_id: p.tenant_id })
       .returning();
     if (!proposal) throw new Error("intake proposal insertion failed");
-    await insertProposalRevision(tx, p, proposal.id, 1);
+    await insertProposalRevision(tx, p, proposal.id, 1, items);
     await recordIntakeAudit(
       tx,
       p.tenant_id,
@@ -666,6 +701,7 @@ export async function reviseIntakeProposal(
 ): Promise<IntakeProposalView | null> {
   const db = exec ?? getDb();
   return (db as Db).transaction(async (tx) => {
+    const items = await itemsForProposal(tx, p.tenant_id, p.item_ids, p.expected_item_versions);
     const rows = await tx
       .select()
       .from(intakeProposals)
@@ -679,7 +715,7 @@ export async function reviseIntakeProposal(
     if (proposal.current_revision !== p.expected_revision)
       throw new IntakeProposalConflictError("intake proposal has changed");
     const revision = proposal.current_revision + 1;
-    await insertProposalRevision(tx, p, proposal.id, revision);
+    await insertProposalRevision(tx, p, proposal.id, revision, items);
     await tx
       .update(intakeProposals)
       .set({
@@ -709,6 +745,16 @@ export async function confirmIntakeProposal(
   const db = exec ?? getDb();
   let published: PublishedIntakeTarget | null = null;
   const view = await (db as Db).transaction(async (tx) => {
+    const preflight = await proposalRevision(tx, p.tenant_id, p.id, p.expected_revision);
+    const lockedItems = preflight
+      ? await itemsForProposal(
+          tx,
+          p.tenant_id,
+          preflight.items.map((item) => item.id),
+          undefined,
+          true,
+        )
+      : null;
     const rows = await tx
       .select()
       .from(intakeProposals)
@@ -743,6 +789,7 @@ export async function confirmIntakeProposal(
         "proposal confirmation does not match the reviewed content",
       );
     await p.authorize(intakeConfirmRequirements(revision.target), revision.target);
+    if (!lockedItems) throw new IntakeProposalConflictError("proposal cannot be confirmed");
     const currentItems = await itemsForProposal(
       tx,
       p.tenant_id,
