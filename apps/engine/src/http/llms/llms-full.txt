@@ -5292,7 +5292,7 @@ A **template** connects a system: base URL, auth flow, endpoint schema, and a ve
 
 | Template | slug | driver | auth | What it connects |
 | -------- | ---- | ------ | ---- | ---------------- |
-| **SubKit Support** | `subkit-support` | http | bearer | Central SubKit support inbox: report a problem with SubKit to the maintainer, list your own reports with their status and withdraw one. |
+| **SubKit Support** | `subkit-support` | http | header | Central SubKit support inbox: report a problem with SubKit to the maintainer, list your own reports with their status and withdraw one. |
 
 ## Recipes
 

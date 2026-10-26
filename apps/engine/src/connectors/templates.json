@@ -17438,8 +17438,8 @@
     "slug": "subkit-support",
     "name": "SubKit Support",
     "driver": "http",
-    "base_url": "https://support.mikebild.info",
-    "auth_type": "bearer",
+    "base_url": "https://support.mikebild.info/support",
+    "auth_type": "header",
     "respects_robots": false,
     "oauth": null,
     "default_skill": "subkit-support-basics",
@@ -17449,15 +17449,15 @@
     "description": "Central SubKit support inbox: report a problem with SubKit to the maintainer, list your own reports with their status and withdraw one. Fixed public address, one reporter key per installation.",
     "category": "support",
     "tags": ["support", "issues", "feedback", "bug-report"],
-    "setup_instructions": "Register this installation once at the support address to receive a reporter key (shown a single time), then store it here as the bearer token. Nothing is sent to the maintainer until a person starts a report and the external write is approved.",
+    "setup_instructions": "Register this installation once at the support address to receive a reporter key (shown a single time), then store it here as the x-support-key header value. Nothing is sent to the maintainer until a person starts a report and the external write is approved.",
     "auth_options": [
       {
-        "auth_type": "bearer",
+        "auth_type": "header",
         "label": "Reporter key",
-        "description": "The reporter key of this installation, sent in the Authorization header."
+        "description": "The reporter key of this installation, sent in the x-support-key request header."
       }
     ],
-    "url_pattern": "^https:\\/\\/support\\.mikebild\\.info(\\/|$)",
+    "url_pattern": "^https:\\/\\/support\\.mikebild\\.info\\/support(\\/|$)",
     "keywords": ["support", "issue", "report", "bug", "feedback", "problem", "ticket"],
     "inline_schema": null,
     "probe_endpoint": {
@@ -17468,11 +17468,12 @@
     },
     "credential_hints": [
       {
-        "field": "token",
-        "label": "Reporter key",
+        "field": "value",
+        "label": "Reporter key (x-support-key header value)",
         "placeholder": "skr_",
         "doc_url": null,
-        "secret": true
+        "secret": true,
+        "header_name": "x-support-key"
       }
     ],
     "base_url_options": [],
