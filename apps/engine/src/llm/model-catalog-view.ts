@@ -1,5 +1,9 @@
 import { modelDisplayName } from "./model-names.ts";
-import { effectiveModelPrices, MODEL_PRICE_CATALOG_CURRENCY } from "./model-price-catalog.ts";
+import {
+  effectiveModelPrices,
+  MODEL_PRICE_CATALOG,
+  MODEL_PRICE_CATALOG_CURRENCY,
+} from "./model-price-catalog.ts";
 import { type ModelPrice, vendorModelId } from "./pricing.ts";
 
 export const CATALOG_MODEL_PROVIDERS = ["anthropic", "openai", "gemini"] as const;
@@ -112,8 +116,8 @@ export interface CatalogModelEntry {
   provider: CatalogModelProvider | null;
   model: string;
   display_name: string;
-  input_per_mtok: number;
-  output_per_mtok: number;
+  input_per_mtok: number | null;
+  output_per_mtok: number | null;
   price_source: "catalog" | "override";
   badges: CatalogModelBadges;
 }
@@ -172,6 +176,21 @@ export function modelCatalogView(tokens: {
       input_per_mtok: price.input_per_mtok,
       output_per_mtok: price.output_per_mtok,
       price_source: override ? "override" : "catalog",
+      badges: badgesFor(provider, price.model, price.output_per_mtok),
+    });
+  }
+  for (const price of MODEL_PRICE_CATALOG) {
+    const name = modelDisplayName(price.model);
+    const vendor = vendorModelId(price.model);
+    if (name === null || byVendor.has(vendor)) continue;
+    const provider = catalogModelProvider(price.model);
+    byVendor.set(vendor, {
+      provider,
+      model: price.model,
+      display_name: name,
+      input_per_mtok: null,
+      output_per_mtok: null,
+      price_source: "catalog",
       badges: badgesFor(provider, price.model, price.output_per_mtok),
     });
   }

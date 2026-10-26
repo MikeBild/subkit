@@ -167,6 +167,24 @@ describe("summaries and suggestions", () => {
     );
   });
 
+  test("a catalog without prices still offers the models as a list", () => {
+    const unpriced = {
+      currency: "EUR",
+      models: [
+        {
+          ...catalog.models[0]!,
+          input_per_mtok: null,
+          output_per_mtok: null,
+        },
+      ],
+    };
+    const html = area(llm({ model: "gpt-4.1-mini" }), { catalog: unpriced });
+    expect(html).toContain('data-testid="settings-ai-model-select"');
+    expect(html).not.toContain('data-testid="settings-ai-model-select-custom"');
+    expect(html).toContain("Preis nicht hinterlegt");
+    expect(html).not.toContain("NaN");
+  });
+
   test("are asked only when the engine offers the settings", () => {
     const html = area(llm());
     expect(html).toContain("Welche KI fasst lange Gespräche zusammen?");

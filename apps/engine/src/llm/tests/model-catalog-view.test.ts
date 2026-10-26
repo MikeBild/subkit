@@ -57,6 +57,35 @@ describe("modelCatalogView", () => {
     }
   });
 
+  test("a tenant in another currency still lists every built-in model, unpriced", () => {
+    const usd = modelCatalogView({}).models.map((m) => m.model);
+    const eur = modelCatalogView({ currency: "EUR", prices: [] });
+    expect(eur.currency).toBe("EUR");
+    expect(eur.models.map((m) => m.model)).toEqual(usd);
+    for (const entry of eur.models) {
+      expect(entry.input_per_mtok).toBeNull();
+      expect(entry.output_per_mtok).toBeNull();
+      expect(entry.price_source).toBe("catalog");
+    }
+    const recommended = eur.models.filter((m) => m.badges.recommended).map((m) => m.model);
+    expect(recommended).toEqual(["claude-sonnet-5", "gemini-2.5-flash", "gpt-4.1-mini"]);
+  });
+
+  test("an own price in another currency replaces only that model's unpriced entry", () => {
+    const { models } = modelCatalogView({
+      currency: "EUR",
+      prices: [price("gpt-4.1-mini", 0.35, 1.4)],
+    });
+    const mini = models.filter((m) => m.display_name === "GPT-4.1 mini");
+    expect(mini).toHaveLength(1);
+    expect(mini[0]).toMatchObject({
+      price_source: "override",
+      input_per_mtok: 0.35,
+      output_per_mtok: 1.4,
+    });
+    expect(models.find((m) => m.model === "gpt-4.1")?.input_per_mtok).toBeNull();
+  });
+
   test("an override flips the price source and replaces the built-in entry", () => {
     const { models } = modelCatalogView({
       prices: [price("claude-haiku-4-5-20251001", 0.5, 2)],
@@ -81,11 +110,11 @@ describe("modelCatalogView", () => {
     });
   });
 
-  test("a non-USD currency lists no built-in prices", () => {
+  test("a non-USD currency carries no built-in prices", () => {
     const view = modelCatalogView({ currency: "eur", prices: [price("gpt-4.1-mini", 0.3, 1.2)] });
     expect(view.currency).toBe("EUR");
-    expect(view.models.map((m) => [m.model, m.price_source])).toEqual([
-      ["gpt-4.1-mini", "override"],
-    ]);
+    const priced = view.models.filter((m) => m.input_per_mtok !== null);
+    expect(priced.map((m) => [m.model, m.price_source])).toEqual([["gpt-4.1-mini", "override"]]);
+    expect(view.models.length).toBeGreaterThan(1);
   });
 });

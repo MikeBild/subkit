@@ -173,6 +173,8 @@ function priceDetail(
   locale: string,
   t: ReturnType<typeof useI18n>["t"],
 ) {
+  if (entry.input_per_mtok === null || entry.output_per_mtok === null)
+    return t("settings.ai.model.priceUnknown");
   return t("settings.ai.model.priceDetail", {
     inPrice: moneyText(entry.input_per_mtok, currency, locale),
     outPrice: moneyText(entry.output_per_mtok, currency, locale),
@@ -265,11 +267,13 @@ function ModelPicker({
               suffix={
                 <span className="inline-flex flex-wrap items-center gap-1">
                   <ModelBadges entry={entry} />
-                  <span className="text-xs">
-                    {t("settings.ai.model.priceShort", {
-                      amount: moneyText(entry.input_per_mtok, currency, locale),
-                    })}
-                  </span>
+                  {entry.input_per_mtok === null ? null : (
+                    <span className="text-xs">
+                      {t("settings.ai.model.priceShort", {
+                        amount: moneyText(entry.input_per_mtok, currency, locale),
+                      })}
+                    </span>
+                  )}
                 </span>
               }
               data-testid={`${testId}-option-${entry.model}`}

@@ -161,8 +161,8 @@ const SettingsModelCatalogEntry = z
     provider: z.enum(CATALOG_MODEL_PROVIDERS).nullable(),
     model: z.string(),
     display_name: z.string(),
-    input_per_mtok: z.number().nonnegative(),
-    output_per_mtok: z.number().nonnegative(),
+    input_per_mtok: z.number().nonnegative().nullable(),
+    output_per_mtok: z.number().nonnegative().nullable(),
     price_source: z.enum(["catalog", "override"]),
     badges: z.object({
       recommended: z.boolean(),

@@ -378,7 +378,8 @@ function PricesQuestion({ ctx }: { ctx: GuidedContext }) {
       : null;
   const builtInCurrency = ctx.catalog?.currency ?? "USD";
   const rows = new Map<string, PriceRow>();
-  for (const entry of ctx.catalog?.models ?? [])
+  for (const entry of ctx.catalog?.models ?? []) {
+    if (entry.input_per_mtok === null || entry.output_per_mtok === null) continue;
     rows.set(entry.model, {
       model: entry.model,
       name: entry.display_name,
@@ -387,6 +388,7 @@ function PricesQuestion({ ctx }: { ctx: GuidedContext }) {
       own: entry.price_source === "override",
       currency: builtInCurrency,
     });
+  }
   for (const entry of drafted ?? []) {
     const existing = rows.get(entry.model);
     rows.set(entry.model, {
