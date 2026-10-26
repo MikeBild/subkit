@@ -1862,6 +1862,15 @@ const EN = {
   "settings.ai.fallback.hint": "The replacement needs its own access key with that provider.",
   "settings.ai.fallback.same":
     "Choose a provider other than {provider}. Otherwise the replacement fails at the same time.",
+  "settings.ai.model.defaultNamed": "Default – {model}",
+  "settings.ai.summarize.question": "Which AI summarises long conversations?",
+  "settings.ai.summarize.help":
+    "Summaries run in the background whenever a conversation gets long. A small, cheap model is usually enough.",
+  "settings.ai.summarize.provider": "Provider for summaries",
+  "settings.ai.summarize.primary": "Same as the main model ({provider})",
+  "settings.ai.suggestion.question": "Which model suggests the next questions?",
+  "settings.ai.suggestion.help":
+    "After each reply, {provider} proposes follow-up questions. This runs often, so a cheap model keeps costs down.",
   "settings.ai.key.question": "Is the access key for {provider} stored?",
   "settings.ai.key.help":
     "SubKit signs in to {provider} with the key. You get it in your account at {provider}.",
@@ -1980,6 +1989,7 @@ const EN = {
   "settings.question.operations.brandingLine": "Name and logo of this workspace.",
   "settings.saveFailedKeep":
     "Saving did not work. Your changes are still here. Try again in a moment.",
+  "settings.saveRejected": "Not saved: {reason} Your changes are still here.",
   "settings.invalidCount": "{count} entries still need correcting.",
   "settings.invalidCount.one": "1 entry still needs correcting.",
   "resource.permission.title": "No rights",
@@ -8069,6 +8079,15 @@ const DE: Record<TranslationKey, string> = {
     "Für den Ersatz brauchst du einen eigenen Zugangsschlüssel bei diesem Anbieter.",
   "settings.ai.fallback.same":
     "Wähl einen anderen Anbieter als {provider}. Sonst fällt der Ersatz gleichzeitig mit aus.",
+  "settings.ai.model.defaultNamed": "Standard – {model}",
+  "settings.ai.summarize.question": "Welche KI fasst lange Gespräche zusammen?",
+  "settings.ai.summarize.help":
+    "Zusammenfassungen laufen im Hintergrund, sobald ein Gespräch lang wird. Meist genügt ein kleines, günstiges Modell.",
+  "settings.ai.summarize.provider": "Anbieter für Zusammenfassungen",
+  "settings.ai.summarize.primary": "Wie Hauptmodell ({provider})",
+  "settings.ai.suggestion.question": "Welches Modell schlägt die nächsten Fragen vor?",
+  "settings.ai.suggestion.help":
+    "Nach jeder Antwort schlägt {provider} passende Anschlussfragen vor. Das läuft oft; ein günstiges Modell hält die Kosten niedrig.",
   "settings.ai.key.question": "Ist der Zugangsschlüssel für {provider} hinterlegt?",
   "settings.ai.key.help":
     "Mit dem Schlüssel meldet sich SubKit bei {provider} an. Du bekommst ihn in deinem Konto bei {provider}.",
@@ -8190,6 +8209,7 @@ const DE: Record<TranslationKey, string> = {
   "settings.question.operations.brandingLine": "Name und Logo dieses Arbeitsbereichs.",
   "settings.saveFailedKeep":
     "Speichern hat nicht geklappt. Deine Änderungen sind noch da. Versuch es gleich noch einmal.",
+  "settings.saveRejected": "Nicht gespeichert: {reason} Deine Änderungen sind noch da.",
   "settings.invalidCount": "{count} Angaben müssen noch korrigiert werden.",
   "settings.invalidCount.one": "1 Angabe muss noch korrigiert werden.",
   "resource.permission.title": "Keine Rechte",

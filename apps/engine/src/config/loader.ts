@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { z } from "zod";
+import { isModelSettingLeaf, modelProviderMismatch } from "../llm/model-catalog-view.ts";
 import {
   ConfigLoaderError,
   RestartRequiredError,
@@ -220,6 +221,20 @@ function applyTenantOverlay(global: Config, tenantId: string): Config {
       setDeep(resolved as unknown as Record<string, unknown>, ["llm", field], effective);
   }
   return resolved;
+}
+
+export function modelSettingMismatch(
+  config: Config,
+  leafPath: readonly string[],
+  value: unknown,
+  tenantId?: string,
+): string | null {
+  const [section, leaf] = leafPath;
+  if (leafPath.length !== 2 || section !== "llm" || !leaf || !isModelSettingLeaf(leaf)) {
+    return null;
+  }
+  const effective = tenantId ? applyTenantOverlay(config, tenantId) : config;
+  return modelProviderMismatch(effective.llm, leaf, value);
 }
 
 function serialize(config: Config): string {
@@ -609,6 +624,9 @@ export async function setConfigKey(
         leaf.kind,
       );
     }
+
+    const mismatch = modelSettingMismatch(fullParse.data, leafPath, validatedValue, opts.tenantId);
+    if (mismatch) throw new ValidationError(mismatch, leafPath, leaf.kind);
 
     mirrorGenericLlmKey(fullParse.data, {
       overwriteApiKey:

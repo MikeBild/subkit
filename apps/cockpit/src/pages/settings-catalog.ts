@@ -31,6 +31,16 @@ export function modelsFor(
   return (catalog?.models ?? []).filter((entry) => entry.provider === family);
 }
 
+const PROVIDERS_DEFAULTING_TO_RECOMMENDED: ReadonlySet<string> = new Set(["openai", "gemini"]);
+
+export function recommendedModel(
+  catalog: ModelCatalog | undefined,
+  provider: string,
+): ModelCatalogEntry | null {
+  if (!PROVIDERS_DEFAULTING_TO_RECOMMENDED.has(provider)) return null;
+  return modelsFor(catalog, provider)?.find((entry) => entry.badges.recommended) ?? null;
+}
+
 export function catalogModelName(catalog: ModelCatalog | undefined, model: string): string | null {
   if (!model) return null;
   return catalog?.models.find((entry) => entry.model === model)?.display_name ?? null;

@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { render } from "@/components/cockpit/patterns/test-utils";
-import { fallbackChange } from "@/pages/settings-ai";
+import {
+  AiArea,
+  fallbackChange,
+  providerSwitchChanges,
+  summarizeChange,
+} from "@/pages/settings-ai";
+import { recommendedModel } from "@/pages/settings-catalog";
 import {
   CostsArea,
   type HostedModelEntry,
@@ -95,6 +101,131 @@ describe("the replacement provider", () => {
       ["llm.fallback_model", ""],
     ]);
     expect(fallbackChange("anthropic", "anthropic")).toEqual([]);
+  });
+});
+
+describe("summaries and suggestions", () => {
+  const llm = (values: Record<string, unknown> = {}) => [
+    leaf("llm.provider", values.provider ?? "openai", {
+      kind: "enum",
+      enum_values: ["mock", "openai", "anthropic"],
+    }),
+    leaf("llm.model", values.model ?? "", { kind: "string", default: "" }),
+    leaf("llm.fallback_provider", values.fallback_provider ?? null, {
+      kind: "enum",
+      default: null,
+      enum_values: ["mock", "openai", "anthropic"],
+    }),
+    leaf("llm.fallback_model", values.fallback_model ?? "", { kind: "string", default: "" }),
+    leaf("llm.summarize_provider", values.summarize_provider ?? null, {
+      kind: "enum",
+      default: null,
+      enum_values: ["mock", "openai", "anthropic"],
+    }),
+    leaf("llm.summarize_model", values.summarize_model ?? "", { kind: "string", default: "" }),
+    leaf("llm.suggestion_model", values.suggestion_model ?? "", { kind: "string", default: "" }),
+  ];
+  const area = (list: SettingItem[], overrides: Partial<GuidedContext> = {}) =>
+    render(
+      <AiArea
+        ctx={ctx({
+          items: list,
+          globalItems: list,
+          tenantItems: null,
+          effectiveItems: list,
+          ...overrides,
+        })}
+      />,
+    );
+
+  test("the provider default names the recommended model of that provider", () => {
+    expect(recommendedModel(catalog, "openai")?.display_name).toBe("GPT-4.1 mini");
+    expect(recommendedModel(catalog, "anthropic")).toBeNull();
+    expect(recommendedModel(catalog, "azure")).toBeNull();
+    const html = area(llm({ model: "my-own-model" }));
+    expect(html).toMatch(
+      /data-testid="settings-ai-model-select-list"[^>]*>Standard – GPT-4\.1 mini</,
+    );
+  });
+
+  test("without a known recommendation the default keeps the provider wording", () => {
+    const unrated = {
+      currency: "USD",
+      models: [
+        {
+          ...catalog.models[0]!,
+          provider: "anthropic" as const,
+          model: "claude-haiku-4-5",
+          display_name: "Claude Haiku 4.5",
+          badges: { recommended: false, economical: true, capable: false },
+        },
+      ],
+    };
+    const html = area(llm({ provider: "anthropic", model: "my-own-model" }), { catalog: unrated });
+    expect(html).toMatch(
+      /data-testid="settings-ai-model-select-list"[^>]*>Standardmodell von Anthropic</,
+    );
+  });
+
+  test("are asked only when the engine offers the settings", () => {
+    const html = area(llm());
+    expect(html).toContain("Welche KI fasst lange Gespräche zusammen?");
+    expect(html).toContain('data-testid="settings-ai-summarize-provider"');
+    expect(html).toContain('data-testid="settings-ai-summarize-model"');
+    expect(html).toContain("Welches Modell schlägt die nächsten Fragen vor?");
+    expect(html).toContain('data-testid="settings-ai-suggestion-model"');
+    const bare = area(llm().filter((item) => !/summarize|suggestion/.test(item.path)));
+    expect(bare).not.toContain("settings-ai-summarize");
+    expect(bare).not.toContain("settings-ai-suggestion");
+  });
+
+  test("a separate summary provider asks for its key too", () => {
+    const html = area(llm({ summarize_provider: "anthropic" }));
+    expect(html).toContain('data-testid="settings-ai-key-anthropic-elsewhere"');
+  });
+
+  test("switching the summary provider clears its model", () => {
+    expect(summarizeChange("", "anthropic")).toEqual([
+      ["llm.summarize_provider", "anthropic"],
+      ["llm.summarize_model", ""],
+    ]);
+    expect(summarizeChange("anthropic", "")).toEqual([
+      ["llm.summarize_provider", ""],
+      ["llm.summarize_model", ""],
+    ]);
+    expect(summarizeChange("openai", "openai")).toEqual([]);
+  });
+
+  test("switching the main provider clears models of the old provider that follow it", () => {
+    const list = llm({
+      model: "gpt-4.1-mini",
+      fallback_model: "gpt-4.1-mini",
+      summarize_model: "gpt-4.1-mini",
+      suggestion_model: "gpt-4.1-mini",
+    });
+    const base = ctx({ items: list, globalItems: list, effectiveItems: list });
+    expect(providerSwitchChanges(base, "anthropic")).toEqual([
+      ["llm.provider", "anthropic"],
+      ["llm.model", ""],
+      ["llm.suggestion_model", ""],
+      ["llm.fallback_model", ""],
+      ["llm.summarize_model", ""],
+    ]);
+    const own = ctx({
+      items: list,
+      globalItems: list,
+      effectiveItems: list,
+      drafts: {
+        "llm.fallback_provider": "openai",
+        "llm.summarize_provider": "openai",
+        "llm.suggestion_model": "custom-small",
+      },
+    });
+    expect(providerSwitchChanges(own, "anthropic")).toEqual([
+      ["llm.provider", "anthropic"],
+      ["llm.model", ""],
+    ]);
+    expect(providerSwitchChanges(base, "openai")).toEqual([]);
   });
 });
 

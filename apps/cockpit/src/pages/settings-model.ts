@@ -471,3 +471,9 @@ export function settingSecretName(path: string, tenantId?: string | null): strin
 export function settingsSaveFailure(error: unknown): "conflict" | "failed" {
   return (error as { status?: unknown } | null)?.status === 409 ? "conflict" : "failed";
 }
+
+export function settingsSaveReason(error: unknown): string | null {
+  const failure = error as { status?: unknown; message?: unknown } | null;
+  if (failure?.status !== 422 || typeof failure.message !== "string") return null;
+  return failure.message.trim() || null;
+}

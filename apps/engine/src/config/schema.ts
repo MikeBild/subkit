@@ -376,8 +376,10 @@ const LlmSection = z
       .meta(tenant()),
     suggestion_model: z
       .string()
-      .default("claude-haiku-4-5")
-      .describe("Small model used to generate post-turn suggestions")
+      .default("")
+      .describe(
+        "Small model used to generate post-turn suggestions; empty uses the primary provider's default",
+      )
       .meta(tenant()),
     context_1m: z
       .boolean()

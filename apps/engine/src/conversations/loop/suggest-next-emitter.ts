@@ -5,8 +5,14 @@ import { conversationMessages } from "../../db/schema/index.ts";
 import { stripFileSentinelsForDisplay } from "../../files/sentinel.ts";
 import { AiSdkModel } from "../../llm/core/ai-sdk-model.ts";
 import { resolveModelRoute } from "../../llm/core/invoke.ts";
-import { detectConfiguredProvider, ProviderMisconfiguredError } from "../../llm/core/model-init.ts";
+import {
+  detectConfiguredProvider,
+  modelForProvider,
+  ProviderMisconfiguredError,
+} from "../../llm/core/model-init.ts";
 import type { RecentMessage } from "../../llm/core/suggestion-prompt.ts";
+import { isCatalogModelProvider } from "../../llm/model-catalog-view.ts";
+import type { ModelRoute } from "../../llm/types.ts";
 import { logger } from "../../logging/logger.ts";
 import { nextSuggestion } from "../streaming.ts";
 import {
@@ -229,6 +235,14 @@ function extractTextRaw(content: unknown): string {
   return "";
 }
 
+export function suggestionModelFor(
+  route: Pick<ModelRoute, "provider" | "primary" | "tenant_id">,
+  configured: string | null | undefined,
+): string {
+  if (!isCatalogModelProvider(route.provider)) return configured?.trim() || route.primary;
+  return modelForProvider(route.provider, configured, "light", route.tenant_id) ?? route.primary;
+}
+
 function suggestNextModelInvoker(db: Db | undefined): SuggestNextModelInvoker {
   return async (call: SuggestNextModelInvocation): Promise<SuggestNextModelResult> => {
     if (detectConfiguredProvider({ tenantId: call.tenant_id }) === "mock") return { text: null };
@@ -236,7 +250,10 @@ function suggestNextModelInvoker(db: Db | undefined): SuggestNextModelInvoker {
     try {
       const route = await resolveModelRoute(call.tenant_id, db);
       if (route.provider === "mock") return { text: null };
-      const suggestionModel = getConfig(call.tenant_id).llm.suggestion_model;
+      const suggestionModel = suggestionModelFor(
+        route,
+        getConfig(call.tenant_id).llm.suggestion_model,
+      );
       model = new AiSdkModel({
         ...(db ? { exec: db } : {}),
         tenantId: call.tenant_id,

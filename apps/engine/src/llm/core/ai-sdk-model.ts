@@ -33,15 +33,15 @@ import {
   parseGenerationAbort,
 } from "./generation-abort.ts";
 import {
+  detectConfiguredProvider,
   initializeModel,
   type ModelInitOptions,
   ProviderMisconfiguredError,
+  providerDefaultModel,
   type ResolvedModel,
 } from "./model-init.ts";
 import { normalizeSchema, unwrapResult } from "./schema-normalizer.ts";
 import { compatibleToolPalette } from "./tool-schema-compatibility.ts";
-
-export const DEFAULT_MODEL_ID = "claude-sonnet-4-6";
 
 export const LLM_CALL_TIMEOUT_MS = 90_000;
 
@@ -67,6 +67,15 @@ export function knownContextModelIds(): string[] {
 function contextLengthFor(modelId: string): number {
   const bare = modelId.includes("/") ? (modelId.split("/").pop() ?? modelId) : modelId;
   return MODEL_CONTEXT_LENGTHS[bare] ?? 128_000;
+}
+
+function initialModelId(opts: ModelInitOptions): string {
+  const provider = detectConfiguredProvider({
+    ...(opts.providerEnvVar ? { providerEnvVar: opts.providerEnvVar } : {}),
+    ...(opts.providerOverride ? { providerOverride: opts.providerOverride } : {}),
+    ...(opts.tenantId ? { tenantId: opts.tenantId } : {}),
+  });
+  return providerDefaultModel(provider, "primary", opts.tenantId) ?? "";
 }
 
 const DATE_PREFIX = "The current date and time is";
@@ -149,7 +158,7 @@ export class AiSdkModel implements SubkitLlm {
     } else {
       this.opts = modelIdOrOptions ?? {};
     }
-    this.modelId = this.opts.defaultModel ?? DEFAULT_MODEL_ID;
+    this.modelId = this.opts.defaultModel?.trim() || initialModelId(this.opts);
     this.contextLength = contextLengthFor(this.modelId);
     this.gt = this.opts.generateTextFn ?? generateText;
   }

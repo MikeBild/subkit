@@ -4,10 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { _resetConfigForTests, getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { ConfigSchema, ModelPriceSchema } from "../../config/schema.ts";
-import { DEFAULT_MODEL_ID, knownContextModelIds } from "../core/ai-sdk-model.ts";
-import { DEFAULT_FALLBACK_MODEL, DEFAULT_PRIMARY_MODEL } from "../core/invoke.ts";
-import { DEFAULT_INIT_MODEL } from "../core/model-init.ts";
+import { knownContextModelIds } from "../core/ai-sdk-model.ts";
 import { ladderModelIds, routeTop, routeUp } from "../core/step-router.ts";
+import { catalogDefaultModelIds, DEFAULT_MODELS } from "../model-catalog-view.ts";
 import {
   effectiveModelPrices,
   MODEL_PRICE_CATALOG,
@@ -37,13 +36,7 @@ function configDefaultModelIds(): string[] {
 const LADDER_PROVIDERS: LlmProviderKind[] = ["anthropic", "openai", "gemini"];
 
 function modelsSubKitChooses(): string[] {
-  const seen = new Set<string>([
-    ...configDefaultModelIds(),
-    DEFAULT_PRIMARY_MODEL,
-    DEFAULT_FALLBACK_MODEL,
-    DEFAULT_MODEL_ID,
-    DEFAULT_INIT_MODEL,
-  ]);
+  const seen = new Set<string>([...configDefaultModelIds(), ...catalogDefaultModelIds()]);
   const queue = [...seen];
   while (queue.length > 0) {
     const model = queue.pop() as string;
@@ -111,8 +104,8 @@ describe("the catalog itself", () => {
 
 describe("every release stays priced", () => {
   test("the sources this guard reads are not empty", () => {
-    expect(configDefaultModelIds().length).toBeGreaterThan(0);
-    expect(modelsSubKitChooses()).toContain(DEFAULT_PRIMARY_MODEL);
+    expect(catalogDefaultModelIds().length).toBeGreaterThan(0);
+    expect(modelsSubKitChooses()).toContain(DEFAULT_MODELS.anthropic.primary);
     expect(ladderModelIds().length).toBeGreaterThan(0);
     expect(knownContextModelIds().length).toBeGreaterThan(0);
   });

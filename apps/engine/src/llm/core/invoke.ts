@@ -39,6 +39,9 @@ import {
   detectConfiguredProvider,
   initializeModel,
   type ModelInitOptions,
+  missingModelError,
+  modelForProvider,
+  readLlmSetting,
   withToolInputExamples,
 } from "./model-init.ts";
 import { safeParseJson } from "./safe-json.ts";
@@ -66,9 +69,6 @@ export async function resolveLanguageModel(
 function zodToJson(schema: ZodType): Record<string, unknown> {
   return zodToJsonSchema7(schema);
 }
-
-export const DEFAULT_PRIMARY_MODEL = "claude-sonnet-4-6";
-export const DEFAULT_FALLBACK_MODEL = "claude-opus-4-7";
 
 export interface GlobalLlmStatus {
   provider_env: string | null;
@@ -104,6 +104,16 @@ export function globalLlmStatus(): GlobalLlmStatus {
   const providers = cfg.providers;
   const bedrock = providers.bedrock;
   const vertex = providers.vertex;
+  const primaryProvider = inferred === "unconfigured" ? "gateway" : inferred;
+  const fallbackProvider = fallbackInferred === "unconfigured" ? primaryProvider : fallbackInferred;
+  const defaultPrimary = modelForProvider(primaryProvider, cfg.model, "primary") ?? "";
+  const defaultFallback =
+    modelForProvider(fallbackProvider, cfg.fallback_model, "fallback") ??
+    (fallbackProvider === primaryProvider ? defaultPrimary : "");
+  const configurationError =
+    inferred !== "unconfigured" && inferred !== "gateway" && inferred !== "mock" && !defaultPrimary
+      ? missingModelError(inferred).message
+      : null;
   return {
     provider_env: cfg.provider || null,
     inferred_provider: inferred,
@@ -122,9 +132,9 @@ export function globalLlmStatus(): GlobalLlmStatus {
     bedrock_key_set: Boolean(bedrock.access_key_id && bedrock.secret_access_key && bedrock.region),
     vertex_api_key_set: Boolean(vertex.api_key),
     vertex_service_account_set: Boolean(vertex.client_email && vertex.private_key),
-    configuration_error: null,
-    default_primary: cfg.model || DEFAULT_PRIMARY_MODEL,
-    default_fallback: cfg.fallback_model || DEFAULT_FALLBACK_MODEL,
+    configuration_error: configurationError,
+    default_primary: defaultPrimary,
+    default_fallback: defaultFallback,
   };
 }
 
@@ -161,10 +171,17 @@ export async function resolveModelRoute(tenant_id: string, exec?: Executor): Pro
     if (cfg.model) cfgModel = cfg.model;
     if (cfg.fallback_model) cfgFallback = cfg.fallback_model;
   } catch {}
-  const primary = tenant?.llm_primary ?? cfgModel ?? DEFAULT_PRIMARY_MODEL;
-  const fallback = tenant?.llm_fallback ?? cfgFallback ?? DEFAULT_FALLBACK_MODEL;
   const provider = currentProvider(tenant_id);
   const fallback_provider = currentFallbackProvider(provider, tenant_id);
+  const primary =
+    modelForProvider(provider, tenant?.llm_primary || cfgModel, "primary", tenant_id) ?? "";
+  const fallback =
+    modelForProvider(
+      fallback_provider,
+      tenant?.llm_fallback || cfgFallback,
+      "fallback",
+      tenant_id,
+    ) ?? (fallback_provider === provider ? primary : "");
   const monthly_budget = resolveMonthlyBudget(tenant_id);
 
   return {
@@ -201,14 +218,21 @@ export function applyFlowEnvOverrides(route: ModelRoute, flow: LlmFlow): ModelRo
   const key = flowEnvKey(flow);
   const providerEnvVar = `${key}_LLM_PROVIDER`;
   const modelEnvVar = `${key}_MODEL`;
-  const providerDetected = detectConfiguredProvider({ providerEnvVar });
-  const modelOverride = process.env[modelEnvVar];
+  const providerDetected = detectConfiguredProvider({
+    providerEnvVar,
+    tenantId: route.tenant_id,
+  });
+  const modelOverride = readLlmSetting(modelEnvVar, route.tenant_id);
   if (providerDetected === "unconfigured" && !modelOverride) return route;
-  const nextPrimary = modelOverride ?? route.primary;
+  const provider = providerDetected === "unconfigured" ? route.provider : providerDetected;
+  const nextPrimary =
+    provider === route.provider
+      ? (modelOverride ?? route.primary)
+      : (modelForProvider(provider, modelOverride, "primary", route.tenant_id) ?? route.primary);
   return {
     ...route,
     primary: nextPrimary,
-    provider: providerDetected === "unconfigured" ? route.provider : providerDetected,
+    provider,
     context_cap: contextCapFor(nextPrimary),
   };
 }

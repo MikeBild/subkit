@@ -1,9 +1,6 @@
 import { readFileSync } from "node:fs";
-import {
-  applyFlowModelElevation,
-  DEFAULT_FALLBACK_MODEL,
-  DEFAULT_PRIMARY_MODEL,
-} from "../apps/engine/src/llm/core/invoke.ts";
+import { applyFlowModelElevation } from "../apps/engine/src/llm/core/invoke.ts";
+import { DEFAULT_MODELS } from "../apps/engine/src/llm/model-catalog-view.ts";
 import type { LlmFlow, ModelRoute } from "../apps/engine/src/llm/types.ts";
 
 export interface LiveArgs {
@@ -109,7 +106,7 @@ export function parseLiveArgs(argv: string[]): LiveArgs {
   const args: LiveArgs = {
     keyFile: DEFAULT_KEY_FILE,
     openaiKeyFile: DEFAULT_OPENAI_KEY_FILE,
-    models: [DEFAULT_PRIMARY_MODEL, DEFAULT_FALLBACK_MODEL],
+    models: [DEFAULT_MODELS.anthropic.primary, DEFAULT_MODELS.anthropic.fallback],
     timeoutMs: DEFAULT_TIMEOUT_MS,
   };
   for (let i = 0; i < argv.length; i++) {

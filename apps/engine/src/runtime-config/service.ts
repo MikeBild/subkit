@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, inArray, isNull, max, ne, sql } from "drizzle-orm";
 import { SYSTEM_TENANT_ID } from "../audit/types.ts";
-import { getConfig, installRuntimeConfig } from "../config/loader.ts";
+import { getConfig, installRuntimeConfig, modelSettingMismatch } from "../config/loader.ts";
 import { type Config, ConfigSchema } from "../config/schema.ts";
 import { dottedPath, findLeafByPath, listConfigLeaves } from "../config/walk.ts";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
@@ -611,7 +611,11 @@ export async function saveRuntimeConfigPatch(
         : await requireRevision(tx, state.active_revision);
     const pendingRestart = restartFieldsDiffering(active.document, document);
 
-    await validateAndResolveDocument(tx, document);
+    const resolved = await validateAndResolveDocument(tx, document);
+    for (const [path, value] of entries) {
+      const mismatch = modelSettingMismatch(resolved, path.split("."), value, args.tenant_id);
+      if (mismatch) throw new RuntimeConfigValidationError(mismatch);
+    }
     const digest = configDigest(document);
     const [created] = await tx
       .insert(runtimeConfigRevisions)

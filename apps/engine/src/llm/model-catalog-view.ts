@@ -11,6 +11,95 @@ export const RECOMMENDED_MODELS: Readonly<Record<CatalogModelProvider, string>> 
   gemini: "gemini-2.5-flash",
 });
 
+export type DefaultModelRole = "primary" | "fallback" | "light";
+
+export const DEFAULT_MODELS: Readonly<
+  Record<CatalogModelProvider, Readonly<Record<DefaultModelRole, string>>>
+> = Object.freeze({
+  anthropic: Object.freeze({
+    primary: "claude-sonnet-4-6",
+    fallback: "claude-opus-4-7",
+    light: "claude-haiku-4-5",
+  }),
+  openai: Object.freeze({
+    primary: RECOMMENDED_MODELS.openai,
+    fallback: RECOMMENDED_MODELS.openai,
+    light: RECOMMENDED_MODELS.openai,
+  }),
+  gemini: Object.freeze({
+    primary: RECOMMENDED_MODELS.gemini,
+    fallback: RECOMMENDED_MODELS.gemini,
+    light: RECOMMENDED_MODELS.gemini,
+  }),
+});
+
+export function isCatalogModelProvider(provider: string): provider is CatalogModelProvider {
+  return (CATALOG_MODEL_PROVIDERS as readonly string[]).includes(provider);
+}
+
+export function defaultModelFor(
+  provider: string,
+  role: DefaultModelRole = "primary",
+): string | undefined {
+  return isCatalogModelProvider(provider) ? DEFAULT_MODELS[provider][role] : undefined;
+}
+
+export function catalogDefaultModelIds(): string[] {
+  return [...new Set(Object.values(DEFAULT_MODELS).flatMap((roles) => Object.values(roles)))];
+}
+
+export function modelFamilyMismatch(provider: string, model: string): boolean {
+  if (!isCatalogModelProvider(provider) || !model) return false;
+  const family = catalogModelProvider(model);
+  return family !== null && family !== provider;
+}
+
+export interface LlmModelSettings {
+  provider: string;
+  model?: string;
+  fallback_provider?: string | null;
+  fallback_model?: string;
+  summarize_provider?: string | null;
+  summarize_model?: string;
+  suggestion_model?: string;
+  providers?: object;
+}
+
+export const MODEL_SETTING_LEAVES = [
+  "model",
+  "fallback_model",
+  "summarize_model",
+  "suggestion_model",
+] as const;
+export type ModelSettingLeaf = (typeof MODEL_SETTING_LEAVES)[number];
+
+function targetProviderOf(llm: LlmModelSettings, leaf: ModelSettingLeaf): string {
+  if (leaf === "fallback_model") return llm.fallback_provider || llm.provider;
+  if (leaf === "summarize_model") return llm.summarize_provider || llm.provider;
+  return llm.provider;
+}
+
+export function isModelSettingLeaf(leaf: string): leaf is ModelSettingLeaf {
+  return (MODEL_SETTING_LEAVES as readonly string[]).includes(leaf);
+}
+
+export function modelProviderMismatch(
+  llm: LlmModelSettings,
+  leaf: ModelSettingLeaf,
+  value: unknown = llm[leaf],
+): string | null {
+  const model = typeof value === "string" ? value.trim() : "";
+  if (!model) return null;
+  const provider = targetProviderOf(llm, leaf);
+  if (!modelFamilyMismatch(provider, model)) return null;
+  const endpoint = (
+    llm.providers as Record<string, { base_url?: unknown } | undefined> | undefined
+  )?.[provider];
+  if (typeof endpoint?.base_url === "string" && endpoint.base_url) return null;
+  const family = catalogModelProvider(model);
+  return `llm.${leaf} '${model}' is a ${family} model, but it would be sent to the ${provider} provider. Choose a ${provider} model such as '${defaultModelFor(provider)}', leave it empty for the provider default, or change the provider first.`;
+}
+
 export const MODEL_BADGE_OUTPUT_PRICE = Object.freeze({ economicalAtMost: 5, capableAtLeast: 15 });
 
 export interface CatalogModelBadges {
@@ -40,8 +129,8 @@ const PROVIDER_PREFIXES: ReadonlyArray<readonly [string, CatalogModelProvider]> 
   ["gemini-", "gemini"],
 ];
 
-function providerOf(model: string): CatalogModelProvider | null {
-  const id = vendorModelId(model);
+export function catalogModelProvider(model: string): CatalogModelProvider | null {
+  const id = vendorModelId(model.includes(":") ? model.slice(model.indexOf(":") + 1) : model);
   for (const [prefix, provider] of PROVIDER_PREFIXES) {
     if (id.startsWith(prefix)) return provider;
   }
@@ -75,7 +164,7 @@ export function modelCatalogView(tokens: {
     if (existing && (existing.price_source === "override" || existing.model === vendor)) {
       if (!override || existing.price_source === "override") continue;
     }
-    const provider = providerOf(price.model);
+    const provider = catalogModelProvider(price.model);
     byVendor.set(vendor, {
       provider,
       model: price.model,

@@ -1,9 +1,11 @@
 import { APICallError, generateText } from "ai";
 import { getConfig } from "../../config/loader.ts";
+import { DEFAULT_MODELS, defaultModelFor, modelFamilyMismatch } from "../model-catalog-view.ts";
 import { classifyProviderError } from "../provider-errors.ts";
 import {
   configuredProviderModel,
   type DirectProviderKind,
+  enforcesModelFamily,
   initializeModel,
   ProviderMisconfiguredError,
 } from "./model-init.ts";
@@ -22,11 +24,8 @@ export interface LlmAccessRequest {
 
 export type LlmAccessProbe = (p: LlmAccessRequest) => Promise<LlmAccessResult>;
 
-const PROBE_MODELS: Partial<Record<DirectProviderKind, string>> = {
-  anthropic: "claude-haiku-4-5",
-  openai: "gpt-4.1-mini",
-  gemini: "gemini-2.5-flash",
-  vertex: "gemini-2.5-flash",
+const NON_CATALOG_PROBE_MODELS: Partial<Record<DirectProviderKind, string>> = {
+  vertex: DEFAULT_MODELS.gemini.light,
 };
 
 export const LLM_PROBE_TIMEOUT_MS = 20_000;
@@ -34,7 +33,10 @@ export const LLM_PROBE_TIMEOUT_MS = 20_000;
 function primaryModelFor(provider: DirectProviderKind): string | undefined {
   try {
     const llm = getConfig().llm;
-    return llm.provider === provider && llm.model ? llm.model : undefined;
+    if (llm.provider !== provider || !llm.model) return undefined;
+    return enforcesModelFamily(provider) && modelFamilyMismatch(provider, llm.model)
+      ? undefined
+      : llm.model;
   } catch {
     return undefined;
   }
@@ -45,7 +47,8 @@ export function probeModel(provider: DirectProviderKind, requested?: string): st
     requested?.trim() ||
     configuredProviderModel(provider) ||
     primaryModelFor(provider) ||
-    PROBE_MODELS[provider]
+    defaultModelFor(provider, "light") ||
+    NON_CATALOG_PROBE_MODELS[provider]
   );
 }
 

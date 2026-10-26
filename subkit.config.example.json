@@ -41,7 +41,7 @@
     "fallback_model": "",
     "summarize_provider": null,
     "summarize_model": "",
-    "suggestion_model": "claude-haiku-4-5",
+    "suggestion_model": "",
     "context_1m": false,
     "web_search": true,
     "output_guard": "soft",

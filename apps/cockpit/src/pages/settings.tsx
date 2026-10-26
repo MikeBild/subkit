@@ -71,6 +71,7 @@ import {
   settingsAttention,
   settingsPatches,
   settingsSaveFailure,
+  settingsSaveReason,
   settingsViewFromUrl,
 } from "@/pages/settings-model";
 import { type AreaCard, SettingsAreaFrame, SettingsOverview } from "@/pages/settings-overview";
@@ -180,7 +181,7 @@ function SettingsWorkspace() {
   const scopedArea = scopedAreaOf(level);
   const tenantReadable = canReadEngine && tenantId !== SYSTEM_TENANT_ID;
   const [conflict, setConflict] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<{ reason: string | null } | null>(null);
   const [restartOpen, setRestartOpen] = useState(false);
   const [restartNowOpen, setRestartNowOpen] = useState(false);
   const [formKey, setFormKey] = useState(0);
@@ -295,7 +296,7 @@ function SettingsWorkspace() {
       ]);
       draftState.clear(saved);
       setConflict(false);
-      setFailed(false);
+      setFailed(null);
       setRestartOpen(false);
       setFormKey((key) => key + 1);
       toast.success(t("settings.saved"));
@@ -305,8 +306,9 @@ function SettingsWorkspace() {
       void client.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY });
       if (settingsSaveFailure(error) === "conflict") setConflict(true);
       else {
-        setFailed(true);
-        toast.error(t("settings.saveFailedKeep"));
+        const reason = settingsSaveReason(error);
+        setFailed({ reason });
+        toast.error(reason ? t("settings.saveRejected", { reason }) : t("settings.saveFailedKeep"));
       }
     },
   });
@@ -316,7 +318,7 @@ function SettingsWorkspace() {
   }
 
   function setDraft(path: string, text: string, requested: SettingDraftScope) {
-    setFailed(false);
+    setFailed(null);
     draftState.setDraft(path, text, requested);
   }
 
@@ -446,7 +448,8 @@ function SettingsWorkspace() {
         <SettingsSaveBar
           count={changed.length}
           conflict={conflict}
-          failed={failed}
+          failed={failed !== null}
+          reason={failed?.reason}
           pending={save.isPending}
           invalid={invalidCount > 0}
           invalidCount={invalidCount}
@@ -455,7 +458,7 @@ function SettingsWorkspace() {
             draftState.clear();
             setFormKey((key) => key + 1);
             setConflict(false);
-            setFailed(false);
+            setFailed(null);
           }}
           onReload={reload}
           onSave={() => (restartItems.length > 0 ? setRestartOpen(true) : save.mutate())}

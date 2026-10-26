@@ -778,6 +778,26 @@ describe("the guided settings pages", () => {
     expect(filled(html)).toBe(1);
   });
 
+  test("a value the engine rejects shows its reason in the save bar and keeps the drafts", () => {
+    const html = render(
+      <SettingsSaveBar
+        count={1}
+        conflict={false}
+        failed
+        reason="llm.model 'claude-sonnet-4-6' would be sent to the openai provider."
+        pending={false}
+        invalid={false}
+        onDiscard={() => {}}
+        onReload={() => {}}
+        onSave={() => {}}
+      />,
+    );
+    expect(html).toContain(
+      "Nicht gespeichert: llm.model &#x27;claude-sonnet-4-6&#x27; would be sent to the openai provider. Deine Änderungen sind noch da.",
+    );
+    expect(html).toMatch(/role="alert" data-testid="settings-save-failed"/);
+  });
+
   test("an entry that needs correcting heads the save bar and blocks saving", () => {
     const html = render(
       <SettingsSaveBar

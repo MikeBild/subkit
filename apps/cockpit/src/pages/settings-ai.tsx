@@ -17,7 +17,7 @@ import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
 import { providerKeyPath } from "@/pages/settings-areas";
-import { type ModelCatalogEntry, modelsFor } from "@/pages/settings-catalog";
+import { type ModelCatalogEntry, modelsFor, recommendedModel } from "@/pages/settings-catalog";
 import {
   ExpertLink,
   type GuidedContext,
@@ -75,6 +75,7 @@ const PROVIDER_FIELDS: Readonly<Record<string, readonly string[]>> = {
 
 const DEFAULT_MODEL = "__default__";
 const CUSTOM_MODEL = "__custom__";
+const PRIMARY_PROVIDER = "__primary__";
 
 function providerLine(provider: string, t: (key: TranslationKey) => string): string {
   return t(`settings.ai.provider.${provider}.line` as TranslationKey);
@@ -96,21 +97,30 @@ export function ModelBadges({ entry }: { entry: ModelCatalogEntry }) {
   );
 }
 
+export function providerSwitchChanges(
+  ctx: GuidedContext,
+  provider: string,
+): Array<[string, string]> {
+  if (provider === guidedText(ctx, "llm.provider")) return [];
+  const family = modelsFor(ctx.catalog, provider);
+  const following = ["llm.model", "llm.suggestion_model"];
+  if (!guidedText(ctx, "llm.fallback_provider")) following.push("llm.fallback_model");
+  if (!guidedText(ctx, "llm.summarize_provider")) following.push("llm.summarize_model");
+  const cleared = following.filter((path) => {
+    const model = guidedText(ctx, path);
+    const known = ctx.catalog?.models.some((entry) => entry.model === model) ?? false;
+    return model !== "" && known && !family?.some((entry) => entry.model === model);
+  });
+  return [["llm.provider", provider], ...cleared.map((path): [string, string] => [path, ""])];
+}
+
 function ProviderCards({ ctx }: { ctx: GuidedContext }) {
   const { t } = useI18n();
   const item = guidedItem(ctx, "llm.provider");
   const current = guidedText(ctx, "llm.provider");
   const disabled = guidedDisabled(ctx, item);
   const options = providerOptions(ctx);
-  const choose = (provider: string) => {
-    if (provider === current) return;
-    ctx.setDraft("llm.provider", provider);
-    const model = guidedText(ctx, "llm.model");
-    const family = modelsFor(ctx.catalog, provider);
-    const known = ctx.catalog?.models.find((entry) => entry.model === model);
-    if (model && known && !family?.some((entry) => entry.model === model))
-      ctx.setDraft("llm.model", "");
-  };
+  const choose = (provider: string) => applyDrafts(ctx, providerSwitchChanges(ctx, provider));
   return (
     <fieldset className="grid gap-3 sm:grid-cols-2" data-testid="settings-ai-providers">
       <legend className="sr-only">{t("settings.ai.provider.question")}</legend>
@@ -174,11 +184,13 @@ function ModelPicker({
   path,
   provider,
   testId,
+  named = true,
 }: {
   ctx: GuidedContext;
   path: string;
   provider: string;
   testId: string;
+  named?: boolean;
 }) {
   const { t, locale } = useI18n();
   const item = guidedItem(ctx, path);
@@ -190,6 +202,10 @@ function ModelPicker({
   const [custom, setCustom] = useState(false);
   const free = models === null || models.length === 0 || custom || (value !== "" && !listed);
   const name = providerName(provider, t);
+  const recommended = named ? recommendedModel(ctx.catalog, provider) : null;
+  const defaultLabel = recommended
+    ? t("settings.ai.model.defaultNamed", { model: recommended.display_name })
+    : t("settings.ai.model.default", { provider: name });
   if (!item) return null;
   if (free)
     return (
@@ -214,7 +230,7 @@ function ModelPicker({
             }}
             data-testid={`${testId}-list`}
           >
-            {t("settings.ai.model.default", { provider: name })}
+            {defaultLabel}
           </button>
         ) : null}
       </div>
@@ -266,7 +282,7 @@ function ModelPicker({
             description={t("settings.ai.model.defaultHelp", { provider: name })}
             data-testid={`${testId}-option-default`}
           >
-            {t("settings.ai.model.default", { provider: name })}
+            {defaultLabel}
           </SelectItem>
           <SelectItem value={CUSTOM_MODEL} data-testid={`${testId}-option-custom`}>
             {t("settings.ai.model.custom")}
@@ -306,8 +322,113 @@ export function fallbackChange(previous: string, next: string): Array<[string, s
   ];
 }
 
+export function summarizeChange(previous: string, next: string): Array<[string, string]> {
+  if (previous === next) return [];
+  return [
+    ["llm.summarize_provider", next],
+    ["llm.summarize_model", ""],
+  ];
+}
+
 function applyDrafts(ctx: GuidedContext, changes: ReadonlyArray<[string, string]>) {
   for (const [path, text] of changes) ctx.setDraft(path, text);
+}
+
+function SummarizeQuestion({ ctx, provider }: { ctx: GuidedContext; provider: string }) {
+  const { t } = useI18n();
+  const item = guidedItem(ctx, "llm.summarize_provider");
+  const chosen = guidedText(ctx, "llm.summarize_provider");
+  const disabled = guidedDisabled(ctx, item);
+  if (!item) return null;
+  const target = chosen || provider;
+  const options = (item.meta.enum_values ?? []).filter((value) => value !== "mock");
+  return (
+    <Question
+      title={t("settings.ai.summarize.question")}
+      help={t("settings.ai.summarize.help")}
+      aside={<LockedNote item={item} />}
+      testId="settings-ai-summarize"
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-1.5">
+          <span className="text-xs font-medium">{t("settings.ai.summarize.provider")}</span>
+          <Select
+            value={chosen || PRIMARY_PROVIDER}
+            disabled={disabled}
+            onValueChange={(next) =>
+              applyDrafts(ctx, summarizeChange(chosen, next === PRIMARY_PROVIDER ? "" : next))
+            }
+          >
+            <SelectTrigger
+              id={`setting-${guidedIndex(ctx, "llm.summarize_provider")}`}
+              className="w-full"
+              aria-label={t("settings.ai.summarize.provider")}
+              data-testid="settings-ai-summarize-provider"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem
+                  value={PRIMARY_PROVIDER}
+                  data-testid="settings-ai-summarize-provider-primary"
+                >
+                  {t("settings.ai.summarize.primary", { provider: providerName(provider, t) })}
+                </SelectItem>
+                {options.map((option) => (
+                  <SelectItem
+                    key={option}
+                    value={option}
+                    data-testid={`settings-ai-summarize-provider-${option}`}
+                  >
+                    {providerName(option, t)}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </div>
+        {guidedItem(ctx, "llm.summarize_model") ? (
+          <div className="grid gap-1.5">
+            <span className="text-xs font-medium">{t("settings.ai.model.label")}</span>
+            <ModelPicker
+              key={target}
+              ctx={ctx}
+              path="llm.summarize_model"
+              provider={target}
+              testId="settings-ai-summarize-model"
+            />
+          </div>
+        ) : null}
+      </div>
+      <OwnValueHint ctx={ctx} path="llm.summarize_provider" />
+      <OwnValueHint ctx={ctx} path="llm.summarize_model" />
+    </Question>
+  );
+}
+
+function SuggestionQuestion({ ctx, provider }: { ctx: GuidedContext; provider: string }) {
+  const { t } = useI18n();
+  const item = guidedItem(ctx, "llm.suggestion_model");
+  if (!item) return null;
+  return (
+    <Question
+      title={t("settings.ai.suggestion.question")}
+      help={t("settings.ai.suggestion.help", { provider: providerName(provider, t) })}
+      aside={<LockedNote item={item} />}
+      testId="settings-ai-suggestion"
+    >
+      <ModelPicker
+        key={provider}
+        ctx={ctx}
+        path="llm.suggestion_model"
+        provider={provider}
+        testId="settings-ai-suggestion-model"
+        named={false}
+      />
+      <OwnValueHint ctx={ctx} path="llm.suggestion_model" />
+    </Question>
+  );
 }
 
 function FallbackQuestion({ ctx, provider }: { ctx: GuidedContext; provider: string }) {
@@ -484,6 +605,10 @@ export function AiArea({ ctx }: { ctx: GuidedContext }) {
   const providerItem = guidedItem(ctx, "llm.provider");
   const name = provider ? providerName(provider, t) : "";
   const fallback = guidedText(ctx, "llm.fallback_provider");
+  const summarize = guidedText(ctx, "llm.summarize_provider");
+  const extraKeys = [...new Set([fallback, summarize])].filter(
+    (other) => other !== "" && other !== provider && other !== "mock",
+  );
   const mock = provider === "mock";
   const extra = PROVIDER_FIELDS[provider] ?? [];
   return (
@@ -522,6 +647,8 @@ export function AiArea({ ctx }: { ctx: GuidedContext }) {
         </Question>
       ) : null}
       {provider && !mock ? <FallbackQuestion ctx={ctx} provider={provider} /> : null}
+      {provider && !mock ? <SummarizeQuestion ctx={ctx} provider={provider} /> : null}
+      {provider && !mock ? <SuggestionQuestion ctx={ctx} provider={provider} /> : null}
       {provider ? (
         <Question
           title={t("settings.ai.key.question", { provider: name })}
@@ -533,9 +660,9 @@ export function AiArea({ ctx }: { ctx: GuidedContext }) {
           ) : (
             <div className="grid gap-4 divide-y [&>*:not(:first-child)]:pt-4">
               <KeyRow ctx={ctx} provider={provider} primary />
-              {fallback && fallback !== provider ? (
-                <KeyRow ctx={ctx} provider={fallback} primary={false} />
-              ) : null}
+              {extraKeys.map((other) => (
+                <KeyRow key={other} ctx={ctx} provider={other} primary={false} />
+              ))}
             </div>
           )}
         </Question>

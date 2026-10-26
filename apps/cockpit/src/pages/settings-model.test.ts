@@ -30,6 +30,7 @@ import {
   settingsLeafFromUrl,
   settingsPatches,
   settingsSaveFailure,
+  settingsSaveReason,
   settingsViewFromUrl,
   settingUnit,
   settingValueText,
@@ -527,6 +528,14 @@ describe("one save", () => {
     expect(de("settings.conflict")).toBe(
       "Inzwischen hat jemand gespeichert – neu laden, deine Entwürfe bleiben.",
     );
+  });
+
+  test("a rejected value carries the engine's reason; other failures stay generic", () => {
+    const reason =
+      "llm.model 'claude-sonnet-4-6' is a anthropic model, but it would be sent to the openai provider.";
+    expect(settingsSaveReason({ status: 422, message: reason })).toBe(reason);
+    expect(settingsSaveReason({ status: 500, message: "boom" })).toBeNull();
+    expect(settingsSaveReason(new Error("network"))).toBeNull();
   });
 });
 

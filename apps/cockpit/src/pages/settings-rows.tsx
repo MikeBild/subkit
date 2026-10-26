@@ -1014,6 +1014,7 @@ export function SettingsSaveBar({
   count,
   conflict,
   failed = false,
+  reason = null,
   pending,
   invalid,
   invalidCount = 0,
@@ -1025,6 +1026,7 @@ export function SettingsSaveBar({
   count: number;
   conflict: boolean;
   failed?: boolean;
+  reason?: string | null;
   pending: boolean;
   invalid: boolean;
   invalidCount?: number;
@@ -1056,7 +1058,7 @@ export function SettingsSaveBar({
           </span>
         ) : failed ? (
           <span role="alert" data-testid="settings-save-failed">
-            {t("settings.saveFailedKeep")}
+            {reason ? t("settings.saveRejected", { reason }) : t("settings.saveFailedKeep")}
           </span>
         ) : undefined
       }

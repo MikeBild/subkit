@@ -14,6 +14,15 @@ import {
 } from "ai";
 import { getConfig } from "../../config/loader.ts";
 import type { Executor } from "../../db/client.ts";
+import { logger } from "../../logging/logger.ts";
+import {
+  type CatalogModelProvider,
+  DEFAULT_MODELS,
+  type DefaultModelRole,
+  defaultModelFor,
+  isCatalogModelProvider,
+  modelFamilyMismatch,
+} from "../model-catalog-view.ts";
 import { modelTenantContext, wrapHostedBudgetModel } from "./hosted-budget-middleware.ts";
 import { fetchWithResponseTimeout } from "./response-timeout.ts";
 
@@ -120,8 +129,80 @@ export const PROVIDER_MODEL_SETTING: Record<DirectProviderKind, string> = {
   vertex: "VERTEX_MODEL",
 };
 
-export function configuredProviderModel(provider: DirectProviderKind): string | undefined {
-  return readEnv(PROVIDER_MODEL_SETTING[provider]);
+export function configuredProviderModel(
+  provider: DirectProviderKind,
+  tenantId?: string,
+): string | undefined {
+  return readEnv(PROVIDER_MODEL_SETTING[provider], tenantId);
+}
+
+const PROVIDER_BASE_URL_SETTING: Record<CatalogModelProvider, string> = {
+  anthropic: "ANTHROPIC_BASE_URL",
+  openai: "OPENAI_BASE_URL",
+  gemini: "GEMINI_BASE_URL",
+};
+
+export function enforcesModelFamily(provider: string, tenantId?: string): boolean {
+  if (!isCatalogModelProvider(provider)) return false;
+  return !readEnv(PROVIDER_BASE_URL_SETTING[provider], tenantId);
+}
+
+export function providerDefaultModel(
+  provider: ProviderState,
+  role: DefaultModelRole = "primary",
+  tenantId?: string,
+): string | undefined {
+  if (provider === "unconfigured") return undefined;
+  if (provider === "mock") return DEFAULT_MODELS.anthropic[role];
+  if (provider === "gateway") return readEnv("AI_GATEWAY_MODEL", tenantId);
+  const configured = configuredProviderModel(provider, tenantId);
+  if (!isCatalogModelProvider(provider)) return configured;
+  const preferred = role === "primary" ? configured : undefined;
+  if (
+    preferred &&
+    !(enforcesModelFamily(provider, tenantId) && modelFamilyMismatch(provider, preferred))
+  ) {
+    return preferred;
+  }
+  return defaultModelFor(provider, role);
+}
+
+export function modelForProvider(
+  provider: ProviderState,
+  model: string | null | undefined,
+  role: DefaultModelRole = "primary",
+  tenantId?: string,
+): string | undefined {
+  const chosen = model?.trim();
+  if (
+    chosen &&
+    !(enforcesModelFamily(provider, tenantId) && modelFamilyMismatch(provider, chosen))
+  ) {
+    return chosen;
+  }
+  if (chosen) {
+    logger.warn({
+      module: "llm",
+      action: "model.family_mismatch",
+      msg: "configured model belongs to another provider; using the provider default instead",
+      provider,
+      model: chosen,
+    });
+  }
+  return providerDefaultModel(provider, role, tenantId);
+}
+
+export function missingModelError(provider: DirectProviderKind): ProviderMisconfiguredError {
+  const setting = PROVIDER_MODEL_SETTING[provider];
+  return new ProviderMisconfiguredError(
+    provider,
+    `no model or deployment is configured. Set llm.model or ${setting} in the Cockpit, settings API, or with \`sk settings configure\`.`,
+    setting,
+  );
+}
+
+export function readLlmSetting(name: string, tenantId?: string): string | undefined {
+  return readEnv(name, tenantId);
 }
 
 function readEnv(name: string, tenantId?: string): string | undefined {
@@ -489,12 +570,10 @@ export function withToolInputExamples(
   });
 }
 
-export const DEFAULT_INIT_MODEL = "claude-sonnet-4-6";
-
 async function resolveModel(options?: ModelInitOptions): Promise<ResolvedModel> {
   const providerEnvVar = options?.providerEnvVar ?? "LLM_PROVIDER";
-  const defaultModel = options?.defaultModel ?? DEFAULT_INIT_MODEL;
-  const modelOverride = options?.modelOverride;
+  const requestedDefault = options?.defaultModel?.trim() || undefined;
+  const requestedOverride = options?.modelOverride?.trim() || undefined;
   const tenantId = options?.tenantId;
   const apiKey = options?.apiKeyOverride;
 
@@ -514,14 +593,23 @@ async function resolveModel(options?: ModelInitOptions): Promise<ResolvedModel> 
   if (provider === "mock") {
     return {
       provider: "mock",
-      modelId: modelOverride ?? defaultModel,
+      modelId: requestedOverride ?? requestedDefault ?? DEFAULT_MODELS.anthropic.primary,
       model: "mock:never-dispatched",
     };
   }
 
+  if (provider === "gateway") {
+    return resolveGatewayModel(requestedDefault ?? "", requestedOverride, tenantId);
+  }
+
+  const candidate =
+    requestedOverride ?? configuredProviderModel(provider, tenantId) ?? requestedDefault;
+  const modelId = modelForProvider(provider, candidate, "primary", tenantId);
+  if (!modelId) throw missingModelError(provider);
+  const defaultModel = modelId;
+  const modelOverride = modelId;
+
   switch (provider) {
-    case "gateway":
-      return resolveGatewayModel(defaultModel, modelOverride, tenantId);
     case "anthropic":
       return resolveAnthropic(defaultModel, modelOverride, tenantId, apiKey);
     case "openai":
