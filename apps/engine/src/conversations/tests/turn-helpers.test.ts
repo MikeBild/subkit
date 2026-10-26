@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  classifyFallbackSynthesis,
   completionEvidenceGuard,
   synthesizeFallbackMessage,
   turnLoopBudgetStopCondition,
@@ -434,5 +435,44 @@ describe("synthesizeFallbackMessage — error envelopes render as prose", () => 
     expect(msg ?? "").not.toContain("error_code:");
     expect(msg ?? "").toContain("header_name and header_value");
     expect(msg ?? "").toContain("missing: header_value");
+  });
+});
+
+describe("classifyFallbackSynthesis after an abstention", () => {
+  const toolResult = (tool: string, output: Record<string, unknown>): TurnEvent =>
+    ({ type: "tool_result", tool, output }) as TurnEvent;
+
+  test("an empty turn ending in cannot_help shows its reason and alternative", () => {
+    const classified = classifyFallbackSynthesis({
+      events: [
+        toolResult("get_knowledge_source", { ok: true, data: { source: { id: "x" } } }),
+        toolResult("cannot_help", {
+          abstained: true,
+          reason: "Editing existing knowledge is not possible in this review.",
+          suggest_alternative: "Open a normal chat for that change.",
+        }),
+      ],
+      loopWarnings: 0,
+    });
+    expect(classified?.text).toBe(
+      "Editing existing knowledge is not possible in this review.\n\nOpen a normal chat for that change.",
+    );
+    expect(classified?.text).not.toContain("Summary of the latest tool results");
+  });
+
+  test("without an alternative only the reason is shown", () => {
+    const classified = classifyFallbackSynthesis({
+      events: [toolResult("cannot_help", { abstained: true, reason: "No such capability." })],
+      loopWarnings: 0,
+    });
+    expect(classified?.text).toBe("No such capability.");
+  });
+
+  test("a cannot_help result that is not an abstention keeps the summary", () => {
+    const classified = classifyFallbackSynthesis({
+      events: [toolResult("cannot_help", { reason: "x" })],
+      loopWarnings: 0,
+    });
+    expect(classified?.text).toContain("Summary of the latest tool results");
   });
 });

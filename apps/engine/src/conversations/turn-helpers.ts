@@ -128,6 +128,17 @@ function pickFreshestNextPrompt(events: ReadonlyArray<TurnEvent>): string | null
   return typeof o.next_prompt === "string" && o.next_prompt.length > 0 ? o.next_prompt : null;
 }
 
+function abstentionMessage(latest: TurnEvent | undefined): string | null {
+  if (latest?.type !== "tool_result" || latest.tool !== "cannot_help") return null;
+  const output = resultRecord(latest.output);
+  if (!output || output.abstained !== true) return null;
+  const reason = typeof output.reason === "string" ? output.reason.trim() : "";
+  if (!reason) return null;
+  const alternative =
+    typeof output.suggest_alternative === "string" ? output.suggest_alternative.trim() : "";
+  return alternative ? `${reason}\n\n${alternative}` : reason;
+}
+
 export function classifyFallbackSynthesis(params: {
   events: ReadonlyArray<TurnEvent>;
   loopWarnings: number;
@@ -141,6 +152,8 @@ export function classifyFallbackSynthesis(params: {
     return null;
   const nextPrompt = pickFreshestNextPrompt(params.events);
   if (nextPrompt) return { text: nextPrompt, reason: "next_prompt_from_tool" };
+  const abstention = abstentionMessage(latest);
+  if (abstention) return { text: abstention, reason: "tool_results_summary" };
   const text = synthesizeFallbackMessage(params);
   if (text === null) return null;
   const hasToolResult = params.events.some((ev) => ev.type === "tool_result");
