@@ -841,6 +841,14 @@ export function ProposalCard({
           {t("intake.proposal.targetMissing")}
         </p>
       ) : null}
+      {proposal.status === "stale" && proposal.stale_reason === "intake_item_admitted" ? (
+        <p
+          className="text-sm text-muted-foreground"
+          data-testid={`intake-proposal-${proposal.id}-admitted-elsewhere`}
+        >
+          {t("intake.proposal.admittedElsewhere")}
+        </p>
+      ) : null}
       {proposal.status === "draft" && !canConfirm ? (
         <p
           className="text-sm text-muted-foreground"
@@ -1012,7 +1020,14 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
     onSuccess: async () => {
       await invalidateIntake(queryClient);
     },
-    onError: () => toast.error(t("common.actionFailed")),
+    onError: (error) =>
+      toast.error(
+        t(
+          error instanceof ApiError && error.status === 409
+            ? "intake.proposal.confirmConflict"
+            : "common.actionFailed",
+        ),
+      ),
   });
   if (!canRead)
     return (

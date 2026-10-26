@@ -26,6 +26,7 @@ function proposal(
   items: IntakeProposal["revision"]["items"] = [
     { id: ITEM, version: 1, title: "Sitzung", source_url: null },
   ],
+  overrides: Partial<IntakeProposal> = {},
 ): IntakeProposal {
   return {
     id: "proposal",
@@ -48,6 +49,7 @@ function proposal(
       items,
       created_at: "2026-01-02T00:00:00.000Z",
     },
+    ...overrides,
   };
 }
 
@@ -57,6 +59,7 @@ function render(
   skills: Record<string, ReferencedSkill> = {},
   bindings: Record<string, string | number> = {},
   items?: IntakeProposal["revision"]["items"],
+  overrides?: Partial<IntakeProposal>,
 ) {
   const client = new QueryClient();
   for (const [id, skill] of Object.entries(skills))
@@ -80,7 +83,7 @@ function render(
     <QueryClientProvider client={client}>
       <I18nContext.Provider value={value}>
         <ProposalCard
-          proposal={proposal(target, items)}
+          proposal={proposal(target, items, overrides)}
           permissions={permissions}
           focused
           onConfirm={() => {}}
@@ -253,6 +256,33 @@ describe("intake proposal card", () => {
     ]);
     expect(html).not.toContain("Wird als Quelle mit dem Wissen gespeichert");
     expect(html).not.toContain("provenance");
+  });
+
+  test("a proposal whose entry was adopted through another one says so and cannot be confirmed", () => {
+    const html = render(
+      { name: "Produktwissen", category: "incident-review" },
+      ["intake:confirm", "knowledge:write"],
+      {},
+      {},
+      undefined,
+      { status: "stale", stale_reason: "intake_item_admitted" },
+    );
+    expect(html).toContain("Dieser Eintrag wurde schon über einen anderen Vorschlag übernommen.");
+    expect(html).toContain('data-testid="intake-proposal-proposal-admitted-elsewhere"');
+    expect(confirmButton(html)).toBeNull();
+  });
+
+  test("a stale proposal for another reason keeps the plain review hint only", () => {
+    const html = render(
+      { name: "Produktwissen", category: "incident-review" },
+      ["intake:confirm", "knowledge:write"],
+      {},
+      {},
+      undefined,
+      { status: "stale", stale_reason: "intake_item_changed" },
+    );
+    expect(html).not.toContain("admitted-elsewhere");
+    expect(confirmButton(html)).toBeNull();
   });
 
   test("a knowledge target keeps its name and category line", () => {

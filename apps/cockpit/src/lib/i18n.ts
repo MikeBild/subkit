@@ -6048,6 +6048,10 @@ const EN = {
   "intake.proposal.loadingTarget": "the selected knowledge collection",
   "intake.proposal.review": "Content and sources",
   "intake.proposal.provenance": "Stored as the source with the knowledge",
+  "intake.proposal.admittedElsewhere":
+    "This entry was already adopted through another proposal. There is nothing left to confirm here.",
+  "intake.proposal.confirmConflict":
+    "This proposal is no longer current. Reload the page and review the current state.",
   "intake.proposal.sourceAuthor": "Author: {author}",
   "intake.proposal.sourcePublished": "Published: {date}",
   "intake.proposal.category": "Category",
@@ -12370,6 +12374,10 @@ const DE: Record<TranslationKey, string> = {
   "intake.proposal.loadingTarget": "der gewählten Wissenssammlung",
   "intake.proposal.review": "Inhalt und Quellen",
   "intake.proposal.provenance": "Wird als Quelle mit dem Wissen gespeichert",
+  "intake.proposal.admittedElsewhere":
+    "Dieser Eintrag wurde schon über einen anderen Vorschlag übernommen. Hier gibt es nichts mehr zu bestätigen.",
+  "intake.proposal.confirmConflict":
+    "Dieser Vorschlag ist nicht mehr aktuell. Lade die Seite neu und prüfe den aktuellen Stand.",
   "intake.proposal.sourceAuthor": "Autor: {author}",
   "intake.proposal.sourcePublished": "Veröffentlicht: {date}",
   "intake.proposal.category": "Kategorie",

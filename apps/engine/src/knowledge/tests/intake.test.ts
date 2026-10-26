@@ -899,6 +899,59 @@ describe.skipIf(skip)("knowledge intake", () => {
     );
   });
 
+  test("confirming one proposal makes every other open proposal for its entry stale", async () => {
+    const item = await createClip({ title: "Entry with two proposals" });
+    const other = await createClip({ title: "Untouched entry" });
+    const make = (title: string, itemIds: string[]) =>
+      createIntakeProposal(
+        {
+          tenant_id: ctx.tenantId,
+          actor,
+          item_ids: itemIds,
+          title,
+          body: `${title} body.`,
+          target: { name: title },
+        },
+        ctx.testDb.db,
+      );
+    const first = await make("First proposal", [item.id]);
+    const second = await make("Second proposal", [item.id]);
+    const unrelated = await make("Unrelated proposal", [other.id]);
+    await confirmIntakeProposal(
+      {
+        tenant_id: ctx.tenantId,
+        actor,
+        id: first.id,
+        expected_revision: first.current_revision,
+        digest: first.revision.digest,
+      },
+      ctx.testDb.db,
+    );
+    expect(await getIntakeProposal(ctx.tenantId, first.id, ctx.testDb.db)).toMatchObject({
+      status: "confirmed",
+    });
+    expect(await getIntakeProposal(ctx.tenantId, second.id, ctx.testDb.db)).toMatchObject({
+      status: "stale",
+      stale_reason: "intake_item_admitted",
+    });
+    expect(await getIntakeProposal(ctx.tenantId, unrelated.id, ctx.testDb.db)).toMatchObject({
+      status: "draft",
+      stale_reason: null,
+    });
+    await expect(
+      confirmIntakeProposal(
+        {
+          tenant_id: ctx.tenantId,
+          actor,
+          id: second.id,
+          expected_revision: second.current_revision,
+          digest: second.revision.digest,
+        },
+        ctx.testDb.db,
+      ),
+    ).rejects.toThrow("proposal must be reviewed again before confirmation");
+  });
+
   test("requires a fresh confirmation when a proposed target classification changes", async () => {
     const item = await createClip();
     const proposal = await createIntakeProposal(

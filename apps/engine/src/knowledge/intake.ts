@@ -784,6 +784,12 @@ export async function confirmIntakeProposal(
           ),
         ),
       );
+    await staleDraftProposalsForItems(
+      tx,
+      p.tenant_id,
+      revision.items.map((item) => item.id),
+      "intake_item_admitted",
+    );
     await recordIntakeAudit(
       tx,
       p.tenant_id,
