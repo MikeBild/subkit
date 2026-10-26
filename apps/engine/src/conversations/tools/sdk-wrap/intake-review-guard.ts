@@ -67,8 +67,62 @@ export const INTAKE_REVIEW_KNOWLEDGE_EDIT_NOTE =
 const ALL_DECIDED_NOTE =
   "Every item selected for this review is already admitted or discarded, so there is nothing left to propose from them. Say so plainly. If the person wants to change knowledge that came from them, offer a normal chat for that edit.";
 
-export function intakeReviewNote(status: IntakeSelectionStatus): string {
-  return status === "all_decided"
-    ? `${INTAKE_REVIEW_KNOWLEDGE_EDIT_NOTE} ${ALL_DECIDED_NOTE}`
-    : INTAKE_REVIEW_KNOWLEDGE_EDIT_NOTE;
+const GERMAN_WORDS = new Set([
+  "der",
+  "die",
+  "das",
+  "den",
+  "dem",
+  "ein",
+  "eine",
+  "einen",
+  "und",
+  "oder",
+  "nicht",
+  "bitte",
+  "ich",
+  "mit",
+  "für",
+  "fuer",
+  "ist",
+  "sind",
+  "zu",
+  "auf",
+  "wie",
+  "was",
+  "wissen",
+  "quelle",
+  "wissensquelle",
+  "eintrag",
+  "schlage",
+  "lege",
+  "dafür",
+  "dafuer",
+  "ergänze",
+  "ergaenze",
+  "aktualisiere",
+  "beschreibung",
+  "doch",
+  "neue",
+  "neuen",
+  "namen",
+]);
+
+export function writesGerman(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const words = text.toLowerCase().match(/[a-zäöüß]+/g) ?? [];
+  return words.filter((word) => GERMAN_WORDS.has(word)).length >= 2;
+}
+
+const GERMAN_REPLY_NOTE = "The person's latest message is in German. Write your reply in German.";
+
+export function intakeReviewNote(
+  status: IntakeSelectionStatus,
+  latestUserMessage?: string | null,
+): string {
+  const base =
+    status === "all_decided"
+      ? `${INTAKE_REVIEW_KNOWLEDGE_EDIT_NOTE} ${ALL_DECIDED_NOTE}`
+      : INTAKE_REVIEW_KNOWLEDGE_EDIT_NOTE;
+  return writesGerman(latestUserMessage) ? `${base} ${GERMAN_REPLY_NOTE}` : base;
 }

@@ -9,6 +9,7 @@ import {
   intakeReviewNote,
   intakeSelectionStatus,
   removeIntakeReviewTools,
+  writesGerman,
 } from "../sdk-wrap/intake-review-guard.ts";
 
 const nextUuid = createDeterministicUuidFactory(0x4e07_e000);
@@ -97,5 +98,23 @@ describe("intake review palette note", () => {
     expect(await intakeSelectionStatus(ctx.testDb.db, nextUuid(), reviewDraft([item.id]))).toBe(
       "unknown",
     );
+  });
+});
+
+describe("the reply language of an intake review", () => {
+  test("recognises German requests and ignores English ones", () => {
+    expect(writesGerman("Schlage den Eintrag bitte als Wissen vor.")).toBe(true);
+    expect(writesGerman("Lege dafuer eine neue Wissensquelle an")).toBe(true);
+    expect(writesGerman("Review my new items. Which ones help us?")).toBe(false);
+    expect(writesGerman("")).toBe(false);
+    expect(writesGerman(null)).toBe(false);
+  });
+
+  test("a German message adds an explicit instruction to answer in German", () => {
+    expect(intakeReviewNote("open", "Ergänze bitte die Beschreibung der Quelle")).toContain(
+      "Write your reply in German.",
+    );
+    expect(intakeReviewNote("open", "Review my new items")).not.toContain("in German");
+    expect(intakeReviewNote("open")).not.toContain("in German");
   });
 });

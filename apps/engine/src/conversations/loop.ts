@@ -898,7 +898,10 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
   if (intakeReviewInProgress(draft)) {
     removeIntakeReviewTools(tools, draft);
     ctx.availableToolNames = new Set(Object.keys(tools));
-    const context = intakeReviewNote(await intakeSelectionStatus(p.db, p.tenant_id, draft));
+    const context = intakeReviewNote(
+      await intakeSelectionStatus(p.db, p.tenant_id, draft),
+      ingestedUserMessage,
+    );
     prompt.system += `\n${context}`;
     prompt.system_sections?.push({ text: context, volatile: true });
     const extraTokens = countModelMessagesTokens([{ role: "system", content: context }]);
