@@ -1,5 +1,7 @@
+import { recommendEnvironment } from "@shared/approval-choice.ts";
 import {
   automationEnvironment,
+  automationEnvironmentDecision,
   automationEnvironmentUndecided,
   automationState,
   type WorkflowAuthority,
@@ -8,7 +10,6 @@ import {
   type WorkflowOperatingStatus,
   workflowOperatingStatus,
 } from "@shared/workflow-operating-status.ts";
-import { environmentToCorrectTo } from "@shared/workflow-review-environment.ts";
 import {
   deletedConnectorReference,
   type WaitingConnector,
@@ -23,6 +24,7 @@ import {
   workflowExecutionAuthorities,
   workflowsSchedules,
 } from "../db/schema/index.ts";
+import { assessAuthorityEnvironments } from "./authority-environments.ts";
 import { observeWorkflowAuthority } from "./authority-observation.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
 import { diagnoseWorkflow } from "./gate-diagnosis.ts";
@@ -35,13 +37,43 @@ export interface OperatingStatusAccess {
   connectors: boolean;
 }
 
+export interface WorkflowAuthorityEnvironmentSummary {
+  state: WorkflowAuthority["state"];
+  ready_for_new_run: boolean;
+}
+
+export interface WorkflowOperatingState {
+  operating_status: WorkflowOperatingStatus;
+  authority_environments: Record<"dev" | "prod", WorkflowAuthorityEnvironmentSummary | null>;
+}
+
+export function summarizeAuthorityEnvironments(
+  authorities: readonly WorkflowAuthority[] | null,
+): WorkflowOperatingState["authority_environments"] {
+  const summary: WorkflowOperatingState["authority_environments"] = { dev: null, prod: null };
+  for (const environment of ["dev", "prod"] as const) {
+    const observed = authorities?.filter(
+      (authority) => authority.execution_environment === environment,
+    );
+    if (!observed?.length) continue;
+    const ready = observed.find((authority) => authority.ready_for_new_run);
+    const latest = observed[0];
+    if (!latest) continue;
+    summary[environment] = {
+      state: (ready ?? latest).state,
+      ready_for_new_run: ready !== undefined,
+    };
+  }
+  return summary;
+}
+
 export async function loadWorkflowOperatingStates(
   db: Executor,
   tenant_id: string,
   views: WorkflowView[],
   access: OperatingStatusAccess,
   now: Date,
-): Promise<Map<string, WorkflowOperatingStatus>> {
+): Promise<Map<string, WorkflowOperatingState>> {
   if (!views.length) return new Map();
   const { inspectInboundHookAutomation, inspectScheduleAutomation } = await import(
     "../scheduler/index.ts"
@@ -114,7 +146,7 @@ export async function loadWorkflowOperatingStates(
       .filter((_row, index) => readiness[index]?.reviewable && readiness[index]?.review_digest)
       .map((row) => row.workflow_id),
   );
-  const result = new Map<string, WorkflowOperatingStatus>();
+  const result = new Map<string, WorkflowOperatingState>();
   for (const view of views) {
     const schedules = scheduleRows.filter((row) => row.workflow_id === view.id);
     const hooks = hookRows.filter((row) => row.workflow_id === view.id);
@@ -162,20 +194,10 @@ export async function loadWorkflowOperatingStates(
     let connectorEnvironment: "dev" | "prod" | null = null;
     if (facts && version && automationEnvironmentUndecided(inputs)) {
       try {
-        connectorEnvironment = environmentToCorrectTo(
-          await previewWorkflowAuthority(
-            {
-              tenant_id,
-              workflow_id: view.id,
-              workflow_version_id: version.id,
-              execution_environment: "dev",
-            },
-            db,
-            { facts },
-          ),
-          "dev",
-          [],
-        );
+        connectorEnvironment = recommendEnvironment(
+          automationEnvironmentDecision(inputs),
+          await assessAuthorityEnvironments(db, tenant_id, version.dag),
+        ).environment;
       } catch {
         connectorEnvironment = null;
       }
@@ -245,7 +267,10 @@ export async function loadWorkflowOperatingStates(
       waitingConnector,
       rights: { write: false, chat: false },
     });
-    result.set(view.id, workflowOperatingStatus(strip.kind));
+    result.set(view.id, {
+      operating_status: workflowOperatingStatus(strip.kind),
+      authority_environments: summarizeAuthorityEnvironments(authorities),
+    });
   }
   return result;
 }

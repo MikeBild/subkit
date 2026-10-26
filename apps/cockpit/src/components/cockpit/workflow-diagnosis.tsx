@@ -152,6 +152,7 @@ export function WorkflowGateDiagnosis({
           <DiagnosisReason
             entry={entry}
             index={index}
+            environment={environment}
             note={
               note
                 ? REPAIR_NOTE_KEYS[note]
@@ -215,10 +216,12 @@ function DiagnosisReason({
   entry,
   index,
   note,
+  environment,
 }: {
   entry: GateDiagnosis;
   index: number;
   note: TranslationKey | null;
+  environment: "dev" | "prod";
 }) {
   const { t } = useI18n();
   const testId = `workflow-diagnosis-${index}`;
@@ -242,6 +245,15 @@ function DiagnosisReason({
           {t(`diagnosis.remedy.${entry.remedy_kind}`)}
         </ContextHelp>
       </span>
+      {entry.code === "environment_mismatch" ? (
+        <span className="text-xs text-muted-foreground" data-testid={`${testId}-environment`}>
+          {t("diagnosis.appliesToEnvironment", {
+            environment: t(
+              environment === "prod" ? "authority.production" : "authority.development",
+            ),
+          })}
+        </span>
+      ) : null}
       {note ? (
         <span className="text-xs text-muted-foreground" data-testid={`${testId}-note`}>
           {t(note)}

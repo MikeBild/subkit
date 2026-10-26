@@ -16,6 +16,7 @@ import {
   EXTEND_BELOW_RUN_SHARE,
   EXTEND_WITHIN_DAYS,
   grantNeedsExtension,
+  recommendedAutomationEnvironment,
   type ScheduleLike,
 } from "@/lib/automation-state";
 import { CATALOGS } from "@/lib/i18n";
@@ -72,6 +73,21 @@ const schedule = (overrides: Partial<ScheduleLike> = {}): ScheduleLike => ({
   execution_mode: "prod",
   paused: false,
   ...overrides,
+});
+
+describe("automation approval environment", () => {
+  test("uses the preview recommendation when only production is possible", () => {
+    expect(
+      recommendedAutomationEnvironment({ recommended_environment: { environment: "prod" } }),
+    ).toBe("prod");
+  });
+
+  test("leaves the previous fallback for unavailable recommendations", () => {
+    expect(recommendedAutomationEnvironment(null)).toBeNull();
+    expect(
+      recommendedAutomationEnvironment({ recommended_environment: { environment: null } }),
+    ).toBeNull();
+  });
 });
 
 function status(

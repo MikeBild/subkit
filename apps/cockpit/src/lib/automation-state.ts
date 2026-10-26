@@ -12,6 +12,12 @@ export * from "@shared/workflow-automation.ts";
 export type AutomationInputs = SharedAutomationInputs<WorkflowAuthority>;
 export type AutomationState = SharedAutomationState<WorkflowAuthority>;
 
+export function recommendedAutomationEnvironment(
+  preview: { recommended_environment?: { environment: "dev" | "prod" | null } } | null,
+): ReviewEnvironment | null {
+  return preview?.recommended_environment?.environment ?? null;
+}
+
 export const AUTOMATION_STATE_KEYS = {
   invalid: "automation.state.invalid",
   paused: "automation.state.paused",

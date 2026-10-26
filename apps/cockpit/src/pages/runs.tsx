@@ -204,6 +204,7 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
   const truncated = truncatedSteps(stepItems);
   const verdict = runVerdict(current.status, outcome, t, statusWord, truncated);
   const failed = verdict.tone !== null;
+  const held = outcome?.kind === "held";
   const sentence = verdict.truncated
     ? runTruncationSentence(truncated, t)
     : outcome
@@ -247,18 +248,19 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
     : outcome?.cause_class === "connector_unavailable"
       ? refusedSignIn(outcome.connector)
       : null;
-  const remedy = failed
-    ? remedyFor({
-        workflowId: current.workflow_id,
-        executionId: current.id,
-        patch: patch.data?.items?.[0] ?? null,
-        authState,
-        held: outcome?.cause_class === "authority_mismatch",
-        canRun: session.permissions.includes("workflow:run"),
-        canChat: session.permissions.includes("conversation:write"),
-        prompt: t("remedy.chatPrompt"),
-      })
-    : null;
+  const remedy =
+    failed || held
+      ? remedyFor({
+          workflowId: current.workflow_id,
+          executionId: current.id,
+          patch: patch.data?.items?.[0] ?? null,
+          authState,
+          held: held || outcome?.cause_class === "authority_mismatch",
+          canRun: session.permissions.includes("workflow:run"),
+          canChat: session.permissions.includes("conversation:write"),
+          prompt: t("remedy.chatPrompt"),
+        })
+      : null;
   const payloadLabel = payload?.preview
     ? t("runs.detail.preview")
     : payload?.stepKey
@@ -318,10 +320,10 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
   const step = openStep === null ? null : (stepItems[openStep] ?? null);
   return (
     <div className="flex min-w-0 flex-col gap-6" data-testid="run-detail-body">
-      {failed && sentence ? (
+      {(failed || held) && sentence ? (
         <div data-testid="run-detail-cause">
           <StatusStrip
-            tone={verdict.tone === "critical" ? "error" : "warn"}
+            tone={held ? "warn" : verdict.tone === "critical" ? "error" : "warn"}
             line={
               <>
                 <span className="font-medium">{verdict.label}</span>

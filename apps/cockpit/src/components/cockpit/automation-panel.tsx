@@ -37,6 +37,7 @@ import {
   automationEnvironmentUndecided,
   automationNeedsMoreApprovals,
   automationState,
+  recommendedAutomationEnvironment,
 } from "@/lib/automation-state";
 import { causeClassLabel } from "@/lib/cause-class";
 import { connectorAuthState } from "@/lib/connector-auth-state";
@@ -44,12 +45,11 @@ import { cronWords } from "@/lib/cron-words";
 import { grantOpeningNotice, hookStartedOnly, OPENING_NOTICE_KEYS } from "@/lib/grant-context";
 import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { environmentToCorrectTo, type ReviewLike } from "@/lib/resolved-environment";
 import { reviewTarget } from "@/lib/review-target";
 import { liveRunEnvironment, type RunEnvironment } from "@/lib/run-availability";
 import { statusLabel } from "@/lib/status-label";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
-import type { WorkflowAuthorityList } from "@/lib/workflow-authorities";
+import type { WorkflowAuthorityList, WorkflowAuthorityPreview } from "@/lib/workflow-authorities";
 import {
   STRIP_STATE_KEYS,
   stripActionKey,
@@ -187,14 +187,14 @@ export function useWorkflowAutomation(
     queryKey: ["workflow-connector-environment", workflowId, previewVersionId],
     enabled: undecided && mayPreview && previewVersionId !== null,
     queryFn: () =>
-      apiRequest<ReviewLike>(
+      apiRequest<WorkflowAuthorityPreview>(
         `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(previewVersionId ?? "")}/authority-preview?environment=dev`,
       ),
     retry: false,
   });
   const connectorEnvironment =
     undecided && !connectorPreview.isPending
-      ? environmentToCorrectTo(connectorPreview.data, "dev", [])
+      ? recommendedAutomationEnvironment(connectorPreview.data ?? null)
       : null;
   const environment =
     settled && !(undecided && mayPreview && previewVersionId !== null && connectorPreview.isPending)

@@ -12863,7 +12863,58 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        delete?: never;
+        /** Permanently delete a discarded intake clip */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["DeleteIntakeItemBody"];
+                };
+            };
+            responses: {
+                /** @description Deleted */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Signed-in person required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Changed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
         options?: never;
         head?: never;
         /** Organize an intake clip without changing its original source snapshot */
@@ -24491,6 +24542,18 @@ export interface components {
         };
         WorkflowListItem: components["schemas"]["Workflow"] & {
             connectors: string[];
+            authority_environments: {
+                dev: {
+                    /** @enum {string} */
+                    state: "approved" | "not_yet_valid" | "expired" | "revoked" | "superseded" | "exhausted" | "invalidated" | "unavailable";
+                    ready_for_new_run: boolean;
+                } | null;
+                prod: {
+                    /** @enum {string} */
+                    state: "approved" | "not_yet_valid" | "expired" | "revoked" | "superseded" | "exhausted" | "invalidated" | "unavailable";
+                    ready_for_new_run: boolean;
+                } | null;
+            };
         };
         ScheduleListResponse: {
             schedules: components["schemas"]["ScheduleEntry"][];
@@ -26928,6 +26991,9 @@ export interface components {
             note?: string;
             /** @enum {string} */
             state?: "collected" | "reviewing" | "discarded";
+        };
+        DeleteIntakeItemBody: {
+            expected_version: number;
         };
         IntakeProposal: {
             /** Format: uuid */

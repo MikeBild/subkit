@@ -199,7 +199,8 @@ function erasureQueue(): TenantErasureQueue {
 
 test("a parked knowledge file write no longer holds the tenant lock against concurrent admissions", async () => {
   const parked = parkObjectWrites();
-  const stopSampling = sampleTenantLock(srv.tenantId);
+  let stopSampling: (() => Promise<number>) | null = null;
+  let longestHoldMs = 0;
   const retriesBefore = admissionRetries();
   const ingest = ingestKnowledgeSource(
     {
@@ -220,8 +221,11 @@ test("a parked knowledge file write no longer holds the tenant lock against conc
   let admissions: Awaited<ReturnType<typeof admit>>[] = [];
   try {
     await parked.entered;
+    stopSampling = sampleTenantLock(srv.tenantId);
     const parkedAt = performance.now();
     await Bun.sleep(PARKED_MS);
+    longestHoldMs = await stopSampling();
+    stopSampling = null;
     admissions = await Promise.all([
       admit("contention-first"),
       admit("contention-second"),
@@ -230,10 +234,10 @@ test("a parked knowledge file write no longer holds the tenant lock against conc
     ]);
     expect(performance.now() - parkedAt).toBeGreaterThan(ADMISSION_RETRY_WINDOW_MS);
   } finally {
+    if (stopSampling) await stopSampling();
     parked.release();
   }
   const ingested = await ingest;
-  const longestHoldMs = await stopSampling();
   const observed = {
     longest_tenant_lock_hold_ms: longestHoldMs,
     admission_retries: admissionRetries() - retriesBefore,

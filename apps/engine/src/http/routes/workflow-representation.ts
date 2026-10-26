@@ -77,6 +77,38 @@ export const WorkflowDetailSchema = WorkflowSchema.extend({
 
 const WorkflowListItemSchema = WorkflowSchema.extend({
   connectors: z.array(z.string()),
+  authority_environments: z.object({
+    dev: z
+      .object({
+        state: z.enum([
+          "approved",
+          "not_yet_valid",
+          "expired",
+          "revoked",
+          "superseded",
+          "exhausted",
+          "invalidated",
+          "unavailable",
+        ]),
+        ready_for_new_run: z.boolean(),
+      })
+      .nullable(),
+    prod: z
+      .object({
+        state: z.enum([
+          "approved",
+          "not_yet_valid",
+          "expired",
+          "revoked",
+          "superseded",
+          "exhausted",
+          "invalidated",
+          "unavailable",
+        ]),
+        ready_for_new_run: z.boolean(),
+      })
+      .nullable(),
+  }),
 }).openapi("WorkflowListItem");
 
 export const WorkflowListResponse = z
@@ -91,6 +123,7 @@ export function serializeWorkflow(w: svc.WorkflowView, binding: TriggerBinding) 
   return {
     id: w.id,
     ...(w.operating_status ? { operating_status: w.operating_status } : {}),
+    ...(w.authority_environments ? { authority_environments: w.authority_environments } : {}),
     connector_references: w.connector_references,
     creator: w.creator,
     checksum: w.checksum,

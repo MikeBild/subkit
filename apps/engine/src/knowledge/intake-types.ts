@@ -113,6 +113,13 @@ export interface PatchIntakeItemParams {
   state?: Exclude<IntakeItemState, "admitted"> | undefined;
 }
 
+export interface DeleteIntakeItemParams {
+  tenant_id: string;
+  actor: Actor;
+  id: string;
+  expected_version: number;
+}
+
 export interface CreateIntakeProposalParams {
   tenant_id: string;
   actor: Actor;

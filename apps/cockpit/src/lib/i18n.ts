@@ -4945,6 +4945,7 @@ const EN = {
   "diagnosis.remedy.prepare":
     "A trial run — which holds back everything it would send — shows what this step sends, so it can be approved.",
   "diagnosis.remedy.reconnect": "Connect the connector again in this environment.",
+  "diagnosis.appliesToEnvironment": "Applies to {environment}.",
   "diagnosis.remedy.author": "This has to be changed in the workflow itself.",
   "diagnosis.repair": "Fix automatically",
   "diagnosis.repairRejected":
@@ -5705,6 +5706,11 @@ const EN = {
   "connectorPage.tools.input.required": "required",
   "connectorPage.tools.input.optional": "optional",
   "connectorPage.usage.lastRun": "last run {when}",
+  "connectorPage.usage.approvedDev": "Test: approved",
+  "connectorPage.usage.approvedProd": "Production: approved",
+  "connectorPage.usage.missingDev": "Test: no approval",
+  "connectorPage.usage.missingProd": "Production: no approval",
+  "connectorPage.usage.openApproval": "Review approval",
   "connectorPage.usage.templates": "Matching templates for {name}",
   "connectorPage.usage.recipePrompt": "Create a workflow: {title}",
   "wizard.progress": "Step {step} of {total}",
@@ -6036,6 +6042,18 @@ const EN = {
   "intake.moveToCategory": "Move to another category",
   "intake.discard": "Discard",
   "intake.restore": "Restore",
+  "intake.delete": "Delete permanently",
+  "intake.deleteConsequence":
+    "This discarded entry and its raw content will be removed permanently. This cannot be undone.",
+  "intake.deleteSelected": "Delete {count} discarded entries",
+  "intake.deleteSelectedObject": "{count} discarded entries",
+  "intake.deleteSelectedConsequence":
+    "The selected discarded entries and their raw content will be removed permanently. This cannot be undone.",
+  "intake.deleteSuccess": "Discarded entry deleted.",
+  "intake.deleteSelectedSuccess": "Discarded entries deleted.",
+  "intake.deleteConflict": "This entry has changed. Reload the list before deleting it.",
+  "intake.selectDiscarded": "Select {title} for permanent deletion",
+  "intake.clearDeletionSelection": "Clear selection",
   "intake.editNote": "Edit note",
   "intake.editItem": "Edit item",
   "intake.editConflict":
@@ -11275,6 +11293,7 @@ const DE: Record<TranslationKey, string> = {
   "diagnosis.remedy.prepare":
     "Ein Probelauf — der alles zurückhält, was er senden würde — zeigt, was dieser Schritt sendet, damit es freigegeben werden kann.",
   "diagnosis.remedy.reconnect": "Verbinde den Konnektor in dieser Umgebung erneut.",
+  "diagnosis.appliesToEnvironment": "Gilt für {environment}.",
   "diagnosis.remedy.author": "Das muss im Workflow selbst geändert werden.",
   "diagnosis.repair": "Automatisch korrigieren",
   "diagnosis.repairRejected":
@@ -12044,6 +12063,11 @@ const DE: Record<TranslationKey, string> = {
   "connectorPage.tools.input.required": "Pflicht",
   "connectorPage.tools.input.optional": "optional",
   "connectorPage.usage.lastRun": "letzter Lauf {when}",
+  "connectorPage.usage.approvedDev": "Test: freigegeben",
+  "connectorPage.usage.approvedProd": "Produktion: freigegeben",
+  "connectorPage.usage.missingDev": "Test: keine Freigabe",
+  "connectorPage.usage.missingProd": "Produktion: keine Freigabe",
+  "connectorPage.usage.openApproval": "Freigabe prüfen",
   "connectorPage.usage.templates": "Passende Vorlagen für {name}",
   "connectorPage.usage.recipePrompt": "Erstelle einen Workflow: {title}",
   "wizard.progress": "Schritt {step} von {total}",
@@ -12379,6 +12403,18 @@ const DE: Record<TranslationKey, string> = {
   "intake.moveToCategory": "In andere Kategorie verschieben",
   "intake.discard": "Verwerfen",
   "intake.restore": "Wiederherstellen",
+  "intake.delete": "Endgültig löschen",
+  "intake.deleteConsequence":
+    "Dieser verworfene Eintrag und sein Rohinhalt werden endgültig entfernt. Das lässt sich nicht rückgängig machen.",
+  "intake.deleteSelected": "{count} verworfene Einträge endgültig löschen",
+  "intake.deleteSelectedObject": "{count} verworfene Einträge",
+  "intake.deleteSelectedConsequence":
+    "Die ausgewählten verworfenen Einträge und ihre Rohinhalte werden endgültig entfernt. Das lässt sich nicht rückgängig machen.",
+  "intake.deleteSuccess": "Verworfener Eintrag gelöscht.",
+  "intake.deleteSelectedSuccess": "Verworfene Einträge gelöscht.",
+  "intake.deleteConflict": "Dieser Eintrag hat sich geändert. Lade die Liste vor dem Löschen neu.",
+  "intake.selectDiscarded": "{title} zum endgültigen Löschen auswählen",
+  "intake.clearDeletionSelection": "Auswahl aufheben",
   "intake.editNote": "Notiz bearbeiten",
   "intake.editItem": "Eintrag bearbeiten",
   "intake.editConflict":

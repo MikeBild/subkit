@@ -42,7 +42,10 @@ import {
   loadConnectorReferenceRecords,
   type WorkflowConnectorReference,
 } from "./connector-refs.ts";
-import { loadWorkflowOperatingStates } from "./operating-status.ts";
+import {
+  loadWorkflowOperatingStates,
+  type WorkflowAuthorityEnvironmentSummary,
+} from "./operating-status.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
 import { slugConflictResult } from "./slug-conflict.ts";
 import { invalidDefinitionForRead, readStoredDefinition } from "./stored-definition.ts";
@@ -84,6 +87,7 @@ export async function emitWorkflowLifecycle(
 
 export interface WorkflowView {
   operating_status?: WorkflowOperatingStatus;
+  authority_environments?: Record<"dev" | "prod", WorkflowAuthorityEnvironmentSummary | null>;
   connector_references: WorkflowConnectorReference[];
   creator: VersionAuthor;
   checksum: string | null;
@@ -774,7 +778,11 @@ export async function listWorkflows(
     );
     return views.map((view) => ({
       ...view,
-      operating_status: states.get(view.id) ?? ("unknown" as const),
+      operating_status: states.get(view.id)?.operating_status ?? ("unknown" as const),
+      authority_environments: states.get(view.id)?.authority_environments ?? {
+        dev: null,
+        prod: null,
+      },
     }));
   };
   const derived = await resolveCatalogFilter(tenant_id, opts, db);

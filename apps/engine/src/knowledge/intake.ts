@@ -31,6 +31,7 @@ import type {
   ConfirmIntakeProposalParams,
   CreateIntakeItemParams,
   CreateIntakeProposalParams,
+  DeleteIntakeItemParams,
   IntakeCategoryView,
   IntakeItemOriginFilter,
   IntakeItemView,
@@ -460,6 +461,52 @@ export async function patchIntakeItem(
       },
     );
     return intakeItemView(row);
+  });
+}
+
+export async function deleteDiscardedIntakeItem(
+  p: DeleteIntakeItemParams,
+  exec?: Executor,
+): Promise<boolean> {
+  const db = exec ?? getDb();
+  return (db as Db).transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(intakeItems)
+      .where(and(eq(intakeItems.tenant_id, p.tenant_id), eq(intakeItems.id, p.id)))
+      .limit(1)
+      .for("update");
+    const existing = rows[0];
+    if (!existing) return false;
+    if (existing.version !== p.expected_version)
+      throw new IntakeConflictError("intake item has changed");
+    if (existing.state !== "discarded")
+      throw new IntakeConflictError("only discarded intake items can be permanently deleted");
+
+    await staleDraftProposalsForItems(tx, p.tenant_id, [p.id], "intake_item_deleted");
+    const detached = await tx
+      .delete(intakeProposalItems)
+      .where(
+        and(eq(intakeProposalItems.tenant_id, p.tenant_id), eq(intakeProposalItems.item_id, p.id)),
+      )
+      .returning({ proposal_revision_id: intakeProposalItems.proposal_revision_id });
+    await tx
+      .delete(intakeItems)
+      .where(and(eq(intakeItems.tenant_id, p.tenant_id), eq(intakeItems.id, p.id)));
+    await recordIntakeAudit(
+      tx,
+      p.tenant_id,
+      p.actor,
+      AuditAction.INTAKE_ITEM_DELETED,
+      "intake_item",
+      p.id,
+      {
+        category: existing.category,
+        origin: existing.original_snapshot.origin,
+        detached_proposal_items: detached.length,
+      },
+    );
+    return true;
   });
 }
 

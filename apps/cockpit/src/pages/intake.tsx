@@ -16,6 +16,7 @@ import { ApiError, apiRequest } from "@/api/client";
 import {
   type CreateIntakeClipInput,
   createIntakeClip,
+  deleteDiscardedIntakeClip,
   getIntakeDefaultCategory,
   type IntakeClip,
   type IntakeProposal,
@@ -67,6 +68,7 @@ import {
   StatusBadge,
   SummaryLine,
   SummaryParts,
+  type TableSelection,
 } from "@/components/cockpit/patterns";
 import { AssistantIcon } from "@/components/cockpit/service-icon";
 import { tableColumns } from "@/components/cockpit/table-columns";
@@ -949,6 +951,9 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
   const [groupMode, setGroupMode] = useSearchParamState("group", "all");
   const [settingDefaultCategory, setSettingDefaultCategory] = useState(false);
   const [addingNote, setAddingNote] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
+  const [deleteTargets, setDeleteTargets] = useState<IntakeClip[]>([]);
+  const [deletePending, setDeletePending] = useState(false);
   const [state, setState] = useSearchParamState<"all" | (typeof INTAKE_STATES)[number]>(
     "state",
     "all",
@@ -1003,6 +1008,47 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
       (origin === "all" || intakeOrigin(clip.original_snapshot) === origin) &&
       (!needle || `${clip.title}\n${clip.body}`.toLowerCase().includes(needle)),
   );
+  const selectedDiscarded = clipItems.filter(
+    (clip) => clip.state === "discarded" && selectedIds.has(clip.id),
+  );
+  const discardedCount = clipItems.filter((clip) => clip.state === "discarded").length;
+  const deleteSelection: TableSelection<IntakeClip> | undefined =
+    canWrite && discardedCount > 0
+      ? {
+          selected: selectedIds,
+          onChange: setSelectedIds,
+          canSelect: (clip) => clip.state === "discarded",
+          rowLabel: (clip) => t("intake.selectDiscarded", { title: clip.title }),
+          allLabel: t("intake.deleteSelectedObject", { count: discardedCount }),
+          bar:
+            selectedDiscarded.length > 0 ? (
+              <div
+                className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm"
+                data-testid="intake-delete-bulk-bar"
+              >
+                <span className="me-auto font-medium">
+                  {t("intake.deleteSelectedObject", { count: selectedDiscarded.length })}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDeleteTargets(selectedDiscarded)}
+                  data-testid="intake-delete-selected"
+                >
+                  {t("intake.deleteSelected", { count: selectedDiscarded.length })}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedIds(new Set())}
+                  data-testid="intake-delete-clear-selection"
+                >
+                  {t("intake.clearDeletionSelection")}
+                </Button>
+              </div>
+            ) : undefined,
+        }
+      : undefined;
   const loadedCategoryCounts = new Map(
     [...rowsByGroup(clipItems, (clip) => clip.category || UNCATEGORIZED)].map(
       ([key, members]) => [key, members.length] as const,
@@ -1180,6 +1226,54 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
             })
           }
         />
+        <ConfirmDialog
+          open={deleteTargets.length > 0}
+          onOpenChange={(next) => {
+            if (!next) setDeleteTargets([]);
+          }}
+          object={
+            deleteTargets.length === 1
+              ? (deleteTargets[0]?.title ?? "")
+              : t("intake.deleteSelectedObject", { count: deleteTargets.length })
+          }
+          verb={t("intake.delete")}
+          consequence={t(
+            deleteTargets.length === 1
+              ? "intake.deleteConsequence"
+              : "intake.deleteSelectedConsequence",
+          )}
+          destructive
+          pending={deletePending}
+          onConfirm={async () => {
+            setDeletePending(true);
+            const failedIds = new Set<string>();
+            let conflict = false;
+            let deleted = 0;
+            try {
+              for (const target of deleteTargets) {
+                try {
+                  await deleteDiscardedIntakeClip(target.id, target.version);
+                  deleted += 1;
+                } catch (error) {
+                  failedIds.add(target.id);
+                  if (error instanceof ApiError && error.status === 409) conflict = true;
+                }
+              }
+              await invalidateIntake(queryClient);
+              setSelectedIds(failedIds);
+              setDeleteTargets([]);
+              if (deleted > 0)
+                toast.success(
+                  t(deleted === 1 ? "intake.deleteSuccess" : "intake.deleteSelectedSuccess"),
+                );
+              if (failedIds.size > 0)
+                toast.error(t(conflict ? "intake.deleteConflict" : "common.actionFailed"));
+            } finally {
+              setDeletePending(false);
+            }
+          }}
+          testId="intake-delete-dialog"
+        />
         {loading ? <DataState state="loading" testId="intake-loading" /> : null}
         {failed ? (
           <DataState
@@ -1270,6 +1364,26 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
                       }
               }
               getRowId={(clip) => clip.id}
+              selection={deleteSelection}
+              rowActions={
+                canWrite && discardedCount > 0
+                  ? (clip) =>
+                      clip.state === "discarded" ? (
+                        <ActionMenu
+                          alwaysMenu
+                          size="sm"
+                          items={[
+                            {
+                              label: t("intake.delete"),
+                              destructive: true,
+                              onSelect: () => setDeleteTargets([clip]),
+                              testId: `intake-delete-${clip.id}`,
+                            },
+                          ]}
+                        />
+                      ) : null
+                  : undefined
+              }
               toolbar={
                 <>
                   <FilterBar

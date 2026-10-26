@@ -4,7 +4,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
-import { absolute, chatNewHref, workflowHref } from "@/app/links";
+import { absolute, chatNewHref, workflowAutomationHref, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { CreateAction } from "@/components/cockpit/create-choice";
 import {
@@ -643,6 +643,7 @@ interface WorkflowItem {
   effective_trigger?: WorkflowListItem["effective_trigger"];
   operating_status?: unknown;
   last_executed_at?: string | null;
+  authority_environments?: WorkflowListItem["authority_environments"];
 }
 
 export function useConnectorWorkflows(slug: string | null) {
@@ -667,21 +668,52 @@ function WorkflowCard({ row, index }: { row: WorkflowItem; index: number }) {
   ]
     .filter(Boolean)
     .join(" · ");
+  const approved = row.authority_environments;
   return (
-    <a
-      href={absolute(workflowHref(row.id))}
-      className="flex min-w-0 items-start gap-3 rounded-lg border p-4 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    <div
+      className="relative flex min-w-0 items-start gap-3 rounded-lg border p-4 transition-colors hover:bg-muted/50 focus-within:outline-none focus-within:ring-2 focus-within:ring-ring"
       data-testid={`connector-workflow-${index}`}
     >
       <IconTile>
         <Workflow />
       </IconTile>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">{row.name || MISSING}</span>
+        <a
+          href={absolute(workflowHref(row.id))}
+          className="block truncate text-sm font-medium before:absolute before:inset-0"
+          data-testid={`connector-workflow-${index}-link`}
+        >
+          {row.name || MISSING}
+        </a>
         {line ? <span className="block truncate text-xs text-muted-foreground">{line}</span> : null}
+        {approved ? (
+          <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span data-testid={`connector-workflow-${index}-approval-dev`}>
+              {t(
+                approved.dev?.ready_for_new_run
+                  ? "connectorPage.usage.approvedDev"
+                  : "connectorPage.usage.missingDev",
+              )}
+            </span>
+            <span data-testid={`connector-workflow-${index}-approval-prod`}>
+              {t(
+                approved.prod?.ready_for_new_run
+                  ? "connectorPage.usage.approvedProd"
+                  : "connectorPage.usage.missingProd",
+              )}
+            </span>
+            <a
+              href={absolute(workflowAutomationHref(row.id))}
+              className="relative z-10 text-accent underline-offset-4 hover:underline"
+              data-testid={`connector-workflow-${index}-approval-link`}
+            >
+              {t("connectorPage.usage.openApproval")}
+            </a>
+          </span>
+        ) : null}
       </span>
       <StatusBadge state={status} label={t(OPERATING_STATUS_KEYS[status])} />
-    </a>
+    </div>
   );
 }
 

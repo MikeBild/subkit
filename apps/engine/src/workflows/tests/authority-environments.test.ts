@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { collectWorkflowConnectorReferences } from "../../execution/prepared-workflow-references.ts";
 import { describeAuthorityEnvironments } from "../authority-environments.ts";
+import { summarizeAuthorityEnvironments } from "../operating-status.ts";
 import type { WorkflowDef } from "../types.ts";
 
 const missing = {
@@ -43,6 +44,33 @@ test("no possible environment names every block", () => {
 });
 
 const FIRST_ID = "00000000-0000-4000-8000-000000000001";
+
+const authority = (execution_environment: "dev" | "prod", ready_for_new_run: boolean) => ({
+  execution_environment,
+  ready_for_new_run,
+  state: ready_for_new_run ? ("approved" as const) : ("revoked" as const),
+  active_version: ready_for_new_run,
+  valid_from: "2026-01-01T00:00:00.000Z",
+  valid_until: null,
+  revoked_at: ready_for_new_run ? null : "2026-01-02T00:00:00.000Z",
+  remaining_runs: null,
+  max_runs: null,
+  reserved_runs: 0,
+});
+
+test("authority environment summary covers only the current usable environments", () => {
+  expect(summarizeAuthorityEnvironments([authority("dev", true)])).toEqual({
+    dev: { state: "approved", ready_for_new_run: true },
+    prod: null,
+  });
+  expect(summarizeAuthorityEnvironments([authority("dev", true), authority("prod", true)])).toEqual(
+    {
+      dev: { state: "approved", ready_for_new_run: true },
+      prod: { state: "approved", ready_for_new_run: true },
+    },
+  );
+  expect(summarizeAuthorityEnvironments(null)).toEqual({ dev: null, prod: null });
+});
 
 test("connector references come from request steps and placeholders, attributed to a step", () => {
   const definition = {

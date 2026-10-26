@@ -223,6 +223,47 @@ describe("intake HTTP flow", () => {
     expect((await confirmed.json()) as { status: string }).toMatchObject({ status: "confirmed" });
   });
 
+  test("lets a signed-in writer permanently delete only a discarded intake item", async () => {
+    const collected = await request("/v1/intake/items", "POST", {
+      client_request_id: "10000000-0000-4000-8000-0000000000d1",
+      category: "intake-test",
+      title: "Discarded HTTP fixture",
+      source_url: "https://example.test/discarded-http-fixture",
+      captured_at: "2026-10-10T07:00:00.000Z",
+      body: "This raw fixture must disappear after permanent deletion.",
+    });
+    expect(collected.status).toBe(201);
+    const item = (await collected.json()) as { id: string; version: number };
+    const discarded = await request(`/v1/intake/items/${item.id}`, "PATCH", {
+      expected_version: item.version,
+      state: "discarded",
+    });
+    expect(discarded.status).toBe(200);
+    const discardedItem = (await discarded.json()) as { version: number };
+
+    const keyDeletion = await request(`/v1/intake/items/${item.id}`, "DELETE", {
+      expected_version: discardedItem.version,
+    });
+    expect(keyDeletion.status).toBe(403);
+    expect((await keyDeletion.json()) as { code: string }).toMatchObject({
+      code: "human_confirmation_required",
+    });
+
+    const browser = await browserPersona(["intake:write"]);
+    const deleted = await fetch(`${ctx.baseUrl}/v1/intake/items/${item.id}`, {
+      method: "DELETE",
+      headers: browser,
+      body: JSON.stringify({ expected_version: discardedItem.version }),
+    });
+    expect(deleted.status).toBe(204);
+    expect((await request(`/v1/intake/items/${item.id}`, "GET")).status).toBe(404);
+    const listed = await request("/v1/intake/items", "GET");
+    expect(listed.status).toBe(200);
+    expect(((await listed.json()) as { items: Array<{ id: string }> }).items).not.toContainEqual(
+      expect.objectContaining({ id: item.id }),
+    );
+  });
+
   test("collects, proposes, confirms, and then exposes only confirmed content to knowledge search", async () => {
     const collected = await request("/v1/intake/items", "POST", {
       client_request_id: "10000000-0000-4000-8000-000000000001",

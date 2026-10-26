@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "10.18.1",
+    "version": "10.18.2",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org, and on /docs.json (every chapter in English and German as one JSON bundle)."
   },
   "components": {
@@ -11513,10 +11513,76 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "authority_environments": {
+                "type": "object",
+                "properties": {
+                  "dev": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "state": {
+                        "type": "string",
+                        "enum": [
+                          "approved",
+                          "not_yet_valid",
+                          "expired",
+                          "revoked",
+                          "superseded",
+                          "exhausted",
+                          "invalidated",
+                          "unavailable"
+                        ]
+                      },
+                      "ready_for_new_run": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "state",
+                      "ready_for_new_run"
+                    ]
+                  },
+                  "prod": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "state": {
+                        "type": "string",
+                        "enum": [
+                          "approved",
+                          "not_yet_valid",
+                          "expired",
+                          "revoked",
+                          "superseded",
+                          "exhausted",
+                          "invalidated",
+                          "unavailable"
+                        ]
+                      },
+                      "ready_for_new_run": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "state",
+                      "ready_for_new_run"
+                    ]
+                  }
+                },
+                "required": [
+                  "dev",
+                  "prod"
+                ]
               }
             },
             "required": [
-              "connectors"
+              "connectors",
+              "authority_environments"
             ]
           }
         ]
@@ -21003,6 +21069,18 @@
               "reviewing",
               "discarded"
             ]
+          }
+        },
+        "required": [
+          "expected_version"
+        ]
+      },
+      "DeleteIntakeItemBody": {
+        "type": "object",
+        "properties": {
+          "expected_version": {
+            "type": "integer",
+            "exclusiveMinimum": 0
           }
         },
         "required": [
@@ -49488,6 +49566,72 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/IntakeItem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "intake"
+        ],
+        "summary": "Permanently delete a discarded intake clip",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteIntakeItemBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "403": {
+            "description": "Signed-in person required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

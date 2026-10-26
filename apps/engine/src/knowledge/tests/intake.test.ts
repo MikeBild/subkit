@@ -4,6 +4,7 @@ import {
   auditLog,
   catalogCategories,
   intakeItemEvidence,
+  intakeProposalItems,
   skills,
   systemAccounts,
   tenants,
@@ -20,6 +21,7 @@ import {
   createIntakeItem,
   createIntakeProposal,
   createSessionIntakeItem,
+  deleteDiscardedIntakeItem,
   getIntakeItem,
   getIntakeProposal,
   intakeConfirmRequirements,
@@ -618,6 +620,17 @@ describe.skipIf(skip)("knowledge intake", () => {
       version: admittedItem!.version,
       original_snapshot: admittedItem!.original_snapshot,
     });
+    await expect(
+      deleteDiscardedIntakeItem(
+        {
+          tenant_id: ctx.tenantId,
+          actor,
+          id: item.id,
+          expected_version: admittedItem!.version,
+        },
+        ctx.testDb.db,
+      ),
+    ).rejects.toBeInstanceOf(IntakeConflictError);
 
     const annotated = await patchIntakeItem(
       {
@@ -708,6 +721,122 @@ describe.skipIf(skip)("knowledge intake", () => {
         ctx.testDb.db,
       ),
     ).rejects.toBeInstanceOf(IntakeProposalConflictError);
+  });
+
+  test("permanently deletes discarded raw intake and detaches its stale proposal references", async () => {
+    const item = await createClip({ category: "intake-test" });
+    await expect(
+      deleteDiscardedIntakeItem(
+        {
+          tenant_id: ctx.tenantId,
+          actor,
+          id: item.id,
+          expected_version: item.version,
+        },
+        ctx.testDb.db,
+      ),
+    ).rejects.toBeInstanceOf(IntakeConflictError);
+    expect(
+      await deleteDiscardedIntakeItem(
+        {
+          tenant_id: nextUuid(),
+          actor,
+          id: item.id,
+          expected_version: item.version,
+        },
+        ctx.testDb.db,
+      ),
+    ).toBe(false);
+    const proposal = await createIntakeProposal(
+      {
+        tenant_id: ctx.tenantId,
+        actor,
+        item_ids: [item.id],
+        title: "Discarded recording workflow",
+        body: "This proposal must retain its decision history without raw clip references.",
+        target: { name: "Discarded recording workflow" },
+      },
+      ctx.testDb.db,
+    );
+    await ctx.testDb.db.insert(intakeItemEvidence).values({
+      tenant_id: ctx.tenantId,
+      item_id: item.id,
+      agent: "test-agent",
+      session_id: nextUuid(),
+      repo: "subkit",
+      excerpt: "Raw evidence that must be removed with the discarded intake item.",
+      captured_at: new Date("2026-10-10T07:00:00.000Z"),
+      recorded_by_type: actor.kind,
+      recorded_by_id: actor.id,
+    });
+    const discarded = await patchIntakeItem(
+      {
+        tenant_id: ctx.tenantId,
+        actor,
+        id: item.id,
+        expected_version: item.version,
+        state: "discarded",
+      },
+      ctx.testDb.db,
+    );
+    await expect(
+      deleteDiscardedIntakeItem(
+        {
+          tenant_id: ctx.tenantId,
+          actor,
+          id: item.id,
+          expected_version: item.version,
+        },
+        ctx.testDb.db,
+      ),
+    ).rejects.toBeInstanceOf(IntakeConflictError);
+    expect(
+      await deleteDiscardedIntakeItem(
+        {
+          tenant_id: ctx.tenantId,
+          actor,
+          id: item.id,
+          expected_version: discarded!.version,
+        },
+        ctx.testDb.db,
+      ),
+    ).toBe(true);
+    expect(await getIntakeItem(ctx.tenantId, item.id, ctx.testDb.db)).toBeNull();
+    expect(
+      (await listIntakeItems({ tenant_id: ctx.tenantId }, ctx.testDb.db)).map(({ id }) => id),
+    ).not.toContain(item.id);
+    expect(
+      await ctx.testDb.db
+        .select()
+        .from(intakeItemEvidence)
+        .where(eq(intakeItemEvidence.item_id, item.id)),
+    ).toEqual([]);
+    expect(
+      await ctx.testDb.db
+        .select()
+        .from(intakeProposalItems)
+        .where(eq(intakeProposalItems.item_id, item.id)),
+    ).toEqual([]);
+    expect(await getIntakeProposal(ctx.tenantId, proposal.id, ctx.testDb.db)).toMatchObject({
+      status: "stale",
+      revision: { items: [] },
+    });
+    const [audit] = await ctx.testDb.db
+      .select({ metadata: auditLog.metadata })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.action, "intake_item.deleted"),
+          eq(auditLog.resource_id, item.id),
+        ),
+      );
+    expect(audit?.metadata).toMatchObject({
+      category: "intake-test",
+      origin: "capture",
+      detached_proposal_items: 1,
+    });
+    expect(JSON.stringify(audit?.metadata)).not.toContain("original clip says useful things");
   });
 
   test("fails closed when an existing knowledge target changes after review", async () => {

@@ -163,6 +163,10 @@ const PatchItemSchema = z
   )
   .openapi("PatchIntakeItemBody");
 
+const DeleteItemSchema = z
+  .object({ expected_version: z.number().int().positive() })
+  .openapi("DeleteIntakeItemBody");
+
 const CreateProposalSchema = z
   .object({
     item_ids: z.array(z.string().uuid()).min(1).max(100),
@@ -315,6 +319,27 @@ const patchItemRoute = createRoute({
   },
   responses: {
     200: { description: "OK", content: { "application/json": { schema: ItemSchema } } },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "Changed", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+const deleteItemRoute = createRoute({
+  method: "delete",
+  path: "/v1/intake/items/{id}",
+  tags: ["intake"],
+  summary: "Permanently delete a discarded intake clip",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: IdParam,
+    body: { content: { "application/json": { schema: DeleteItemSchema } } },
+  },
+  responses: {
+    204: { description: "Deleted" },
+    403: {
+      description: "Signed-in person required",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
     409: { description: "Changed", content: { "application/json": { schema: ErrorSchema } } },
   },
@@ -568,6 +593,28 @@ export function registerIntakeRoutes(app: OpenAPIHono<AppEnv>): void {
       );
       if (!item) throw new NotFoundError("intake_item");
       return c.json(item, 200);
+    } catch (error) {
+      rethrowIntakeError(error);
+    }
+  });
+  app.openapi(deleteItemRoute, async (c) => {
+    const principal = requireAuth(c);
+    requireSignedInPerson(
+      principal,
+      "a signed-in person must permanently delete discarded intake items",
+    );
+    try {
+      const deleted = await intake.deleteDiscardedIntakeItem(
+        {
+          tenant_id: principal.tenant_id,
+          actor: actorOf(principal),
+          id: c.req.valid("param").id,
+          ...c.req.valid("json"),
+        },
+        c.get("db"),
+      );
+      if (!deleted) throw new NotFoundError("intake_item");
+      return c.body(null, 204);
     } catch (error) {
       rethrowIntakeError(error);
     }

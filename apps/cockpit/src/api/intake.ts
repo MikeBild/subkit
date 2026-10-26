@@ -78,6 +78,13 @@ export function setIntakeClipState(
   });
 }
 
+export function deleteDiscardedIntakeClip(id: string, expectedVersion: number): Promise<void> {
+  return apiRequest(`${clips}/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    body: JSON.stringify({ expected_version: expectedVersion }),
+  });
+}
+
 export function listIntakeProposals(): Promise<{ items: IntakeProposal[] }> {
   return apiRequest(proposals);
 }

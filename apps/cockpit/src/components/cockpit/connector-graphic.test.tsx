@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { loadServiceMarks } from "@/lib/service-icons";
 import { ConnectionGraphic } from "./connector-graphic";
 import { ConnectorSignInFields } from "./connector-sign-in-fields";
 import { EMPTY_OAUTH_CLIENT } from "./create-connector-model";
@@ -20,7 +21,8 @@ function graphic(tone: "ok" | "warn" | "error") {
 }
 
 describe("connection graphic", () => {
-  test("shows SubKit, the way it signs in and the service with its host", () => {
+  test("shows SubKit, the way it signs in and the service with its host", async () => {
+    await loadServiceMarks();
     const html = graphic("ok");
     expect(html).toContain("SubKit");
     expect(html).toContain("Acme · Produktion");

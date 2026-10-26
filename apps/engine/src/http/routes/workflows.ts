@@ -509,6 +509,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     ]);
     const items = rows.map((w) => ({
       ...serializeWorkflow(w, bindingFor(bindings, w.id)),
+      authority_environments: w.authority_environments ?? { dev: null, prod: null },
       connectors: connectorRefs.get(w.id) ?? [],
     }));
     const blocks = vocabulary

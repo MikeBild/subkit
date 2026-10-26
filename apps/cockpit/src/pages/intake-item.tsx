@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { ApiError, getConversation } from "@/api/client";
 import {
   confirmIntakeProposal,
+  deleteDiscardedIntakeClip,
   getIntakeClip,
   getIntakeDefaultCategory,
   type IntakeClip,
@@ -26,6 +27,7 @@ import {
   type ActionMenuItem,
   Button,
   CollapsibleSection,
+  ConfirmDialog,
   DataState,
   DetailPage,
   type DetailStrip,
@@ -102,6 +104,7 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
   const canWrite = permissions.includes("intake:write");
   const canChat = permissions.includes("conversation:write");
   const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const itemKey = [...CLIPS_KEY, "item", id] as const;
   const item = useQuery({
     queryKey: itemKey,
@@ -131,6 +134,24 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
       await invalidateIntake(queryClient);
     },
     onError: () => toast.error(t("common.actionFailed")),
+  });
+  const remove = useMutation({
+    mutationFn: ({ itemId, version }: { itemId: string; version: number }) =>
+      deleteDiscardedIntakeClip(itemId, version),
+    onSuccess: async () => {
+      setDeleting(false);
+      await invalidateIntake(queryClient);
+      await router.navigate({ to: "/intake" });
+      toast.success(t("intake.deleteSuccess"));
+    },
+    onError: (error) =>
+      toast.error(
+        t(
+          error instanceof ApiError && error.status === 409
+            ? "intake.deleteConflict"
+            : "common.actionFailed",
+        ),
+      ),
   });
   const categoryValues = useMemo(
     () => [
@@ -253,6 +274,16 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
                       testId: "intake-detail-discard",
                     },
                   ]),
+              ...(clip.state === "discarded"
+                ? [
+                    {
+                      label: t("intake.delete"),
+                      destructive: true,
+                      onSelect: () => setDeleting(true),
+                      testId: "intake-detail-delete",
+                    },
+                  ]
+                : []),
             ]
           : []),
       ]
@@ -603,6 +634,19 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
               onSuccess: () => setEditing(false),
             })
           }
+        />
+      ) : null}
+      {canWrite && clip?.state === "discarded" ? (
+        <ConfirmDialog
+          open={deleting}
+          onOpenChange={setDeleting}
+          object={clip.title}
+          verb={t("intake.delete")}
+          consequence={t("intake.deleteConsequence")}
+          destructive
+          pending={remove.isPending}
+          onConfirm={() => remove.mutate({ itemId: clip.id, version: clip.version })}
+          testId="intake-delete-dialog"
         />
       ) : null}
     </>
