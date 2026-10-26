@@ -63,6 +63,8 @@ export const listKnowledgeSourcesTool: ConversationTool = {
           tags: k.tags,
           scope: k.scope,
           status: k.status,
+          source_type: k.source_type,
+          version: k.version,
           chunk_count: k.chunk_count,
         })),
       },

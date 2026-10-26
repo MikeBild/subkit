@@ -186,7 +186,7 @@ export async function validateIntakeTarget(
   if (isSkillTarget(target)) await validateSkillTarget(tx, tenant_id, target);
   else if ("knowledge_source_id" in target) {
     const source = await getKnowledgeSource(tenant_id, target.knowledge_source_id, tx);
-    if (!source) throw new IntakeNotFoundError("proposal", target.knowledge_source_id);
+    if (!source) throw new IntakeNotFoundError("knowledge_source", target.knowledge_source_id);
     if (source.source_type !== "bundle")
       throw new IntakeConflictError("an intake proposal target must be a knowledge bundle");
     if (source.version !== target.expected_version)
