@@ -15,7 +15,7 @@ describe("connector-template catalog — structural", () => {
   });
 
   test("ships the expected number of templates", () => {
-    expect(templates.length).toBe(61);
+    expect(templates.length).toBe(62);
   });
 
   test("App Store Connect is a direct signed-JWT HTTP template with a fixed host", () => {

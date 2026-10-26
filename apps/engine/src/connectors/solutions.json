@@ -715,5 +715,518 @@
         }
       ]
     }
+  },
+  {
+    "derived_from_skill": "subkit-support-basics",
+    "category": "support",
+    "difficulty": "beginner",
+    "estimated_setup_minutes": 5,
+    "version": "1.0.0",
+    "author": "subkit-builtin",
+    "last_validated_at": null,
+    "deprecated": null,
+    "slug": "support-report-issue",
+    "title": "Report a problem with SubKit to the maintainer",
+    "description": "Sends a problem report to the central SubKit support inbox after you confirm it. The title and description are yours, with tokens, keys, passwords and e-mail addresses removed on a best-effort basis; the tenant and the reporting person come from your sign-in, never from the input. Needs only the subkit-support connector. Returns the ticket number and status.",
+    "intent_keywords": [
+      "report a bug",
+      "send feedback to subkit",
+      "something is broken",
+      "contact the maintainer",
+      "open a ticket"
+    ],
+    "tags": ["solution", "support", "feedback", "trigger:manual"],
+    "prerequisites": [
+      "subkit-support connector with the reporter key of this installation and the approved external write",
+      "A signed-in person starts the run; webhooks and schedules cannot file a report"
+    ],
+    "sample_input": {
+      "title": "Workflow run stays in running after connector timeout",
+      "description": "Steps: create a workflow with an http request step and point it at a slow endpoint. Expected: the run fails with a timeout. Actual: the run stays in running."
+    },
+    "expected_output_preview": {
+      "number": 42,
+      "id": "0e9a2f4e-77b3-4b8e-8d2a-1f5b6c7d8e90",
+      "status": "received",
+      "collection_complete": false
+    },
+    "required_connectors": [
+      {
+        "placeholder": "55000000-0000-4000-8000-000000000002",
+        "template": "subkit-support"
+      }
+    ],
+    "workflow": {
+      "name": "support-report-issue",
+      "description": "Files a problem report in the central SubKit support inbox.",
+      "required_caller_kind": "user",
+      "tool_effect": "reversible_write",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "description"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "One-line summary of the problem"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000,
+            "description": "What happened, what was expected and how to reproduce it. No keys, tokens, passwords or customer data."
+          }
+        }
+      },
+      "steps": [
+        {
+          "kind": "transform",
+          "id": "build_report",
+          "language": "javascript",
+          "expression": "const RAW = 20000;\nconst points = (text, max) => {\n  const out = [];\n  for (const ch of text) {\n    if (ch.length === 1 && ch.charCodeAt(0) >= 0xD800 && ch.charCodeAt(0) <= 0xDFFF) continue;\n    out.push(ch);\n    if (out.length > max) break;\n  }\n  return out;\n};\nconst scrub = (text) => text\n  .replace(/-----BEGIN [A-Z ]{0,40}PRIVATE KEY-----[\\s\\S]{0,8000}?(?:-----END [A-Z ]{0,40}PRIVATE KEY-----|$)/g, '[redacted]')\n  .replace(/([A-Za-z0-9_.-]{0,64}(?:token|secret|password|passwd|pwd|api[_-]?key|apikey|authorization|cookie|credential|private[_-]?key|session)[A-Za-z0-9_.-]{0,64})([\"']?[ \\t]{0,5}[:=][ \\t]{0,5})(?:\"[^\"\\r\\n]{0,2000}\"?|'[^'\\r\\n]{0,2000}'?|[^\\r\\n]{0,2000})/gi, '$1$2[redacted]')\n  .replace(/\\b(bearer)[ \\t]{1,5}[A-Za-z0-9._~+\\/=-]{8,512}/gi, '$1 [redacted]')\n  .replace(/\\bbasic[ \\t]{1,5}(?=[A-Za-z0-9+\\/]{0,512}[0-9+\\/=])[A-Za-z0-9+\\/]{8,512}={0,2}/gi, 'Basic [redacted]')\n  .replace(/\\b([A-Za-z][A-Za-z0-9+.-]{0,20}:\\/\\/)[^\\s\\/?#@]{1,256}@/g, '$1[redacted]@')\n  .replace(/\\beyJ[A-Za-z0-9_-]{8,2000}\\.[A-Za-z0-9_-]{8,2000}\\.[A-Za-z0-9_-]{0,2000}/g, '[redacted]')\n  .replace(/\\b(?:AKIA|ASIA)[A-Z0-9]{12,32}\\b/g, '[redacted]')\n  .replace(/\\b(?:sk|pk|rk|skr|ghp|gho|ghu|ghs|ghr|github_pat|glpat|xox[abeprs])[-_][A-Za-z0-9_-]{16,256}/g, '[redacted]')\n  .replace(/[A-Fa-f0-9]{32,}/g, '[redacted]')\n  .replace(/\\b[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\\.[A-Za-z0-9-]{1,63}){1,8}\\b/g, '[email]');\nconst cap = (value, max) => {\n  const raw = points(String(value == null ? '' : value).slice(0, RAW * 2), RAW).join('');\n  const kept = points(scrub(raw), max);\n  return kept.length > max ? kept.slice(0, max - 3).join('') + '...' : kept.join('');\n};\nreturn {\n  title: cap(String(input.input.title || '').trim(), 200).trim() || 'Untitled report',\n  description: cap(input.input.description, 8000).trim() || 'No description',\n  diagnostics: {},\n  collection_complete: false,\n  engine_version: 'unknown'\n};\n"
+        },
+        {
+          "kind": "request",
+          "id": "create_report",
+          "method": "POST",
+          "connector_id": "55000000-0000-4000-8000-000000000002",
+          "path": "/v1/reports",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "title": "${scope.build_report.data.title}",
+            "description": "${scope.build_report.data.description}",
+            "diagnostics": "${scope.build_report.data.diagnostics}",
+            "collection_complete": "${scope.build_report.data.collection_complete}",
+            "tenant": "${caller.tenantId}",
+            "reporter": "${caller.principalId}",
+            "reporter_kind": "${caller.principalKind}",
+            "engine_version": "${scope.build_report.data.engine_version}"
+          },
+          "side_effects": "write",
+          "max_retries": 4,
+          "retry_backoff_ms": 500,
+          "retry_on_status": [500, 503],
+          "boundary": {
+            "variables": {},
+            "max_body_bytes": 1200000,
+            "max_calls": 1
+          }
+        },
+        {
+          "kind": "transform",
+          "id": "result",
+          "language": "javascript",
+          "expression": "const created = input.scope.create_report.data || {}; return { number: created.number, id: created.id, status: created.status, collection_complete: created.collection_complete === true };"
+        }
+      ]
+    }
+  },
+  {
+    "derived_from_skill": "subkit-support-basics",
+    "category": "support",
+    "difficulty": "beginner",
+    "estimated_setup_minutes": 5,
+    "version": "1.0.0",
+    "author": "subkit-builtin",
+    "last_validated_at": null,
+    "deprecated": null,
+    "slug": "support-report-issue-diagnostics",
+    "title": "Report a problem with SubKit to the maintainer, with engine diagnostics",
+    "description": "Like the plain problem report, and additionally attaches the engine version and, when you ask for it, the latest engine errors with tokens, keys and e-mail addresses removed (best effort) and capped in size. Needs a second HTTP connector on this engine's own public address. Returns the ticket number and status.",
+    "intent_keywords": [
+      "report a bug with diagnostics",
+      "send engine errors to the maintainer",
+      "attach engine version to a report"
+    ],
+    "tags": ["solution", "support", "feedback", "trigger:manual"],
+    "prerequisites": [
+      "subkit-support connector with the reporter key of this installation and the approved external write",
+      "HTTP connector on this engine's own public address, signed in with a key that may read diagnostics (audit:read)",
+      "A signed-in person starts the run; webhooks and schedules cannot file a report"
+    ],
+    "sample_input": {
+      "title": "Workflow run stays in running after connector timeout",
+      "description": "Steps: create a workflow with an http request step and point it at a slow endpoint. Expected: the run fails with a timeout. Actual: the run stays in running.",
+      "include_diagnostics": true
+    },
+    "expected_output_preview": {
+      "number": 42,
+      "id": "0e9a2f4e-77b3-4b8e-8d2a-1f5b6c7d8e90",
+      "status": "received",
+      "collection_complete": true
+    },
+    "required_connectors": [
+      {
+        "placeholder": "55000000-0000-4000-8000-000000000006",
+        "template": "subkit-support"
+      },
+      {
+        "placeholder": "55000000-0000-4000-8000-000000000005",
+        "template": "http"
+      }
+    ],
+    "workflow": {
+      "name": "support-report-issue-diagnostics",
+      "description": "Files a problem report in the central SubKit support inbox with the engine version and optional, scrubbed engine errors.",
+      "required_caller_kind": "user",
+      "tool_effect": "reversible_write",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "description"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "One-line summary of the problem"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000,
+            "description": "What happened, what was expected and how to reproduce it. No keys, tokens, passwords or customer data."
+          },
+          "include_diagnostics": {
+            "type": "boolean",
+            "description": "Also send the engine version and the latest engine errors, scrubbed of tokens, keys and e-mail addresses on a best-effort basis"
+          }
+        }
+      },
+      "steps": [
+        {
+          "kind": "request",
+          "id": "get_version",
+          "method": "GET",
+          "connector_id": "55000000-0000-4000-8000-000000000005",
+          "path": "/v1/diagnostics/version",
+          "side_effects": "read",
+          "on_error": "continue",
+          "boundary": {
+            "variables": {},
+            "max_body_bytes": 0,
+            "max_calls": 1
+          }
+        },
+        {
+          "kind": "branch",
+          "id": "diagnostics_route",
+          "when": "$boolean($input.include_diagnostics)",
+          "then_steps": ["get_errors"],
+          "else_steps": []
+        },
+        {
+          "kind": "request",
+          "id": "get_errors",
+          "method": "GET",
+          "connector_id": "55000000-0000-4000-8000-000000000005",
+          "path": "/v1/diagnostics/errors",
+          "query": {
+            "limit": "20"
+          },
+          "side_effects": "read",
+          "on_error": "continue",
+          "boundary": {
+            "variables": {},
+            "max_body_bytes": 0,
+            "max_calls": 1
+          }
+        },
+        {
+          "kind": "transform",
+          "id": "build_report",
+          "language": "javascript",
+          "expression": "const RAW = 20000;\nconst points = (text, max) => {\n  const out = [];\n  for (const ch of text) {\n    if (ch.length === 1 && ch.charCodeAt(0) >= 0xD800 && ch.charCodeAt(0) <= 0xDFFF) continue;\n    out.push(ch);\n    if (out.length > max) break;\n  }\n  return out;\n};\nconst scrub = (text) => text\n  .replace(/-----BEGIN [A-Z ]{0,40}PRIVATE KEY-----[\\s\\S]{0,8000}?(?:-----END [A-Z ]{0,40}PRIVATE KEY-----|$)/g, '[redacted]')\n  .replace(/([A-Za-z0-9_.-]{0,64}(?:token|secret|password|passwd|pwd|api[_-]?key|apikey|authorization|cookie|credential|private[_-]?key|session)[A-Za-z0-9_.-]{0,64})([\"']?[ \\t]{0,5}[:=][ \\t]{0,5})(?:\"[^\"\\r\\n]{0,2000}\"?|'[^'\\r\\n]{0,2000}'?|[^\\r\\n]{0,2000})/gi, '$1$2[redacted]')\n  .replace(/\\b(bearer)[ \\t]{1,5}[A-Za-z0-9._~+\\/=-]{8,512}/gi, '$1 [redacted]')\n  .replace(/\\bbasic[ \\t]{1,5}(?=[A-Za-z0-9+\\/]{0,512}[0-9+\\/=])[A-Za-z0-9+\\/]{8,512}={0,2}/gi, 'Basic [redacted]')\n  .replace(/\\b([A-Za-z][A-Za-z0-9+.-]{0,20}:\\/\\/)[^\\s\\/?#@]{1,256}@/g, '$1[redacted]@')\n  .replace(/\\beyJ[A-Za-z0-9_-]{8,2000}\\.[A-Za-z0-9_-]{8,2000}\\.[A-Za-z0-9_-]{0,2000}/g, '[redacted]')\n  .replace(/\\b(?:AKIA|ASIA)[A-Z0-9]{12,32}\\b/g, '[redacted]')\n  .replace(/\\b(?:sk|pk|rk|skr|ghp|gho|ghu|ghs|ghr|github_pat|glpat|xox[abeprs])[-_][A-Za-z0-9_-]{16,256}/g, '[redacted]')\n  .replace(/[A-Fa-f0-9]{32,}/g, '[redacted]')\n  .replace(/\\b[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\\.[A-Za-z0-9-]{1,63}){1,8}\\b/g, '[email]');\nconst cap = (value, max) => {\n  const raw = points(String(value == null ? '' : value).slice(0, RAW * 2), RAW).join('');\n  const kept = points(scrub(raw), max);\n  return kept.length > max ? kept.slice(0, max - 3).join('') + '...' : kept.join('');\n};\nconst wanted = input.input && input.input.include_diagnostics === true;\nconst versionData = input.scope.get_version && input.scope.get_version.data;\nconst errorData = wanted && input.scope.get_errors ? input.scope.get_errors.data : null;\nconst engineVersion = versionData && typeof versionData.engine_version === 'string' ? cap(versionData.engine_version, 64) : 'unknown';\nconst diagnostics = {};\nlet complete = false;\nif (wanted) {\n  if (versionData) diagnostics.version = { engine: engineVersion, update_available: versionData.update_available === true, schema_drift: versionData.schema_drift === true };\n  let errors = errorData && Array.isArray(errorData.items) ? errorData.items.slice(0, 20).map((e) => ({ at: cap(e && e.ts, 40), method: cap(e && e.method, 10), path: cap(e && e.path, 200), status: e && Number.isInteger(e.status) ? e.status : null, code: cap(e && e.code, 80), bucket: cap(e && e.bucket, 40), message: cap(e && e.message, 500) })) : null;\n  if (errors) {\n    while (errors.length > 0 && JSON.stringify(errors).length > 100000) errors = errors.slice(0, errors.length - 1);\n    diagnostics.errors = errors;\n  }\n  complete = Boolean(versionData && errors);\n}\nreturn {\n  title: cap(String(input.input.title || '').trim(), 200).trim() || 'Untitled report',\n  description: cap(input.input.description, 8000).trim() || 'No description',\n  diagnostics,\n  collection_complete: complete,\n  engine_version: engineVersion\n};\n"
+        },
+        {
+          "kind": "request",
+          "id": "create_report",
+          "method": "POST",
+          "connector_id": "55000000-0000-4000-8000-000000000006",
+          "path": "/v1/reports",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "title": "${scope.build_report.data.title}",
+            "description": "${scope.build_report.data.description}",
+            "diagnostics": "${scope.build_report.data.diagnostics}",
+            "collection_complete": "${scope.build_report.data.collection_complete}",
+            "tenant": "${caller.tenantId}",
+            "reporter": "${caller.principalId}",
+            "reporter_kind": "${caller.principalKind}",
+            "engine_version": "${scope.build_report.data.engine_version}"
+          },
+          "side_effects": "write",
+          "max_retries": 4,
+          "retry_backoff_ms": 500,
+          "retry_on_status": [500, 503],
+          "boundary": {
+            "variables": {},
+            "max_body_bytes": 1200000,
+            "max_calls": 1
+          }
+        },
+        {
+          "kind": "transform",
+          "id": "result",
+          "language": "javascript",
+          "expression": "const created = input.scope.create_report.data || {}; return { number: created.number, id: created.id, status: created.status, collection_complete: created.collection_complete === true };"
+        }
+      ]
+    }
+  },
+  {
+    "derived_from_skill": "subkit-support-basics",
+    "category": "support",
+    "difficulty": "beginner",
+    "estimated_setup_minutes": 5,
+    "version": "1.0.0",
+    "author": "subkit-builtin",
+    "last_validated_at": null,
+    "deprecated": null,
+    "slug": "support-list-issues",
+    "title": "List my SubKit problem reports and their status",
+    "description": "Reads your own reports from the central SubKit support inbox, newest first, 50 per page, with ticket number, status and the public note of the maintainer. Pass the cursor of the previous page to read the next one. The report list is bound to the signed-in person by the engine; nothing is stored locally.",
+    "intent_keywords": [
+      "my reports",
+      "ticket status",
+      "did the maintainer answer",
+      "status of my bug report"
+    ],
+    "tags": ["solution", "support", "feedback", "trigger:manual"],
+    "prerequisites": [
+      "subkit-support connector with the reporter key of this installation",
+      "A signed-in person starts the run"
+    ],
+    "sample_input": {},
+    "expected_output_preview": {
+      "count": 1,
+      "reports": [
+        {
+          "id": "0e9a2f4e-77b3-4b8e-8d2a-1f5b6c7d8e90",
+          "number": 42,
+          "title": "Workflow run stays in running after connector timeout",
+          "status": "triaged",
+          "public_note": "Reproduced. A fix is planned for the next release.",
+          "version": 2,
+          "created_at": "2026-10-26T09:05:00.000Z",
+          "updated_at": "2026-10-26T10:15:00.000Z"
+        }
+      ],
+      "next_cursor": null
+    },
+    "required_connectors": [
+      {
+        "placeholder": "55000000-0000-4000-8000-000000000003",
+        "template": "subkit-support"
+      }
+    ],
+    "workflow": {
+      "name": "support-list-issues",
+      "description": "Lists the signed-in person's reports in the central SubKit support inbox.",
+      "required_caller_kind": "user",
+      "tool_effect": "read",
+      "steps": [
+        {
+          "kind": "branch",
+          "id": "cursor_route",
+          "when": "$exists($input.cursor)",
+          "then_steps": ["list_more"],
+          "else_steps": ["list_first"]
+        },
+        {
+          "kind": "request",
+          "id": "list_first",
+          "method": "GET",
+          "connector_id": "55000000-0000-4000-8000-000000000003",
+          "path": "/v1/reports",
+          "query": {
+            "reporter": "${caller.principalId}",
+            "limit": "50"
+          },
+          "side_effects": "read",
+          "boundary": {
+            "variables": {
+              "caller.principalId": {
+                "caller_bound": true
+              }
+            },
+            "max_body_bytes": 0,
+            "max_calls": 1
+          }
+        },
+        {
+          "kind": "request",
+          "id": "list_more",
+          "method": "GET",
+          "connector_id": "55000000-0000-4000-8000-000000000003",
+          "path": "/v1/reports",
+          "query": {
+            "reporter": "${caller.principalId}",
+            "limit": "50",
+            "cursor": "${input.cursor}"
+          },
+          "side_effects": "read",
+          "boundary": {
+            "variables": {
+              "caller.principalId": {
+                "caller_bound": true
+              },
+              "input.cursor": {
+                "class": "identifier"
+              }
+            },
+            "max_body_bytes": 0,
+            "max_calls": 1
+          }
+        },
+        {
+          "kind": "transform",
+          "id": "result",
+          "language": "javascript",
+          "expression": "const page = (input.scope.list_more && input.scope.list_more.data) || (input.scope.list_first && input.scope.list_first.data) || {}; const items = Array.isArray(page.items) ? page.items : []; const reports = items.map((r) => ({ id: r.id, number: r.number, title: r.title, status: r.status, public_note: r.public_note, version: r.version, created_at: r.created_at, updated_at: r.updated_at })); return { count: reports.length, reports, next_cursor: typeof page.next_cursor === 'string' && page.next_cursor ? page.next_cursor : null };"
+        }
+      ],
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,200}$",
+            "description": "next_cursor of the previous page; leave out for the first page"
+          }
+        }
+      }
+    }
+  },
+  {
+    "derived_from_skill": "subkit-support-basics",
+    "category": "support",
+    "difficulty": "beginner",
+    "estimated_setup_minutes": 5,
+    "version": "1.0.0",
+    "author": "subkit-builtin",
+    "last_validated_at": null,
+    "deprecated": null,
+    "slug": "support-withdraw-issue",
+    "title": "Withdraw one of my SubKit problem reports",
+    "description": "Withdraws one of your own reports in the central SubKit support inbox. The report is first read for the signed-in person only, then withdrawn at the version just read. A report that is missing or belongs to someone else (404) ends with withdrawn:false and reason not_found, and nothing is written; any other read failure fails the run. A report that is already resolved or closed as wont-fix cannot be withdrawn.",
+    "intent_keywords": [
+      "withdraw my report",
+      "cancel bug report",
+      "retract ticket",
+      "close my own report"
+    ],
+    "tags": ["solution", "support", "feedback", "trigger:manual"],
+    "prerequisites": [
+      "subkit-support connector with the reporter key of this installation and the approved external write",
+      "The id of the report from the report list"
+    ],
+    "sample_input": {
+      "report_id": "0e9a2f4e-77b3-4b8e-8d2a-1f5b6c7d8e90"
+    },
+    "expected_output_preview": {
+      "withdrawn": true,
+      "number": 42,
+      "id": "0e9a2f4e-77b3-4b8e-8d2a-1f5b6c7d8e90",
+      "status": "withdrawn",
+      "withdrawn_at": "2026-10-26T11:00:00.000Z"
+    },
+    "required_connectors": [
+      {
+        "placeholder": "55000000-0000-4000-8000-000000000004",
+        "template": "subkit-support"
+      }
+    ],
+    "workflow": {
+      "name": "support-withdraw-issue",
+      "description": "Withdraws one of the signed-in person's reports in the central SubKit support inbox.",
+      "required_caller_kind": "user",
+      "tool_effect": "irreversible_write",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["report_id"],
+        "properties": {
+          "report_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Id of the report to withdraw, from the report list"
+          }
+        }
+      },
+      "steps": [
+        {
+          "kind": "request",
+          "id": "get_report",
+          "method": "GET",
+          "connector_id": "55000000-0000-4000-8000-000000000004",
+          "path": "/v1/reports/${input.report_id}",
+          "query": {
+            "reporter": "${caller.principalId}"
+          },
+          "side_effects": "read",
+          "on_error": "continue",
+          "boundary": {
+            "variables": {
+              "input.report_id": {
+                "class": "uuid"
+              },
+              "caller.principalId": {
+                "caller_bound": true
+              }
+            },
+            "max_body_bytes": 0,
+            "max_calls": 1
+          }
+        },
+        {
+          "kind": "branch",
+          "id": "withdraw_route",
+          "when": "$exists($scope.get_report.data.version)",
+          "then_steps": ["withdraw_report"],
+          "else_steps": []
+        },
+        {
+          "kind": "request",
+          "id": "withdraw_report",
+          "method": "POST",
+          "connector_id": "55000000-0000-4000-8000-000000000004",
+          "path": "/v1/reports/${input.report_id}/withdraw",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "reporter": "${caller.principalId}",
+            "expected_version": "${scope.get_report.data.version}"
+          },
+          "side_effects": "write",
+          "max_retries": 3,
+          "retry_backoff_ms": 500,
+          "retry_on_status": [500, 503],
+          "boundary": {
+            "variables": {
+              "input.report_id": {
+                "class": "uuid"
+              }
+            },
+            "max_body_bytes": 512,
+            "max_calls": 1
+          }
+        },
+        {
+          "kind": "transform",
+          "id": "result",
+          "language": "javascript",
+          "expression": "const read = input.scope.get_report || {}; const readData = read.data; if (!readData || readData.version === undefined || readData.version === null) { if (read.error && read.error.upstream_status === 404) return { withdrawn: false, reason: 'not_found' }; throw new Error('the report could not be read (' + ((read.error && read.error.upstream_status) || 'no response') + '), nothing was withdrawn'); } const done = (input.scope.withdraw_report && input.scope.withdraw_report.data) || {}; return { withdrawn: true, number: done.number, id: done.id, status: done.status, withdrawn_at: done.withdrawn_at };"
+        }
+      ]
+    }
   }
 ]

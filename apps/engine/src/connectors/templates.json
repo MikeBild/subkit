@@ -17432,5 +17432,56 @@
     "aws_region": null,
     "verified_at": null,
     "respects_robots": false
+  },
+  {
+    "version": 1,
+    "slug": "subkit-support",
+    "name": "SubKit Support",
+    "driver": "http",
+    "base_url": "https://support.mikebild.info",
+    "auth_type": "bearer",
+    "respects_robots": false,
+    "oauth": null,
+    "default_skill": "subkit-support-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "http.svg",
+    "description": "Central SubKit support inbox: report a problem with SubKit to the maintainer, list your own reports with their status and withdraw one. Fixed public address, one reporter key per installation.",
+    "category": "support",
+    "tags": ["support", "issues", "feedback", "bug-report"],
+    "setup_instructions": "Register this installation once at the support address to receive a reporter key (shown a single time), then store it here as the bearer token. Nothing is sent to the maintainer until a person starts a report and the external write is approved.",
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Reporter key",
+        "description": "The reporter key of this installation, sent in the Authorization header."
+      }
+    ],
+    "url_pattern": "^https:\\/\\/support\\.mikebild\\.info(\\/|$)",
+    "keywords": ["support", "issue", "report", "bug", "feedback", "problem", "ticket"],
+    "inline_schema": null,
+    "probe_endpoint": {
+      "method": "GET",
+      "path": "/v1/reports",
+      "expected_status": [200, 200],
+      "description": "List the reports of this reporter account"
+    },
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "Reporter key",
+        "placeholder": "skr_",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    },
+    "recipes": []
   }
 ]

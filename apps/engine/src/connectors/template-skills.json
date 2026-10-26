@@ -871,5 +871,25 @@
       "The measurement id G-XXXX is not the property id"
     ],
     "doc_refs": ["https://developers.google.com/analytics/devguides/reporting/data/v1"]
+  },
+  "subkit-support-basics": {
+    "title": "SubKit Support Basics",
+    "body": "The subkit-support connector talks to the central SubKit support inbox over a fixed public HTTPS address with the reporter key of this installation as bearer token. Every report belongs to that reporter account; the workflows add the tenant and the signed-in person as tenant, reporter and reporter_kind from the authenticated caller, never from input.",
+    "examples": [
+      "POST /v1/reports - create a report (title, description, diagnostics, collection_complete, tenant, reporter, reporter_kind, engine_version)",
+      "GET /v1/reports?reporter=<principal id> - list the reports of one person with status and public note",
+      "POST /v1/reports/{id}/withdraw - withdraw a report with reporter and expected_version"
+    ],
+    "best_practices": [
+      "Retry only 429, 500, 503 and network errors, and always with the same Idempotency-Key for a create",
+      "Never put keys, tokens, passwords or customer data into title, description or diagnostics",
+      "Read status and public_note live from the inbox; there is no local copy of a report"
+    ],
+    "pitfalls": [
+      "The reporter key proves the installation, not the person behind it",
+      "A report in status resolved or wont_fix cannot be withdrawn (409 invalid_transition)",
+      "A stale expected_version on withdraw is 409 version_conflict: read the report again"
+    ],
+    "doc_refs": []
   }
 }

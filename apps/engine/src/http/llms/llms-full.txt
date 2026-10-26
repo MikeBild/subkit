@@ -9,7 +9,7 @@
 - [Use SubKit from a coding agent](llms/coding-agents.md): MCP gives your coding agent the approved SubKit tools.
 - [sk CLI reference](llms/cli.md): Every sk command and argument — and the surface authoring runs through: creating or changing a workflow, connector, knowledge source or skill is a definition edit, and definition edits belong here, where the change is a file you can read and a command you can re-run.
 - [SubKit runtime settings](llms/settings.md): Every value below lives in canonical runtime configuration and is editable via the Cockpit, HTTP/MCP settings APIs, sk settings configure, or sk settings set.
-- [Connector & recipe catalog](llms/connectors.md): What ships in the box: 61 connector templates across 16 categories, carrying 248 recipes — pre-authored, runnable workflows you clone instead of starting from a blank page.
+- [Connector & recipe catalog](llms/connectors.md): What ships in the box: 62 connector templates across 17 categories, carrying 248 recipes — pre-authored, runnable workflows you clone instead of starting from a blank page.
 - [Reply by email to a signed request](llms/transactional-email.md): A workflow can send one plain-text Gmail reply to the person who submitted a form, for example an access request.
 
 <!-- Source: setup.md -->
@@ -5141,7 +5141,7 @@ Configured labels are diagnostic metadata only. The common `mcp-auth` surface de
 
 # Connector & recipe catalog
 
-What ships in the box: **61 connector templates** across **16 categories**, carrying **248 recipes** — pre-authored, runnable workflows you clone instead of starting from a blank page.
+What ships in the box: **62 connector templates** across **17 categories**, carrying **248 recipes** — pre-authored, runnable workflows you clone instead of starting from a blank page.
 
 A **template** connects a system: base URL, auth flow, endpoint schema, and a vendor-basics Skill. A **recipe** is a complete workflow shipped on that template — say what you want in a conversation and sk clones the closest recipe as your starting draft.
 
@@ -5287,6 +5287,12 @@ A **template** connects a system: base URL, auth flow, endpoint schema, and a ve
 | **AWS Cognito User Pools** | `aws-cognito-user-pools` | http | aws_sigv4 | Amazon Cognito User Pools administrative API for users and groups. |
 | **AWS EventBridge** | `aws-eventbridge` | http | aws_sigv4 | Amazon EventBridge API for event publishing + rule management. |
 | **AWS STS** | `aws-sts` | http | aws_sigv4 | AWS Security Token Service — temporary-credential issuance for cross-account / cross-role access. |
+
+### support
+
+| Template | slug | driver | auth | What it connects |
+| -------- | ---- | ------ | ---- | ---------------- |
+| **SubKit Support** | `subkit-support` | http | bearer | Central SubKit support inbox: report a problem with SubKit to the maintainer, list your own reports with their status and withdraw one. |
 
 ## Recipes
 
