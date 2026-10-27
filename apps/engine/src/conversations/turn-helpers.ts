@@ -1,3 +1,4 @@
+import { inferReplyLocale } from "./handoff-summary.ts";
 import { isAutomationReviewCard } from "./loop/stop-conditions.ts";
 import type { DraftDocument, TurnEvent } from "./types.ts";
 
@@ -77,7 +78,9 @@ function successfulRun(value: unknown): boolean {
 export function completionEvidenceGuard(
   events: ReadonlyArray<TurnEvent>,
   draft?: DraftDocument | null,
+  userMessage?: string | null,
 ): string | null {
+  const german = userMessage ? inferReplyLocale(userMessage) === "de" : false;
   const successfulSaves = new Set<string>();
   const successfulRuns = new Set<string>();
   for (const event of [...events].reverse()) {
@@ -90,13 +93,17 @@ export function completionEvidenceGuard(
       }
       if (successfulSaves.has(key)) continue;
       if (isFailedToolResult(event.output)) {
-        return "The workflow draft was not saved. The saved version changed or could not be updated; local changes remain available for review.";
+        return german
+          ? "Der Entwurf wurde nicht gespeichert. Die gespeicherte Fassung hat sich geändert oder konnte nicht aktualisiert werden. Deine Änderungen sind noch da."
+          : "The draft was not saved. The saved version changed or could not be updated. Your changes are still available.";
       }
     }
     if (holdsWrites(event.output)) {
       const key = workflowRunKey(event.output);
       if (!successfulRuns.has(key)) {
-        return "Some actions were held. This is not a complete live test; the held action still needs the required permission or an explicit live-run decision.";
+        return german
+          ? "Ein Teil des Ablaufs wurde nur geprüft. Die Schritte mit Wirkung wurden nicht ausgeführt. Gib den Ablauf frei oder bitte mich ausdrücklich, ihn mit Wirkung zu starten."
+          : "Part of the workflow was only checked. Actions that make changes did not run. Approve the workflow or ask me to run it with changes.";
       }
       continue;
     }
@@ -112,7 +119,9 @@ export function completionEvidenceGuard(
     saveError?.code === "draft_conflict" &&
     saveError.mutation_seq === draft?.state?.workflow_mutation_seq
   ) {
-    return "The workflow draft was not saved. The saved version changed; local changes remain available for review.";
+    return german
+      ? "Der Entwurf wurde nicht gespeichert, weil sich die gespeicherte Fassung geändert hat. Deine Änderungen sind noch da."
+      : "The draft was not saved because the saved version changed. Your changes are still available.";
   }
   return null;
 }

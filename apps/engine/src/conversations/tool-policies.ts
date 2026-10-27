@@ -29,6 +29,7 @@ const AUTO_PREPARATION_WRITES: ReadonlyMap<string, PolicyCategory> = new Map([
   ["save_workflow_draft", "draft_write"],
   ["create_knowledge_source", "tenant_write"],
   ["analyze_knowledge_source", "tenant_write"],
+  ["export_diagnostic_context", "tenant_write"],
 ]);
 
 export type PermissionMode = "auto" | "ask" | "plan" | "yolo";
@@ -365,6 +366,7 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   validate_connector_draft: { defaultMode: "no_confirm" },
   inspect_workflow_draft: { defaultMode: "no_confirm" },
   inspect_authoring_context: { defaultMode: "no_confirm" },
+  export_diagnostic_context: { defaultMode: "no_confirm" },
   dry_run_step: { defaultMode: "no_confirm" },
   dry_run_transform: { defaultMode: "no_confirm" },
   dry_run_workflow: {

@@ -6,6 +6,7 @@ import {
   parseBinaryFile,
   renderBinaryParseResult,
 } from "../../docs-ingestion/parsers/index.ts";
+import { executionDataFileIds } from "../../files/model-context.ts";
 import { type ResolvedFile, resolveSingleFid } from "../../files/resolver.ts";
 import { detectFormat, isBinaryFormat, parseFileToChunks } from "../../knowledge/parsers.ts";
 import { logger } from "../../logging/logger.ts";
@@ -57,7 +58,9 @@ export async function buildFileContentBlocks(
   let text_extract_bytes = 0;
 
   const resolveCache = new Map<string, ResolvedFile>();
+  const executionData = await executionDataFileIds(p.db, p.tenant_id, p.fids);
   for (const fid of p.fids) {
+    if (executionData.has(fid.replace(/^fid_/, ""))) continue;
     let resolved: ResolvedFile;
     try {
       resolved = await resolveSingleFid(p.db, p.tenant_id, fid, resolveCache);

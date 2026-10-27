@@ -15,6 +15,19 @@ import {
 } from "./tool-presentation";
 
 describe("toolLabel", () => {
+  test("diagnostic preparation uses plain wording and collapsible background details", () => {
+    expect(toolTier("export_diagnostic_context")).toBe("background");
+    expect(toolLabel("export_diagnostic_context")).toEqual({
+      kind: "background",
+      words: {
+        active: "tool.background.exportDiagnosticContext.active",
+        past: "tool.background.exportDiagnosticContext.past",
+      },
+    });
+    expect(translate("de", "tool.background.exportDiagnosticContext.past")).toBe(
+      "Informationen zusammengestellt",
+    );
+  });
   test("passes a saved workflow's own name through instead of mangling it", () => {
     expect(toolLabel("wf_ga4-daily-report")).toEqual({
       kind: "workflow",
@@ -247,12 +260,17 @@ describe("what a workflow call really was", () => {
     expect(title(generic, "trial")).toBe("Probelauf ohne Wirkung");
     expect(title(generic, "refused")).toBe("Lauf abgelehnt");
     expect(title(generic, "live")).toBe("Workflow ausgeführt");
+    expect(title(generic, "read")).toBe("Informationen abgerufen");
     expect(title(named, "trial")).toBe("Probelauf von „finding-triage“ ohne Wirkung");
     expect(title(named, "refused")).toBe("Lauf von „finding-triage“ abgelehnt");
     expect(title(named, "live")).toBe("Workflow „finding-triage“ ausgeführt");
+    expect(title(named, "read")).toBe("„finding-triage“ angesehen");
     expect(title(generic, null)).toBe("Workflow ausgeführt");
     expect(translate("en", "tool.name.runWorkflow.trial")).toBe("Trial run without effects");
     expect(translate("en", "tool.name.runWorkflow.refused")).toBe("Run refused");
+    expect(
+      workflowRunKind({ data: { tool_effect: "read", execution_id: "read-1", hold_writes: true } }),
+    ).toBe("read");
   });
 
   test("a person's or a permission's no outranks what the payload says", () => {

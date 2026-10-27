@@ -122,6 +122,34 @@ function makeStepRunCtx(input: {
 }
 
 describe("outbound Idempotency-Key", () => {
+  test("an explicit effect key survives retries and separate executions regardless of header casing", async () => {
+    observed.length = 0;
+    for (const header of ["Idempotency-Key", "idempotency-key"]) {
+      mockBehaviour = { kind: "fail-then-ok", remaining: 1, status: 429 };
+      const ids = await createExecutionRow();
+      const step: RequestStep = {
+        id: "post-thing",
+        kind: "request",
+        method: "POST",
+        url: `${mock.baseUrl}/things`,
+        headers: { [header]: "same-logical-case" },
+        body: { name: "x" },
+        max_retries: 1,
+        retry_backoff_ms: 50,
+      };
+      const result = await runRequestStep({
+        ctx: makeStepRunCtx({ ...ids, step }),
+        step,
+        scope: {},
+      });
+      expect(result.status).toBe("succeeded");
+    }
+    expect(observed).toHaveLength(4);
+    expect(observed.map((request) => request.idempotency_key)).toEqual(
+      Array(4).fill("same-logical-case"),
+    );
+  });
+
   test("POST request emits Idempotency-Key derived from execution + step instance + page", async () => {
     observed.length = 0;
     mockBehaviour = { kind: "ok" };

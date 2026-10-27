@@ -5880,6 +5880,9 @@
         "properties": {
           "$file": {
             "$ref": "#/components/schemas/FileId"
+          },
+          "$range": {
+            "$ref": "#/components/schemas/FileByteRange"
           }
         },
         "required": [
@@ -5889,6 +5892,26 @@
       "FileId": {
         "type": "string",
         "pattern": "^fid_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+      },
+      "FileByteRange": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "length": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "start",
+          "length"
+        ],
+        "additionalProperties": false
       },
       "WorkflowExecutionAuthorityList": {
         "type": "object",
@@ -6574,6 +6597,25 @@
                     "origin": {
                       "type": "string",
                       "format": "uri"
+                    },
+                    "body_encoding": {
+                      "type": "string",
+                      "enum": [
+                        "multipart"
+                      ]
+                    },
+                    "idempotency_key": {
+                      "type": "object",
+                      "properties": {
+                        "var": {
+                          "type": "string",
+                          "pattern": "^(?:(?:item|input|scope)(?:\\.[A-Za-z_][A-Za-z0-9_]*)+|caller\\.(?:subject|principalId))$"
+                        }
+                      },
+                      "required": [
+                        "var"
+                      ],
+                      "additionalProperties": false
                     },
                     "segments": {
                       "type": "array",
@@ -9835,7 +9877,15 @@
             "minLength": 1
           },
           "file": {
-            "$ref": "#/components/schemas/FileRef"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileRef"
+              },
+              {
+                "type": "string",
+                "pattern": "^\\$\\{(?:input|scope|item)\\.[A-Za-z0-9_.-]+\\}$"
+              }
+            ]
           },
           "value": {
             "type": "string"

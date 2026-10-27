@@ -114,6 +114,51 @@ describe("workflow file-input: multipart step with $file part", () => {
     expect(rawBody).toContain("Q1 Report");
   });
 
+  test("uploads a runtime file range without surrounding source bytes", async () => {
+    const content = Buffer.from("private-prefix|selected-block|private-suffix");
+    const att = await attachInlineForTest({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      conversation_id: FAKE_CONV_ID,
+      filename: "diagnostic.txt",
+      content_type: "text/plain",
+      content,
+      slug: "diagnostic-range",
+    });
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "bounded-file-transfer",
+      steps: [
+        {
+          kind: "request",
+          id: "upload",
+          method: "PUT",
+          url: `${srv.baseUrl}/upload`,
+          multipart: [
+            { name: "data", file: `\${input.file}` },
+            { name: "artifact", value: `\${input.artifact}` },
+          ],
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: {
+        file: { $file: att.file_id, $range: { start: 15, length: 14 } },
+        artifact: "diagnostics",
+      },
+    });
+    expect(result.status).toBe("succeeded");
+    const request = srv.last();
+    expect(request).not.toBeNull();
+    const raw = request?.body.toString("utf8");
+    expect(raw).toContain("selected-block");
+    expect(raw).toContain("diagnostics");
+    expect(raw).not.toContain("private-prefix");
+    expect(raw).not.toContain("private-suffix");
+  });
+
   test("unknown $file id → step fails (file not found)", async () => {
     const ghostFid = "fid_00000000-dead-beef-cafe-000000000001";
 

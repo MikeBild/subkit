@@ -19,6 +19,7 @@ describe("conversation tools — registration", () => {
     "dry_run_step",
     "dry_run_transform",
     "dry_run_workflow",
+    "export_diagnostic_context",
     "fetch_connector_docs",
     "fetch_connector_self_description",
     "inspect_authoring_context",

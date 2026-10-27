@@ -26,6 +26,7 @@ import { createDraftSnapshot } from "../../draft-checkpoints.ts";
 import { createElicitation } from "../../elicitations.ts";
 import { executionSuppressionRefusal } from "../../execution-suppression.ts";
 import { saveEvidenceLabel } from "../../handoff-summary.ts";
+import { detectUserIntent } from "../../intent-detector.ts";
 import { parseLoadedSkills } from "../../loop/skill-recency.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
 import { resolveSaveVerification } from "../../persistence/commit-workflow.ts";
@@ -202,15 +203,19 @@ export function wrapOne(
       await prevChain;
       const executeBody = async (): Promise<WrappedToolOutput> => {
         await assertConversationTurn(ctx.abortSignal);
-        const suppressionRefusal = isWorkflowExecutionTool(inner.name)
-          ? await executionSuppressionRefusal({
-              db: ctx.db,
-              tenant_id: ctx.tenant_id,
-              conversation_id: ctx.conversation_id,
-              recent_user_message: ctx.recentUserMessage ?? null,
-              live_tool: isLiveExecutionTool(inner.name),
-            })
-          : null;
+        const requestedExternalRead =
+          inner.name === "run_workflow" &&
+          detectUserIntent(ctx.recentUserMessage).requestExternalRead === true;
+        const suppressionRefusal =
+          isWorkflowExecutionTool(inner.name) && !requestedExternalRead
+            ? await executionSuppressionRefusal({
+                db: ctx.db,
+                tenant_id: ctx.tenant_id,
+                conversation_id: ctx.conversation_id,
+                recent_user_message: ctx.recentUserMessage ?? null,
+                live_tool: isLiveExecutionTool(inner.name),
+              })
+            : null;
         if (suppressionRefusal) return { ok: false, data: suppressionRefusal };
         if (intakeReviewBlocksWrite(ctx.getDraft(), inner.name)) {
           return {

@@ -24,6 +24,7 @@ const ALWAYS_VISIBLE: ReadonlySet<string> = new Set([
   "fetch_connector_docs",
   "get_raw_result",
   "inspect_authoring_context",
+  "export_diagnostic_context",
   "inspect_playbook",
   "update_playbook",
   "list_attachments",
@@ -234,6 +235,7 @@ export function filterByChatReadOnlyPalette<T extends { name: string }>(tools: r
 export interface ExecutionToolGateState {
   hasBoundSavedWorkflow: boolean;
   explicitlyNamedWorkflowSlug: string | null;
+  explicitExternalAction?: boolean;
   surface?: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
   suppressExecution?: boolean;
   suppressLiveExecution?: boolean;
@@ -244,6 +246,7 @@ export interface ExecutionToolGateDecision {
   reason:
     | "bound_saved_workflow"
     | "named_workflow_slug"
+    | "requested_saved_workflow_action"
     | "chat_surface"
     | "explicit_no_run"
     | "explicit_no_live_effects"
@@ -269,6 +272,9 @@ function resolveExposure(state: ExecutionToolGateState): ExecutionToolGateDecisi
   }
   if (state.explicitlyNamedWorkflowSlug != null) {
     return { exposeExecution: true, reason: "named_workflow_slug" };
+  }
+  if (state.explicitExternalAction) {
+    return { exposeExecution: true, reason: "requested_saved_workflow_action" };
   }
   return { exposeExecution: false, reason: "authoring_no_target" };
 }

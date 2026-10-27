@@ -75,6 +75,31 @@ function summary(overrides: Partial<AuthoringSummary> = {}): AuthoringSummary {
 }
 
 describe("detectUserIntent", () => {
+  test("an explicit request to send a problem exposes a separate saved operation", () => {
+    const delivery = detectUserIntent("Bitte sende dieses Problem jetzt an den Dienst.");
+    expect(delivery.requestExternalAction).toBe(true);
+    expect(delivery.forceTool).toBeUndefined();
+    expect(
+      detectUserIntent("Das funktioniert nicht, bitte um Hilfe.").requestExternalAction,
+    ).toBeUndefined();
+    expect(
+      detectUserIntent("Bitte sende dieses Problem nicht an den Dienst.").requestExternalAction,
+    ).toBeUndefined();
+  });
+  test("a case status question exposes a saved read operation without requesting a send", () => {
+    const status = detectUserIntent("Wie steht meine Anfrage Nummer 5?");
+    expect(status.requestExternalRead).toBe(true);
+    const separatedNoRun = detectUserIntent(
+      "Bitte prüfe den Stand meiner Support-Anfrage Nummer 5. Den Entwurf bitte nicht ausführen.",
+    );
+    expect(separatedNoRun.requestExternalRead).toBe(true);
+    expect(separatedNoRun.suppressExecution).toBe(true);
+    expect(status.requestExternalAction).toBeUndefined();
+    expect(detectUserIntent("Wie steht mein Entwurf?").requestExternalRead).toBeUndefined();
+    expect(
+      detectUserIntent("Bitte prüfe den Status meiner Anfrage nicht.").requestExternalRead,
+    ).toBeUndefined();
+  });
   test("recognizes German 'führe ... aus' as run intent", () => {
     const res = detectUserIntent("führe meine github workflow aus");
     expect(res.forceTool).toBe("run_workflow");

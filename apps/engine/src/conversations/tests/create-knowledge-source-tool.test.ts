@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, count, eq } from "drizzle-orm";
-import { auditLog, knowledgeChunks, knowledgeSources } from "../../db/schema/index.ts";
+import { auditLog, fileLinks, knowledgeChunks, knowledgeSources } from "../../db/schema/index.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { createKnowledgeSourceTool } from "../tools/engine-api/writes/create-knowledge-source.ts";
 import type { ToolContext } from "../tools/index.ts";
@@ -156,6 +156,32 @@ describe("create_knowledge_source tool — mode='inline'", () => {
 });
 
 describe("create_knowledge_source tool — mode='from_attachment'", () => {
+  test("execution-data attachments cannot be admitted through the model's knowledge tool", async () => {
+    const attached = await attachInlineForTest({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenant_id,
+      conversation_id: toolCtx().conversation_id,
+      filename: "diagnostic-context.json",
+      content: JSON.stringify({ conversation: "private diagnostic context" }),
+      content_type: "application/json",
+    });
+    await ctx.testDb.db
+      .update(fileLinks)
+      .set({ role: "execution_data" })
+      .where(
+        and(
+          eq(fileLinks.tenant_id, ctx.tenant_id),
+          eq(fileLinks.file_id, attached.file_id.replace(/^fid_/, "")),
+        ),
+      );
+    const result = await createKnowledgeSourceTool.execute(toolCtx(), {
+      mode: "from_attachment",
+      file_id: attached.file_id,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.data).toMatchObject({ error: "execution_data_only" });
+    expect(JSON.stringify(result)).not.toContain("private diagnostic context");
+  });
   test("happy path: derives name from filename, creates KS row", async () => {
     const attached = await attachInlineForTest({
       db: ctx.testDb.db,

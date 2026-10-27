@@ -27,6 +27,7 @@ describe("bounded auto authoring policy", () => {
     "save_workflow_draft",
     "create_knowledge_source",
     "analyze_knowledge_source",
+    "export_diagnostic_context",
   ]) {
     test(`${tool} remains autonomous preparation`, () => {
       expect(
@@ -52,6 +53,28 @@ describe("bounded auto authoring policy", () => {
         }).mode,
       ).toBe("no_confirm");
     }
+  });
+  test("diagnostic preparation preserves explicit approval preferences", () => {
+    for (const permission_mode of ["ask", "plan"] as const) {
+      expect(
+        decideToolMode({
+          tool: "export_diagnostic_context",
+          category: "tenant_write",
+          input: {},
+          overrides: {},
+          permission_mode,
+        }).mode,
+      ).toBe("confirm_before_execution");
+    }
+    expect(
+      decideToolMode({
+        tool: "export_diagnostic_context",
+        category: "tenant_write",
+        input: {},
+        overrides: { export_diagnostic_context: "confirm_before_execution" },
+        permission_mode: "auto",
+      }).mode,
+    ).toBe("confirm_before_execution");
   });
   test("generic starts delegate write authorization to durable admission, not a flag gate", () => {
     for (const execute_writes of [undefined, false, true]) {

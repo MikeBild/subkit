@@ -25,6 +25,7 @@ import { settleOnAbort } from "./abort-boundary.ts";
 import { signSigV4Request } from "./aws-sigv4.ts";
 import { getDriverFetch } from "./fetch-seam.ts";
 import { shouldPromoteToFile } from "./file-promotion.ts";
+import { multipartObservationHeaders, prepareMultipartBody } from "./http-multipart.ts";
 import { buildProbeDiagnostics } from "./probe-diagnostics.ts";
 import { resolveUrl } from "./resolve-url.ts";
 import { HttpRequestInvalidError, readBodyBytesCapped } from "./response-body.ts";
@@ -201,6 +202,8 @@ export interface HttpDispatchObservation {
   headers: Record<string, string>;
   body: unknown;
   unsupported_body?: boolean;
+  body_encoding?: "multipart";
+  body_bytes?: number;
 }
 
 export class AuthorityDispatchError extends Error {
@@ -695,10 +698,13 @@ export async function executePlannedHttpRequest(params: {
     headers,
     signal: params.signal,
   };
+  let multipart: Awaited<ReturnType<typeof prepareMultipartBody>> | undefined;
   if (params.multipartBody !== undefined && params.method !== "GET" && params.method !== "HEAD") {
-    delete headers["content-type"];
-    delete headers["Content-Type"];
-    init.body = params.multipartBody;
+    for (const name of Object.keys(headers))
+      if (name.toLowerCase() === "content-type") delete headers[name];
+    multipart = await prepareMultipartBody(params.multipartBody);
+    headers["content-type"] = multipart.contentType;
+    init.body = multipart.body;
   } else if (
     params.body !== undefined &&
     params.body !== null &&
@@ -716,7 +722,11 @@ export async function executePlannedHttpRequest(params: {
       method: params.method,
       url: params.url,
       headers,
-      body: typeof init.body === "string" ? init.body : undefined,
+      body: multipart
+        ? Buffer.from(multipart.body)
+        : typeof init.body === "string"
+          ? init.body
+          : undefined,
       region: params.sigv4.region,
       service: params.sigv4.service,
       credential: params.sigv4.credential,
@@ -725,9 +735,9 @@ export async function executePlannedHttpRequest(params: {
   const dispatchPolicy = await params.before_dispatch?.({
     method: params.method,
     url: params.url.toString(),
-    headers: params.headers,
+    headers: multipart ? multipartObservationHeaders(params.headers) : params.headers,
     body: params.body ?? null,
-    ...(params.multipartBody ? { unsupported_body: true } : {}),
+    ...(multipart ? multipart.observation : {}),
   });
   const effectiveDispatchPolicy =
     dispatchPolicy ??

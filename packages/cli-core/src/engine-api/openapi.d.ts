@@ -23090,8 +23090,13 @@ export interface components {
         };
         FileRef: {
             $file: components["schemas"]["FileId"];
+            $range?: components["schemas"]["FileByteRange"];
         };
         FileId: string;
+        FileByteRange: {
+            start: number;
+            length: number;
+        };
         WorkflowExecutionAuthorityList: {
             items: components["schemas"]["WorkflowExecutionAuthority"][];
             /** Format: uuid */
@@ -23265,6 +23270,11 @@ export interface components {
                     method: "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS";
                     /** Format: uri */
                     origin: string;
+                    /** @enum {string} */
+                    body_encoding?: "multipart";
+                    idempotency_key?: {
+                        var: string;
+                    };
                     segments: (string | {
                         var: string;
                     })[];
@@ -24081,7 +24091,7 @@ export interface components {
         };
         MultipartPart: {
             name: string;
-            file?: components["schemas"]["FileRef"];
+            file?: components["schemas"]["FileRef"] | string;
             value?: string;
             filename?: string;
             content_type?: string;

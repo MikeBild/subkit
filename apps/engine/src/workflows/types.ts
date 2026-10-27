@@ -211,7 +211,9 @@ const GraphQLConfigSchema: z.ZodType<GraphQLConfig> = z
 export const MultipartPartSchema = z
   .object({
     name: z.string().min(1),
-    file: FileRefSchema.optional(),
+    file: z
+      .union([FileRefSchema, z.string().regex(/^\$\{(?:input|scope|item)\.[A-Za-z0-9_.-]+\}$/)])
+      .optional(),
     value: z.string().optional(),
     filename: z.string().optional(),
     content_type: z.string().optional(),

@@ -18,12 +18,15 @@ const materializedRequestSchema = z
     headers: z.record(z.string(), z.string()),
     body: z.json(),
     unsupported_body: z.boolean().optional(),
+    body_encoding: z.literal("multipart").optional(),
+    body_bytes: z.number().int().nonnegative().optional(),
     generated_idempotency: z
       .object({ key: z.string().min(1), page: z.number().int().nonnegative() })
       .strict()
       .optional(),
   })
-  .strict();
+  .strict()
+  .refine((value) => (value.body_encoding === "multipart") === (value.body_bytes !== undefined));
 
 export const PreparedDispatchSnapshotSchema = z
   .object({
@@ -103,7 +106,7 @@ export function preparedRequestReview(request: MaterializedRequest) {
   if (!materializedRequestSchema.safeParse(request).success || request.unsupported_body)
     return null;
   let body = request.body;
-  let opaqueBody = false;
+  let opaqueBody = request.body_encoding === "multipart";
   if (typeof body === "string") {
     try {
       const parsed: unknown = JSON.parse(body);
@@ -124,11 +127,12 @@ export function preparedRequestReview(request: MaterializedRequest) {
   if (!step.success || request.unsupported_body) return null;
   const url = new URL(request.url);
   const measured =
-    request.body === null || request.body === undefined
+    request.body_bytes ??
+    (request.body === null || request.body === undefined
       ? undefined
       : new TextEncoder().encode(
           typeof request.body === "string" ? request.body : JSON.stringify(request.body),
-        ).byteLength;
+        ).byteLength);
   return PreparedRequestReviewSchema.parse({
     method: request.method,
     url: scrubString(`${url.origin}${url.pathname}`),
@@ -176,6 +180,9 @@ export function preparedRequestProof(
         url: new URL(request.url).toString(),
         headers,
         body: request.body ?? null,
+        ...(request.body_encoding
+          ? { body_encoding: request.body_encoding, body_bytes: request.body_bytes }
+          : {}),
         generated_idempotency_page: request.generated_idempotency?.page ?? null,
       }),
     ),

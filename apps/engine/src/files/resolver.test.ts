@@ -169,3 +169,80 @@ describe("walkAndResolve", () => {
     ).rejects.toBeInstanceOf(FileNotFoundError);
   });
 });
+
+describe("bounded file ranges", () => {
+  async function bytes(file: ResolvedFile) {
+    const chunks: number[] = [];
+    for await (const chunk of await file.openRead()) chunks.push(...chunk);
+    return chunks;
+  }
+
+  const source: ResolvedFile = {
+    id: "file-range-fixture",
+    filename: "fixture.bin",
+    content_type: "application/octet-stream",
+    size_bytes: 8,
+    async openRead() {
+      return (async function* () {
+        yield new Uint8Array([0, 1, 2]);
+        yield new Uint8Array([3, 4, 5]);
+        yield new Uint8Array([6, 7]);
+      })();
+    },
+  };
+
+  test("reads only the requested bytes across source chunk boundaries", async () => {
+    const { rangeResolvedFile } = await import("./resolver.ts");
+    const selected = rangeResolvedFile(source, { start: 2, length: 4 });
+    expect(selected.size_bytes).toBe(4);
+    expect(await bytes(selected)).toEqual([2, 3, 4, 5]);
+    expect(await bytes(rangeResolvedFile(source, { start: 7, length: 1 }))).toEqual([7]);
+  });
+
+  test("rejects malformed, overflowing and out of bounds ranges before opening storage", async () => {
+    const { rangeResolvedFile } = await import("./resolver.ts");
+    for (const range of [
+      { start: -1, length: 1 },
+      { start: 0, length: 0 },
+      { start: 0.5, length: 1 },
+      { start: 7, length: 2 },
+      { start: Number.MAX_SAFE_INTEGER, length: 1 },
+    ])
+      expect(() => rangeResolvedFile(source, range)).toThrow();
+  });
+
+  test("keeps independent ranges on cached file references", async () => {
+    const cache = new Map([["fid_range", source]]);
+    const first = (await walkAndResolve(
+      { $file: "fid_range", $range: { start: 0, length: 2 } },
+      { db: {} as never, tenant_id: "tenant" },
+      cache,
+    )) as unknown as ResolvedFile;
+    const second = (await walkAndResolve(
+      { $file: "fid_range", $range: { start: 5, length: 2 } },
+      { db: {} as never, tenant_id: "tenant" },
+      cache,
+    )) as unknown as ResolvedFile;
+    expect(await bytes(first)).toEqual([0, 1]);
+    expect(await bytes(second)).toEqual([5, 6]);
+    expect(cache.get("fid_range")).toBe(source);
+  });
+
+  test("uses storage range reads and rejects short or oversized responses", async () => {
+    const { rangeResolvedFile } = await import("./resolver.ts");
+    for (const size of [1, 2, 3]) {
+      const ranged = {
+        ...source,
+        openReadRange: async (range: { start: number; length: number }) => {
+          expect(range).toEqual({ start: 4, length: 2 });
+          return (async function* () {
+            yield new Uint8Array(size).fill(4);
+          })();
+        },
+      };
+      const result = bytes(rangeResolvedFile(ranged, { start: 4, length: 2 }));
+      if (size === 2) expect(await result).toEqual([4, 4]);
+      else await expect(result).rejects.toThrow();
+    }
+  });
+});

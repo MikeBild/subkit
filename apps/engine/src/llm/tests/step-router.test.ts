@@ -47,6 +47,7 @@ const TOOLS: Record<string, ConversationTool> = Object.fromEntries([
   fakeTool("update_workflow", "tenant_write"),
   fakeTool("create_schedule", "tenant_write", { requires_persisted_workflow: true }),
   fakeTool("run_workflow", "tenant_write", { requires_persisted_workflow: true }),
+  fakeTool("export_diagnostic_context", "tenant_write"),
 ]);
 
 function baseParams(over: Partial<StepRouterParams> = {}): StepRouterParams {
@@ -582,6 +583,14 @@ describe("a trimmed-snapshot enumeration forces list_workflows only for the firs
 });
 
 describe("saved workflow inspection keeps preparation reachable", () => {
+  it("keeps local diagnostic preparation and the saved runner available during another draft", () => {
+    const decision = prepareStep(
+      baseParams({ signals: { stage: "workflow_draft_started", hasPersistedWorkflow: true } }),
+    );
+    expect(decision?.activeTools).toContain("export_diagnostic_context");
+    expect(decision?.activeTools).toContain("run_workflow");
+    expect(decision?.activeTools).not.toContain("delete_workflow");
+  });
   const stages = [
     "workflow_targeted",
     "diagnosing",

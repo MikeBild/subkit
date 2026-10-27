@@ -64,9 +64,6 @@ import s3Connectors from "../conversations/seed/skills/s3-connectors.md" with { 
 import selfHealing from "../conversations/seed/skills/self-healing.md" with { type: "text" };
 import skCliReference from "../conversations/seed/skills/sk-cli-reference.md" with { type: "text" };
 import subkitConcepts from "../conversations/seed/skills/subkit-concepts.md" with { type: "text" };
-import subkitSupportReporting from "../conversations/seed/skills/subkit-support-reporting.md" with {
-  type: "text",
-};
 import troubleshootingWorkflowFailures from "../conversations/seed/skills/troubleshooting-workflow-failures.md" with {
   type: "text",
 };
@@ -149,7 +146,6 @@ export const EMBEDDED_SKILL_SEEDS: readonly EmbeddedSeedFile[] = [
   { file: "self-healing.md", content: selfHealing },
   { file: "sk-cli-reference.md", content: skCliReference },
   { file: "subkit-concepts.md", content: subkitConcepts },
-  { file: "subkit-support-reporting.md", content: subkitSupportReporting },
   { file: "troubleshooting-workflow-failures.md", content: troubleshootingWorkflowFailures },
   { file: "webhooks-and-triggers.md", content: webhooksAndTriggers },
   { file: "when-something-is-stuck.md", content: whenSomethingIsStuck },

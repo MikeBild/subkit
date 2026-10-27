@@ -200,6 +200,38 @@ test("a later explicit run request lifts an earlier no-run veto for the turn", a
   });
 });
 
+test("a later explicit delivery request lifts an earlier draft-only instruction", async () => {
+  const created = await conversation();
+  await userTurns(created.id, [
+    "Erstelle einen Entwurf, aber führe ihn nicht aus.",
+    "Bitte sende dieses Problem jetzt an den Dienst.",
+  ]);
+  expect(
+    await turnExecutionSuppression({
+      db: testDb.db,
+      tenant_id,
+      conversation_id: created.id,
+      recent_user_message: "Bitte sende dieses Problem jetzt an den Dienst.",
+    }),
+  ).toEqual({ live: false, all: false });
+});
+
+test("a later case status request permits a saved read after a draft-only instruction", async () => {
+  const created = await conversation();
+  await userTurns(created.id, [
+    "Erstelle einen Entwurf, aber führe ihn nicht aus.",
+    "Wie steht meine Anfrage Nummer 5?",
+  ]);
+  expect(
+    await turnExecutionSuppression({
+      db: testDb.db,
+      tenant_id,
+      conversation_id: created.id,
+      recent_user_message: "Wie steht meine Anfrage Nummer 5?",
+    }),
+  ).toEqual({ live: false, all: false });
+});
+
 test("a no-run veto still holds for neutral turns after it", async () => {
   const created = await conversation();
   await userTurns(created.id, [

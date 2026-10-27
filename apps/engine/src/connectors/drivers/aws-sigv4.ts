@@ -6,7 +6,7 @@ export interface SigV4SignParams {
   method: string;
   url: URL;
   headers: Record<string, string>;
-  body?: string | undefined;
+  body?: string | Buffer | undefined;
   region: string;
   service: string;
   credential: AwsSigV4CredentialValue;

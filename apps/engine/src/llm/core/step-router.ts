@@ -201,6 +201,7 @@ const ALWAYS_AVAILABLE: ReadonlySet<string> = new Set([
   "inspect_authoring_context",
   "inspect_playbook",
   "update_playbook",
+  "export_diagnostic_context",
 ]);
 
 function activeToolsForStage(

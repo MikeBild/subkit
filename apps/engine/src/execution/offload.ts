@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
@@ -87,12 +87,26 @@ export function isOffloadRef(v: unknown): v is OffloadRef {
   );
 }
 
+async function readBoundedObject(key: string, limit: number): Promise<Buffer> {
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for await (const chunk of await getObjectStore().openRead(key)) {
+    total += chunk.byteLength;
+    if (total > limit) throw new Error("Offloaded data exceeds the collection limit");
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks, total);
+}
+
 export async function resolveOffloaded(
   db: Db,
   tenant_id: string,
   ref: OffloadRef,
   signal?: AbortSignal,
+  maxBytes?: number,
 ): Promise<unknown> {
+  if (maxBytes !== undefined && (!Number.isSafeInteger(maxBytes) || maxBytes < 1))
+    throw new Error("Invalid offload read limit");
   const parsed = OffloadRefSchema.safeParse(ref);
   if (!parsed.success) {
     const rawUri =
@@ -120,6 +134,9 @@ export async function resolveOffloaded(
           eq(executionFixtures.tenant_id, tenant_id),
           eq(executionFixtures.id, id),
           eq(executionFixtures.kind, "offload"),
+          ...(maxBytes === undefined
+            ? []
+            : [sql`octet_length(${executionFixtures.body}::text) <= ${maxBytes}`]),
         ),
       )
       .limit(1);
@@ -159,7 +176,11 @@ export async function resolveOffloaded(
       if (!key.startsWith(`offload/${tenant_id}/`))
         throw new OffloadResolutionError(uri, "object key does not belong to this tenant");
       await assertHostedObjectReadable(tenant_id, key, db);
-      const bytes = await raceAbort(getObjectStore().get(key), signal, uri);
+      const bytes = await raceAbort(
+        maxBytes === undefined ? getObjectStore().get(key) : readBoundedObject(key, maxBytes),
+        signal,
+        uri,
+      );
       if (parsed.data.sha256) {
         const actual = createHash("sha256").update(bytes).digest("hex");
         if (actual !== parsed.data.sha256) {

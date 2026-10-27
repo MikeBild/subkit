@@ -25,7 +25,15 @@ function scan(text: string | null | undefined): ScannedIntent {
   const intent = detectUserIntent(text);
   const all = intent.suppressExecution === true;
   const live = all || intent.suppressLiveExecution === true;
-  return { live, all, run_request: !live && intent.forceTool === "run_workflow" };
+  return {
+    live,
+    all,
+    run_request:
+      !live &&
+      (intent.forceTool === "run_workflow" ||
+        intent.requestExternalAction === true ||
+        intent.requestExternalRead === true),
+  };
 }
 
 const NONE: ExecutionSuppression = { live: false, all: false };

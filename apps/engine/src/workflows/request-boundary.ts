@@ -99,6 +99,8 @@ export const RequestBoundarySchema = z
     base_url: z.string().url().nullable(),
     method: z.enum(HTTP_METHODS),
     origin: z.string().url(),
+    body_encoding: z.literal("multipart").optional(),
+    idempotency_key: z.object({ var: expression }).strict().optional(),
     segments: z
       .array(z.union([z.string(), z.object({ var: expression }).strict()]))
       .min(2)
@@ -222,8 +224,8 @@ export function compileRequestBoundary(
 ):
   | { boundary: RequestBoundary; refusal?: never }
   | { boundary?: never; refusal: RequestBoundaryRefusal } {
-  if (step.s3 || step.sql || step.mcp || step.graphql || step.xml || step.multipart)
-    return refuse("not_http_step");
+  if (step.s3 || step.sql || step.mcp || step.graphql || step.xml) return refuse("not_http_step");
+  if (step.multipart && step.pagination) return refuse("pagination_unsupported");
   const paging = step.pagination ? paginationShape(step.pagination) : null;
   if (step.pagination && !paging) return refuse("pagination_unsupported");
   if (step.pagination && paging === "unbounded") return refuse("pagination_unbounded");
@@ -238,13 +240,34 @@ export function compileRequestBoundary(
     else fixedQuery[key] = String(value);
   }
   variableQuery.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-  if (hasRuntimeValue(step.headers)) return refuse("runtime_header");
+  let idempotencyKey: { var: string } | undefined;
+  for (const [name, value] of Object.entries(step.headers ?? {})) {
+    if (hasRuntimeValue(name)) return refuse("runtime_header");
+    if (!hasRuntimeValue(value)) continue;
+    const whole = typeof value === "string" ? WHOLE_SEGMENT.exec(value) : null;
+    if (
+      name.toLowerCase() !== "idempotency-key" ||
+      idempotencyKey ||
+      !whole?.[1] ||
+      whole[1].startsWith("caller.") ||
+      !expression.safeParse(whole[1]).success
+    )
+      return refuse("runtime_header");
+    idempotencyKey = { var: whole[1] };
+  }
+  if (
+    idempotencyKey &&
+    Object.keys(step.headers ?? {}).filter((name) => name.toLowerCase() === "idempotency-key")
+      .length !== 1
+  )
+    return refuse("runtime_header");
   const {
     body: _body,
     path: _path,
     url: _url,
     query: _query,
     headers: _headers,
+    multipart: _multipart,
     for_each: _forEach,
     data_selector: _dataSelector,
     ...fixed
@@ -262,6 +285,7 @@ export function compileRequestBoundary(
   const used = [
     ...split.segments.flatMap((part) => (typeof part === "string" ? [] : [part.var])),
     ...variableQuery.map((entry) => entry.var),
+    ...(idempotencyKey ? [idempotencyKey.var] : []),
   ];
   const declared = Object.keys(scope.data.variables);
   if (
@@ -340,6 +364,8 @@ export function compileRequestBoundary(
     base_url,
     method,
     origin: resolved.origin,
+    ...(step.multipart ? { body_encoding: "multipart" as const } : {}),
+    ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
     segments,
     variables: scope.data.variables,
     query: { fixed: fixedQuery, variable: variableQuery },
@@ -487,7 +513,14 @@ function matchQuery(boundary: RequestBoundary, url: URL): boolean {
 }
 
 export type RequestBoundaryViolation =
-  | { kind: "boundary_invalid" | "request_missing" | "unsupported_body" | "url_invalid" }
+  | {
+      kind:
+        | "boundary_invalid"
+        | "request_missing"
+        | "unsupported_body"
+        | "url_invalid"
+        | "idempotency_key";
+    }
   | { kind: "method"; actual: string; reviewed: string }
   | { kind: "target"; reviewed: string; actual: string }
   | { kind: "query"; detail: RequestQueryViolation }
@@ -503,6 +536,20 @@ export function requestBoundaryViolation(
   if (!request) return { kind: "request_missing" };
   if (request.unsupported_body) return { kind: "unsupported_body" };
   const reviewed = parsed.data;
+  if (reviewed.body_encoding !== request.body_encoding) return { kind: "unsupported_body" };
+  if (reviewed.idempotency_key) {
+    const keys = Object.entries(request.headers).filter(
+      ([name]) => name.toLowerCase() === "idempotency-key",
+    );
+    const value = keys[0]?.[1];
+    if (
+      keys.length !== 1 ||
+      !value ||
+      !/^[A-Za-z0-9._:-]{1,128}$/.test(value) ||
+      !valueAllowed(reviewed.variables[reviewed.idempotency_key.var], value)
+    )
+      return { kind: "idempotency_key" };
+  }
   const method = request.method.toUpperCase();
   if (method !== reviewed.method)
     return { kind: "method", actual: method, reviewed: reviewed.method };
@@ -524,6 +571,20 @@ export function requestBoundaryViolation(
     return request.body !== null && request.body !== undefined
       ? { kind: "body_forbidden", method: reviewed.method }
       : null;
+  if (request.body_encoding === "multipart") {
+    const bytes = request.body_bytes;
+    if (
+      request.body === null ||
+      request.body === undefined ||
+      bytes === undefined ||
+      !Number.isSafeInteger(bytes) ||
+      bytes < 0
+    )
+      return { kind: "unsupported_body" };
+    return bytes > reviewed.max_body_bytes
+      ? { kind: "body_size", bytes, max_body_bytes: reviewed.max_body_bytes }
+      : null;
+  }
   if (request.body === null || request.body === undefined) return null;
   const wire = typeof request.body === "string" ? request.body : JSON.stringify(request.body);
   if (wire === undefined) return { kind: "unsupported_body" };
@@ -535,6 +596,8 @@ export function requestBoundaryViolation(
 
 export function describeRequestBoundaryViolation(violation: RequestBoundaryViolation): string {
   switch (violation.kind) {
+    case "idempotency_key":
+      return "the idempotency key is missing, ambiguous or outside its reviewed value rule";
     case "body_size":
       return `the body is ${violation.bytes} bytes but \`boundary.max_body_bytes\` is ${violation.max_body_bytes}`;
     case "target":
@@ -556,7 +619,7 @@ export function describeRequestBoundaryViolation(violation: RequestBoundaryViola
     case "body_forbidden":
       return `a ${violation.method} request under a boundary may not carry a body`;
     case "unsupported_body":
-      return "the body cannot be measured (multipart or file)";
+      return "the body encoding or measured size does not match the reviewed request";
     default:
       return "the request could not be compared with the boundary";
   }

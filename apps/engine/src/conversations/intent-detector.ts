@@ -6,6 +6,8 @@ import type { AuthoringSummary, ConversationPermissionMode } from "./types.ts";
 
 export interface DetectedIntent {
   forceTool?: string;
+  requestExternalAction?: boolean;
+  requestExternalRead?: boolean;
   startNewWorkflow?: boolean;
   forceNoTools?: boolean;
   suppressExecution?: boolean;
@@ -17,6 +19,12 @@ const RUN_WORKFLOW_PATTERNS = [
   /\b(führe|starte|run|execute|dispatch|trigger)\s.+?\b(workflow|tool|pipeline|aus)/i,
   /\bausf[üu]hren\b/i,
 ];
+
+const EXTERNAL_ACTION_PATTERN =
+  /\b(?:sende|schicke|übermittle|übertrage|melde|send|submit)\b.{0,120}\b(?:problem|fehler|anfrage|bericht|report|ticket|daten|informationen|das|dieses|this)\b.{0,80}\b(?:an|to|via|über)\b/i;
+
+const EXTERNAL_READ_PATTERN =
+  /\b(?:wie\s+steht|status(?:\s+von)?|stand\s+(?:meiner|meines|der|des)|what\s+is\s+the\s+status|check\s+(?:the\s+)?status|show\s+(?:the\s+)?status)\b.{0,120}\b(?:anfrage|ticket|fall|vorgang|auftrag|bestellung|case|report|request|order)\b/i;
 
 const NEGATED_RUN_PATTERNS = [
   /\b(?:führe|fuehre)\b.{0,80}\b(?:nicht|niemals|keinesfalls)\b.{0,24}\baus\b/i,
@@ -123,9 +131,26 @@ export function detectUserIntent(
   const authoringSignal =
     matchesWorkflowAuthoringPattern(text) ||
     matchesPositiveWorkflowCreationPattern(text, NEW_WORKFLOW_MODIFIER_PATTERN);
+  const externalRead = EXTERNAL_READ_PATTERN.exec(text);
+  const externalReadClause = externalRead
+    ? text.slice(externalRead.index).split(/[.!?;]/, 1)[0]
+    : "";
+  const requestsExternalRead =
+    externalRead !== null &&
+    !/\b(?:nicht|niemals|keinesfalls|kein(?:e|en|em|er|es)?|don't|do\s+not|never)\b/i.test(
+      externalReadClause ?? "",
+    );
   if (
     [...NEGATED_RUN_PATTERNS, ...NEGATED_PREVIEW_PATTERNS].some((pattern) => pattern.test(text))
   ) {
+    if (requestsExternalRead) {
+      return {
+        requestExternalRead: true,
+        suppressExecution: true,
+        suppressLiveExecution: true,
+        reason: "external_read_with_no_run_intent",
+      };
+    }
     return authoringSignal
       ? {
           startNewWorkflow: true,
@@ -149,7 +174,15 @@ export function detectUserIntent(
       return { forceTool: "run_workflow", reason: "explicit_run_intent" };
     }
   }
-  return detectRemainingIntent(text, authoringSignal, coverage);
+  const remaining = detectRemainingIntent(text, authoringSignal, coverage);
+  const externalAction = EXTERNAL_ACTION_PATTERN.exec(text);
+  if (
+    externalAction &&
+    !/\b(?:nicht|niemals|keinesfalls|kein(?:e|en|em|er|es)?)\b/i.test(externalAction[0])
+  ) {
+    return { ...remaining, requestExternalAction: true };
+  }
+  return requestsExternalRead ? { ...remaining, requestExternalRead: true } : remaining;
 }
 
 function detectRemainingIntent(

@@ -925,15 +925,19 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
   const executionGate: ExecutionToolGateDecision = resolveExecutionToolGate({
     hasBoundSavedWorkflow: hasBoundSavedWorkflowTarget,
     explicitlyNamedWorkflowSlug: namedWorkflowSlug,
+    explicitExternalAction:
+      detectedIntent.requestExternalAction === true || detectedIntent.requestExternalRead === true,
     ...(p.surface ? { surface: p.surface } : {}),
     suppressExecution: executionSuppression.all,
     suppressLiveExecution: executionSuppression.live,
   });
+  const readTool = detectedIntent.requestExternalRead === true ? tools.run_workflow : undefined;
   const removedExecutionTools = applyExecutionToolGate(
     tools,
     executionGate,
     syntheticWorkflowSlugs,
   );
+  if (readTool && detectedIntent.requestExternalRead === true) tools.run_workflow = readTool;
   if (removedExecutionTools > 0) {
     logger.debug({
       module: "conversation",
@@ -1213,6 +1217,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
           if (liveStage !== undefined) stepRouterSignals.stage = liveStage;
           stepRouterSignals.hasPersistedWorkflow =
             workflowIdForTurn !== null ||
+            executionGate.exposeExecution ||
             (draft.summary?.active_target.kind === "workflow" &&
               draft.summary?.active_target.lifecycle_state === "persisted") ||
             draft.summary?.persisted_resources.some((resource) => resource.kind === "workflow") ===
@@ -1702,7 +1707,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
     }
   }
 
-  const completionEvidence = completionEvidenceGuard(events, draft);
+  const completionEvidence = completionEvidenceGuard(events, draft, ingestedUserMessage);
   if (completionEvidence && signals.lastAssistantMessageId) {
     await updateMessageContent(p.db, signals.lastAssistantMessageId, {
       text: completionEvidence,

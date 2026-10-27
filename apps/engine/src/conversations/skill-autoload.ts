@@ -52,6 +52,7 @@ export async function loadActivationCatalog(
 ): Promise<ActivationRecord[]> {
   const rows = await db
     .select({
+      id: skills.id,
       slug: skills.slug,
       activates_when: skills.activates_when,
       maturity: skills.maturity,
@@ -63,11 +64,10 @@ export async function loadActivationCatalog(
     .where(and(eq(skills.tenant_id, tenant_id), eq(skills.lifecycle, "active")));
   const out: ActivationRecord[] = [];
   for (const row of rows) {
-    if (row.slug === null) continue;
     if (row.maturity === "experimental") continue;
     const acts = Array.isArray(row.activates_when) ? (row.activates_when as SkillActivation[]) : [];
     out.push({
-      slug: row.slug,
+      slug: row.slug ?? row.id,
       activates_when: acts,
       maturity: row.maturity as SkillMaturity,
       side_effects: row.side_effects as SkillSideEffects,

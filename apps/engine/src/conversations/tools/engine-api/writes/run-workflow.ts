@@ -20,6 +20,7 @@ import {
   withWorkflowExecution,
 } from "../../../authoring-state.ts";
 import { hydrateBoundWorkflow } from "../../../draft.ts";
+import { detectUserIntent } from "../../../intent-detector.ts";
 import { stampStepTraceFingerprints } from "../../../step-fingerprint.ts";
 import type { DraftDocument } from "../../../types.ts";
 import { pauseForUserInput } from "../../ask-user/common.ts";
@@ -27,6 +28,7 @@ import { buildGateError, buildLifecyclePayload } from "../../authoring-contract.
 import type { ConversationTool } from "../../index.ts";
 import { buildRawStepResults } from "../../step-results.ts";
 import { sampleWorkflowOutputForLlm, truncateStepPreviewForLlm } from "../../truncate.ts";
+import { loadWorkflowInputFile, WorkflowInputFileSchema } from "../../workflow-file-input.ts";
 import { workflowInputSlot } from "../../workflow-input-normalize.ts";
 import { activationRequiredRefusal } from "./activation-required.ts";
 import { detectRepairLoop } from "./repair-loop-history.ts";
@@ -36,6 +38,9 @@ const Input = z
   .object({
     workflow: z.string().min(1).max(256).optional(),
     input: workflowInputSlot.optional(),
+    input_file: WorkflowInputFileSchema.optional().describe(
+      "Load JSON input directly from a ready attachment in this conversation, verified by SHA-256. Explicit input fields override its top-level fields. File contents stay outside the model prompt.",
+    ),
     environment: z
       .enum(["dev", "prod"])
       .optional()
@@ -50,6 +55,12 @@ const Input = z
         "Run only this exact active version. Use for a test that was prepared against a reviewed version.",
       ),
     idempotency_key: z.string().min(1).max(200).optional(),
+    preserve_draft: z
+      .boolean()
+      .optional()
+      .describe(
+        "Keep the current conversation draft, authoring target and execution checkpoints unchanged while running an auxiliary workflow.",
+      ),
     include_step_trace: z.boolean().optional(),
     include_step_results: z.boolean().optional(),
     execute_writes: z.boolean().optional(),
@@ -71,7 +82,7 @@ function withStatus(
 export const runWorkflowTool: ConversationTool = {
   name: "run_workflow",
   description:
-    "Start a new run of an ALREADY-SAVED workflow. Use only when the user requests a new run or preview; execute_writes: false still starts a DEV run and is not a historical read. For inspection of an existing run, use execution history, get_execution, inspect_execution_step or diagnose_latest_execution instead. Never call this tool when the user says not to run, execute, test-run or start a workflow. Use `wf_<slug>` only when the user asks to perform the actual workflow now; it may request a one-shot live execution decision. Accepts `workflow` as a slug or UUID. Every start requires matching local execution authority; otherwise writes are HELD and the envelope reports writes_held + held_step_ids. Setting execute_writes: true does not grant authority or bypass limits. To verify a DRAFT, use `dry_run_workflow`, never `run_workflow`; this starts a preview run and is prohibited by an explicit no-run instruction. A saved inactive draft is previewed with `dry_run_workflow` (held writes, activates nothing); `run_workflow` starts runs of the active version only. Never call this tool when the user says not to activate anything or not to cause live effects. Do NOT use `run_workflow` to build/create/test a NEW workflow (even if the user pasted example data or JSONata) — that is authoring intent: call `author_workflow` (then `edit_workflow_patch` for edits).",
+    "Start an ALREADY-SAVED workflow. For a request to read current data from a connected service, choose a saved workflow with tool_effect read, even when the user says not to run a separate draft; pass its slug or UUID explicitly. When the user gives a human case number but the detail workflow needs an ID, run the saved list operation first, match the number, then run the saved detail operation. A read workflow does not edit or run another draft. For inspection of an existing execution, use execution history, get_execution, inspect_execution_step or diagnose_latest_execution instead. Never start a write workflow when the user says not to run, execute, test-run or start it. Use `wf_<slug>` only when the user asks to perform that workflow now; it may request a one-shot live execution decision. Every start requires matching local execution authority; otherwise writes are HELD. Setting execute_writes: true does not grant authority or bypass limits. To verify a DRAFT, use `dry_run_workflow`; an explicit no-run instruction prohibits its preview. A saved inactive draft is previewed with `dry_run_workflow` (held writes, activates nothing); `run_workflow` starts runs of the active version only. Do NOT use `run_workflow` to build/create/test a NEW workflow — that is authoring intent: call `author_workflow`.",
   inputSchema: Input,
   category: "tenant_write",
   visible_when_readonly: true,
@@ -124,6 +135,25 @@ export const runWorkflowTool: ConversationTool = {
     }
     const wf = await ctx.engineClient.workflows.get(workflowId);
     if (!wf) return { ok: false, data: withStatus({ error: "workflow_not_found" }, "failed") };
+    const statusIntent = detectUserIntent(ctx.recentUserMessage);
+    if (
+      statusIntent.requestExternalRead === true &&
+      statusIntent.requestExternalAction !== true &&
+      (wf.definition as WorkflowDef).tool_effect !== "read"
+    ) {
+      return {
+        ok: false,
+        data: withStatus(
+          {
+            error_code: "status_request_read_only",
+            message:
+              "The user asked to read an existing status. Choose a saved read operation; no changes were made.",
+            next_best_actions: ["find_workflow", "run_workflow"],
+          },
+          "failed",
+        ),
+      };
+    }
     const requestSource = ctx.direct_mcp_invocation === true ? "mcp" : "chat";
     const sensitive = (wf.definition as WorkflowDef).execution_privacy === "sensitive";
     if (
@@ -172,7 +202,12 @@ export const runWorkflowTool: ConversationTool = {
       ctx.tenant_id,
       workflowId,
       environment,
-      args,
+      args.input_file
+        ? {
+            ...args,
+            input: { ...(await loadWorkflowInputFile(ctx, args.input_file)), ...args.input },
+          }
+        : args,
     );
     const suppliedInputIsEmpty =
       suppliedInput === undefined || Object.keys(suppliedInput).length === 0;
@@ -189,8 +224,7 @@ export const runWorkflowTool: ConversationTool = {
         return v === undefined || v === null || (typeof v === "string" && v.trim() === "");
       });
       if (missingRequired.length > 0 && propertyNames.length > 0) {
-        const requiredSet = new Set(requiredKeys);
-        const fields = propertyNames.map((name) => {
+        const fields = missingRequired.map((name) => {
           const prop =
             properties[name] && typeof properties[name] === "object"
               ? (properties[name] as Record<string, unknown>)
@@ -215,9 +249,9 @@ export const runWorkflowTool: ConversationTool = {
                 : undefined;
           return {
             name,
-            label: name,
+            label: typeof prop.title === "string" && prop.title.trim() ? prop.title : name,
             type,
-            required: requiredSet.has(name),
+            required: true,
             ...(typeof prop.description === "string" ? { placeholder: prop.description } : {}),
             ...(defaultValue !== undefined ? { default: defaultValue } : {}),
           };
@@ -648,7 +682,7 @@ export const runWorkflowTool: ConversationTool = {
       const authorsNothing =
         getWorkflowDraft(currentDraft).steps.length === 0 &&
         !currentDraft.state?.persisted_resources.some((resource) => resource.kind === "workflow");
-      if (!runsAuthoringTarget && authorsNothing)
+      if (!args.preserve_draft && !runsAuthoringTarget && authorsNothing)
         await ctx.db
           .update(conversations)
           .set({ target_workflow_id: workflowId, updated_at: new Date() })
@@ -658,40 +692,44 @@ export const runWorkflowTool: ConversationTool = {
               eq(conversations.id, ctx.conversation_id),
             ),
           );
-      const boundDraft = runsAuthoringTarget
-        ? bindPersistedWorkflow(
-            previewed(currentDraft),
-            {
-              kind: "workflow",
-              id: workflowId,
-              slug: wf.slug,
-              name: wf.name,
-              version_id: wf.current_version_id,
-              version: wf.current_version,
-              environment: null,
-              saved_at: wf.updated_at.toISOString(),
-            },
-            {
-              tool_name:
-                currentDraft.state?.checkpoints.workflow_persisted?.verified_by_tool ??
-                WORKFLOW_BINDING_TOOL,
-            },
-          )
-        : authorsNothing
-          ? previewed(await hydrateBoundWorkflow(ctx.tenant_id, workflowId, currentDraft, ctx.db))
-          : currentDraft;
-      const nextDraft = withWorkflowExecution(boundDraft, {
-        execution_id: result.execution_id,
-        workflow_id: workflowId,
-        workflow_version_id: wf.current_version_id,
-        status: payloadStatus,
-        environment,
-        warnings_count: result.warnings?.length ?? 0,
-        recorded_at: new Date().toISOString(),
-        diagnosis_available: diagnosisAvailable,
-        ...(requiresRepair ? { requires_repair: true } : {}),
-      });
-      await ctx.setDraft(nextDraft);
+      const boundDraft = args.preserve_draft
+        ? currentDraft
+        : runsAuthoringTarget
+          ? bindPersistedWorkflow(
+              previewed(currentDraft),
+              {
+                kind: "workflow",
+                id: workflowId,
+                slug: wf.slug,
+                name: wf.name,
+                version_id: wf.current_version_id,
+                version: wf.current_version,
+                environment: null,
+                saved_at: wf.updated_at.toISOString(),
+              },
+              {
+                tool_name:
+                  currentDraft.state?.checkpoints.workflow_persisted?.verified_by_tool ??
+                  WORKFLOW_BINDING_TOOL,
+              },
+            )
+          : authorsNothing
+            ? previewed(await hydrateBoundWorkflow(ctx.tenant_id, workflowId, currentDraft, ctx.db))
+            : currentDraft;
+      const nextDraft = args.preserve_draft
+        ? currentDraft
+        : withWorkflowExecution(boundDraft, {
+            execution_id: result.execution_id,
+            workflow_id: workflowId,
+            workflow_version_id: wf.current_version_id,
+            status: payloadStatus,
+            environment,
+            warnings_count: result.warnings?.length ?? 0,
+            recorded_at: new Date().toISOString(),
+            diagnosis_available: diagnosisAvailable,
+            ...(requiresRepair ? { requires_repair: true } : {}),
+          });
+      if (!args.preserve_draft) await ctx.setDraft(nextDraft);
       const firstFailedStep =
         payloadStatus === "failed"
           ? result.steps.find((s) => s.status === "failed" || s.status === "timed_out")
@@ -714,6 +752,7 @@ export const runWorkflowTool: ConversationTool = {
             workflow_id: workflowId,
             workflow_version_id: wf.current_version_id,
             workflow_version: wf.current_version,
+            tool_effect: (wf.definition as WorkflowDef).tool_effect,
             execution_authority_id: admitted?.execution_authority_id ?? null,
             hold_writes: holdWrites,
             ...(heldStepIds.length > 0

@@ -136,6 +136,47 @@ describe("OffloadRef round-trip + resolveOffloaded", () => {
     expect(resolved).toEqual(payload);
   });
 
+  test("bounded diagnostic reads reject oversized fixtures and object streams", async () => {
+    const payload = { text: "large".repeat(40) };
+    const bytes = Buffer.from(JSON.stringify(payload));
+    const [fixture] = await ctx.testDb.db
+      .insert(executionFixtures)
+      .values({
+        tenant_id: ctx.tenantId,
+        kind: "offload",
+        execution_id: null,
+        step_id: null,
+        body: payload,
+        byte_size: bytes.length,
+      })
+      .returning({ id: executionFixtures.id });
+    const ref: OffloadRef = {
+      $offloaded: true,
+      storage_uri: `fixture://${fixture!.id}`,
+      preview: "",
+      size_bytes: bytes.length,
+    };
+    await expect(
+      resolveOffloaded(ctx.testDb.db, ctx.tenantId, ref, undefined, 20),
+    ).rejects.toThrow();
+    expect(await resolveOffloaded(ctx.testDb.db, ctx.tenantId, ref, undefined, 1000)).toEqual(
+      payload,
+    );
+    const key = `offload/${ctx.tenantId}/bounded-result`;
+    await storage.store.put(key, bytes);
+    const object = {
+      ...ref,
+      storage_uri: `s3://test/${key}`,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    };
+    await expect(
+      resolveOffloaded(ctx.testDb.db, ctx.tenantId, object, undefined, bytes.length - 1),
+    ).rejects.toThrow();
+    expect(
+      await resolveOffloaded(ctx.testDb.db, ctx.tenantId, object, undefined, bytes.length),
+    ).toEqual(payload);
+  });
+
   test("resolveOffloaded REFUSES a cross-tenant fixture id", async () => {
     const [otherTenant] = await ctx.testDb.db
       .insert(tenants)

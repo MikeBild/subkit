@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import "../tools/index.ts";
+import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import {
   auditLog,
@@ -9,15 +10,19 @@ import {
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
+import { attachInlineForTest } from "../../files/test-helpers.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { saveWorkflowDraft } from "../../workflows/drafts.ts";
 import { bindPersistedWorkflow } from "../authoring-state.ts";
 import { loadDraft } from "../draft.ts";
 import { runWorkflowTool } from "../tools/engine-api/writes/run-workflow.ts";
 import type { ToolContext } from "../tools/index.ts";
+import { loadWorkflowInputFile } from "../tools/workflow-file-input.ts";
 import type { DraftDocument } from "../types.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
 let ctx: ConversationTestCtx;
+const nextUuid = createDeterministicUuidFactory(0x5a_11);
 
 beforeAll(async () => {
   ctx = await createConversationTestCtx("run_workflow_tool");
@@ -81,6 +86,7 @@ function buildToolCtx(params: {
   draft: DraftDocument;
   setDraft: (next: DraftDocument) => Promise<void>;
   afterWorkflowRead?: (id: string) => Promise<void>;
+  recentUserMessage?: string;
 }): ToolContext {
   // biome-ignore lint/suspicious/noExplicitAny: minimal stub matching ToolContext
   const engineClientStub: any = {
@@ -132,6 +138,7 @@ function buildToolCtx(params: {
     connector_id: null,
     workflow_id: null,
     permission_mode: "auto",
+    ...(params.recentUserMessage ? { recentUserMessage: params.recentUserMessage } : {}),
     engineClient: engineClientStub,
     getDraft: () => params.draft,
     setDraft: params.setDraft,
@@ -139,6 +146,21 @@ function buildToolCtx(params: {
 }
 
 describe("run_workflow tool", () => {
+  test("a status question cannot start a workflow that has not declared a read effect", async () => {
+    const { workflow_id } = await seedWorkflow("status-read-guard");
+    const result = await runWorkflowTool.execute(
+      buildToolCtx({
+        conversation_id: nextUuid(),
+        draft: {} as DraftDocument,
+        setDraft: async () => {},
+        recentUserMessage: "Wie steht meine Anfrage Nummer 5?",
+      }),
+      { workflow: workflow_id, environment: "dev" },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.data).toMatchObject({ error_code: "status_request_read_only" });
+  });
+
   test("refuses a prepared run when its exact version is no longer active", async () => {
     const { workflow_id, version_id } = await seedWorkflow("prepared-version-stale");
     const [replacement] = await ctx.testDb.db
@@ -598,6 +620,94 @@ describe("run_workflow tool", () => {
     expect(row?.target_workflow_id).toBe(edited.workflow_id);
   });
 
+  test("file input is conversation-scoped and verified before workflow execution", async () => {
+    const saved = await seedWorkflow("file-input-workflow");
+    const [conversation, other] = await ctx.testDb.db
+      .insert(conversations)
+      .values([
+        { tenant_id: ctx.tenant_id, status: "active" },
+        { tenant_id: ctx.tenant_id, status: "active" },
+      ])
+      .returning();
+    if (!conversation || !other) throw new Error("conversation insert failed");
+    const content = JSON.stringify({ date: "from-file" });
+    const attachment = await attachInlineForTest({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenant_id,
+      conversation_id: conversation.id,
+      filename: "workflow-input.json",
+      content,
+    });
+    const source = {
+      id: attachment.file_id,
+      sha256: createHash("sha256").update(content).digest("hex"),
+    };
+    const draft = await loadDraft(ctx.tenant_id, conversation.id, ctx.testDb.db);
+    const toolCtx = buildToolCtx({
+      conversation_id: conversation.id,
+      draft,
+      setDraft: async () => {},
+    });
+    await expect(
+      loadWorkflowInputFile({ ...toolCtx, conversation_id: other.id }, source),
+    ).rejects.toThrow("not available");
+    await expect(
+      loadWorkflowInputFile(toolCtx, { ...source, sha256: "0".repeat(64) }),
+    ).rejects.toThrow("not available");
+    const result = await runWorkflowTool.execute(
+      toolCtx,
+      runWorkflowTool.inputSchema.parse({
+        workflow: saved.workflow_id,
+        input_file: source,
+        input: { date: "explicit-override" },
+        preserve_draft: true,
+      }),
+    );
+    expect(result.ok).toBe(true);
+    expect((result.data as { output: unknown }).output).toEqual({ date: "explicit-override" });
+  });
+
+  test("auxiliary execution preserves the complete authoring draft on request", async () => {
+    const edited = await seedWorkflow("preserved-draft");
+    const other = await seedWorkflow("auxiliary-run");
+    const [conversation] = await ctx.testDb.db
+      .insert(conversations)
+      .values({
+        tenant_id: ctx.tenant_id,
+        status: "active",
+        target_workflow_id: edited.workflow_id,
+      })
+      .returning();
+    if (!conversation) throw new Error("conversation insert failed");
+    const draft = await loadDraft(ctx.tenant_id, conversation.id, ctx.testDb.db);
+    const original = structuredClone(draft);
+    let updates = 0;
+    const result = await runWorkflowTool.execute(
+      buildToolCtx({
+        conversation_id: conversation.id,
+        draft,
+        setDraft: async () => {
+          updates += 1;
+        },
+      }),
+      runWorkflowTool.inputSchema.parse({
+        workflow: other.workflow_id,
+        input: { date: "today" },
+        preserve_draft: true,
+      }),
+    );
+    expect(result.ok).toBe(true);
+    expect(updates).toBe(0);
+    expect(draft).toEqual(original);
+    const [row] = await ctx.testDb.db
+      .select({ target: conversations.target_workflow_id })
+      .from(conversations)
+      .where(
+        and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, conversation.id)),
+      );
+    expect(row?.target).toBe(edited.workflow_id);
+  });
+
   test("a tolerated on_error=continue failure stays succeeded and surfaces step_failed_continued", async () => {
     const [workflow] = await ctx.testDb.db
       .insert(workflows)
@@ -753,7 +863,7 @@ describe("run_workflow tool", () => {
           input_schema: {
             type: "object",
             required: ["date"],
-            properties: { date: { type: "string" } },
+            properties: { date: { type: "string", title: "Welches Datum?" } },
           },
           steps: [
             {
@@ -811,7 +921,12 @@ describe("run_workflow tool", () => {
     };
     expect(pauseInput.question).toContain("g1-input-required");
     expect(pauseInput.fields).toEqual([
-      expect.objectContaining({ name: "date", type: "text", required: true }),
+      expect.objectContaining({
+        name: "date",
+        label: "Welches Datum?",
+        type: "text",
+        required: true,
+      }),
     ]);
     const intent = (result.pause!.input as { commit_intent?: Record<string, unknown> })
       .commit_intent;
@@ -983,6 +1098,19 @@ describe("run_workflow tool", () => {
     for (const f of pauseInput.fields) {
       expect(f).toMatchObject({ type: "text", required: true });
     }
+    const partial = await runWorkflowTool.execute(
+      buildToolCtx({
+        conversation_id: conversation.id,
+        draft: conversation.draft as DraftDocument,
+        setDraft: async () => {},
+      }),
+      { workflow: workflow.id, environment: "dev", input: { filename: "report.txt" } },
+    );
+    expect(
+      (partial.pause!.input as { fields: Array<{ name: string }> }).fields.map(
+        (field) => field.name,
+      ),
+    ).toEqual(["markdown"]);
   });
 
   test("W4: a SAVED workflow carrying input_schema_sample resolves the payload-derived contract end-to-end", async () => {

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { fileLinks, files } from "../../db/schema/index.ts";
 import { storageKey } from "../../files/resolver.ts";
@@ -31,6 +31,7 @@ export async function analyzeConversationAttachments(
         eq(fileLinks.tenant_id, p.tenant_id),
         eq(fileLinks.resource_type, "conversation"),
         eq(fileLinks.resource_id, p.conversation_id),
+        sql`${fileLinks.role} IS DISTINCT FROM ${"execution_data"}`,
       ),
     );
 

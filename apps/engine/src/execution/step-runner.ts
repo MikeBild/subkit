@@ -7,6 +7,7 @@ import { type ResolvedFile, SPOOL_THRESHOLD_BYTES, walkAndResolve } from "../fil
 import { log, logger } from "../logging/logger.ts";
 import { readWorkflowState, writeWorkflowState } from "../workflow-state/service.ts";
 import type { StepDef } from "../workflows/types.ts";
+import { resolveMultipartInput } from "./multipart-input.ts";
 import { maybeOffload, previewOf } from "./offload.ts";
 import { applySelector } from "./selectors.ts";
 import { finalizeStepRow } from "./state.ts";
@@ -173,7 +174,15 @@ export async function runStep(
 
       if (step.multipart && step.multipart.length > 0) {
         resolvedMultipart = [];
-        for (const part of step.multipart) {
+        for (const rawPart of step.multipart) {
+          const part = await resolveMultipartInput(rawPart, {
+            db: ctx.db,
+            tenant_id: ctx.tenant_id,
+            environment: ctx.execution_mode,
+            input: workflowInput,
+            scope,
+            ...(ctx.principal ? { principal: ctx.principal } : {}),
+          });
           if (part.file !== undefined) {
             const resolved = await walkAndResolve(part.file, resolverCtx, fileCache);
             const rf = resolved as unknown as ResolvedFile;

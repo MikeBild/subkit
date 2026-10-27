@@ -17,6 +17,10 @@ import {
   type ResolvedConnectorCredential,
   serializeXmlBody,
 } from "../../../connectors/drivers/http.ts";
+import {
+  multipartObservationHeaders,
+  prepareMultipartBody,
+} from "../../../connectors/drivers/http-multipart.ts";
 import { invokeMcpConnectorCall, mcpEgressInput } from "../../../connectors/drivers/mcp.ts";
 import {
   pgQueryCursor,
@@ -786,6 +790,7 @@ async function dispatchRequestStep(
     }
   };
   let lastMaterializedHttpRequest: MaterializedRequest | undefined;
+  let preparedMultipart: Awaited<ReturnType<typeof prepareMultipartBody>> | undefined;
   const beforeHttpDispatch = async (request: MaterializedRequest) => {
     if (
       p.ctx.hold_writes &&
@@ -820,14 +825,17 @@ async function dispatchRequestStep(
             method: held.method,
             url: held.url,
             headers: {
-              ...held.headers,
+              ...(preparedMultipart
+                ? multipartObservationHeaders(held.headers ?? {})
+                : held.headers),
               ...(idempotencyBase ? { "Idempotency-Key": `${idempotencyBase}:0` } : {}),
             },
             body: held.body,
+            ...(preparedMultipart ? preparedMultipart.observation : {}),
             ...(idempotencyBase
               ? { generated_idempotency: { key: `${idempotencyBase}:0`, page: 0 } }
               : {}),
-            ...(p.resolved_multipart || p.resolved_body_file ? { unsupported_body: true } : {}),
+            ...(p.resolved_body_file ? { unsupported_body: true } : {}),
           },
           max_attempts,
         )
@@ -837,8 +845,11 @@ async function dispatchRequestStep(
         ? preparedRequestReview({
             method: held.method,
             url: held.url,
-            headers: held.headers ?? {},
+            headers: preparedMultipart
+              ? multipartObservationHeaders(held.headers ?? {})
+              : (held.headers ?? {}),
             body: held.body,
+            ...(preparedMultipart ? preparedMultipart.observation : {}),
           })
         : null;
     const metadata = held.request_meta ?? {
@@ -2109,7 +2120,9 @@ async function dispatchRequestStep(
   const retryCounter = { value: 0 };
   const retry_policy = resolveRetryPolicy(p.step);
   const idempotencyBase =
-    requestIsReadOnly() || isIdempotent(p.step.method)
+    requestIsReadOnly() ||
+    isIdempotent(p.step.method) ||
+    Object.keys(headers).some((name) => name.toLowerCase() === "idempotency-key")
       ? null
       : `${p.ctx.execution_id}:${p.ctx.step_row_id}`;
   const lastIdempotencyKey: { value: string | null } = { value: null };
@@ -2161,15 +2174,21 @@ async function dispatchRequestStep(
     }
   }
 
+  let multipartFormData: FormData | undefined;
+  if (p.resolved_multipart && p.resolved_multipart.length > 0) {
+    multipartFormData = await buildMultipartBody(p.resolved_multipart);
+    preparedMultipart = await prepareMultipartBody(multipartFormData);
+  }
   if (p.step.boundary) {
     const declared = requestBoundary(p.step, activeConnector?.base_url ?? null);
     const violation = declared
       ? requestBoundaryViolation(declared, {
           method: p.step.method ?? "GET",
           url: heldRequestUrl,
-          headers,
+          headers: preparedMultipart ? multipartObservationHeaders(headers) : headers,
           body: (heldRequestBody ?? null) as MaterializedRequest["body"],
-          ...(p.resolved_multipart || p.resolved_body_file ? { unsupported_body: true } : {}),
+          ...(preparedMultipart ? preparedMultipart.observation : {}),
+          ...(p.resolved_body_file ? { unsupported_body: true } : {}),
         })
       : null;
     if (violation) {
@@ -2263,10 +2282,6 @@ async function dispatchRequestStep(
           }
           throw err;
         }
-      }
-      let multipartFormData: FormData | undefined;
-      if (p.resolved_multipart && p.resolved_multipart.length > 0) {
-        multipartFormData = await buildMultipartBody(p.resolved_multipart);
       }
       const callDoOnePage = () =>
         doOnePage({

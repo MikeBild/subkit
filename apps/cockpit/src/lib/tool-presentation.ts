@@ -10,6 +10,10 @@ interface BackgroundWords {
 }
 
 const BACKGROUND_TOOLS: Record<string, BackgroundWords> = {
+  export_diagnostic_context: {
+    active: "tool.background.exportDiagnosticContext.active",
+    past: "tool.background.exportDiagnosticContext.past",
+  },
   inspect_playbook: {
     active: "tool.background.inspectPlaybook.active",
     past: "tool.background.inspectPlaybook.past",
@@ -231,7 +235,7 @@ export function toolLabel(toolName: string, output?: unknown): ToolLabel {
   return { kind: "literal", text: humaniseToolName(toolName) };
 }
 
-export type WorkflowRunKind = "live" | "trial" | "refused";
+export type WorkflowRunKind = "live" | "read" | "trial" | "refused";
 
 function runPayload(output: unknown): Record<string, unknown> | null {
   if (output === null || typeof output !== "object" || Array.isArray(output)) return null;
@@ -249,6 +253,7 @@ export function isWorkflowRunTool(toolName: string): boolean {
 export function workflowRunKind(output: unknown): WorkflowRunKind | null {
   const payload = runPayload(output);
   if (!payload) return null;
+  if (payload.tool_effect === "read" && typeof payload.execution_id === "string") return "read";
   if (payload.hold_writes === true || payload.writes_held === true || payload.preview === true)
     return "trial";
   if (typeof payload.execution_id === "string" && payload.execution_id) return "live";
@@ -292,6 +297,8 @@ export function workflowRunTitleKey(
   const named = label.kind === "workflow";
   if (!named && !(label.kind === "key" && label.key === "tool.name.runWorkflow")) return null;
   if (notRun) return named ? "tool.name.runNamedWorkflow.notRun" : "tool.name.runWorkflow.notRun";
+  if (kind === "read")
+    return named ? "tool.name.runNamedWorkflow.read" : "tool.name.runWorkflow.read";
   if (kind === "trial")
     return named ? "tool.name.runNamedWorkflow.trial" : "tool.name.runWorkflow.trial";
   if (kind === "refused")

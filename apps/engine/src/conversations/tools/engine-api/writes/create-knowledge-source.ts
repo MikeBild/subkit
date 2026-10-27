@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { executionDataFileIds } from "../../../../files/model-context.ts";
 import type { FileRow } from "../../../../files/resolver.ts";
 import { requireFileForTenant, resolvedFromRow } from "../../../../files/resolver.ts";
 import { KnowledgeBudgetExceededError } from "../../../../knowledge/budgets.ts";
@@ -134,6 +135,15 @@ export const createKnowledgeSourceTool: ConversationTool = {
           },
         };
       }
+      if ((await executionDataFileIds(ctx.db, ctx.tenant_id, [row.id])).has(row.id))
+        return {
+          ok: false,
+          data: {
+            error: "execution_data_only",
+            reason:
+              "This file is reserved for direct workflow transfer and cannot enter knowledge or model context.",
+          },
+        };
       const resolved = resolvedFromRow(row);
       const stream = await resolved.openRead();
       buffer = await readAllBytes(stream);

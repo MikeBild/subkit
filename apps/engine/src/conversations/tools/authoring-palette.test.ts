@@ -42,6 +42,23 @@ describe("existing workflow authoring palette", () => {
 });
 
 describe("resolveExecutionToolGate", () => {
+  test("explicit external delivery can use a saved workflow while a draft is open", () => {
+    expect(
+      resolveExecutionToolGate({
+        hasBoundSavedWorkflow: false,
+        explicitlyNamedWorkflowSlug: null,
+        explicitExternalAction: true,
+      }),
+    ).toEqual({ exposeExecution: true, reason: "requested_saved_workflow_action" });
+    expect(
+      resolveExecutionToolGate({
+        hasBoundSavedWorkflow: false,
+        explicitlyNamedWorkflowSlug: null,
+        explicitExternalAction: true,
+        suppressExecution: true,
+      }).exposeExecution,
+    ).toBe(false);
+  });
   test("default-deny: no bound target and no named slug hides execution", () => {
     const d = resolveExecutionToolGate({
       hasBoundSavedWorkflow: false,

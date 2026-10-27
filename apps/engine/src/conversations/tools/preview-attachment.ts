@@ -2,6 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { fileLinks } from "../../db/schema/index.ts";
 import { isTextLike } from "../../files/content-type.ts";
+import { executionDataFileIds } from "../../files/model-context.ts";
 import { requireFileForTenant, storageKey } from "../../files/resolver.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -41,7 +42,10 @@ export const previewAttachmentTool: ConversationTool = {
         ),
       )
       .limit(1);
-    if (!link) {
+    if (
+      !link ||
+      (await executionDataFileIds(ctx.db, ctx.tenant_id, [link.file_id])).has(link.file_id)
+    ) {
       return {
         ok: false,
         data: {

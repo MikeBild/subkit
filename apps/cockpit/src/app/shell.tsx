@@ -4,7 +4,6 @@ import {
   ChevronsUpDown,
   History,
   Languages,
-  LifeBuoy,
   Loader2,
   LogOut,
   type LucideIcon,
@@ -30,7 +29,6 @@ import {
 import { InstallationImportDialog } from "@/components/cockpit/installation-import-dialog";
 import { ResponsiveWorkspace } from "@/components/cockpit/patterns/responsive-workspace";
 import { ReleaseNotesDialog } from "@/components/cockpit/release-notes-dialog";
-import { ReportProblem } from "@/components/cockpit/report-problem";
 import { WorkspaceSwitcher } from "@/components/cockpit/workspace-switcher";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -65,7 +63,6 @@ import {
 import { Toaster } from "@/components/ui/sonner";
 import type { TranslationKey } from "@/lib/i18n";
 import { type LocalePreference, useI18n } from "@/lib/i18n-context";
-import { mayReportProblem } from "@/lib/report-problem";
 import { type Theme, useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { RunOverlays } from "@/pages/runs";
@@ -382,7 +379,6 @@ function AccountMenu() {
   const { isMobile, setOpenMobile } = useSidebar();
   const [signingOut, setSigningOut] = useState(false);
   const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
-  const [reportRequest, setReportRequest] = useState(0);
   const identity = session.principal.email || session.principal.role_name || t("common.member");
   const role = localizedRole(session.principal.role_name || "member", t);
   const accountNavigation = visibleAccountNavigation(session.permissions);
@@ -500,16 +496,6 @@ function AccountMenu() {
             {t("releaseNotes.menu")}
           </DropdownMenuItem>
 
-          {mayReportProblem(session.permissions) ? (
-            <DropdownMenuItem
-              onSelect={() => setReportRequest((value) => value + 1)}
-              data-testid="account-report-problem"
-            >
-              <LifeBuoy data-icon="inline-start" />
-              {t("report.menu")}
-            </DropdownMenuItem>
-          ) : null}
-
           <DropdownMenuSub>
             <DropdownMenuSubTrigger data-testid="account-profile-menu">
               <UserRound data-icon="inline-start" />
@@ -597,9 +583,6 @@ function AccountMenu() {
         </DropdownMenuContent>
       </DropdownMenu>
       <ReleaseNotesDialog open={releaseNotesOpen} onOpenChange={setReleaseNotesOpen} />
-      {reportRequest > 0 ? (
-        <ReportProblem key={reportRequest} permissions={session.permissions} />
-      ) : null}
     </>
   );
 }

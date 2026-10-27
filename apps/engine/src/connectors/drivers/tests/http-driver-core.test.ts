@@ -195,6 +195,63 @@ describe("buildRequestPlan — credential resolution", () => {
 });
 
 describe("executePlannedHttpRequest", () => {
+  test("multipart review binds the exact file sent and refusal prevents dispatch", async () => {
+    let calls = 0;
+    const server = await createMockServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      req.on("end", async () => {
+        calls++;
+        const body = Buffer.concat(chunks);
+        const form = await new Response(body, {
+          headers: { "content-type": String(req.headers["content-type"]) },
+        }).formData();
+        jsonResponse(res, 200, {
+          bytes: body.byteLength,
+          file: await (form.get("file") as File).text(),
+        });
+      });
+    });
+    const form = new FormData();
+    form.append("file", new Blob(["reviewed-file"]), "fixture.bin");
+    let reviewedBytes = 0;
+    const params = {
+      exec: ctx.db,
+      tenant_id: tenantId,
+      method: "POST",
+      url: new URL(`${server.baseUrl}/upload`),
+      headers: { "Content-Type": "text/plain" },
+      multipartBody: form,
+      signal: new AbortController().signal,
+    };
+    try {
+      const result = await executePlannedHttpRequest({
+        ...params,
+        before_dispatch: async (request) => {
+          expect(request.body_encoding).toBe("multipart");
+          expect(request.headers["content-type"]).toBe("multipart/form-data");
+          expect(request.headers["Content-Type"]).toBeUndefined();
+          expect(JSON.stringify(request.body)).not.toContain("reviewed-file");
+          reviewedBytes = request.body_bytes ?? 0;
+          form.set("file", new Blob(["changed-after-review"]), "fixture.bin");
+          return { redirect: "manual" };
+        },
+      });
+      expect(result.body).toEqual({ bytes: reviewedBytes, file: "reviewed-file" });
+      expect(calls).toBe(1);
+      await expect(
+        executePlannedHttpRequest({
+          ...params,
+          before_dispatch: async () => {
+            throw new Error("approval refused");
+          },
+        }),
+      ).rejects.toThrow("approval refused");
+      expect(calls).toBe(1);
+    } finally {
+      await server.close();
+    }
+  });
   test("rejects on abort even when the transport promise ignores the signal", async () => {
     const controller = new AbortController();
     const transportThatNeverSettles = (() =>

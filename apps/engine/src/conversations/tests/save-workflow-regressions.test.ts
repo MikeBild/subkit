@@ -154,10 +154,12 @@ describe("workflow save regressions", () => {
     const reply = result.result.events
       .filter((event) => event.type === "message" && event.role === "assistant")
       .at(-1);
-    expect(reply).toMatchObject({ content: { text: expect.stringContaining("not saved") } });
+    expect(reply).toMatchObject({
+      content: { text: expect.stringContaining("nicht gespeichert") },
+    });
     const detail = await getConversation(ctx.tenant_id, conversation.id, ctx.testDb.db);
     const lastMessage = detail?.messages.at(-1)?.content as { text?: unknown } | undefined;
-    expect(lastMessage?.text).toContain("not saved");
+    expect(lastMessage?.text).toContain("nicht gespeichert");
   });
 
   test("a short auto-mode approval follows the draft summary into save_workflow_draft", async () => {

@@ -111,7 +111,24 @@ describe("completionEvidenceGuard", () => {
           output: { data: { writes_held: true } },
         },
       ]),
-    ).toContain("not a complete live test");
+    ).toContain("did not run");
+  });
+
+  test("explains a held action in the user's language without technical terms", () => {
+    const message = completionEvidenceGuard(
+      [
+        {
+          type: "tool_result",
+          call_id: "run-1",
+          tool: "run_workflow",
+          output: { data: { writes_held: true } },
+        },
+      ],
+      null,
+      "Bitte sende meine Anfrage an den Support.",
+    );
+    expect(message).toContain("nicht ausgeführt");
+    expect(message).not.toContain("workflow");
   });
 
   test("does not let an older held run override a later successful run", () => {
@@ -149,7 +166,7 @@ describe("completionEvidenceGuard", () => {
           output: { data: { workflow_id: "workflow-1", status: "queued" } },
         },
       ]),
-    ).toContain("not a complete live test");
+    ).toContain("did not run");
   });
 
   test("keeps a held current version distinct from an older successful version", () => {
@@ -176,7 +193,7 @@ describe("completionEvidenceGuard", () => {
           },
         },
       ]),
-    ).toContain("not a complete live test");
+    ).toContain("did not run");
   });
 
   test("guards a later no-tool turn while its draft conflict remains current", () => {

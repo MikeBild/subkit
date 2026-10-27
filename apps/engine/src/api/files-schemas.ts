@@ -32,7 +32,20 @@ export function toFileId(uuid: string): string {
   return `fid_${uuid}`;
 }
 
-export const FileRefSchema = z.object({ $file: FileIdSchema }).openapi("FileRef");
+export const FileByteRangeSchema = z
+  .object({
+    start: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    length: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+  })
+  .strict()
+  .refine((range) => Number.isSafeInteger(range.start + range.length), {
+    message: "file range exceeds the supported size",
+  })
+  .openapi("FileByteRange");
+
+export const FileRefSchema = z
+  .object({ $file: FileIdSchema, $range: FileByteRangeSchema.optional() })
+  .openapi("FileRef");
 
 export const FileStatusSchema = z
   .enum(["pending", "uploading", "scanning", "ready", "failed", "expired"])

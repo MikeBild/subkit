@@ -1,6 +1,7 @@
 export const SPOOL_THRESHOLD_BYTES = 50 * 1024 * 1024;
 
 import { and, eq } from "drizzle-orm";
+import { FileByteRangeSchema } from "../api/files-schemas.ts";
 import type { Db } from "../db/client.ts";
 import { files } from "../db/schema/files.ts";
 import { getObjectStore } from "../storage/object-store.ts";
@@ -14,6 +15,7 @@ export interface ResolvedFile {
   content_type: string | null;
   size_bytes: number;
   openRead(): Promise<AsyncIterable<Uint8Array>>;
+  openReadRange?(range: { start: number; length: number }): Promise<AsyncIterable<Uint8Array>>;
 }
 
 export class FileNotFoundError extends Error {
@@ -66,6 +68,12 @@ export function resolvedFromRow(row: FileRow): ResolvedFile {
       const store = getObjectStore();
       return await store.openRead(storageKey(row.storage_uri));
     },
+    async openReadRange(range) {
+      return getObjectStore().openReadRange(storageKey(row.storage_uri), {
+        start: range.start,
+        end: range.start + range.length - 1,
+      });
+    },
   };
 }
 
@@ -77,14 +85,56 @@ export interface ResolverContext {
 
 interface FileRefLeaf {
   $file: string;
+  $range?: { start: number; length: number };
 }
 
 function isFileRef(value: unknown): value is FileRefLeaf {
   if (typeof value !== "object" || value === null) return false;
   const keys = Object.keys(value);
-  if (keys.length !== 1 || keys[0] !== "$file") return false;
+  if (!keys.includes("$file") || keys.some((key) => key !== "$file" && key !== "$range"))
+    return false;
   const fid = (value as Record<string, unknown>).$file;
   return typeof fid === "string" && fid.length > 0;
+}
+
+export function rangeResolvedFile(file: ResolvedFile, rawRange: unknown): ResolvedFile {
+  if (rawRange === undefined) return file;
+  const range = FileByteRangeSchema.parse(rawRange);
+  if (range.start + range.length > file.size_bytes) throw new Error("file range out of bounds");
+  return {
+    id: file.id,
+    filename: file.filename,
+    content_type: file.content_type,
+    size_bytes: range.length,
+    async openRead() {
+      if (file.openReadRange) {
+        const stream = await file.openReadRange(range);
+        return (async function* () {
+          let remaining = range.length;
+          for await (const chunk of stream) {
+            if (chunk.length > remaining) throw new Error("file range source exceeded size");
+            remaining -= chunk.length;
+            yield chunk;
+          }
+          if (remaining !== 0) throw new Error("file range source ended early");
+        })();
+      }
+      return (async function* () {
+        let position = 0;
+        let remaining = range.length;
+        for await (const chunk of await file.openRead()) {
+          const start = Math.max(0, range.start - position);
+          position += chunk.length;
+          if (start >= chunk.length) continue;
+          const selected = chunk.subarray(start, start + remaining);
+          remaining -= selected.length;
+          yield selected;
+          if (remaining === 0) return;
+        }
+        if (remaining > 0) throw new Error("file range source ended early");
+      })();
+    },
+  };
 }
 
 export async function resolveSingleFid(
@@ -118,13 +168,13 @@ export async function walkAndResolve<T>(
   if (isFileRef(value)) {
     const fid = value.$file;
     const cached = cache.get(fid);
-    if (cached) return cached as unknown as T;
+    if (cached) return rangeResolvedFile(cached, value.$range) as unknown as T;
     const row = fid.startsWith(ATTACHMENT_REFERENCE_PREFIX)
       ? await requireFileByReference(ctx, fid)
       : await requireFileForTenant(ctx.db, ctx.tenant_id, fid);
     const resolved = resolvedFromRow(row);
     cache.set(fid, resolved);
-    return resolved as unknown as T;
+    return rangeResolvedFile(resolved, value.$range) as unknown as T;
   }
   if (Array.isArray(value)) {
     const out: unknown[] = new Array(value.length);

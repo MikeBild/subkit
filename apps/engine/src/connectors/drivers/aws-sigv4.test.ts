@@ -1,8 +1,23 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { signSigV4Request } from "./aws-sigv4.ts";
 import { HttpRequestInvalidError } from "./http.ts";
 
 describe("signSigV4Request", () => {
+  test("signs the exact binary payload without text conversion", () => {
+    const body = Buffer.from([0, 255, 128, 65]);
+    const headers: Record<string, string> = { "content-type": "application/octet-stream" };
+    signSigV4Request({
+      method: "PUT",
+      url: new URL("https://bucket.s3.eu-central-1.amazonaws.com/object"),
+      headers,
+      body,
+      region: "eu-central-1",
+      service: "s3",
+      credential: { access_key_id: "AKIATEST", secret_access_key: "test-secret" },
+    });
+    expect(headers["X-Amz-Content-Sha256"]).toBe(createHash("sha256").update(body).digest("hex"));
+  });
   test("attaches Authorization, X-Amz-Date, X-Amz-Content-Sha256", () => {
     const headers: Record<string, string> = {
       "content-type": "application/json",

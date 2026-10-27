@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { autoloadForUserTurn, loadActivationCatalog } from "../../conversations/skill-autoload.ts";
 import { auditLog, skills, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { resolveLoadedSkills } from "../../llm/core/context-assembler/loaded-skills.ts";
 import {
   activateSkill,
   archiveSkill,
@@ -33,6 +35,39 @@ async function seedTenant(): Promise<string> {
 }
 
 describe("skills/service", () => {
+  test("installed intent phrases load only active same-tenant nonexperimental skills", async () => {
+    const tenant_id = await seedTenant();
+    const otherTenant = await seedTenant();
+    async function prepare(tenant: string, title: string, experimental = false, activate = true) {
+      const skill = await createSkill(
+        {
+          tenant_id: tenant,
+          input: {
+            scope: "global",
+            title,
+            body: "Installed package instructions",
+            status: "draft",
+            activates_when: [{ kind: "intent_keyword", word: "Rückfrage klären" }],
+            maturity: experimental ? "experimental" : "stable",
+          },
+        },
+        ctx.db,
+      );
+      if (activate) await activateSkill(tenant, skill.id, null, ctx.db);
+      return skill.id;
+    }
+    const expected = await prepare(tenant_id, "Installed assistance");
+    await prepare(otherTenant, "Other workspace");
+    await prepare(tenant_id, "Experimental assistance", true);
+    await prepare(tenant_id, "Draft assistance", false, false);
+    const catalog = await loadActivationCatalog(tenant_id, ctx.db);
+    const loaded = autoloadForUserTurn({ user_text: "Bitte die RÜCKFRAGE klären!" }, catalog, []);
+    expect(loaded).toEqual([expected]);
+    const resolved = await resolveLoadedSkills(tenant_id, loaded, [], [], ctx.db);
+    expect(resolved.fullBody.map((skill) => skill.id)).toEqual([expected]);
+    expect(resolved.fullBody[0]?.body).toBe("Installed package instructions");
+    expect(autoloadForUserTurn({ user_text: "Anderes Thema" }, catalog, [])).toEqual([]);
+  });
   test("createSkill persists unknown legacy actors and system actors as normalized pairs", async () => {
     const tenant_id = await seedTenant();
     const legacy = await createSkill(
