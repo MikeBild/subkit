@@ -37,9 +37,9 @@ describe("run_workflow tool — field rename: workflow not workflow_id", () => {
   test("run_workflow documents when a new run is allowed and what it does", () => {
     expect(runWorkflowTool).toBeDefined();
     const desc = runWorkflowTool!.description ?? "";
-    expect(desc).toContain("Use only when the user requests a new run or preview");
-    expect(desc).toContain("execute_writes: false still starts a DEV run");
-    expect(desc).toContain("Never call this tool when the user says not to run");
+    expect(desc).toContain("For a request to read current data from a connected service");
+    expect(desc).toContain("A read workflow does not edit or run another draft");
+    expect(desc).toContain("Never start a write workflow when the user says not to run");
     expect(desc).toContain("To verify a DRAFT, use `dry_run_workflow`");
     expect(desc).toContain("one-shot live execution decision");
   });
