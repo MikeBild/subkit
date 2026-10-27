@@ -466,7 +466,7 @@ describe("fetch_connector_self_description", () => {
   test("explains a pending package setup in plain German", async () => {
     const toolCtx = makeCtx(package_connector);
     toolCtx.locale = "de";
-    toolCtx.workflow_id = crypto.randomUUID();
+    toolCtx.workflow_id = nextUuid();
 
     const result = await prepareServicePackageWorkflowTool.execute(toolCtx, {
       workflow_slug: "support-preview-status",
