@@ -4,8 +4,10 @@ import { type Locale, translate } from "@/lib/i18n";
 import {
   type ExecutionOutcome,
   payloadEvidence,
+  runDisplayState,
   runOutcomeSentence,
   stepConnectorId,
+  stepWasHeld,
   stoppingStep,
 } from "@/pages/runs-model";
 
@@ -15,6 +17,20 @@ const tr =
     translate(locale, key, values);
 const de = tr("de");
 const en = tr("en");
+
+test("a held outcome overrides a succeeded transport status", () => {
+  expect(runDisplayState("succeeded", { kind: "held" })).toBe("held");
+  expect(runDisplayState("succeeded", undefined, true)).toBe("held");
+  expect(runDisplayState("succeeded", { kind: "succeeded" })).toBe("succeeded");
+});
+
+test("only steps with explicit held evidence use the held presentation", () => {
+  expect(stepWasHeld({ held: true })).toBe(true);
+  expect(stepWasHeld({ held: false, request_meta: { extras: { held: true } } })).toBe(true);
+  expect(stepWasHeld({ request_meta: { extras: { held: true } } })).toBe(true);
+  expect(stepWasHeld({ request_meta: { extras: { held: false } } })).toBe(false);
+  expect(stepWasHeld({ request_meta: { extras: { effect_kind: "read" } } })).toBe(false);
+});
 
 function outcome(partial: Partial<ExecutionOutcome> = {}): ExecutionOutcome {
   return {
@@ -95,6 +111,17 @@ describe("runOutcomeSentence", () => {
       { kind: "running", failed_step: null, cause_class: null },
       "Läuft – bisher 2 von 3 Schritten abgeschlossen.",
       "Running — 2 of 3 steps completed so far.",
+    ],
+    [
+      "held",
+      {
+        kind: "held",
+        failed_step: null,
+        cause_class: null,
+        steps: { total: 3, succeeded: 2, failed: 0, held: 1, skipped: 0 },
+      },
+      "Gehalten, nichts geschrieben – 2 von 3 Schritten abgeschlossen, 1 zurückgehalten.",
+      "Held, nothing written — 2 of 3 steps completed, 1 held back.",
     ],
   ];
   for (const [name, partial, german, english] of cases) {

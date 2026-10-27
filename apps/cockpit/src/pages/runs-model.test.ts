@@ -399,6 +399,14 @@ describe("the workflow header names the latest run with its real outcome", () =>
     expect(
       lastRunLine({ status: "succeeded", started_at: at, created_at: at }, de, "de", now),
     ).toBe("Letzter Lauf vor 2 Std. erfolgreich");
+    expect(
+      lastRunLine(
+        { status: "succeeded", held_effects: true, started_at: at, created_at: at },
+        de,
+        "de",
+        now,
+      ),
+    ).toBe("Letzter Lauf vor 2 Std. gehalten, nichts geschrieben");
     expect(lastRunLine({ status: "unknown", started_at: at, created_at: at }, de, "de", now)).toBe(
       "Letzter Lauf vor 2 Std.",
     );

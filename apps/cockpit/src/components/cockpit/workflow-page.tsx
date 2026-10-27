@@ -75,13 +75,13 @@ import { definitionKind, type StepKindSource } from "@/lib/workflow-steps";
 import { deletedConnectorReference } from "@/lib/workflow-strip";
 import { workflowVersionAuthor } from "@/lib/workflow-versions";
 import { definitionProductId } from "@/pages/apps-model";
-import { formatRunDuration, runDurationMs } from "@/pages/runs-model";
+import { formatRunDuration, runDisplayState, runDurationMs } from "@/pages/runs-model";
 import { triggerLabelKey } from "@/pages/workflows-model";
 
 type RecordValue = Record<string, unknown>;
 type EffectiveTrigger = components["schemas"]["EffectiveTrigger"];
 type ScheduleBinding = components["schemas"]["WorkflowScheduleBinding"];
-type Execution = components["schemas"]["Execution"];
+type Execution = components["schemas"]["Execution"] & { held_effects?: boolean };
 
 const text = (record: RecordValue, key: string): string | null => {
   const value = record[key];
@@ -180,7 +180,8 @@ function LastRunLine({
         testId="workflow-last-run-none"
       />
     );
-  const tone = statusTone(run.status);
+  const displayState = runDisplayState(run.status, undefined, run.held_effects);
+  const tone = displayState === "held" ? "warn" : statusTone(displayState);
   const duration = runDurationMs(run);
   const when = run.started_at ?? run.created_at;
   return (
@@ -199,11 +200,13 @@ function LastRunLine({
       <span className="min-w-0 flex-1">
         <span className="font-medium">
           {t(
-            tone === "error"
-              ? "workflowFlow.lastRun.failed"
-              : tone === "ok"
-                ? "workflowFlow.lastRun.ok"
-                : "workflowFlow.lastRun.other",
+            displayState === "held"
+              ? "workflowFlow.lastRun.held"
+              : tone === "error"
+                ? "workflowFlow.lastRun.failed"
+                : tone === "ok"
+                  ? "workflowFlow.lastRun.ok"
+                  : "workflowFlow.lastRun.other",
           )}
         </span>{" "}
         <span className="text-muted-foreground">

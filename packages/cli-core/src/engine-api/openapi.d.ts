@@ -25051,6 +25051,7 @@ export interface components {
             next_cursor: string | null;
         };
         ExecutionListItem: components["schemas"]["Execution"] & {
+            held_effects: boolean;
             failure: {
                 step_key: string | null;
                 /** @enum {string|null} */
@@ -25157,6 +25158,7 @@ export interface components {
             step_index: number | null;
             kind: string;
             status: string;
+            held: boolean;
             duration_ms: number | null;
             retry_count: number;
             result_storage_uri: string | null;

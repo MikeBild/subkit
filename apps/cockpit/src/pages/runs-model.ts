@@ -662,6 +662,22 @@ export function stepEffectKind(step: { request_meta?: unknown }): "read" | "writ
     : null;
 }
 
+export function stepWasHeld(step: { held?: boolean; request_meta?: unknown }): boolean {
+  if (step.held === true) return true;
+  const meta = step.request_meta;
+  if (!meta || typeof meta !== "object" || !("extras" in meta)) return false;
+  const extras = meta.extras;
+  return Boolean(extras && typeof extras === "object" && "held" in extras && extras.held === true);
+}
+
+export function runDisplayState(
+  status: string,
+  outcome: { kind?: string } | null | undefined,
+  heldEffects = false,
+): string {
+  return outcome?.kind === "held" || heldEffects ? "held" : status;
+}
+
 export function runTraceEvidence(
   run: unknown,
   mayReadAudit: boolean,
@@ -705,20 +721,28 @@ export function runPermissionEvidence(run: {
 }
 
 export function lastRunLine(
-  run: Pick<Execution, "status" | "started_at" | "created_at"> | null,
+  run:
+    | (Pick<Execution, "status" | "started_at" | "created_at"> & {
+        outcome?: { kind?: string } | null;
+        held_effects?: boolean;
+      })
+    | null,
   t: Translate,
   locale: Locale,
   now: number = Date.now(),
 ): string {
   if (!run) return t("workflowStrip.line.runningNever");
   const when = formatRelativeTime(locale, run.started_at ?? run.created_at, now);
-  const tone = statusTone(run.status);
+  const state = runDisplayState(run.status, run.outcome, run.held_effects);
+  const tone = statusTone(state);
   return t(
-    tone === "ok"
-      ? "workflowStrip.line.running"
-      : tone === "error"
-        ? "workflowStrip.line.ranFailed"
-        : "workflowStrip.line.ranOther",
+    state === "held"
+      ? "workflowStrip.line.ranHeld"
+      : tone === "ok"
+        ? "workflowStrip.line.running"
+        : tone === "error"
+          ? "workflowStrip.line.ranFailed"
+          : "workflowStrip.line.ranOther",
     { when },
   );
 }

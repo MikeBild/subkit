@@ -95,6 +95,7 @@ export const ExecDetailSchema = ExecSchema.extend({
 }).openapi("ExecutionDetail");
 
 export const ExecListItemSchema = ExecSchema.extend({
+  held_effects: z.boolean(),
   failure: z
     .object({
       step_key: z.string().nullable(),
@@ -120,6 +121,7 @@ export const StepRowSchema = z
     step_index: z.number().nullable(),
     kind: z.string(),
     status: z.string(),
+    held: z.boolean(),
     duration_ms: z.number().nullable(),
     retry_count: z.number(),
     result_storage_uri: z.string().nullable(),
@@ -396,6 +398,7 @@ export function serializeStep(row: typeof executionSteps.$inferSelect) {
     step_index: row.step_index ?? null,
     kind: row.kind,
     status: row.status,
+    held: row.held,
     duration_ms: row.duration_ms ?? null,
     retry_count: row.retry_count ?? 0,
     result_storage_uri: row.result_storage_uri ?? null,

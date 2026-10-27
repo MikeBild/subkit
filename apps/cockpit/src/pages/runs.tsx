@@ -67,6 +67,7 @@ import {
   runCaller,
   runCauseLinks,
   runCostFacts,
+  runDisplayState,
   runDurationMs,
   runName,
   runOutcomeSentence,
@@ -84,6 +85,7 @@ import {
   stepCredentialSnapshots,
   stepEffectKind,
   stepGuidance,
+  stepWasHeld,
   stoppingStep,
   truncatedSteps,
 } from "@/pages/runs-model";
@@ -326,8 +328,12 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
             tone={held ? "warn" : verdict.tone === "critical" ? "error" : "warn"}
             line={
               <>
-                <span className="font-medium">{verdict.label}</span>
-                {" · "}
+                {held ? null : (
+                  <>
+                    <span className="font-medium">{verdict.label}</span>
+                    {" · "}
+                  </>
+                )}
                 <span data-testid="run-detail-outcome">
                   <OutcomeText sentence={sentence} />
                 </span>
@@ -586,7 +592,8 @@ function RunStepChain({
       data-testid="run-detail-step-chain"
     >
       {steps.map((item, index) => {
-        const tone = statusTone(item.status);
+        const held = stepWasHeld(item);
+        const tone = held ? "warn" : statusTone(item.status);
         const connector = stepConnectorId(item);
         const effect = stepEffectKind(item);
         const Mark = tone === "ok" ? Check : tone === "error" ? X : Minus;
@@ -619,7 +626,7 @@ function RunStepChain({
                 </span>
                 <span className="block text-xs text-muted-foreground">
                   {[
-                    statusLabel(t, item.status),
+                    held ? t("workflow.preview.held") : statusLabel(t, item.status),
                     effect ? t(effect === "read" ? "sideEffects.read" : "sideEffects.write") : null,
                     item.duration_ms === null ? null : formatRunDuration(locale, item.duration_ms),
                   ]
@@ -720,7 +727,12 @@ function RunStepSheet({
       onOpenChange={(next) => !next && onClose()}
       size="wide"
       title={[t("workflowFlow.stepNumber", { number: index + 1 }), t(kindOf(step))].join(" · ")}
-      badge={<StatusBadge state={step.status} />}
+      badge={
+        <StatusBadge
+          state={stepWasHeld(step) ? "pending" : step.status}
+          label={stepWasHeld(step) ? t("workflow.preview.held") : undefined}
+        />
+      }
       testId="run-step-sheet"
       closeTestId="run-step-close"
     >
@@ -878,9 +890,17 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
       ),
       column.custom(
         "status",
-        (run) => run.status,
+        (run) => runDisplayState(run.status, undefined, run.held_effects),
         t("resource.field.status"),
-        (run) => <StatusBadge state={run.status} />,
+        (run) => {
+          const displayState = runDisplayState(run.status, undefined, run.held_effects);
+          return (
+            <StatusBadge
+              state={displayState === "held" ? "pending" : displayState}
+              label={displayState === "held" ? t("runs.list.held") : undefined}
+            />
+          );
+        },
         { width: "w-[16%]" },
       ),
       column.custom(
@@ -968,7 +988,9 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
               : {
                   getKey: (run) =>
                     groupMode === "status"
-                      ? statusLabel(t, run.status)
+                      ? runDisplayState(run.status, undefined, run.held_effects) === "held"
+                        ? t("runs.list.held")
+                        : statusLabel(t, run.status)
                       : requestSourceLabel(run.request_source, t).text,
                 }
           }

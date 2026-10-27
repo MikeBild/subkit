@@ -33,6 +33,7 @@ import {
   isExecutionRecord,
   RUN_STATUSES,
   runCaller,
+  runDisplayState,
   runDurationMs,
 } from "@/pages/runs-model";
 
@@ -163,12 +164,13 @@ export function WorkflowRuns({
       const cause = run.failure?.cause_class;
       const caller = runCaller(run, directory, t);
       const started = runStartedAt(run);
+      const displayState = runDisplayState(run.status, undefined, run.held_effects);
       return {
         id: run.id,
-        tone: statusTone(run.status),
+        tone: displayState === "held" ? "warn" : statusTone(displayState),
         time: clock.format(new Date(started)),
         dateTime: started,
-        title: statusLabel(t, run.status),
+        title: displayState === "held" ? t("runs.list.held") : statusLabel(t, displayState),
         meta: cause && cause !== "ok" ? causeClassLabel(cause, t).text : undefined,
         aside: (
           <>
@@ -183,7 +185,7 @@ export function WorkflowRuns({
         onOpen: () => sheets.run(run.id),
         label: t("workflowRuns.open", {
           when: dateTime(started),
-          status: statusLabel(t, run.status),
+          status: displayState === "held" ? t("runs.list.held") : statusLabel(t, displayState),
         }),
         testId: `workflow-run-${group.key}-${index}`,
       };

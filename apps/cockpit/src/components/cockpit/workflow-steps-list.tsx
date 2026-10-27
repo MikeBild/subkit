@@ -73,6 +73,7 @@ import {
   type WorkflowStepDefinition,
   type WorkflowStepView,
 } from "@/lib/workflow-steps";
+import { stepWasHeld } from "@/pages/runs-model";
 
 type Execution = components["schemas"]["Execution"];
 
@@ -498,7 +499,11 @@ export function WorkflowFlow({
           const Icon = stepIcon(definition);
           const connector = stepConnector(definition, records);
           const failed = view.lastRun ? statusTone(view.lastRun.status) === "error" : false;
-          const tone = view.lastRun ? statusTone(view.lastRun.status) : null;
+          const tone = view.lastRun
+            ? stepWasHeld(view.lastRun)
+              ? "warn"
+              : statusTone(view.lastRun.status)
+            : null;
           const mark = editor?.marks[definition.id];
           return (
             <Fragment key={`${definition.id}:${index}`}>
@@ -735,7 +740,14 @@ function StepSheet({
         total,
         kind: t(stepKindKey(definitionKind(definition, connector?.service ?? null))),
       })}
-      badge={lastRun ? <StatusBadge state={lastRun.status} /> : undefined}
+      badge={
+        lastRun ? (
+          <StatusBadge
+            state={stepWasHeld(lastRun) ? "pending" : lastRun.status}
+            label={stepWasHeld(lastRun) ? t("workflow.preview.held") : undefined}
+          />
+        ) : undefined
+      }
       action={
         editor ? (
           <ActionButton size="sm" onClick={editor.edit} testId={`${testId}-sheet-edit`}>

@@ -1,5 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { executionStartTraceId, readRequestSource } from "../../../audit/index.ts";
 import { KEYSET_CURSOR_PATTERN } from "../../../db/keyset-cursor.ts";
@@ -166,7 +166,8 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
       db,
     );
     const ids = [...new Set(rows.map((r) => r.workflow_id).filter((v): v is string => v !== null))];
-    const [named, failures] = await Promise.all([
+    const heldCandidates = rows.filter((r) => r.status === "succeeded");
+    const [named, failures, heldSteps] = await Promise.all([
       ids.length
         ? db
             .select({ id: workflows.id, name: workflows.name })
@@ -174,12 +175,32 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
             .where(and(eq(workflows.tenant_id, principal.tenant_id), inArray(workflows.id, ids)))
         : Promise.resolve([]),
       loadFailureSummaries(principal.tenant_id, rows, db),
+      heldCandidates.length
+        ? db
+            .selectDistinct({ execution_id: executionSteps.execution_id })
+            .from(executionSteps)
+            .where(
+              and(
+                eq(executionSteps.tenant_id, principal.tenant_id),
+                inArray(
+                  executionSteps.execution_id,
+                  heldCandidates.map((r) => r.id),
+                ),
+                or(
+                  eq(executionSteps.held, true),
+                  sql`${executionSteps.request_meta}->'extras'->>'held' = 'true'`,
+                ),
+              ),
+            )
+        : Promise.resolve([]),
     ]);
     const nameById = new Map(named.map((w) => [w.id, w.name]));
+    const heldExecutionIds = new Set(heldSteps.map((step) => step.execution_id));
     return c.json(
       {
         items: rows.map((r) => ({
           ...serializeExec(r, r.workflow_id ? (nameById.get(r.workflow_id) ?? null) : null),
+          held_effects: heldExecutionIds.has(r.id),
           failure: failures.get(r.id) ?? null,
         })),
         total,

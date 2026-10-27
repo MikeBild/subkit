@@ -116,6 +116,24 @@ describe("execution outcome", () => {
     expect(outcome.steps.held).toBe(1);
     expect(outcome.steps.succeeded).toBe(1);
     expect(outcome.failed_step).toBeNull();
+    const stepsResponse = await fetch(`${ctx.baseUrl}/v1/executions/${id}/steps`, {
+      headers: auth(),
+    });
+    expect(stepsResponse.status).toBe(200);
+    const steps = ((await stepsResponse.json()) as { items: { step_key: string; held: boolean }[] })
+      .items;
+    expect(steps.find((step) => step.step_key === "send")?.held).toBe(true);
+    expect(steps.find((step) => step.step_key === "load")?.held).toBe(false);
+    const readOnlyId = await runDraft(
+      { name: "read-only-preview", steps: [read("load", "/ok")] },
+      { hold_writes: true },
+    );
+    const listed = await fetch(`${ctx.baseUrl}/v1/executions?limit=20`, { headers: auth() });
+    expect(listed.status).toBe(200);
+    const items = ((await listed.json()) as { items: { id: string; held_effects: boolean }[] })
+      .items;
+    expect(items.find((item) => item.id === id)?.held_effects).toBe(true);
+    expect(items.find((item) => item.id === readOnlyId)?.held_effects).toBe(false);
   });
 
   test("a succeeded run has no failed step and records its output contract", async () => {

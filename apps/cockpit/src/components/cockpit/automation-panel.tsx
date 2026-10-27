@@ -460,7 +460,11 @@ export function WorkflowStatus({
   workflowName: string;
   health: string | null;
   disabled: boolean;
-  lastRun: Pick<Execution, "status" | "started_at" | "created_at"> | null;
+  lastRun:
+    | (Pick<Execution, "status" | "started_at" | "created_at"> & {
+        held_effects?: boolean;
+      })
+    | null;
   waitingConnector: WaitingConnector | null;
   permissions: readonly string[];
   noSteps?: boolean;
