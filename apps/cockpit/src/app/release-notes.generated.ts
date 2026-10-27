@@ -1,7 +1,7 @@
 export type ReleaseNotes = { version: string; notes: string[] };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: string[] } = {
-  "source": "16c696056d70c52faf224f61291408c5e3db5f15",
+  "source": "a18c74b26a2970d70b4f264dc9bdda3a983eccda",
   "releases": [
     {
       "version": "v1.0.0",
@@ -1622,9 +1622,15 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
     {
       "version": "v10.18.6",
       "notes": []
+    },
+    {
+      "version": "v10.18.7",
+      "notes": [
+        "add optional HTTP service package setup"
+      ]
     }
   ],
   "unpublished": [
-    "add optional HTTP service package setup"
+    "install optional service guides from chat"
   ]
 };
