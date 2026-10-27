@@ -1,0 +1,243 @@
+import { z } from "@hono/zod-openapi";
+import { and, desc, eq, isNull } from "drizzle-orm";
+import { getConnector } from "../../connectors/service.ts";
+import { workflows, workflowVersions } from "../../db/schema/index.ts";
+import { workflowJsonDigest } from "../../workflows/canonical-json.ts";
+import { updateWorkflowMetadata } from "../../workflows/service.ts";
+import { parsePackageWorkflowNote } from "../../workflows/service-package-provenance.ts";
+import type { ConversationTool, ToolContext } from "./index.ts";
+import { prepareServicePackageWorkflowTool } from "./prepare-service-package-workflow.ts";
+
+const inputSchema = z
+  .object({
+    action: z.enum(["update", "archive"]),
+    connector_id: z.string().uuid().optional(),
+    workflow_id: z.string().uuid(),
+    expected_version: z.number().int().positive(),
+  })
+  .openapi("ManageServicePackageWorkflowInput");
+
+function message(
+  ctx: ToolContext,
+  key: "archived" | "changed" | "missing" | "local_changes" | "not_managed",
+) {
+  const copy = {
+    archived: ["The service workflow was archived.", "Der Dienstablauf wurde archiviert."],
+    changed: [
+      "This workflow changed since it was reviewed. Read it again before continuing.",
+      "Dieser Ablauf wurde seit der Prüfung geändert. Lies ihn erneut, bevor du fortfährst.",
+    ],
+    missing: [
+      "I couldn't find the saved workflow to manage.",
+      "Den gespeicherten Ablauf konnte ich nicht finden.",
+    ],
+    local_changes: [
+      "Someone changed this workflow locally. I left it unchanged.",
+      "Dieser Ablauf wurde lokal geändert und bleibt unverändert.",
+    ],
+    not_managed: [
+      "This workflow isn't an unchanged copy from the selected service, so I left it alone.",
+      "Dieser Ablauf ist keine unveränderte Vorlage des ausgewählten Dienstes und bleibt unangetastet.",
+    ],
+  } as const;
+  return ctx.locale === "en" ? copy[key][0] : copy[key][1];
+}
+
+export const manageServicePackageWorkflowTool: ConversationTool = {
+  name: "manage_service_package_workflow",
+  description:
+    "Prepare an update or archive an unchanged workflow from an optional HTTP service package. Updates remain inactive drafts for the normal review flow. Local changes and unrelated workflows are preserved.",
+  use_case: "Update or remove a workflow installed from a self-describing service package.",
+  important_notes: [
+    "Only a signed-in person can manage these workflows.",
+    "Updates use the package's verified definition and still require the normal workflow review and activation steps.",
+    "Archiving is allowed only when the saved workflow still matches the installed package version.",
+  ],
+  inputSchema,
+  category: "tenant_write",
+  chat_only: true,
+  permission: {
+    action: "workflow:write",
+    resourceType: "workflow",
+    resourceIdArg: "workflow_id",
+  },
+  async execute(ctx, rawArgs) {
+    const args = inputSchema.parse(rawArgs);
+    if (ctx.principal?.kind !== "user" || ctx.principal.auth_source?.kind !== "browser_session") {
+      return {
+        ok: false,
+        error_code: "user_confirmation_required",
+        message:
+          ctx.locale === "en"
+            ? "A signed-in person must approve this change."
+            : "Eine angemeldete Person muss diese Änderung freigeben.",
+      };
+    }
+    const [workflow] = await ctx.db
+      .select({
+        id: workflows.id,
+        slug: workflows.slug,
+        lifecycle: workflows.lifecycle,
+        draft_version_id: workflows.draft_version_id,
+        current_version_id: workflows.current_version_id,
+      })
+      .from(workflows)
+      .where(
+        and(
+          eq(workflows.tenant_id, ctx.tenant_id),
+          eq(workflows.id, args.workflow_id),
+          isNull(workflows.deleted_at),
+        ),
+      )
+      .limit(1);
+    if (!workflow) {
+      return {
+        ok: false,
+        error_code: "workflow_not_found",
+        message: message(ctx, "missing"),
+      };
+    }
+    const headVersionId = workflow.draft_version_id ?? workflow.current_version_id;
+    const [head] = headVersionId
+      ? await ctx.db
+          .select({ dag: workflowVersions.dag, version: workflowVersions.version })
+          .from(workflowVersions)
+          .where(
+            and(
+              eq(workflowVersions.tenant_id, ctx.tenant_id),
+              eq(workflowVersions.workflow_id, workflow.id),
+              eq(workflowVersions.id, headVersionId),
+            ),
+          )
+          .limit(1)
+      : [];
+    if (!head || head.version !== args.expected_version) {
+      return {
+        ok: false,
+        error_code: "service_package_workflow_version_changed",
+        message: message(ctx, "changed"),
+        data: { workflow_id: workflow.id, current_version: head?.version ?? null },
+        next_best_actions: ["get_workflow", "manage_service_package_workflow"],
+      };
+    }
+    if (args.action === "update") {
+      const history = await ctx.db
+        .select({ note: workflowVersions.note })
+        .from(workflowVersions)
+        .where(
+          and(
+            eq(workflowVersions.tenant_id, ctx.tenant_id),
+            eq(workflowVersions.workflow_id, workflow.id),
+          ),
+        )
+        .orderBy(desc(workflowVersions.version))
+        .limit(100);
+      const provenance = history
+        .map((version) => parsePackageWorkflowNote(version.note))
+        .find(
+          (source) =>
+            source?.workflow_slug === workflow.slug &&
+            (args.connector_id === undefined || source.connector_id === args.connector_id),
+        );
+      if (!provenance) {
+        return {
+          ok: false,
+          error_code: "service_package_workflow_not_managed",
+          message: message(ctx, "not_managed"),
+          data: { workflow_id: workflow.id },
+        };
+      }
+      return await prepareServicePackageWorkflowTool.execute(ctx, {
+        action: "update",
+        connector_id: provenance.connector_id,
+        prefix: provenance.prefix,
+        workflow_slug: workflow.slug,
+        expected_version: head.version,
+      });
+    }
+    const history = await ctx.db
+      .select({ note: workflowVersions.note })
+      .from(workflowVersions)
+      .where(
+        and(
+          eq(workflowVersions.tenant_id, ctx.tenant_id),
+          eq(workflowVersions.workflow_id, workflow.id),
+        ),
+      )
+      .orderBy(desc(workflowVersions.version))
+      .limit(100);
+    const provenance = history
+      .map((version) => parsePackageWorkflowNote(version.note))
+      .find(
+        (source) =>
+          source?.workflow_slug === workflow.slug &&
+          (args.connector_id === undefined || source.connector_id === args.connector_id),
+      );
+    if (!provenance) {
+      return {
+        ok: false,
+        error_code: "service_package_workflow_not_managed",
+        message: message(ctx, "not_managed"),
+        data: { workflow_id: workflow.id },
+      };
+    }
+    const connector = await getConnector(ctx.tenant_id, provenance.connector_id, ctx.db);
+    if (connector?.driver !== "http") {
+      return {
+        ok: false,
+        error_code: "service_package_workflow_not_managed",
+        message: message(ctx, "not_managed"),
+        data: { workflow_id: workflow.id },
+      };
+    }
+    if (workflowJsonDigest(head.dag) !== provenance.installed_hash) {
+      return {
+        ok: false,
+        error_code: "service_package_workflow_local_changes",
+        message: message(ctx, "local_changes"),
+        data: { workflow_id: workflow.id, current_version: head.version },
+        next_best_actions: ["get_workflow", "open_workflow_draft"],
+      };
+    }
+    if (workflow.lifecycle === "archived") {
+      return {
+        ok: true,
+        data: {
+          workflow_id: workflow.id,
+          version: head.version,
+          lifecycle: "archived",
+          message:
+            ctx.locale === "en"
+              ? "This service workflow is already archived."
+              : "Dieser Dienstablauf ist bereits archiviert.",
+        },
+      };
+    }
+    const archived = await updateWorkflowMetadata(
+      {
+        tenant_id: ctx.tenant_id,
+        id: workflow.id,
+        lifecycle: "archived",
+        actor_id: ctx.principal.id,
+        actor_type: "user",
+      },
+      ctx.db,
+    );
+    if (!archived.workflow) {
+      return {
+        ok: false,
+        error_code: "workflow_archive_failed",
+        message: archived.errors.join("; "),
+      };
+    }
+    return {
+      ok: true,
+      data: {
+        workflow_id: workflow.id,
+        version: head.version,
+        lifecycle: archived.workflow.lifecycle,
+        message: message(ctx, "archived"),
+      },
+    };
+  },
+};

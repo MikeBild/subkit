@@ -13,6 +13,8 @@ import { canonicalWorkflowJson as canonical, workflowJsonDigest } from "./canoni
 import { applySkillSchemaGate, applyStorageBindingGate } from "./commit-gates.ts";
 import { type WorkflowSpec, WorkflowSpecSchema } from "./draft-schemas.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
+import type { ServicePackageWorkflowSource } from "./service-package-provenance.ts";
+import { packageWorkflowNote } from "./service-package-provenance.ts";
 import { slugConflictResult } from "./slug-conflict.ts";
 import { validateTenantWorkflowDefForSave } from "./tenant-validator.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
@@ -70,6 +72,7 @@ export interface SaveWorkflowDraftInput extends VersionActor {
   request_source: RequestSource;
   audit_metadata?: Record<string, unknown>;
   metadata?: CatalogMetadataPatch;
+  service_package_source?: ServicePackageWorkflowSource;
 }
 
 const PERSON_ORIGIN_REFUSAL: SaveWorkflowDraftResult = {
@@ -190,6 +193,11 @@ export async function saveWorkflowDraft(
   const storageGate = await applyStorageBindingGate(input.tenant_id, validation.workflow, exec);
   if (!storageGate.ok) return { code: "invalid_definition", errors: storageGate.errors };
   const def = annotateRuntime(validation.workflow);
+  const servicePackageNote =
+    input.service_package_source &&
+    input.service_package_source.definition_hash === workflowJsonDigest(def)
+      ? packageWorkflowNote(input.service_package_source, workflowJsonDigest(def))
+      : null;
   const createMetadata: CatalogMetadataPatch = {
     ...(def.description !== undefined ? { description: def.description } : {}),
     ...input.metadata,
@@ -287,6 +295,7 @@ export async function saveWorkflowDraft(
           workflow_id: wf.id,
           version: Number(latest?.max ?? 0) + 1,
           dag: def,
+          note: servicePackageNote,
           ...specColumns,
           scope_index: input.scope_index ?? null,
         })

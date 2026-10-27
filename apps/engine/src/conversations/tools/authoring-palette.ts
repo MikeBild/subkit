@@ -95,6 +95,7 @@ const WORKFLOW_AUTHORING: ReadonlySet<string> = new Set([
   "edit_workflow_patch",
   "inspect_workflow_draft",
   "open_workflow_draft",
+  "manage_service_package_workflow",
   "prepare_service_package_workflow",
   "start_workflow_from_recipe",
   "validate_draft",

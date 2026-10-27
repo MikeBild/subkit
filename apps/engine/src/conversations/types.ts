@@ -251,6 +251,15 @@ export interface AuthoringState {
 }
 
 export interface WorkflowDraftDocument {
+  service_package_source?: {
+    package_id: string;
+    package_version: string;
+    connector_id: string;
+    workflow_slug: string;
+    prefix: string;
+    artifact_hash: string;
+    definition_hash: string;
+  };
   execution_privacy?: WorkflowDef["execution_privacy"];
   name: string;
   slug?: string;

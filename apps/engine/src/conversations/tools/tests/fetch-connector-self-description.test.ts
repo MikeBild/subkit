@@ -7,6 +7,7 @@ import {
   connectors,
   knowledgeSources,
   tenants,
+  workflowVersions,
 } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
@@ -14,11 +15,15 @@ import { getSkill, updateSkill } from "../../../skills/service.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { withSelfHostedDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { makeTestPrincipal } from "../../../tools/tests/_helpers.ts";
+import { saveWorkflowDraft } from "../../../workflows/drafts.ts";
+import { createWorkflow } from "../../../workflows/service.ts";
+import { parsePackageWorkflowNote } from "../../../workflows/service-package-provenance.ts";
 import type { DraftDocument } from "../../types.ts";
 import { enrollServicePackageConnectorTool } from "../enroll-service-package-connector.ts";
 import { fetchConnectorSelfDescriptionTool } from "../fetch-connector-self-description.ts";
 import type { ToolContext } from "../index.ts";
 import { manageServicePackageSkillTool } from "../manage-service-package-skill.ts";
+import { manageServicePackageWorkflowTool } from "../manage-service-package-workflow.ts";
 import { prepareServicePackageWorkflowTool } from "../prepare-service-package-workflow.ts";
 
 let ctx: TestDb;
@@ -147,6 +152,8 @@ function packageFetch(
     packageVersion?: string;
     packageId?: string;
     packageName?: string;
+    workflowSlug?: string;
+    workflowPath?: string;
   } = {},
 ): typeof fetch {
   const packageId = options.packageId ?? "com.example.service";
@@ -159,7 +166,7 @@ function packageFetch(
   const workflows = [
     {
       name: "Read status",
-      slug: "support-preview-status",
+      slug: options.workflowSlug ?? "support-preview-status",
       steps: [
         {
           kind: "request",
@@ -167,7 +174,7 @@ function packageFetch(
           connector_id: options.foreignWorkflow ? FOREIGN_CONNECTOR_ID : package_connector,
           ...(options.directWorkflowUrl ? { url: "https://other.example/path" } : {}),
           method: "GET",
-          path: "/v1/status",
+          path: options.workflowPath ?? "/v1/status",
         },
       ],
     },
@@ -470,6 +477,7 @@ describe("fetch_connector_self_description", () => {
 
     const result = await prepareServicePackageWorkflowTool.execute(toolCtx, {
       workflow_slug: "support-preview-status",
+      prefix: "support-preview",
     });
 
     expect(result.ok).toBe(false);
@@ -521,6 +529,248 @@ describe("fetch_connector_self_description", () => {
     expect(data.review_required).toBe(true);
     expect(ctx.getDraft().workflow.slug).toBe("support-preview-status");
     expect(ctx.getDraft().workflow.steps[0]?.connector_id).toBe(package_connector);
+    const source = ctx.getDraft().workflow.service_package_source;
+    expect(source).toMatchObject({
+      package_id: "com.example.service",
+      package_version: "2.0.0",
+      connector_id: package_connector,
+      workflow_slug: "support-preview-status",
+      prefix: "support-preview",
+    });
+    if (!source) throw new Error("service package provenance was not retained in the draft");
+    const saved = await saveWorkflowDraft(
+      {
+        tenant_id,
+        actor_id: null,
+        request_source: "tool-chain",
+        def: {
+          name: ctx.getDraft().workflow.name,
+          slug: ctx.getDraft().workflow.slug,
+          steps: ctx.getDraft().workflow.steps,
+        },
+        service_package_source: source,
+      },
+      ctx.db,
+    );
+    if (!saved.draft) throw new Error(saved.errors.join(", "));
+    const [version] = await ctx.db
+      .select({ note: workflowVersions.note })
+      .from(workflowVersions)
+      .where(eq(workflowVersions.id, saved.draft.version_id))
+      .limit(1);
+    expect(parsePackageWorkflowNote(version?.note ?? null)).toMatchObject({
+      package_id: "com.example.service",
+      package_version: "2.0.0",
+      connector_id: package_connector,
+      workflow_slug: "support-preview-status",
+      prefix: "support-preview",
+      installed_hash: saved.draft.digest,
+    });
+  });
+
+  test("repeated package setup recognizes an identical saved workflow without rewriting it", async () => {
+    const created = await createWorkflow(
+      {
+        tenant_id,
+        actor_id: null,
+        def: {
+          name: "Read status",
+          slug: "support-idempotent-status",
+          steps: [
+            {
+              kind: "request",
+              id: "read-status",
+              connector_id: package_connector,
+              method: "GET",
+              path: "/v1/status",
+            },
+          ],
+        },
+      },
+      ctx.db,
+    );
+    if ("errors" in created) throw new Error(created.errors.join(", "));
+
+    const toolCtx = makeCtx(package_connector);
+    const repeated = await withSelfHostedDriverFetchForTests(
+      packageFetch({ workflowSlug: "support-idempotent-status" }),
+      () =>
+        prepareServicePackageWorkflowTool.execute(toolCtx, {
+          workflow_slug: "support-idempotent-status",
+          prefix: "support-preview",
+        }),
+    );
+
+    expect(repeated.ok).toBe(true);
+    expect(repeated.data).toMatchObject({
+      workflow_id: created.workflow.id,
+      install_state: "already_matches_package",
+      review_required: false,
+    });
+    expect(toolCtx.getDraft().workflow.steps).toHaveLength(0);
+
+    const [savedVersion] = await ctx.db
+      .select({ id: workflowVersions.id })
+      .from(workflowVersions)
+      .where(eq(workflowVersions.workflow_id, created.workflow.id))
+      .limit(1);
+    if (!savedVersion) throw new Error("created workflow version was not persisted");
+    const changedDefinition = {
+      name: "Locally changed workflow",
+      steps: [{ kind: "wait", id: "wait-local", duration_ms: 1 }],
+    };
+    await ctx.db
+      .update(workflowVersions)
+      .set({ dag: changedDefinition })
+      .where(eq(workflowVersions.id, savedVersion.id));
+
+    const conflict = await withSelfHostedDriverFetchForTests(
+      packageFetch({ workflowSlug: "support-idempotent-status" }),
+      () =>
+        prepareServicePackageWorkflowTool.execute(makeCtx(package_connector), {
+          workflow_slug: "support-idempotent-status",
+          prefix: "support-preview",
+        }),
+    );
+    expect(conflict).toMatchObject({ ok: false, error_code: "workflow_already_exists" });
+    const [unchanged] = await ctx.db
+      .select({ dag: workflowVersions.dag })
+      .from(workflowVersions)
+      .where(eq(workflowVersions.id, savedVersion.id))
+      .limit(1);
+    expect(unchanged?.dag).toEqual(changedDefinition);
+  });
+
+  test("updates an unchanged installed service workflow into a review draft", async () => {
+    const principal = {
+      ...makeTestPrincipal({ tenant_id, id: "00000000-0000-4000-8000-000000000044" }),
+      auth_source: { kind: "browser_session" as const, session_id: nextUuid() },
+    };
+    const installContext = makeCtx(package_connector, undefined, principal);
+    const installed = await withSelfHostedDriverFetchForTests(
+      packageFetch({ workflowSlug: "support-update-flow" }),
+      () =>
+        prepareServicePackageWorkflowTool.execute(installContext, {
+          workflow_slug: "support-update-flow",
+          prefix: "support-preview",
+        }),
+    );
+    if (!installed.ok) throw new Error(JSON.stringify(installed));
+    const source = installContext.getDraft().workflow.service_package_source;
+    if (!source) throw new Error("service package provenance was not retained in the draft");
+    const saved = await saveWorkflowDraft(
+      {
+        tenant_id,
+        actor_id: principal.id,
+        actor_type: "user",
+        request_source: "tool-chain",
+        def: {
+          name: installContext.getDraft().workflow.name,
+          slug: installContext.getDraft().workflow.slug,
+          steps: installContext.getDraft().workflow.steps,
+        },
+        service_package_source: source,
+      },
+      ctx.db,
+    );
+    if (!saved.draft) throw new Error(saved.errors.join(", "));
+    const [savedVersion] = await ctx.db
+      .select({ note: workflowVersions.note })
+      .from(workflowVersions)
+      .where(eq(workflowVersions.id, saved.draft.version_id))
+      .limit(1);
+    if (!parsePackageWorkflowNote(savedVersion?.note ?? null)) {
+      throw new Error(`workflow package provenance missing: ${savedVersion?.note ?? "null"}`);
+    }
+
+    const updateContext = makeCtx(package_connector, undefined, principal);
+    const updated = await withSelfHostedDriverFetchForTests(
+      packageFetch({
+        packageVersion: "2.1.0",
+        workflowSlug: "support-update-flow",
+        workflowPath: "/v2/status",
+      }),
+      () =>
+        manageServicePackageWorkflowTool.execute(updateContext, {
+          action: "update",
+          workflow_id: saved.draft.workflow_id,
+          expected_version: 1,
+        }),
+    );
+    if (!updated.ok) throw new Error(JSON.stringify(updated));
+    expect(updated).toMatchObject({
+      ok: true,
+      data: {
+        workflow_id: saved.draft.workflow_id,
+        install_state: "update_draft",
+        review_required: true,
+      },
+    });
+    expect(updateContext.getDraft().workflow.steps[0]).toMatchObject({ path: "/v2/status" });
+    expect(updateContext.getDraft().workflow.service_package_source).toMatchObject({
+      package_version: "2.1.0",
+      workflow_slug: "support-update-flow",
+      prefix: "support-preview",
+    });
+    const [stillSaved] = await ctx.db
+      .select({ dag: workflowVersions.dag, version: workflowVersions.version })
+      .from(workflowVersions)
+      .where(eq(workflowVersions.id, saved.draft.version_id))
+      .limit(1);
+    if (!stillSaved) throw new Error("installed workflow version was not persisted");
+    expect(stillSaved.version).toBe(1);
+    expect((stillSaved.dag as { steps?: Array<{ path?: string }> }).steps?.[0]?.path).toBe(
+      "/v1/status",
+    );
+  });
+
+  test("archives only unchanged service workflows after a signed-in request", async () => {
+    const principal = {
+      ...makeTestPrincipal({ tenant_id, id: "00000000-0000-4000-8000-000000000045" }),
+      auth_source: { kind: "browser_session" as const, session_id: nextUuid() },
+    };
+    const installContext = makeCtx(package_connector, undefined, principal);
+    const installed = await withSelfHostedDriverFetchForTests(
+      packageFetch({ workflowSlug: "support-archive-flow" }),
+      () =>
+        prepareServicePackageWorkflowTool.execute(installContext, {
+          workflow_slug: "support-archive-flow",
+          prefix: "support-preview",
+        }),
+    );
+    if (!installed.ok) throw new Error(JSON.stringify(installed));
+    const source = installContext.getDraft().workflow.service_package_source;
+    if (!source) throw new Error("service package provenance was not retained in the draft");
+    const saved = await saveWorkflowDraft(
+      {
+        tenant_id,
+        actor_id: principal.id,
+        actor_type: "user",
+        request_source: "tool-chain",
+        def: {
+          name: installContext.getDraft().workflow.name,
+          slug: installContext.getDraft().workflow.slug,
+          steps: installContext.getDraft().workflow.steps,
+        },
+        service_package_source: source,
+      },
+      ctx.db,
+    );
+    if (!saved.draft) throw new Error(saved.errors.join(", "));
+
+    const archived = await manageServicePackageWorkflowTool.execute(
+      makeCtx(package_connector, undefined, principal),
+      {
+        action: "archive",
+        connector_id: package_connector,
+        workflow_id: saved.draft.workflow_id,
+        expected_version: 1,
+      },
+    );
+    expect(archived).toMatchObject({
+      ok: true,
+      data: { lifecycle: "archived", workflow_id: saved.draft.workflow_id },
+    });
   });
 
   test("installs a package skill as a connector-scoped draft and is idempotent", async () => {

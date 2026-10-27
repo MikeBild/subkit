@@ -1,5 +1,12 @@
 import { z } from "@hono/zod-openapi";
+import { and, desc, eq } from "drizzle-orm";
 import { getConnector } from "../../connectors/service.ts";
+import { workflows, workflowVersions } from "../../db/schema/index.ts";
+import { workflowJsonDigest } from "../../workflows/canonical-json.ts";
+import { annotateRuntime } from "../../workflows/runtime-annotation.ts";
+import { parsePackageWorkflowNote } from "../../workflows/service-package-provenance.ts";
+import { validateTenantWorkflowDefForSave } from "../../workflows/tenant-validator.ts";
+import { WorkflowDefSchema } from "../../workflows/types.ts";
 import {
   hasInProgressWorkflowDraft,
   startNewWorkflowDraft,
@@ -8,16 +15,21 @@ import {
 import type { WorkflowDraftDocument } from "../types.ts";
 import { fetchServicePackage } from "./fetch-connector-self-description.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
-import { resolveSavedWorkflow } from "./open-workflow-draft.ts";
+import { openWorkflowDraftTool, resolveSavedWorkflow } from "./open-workflow-draft.ts";
 
 const inputSchema = z
   .object({
     connector_id: z.string().uuid().optional(),
+    action: z.enum(["install", "update"]).default("install"),
     workflow_slug: z.string().min(1).max(128),
+    expected_version: z.number().int().positive().optional(),
     prefix: z
       .string()
       .regex(/^[a-z][a-z0-9-]{0,62}$/)
       .optional(),
+  })
+  .refine((input) => input.action !== "update" || input.expected_version !== undefined, {
+    message: "updates require the version that was reviewed",
   })
   .openapi("PrepareServicePackageWorkflowToolInput");
 
@@ -28,13 +40,13 @@ function userMessage(ctx: ToolContext, english: string, german: string) {
 export const prepareServicePackageWorkflowTool: ConversationTool = {
   name: "prepare_service_package_workflow",
   description:
-    "When the user asks to set up an optional service, prepare one verified workflow from its connector as a draft for review. Explain simply that the setup is prepared but not switched on yet; keep technical package and validation details in expandable details. This never activates it or grants execution rights. Then follow the normal review flow.",
+    "When the user asks to set up or update an optional service workflow, prepare its verified definition as a draft for review. Explain simply that the setup is prepared but not switched on yet; keep technical package and validation details in expandable details. This never activates it or grants execution rights. Then follow the normal review flow.",
   use_case:
     "Set up an optional integration published by an HTTP connector when the user asks to install one of its workflows.",
   requires_skill: "workflow-authoring",
   important_notes: [
     "The workflow package must be same-origin, checksum-verified, schema-valid, and bind every request to the selected tenant connector.",
-    "An existing unsaved workflow draft or an existing saved workflow with the requested slug is never overwritten.",
+    "An existing unsaved draft is never overwritten. Installation never replaces a saved workflow. Updates require the exact reviewed version, package provenance and an unchanged saved definition.",
     "The result is only an in-memory draft. Inspect and validate it, preview it when allowed, then save it as an inactive version through the existing human review flow.",
   ],
   inputSchema,
@@ -56,6 +68,20 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
         data: {},
       };
     }
+    if (
+      args.action === "update" &&
+      (ctx.principal?.kind !== "user" || ctx.principal.auth_source?.kind !== "browser_session")
+    ) {
+      return {
+        ok: false,
+        error_code: "user_confirmation_required",
+        message: userMessage(
+          ctx,
+          "A signed-in person must approve this update.",
+          "Eine angemeldete Person muss dieses Update freigeben.",
+        ),
+      };
+    }
     const current = ctx.getDraft();
     if (ctx.workflow_id || hasInProgressWorkflowDraft(current)) {
       return {
@@ -68,20 +94,6 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
         ),
         next_best_actions: ["inspect_workflow_draft", "save_workflow_draft"],
         data: { current_slug: current.workflow.slug ?? null },
-      };
-    }
-    const existing = await resolveSavedWorkflow(ctx, args.workflow_slug);
-    if (existing) {
-      return {
-        ok: false,
-        error_code: "workflow_already_exists",
-        message: userMessage(
-          ctx,
-          "A workflow for this part already exists. Open it to review an update; nothing was replaced.",
-          "Für diesen Teil gibt es bereits einen Ablauf. Öffne ihn, um ein Update zu prüfen. Es wurde nichts ersetzt.",
-        ),
-        next_best_actions: ["open_workflow_draft", "get_workflow"],
-        data: { workflow_id: existing.id, slug: existing.slug },
       };
     }
     const connector = await getConnector(ctx.tenant_id, connector_id, ctx.db);
@@ -102,7 +114,7 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
     if (!preview.ok) return preview;
     const data = preview.data as {
       package: { id: string; version: string };
-      artifacts: Array<{ name: string; body: string }>;
+      artifacts: Array<{ name: string; body: string; sha256: string }>;
     };
     const artifact = data.artifacts.find((item) => item.name === "workflows");
     if (!artifact) {
@@ -155,6 +167,188 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
         },
       };
     }
+    const parsedCandidate = WorkflowDefSchema.safeParse(candidate);
+    if (!parsedCandidate.success) {
+      return {
+        ok: false,
+        error_code: "package_workflow_artifact_invalid",
+        message: userMessage(
+          ctx,
+          "This service setup could not be checked. Nothing was changed.",
+          "Diese Einrichtung ließ sich nicht prüfen. Es wurde nichts geändert.",
+        ),
+        data: { package: data.package },
+      };
+    }
+    const validation = await validateTenantWorkflowDefForSave(
+      parsedCandidate.data,
+      ctx.tenant_id,
+      ctx.db,
+      { destinationTier: "tokens" },
+    );
+    if (!validation.ok || !validation.workflow) {
+      return {
+        ok: false,
+        error_code: "package_workflow_not_ready",
+        message: userMessage(
+          ctx,
+          "This service setup needs a change before it can be reviewed. Nothing was saved.",
+          "Diese Einrichtung muss vor der Prüfung angepasst werden. Es wurde nichts gespeichert.",
+        ),
+        data: { package: data.package },
+      };
+    }
+    const packageDefinitionHash = workflowJsonDigest(annotateRuntime(validation.workflow));
+    const existing = await resolveSavedWorkflow(ctx, args.workflow_slug);
+    let updateExisting = false;
+    if (args.action === "update" && !existing) {
+      return {
+        ok: false,
+        error_code: "service_package_workflow_not_found",
+        message: userMessage(
+          ctx,
+          "I couldn't find the saved service workflow to update.",
+          "Den gespeicherten Dienstablauf für das Update konnte ich nicht finden.",
+        ),
+        next_best_actions: ["list_workflows"],
+      };
+    }
+    if (existing) {
+      const [workflowHead] = await ctx.db
+        .select({
+          draft_version_id: workflows.draft_version_id,
+          current_version_id: workflows.current_version_id,
+        })
+        .from(workflows)
+        .where(and(eq(workflows.tenant_id, ctx.tenant_id), eq(workflows.id, existing.id)))
+        .limit(1);
+      const savedVersionId = workflowHead?.draft_version_id ?? workflowHead?.current_version_id;
+      const [saved] = savedVersionId
+        ? await ctx.db
+            .select({ dag: workflowVersions.dag, version: workflowVersions.version })
+            .from(workflowVersions)
+            .where(
+              and(
+                eq(workflowVersions.tenant_id, ctx.tenant_id),
+                eq(workflowVersions.workflow_id, existing.id),
+                eq(workflowVersions.id, savedVersionId),
+              ),
+            )
+            .limit(1)
+        : [];
+      if (args.action === "update") {
+        const history = await ctx.db
+          .select({ note: workflowVersions.note })
+          .from(workflowVersions)
+          .where(
+            and(
+              eq(workflowVersions.tenant_id, ctx.tenant_id),
+              eq(workflowVersions.workflow_id, existing.id),
+            ),
+          )
+          .orderBy(desc(workflowVersions.version))
+          .limit(100);
+        const provenance = history
+          .map((version) => parsePackageWorkflowNote(version.note))
+          .find(
+            (source) =>
+              source?.package_id === data.package.id &&
+              source.connector_id === connector.id &&
+              source.workflow_slug === existing.slug,
+          );
+        if (!provenance) {
+          return {
+            ok: false,
+            error_code: "service_package_workflow_not_managed",
+            message: userMessage(
+              ctx,
+              "This workflow isn't an unchanged copy from this service, so I left it alone.",
+              "Dieser Ablauf ist keine unveränderte Vorlage dieses Dienstes und bleibt daher unangetastet.",
+            ),
+            data: { workflow_id: existing.id },
+          };
+        }
+        if (!saved || saved.version !== args.expected_version) {
+          return {
+            ok: false,
+            error_code: "service_package_workflow_version_changed",
+            message: userMessage(
+              ctx,
+              "This workflow changed since it was reviewed. Read it again before updating.",
+              "Dieser Ablauf wurde seit der Prüfung geändert. Lies ihn erneut, bevor du ihn aktualisierst.",
+            ),
+            data: { workflow_id: existing.id, current_version: saved?.version ?? null },
+            next_best_actions: ["get_workflow", "prepare_service_package_workflow"],
+          };
+        }
+        if (workflowJsonDigest(saved.dag) !== provenance.installed_hash) {
+          return {
+            ok: false,
+            error_code: "service_package_workflow_local_changes",
+            message: userMessage(
+              ctx,
+              "Someone changed this workflow locally. The service update was not applied.",
+              "Dieser Ablauf wurde lokal geändert. Das Dienstupdate wurde nicht übernommen.",
+            ),
+            data: { workflow_id: existing.id, current_version: saved.version },
+            next_best_actions: ["get_workflow", "open_workflow_draft"],
+          };
+        }
+        if (provenance.installed_hash === packageDefinitionHash) {
+          return {
+            ok: true,
+            data: {
+              workflow: { name: existing.name, slug: existing.slug },
+              workflow_id: existing.id,
+              version: saved.version,
+              package: data.package,
+              install_state: "already_current",
+              review_required: false,
+              next_best_actions: ["get_workflow"],
+            },
+          };
+        }
+        updateExisting = true;
+      } else if (saved && workflowJsonDigest(saved.dag) === packageDefinitionHash) {
+        return {
+          ok: true,
+          data: {
+            workflow: { name: existing.name, slug: existing.slug },
+            workflow_id: existing.id,
+            version: saved.version,
+            package: data.package,
+            install_state: "already_matches_package",
+            review_required: false,
+            next_best_actions: ["get_workflow"],
+          },
+        };
+      }
+      if (args.action === "update" && !updateExisting) {
+        return {
+          ok: false,
+          error_code: "service_package_workflow_not_managed",
+          message: userMessage(
+            ctx,
+            "This workflow isn't managed by the service package, so I left it alone.",
+            "Dieser Ablauf wird nicht vom Dienstpaket verwaltet und bleibt daher unangetastet.",
+          ),
+          data: { workflow_id: existing.id, slug: existing.slug },
+        };
+      }
+      if (!updateExisting) {
+        return {
+          ok: false,
+          error_code: "workflow_already_exists",
+          message: userMessage(
+            ctx,
+            "A workflow with this setup name already exists and differs from the service copy. It was left unchanged.",
+            "Ein Ablauf mit diesem Einrichtungsnamen ist bereits vorhanden und unterscheidet sich von der Dienstvorlage. Er blieb unverändert.",
+          ),
+          next_best_actions: ["open_workflow_draft", "get_workflow"],
+          data: { workflow_id: existing.id, slug: existing.slug },
+        };
+      }
+    }
     const definition = candidate as Record<string, unknown>;
     const workflow: WorkflowDraftDocument = {
       name: String(definition.name),
@@ -188,19 +382,31 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
       ...(definition.trigger && typeof definition.trigger === "object"
         ? { trigger: definition.trigger as NonNullable<WorkflowDraftDocument["trigger"]> }
         : {}),
+      service_package_source: {
+        package_id: data.package.id,
+        package_version: data.package.version,
+        connector_id: connector.id,
+        workflow_slug: args.workflow_slug,
+        prefix: args.prefix ?? "service",
+        artifact_hash: artifact.sha256,
+        definition_hash: packageDefinitionHash,
+      },
     };
-    const next = withWorkflowDraft(
-      startNewWorkflowDraft(current, "service_package_workflow_prepared"),
-      workflow,
-      "service_package_workflow_prepared",
-    );
+    let base = startNewWorkflowDraft(current, "service_package_workflow_prepared");
+    if (updateExisting && existing) {
+      const opened = await openWorkflowDraftTool.execute(ctx, { workflow: existing.id });
+      if (!opened.ok) return opened;
+      base = ctx.getDraft();
+    }
+    const next = withWorkflowDraft(base, workflow, "service_package_workflow_prepared");
     await ctx.setDraft(next);
     return {
       ok: true,
       data: {
         workflow: { name: workflow.name, slug: workflow.slug, step_count: workflow.steps.length },
+        ...(updateExisting && existing ? { workflow_id: existing.id } : {}),
         package: data.package,
-        install_state: "inactive_draft",
+        install_state: updateExisting ? "update_draft" : "inactive_draft",
         review_required: true,
         next_best_actions: [
           "inspect_workflow_draft",

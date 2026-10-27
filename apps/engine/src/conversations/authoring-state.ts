@@ -163,7 +163,12 @@ function applyWorkflowMutation(
   last_action: string | null,
 ): DraftDocument {
   const normalized = normalizeDraftDocument(draft);
-  const workflow = reconcileDraftSpec(normalized.workflow, requested);
+  const workflow = reconcileDraftSpec(
+    normalized.workflow,
+    requested.service_package_source === undefined && normalized.workflow.service_package_source
+      ? { ...requested, service_package_source: normalized.workflow.service_package_source }
+      : requested,
+  );
   const state = cloneState(normalized.state ?? createEmptyState("workflow"));
   state.mode = "workflow";
   state.stage = workflow.steps.length > 0 ? "workflow_draft_started" : "workflow_targeted";

@@ -69,6 +69,9 @@ export function useCurrentVersionDag(
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
 function versionNote(note: string | null, t: Translate): string {
+  if (note?.startsWith("subkit-service-package-workflow/v1:")) {
+    return t("workflowVersions.servicePackage");
+  }
   const from = restoredFrom(note);
   if (from !== null) return t("workflowVersions.restoredFrom", { version: `v${from}` });
   return note?.trim() || MISSING;

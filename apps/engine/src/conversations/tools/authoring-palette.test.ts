@@ -42,11 +42,19 @@ describe("existing workflow authoring palette", () => {
   });
 
   test("exposes package workflow preparation with workflow authoring", () => {
-    const tools = [{ name: "prepare_service_package_workflow" }, { name: "save_workflow_draft" }];
+    const tools = [
+      { name: "manage_service_package_workflow" },
+      { name: "prepare_service_package_workflow" },
+      { name: "save_workflow_draft" },
+    ];
     const names = filterByAuthoringPalette(tools, {} as never, new Set(["workflow-authoring"])).map(
       (tool) => tool.name,
     );
-    expect(names).toEqual(["prepare_service_package_workflow", "save_workflow_draft"]);
+    expect(names).toEqual([
+      "manage_service_package_workflow",
+      "prepare_service_package_workflow",
+      "save_workflow_draft",
+    ]);
   });
 
   test("exposes secure package enrollment only with connector authoring", () => {

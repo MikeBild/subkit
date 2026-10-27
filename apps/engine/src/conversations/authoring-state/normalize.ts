@@ -121,6 +121,26 @@ export function normalizeWorkflowDraft(raw: unknown): WorkflowDraftDocument {
   const spec = readStoredSpec(base.spec);
   const outputTransform = pickString("output_transform");
   const derivedFromSkillId = pickString("derived_from_skill_id");
+  const packageSource = isRecord(base.service_package_source) ? base.service_package_source : null;
+  const servicePackageSource =
+    packageSource &&
+    typeof packageSource.package_id === "string" &&
+    typeof packageSource.package_version === "string" &&
+    typeof packageSource.connector_id === "string" &&
+    typeof packageSource.workflow_slug === "string" &&
+    typeof packageSource.prefix === "string" &&
+    /^[0-9a-f]{64}$/.test(String(packageSource.artifact_hash)) &&
+    /^[0-9a-f]{64}$/.test(String(packageSource.definition_hash))
+      ? {
+          package_id: packageSource.package_id,
+          package_version: packageSource.package_version,
+          connector_id: packageSource.connector_id,
+          workflow_slug: packageSource.workflow_slug,
+          prefix: packageSource.prefix,
+          artifact_hash: String(packageSource.artifact_hash),
+          definition_hash: String(packageSource.definition_hash),
+        }
+      : undefined;
   const normalized: WorkflowDraftDocument = {
     name,
     ...(slug ? { slug } : {}),
@@ -132,6 +152,7 @@ export function normalizeWorkflowDraft(raw: unknown): WorkflowDraftDocument {
       : base.derived_from_skill_id === null
         ? { derived_from_skill_id: null }
         : {}),
+    ...(servicePackageSource ? { service_package_source: servicePackageSource } : {}),
     steps: Array.isArray(base.steps)
       ? base.steps.filter((step): step is Record<string, unknown> => isRecord(step))
       : [],

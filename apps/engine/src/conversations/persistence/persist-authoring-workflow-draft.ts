@@ -100,6 +100,9 @@ export async function persistAuthoringWorkflowDraft(input: {
       actor_id: ctx.principal?.id ?? ctx.actor_id,
       ...(ctx.principal ? { actor_type: ctx.principal.kind } : {}),
       request_source: "tool-chain",
+      ...(fullDraft.workflow?.service_package_source
+        ? { service_package_source: fullDraft.workflow.service_package_source }
+        : {}),
       ...(input.auditMetadata ? { audit_metadata: input.auditMetadata } : {}),
     },
     ctx.db,
