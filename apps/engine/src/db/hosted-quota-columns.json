@@ -8392,6 +8392,87 @@
     "tenant": true
   },
   {
+    "table": "workflow_review_receipts",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "tenant_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "workflow_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "conversation_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "prepared_by",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "session_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "snapshot",
+        "type": "jsonb",
+        "enum": null
+      },
+      {
+        "name": "snapshot_digest",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "status",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "authority_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "schedule_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "completed_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      },
+      {
+        "name": "expires_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      }
+    ],
+    "tenant": true
+  },
+  {
     "table": "workflow_run_state",
     "columns": [
       {

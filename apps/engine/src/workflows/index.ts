@@ -58,6 +58,8 @@ export {
   ReportDeliveryRefusalSchema,
 } from "./report-delivery-boundary.ts";
 export { reportBoundariesFromManifest } from "./report-delivery-proposal.ts";
+export * from "./review-receipt.ts";
+export * from "./review-service.ts";
 export { normalizeWorkflowRunInput } from "./run-input.ts";
 export * from "./service.ts";
 export * from "./stored-definition.ts";

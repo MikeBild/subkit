@@ -16456,9 +16456,263 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description The requested confirmation mode is not permitted for this tool */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{id}/workflow-reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        elicitation_id: string;
+                        /** @default false */
+                        activate?: boolean;
+                        /** @default null */
+                        grant?: {
+                            /** @enum {string} */
+                            environment: "dev" | "prod";
+                            /** Format: date-time */
+                            valid_from: string;
+                            /** Format: date-time */
+                            valid_until?: string | null;
+                            max_runs?: number | null;
+                        } | null;
+                        /** @default null */
+                        schedule?: {
+                            cron: string;
+                            timezone: string;
+                            input?: unknown;
+                            paused?: boolean;
+                        } | null;
+                    };
+                };
+            };
+            responses: {
+                /** @description Prepared review */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkflowReviewReceipt"];
+                    };
+                };
+                /** @description Human session required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Stale or unavailable review */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Review expired */
+                410: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Review blocked */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{id}/workflow-reviews/{receipt_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    receipt_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Workflow review */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkflowReviewReceipt"];
+                    };
+                };
+                /** @description Human session required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Review not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{id}/workflow-reviews/{receipt_id}/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    receipt_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        expected_snapshot_digest: string;
+                        save_only?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Completed review */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkflowReviewReceipt"];
+                    };
+                };
+                /** @description Human session required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Review not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Stale review */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Review expired */
+                410: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Review blocked */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -28080,11 +28334,91 @@ export interface components {
             policies: {
                 [key: string]: "no_confirm" | "confirm_before_execution" | "confirm_after_execution";
             };
+            eligible_no_confirm_tools: string[];
         };
         ToolPoliciesPatchBody: {
             policies: {
                 [key: string]: "no_confirm" | "confirm_before_execution" | "confirm_after_execution" | null;
             };
+        };
+        WorkflowReviewReceipt: {
+            /** Format: uuid */
+            receipt_id: string;
+            /** @enum {string} */
+            status: "pending" | "completed";
+            snapshot_digest: string;
+            /** Format: date-time */
+            expires_at: string;
+            workflow_name: string;
+            workflow_slug: string | null;
+            reviewed_version_number: number | null;
+            /** @enum {string|null} */
+            environment: "dev" | "prod" | null;
+            description: string;
+            checks: string[];
+            effects: {
+                step_id: string;
+                connector_name: string | null;
+                connector_slug: string | null;
+                /** @enum {string} */
+                effect: "read" | "write" | "unknown";
+                target: string | null;
+                details?: string[];
+            }[];
+            affected_triggers: {
+                /** @enum {string} */
+                kind: "schedule" | "webhook";
+                name: string;
+                cron?: string;
+                timezone?: string;
+            }[];
+            actions: {
+                activate: boolean;
+                grant: {
+                    /** @enum {string} */
+                    environment: "dev" | "prod";
+                    /** Format: date-time */
+                    valid_from: string;
+                    /** Format: date-time */
+                    valid_until?: string | null;
+                    max_runs?: number | null;
+                } | null;
+                schedule: {
+                    cron: string;
+                    timezone: string;
+                    input?: unknown;
+                    paused?: boolean;
+                } | null;
+            };
+            suggested_actions: {
+                activate: boolean;
+                grant: {
+                    /** @enum {string} */
+                    environment: "dev" | "prod";
+                    /** Format: date-time */
+                    valid_from: string;
+                    /** Format: date-time */
+                    valid_until?: string | null;
+                    max_runs?: number | null;
+                } | null;
+                schedule: {
+                    cron: string;
+                    timezone: string;
+                    input?: unknown;
+                    paused?: boolean;
+                } | null;
+            };
+            result: {
+                /** Format: uuid */
+                workflow_id: string;
+                /** Format: uuid */
+                authority_id: string | null;
+                /** Format: uuid */
+                schedule_id: string | null;
+                saved: boolean;
+                activated: boolean;
+                granted: boolean;
+            } | null;
         };
         SuggestNextFeedbackResponse: {
             /** @enum {boolean} */

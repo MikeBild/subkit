@@ -167,6 +167,7 @@ import sql0146FileVersions from "./0146_file_versions.sql" with { type: "text" }
 import sql0147WorkflowVersionSpec from "./0147_workflow_version_spec.sql" with { type: "text" };
 import sql0148SkillConventions from "./0148_skill_conventions.sql" with { type: "text" };
 import sql0149SkillEffectivenessIntake from "./0149_skill_effectiveness_intake.sql" with { type: "text" };
+import sql0150MarvelousSilverSurfer from "./0150_marvelous_silver_surfer.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -341,6 +342,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0147_workflow_version_spec": sql0147WorkflowVersionSpec,
   "0148_skill_conventions": sql0148SkillConventions,
   "0149_skill_effectiveness_intake": sql0149SkillEffectivenessIntake,
+  "0150_marvelous_silver_surfer": sql0150MarvelousSilverSurfer,
 };
 
 const journal = journalMeta as unknown as Journal;

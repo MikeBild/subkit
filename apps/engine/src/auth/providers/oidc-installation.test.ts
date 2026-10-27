@@ -1,7 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { cockpitInstallations } from "../../db/schema/cockpit-installations.ts";
-import { sessions, tenants, userIdentities, users } from "../../db/schema/index.ts";
+import {
+  oidcLoginStates,
+  sessions,
+  tenants,
+  userIdentities,
+  users,
+} from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
@@ -124,6 +130,32 @@ describe("OIDC Cockpit installation login", () => {
     );
     expect(finished.status).toBe(403);
     expect(await finished.json()).toMatchObject({ code: "installation_identity_mismatch" });
+  });
+
+  test("rejects a tenant that differs from the installation before creating login state", async () => {
+    const { installation } = await seedInstallation("installation-target-owner");
+    const [foreign] = await testDb.db
+      .insert(tenants)
+      .values({ slug: "installation-foreign", display_name: "Installation Foreign" })
+      .returning();
+    if (!foreign) throw new Error("foreign tenant seed failed");
+    const before = await testDb.db.select({ id: oidcLoginStates.id }).from(oidcLoginStates);
+    const provider = installationProvider(installation.id);
+
+    const started = await provider.startLogin!(
+      new Request("http://127.0.0.1:0/v1/identity/login/start?tenant=installation-foreign", {
+        headers: { accept: "application/json" },
+      }),
+    );
+
+    expect(started.status).toBe(400);
+    expect(await started.json()).toEqual({
+      code: "tenant_mismatch",
+      message: "tenant does not match configured sign-in target",
+    });
+    expect(await testDb.db.select({ id: oidcLoginStates.id }).from(oidcLoginStates)).toEqual(
+      before,
+    );
   });
 
   test("rejects an installation revoked between login start and callback", async () => {

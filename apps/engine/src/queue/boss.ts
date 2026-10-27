@@ -74,7 +74,65 @@ export interface StartBossOptions {
   schema?: string;
 }
 
+type QueueInitializer = Pick<PgBoss, "createQueue" | "getQueues">;
+
+export async function ensureBossQueues(
+  boss: QueueInitializer,
+  onPhase: (phase: string) => void = () => {},
+): Promise<void> {
+  onPhase("discover_queues");
+  const existing = new Set((await boss.getQueues()).map((q: QueueResult) => q.name));
+  const deadLetters = new Set<string>();
+  for (const name of QUEUE_NAMES) {
+    const dl = QUEUE_DEFINITIONS[name as QueueName].queue.deadLetter;
+    if (dl) deadLetters.add(dl);
+  }
+  const confirmQueue = async (name: string, originalError: unknown): Promise<void> => {
+    onPhase("confirm_queue");
+    const queues = await boss.getQueues();
+    if (!queues.some((queue: QueueResult) => queue.name === name)) throw originalError;
+    existing.add(name);
+  };
+  for (const dlq of deadLetters) {
+    if (existing.has(dlq)) continue;
+    try {
+      onPhase("create_dead_letter_queue");
+      await boss.createQueue(dlq);
+      existing.add(dlq);
+    } catch (err) {
+      logger.warn({
+        module: "queue",
+        action: "queue.create_failed",
+        msg: "could not create DLQ",
+        queue: dlq,
+        ...queueErrorFields(err),
+      });
+      await confirmQueue(dlq, err);
+    }
+  }
+  for (const name of QUEUE_NAMES) {
+    if (existing.has(name)) continue;
+    const def = QUEUE_DEFINITIONS[name as QueueName];
+    try {
+      onPhase("create_queue");
+      await boss.createQueue(name, def.queue);
+      existing.add(name);
+    } catch (err) {
+      logger.warn({
+        module: "queue",
+        action: "queue.create_failed",
+        msg: "queue creation failed; checking whether a concurrent creator completed it",
+        queue: name,
+        ...queueErrorFields(err),
+      });
+      await confirmQueue(name, err);
+    }
+  }
+}
+
 export async function createBoss(opts: StartBossOptions): Promise<PgBoss> {
+  const startedAt = Date.now();
+  let phase = "construct";
   const bossOptions: ConstructorOptions = {
     ...databasePoolOptions(opts.connectionString),
     schema: opts.schema ?? "pgboss",
@@ -95,53 +153,40 @@ export async function createBoss(opts: StartBossOptions): Promise<PgBoss> {
     });
   });
 
-  await boss.start();
+  try {
+    phase = "start";
+    logger.info({
+      module: "queue",
+      action: "boss.start_attempt",
+      msg: "starting pg-boss",
+      phase,
+    });
+    await boss.start();
 
-  const existing = new Set((await boss.getQueues()).map((q: QueueResult) => q.name));
-  const deadLetters = new Set<string>();
-  for (const name of QUEUE_NAMES) {
-    const dl = QUEUE_DEFINITIONS[name as QueueName].queue.deadLetter;
-    if (dl) deadLetters.add(dl);
-  }
-  for (const dlq of deadLetters) {
-    if (existing.has(dlq)) continue;
-    try {
-      await boss.createQueue(dlq);
-      existing.add(dlq);
-    } catch (err) {
-      logger.warn({
-        module: "queue",
-        action: "queue.create_failed",
-        msg: "could not create DLQ",
-        queue: dlq,
-        ...errorFields(err),
-      });
-    }
-  }
-  for (const name of QUEUE_NAMES) {
-    if (existing.has(name)) continue;
-    const def = QUEUE_DEFINITIONS[name as QueueName];
-    try {
-      await boss.createQueue(name, def.queue);
-      existing.add(name);
-    } catch (err) {
-      logger.warn({
-        module: "queue",
-        action: "queue.create_failed",
-        msg: "could not create queue (ignoring — probably exists)",
-        queue: name,
-        ...errorFields(err),
-      });
-    }
-  }
+    await ensureBossQueues(boss, (nextPhase) => {
+      phase = nextPhase;
+    });
 
-  logger.info({
-    module: "queue",
-    action: "boss.started",
-    msg: "pg-boss started",
-    queues: QUEUE_NAMES.length,
-  });
-  return boss;
+    logger.info({
+      module: "queue",
+      action: "boss.started",
+      msg: "pg-boss started",
+      queues: QUEUE_NAMES.length,
+      elapsed_ms: Date.now() - startedAt,
+    });
+    return boss;
+  } catch (err) {
+    logger.error({
+      module: "queue",
+      action: "boss.start_failed",
+      msg: "pg-boss did not become ready",
+      phase,
+      elapsed_ms: Date.now() - startedAt,
+      ...queueErrorFields(err),
+    });
+    await disposeBoss(boss);
+    throw err;
+  }
 }
 
 export async function startBoss(opts: StartBossOptions): Promise<PgBoss> {

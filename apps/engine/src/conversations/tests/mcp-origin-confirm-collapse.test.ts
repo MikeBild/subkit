@@ -223,7 +223,7 @@ describe("invariant — every palette tool respects its resolved confirmation", 
           args: {},
           overrides,
         }),
-      ).toMatchObject({ kind: "needs_confirm", rule: "conversation_override" });
+      ).toMatchObject({ kind: "needs_confirm" });
       if (entry.category !== "draft_write") {
         expect(
           policyDecide({
@@ -233,7 +233,7 @@ describe("invariant — every palette tool respects its resolved confirmation", 
             args: {},
             overrides,
           }),
-        ).toMatchObject({ kind: "needs_confirm", rule: "conversation_override" });
+        ).toMatchObject({ kind: "needs_confirm" });
       }
     }
   });

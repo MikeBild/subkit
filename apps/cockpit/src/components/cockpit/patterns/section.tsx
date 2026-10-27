@@ -20,6 +20,16 @@ export function SectionHeading({
   );
 }
 
+export function SectionSubheading({
+  className = "text-sm font-medium",
+  children,
+}: {
+  className?: string;
+  children: ReactNode;
+}) {
+  return <h3 className={className}>{children}</h3>;
+}
+
 export function Section({
   label,
   aside,

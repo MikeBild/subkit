@@ -529,6 +529,7 @@ export const ToolPoliciesSchema = z
 export const ToolPoliciesResponse = z
   .object({
     policies: z.record(z.string(), ToolPolicyModeSchema),
+    eligible_no_confirm_tools: z.array(z.string()),
   })
   .openapi("ToolPoliciesResponse");
 

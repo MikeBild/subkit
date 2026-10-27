@@ -106,6 +106,7 @@ export const ERASED_TENANT_TABLES = [
   "webhooks_outbound",
   "workflow_autoheal_policies",
   "workflow_execution_authorities",
+  "workflow_review_receipts",
   "workflow_run_state",
   "workflow_signals",
   "workflow_versions",

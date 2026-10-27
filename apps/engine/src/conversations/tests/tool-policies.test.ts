@@ -2,9 +2,11 @@ import { describe, expect, it } from "bun:test";
 import type { Db } from "../../db/client.ts";
 import { runConfirmGate } from "../confirmation.ts";
 import {
+  canSetConversationToolPolicy,
   decideToolMode,
   defaultModeForCategory,
   effectiveMode,
+  eligibleNoConfirmTools,
   resolveToolMode,
   type ToolPolicies,
 } from "../tool-policies.ts";
@@ -16,6 +18,13 @@ const untouchableDb = new Proxy({} as Record<string, unknown>, {
 }) as unknown as Db;
 
 describe("tool-policies resolver", () => {
+  it("only exposes the two safe preparation saves for no-confirm conversation overrides", () => {
+    expect(eligibleNoConfirmTools()).toEqual(["save_workflow_draft", "save_connector_draft"]);
+    expect(canSetConversationToolPolicy("save_workflow_draft", "no_confirm")).toBe(true);
+    expect(canSetConversationToolPolicy("call_connector", "no_confirm")).toBe(false);
+    expect(canSetConversationToolPolicy("call_connector", "confirm_after_execution")).toBe(false);
+    expect(canSetConversationToolPolicy("call_connector", "confirm_before_execution")).toBe(true);
+  });
   it("defaults tenant_write to confirm_before_execution", () => {
     expect(defaultModeForCategory("tenant_write")).toBe("confirm_before_execution");
   });
@@ -23,9 +32,17 @@ describe("tool-policies resolver", () => {
     expect(defaultModeForCategory("tenant_read")).toBe("no_confirm");
     expect(defaultModeForCategory("draft_write")).toBe("no_confirm");
   });
-  it("per-conversation override wins over default", () => {
-    const policies: ToolPolicies = { run_workflow: "no_confirm" };
-    expect(effectiveMode("run_workflow", policies, "confirm_before_execution")).toBe("no_confirm");
+  it("only permitted per-conversation overrides win over the trusted default", () => {
+    expect(
+      effectiveMode(
+        "save_workflow_draft",
+        { save_workflow_draft: "no_confirm" },
+        "confirm_before_execution",
+      ),
+    ).toBe("no_confirm");
+    expect(
+      effectiveMode("run_workflow", { run_workflow: "no_confirm" }, "confirm_before_execution"),
+    ).toBe("confirm_before_execution");
   });
   it("falls back to default when no override", () => {
     const policies: ToolPolicies = {};
@@ -34,6 +51,74 @@ describe("tool-policies resolver", () => {
 });
 
 describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
+  it("legacy unsafe no-confirm overrides cannot bypass external writes or full responses", () => {
+    expect(
+      decideToolMode({
+        tool: "call_connector",
+        category: "tenant_read",
+        input: { method: "POST" },
+        overrides: { call_connector: "no_confirm" },
+      }).mode,
+    ).toBe("confirm_before_execution");
+    expect(
+      decideToolMode({
+        tool: "call_connector",
+        category: "tenant_read",
+        input: { method: "GET", response_mode: "full" },
+        overrides: { call_connector: "no_confirm" },
+      }).mode,
+    ).toBe("confirm_before_execution");
+  });
+
+  it("safe save overrides cannot bypass force, credentials, or plan mode", () => {
+    expect(
+      decideToolMode({
+        tool: "save_workflow_draft",
+        category: "draft_write",
+        input: { force_commit: true },
+        overrides: { save_workflow_draft: "no_confirm" },
+      }).mode,
+    ).toBe("confirm_before_execution");
+    expect(
+      decideToolMode({
+        tool: "save_connector_draft",
+        category: "draft_write",
+        input: { credential: { mode: "api_key" } },
+        overrides: { save_connector_draft: "no_confirm" },
+      }).mode,
+    ).toBe("confirm_before_execution");
+    for (const permission_mode of ["yolo", "auto", "ask"] as const) {
+      expect(
+        decideToolMode({
+          tool: "save_workflow_draft",
+          category: "draft_write",
+          input: { force_commit: true },
+          overrides: { save_workflow_draft: "no_confirm" },
+          permission_mode,
+          connector_trust: true,
+        }).mode,
+      ).toBe("confirm_before_execution");
+      expect(
+        decideToolMode({
+          tool: "save_connector_draft",
+          category: "draft_write",
+          input: { credential: { mode: "api_key" } },
+          overrides: { save_connector_draft: "no_confirm" },
+          permission_mode,
+          connector_trust: true,
+        }).mode,
+      ).toBe("confirm_before_execution");
+    }
+    expect(
+      decideToolMode({
+        tool: "save_workflow_draft",
+        category: "draft_write",
+        input: {},
+        overrides: { save_workflow_draft: "no_confirm" },
+        permission_mode: "plan",
+      }).mode,
+    ).toBe("confirm_before_execution");
+  });
   it("development probes cannot disguise writes as automatic preparation", () => {
     for (const tool of ["probe_connector"]) {
       for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {

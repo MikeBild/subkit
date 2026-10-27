@@ -1,5 +1,5 @@
 import type { z } from "@hono/zod-openapi";
-import type { Db } from "../../db/client.ts";
+import type { Executor } from "../../db/client.ts";
 import type { EngineClient } from "../../engine-client/index.ts";
 import type { ElicitationBridge } from "../elicitation-bridge.ts";
 import type { DraftDocument } from "../types.ts";
@@ -70,7 +70,7 @@ export interface ToolContext {
   locale?: "de" | "en";
   playbook_mode?: "off" | "auto";
   direct_connector_approval?: import("../../tools/direct-connector-binding.ts").DirectConnectorApproval;
-  db: Db;
+  db: Executor;
   tenant_id: string;
   conversation_id: string;
   actor_id: string | null;

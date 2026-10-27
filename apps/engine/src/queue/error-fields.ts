@@ -2,7 +2,7 @@ import { z } from "zod";
 import { errorFields } from "../logging/logger.ts";
 
 const queueErrorSchema = z.object({
-  message: z.string(),
+  message: z.unknown(),
   name: z.string().optional(),
   stack: z.string().optional(),
   code: z.string().optional(),
@@ -18,7 +18,13 @@ export function queueErrorFields(value: unknown): ReturnType<typeof errorFields>
     );
   }
   const { message, name, stack, code, cause } = parsed.data;
-  const error = Object.assign(new Error(message, { cause }), { code });
+  const safeMessage =
+    typeof message === "string"
+      ? message
+      : typeof message === "object" && message !== null && "message" in message
+        ? "Queue error envelope"
+        : "Unknown queue error";
+  const error = Object.assign(new Error(safeMessage, { cause }), { code });
   if (name !== undefined) error.name = name;
   if (stack !== undefined) error.stack = stack;
   else delete error.stack;

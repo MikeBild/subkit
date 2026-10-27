@@ -37,6 +37,7 @@ export {
   type TableErrorState,
 } from "./data-table";
 export { DetailPage, type DetailStrip } from "./detail-page";
+export { REVIEW_DIALOG_FRAME } from "./dialog-frame";
 export { type Fact, FactList } from "./fact-list";
 export { FileDrop } from "./file-drop";
 export {
@@ -84,7 +85,13 @@ export { activeRouteTab, type RouteTab, RouteTabs } from "./route-tabs";
 export { SaveBar } from "./save-bar";
 export { SchemaForm } from "./schema-form";
 export { SearchInput } from "./search-input";
-export { CollapsibleSection, SECTION_LABEL, Section, SectionHeading } from "./section";
+export {
+  CollapsibleSection,
+  SECTION_LABEL,
+  Section,
+  SectionHeading,
+  SectionSubheading,
+} from "./section";
 export { SegmentedControl, type SegmentedOption } from "./segmented-control";
 export { Loadable, RowsSkeleton, Skeleton, TileSkeleton } from "./skeleton";
 export { type BadgeTone, StatusBadge, statusTone } from "./status-badge";

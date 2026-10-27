@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { apiKeys, auditLog, conversations, tenants, users } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
-import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
+import { browserSessionHeaders, createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
 let conversation_id: string;
@@ -33,24 +33,39 @@ async function api(method: string, path: string, body?: unknown): Promise<Respon
 }
 
 describe("conversation tool-policies HTTP route (Bug RR)", () => {
-  test("GET on a fresh conversation returns empty policies", async () => {
+  test("GET on a fresh conversation returns empty policies and the safe browser choices", async () => {
     const res = await api("GET", `/v1/conversations/${conversation_id}/tool-policies`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { policies: Record<string, string> };
+    const body = (await res.json()) as {
+      policies: Record<string, string>;
+      eligible_no_confirm_tools: string[];
+    };
     expect(body.policies).toEqual({});
+    expect(body.eligible_no_confirm_tools).toEqual(["save_workflow_draft", "save_connector_draft"]);
   });
 
-  test("PUT one policy persists it; GET reads it back", async () => {
+  test("API keys cannot skip confirmation and unsafe tools cannot be made no-confirm", async () => {
     const put = await api("PUT", `/v1/conversations/${conversation_id}/tool-policies`, {
+      policies: { save_workflow_draft: "no_confirm" },
+    });
+    expect(put.status).toBe(403);
+
+    const unsafe = await api("PUT", `/v1/conversations/${conversation_id}/tool-policies`, {
       policies: { call_connector: "no_confirm" },
+    });
+    expect(unsafe.status).toBe(422);
+  });
+
+  test("a signed-in browser session with CSRF can set an eligible no-confirm policy", async () => {
+    const headers = await browserSessionHeaders(srv, srv.userId);
+    const put = await fetch(`${srv.baseUrl}/v1/conversations/${conversation_id}/tool-policies`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ policies: { save_workflow_draft: "no_confirm" } }),
     });
     expect(put.status).toBe(200);
     const body = (await put.json()) as { policies: Record<string, string> };
-    expect(body.policies.call_connector).toBe("no_confirm");
-
-    const get = await api("GET", `/v1/conversations/${conversation_id}/tool-policies`);
-    const getBody = (await get.json()) as { policies: Record<string, string> };
-    expect(getBody.policies.call_connector).toBe("no_confirm");
+    expect(body.policies.save_workflow_draft).toBe("no_confirm");
   });
 
   test("PUT with null clears the override", async () => {
@@ -64,13 +79,8 @@ describe("conversation tool-policies HTTP route (Bug RR)", () => {
     expect(body.policies.run_workflow).toBeUndefined();
   });
 
-  test("PUT supports the three valid mode strings + null", async () => {
-    const valid = [
-      "no_confirm",
-      "confirm_before_execution",
-      "confirm_after_execution",
-      null,
-    ] as const;
+  test("PUT permits confirmation-before-execution and revocation", async () => {
+    const valid = ["confirm_before_execution", null] as const;
     for (const mode of valid) {
       const res = await api("PUT", `/v1/conversations/${conversation_id}/tool-policies`, {
         policies: { test_tool: mode },
@@ -94,7 +104,7 @@ describe("conversation tool-policies HTTP route (Bug RR)", () => {
 
   test("PUT writes one tool_policy.changed audit row per tool with prior+new mode metadata", async () => {
     await api("PUT", `/v1/conversations/${conversation_id}/tool-policies`, {
-      policies: { audit_probe: "no_confirm" },
+      policies: { audit_probe: "confirm_before_execution" },
     });
     const before = await srv.db
       .select()
@@ -111,7 +121,7 @@ describe("conversation tool-policies HTTP route (Bug RR)", () => {
     const baselineId = before[0]?.id ?? null;
 
     const res = await api("PUT", `/v1/conversations/${conversation_id}/tool-policies`, {
-      policies: { audit_probe: "confirm_before_execution" },
+      policies: { audit_probe: null },
     });
     expect(res.status).toBe(200);
 
@@ -134,8 +144,8 @@ describe("conversation tool-policies HTTP route (Bug RR)", () => {
     expect(latest.result).toBe("success");
     const meta = latest.metadata as Record<string, unknown>;
     expect(meta.tool).toBe("audit_probe");
-    expect(meta.mode).toBe("confirm_before_execution");
-    expect(meta.prior_mode).toBe("no_confirm");
+    expect(meta.mode).toBeNull();
+    expect(meta.prior_mode).toBe("confirm_before_execution");
     expect(meta.request_source).toBe("api");
   });
 });

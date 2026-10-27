@@ -102,13 +102,13 @@ export function previewWorkflowAuthority(
   );
 }
 
-interface HumanContext {
+export interface HumanContext {
   request: Request;
   principal: ResolvedPrincipal;
   db: Db;
 }
 
-async function requireHuman(context: HumanContext, workflow_id: string) {
+export async function requireHuman(context: HumanContext, workflow_id: string) {
   const { principal, request, db } = context;
   const session = await browserSessionForPrincipal(request, principal);
   if (!session) fail("human_session_required", "a signed human browser session is required");
@@ -128,7 +128,10 @@ async function requireHuman(context: HumanContext, workflow_id: string) {
   return session;
 }
 
-async function lockLiveSession(tx: Executor, session: Awaited<ReturnType<typeof requireHuman>>) {
+export async function lockLiveSession(
+  tx: Executor,
+  session: Awaited<ReturnType<typeof requireHuman>>,
+) {
   const [live] = await tx
     .select({ id: sessions.id })
     .from(sessions)
@@ -147,7 +150,7 @@ async function lockLiveSession(tx: Executor, session: Awaited<ReturnType<typeof 
   if (!live) fail("human_session_expired", "the human session has expired or was revoked");
 }
 
-async function resolveGrantedAdmissionHolds(
+export async function resolveGrantedAdmissionHolds(
   authority: typeof workflowExecutionAuthorities.$inferSelect,
   activeVersion: string | null,
   tx: Executor,
@@ -263,6 +266,44 @@ export const ActivateWorkflowDraftSchema = z
   })
   .strict();
 
+export async function activateWorkflowDraftLocked(
+  tx: Executor,
+  workflow_id: string,
+  input: z.infer<typeof ActivateWorkflowDraftSchema>,
+  principal: ResolvedPrincipal,
+): Promise<void> {
+  const workflow = await lockWorkflowForVersionWrite(tx, principal.tenant_id, workflow_id);
+  if (!workflow) fail("workflow_version_unavailable", "workflow version unavailable");
+  const preview = await previewWorkflowAuthority(
+    {
+      tenant_id: principal.tenant_id,
+      workflow_id,
+      workflow_version_id: input.workflow_version_id,
+      execution_environment: input.execution_environment,
+    },
+    tx,
+  );
+  if (preview.digest !== input.expected_manifest_digest)
+    fail("authority_manifest_changed", "the reviewed boundary changed; review again");
+  const previous = workflow.current_version_id;
+  await activateReviewedDraft(
+    tx,
+    workflow,
+    input.workflow_version_id,
+    input.expected_current_version_id,
+    principal.id,
+    true,
+  );
+  await carryApprovalsForward(tx, {
+    tenant_id: principal.tenant_id,
+    workflow_id,
+    from_version_id: previous,
+    to_version_id: input.workflow_version_id,
+    actor_id: principal.id,
+    actor_type: principal.kind,
+  });
+}
+
 export async function activateWorkflowDraft(
   workflow_id: string,
   raw: unknown,
@@ -273,36 +314,7 @@ export async function activateWorkflowDraft(
   const { db, principal } = context;
   await db.transaction(async (tx) => {
     await lockLiveSession(tx, session);
-    const workflow = await lockWorkflowForVersionWrite(tx, principal.tenant_id, workflow_id);
-    if (!workflow) fail("workflow_version_unavailable", "workflow version unavailable");
-    const preview = await previewWorkflowAuthority(
-      {
-        tenant_id: principal.tenant_id,
-        workflow_id,
-        workflow_version_id: input.workflow_version_id,
-        execution_environment: input.execution_environment,
-      },
-      tx,
-    );
-    if (preview.digest !== input.expected_manifest_digest)
-      fail("authority_manifest_changed", "the reviewed boundary changed; review again");
-    const previous = workflow.current_version_id;
-    await activateReviewedDraft(
-      tx,
-      workflow,
-      input.workflow_version_id,
-      input.expected_current_version_id,
-      principal.id,
-      true,
-    );
-    await carryApprovalsForward(tx, {
-      tenant_id: principal.tenant_id,
-      workflow_id,
-      from_version_id: previous,
-      to_version_id: input.workflow_version_id,
-      actor_id: principal.id,
-      actor_type: principal.kind,
-    });
+    await activateWorkflowDraftLocked(tx, workflow_id, input, principal);
   });
   invalidateTenantState(principal.tenant_id);
   return {

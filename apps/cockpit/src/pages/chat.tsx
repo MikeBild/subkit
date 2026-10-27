@@ -1079,6 +1079,7 @@ function ChatMessage({
               <ChatApprovalCard
                 key={`${message.id}-approval-${partIndex}`}
                 approval={approval}
+                conversationId={conversationId}
                 busy={approvalBusy}
                 error={approvalError}
                 onDecision={onApproval}
@@ -2894,6 +2895,7 @@ export function ChatPage() {
                     {unanchoredDecision && (
                       <ChatApprovalCard
                         approval={unanchoredDecision}
+                        conversationId={activeId ?? undefined}
                         busy={busy}
                         error={decisionErrorFor(unanchoredDecision.id)}
                         onDecision={submitApproval}

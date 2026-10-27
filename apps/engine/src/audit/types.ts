@@ -82,6 +82,8 @@ export const AuditAction = {
   WORKFLOW_AUTHORITY_REVOKED: "workflow.authority_revoked",
   WORKFLOW_AUTHORITY_INHERITED: "workflow.authority_inherited",
   WORKFLOW_AUTHORITY_EXPIRY_REMOVED: "workflow.authority_expiry_removed",
+  WORKFLOW_REVIEW_PREPARED: "workflow.review_prepared",
+  WORKFLOW_REVIEW_COMPLETED: "workflow.review_completed",
   WORKFLOW_COMMITTED_OVERRIDE: "workflow.committed_override",
   WORKFLOW_SCHEDULE_NOT_BOUND: "workflow.schedule_not_bound",
   WORKFLOW_PREVIEW_AUTO_REPAIRED: "workflow.preview_auto_repaired",

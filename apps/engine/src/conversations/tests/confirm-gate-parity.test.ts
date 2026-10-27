@@ -391,7 +391,7 @@ describe("confirm gate parity — one gate behind every entry point", () => {
     expect(logs).toHaveLength(1);
     expect(logs[0]?.fields).toMatchObject({
       tool: "mcp_paritymcp__create_page",
-      rule: "category_default",
+      rule: "computed_from_input",
       mode: "confirm_before_execution",
       outcome: "confirm",
       surface: "sk_interactive",

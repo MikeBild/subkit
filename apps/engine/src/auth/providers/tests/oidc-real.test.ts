@@ -51,6 +51,7 @@ function buildProvider(
     clientId: CLIENT_ID,
     clientSecret: "mock-secret",
     redirectUri: REDIRECT_URI,
+    tenantSlug: "oidc-real",
     enableSignup: overrides.enableSignup ?? true,
     ...(overrides.productId ? { productId: overrides.productId } : {}),
     ...(overrides.linkByEmail !== undefined ? { linkByEmail: overrides.linkByEmail } : {}),
@@ -355,6 +356,7 @@ describe("oidc provider — auth.enable_signup gate", () => {
       clientId: CLIENT_ID,
       clientSecret: "mock-secret",
       redirectUri: REDIRECT_URI,
+      tenantSlug: "oidc-real",
     });
     const res = await loginAttempt(provider, {
       sub: "gate-default-sub",
@@ -426,9 +428,15 @@ describe("oidc provider — browser error pages", () => {
     return state;
   }
 
-  test("unknown tenant renders HTML while explicit JSON clients keep the error envelope", async () => {
+  test("a mismatched tenant is rejected before creating an OIDC login state", async () => {
+    const [foreignTenant] = await testDb.db
+      .insert(tenants)
+      .values({ slug: "oidc-foreign", display_name: "OIDC Foreign" })
+      .returning();
+    if (!foreignTenant) throw new Error("foreign tenant seed failed");
     const provider = buildProvider();
-    const url = "http://127.0.0.1:0/v1/identity/login/start?tenant=does-not-exist";
+    const url = "http://127.0.0.1:0/v1/identity/login/start?tenant=oidc-foreign";
+    const before = await testDb.db.select({ id: oidcLoginStates.id }).from(oidcLoginStates);
 
     const browserRes = await provider.startLogin!(new Request(url));
     expect(browserRes.status).toBe(400);
@@ -443,7 +451,13 @@ describe("oidc provider — browser error pages", () => {
     );
     expect(jsonRes.status).toBe(400);
     expect(jsonRes.headers.get("content-type")).toBe("application/json");
-    expect(await jsonRes.json()).toEqual({ code: "unknown_tenant", message: "tenant not found" });
+    expect(await jsonRes.json()).toEqual({
+      code: "tenant_mismatch",
+      message: "tenant does not match configured sign-in target",
+    });
+    expect(await testDb.db.select({ id: oidcLoginStates.id }).from(oidcLoginStates)).toEqual(
+      before,
+    );
   });
 
   test("discovery failure renders HTML while explicit JSON clients keep the error envelope", async () => {

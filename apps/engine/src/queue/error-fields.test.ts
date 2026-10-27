@@ -66,6 +66,15 @@ test("unrecognized payloads cannot invoke custom string serialization", () => {
   expect(queueErrorFields("Worker stopped").error).toBe("Worker stopped");
 });
 
+test("nested non-string messages remain classified without serializing the payload", () => {
+  const fields = queueErrorFields({
+    message: { private: "private-message-canary" },
+    cause: { code: "08006", message: "private-cause-canary" },
+  });
+  expect(fields).toMatchObject({ error: "database query failed", error_class: "transient" });
+  expect(JSON.stringify(fields)).not.toContain("private-");
+});
+
 test.each(["42501", "28P01"])(
   "nested supervisor errors retain safe SQLSTATE %s without database contents",
   (code) => {

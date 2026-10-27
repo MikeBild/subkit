@@ -2,6 +2,13 @@ export { Alert, AlertDescription } from "@/components/ui/alert";
 export { buttonVariants } from "@/components/ui/button";
 export { Checkbox } from "@/components/ui/checkbox";
 export {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
+export {
   Field,
   FieldContent,
   FieldDescription,

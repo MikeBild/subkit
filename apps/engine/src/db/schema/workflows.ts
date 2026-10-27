@@ -20,6 +20,7 @@ import {
   tenantId,
   timestamps,
 } from "./_common.ts";
+import { conversations } from "./conversations.ts";
 import { tenants } from "./identity.ts";
 
 export const autohealPolicyEnum = pgEnum("autoheal_policy", [
@@ -169,6 +170,51 @@ export const workflowExecutionAuthorities = pgTable(
     check(
       "workflow_authorities_revocation_check",
       sql`(${t.revoked_at} IS NULL AND ${t.revoked_by} IS NULL AND ${t.superseded_by} IS NULL) OR (${t.revoked_at} IS NOT NULL AND (${t.revoked_by} IS NOT NULL OR ${t.superseded_by} IS NOT NULL))`,
+    ),
+  ],
+);
+
+export const workflowReviewReceipts = pgTable(
+  "workflow_review_receipts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    workflow_id: uuid("workflow_id").references(() => workflows.id, { onDelete: "cascade" }),
+    conversation_id: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    prepared_by: uuid("prepared_by").notNull(),
+    session_id: uuid("session_id").notNull(),
+    snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(),
+    snapshot_digest: text("snapshot_digest").notNull(),
+    status: text("status").notNull().default("pending"),
+    authority_id: uuid("authority_id"),
+    schedule_id: uuid("schedule_id"),
+    completed_at: timestamp("completed_at", { withTimezone: true }),
+    expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    index("workflow_review_receipts_tenant_workflow_idx").on(t.tenant_id, t.workflow_id),
+    index("workflow_review_receipts_tenant_conversation_idx").on(t.tenant_id, t.conversation_id),
+    index("workflow_review_receipts_expiry_idx")
+      .on(t.expires_at)
+      .where(sql`${t.status} = 'pending'`),
+    foreignKey({
+      name: "workflow_review_receipts_tenant_workflow_fk",
+      columns: [t.tenant_id, t.workflow_id],
+      foreignColumns: [workflows.tenant_id, workflows.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "workflow_review_receipts_tenant_authority_fk",
+      columns: [t.tenant_id, t.authority_id],
+      foreignColumns: [workflowExecutionAuthorities.tenant_id, workflowExecutionAuthorities.id],
+    }).onDelete("cascade"),
+    check("workflow_review_receipts_status_check", sql`${t.status} IN ('pending', 'completed')`),
+    check("workflow_review_receipts_digest_check", sql`${t.snapshot_digest} ~ '^[0-9a-f]{64}$'`),
+    check(
+      "workflow_review_receipts_completion_check",
+      sql`(${t.status} = 'pending' AND ${t.completed_at} IS NULL) OR (${t.status} = 'completed' AND ${t.completed_at} IS NOT NULL)`,
     ),
   ],
 );

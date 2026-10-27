@@ -7,6 +7,68 @@ export const LOCALE_TAGS: Record<Locale, string> = {
 };
 
 const EN = {
+  "reviewWorkflow.title": "Review workflow",
+  "reviewWorkflow.policyLoadFailed": "Conversation preferences could not be loaded.",
+  "reviewWorkflow.policyFailed":
+    "The conversation preference could not be confirmed. Check it again before continuing.",
+  "reviewWorkflow.newVersion": "Draft → new version",
+  "reviewWorkflow.version": "Draft → version {number}",
+  "reviewWorkflow.unknown": "Unknown effect",
+  "reviewWorkflow.unknownTarget": "Target is not resolved",
+  "reviewWorkflow.open": "Review",
+  "reviewWorkflow.ready": "Ready for review",
+  "reviewWorkflow.preparing": "Preparing review. Nothing has been activated.",
+  "reviewWorkflow.changes": "What changes",
+  "reviewWorkflow.details": "View content and check result",
+  "reviewWorkflow.schemaChecked": "Schema checked; execution has not been verified.",
+  "reviewWorkflow.previewPassed": "Preview passed.",
+  "reviewWorkflow.previewUnavailable": "No current preview is available.",
+  "reviewWorkflow.onCompletion": "On completion",
+  "reviewWorkflow.saveDraft": "Save reviewed draft",
+  "reviewWorkflow.saveOnly": "Save only",
+  "reviewWorkflow.grant": "Activate this version and allow runs",
+  "reviewWorkflow.grantHint": "Applies only to the effects and limits shown below.",
+  "reviewWorkflow.environment": "Environment",
+  "reviewWorkflow.effects": "Connections and effects",
+  "reviewWorkflow.triggers": "Will become executable again",
+  "reviewWorkflow.triggersHint":
+    "These existing triggers can start runs after confirmation, even if you do not change the schedule.",
+  "reviewWorkflow.noTriggers": "No existing triggers will resume.",
+  "reviewWorkflow.schedule": "Create or update schedule",
+  "reviewWorkflow.scheduleAt": "Set schedule to {when}",
+  "reviewWorkflow.scheduleHint":
+    "Runs require a valid permission for this version and environment.",
+  "reviewWorkflow.confirmSave": "Save draft",
+  "reviewWorkflow.confirmGrant": "Save and allow runs",
+  "reviewWorkflow.confirmSchedule": "Save, allow runs and update schedule",
+  "reviewWorkflow.completing": "Completing…",
+  "reviewWorkflow.completed": "Completed",
+  "reviewWorkflow.savedOnly":
+    "Draft saved. The active version, permissions and triggers are unchanged.",
+  "reviewWorkflow.completedGrant":
+    "The reviewed version is saved and activated. The reviewed run permissions are in effect.",
+  "reviewWorkflow.stale":
+    "The draft, permissions or affected triggers changed. Review again. Nothing was completed.",
+  "reviewWorkflow.failed": "Completion failed. No changes were applied.",
+  "reviewWorkflow.uncertain":
+    "The connection was interrupted. Check the result before confirming again.",
+  "reviewWorkflow.checkResult": "Check result",
+  "reviewWorkflow.refresh": "Review again",
+  "reviewWorkflow.rememberTitle": "Questions in this conversation",
+  "reviewWorkflow.remember": "Do not ask again when saving further drafts",
+  "reviewWorkflow.rememberHint":
+    "Preparation only. Run permissions, credentials and knowledge admission remain separately protected.",
+  "reviewWorkflow.askAgain": "Ask again",
+  "reviewWorkflow.expired": "This review expired. Prepare a fresh review.",
+  "reviewWorkflow.limits": "At most {count} runs · until {until}",
+  "reviewWorkflow.validity": "Validity",
+  "reviewWorkflow.maxRuns": "Maximum runs",
+  "reviewWorkflow.revokeHint": "Revocable at any time",
+  "reviewWorkflow.read": "Read",
+  "reviewWorkflow.write": "Write",
+  "reviewWorkflow.scheduleType": "Schedule",
+  "reviewWorkflow.webhookType": "Webhook",
+
   "common.filters": "Filters",
   "common.applyFilters": "Apply filters",
   "common.groupBy": "Group by",
@@ -6242,6 +6304,69 @@ const EN = {
 export type TranslationKey = keyof typeof EN;
 
 const DE: Record<TranslationKey, string> = {
+  "reviewWorkflow.title": "Workflow prüfen",
+  "reviewWorkflow.policyLoadFailed":
+    "Die Einstellungen der Unterhaltung konnten nicht geladen werden.",
+  "reviewWorkflow.policyFailed":
+    "Die Einstellung der Unterhaltung konnte nicht bestätigt werden. Prüfe sie erneut, bevor du fortfährst.",
+  "reviewWorkflow.newVersion": "Entwurf → neue Version",
+  "reviewWorkflow.version": "Entwurf → Version {number}",
+  "reviewWorkflow.unknown": "Unbekannte Wirkung",
+  "reviewWorkflow.unknownTarget": "Ziel ist noch nicht aufgelöst",
+  "reviewWorkflow.open": "Prüfen",
+  "reviewWorkflow.ready": "Bereit zur Prüfung",
+  "reviewWorkflow.preparing": "Die Prüfung wird vorbereitet. Es wurde nichts aktiviert.",
+  "reviewWorkflow.changes": "Was sich ändert",
+  "reviewWorkflow.details": "Inhalt und Prüfergebnis ansehen",
+  "reviewWorkflow.schemaChecked": "Schema geprüft; die Ausführung ist nicht verifiziert.",
+  "reviewWorkflow.previewPassed": "Vorschau bestanden.",
+  "reviewWorkflow.previewUnavailable": "Keine aktuelle Vorschau vorhanden.",
+  "reviewWorkflow.onCompletion": "Beim Abschließen",
+  "reviewWorkflow.saveDraft": "Geprüften Entwurf speichern",
+  "reviewWorkflow.saveOnly": "Nur speichern",
+  "reviewWorkflow.grant": "Diese Version aktivieren und Läufe erlauben",
+  "reviewWorkflow.grantHint": "Gilt nur für die unten gezeigten Wirkungen und Grenzen.",
+  "reviewWorkflow.environment": "Umgebung",
+  "reviewWorkflow.effects": "Verbindungen und Wirkungen",
+  "reviewWorkflow.triggers": "Damit wieder ausführbar",
+  "reviewWorkflow.triggersHint":
+    "Diese bestehenden Auslöser können nach deiner Bestätigung wieder Läufe starten, auch ohne Änderung des Zeitplans.",
+  "reviewWorkflow.noTriggers": "Keine bestehenden Auslöser werden wieder freigegeben.",
+  "reviewWorkflow.schedule": "Zeitplan anlegen oder ändern",
+  "reviewWorkflow.scheduleAt": "Zeitplan auf {when} setzen",
+  "reviewWorkflow.scheduleHint":
+    "Läufe benötigen eine gültige Freigabe für diese Version und Umgebung.",
+  "reviewWorkflow.confirmSave": "Entwurf speichern",
+  "reviewWorkflow.confirmGrant": "Speichern und freigeben",
+  "reviewWorkflow.confirmSchedule": "Speichern, freigeben und Zeitplan ändern",
+  "reviewWorkflow.completing": "Wird abgeschlossen …",
+  "reviewWorkflow.completed": "Abgeschlossen",
+  "reviewWorkflow.savedOnly":
+    "Entwurf gespeichert. Aktive Version, Freigaben und Auslöser bleiben unverändert.",
+  "reviewWorkflow.completedGrant":
+    "Die geprüfte Version ist gespeichert und aktiviert. Die geprüften Lauf-Freigaben sind wirksam.",
+  "reviewWorkflow.stale":
+    "Entwurf, Freigaben oder betroffene Auslöser wurden geändert. Bitte erneut prüfen. Es wurde nichts abgeschlossen.",
+  "reviewWorkflow.failed": "Abschluss fehlgeschlagen. Keine Änderung wurde übernommen.",
+  "reviewWorkflow.uncertain":
+    "Die Verbindung wurde unterbrochen. Prüfe das Ergebnis, bevor du erneut bestätigst.",
+  "reviewWorkflow.checkResult": "Ergebnis prüfen",
+  "reviewWorkflow.refresh": "Erneut prüfen",
+  "reviewWorkflow.rememberTitle": "Rückfragen in dieser Unterhaltung",
+  "reviewWorkflow.remember": "Für das Speichern weiterer Entwürfe nicht erneut fragen",
+  "reviewWorkflow.rememberHint":
+    "Nur Vorbereitung. Lauf-Freigaben, Zugangsdaten und Wissensaufnahme bleiben gesondert geschützt.",
+  "reviewWorkflow.askAgain": "Wieder nachfragen",
+  "reviewWorkflow.expired": "Diese Prüfung ist abgelaufen. Bereite eine neue Prüfung vor.",
+  "reviewWorkflow.limits": "Höchstens {count} Läufe · bis {until}",
+  "reviewWorkflow.validity": "Gültigkeit",
+  "reviewWorkflow.maxRuns": "Höchstens so viele Läufe",
+  "reviewWorkflow.revokeHint": "Jederzeit widerrufbar",
+  "reviewWorkflow.read": "Lesen",
+  "reviewWorkflow.write": "Schreiben",
+  "reviewWorkflow.scheduleType": "Zeitplan",
+  "reviewWorkflow.webhookType": "Webhook",
+
   "common.filters": "Filter",
   "common.applyFilters": "Filter anwenden",
   "common.groupBy": "Gruppieren nach",

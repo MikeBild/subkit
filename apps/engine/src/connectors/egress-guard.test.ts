@@ -176,6 +176,35 @@ describe("isPrivateOrLoopback", () => {
     expect(isPrivateOrLoopback("::ffff:7f00:1")).toBe(true);
   });
 
+  test("blocks private IPv4 embedded in IPv4-compatible and well-known NAT64 IPv6", () => {
+    for (const host of [
+      "::100",
+      "::7f00:1",
+      "::a9fe:a9fe",
+      "::ffff:0:7f00:1",
+      "::ffff:0:a9fe:a9fe",
+      "64:ff9b::1",
+      "64:ff9b::100",
+      "64:ff9b::a9fe:a9fe",
+      "64:ff9b::a00:1",
+    ]) {
+      expect(isPrivateOrLoopback(host)).toBe(true);
+      expect(() => assertEgressAllowed(`https://[${host}]/`, { mode: "strict" })).toThrow(
+        EgressBlockedError,
+      );
+    }
+    expect(isPrivateOrLoopback("64:ff9b::808:808")).toBe(false);
+  });
+
+  test("blocks local-use and transition IPv6 destinations in strict mode", () => {
+    for (const host of ["64:ff9b:1::1", "2002:808:808::1", "2001::1", "2001:0000:1234::1"]) {
+      expect(isPrivateOrLoopback(host)).toBe(true);
+      expect(() => assertEgressAllowed(`https://[${host}]/`, { mode: "strict" })).toThrow(
+        EgressBlockedError,
+      );
+    }
+  });
+
   test("blocks suspicious hostnames", () => {
     expect(isPrivateOrLoopback("localhost")).toBe(true);
     expect(isPrivateOrLoopback("foo.local")).toBe(true);

@@ -25,6 +25,28 @@ export interface ToolPolicies {
 
 type PolicyCategory = "draft_write" | "tenant_read" | "tenant_write";
 
+const NO_CONFIRM_OVERRIDE_TOOLS = ["save_workflow_draft", "save_connector_draft"] as const;
+const noConfirmOverrideTools = new Set<string>(NO_CONFIRM_OVERRIDE_TOOLS);
+
+export function eligibleNoConfirmTools(): string[] {
+  return [...NO_CONFIRM_OVERRIDE_TOOLS];
+}
+
+export function canSetNoConfirmOverride(toolName: string, mode: ToolPolicyMode | null): boolean {
+  return mode !== "no_confirm" || noConfirmOverrideTools.has(toolName);
+}
+
+export function canSetConversationToolPolicy(
+  toolName: string,
+  mode: ToolPolicyMode | null,
+): boolean {
+  return (
+    mode === null ||
+    mode === "confirm_before_execution" ||
+    (mode === "no_confirm" && canSetNoConfirmOverride(toolName, mode))
+  );
+}
+
 const AUTO_PREPARATION_WRITES: ReadonlyMap<string, PolicyCategory> = new Map([
   ["save_workflow_draft", "draft_write"],
   ["create_knowledge_source", "tenant_write"],
@@ -47,21 +69,25 @@ export async function getToolPolicies(
   const raw = (rows[0]?.tool_policies ?? {}) as Record<string, unknown>;
   const out: ToolPolicies = {};
   for (const [k, v] of Object.entries(raw)) {
-    if (v === "no_confirm" || v === "confirm_before_execution" || v === "confirm_after_execution") {
+    if ((v === "no_confirm" && canSetNoConfirmOverride(k, v)) || v === "confirm_before_execution") {
       out[k] = v;
     }
   }
   return out;
 }
 
-export async function setToolPolicy(
+export async function setToolPolicies(
   db: Db,
   tenant_id: string,
   conversation_id: string,
-  toolName: string,
-  mode: ToolPolicyMode | null,
+  policies: Record<string, ToolPolicyMode | null>,
   audit: ToolPolicyAuditCtx,
 ): Promise<void> {
+  for (const [toolName, mode] of Object.entries(policies)) {
+    if (!canSetConversationToolPolicy(toolName, mode)) {
+      throw new Error(`tool_policy_mode_not_allowed:${toolName}`);
+    }
+  }
   await db.transaction(async (tx) => {
     const [row] = await tx
       .select({ tool_policies: conversations.tool_policies })
@@ -74,43 +100,58 @@ export async function setToolPolicy(
     const next: ToolPolicies = {};
     for (const [k, v] of Object.entries(raw)) {
       if (
-        v === "no_confirm" ||
-        v === "confirm_before_execution" ||
-        v === "confirm_after_execution"
+        (v === "no_confirm" && canSetNoConfirmOverride(k, v)) ||
+        v === "confirm_before_execution"
       ) {
         next[k] = v;
       }
     }
-    const priorMode = next[toolName] ?? null;
-    if (mode === null) {
-      delete next[toolName];
-    } else {
-      next[toolName] = mode;
+    const changes = Object.entries(policies).map(([toolName, mode]) => ({
+      toolName,
+      mode,
+      priorMode: next[toolName] ?? null,
+    }));
+    for (const { toolName, mode } of changes) {
+      if (mode === null) delete next[toolName];
+      else next[toolName] = mode;
     }
     await tx
       .update(conversations)
       .set({ tool_policies: next })
       .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)));
-    const metadata = ToolPolicyChangedMetadataSchema.parse({
-      tool: toolName,
-      mode: mode ?? null,
-      prior_mode: priorMode,
-      request_source: audit.request_source,
-    });
-    await auditAwait(
-      {
-        tenant_id,
-        actor_type: audit.actor_type,
-        actor_id: audit.actor_id,
-        action: AuditAction.TOOL_POLICY_CHANGED,
-        resource_type: "conversation",
-        resource_id: conversation_id,
-        result: "success",
-        metadata,
-      },
-      tx,
-    );
+    for (const { toolName, mode, priorMode } of changes) {
+      const metadata = ToolPolicyChangedMetadataSchema.parse({
+        tool: toolName,
+        mode: mode ?? null,
+        prior_mode: priorMode,
+        request_source: audit.request_source,
+      });
+      await auditAwait(
+        {
+          tenant_id,
+          actor_type: audit.actor_type,
+          actor_id: audit.actor_id,
+          action: AuditAction.TOOL_POLICY_CHANGED,
+          resource_type: "conversation",
+          resource_id: conversation_id,
+          result: "success",
+          metadata,
+        },
+        tx,
+      );
+    }
   });
+}
+
+export async function setToolPolicy(
+  db: Db,
+  tenant_id: string,
+  conversation_id: string,
+  toolName: string,
+  mode: ToolPolicyMode | null,
+  audit: ToolPolicyAuditCtx,
+): Promise<void> {
+  await setToolPolicies(db, tenant_id, conversation_id, { [toolName]: mode }, audit);
 }
 
 export function effectiveMode(
@@ -118,7 +159,8 @@ export function effectiveMode(
   policies: ToolPolicies,
   defaultMode: ToolPolicyMode,
 ): ToolPolicyMode {
-  return policies[toolName] ?? defaultMode;
+  const override = policies[toolName];
+  return override && canSetConversationToolPolicy(toolName, override) ? override : defaultMode;
 }
 
 export function defaultModeForCategory(
@@ -492,6 +534,13 @@ export function decideToolMode(args: {
     return { mode: "confirm_before_execution", rule: "computed_from_input" };
   }
 
+  if (
+    noConfirmOverrideTools.has(tool) &&
+    def?.computeModeFromInput?.(input) === "confirm_before_execution"
+  ) {
+    return { mode: "confirm_before_execution", rule: "computed_from_input" };
+  }
+
   if (args.connector_trust === true && permission_mode !== "plan") {
     return { mode: "no_confirm", rule: "connector_trust" };
   }
@@ -533,12 +582,20 @@ export function decideToolMode(args: {
     }
   }
 
-  const override = overrides[tool];
-  if (override) return { mode: override, rule: "conversation_override" };
-  if (def?.computeModeFromInput) {
-    const computed = def.computeModeFromInput(input);
-    if (computed) return { mode: computed, rule: "computed_from_input" };
+  const computed = def?.computeModeFromInput?.(input);
+  if (computed === "confirm_before_execution" || isDangerous) {
+    return { mode: "confirm_before_execution", rule: "computed_from_input" };
   }
+  const override = overrides[tool];
+  if (
+    permission_mode !== "plan" &&
+    override &&
+    ((override === "no_confirm" && canSetNoConfirmOverride(tool, override)) ||
+      override === "confirm_before_execution")
+  ) {
+    return { mode: override, rule: "conversation_override" };
+  }
+  if (computed) return { mode: computed, rule: "computed_from_input" };
   if (def?.defaultMode) return { mode: def.defaultMode, rule: "tool_default" };
   return { mode: defaultModeForCategory(category), rule: "category_default" };
 }

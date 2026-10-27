@@ -104,6 +104,17 @@ function browserError(
   );
 }
 
+function tenantMismatchResponse(req: Request): Response {
+  return browserError(
+    req,
+    400,
+    "tenant_mismatch",
+    "tenant does not match configured sign-in target",
+    "tenant_unavailable",
+    LOGIN_START_PATH,
+  );
+}
+
 async function redirectDenialToClient(
   exec: Db,
   redirectTo: string | null,
@@ -234,10 +245,16 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           LOGIN_START_PATH,
         );
       }
-      const tenantSlug = url.searchParams.get("tenant") ?? configuredTenantSlug;
+      const requestedTenantSlug = url.searchParams.get("tenant");
+      if (
+        !hostedSignup &&
+        !opts.installationId &&
+        requestedTenantSlug !== null &&
+        requestedTenantSlug !== configuredTenantSlug
+      )
+        return tenantMismatchResponse(req);
       const redirectTo = url.searchParams.get("redirect_to");
       const exec = getExec();
-
       let installation = null;
       if (opts.installationId) {
         installation = await findActiveCockpitInstallation(exec, opts.installationId);
@@ -251,9 +268,14 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
             LOGIN_START_PATH,
           );
         }
+        if (requestedTenantSlug !== null) {
+          if ((await resolveTenantId(exec, requestedTenantSlug)) !== installation.tenant_id)
+            return tenantMismatchResponse(req);
+        }
       }
       const tenantId =
-        installation?.tenant_id ?? (hostedSignup ? null : await resolveTenantId(exec, tenantSlug));
+        installation?.tenant_id ??
+        (hostedSignup ? null : await resolveTenantId(exec, configuredTenantSlug));
       if (!tenantId && !hostedSignup) {
         return browserError(
           req,
@@ -264,7 +286,6 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           LOGIN_START_PATH,
         );
       }
-
       let configuration: oauth.Configuration;
       try {
         configuration = await loadOidcConfiguration(issuerUrl, clientId, clientSecretInput);

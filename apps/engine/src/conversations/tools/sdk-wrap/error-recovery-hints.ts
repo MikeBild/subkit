@@ -17,6 +17,8 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the user explicitly asked not to run, execute, test-run or start a workflow, so execution tools are hidden and attempts are refused. Respect that instruction and use only read-only inspection or authoring tools until the user asks to run.",
   explicit_no_live_effects:
     "the user asked not to activate anything or cause live effects, so live runs (run_workflow, rerun_execution, wf_ tools) are hidden and refused. Inspection, review_workflow_automation and held-write previews stay allowed: preview a saved inactive draft with dry_run_workflow (writes held, nothing activated). Never ask the user to lift the instruction to get a live run.",
+  status_request_read_only:
+    "the user asked to read an existing status, but the selected workflow has write effects. Find a saved read-only workflow for that status and run only that operation; do not execute the write workflow or reinterpret the request as permission to change data.",
   invalid_id:
     "the id is not a uuid, so nothing was looked up. Omit id and search with a short query instead; never invent an id or use a placeholder such as * or the nil uuid.",
   tool_execution_failed:

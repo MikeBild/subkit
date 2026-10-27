@@ -125,7 +125,7 @@ export async function createSchedule(
   });
 }
 
-async function createScheduleLocked(
+export async function createScheduleLocked(
   db: Executor,
   input: CreateScheduleInput,
 ): Promise<CreateScheduleOutcome> {

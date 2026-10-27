@@ -25963,10 +25963,17 @@
                 "confirm_after_execution"
               ]
             }
+          },
+          "eligible_no_confirm_tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
-          "policies"
+          "policies",
+          "eligible_no_confirm_tools"
         ]
       },
       "ToolPoliciesPatchBody": {
@@ -25990,6 +25997,357 @@
         },
         "required": [
           "policies"
+        ]
+      },
+      "WorkflowReviewReceipt": {
+        "type": "object",
+        "properties": {
+          "receipt_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "completed"
+            ]
+          },
+          "snapshot_digest": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workflow_name": {
+            "type": "string"
+          },
+          "workflow_slug": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reviewed_version_number": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "environment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "dev",
+              "prod",
+              null
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "effects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "step_id": {
+                  "type": "string"
+                },
+                "connector_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "connector_slug": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "effect": {
+                  "type": "string",
+                  "enum": [
+                    "read",
+                    "write",
+                    "unknown"
+                  ]
+                },
+                "target": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "details": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "step_id",
+                "connector_name",
+                "connector_slug",
+                "effect",
+                "target"
+              ]
+            }
+          },
+          "affected_triggers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "schedule",
+                    "webhook"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "cron": {
+                  "type": "string"
+                },
+                "timezone": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "name"
+              ]
+            }
+          },
+          "actions": {
+            "type": "object",
+            "properties": {
+              "activate": {
+                "type": "boolean"
+              },
+              "grant": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "environment": {
+                    "type": "string",
+                    "enum": [
+                      "dev",
+                      "prod"
+                    ]
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "valid_until": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "date-time"
+                  },
+                  "max_runs": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 1,
+                    "maximum": 10000
+                  }
+                },
+                "required": [
+                  "environment",
+                  "valid_from"
+                ],
+                "additionalProperties": false
+              },
+              "schedule": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "cron": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "timezone": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "input": {},
+                  "paused": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "cron",
+                  "timezone"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "activate",
+              "grant",
+              "schedule"
+            ]
+          },
+          "suggested_actions": {
+            "type": "object",
+            "properties": {
+              "activate": {
+                "type": "boolean"
+              },
+              "grant": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "environment": {
+                    "type": "string",
+                    "enum": [
+                      "dev",
+                      "prod"
+                    ]
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "valid_until": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "date-time"
+                  },
+                  "max_runs": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 1,
+                    "maximum": 10000
+                  }
+                },
+                "required": [
+                  "environment",
+                  "valid_from"
+                ],
+                "additionalProperties": false
+              },
+              "schedule": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "cron": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "timezone": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "input": {},
+                  "paused": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "cron",
+                  "timezone"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "activate",
+              "grant",
+              "schedule"
+            ]
+          },
+          "result": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "workflow_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "authority_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "schedule_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "saved": {
+                "type": "boolean"
+              },
+              "activated": {
+                "type": "boolean"
+              },
+              "granted": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "workflow_id",
+              "authority_id",
+              "schedule_id",
+              "saved",
+              "activated",
+              "granted"
+            ]
+          }
+        },
+        "required": [
+          "receipt_id",
+          "status",
+          "snapshot_digest",
+          "expires_at",
+          "workflow_name",
+          "workflow_slug",
+          "reviewed_version_number",
+          "environment",
+          "description",
+          "checks",
+          "effects",
+          "affected_triggers",
+          "actions",
+          "suggested_actions",
+          "result"
         ]
       },
       "SuggestNextFeedbackResponse": {
@@ -54028,6 +54386,360 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The requested confirmation mode is not permitted for this tool",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}/workflow-reviews": {
+      "post": {
+        "tags": [
+          "conversations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "elicitation_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "activate": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "grant": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "environment": {
+                        "type": "string",
+                        "enum": [
+                          "dev",
+                          "prod"
+                        ]
+                      },
+                      "valid_from": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "valid_until": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "date-time"
+                      },
+                      "max_runs": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "minimum": 1,
+                        "maximum": 10000
+                      }
+                    },
+                    "default": null,
+                    "required": [
+                      "environment",
+                      "valid_from"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "schedule": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "cron": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "timezone": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "input": {},
+                      "paused": {
+                        "type": "boolean"
+                      }
+                    },
+                    "default": null,
+                    "required": [
+                      "cron",
+                      "timezone"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "elicitation_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Prepared review",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowReviewReceipt"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Human session required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale or unavailable review",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Review expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Review blocked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}/workflow-reviews/{receipt_id}": {
+      "get": {
+        "tags": [
+          "conversations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "receipt_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workflow review",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowReviewReceipt"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Human session required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Review not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}/workflow-reviews/{receipt_id}/finalize": {
+      "post": {
+        "tags": [
+          "conversations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "receipt_id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expected_snapshot_digest": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "save_only": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "expected_snapshot_digest"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Completed review",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowReviewReceipt"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Human session required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Review not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale review",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Review expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Review blocked",
             "content": {
               "application/json": {
                 "schema": {

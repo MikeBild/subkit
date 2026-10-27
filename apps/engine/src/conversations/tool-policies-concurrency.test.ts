@@ -124,9 +124,9 @@ describe("tool-policy decisions serialize without losing independent bounds", ()
   });
 
   test("clearing one override cannot undo another simultaneous edit", async () => {
-    const id = await newConversation({ run_workflow: "no_confirm" });
+    const id = await newConversation({ save_workflow_draft: "no_confirm" });
     await racePolicies(id, [
-      () => setToolPolicy(testDb.db, tenantId, id, "run_workflow", null, AUDIT),
+      () => setToolPolicy(testDb.db, tenantId, id, "save_workflow_draft", null, AUDIT),
       () =>
         setToolPolicy(
           testDb.db,
@@ -142,7 +142,12 @@ describe("tool-policy decisions serialize without losing independent bounds", ()
     });
     expect((await policyAudits(id)).map((row) => row.metadata)).toEqual(
       expect.arrayContaining([
-        { tool: "run_workflow", prior_mode: "no_confirm", mode: null, request_source: "ui" },
+        {
+          tool: "save_workflow_draft",
+          prior_mode: "no_confirm",
+          mode: null,
+          request_source: "ui",
+        },
       ]),
     );
   });
@@ -150,9 +155,16 @@ describe("tool-policy decisions serialize without losing independent bounds", ()
   test("same-key edits audit the serialized predecessor, not a stale snapshot", async () => {
     const id = await newConversation();
     await racePolicies(id, [
-      () => setToolPolicy(testDb.db, tenantId, id, "run_workflow", "no_confirm", AUDIT),
+      () => setToolPolicy(testDb.db, tenantId, id, "save_workflow_draft", "no_confirm", AUDIT),
       () =>
-        setToolPolicy(testDb.db, tenantId, id, "run_workflow", "confirm_before_execution", AUDIT),
+        setToolPolicy(
+          testDb.db,
+          tenantId,
+          id,
+          "save_workflow_draft",
+          "confirm_before_execution",
+          AUDIT,
+        ),
     ]);
     const rows = (await policyAudits(id)).map((row) =>
       ToolPolicyChangedMetadataSchema.parse(row.metadata),
@@ -163,7 +175,7 @@ describe("tool-policy decisions serialize without losing independent bounds", ()
     expect(first).toBeDefined();
     expect(second).toBeDefined();
     expect(second?.prior_mode).toBe(first?.mode);
-    expect((await getToolPolicies(testDb.db, tenantId, id)).run_workflow).toBe(
+    expect((await getToolPolicies(testDb.db, tenantId, id)).save_workflow_draft).toBe(
       second?.mode ?? undefined,
     );
   });

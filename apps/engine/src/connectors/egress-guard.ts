@@ -111,6 +111,17 @@ function ipv4MappedToIPv4(host: string): string | null {
   return null;
 }
 
+function embeddedIpv4ToIPv4(host: string): string | null {
+  const translated = host.match(/^::ffff:0:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
+  const embedded = host.match(/^(?:::|64:ff9b::)(?:([0-9a-f]{1,4}):)?([0-9a-f]{1,4})$/i);
+  const highPart = translated?.[1] ?? embedded?.[1] ?? "0";
+  const lowPart = translated?.[2] ?? embedded?.[2];
+  if (!lowPart) return null;
+  const high = parseInt(highPart, 16);
+  const low = parseInt(lowPart, 16);
+  return `${(high >> 8) & 0xff}.${high & 0xff}.${(low >> 8) & 0xff}.${low & 0xff}`;
+}
+
 export function isPrivateOrLoopback(hostname: string): boolean {
   let host = stripBrackets(hostname.toLowerCase()).replace(/\.$/, "");
   if (isIP(host) === 6) host = stripBrackets(new URL(`http://[${host}]`).hostname);
@@ -121,7 +132,8 @@ export function isPrivateOrLoopback(hostname: string): boolean {
   if (host.endsWith(".internal")) return true;
 
   const mapped = ipv4MappedToIPv4(host);
-  const ipv4Host = mapped ?? host;
+  const embedded = mapped ? null : embeddedIpv4ToIPv4(host);
+  const ipv4Host = mapped ?? embedded ?? host;
 
   if (/^0\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ipv4Host)) return true;
   if (host === "::" || host === "::0") return true;
@@ -143,6 +155,8 @@ export function isPrivateOrLoopback(hostname: string): boolean {
 
   if (host.includes(":")) {
     if (host.startsWith("64:ff9b:1:")) return true;
+    if (host.startsWith("2002:")) return true;
+    if (/^2001:(?:0{1,4}:|:)/.test(host)) return true;
     const m = host.match(/^([0-9a-f]{1,4})(?::|$)/i);
     if (m?.[1]) {
       const firstHextet = parseInt(m[1], 16);

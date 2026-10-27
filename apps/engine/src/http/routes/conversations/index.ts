@@ -9,6 +9,7 @@ import { registerMessagesRoutes } from "./messages.ts";
 import { registerStreamRoutes } from "./stream.ts";
 import { registerSuggestNextFeedbackRoute } from "./suggest-next-feedback.ts";
 import { registerToolPoliciesRoutes } from "./tool-policies.ts";
+import { registerWorkflowReviewRoutes } from "./workflow-reviews.ts";
 
 export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/conversations", async (c, next) => {
@@ -80,6 +81,15 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
     }
     return requireAnyPermission(["conversation:approve", "workflow:write"])(c, next);
   });
+  app.use("/v1/conversations/:id/workflow-reviews", async (c, next) => {
+    return requireAnyPermission(["conversation:approve", "workflow:write"])(c, next);
+  });
+  app.use("/v1/conversations/:id/workflow-reviews/:receipt_id", async (c, next) => {
+    return requireAnyPermission(["conversation:approve", "workflow:write"])(c, next);
+  });
+  app.use("/v1/conversations/:id/workflow-reviews/:receipt_id/finalize", async (c, next) => {
+    return requireAnyPermission(["conversation:approve", "workflow:write"])(c, next);
+  });
 
   registerCollectionRoutes(app);
   registerDirectToolRoutes(app);
@@ -87,6 +97,7 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
   registerElicitationRoutes(app);
   registerLifecycleRoutes(app);
   registerToolPoliciesRoutes(app);
+  registerWorkflowReviewRoutes(app);
   registerStreamRoutes(app);
   registerSuggestNextFeedbackRoute(app);
 }

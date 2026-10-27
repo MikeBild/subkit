@@ -38,6 +38,7 @@ function buildProvider() {
     clientId: CLIENT_ID,
     clientSecret: "mock-secret",
     redirectUri: REDIRECT_URI,
+    tenantSlug: "oidc-safe-redirect",
     enableSignup: true,
   });
 }

@@ -87,6 +87,7 @@
     "verify:ai": "bun run eval",
     "verify:llm-live": "bun run scripts/verify-llm-live.ts",
     "verify:release": "bun run scripts/verify-release.ts",
+    "verify:release-security": "bun run scripts/verify-release-security.ts",
     "build:clipper": "bun run scripts/build-clipper.ts",
     "check:clipper-drift": "bun run scripts/build-clipper.ts --check",
     "verify:intake-live": "bun run scripts/verify-intake-live.ts",
