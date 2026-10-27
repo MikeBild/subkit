@@ -17,6 +17,7 @@ import { updateSkillTool } from "../engine-api/writes/update-skill.ts";
 import { updateSubscriptionTool } from "../engine-api/writes/update-subscription.ts";
 import { updateWorkflowTool } from "../engine-api/writes/update-workflow.ts";
 import type { ToolContext } from "../index.ts";
+import { manageServicePackageSkillTool } from "../manage-service-package-skill.ts";
 import { checkToolPermission } from "../permission-gate.ts";
 import { requestConnectorReauthTool } from "../request-connector-reauth.ts";
 import { restoreWorkflowVersionTool } from "../restore-workflow-version.ts";
@@ -72,6 +73,23 @@ describe("declarative RBAC descriptors on migrated write tools", () => {
       });
     });
   }
+});
+
+describe("service package skill RBAC", () => {
+  it("checks tenant permission for installation and resource permission for updates", async () => {
+    const resolveResourceId = manageServicePackageSkillTool.permission?.resolveResourceId;
+    expect(manageServicePackageSkillTool.permission).toMatchObject({
+      action: "skill:write",
+      resourceType: "skill",
+    });
+    expect(resolveResourceId).toBeDefined();
+    if (!resolveResourceId) return;
+    const ctx = {} as ToolContext;
+    expect(await resolveResourceId(ctx, { action: "install" })).toBe("*");
+    expect(await resolveResourceId(ctx, { action: "update", skill_id: "skill-123" })).toBe(
+      "skill-123",
+    );
+  });
 });
 
 describe("declarative RBAC descriptors on the migrated hold-out tools", () => {

@@ -57,6 +57,7 @@ describe("conversation tools — registration", () => {
     "match_connector_template_by_url",
     "import_connector_from_spec",
     "prepare_service_package_workflow",
+    "manage_service_package_skill",
     "test_connector",
     "update_connector_draft",
     "edit_workflow_patch",

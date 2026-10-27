@@ -11,10 +11,11 @@ const published = (mcpMode: McpMode): Set<string> => {
 };
 
 describe("MCP catalogue — authoring carries no tenant write but the run tool", () => {
-  it("authoring omits restore_workflow_version and update_workflow", () => {
+  it("authoring omits direct tenant writes", () => {
     const authoring = published("authoring");
     expect(authoring.has("restore_workflow_version")).toBe(false);
     expect(authoring.has("update_workflow")).toBe(false);
+    expect(authoring.has("manage_service_package_skill")).toBe(false);
   });
 
   it("run_workflow survives in every mode (visible_when_readonly)", () => {
@@ -27,6 +28,7 @@ describe("MCP catalogue — authoring carries no tenant write but the run tool",
     const admin = published("admin");
     expect(admin.has("restore_workflow_version")).toBe(true);
     expect(admin.has("update_workflow")).toBe(true);
+    expect(admin.has("manage_service_package_skill")).toBe(false);
   });
 
   it("product ⊂ authoring ⊂ admin", () => {
@@ -60,5 +62,19 @@ describe("MCP catalogue — no draft_write tool is reachable in ANY mode", () =>
       conversationToolProvider.list({ surface: "chat" }).map((d: { name: string }) => d.name),
     );
     expect(chat.has("edit_workflow_patch")).toBe(true);
+  });
+});
+
+describe("chat-only tools", () => {
+  it("keeps package skill management on the human chat surface", () => {
+    for (const mode of ["product", "authoring", "admin"] as const) {
+      expect(published(mode).has("manage_service_package_skill")).toBe(false);
+    }
+    const { conversationToolProvider } = require("../../tools/providers/conversation.ts");
+    expect(
+      conversationToolProvider
+        .list({ surface: "chat" })
+        .some((tool: { name: string }) => tool.name === "manage_service_package_skill"),
+    ).toBe(true);
   });
 });

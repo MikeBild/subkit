@@ -71,6 +71,7 @@ describe("buildToolAnnotations", () => {
       "probe_connector",
       "authenticate_oauth",
       "dry_run_workflow",
+      "manage_service_package_skill",
     ]) {
       expect(buildToolAnnotations("tenant_write", name).openWorldHint).toBe(true);
     }

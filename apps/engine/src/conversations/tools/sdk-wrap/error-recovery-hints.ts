@@ -212,6 +212,22 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the connector draft has no auth_type — call update_connector_draft with the correct auth_type (bearer, basic, api_key, oauth2, or none) before asking for credentials",
   no_service_package:
     "the service does not publish a verified setup guide. Offer its available connector documentation and do not invent package steps.",
+  package_skill_artifact_invalid:
+    "the service's conversation guide is missing or failed its integrity check. Fetch the guide once more; if it still fails, stop and tell the person setup is unavailable. Do not save or activate unverified content.",
+  service_package_skill_duplicate:
+    "more than one conversation guide is linked to this service, so nothing changed. List the guides for this connection and let the signed-in person choose which one to keep; do not delete either automatically.",
+  service_package_skill_exists:
+    "this service already has a conversation guide. Read the installed guide first; update it only if the person asks, and keep any local edits intact.",
+  service_package_skill_local_changes:
+    "someone changed the installed guide locally, so the service update was refused. Read the current guide and preserve those edits; do not retry the update or archive it until the person decides what to keep.",
+  service_package_skill_not_found:
+    "the selected guide is missing or belongs to another service connection. List the guides for the selected connection and ask the person to choose the correct one; never substitute a guessed id.",
+  service_package_skill_not_managed:
+    "this guide is not an unchanged copy of the service package, so it was left alone. Treat it as a regular guide and ask the person before editing or archiving it.",
+  service_package_skill_title_conflict:
+    "another guide already uses the title published by this service. Nothing changed; show the person both guides and let them decide whether to rename the existing guide before installing.",
+  skill_version_changed:
+    "the guide changed since it was reviewed, so nothing changed. Read the current version again and ask the person to review it before retrying with that version.",
   package_has_no_workflows:
     "this service package has no workflow to prepare. Explain that the connection is available, then use the service documentation for any other setup.",
   package_prefix_invalid:

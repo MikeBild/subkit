@@ -78,6 +78,7 @@ const ALWAYS_AVAILABLE_CLEANUP: ReadonlySet<string> = new Set([
 const CONNECTOR_AUTHORING: ReadonlySet<string> = new Set([
   "inspect_connector_draft",
   "enroll_service_package_connector",
+  "manage_service_package_skill",
   "probe_connector_draft",
   "start_connector_from_description",
   "start_connector_from_template",

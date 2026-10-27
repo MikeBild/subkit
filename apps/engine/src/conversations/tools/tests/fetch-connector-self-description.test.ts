@@ -10,11 +10,15 @@ import {
 } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
+import { getSkill, updateSkill } from "../../../skills/service.ts";
+import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { withSelfHostedDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
+import { makeTestPrincipal } from "../../../tools/tests/_helpers.ts";
 import type { DraftDocument } from "../../types.ts";
 import { enrollServicePackageConnectorTool } from "../enroll-service-package-connector.ts";
 import { fetchConnectorSelfDescriptionTool } from "../fetch-connector-self-description.ts";
 import type { ToolContext } from "../index.ts";
+import { manageServicePackageSkillTool } from "../manage-service-package-skill.ts";
 import { prepareServicePackageWorkflowTool } from "../prepare-service-package-workflow.ts";
 
 let ctx: TestDb;
@@ -22,6 +26,7 @@ let tenant_id: string;
 let connector_with_links: string;
 let connector_without_links: string;
 let package_connector: string;
+const nextUuid = createDeterministicUuidFactory(0x51a7);
 const FOREIGN_CONNECTOR_ID = "00000000-0000-4000-8000-000000000099";
 const FOREIGN_WORKFLOW_ID = "00000000-0000-4000-8000-000000000098";
 
@@ -138,11 +143,17 @@ function packageFetch(
     directWorkflowUrl?: boolean;
     missingWorkflowBinding?: boolean;
     workflowCall?: boolean;
+    skillBody?: string;
+    packageVersion?: string;
+    packageId?: string;
+    packageName?: string;
   } = {},
 ): typeof fetch {
+  const packageId = options.packageId ?? "com.example.service";
+  const packageName = options.packageName ?? "Example Service";
   const installLabel = "$" + "{installation.label}";
   const installVersion = "$" + "{installation.engine_version}";
-  const skill = "# Optional service skill\n";
+  const skill = options.skillBody ?? "# Optional service skill\n";
   const authoring = "Review before use.\n";
   const openapi = '{"openapi":"3.1.0"}';
   const workflows = [
@@ -178,8 +189,8 @@ function packageFetch(
   ];
   const workflowBody = JSON.stringify({
     format: "subkit.workflow-package/v1",
-    package: "com.example.service",
-    version: "2.0.0",
+    package: packageId,
+    version: options.packageVersion ?? "2.0.0",
     connector_id: package_connector,
     sha256: createHash("sha256").update(JSON.stringify(workflows)).digest("hex"),
     workflows,
@@ -187,9 +198,9 @@ function packageFetch(
   const digest = (value: string) => createHash("sha256").update(value).digest("hex");
   const manifest = {
     format: "subkit.package/v1",
-    id: "com.example.service",
-    version: "2.0.0",
-    name: "Example Service",
+    id: packageId,
+    version: options.packageVersion ?? "2.0.0",
+    name: packageName,
     authentication: {
       type: "enrollment",
       endpoint: "v1/reporters/enroll",
@@ -475,6 +486,276 @@ describe("fetch_connector_self_description", () => {
     expect(data.review_required).toBe(true);
     expect(ctx.getDraft().workflow.slug).toBe("support-preview-status");
     expect(ctx.getDraft().workflow.steps[0]?.connector_id).toBe(package_connector);
+  });
+
+  test("installs a package skill as a connector-scoped draft and is idempotent", async () => {
+    const principal = {
+      ...makeTestPrincipal({ tenant_id, id: "00000000-0000-4000-8000-000000000042" }),
+      auth_source: { kind: "browser_session" as const, session_id: nextUuid() },
+    };
+    const toolCtx = makeCtx(package_connector, undefined, principal);
+    const installPackage = { packageId: "com.example.install-skill" };
+    const result = await withSelfHostedDriverFetchForTests(packageFetch(installPackage), () =>
+      manageServicePackageSkillTool.execute(toolCtx, {
+        action: "install",
+        connector_id: package_connector,
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data).toMatchObject({ state: "draft_review_required", skill_version: 1 });
+    const skillId = (result.data as { skill_id: string }).skill_id;
+    const skill = await getSkill(tenant_id, skillId, ctx.db);
+    expect(skill).toMatchObject({
+      scope: "connector",
+      connector_id: package_connector,
+      status: "draft",
+      source: "template",
+      body: "# Optional service skill\n",
+      tags: expect.arrayContaining([
+        "subkit-service-package:com.example.install-skill",
+        `subkit-service-package-body-sha256:${createHash("sha256").update("# Optional service skill\n").digest("hex")}`,
+        `subkit-service-package-content-sha256:${createHash("sha256")
+          .update(
+            JSON.stringify({
+              title: "Example Service",
+              description: null,
+              body: "# Optional service skill\n",
+              doc_refs: ["https://api.acme.test/support/skill.md"],
+            }),
+          )
+          .digest("hex")}`,
+      ]),
+    });
+
+    const repeated = await withSelfHostedDriverFetchForTests(packageFetch(installPackage), () =>
+      manageServicePackageSkillTool.execute(toolCtx, { action: "install" }),
+    );
+    expect(repeated.ok).toBe(true);
+    if (!repeated.ok) return;
+    expect(repeated.data).toMatchObject({ skill_id: skillId, state: "current", skill_version: 1 });
+  });
+
+  test("requires a signed-in person before installing service package content", async () => {
+    const toolCtx = makeCtx(package_connector, undefined, {
+      ...makeTestPrincipal({ tenant_id }),
+      auth_source: {
+        kind: "api_key",
+        api_key_id: nextUuid(),
+        credential_version: "version",
+      },
+    });
+    const result = await manageServicePackageSkillTool.execute(toolCtx, { action: "install" });
+    expect(result).toMatchObject({ ok: false, error_code: "user_confirmation_required" });
+  });
+
+  test("updates only an unchanged package skill and returns it to draft review", async () => {
+    const principal = {
+      ...makeTestPrincipal({ tenant_id, id: "00000000-0000-4000-8000-000000000043" }),
+      auth_source: { kind: "browser_session" as const, session_id: nextUuid() },
+    };
+    const toolCtx = makeCtx(package_connector, undefined, principal);
+    const updatePackage = {
+      packageId: "com.example.update-skill",
+      packageName: "Example Update Service",
+    };
+    const installed = await withSelfHostedDriverFetchForTests(packageFetch(updatePackage), () =>
+      manageServicePackageSkillTool.execute(toolCtx, { action: "install" }),
+    );
+    if (!installed.ok) throw new Error(JSON.stringify(installed));
+    const skillId = (installed.data as { skill_id: string }).skill_id;
+
+    const updated = await withSelfHostedDriverFetchForTests(
+      packageFetch({
+        ...updatePackage,
+        packageVersion: "2.1.0",
+        skillBody: "# Updated service skill\n",
+      }),
+      () =>
+        manageServicePackageSkillTool.execute(toolCtx, {
+          action: "update",
+          skill_id: skillId,
+          expected_version: 1,
+        }),
+    );
+    expect(updated.ok).toBe(true);
+    if (!updated.ok) return;
+    expect(updated.data).toMatchObject({ skill_version: 2, state: "draft" });
+    expect(await getSkill(tenant_id, skillId, ctx.db)).toMatchObject({
+      body: "# Updated service skill\n",
+      status: "draft",
+      tags: expect.arrayContaining([
+        "subkit-service-package-version:2.1.0",
+        `subkit-service-package-body-sha256:${createHash("sha256").update("# Updated service skill\n").digest("hex")}`,
+      ]),
+    });
+
+    const repeatedUpdate = await withSelfHostedDriverFetchForTests(
+      packageFetch({
+        ...updatePackage,
+        packageVersion: "2.1.0",
+        skillBody: "# Updated service skill\n",
+      }),
+      () =>
+        manageServicePackageSkillTool.execute(toolCtx, {
+          action: "update",
+          skill_id: skillId,
+          expected_version: 2,
+        }),
+    );
+    expect(repeatedUpdate.ok).toBe(true);
+    if (repeatedUpdate.ok) {
+      expect(repeatedUpdate.data).toMatchObject({ skill_id: skillId, skill_version: 2 });
+    }
+
+    const archived = await withSelfHostedDriverFetchForTests(packageFetch(updatePackage), () =>
+      manageServicePackageSkillTool.execute(toolCtx, {
+        action: "archive",
+        skill_id: skillId,
+        expected_version: 2,
+      }),
+    );
+    expect(archived.ok).toBe(true);
+    expect(await getSkill(tenant_id, skillId, ctx.db)).toMatchObject({
+      status: "archived",
+      version: 3,
+    });
+    const repeatedArchive = await manageServicePackageSkillTool.execute(toolCtx, {
+      action: "archive",
+      skill_id: skillId,
+      expected_version: 3,
+    });
+    expect(repeatedArchive.ok).toBe(true);
+    if (repeatedArchive.ok) {
+      expect(repeatedArchive.data).toMatchObject({
+        skill_id: skillId,
+        skill_version: 3,
+        state: "archived",
+      });
+    }
+    const reinstalled = await withSelfHostedDriverFetchForTests(
+      packageFetch({
+        ...updatePackage,
+        packageVersion: "2.1.0",
+        skillBody: "# Updated service skill\n",
+      }),
+      () => manageServicePackageSkillTool.execute(toolCtx, { action: "install" }),
+    );
+    expect(reinstalled.ok).toBe(true);
+    if (reinstalled.ok) {
+      expect(reinstalled.data).toMatchObject({
+        skill_id: skillId,
+        skill_version: 4,
+        state: "draft_review_required",
+      });
+    }
+  });
+
+  test("refuses package-skill updates after local edits", async () => {
+    const principal = {
+      ...makeTestPrincipal({ tenant_id, id: "00000000-0000-4000-8000-000000000044" }),
+      auth_source: { kind: "browser_session" as const, session_id: nextUuid() },
+    };
+    const toolCtx = makeCtx(package_connector, undefined, principal);
+    const localEditPackage = {
+      packageId: "com.example.local-edit-skill",
+      packageName: "Example Local Edit Service",
+    };
+    const installed = await withSelfHostedDriverFetchForTests(packageFetch(localEditPackage), () =>
+      manageServicePackageSkillTool.execute(toolCtx, { action: "install" }),
+    );
+    if (!installed.ok) throw new Error(JSON.stringify(installed));
+    const skillId = (installed.data as { skill_id: string }).skill_id;
+    await updateSkill(
+      tenant_id,
+      skillId,
+      { expected_version: 1, title: "Local guide", body: "Local edit\n" },
+      principal.id,
+      ctx.db,
+      "user",
+    );
+
+    const result = await withSelfHostedDriverFetchForTests(
+      packageFetch({
+        ...localEditPackage,
+        packageVersion: "2.1.0",
+        skillBody: "# Updated service skill\n",
+      }),
+      () =>
+        manageServicePackageSkillTool.execute(toolCtx, {
+          action: "update",
+          skill_id: skillId,
+          expected_version: 2,
+        }),
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("locally edited package skill was overwritten");
+    expect(result.error_code).toBe("service_package_skill_local_changes");
+    expect(await getSkill(tenant_id, skillId, ctx.db)).toMatchObject({
+      title: "Local guide",
+      body: "Local edit\n",
+      version: 2,
+    });
+  });
+
+  test("preserves local skill tags through package update and reinstall", async () => {
+    const principal = {
+      ...makeTestPrincipal({ tenant_id, id: "00000000-0000-4000-8000-000000000045" }),
+      auth_source: { kind: "browser_session" as const, session_id: nextUuid() },
+    };
+    const toolCtx = makeCtx(package_connector, undefined, principal);
+    const packageInfo = {
+      packageId: "com.example.preserved-tags",
+      packageName: "Example Tag Service",
+    };
+    const installed = await withSelfHostedDriverFetchForTests(packageFetch(packageInfo), () =>
+      manageServicePackageSkillTool.execute(toolCtx, { action: "install" }),
+    );
+    if (!installed.ok) throw new Error(JSON.stringify(installed));
+    const skillId = (installed.data as { skill_id: string }).skill_id;
+    const skill = await getSkill(tenant_id, skillId, ctx.db);
+    if (!skill) throw new Error("installed package skill was not persisted");
+    await updateSkill(
+      tenant_id,
+      skillId,
+      { expected_version: 1, tags: [...skill.tags, "local:keep"] },
+      principal.id,
+      ctx.db,
+      "user",
+    );
+
+    const updated = await withSelfHostedDriverFetchForTests(
+      packageFetch({ ...packageInfo, packageVersion: "2.1.0", skillBody: "Updated guide\n" }),
+      () =>
+        manageServicePackageSkillTool.execute(toolCtx, {
+          action: "update",
+          skill_id: skillId,
+          expected_version: 2,
+        }),
+    );
+    expect(updated.ok).toBe(true);
+    expect(await getSkill(tenant_id, skillId, ctx.db)).toMatchObject({
+      status: "draft",
+      version: 3,
+      tags: expect.arrayContaining(["local:keep", "subkit-service-package-version:2.1.0"]),
+    });
+
+    const archived = await manageServicePackageSkillTool.execute(toolCtx, {
+      action: "archive",
+      skill_id: skillId,
+      expected_version: 3,
+    });
+    expect(archived.ok).toBe(true);
+    const reinstalled = await withSelfHostedDriverFetchForTests(
+      packageFetch({ ...packageInfo, packageVersion: "2.1.0", skillBody: "Updated guide\n" }),
+      () => manageServicePackageSkillTool.execute(toolCtx, { action: "install" }),
+    );
+    expect(reinstalled.ok).toBe(true);
+    expect(await getSkill(tenant_id, skillId, ctx.db)).toMatchObject({
+      status: "draft",
+      version: 5,
+      tags: expect.arrayContaining(["local:keep", "subkit-service-package-version:2.1.0"]),
+    });
   });
 
   test("enrolls a saved service connector without returning its credential and resumes idempotently", async () => {

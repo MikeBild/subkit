@@ -293,6 +293,7 @@ function isVisibleForFilter(t: ConversationTool, filter: ToolListFilter): boolea
     if (!filter.loadedSkills.has(t.requires_skill)) return false;
   }
   if (filter.surface !== "mcp") return true;
+  if (t.chat_only) return false;
 
   if (t.category !== "draft_write" && filter.mcpMode === "product") {
     if (t.authoring_only) return false;
