@@ -8779,6 +8779,8 @@ export interface paths {
                     started_from?: string;
                     /** @description Only runs that started before this instant (ISO 8601, exclusive). */
                     started_to?: string;
+                    /** @description Filter by whether one or more steps were held. `true` returns only runs with held effects; `false` returns runs without them. */
+                    held_effects?: "true" | "false";
                     parent_execution_id?: string;
                 };
                 header?: never;

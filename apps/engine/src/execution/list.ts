@@ -7,7 +7,7 @@ import {
   formatKeysetCursor,
   parseKeysetCursor,
 } from "../db/keyset-cursor.ts";
-import { executions, workflows } from "../db/schema/index.ts";
+import { executionSteps, executions, workflows } from "../db/schema/index.ts";
 import { executionVisibilityFilter } from "./execution-owner.ts";
 
 export type ExecutionRow = typeof executions.$inferSelect;
@@ -22,6 +22,7 @@ export interface ListExecutionsOptions {
   q?: string;
   started_from?: Date;
   started_to?: Date;
+  held_effects?: boolean;
   principal?: ResolvedPrincipal;
 }
 
@@ -43,6 +44,19 @@ function buildExecutionListFilters(tenant_id: string, opts: ListExecutionsOption
     conds.push(eq(executions.parent_execution_id, opts.parent_execution_id));
   if (opts.started_from) conds.push(gte(executions.started_at, opts.started_from));
   if (opts.started_to) conds.push(lt(executions.started_at, opts.started_to));
+  if (opts.held_effects !== undefined) {
+    const hasHeldEffects = sql`exists (
+      select 1
+      from ${executionSteps}
+      where ${executionSteps.tenant_id} = ${tenant_id}
+        and ${executionSteps.execution_id} = ${executions.id}
+        and (
+          ${executionSteps.held} = true
+          or ${executionSteps.request_meta}->'extras'->>'held' = 'true'
+        )
+    )`;
+    conds.push(opts.held_effects ? hasHeldEffects : sql`not (${hasHeldEffects})`);
+  }
   if (opts.principal) conds.push(executionVisibilityFilter(opts.principal));
   const needle = opts.q?.trim();
   if (needle) {

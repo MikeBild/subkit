@@ -135,9 +135,11 @@ describe("workflow run history", () => {
   });
 
   test("computes a success rate and an average only from known values", () => {
-    expect(successRate(10, 2)).toBe(80);
-    expect(successRate(0, 0)).toBeNull();
-    expect(successRate(undefined, 0)).toBeNull();
+    expect(successRate(10, 2, 0)).toBe(80);
+    expect(successRate(10, 2, 1)).toBe(70);
+    expect(successRate(0, 0, 0)).toBeNull();
+    expect(successRate(undefined, 0, 0)).toBeNull();
+    expect(successRate(10, 2, undefined)).toBeNull();
     expect(averageDurationMs([1000, null, 3000])).toBe(2000);
     expect(averageDurationMs([null])).toBeNull();
   });

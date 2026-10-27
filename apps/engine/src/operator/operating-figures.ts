@@ -1,9 +1,9 @@
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, sql } from "drizzle-orm";
 import { AuditAction } from "../audit/index.ts";
 import { connectorNeedsReauth } from "../connectors/health-ratio.ts";
 import { listConnectors } from "../connectors/service.ts";
 import type { Db } from "../db/client.ts";
-import { connectors } from "../db/schema/index.ts";
+import { connectors, executionSteps } from "../db/schema/index.ts";
 import { aggregateAudit } from "../stats/aggregate-audit.ts";
 import { aggregateExecutions } from "../stats/aggregate-executions.ts";
 import { aggregateLlm, type LlmGroup } from "../stats/aggregate-llm.ts";
@@ -139,7 +139,7 @@ export async function readOperatingFigures(
 ): Promise<OperatingFigures> {
   const bucket = statsBucketFor(bounds.from, bounds.to);
   const window = { tenantId, bucket, from: bounds.from, to: bounds.to, tz: "UTC" } as const;
-  const [executions, repairs, enabled, notOk, needsReauth, llm] = await Promise.all([
+  const [executions, repairs, enabled, notOk, needsReauth, llm, heldSucceeded] = await Promise.all([
     aggregateExecutions(db, { ...window, groupBy: [] }),
     aggregateAudit(db, {
       ...window,
@@ -153,11 +153,30 @@ export async function readOperatingFigures(
       .from(connectors)
       .where(and(eq(connectors.tenant_id, tenantId), connectorNeedsReauth())),
     aggregateLlm(db, { ...window, groupBy: ["flow"] }),
+    db.execute(sql`
+      select count(distinct ${executionSteps.execution_id})::int as total
+      from ${executionSteps}
+      inner join executions
+        on executions.id = ${executionSteps.execution_id}
+        and executions.tenant_id = ${executionSteps.tenant_id}
+      where ${executionSteps.tenant_id} = ${tenantId}
+        and executions.status = 'succeeded'
+        and executions.started_at is not null
+        and executions.started_at >= ${bounds.from}
+        and executions.started_at < ${bounds.to}
+        and (
+          ${executionSteps.held} = true
+          or ${executionSteps.request_meta}->'extras'->>'held' = 'true'
+        )
+    `),
   ]);
 
   const total = executions.totals.executions.count;
   const byStatus = executions.totals.executions.by_status;
-  const succeeded = byStatus.succeeded ?? 0;
+  const succeeded = Math.max(
+    (byStatus.succeeded ?? 0) - Number(heldSucceeded.rows[0]?.total ?? 0),
+    0,
+  );
   const failed = byStatus.failed ?? 0;
   const finished = Math.max(total - (byStatus.queued ?? 0) - (byStatus.running ?? 0), 0);
 

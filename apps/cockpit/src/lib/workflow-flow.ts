@@ -138,9 +138,19 @@ export function groupRunsByDay<T extends DatedRun>(runs: readonly T[], now: Date
   return groups;
 }
 
-export function successRate(total: number | undefined, failed: number | undefined): number | null {
-  if (typeof total !== "number" || typeof failed !== "number" || total === 0) return null;
-  return Math.round(((total - Math.min(failed, total)) / total) * 100);
+export function successRate(
+  finished: number | undefined,
+  failed: number | undefined,
+  held: number | undefined,
+): number | null {
+  if (
+    typeof finished !== "number" ||
+    typeof failed !== "number" ||
+    typeof held !== "number" ||
+    finished === 0
+  )
+    return null;
+  return Math.round(((finished - Math.min(failed + held, finished)) / finished) * 100);
 }
 
 export function averageDurationMs(durations: readonly (number | null)[]): number | null {

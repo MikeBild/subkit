@@ -46,6 +46,8 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 function useWeek(workflowId: string): {
   total: number | undefined;
   failed: number | undefined;
+  finished: number | undefined;
+  held: number | undefined;
   summary: string | null;
 } {
   const { t } = useI18n();
@@ -63,10 +65,26 @@ function useWeek(workflowId: string): {
         `/v1/executions?${scope}&status=${encodeURIComponent(failedStatuses ?? "")}&limit=1`,
       ),
   });
+  const finished = useQuery({
+    queryKey: ["workflow-runs-week", workflowId, from, "finished"],
+    queryFn: () =>
+      apiRequest<ExecutionList>(
+        `/v1/executions?${scope}&status=succeeded,failed,aborted,timed_out&limit=1`,
+      ),
+  });
+  const held = useQuery({
+    queryKey: ["workflow-runs-week", workflowId, from, "held"],
+    queryFn: () =>
+      apiRequest<ExecutionList>(
+        `/v1/executions?${scope}&status=succeeded&held_effects=true&limit=1`,
+      ),
+  });
   const summary = weekSummary(week.data?.total, failed.data?.total);
   return {
     total: week.data?.total,
     failed: failed.data?.total,
+    finished: finished.data?.total,
+    held: held.data?.total,
     summary: summary ? t(summary.key, summary.values) : null,
   };
 }
@@ -156,7 +174,7 @@ export function WorkflowRuns({
     [locale],
   );
   const average = averageDurationMs(rows.map((run) => runDurationMs(run)));
-  const rate = successRate(week.total, week.failed);
+  const rate = successRate(week.finished, week.failed, week.held);
   const groups: TimelineGroup[] = groupRunsByDay(rows, new Date()).map((group) => ({
     label: dayLabel(group.label),
     items: group.items.map((run, index) => {

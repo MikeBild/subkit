@@ -20,7 +20,7 @@ let _preflightPromise: Promise<void> | null = null;
 async function preflightPostgres(adminUrl: string): Promise<void> {
   const probe = new Client({
     connectionString: adminUrl,
-    connectionTimeoutMillis: 2_000,
+    connectionTimeoutMillis: 10_000,
   });
   try {
     await probe.connect();

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { executions, tenants } from "../../db/schema/index.ts";
+import { executionSteps, executions, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { listExecutions } from "../list.ts";
 
@@ -92,5 +92,74 @@ describe("listExecutions — { rows, total } contract", () => {
     const { rows, total } = await listExecutions(tenantB, {}, ctx.db);
     expect(total).toBe(1);
     expect(rows).toHaveLength(1);
+  });
+
+  test("held_effects filters by canonical and legacy held step evidence", async () => {
+    const [canonical] = await ctx.db
+      .insert(executions)
+      .values({
+        tenant_id: tenantA,
+        status: "succeeded",
+        request_source: "api",
+        execution_mode: "dev",
+        source_kind: "saved",
+      })
+      .returning();
+    const [legacy] = await ctx.db
+      .insert(executions)
+      .values({
+        tenant_id: tenantA,
+        status: "succeeded",
+        request_source: "api",
+        execution_mode: "dev",
+        source_kind: "saved",
+      })
+      .returning();
+    const [otherTenant] = await ctx.db
+      .insert(executions)
+      .values({
+        tenant_id: tenantB,
+        status: "succeeded",
+        request_source: "api",
+        execution_mode: "dev",
+        source_kind: "saved",
+      })
+      .returning();
+    await ctx.db.insert(executionSteps).values([
+      {
+        tenant_id: tenantA,
+        execution_id: canonical!.id,
+        step_key: "canonical",
+        kind: "request",
+        status: "succeeded",
+        held: true,
+      },
+      {
+        tenant_id: tenantA,
+        execution_id: legacy!.id,
+        step_key: "legacy",
+        kind: "request",
+        status: "succeeded",
+        request_meta: { extras: { held: true } },
+      },
+      {
+        tenant_id: tenantB,
+        execution_id: otherTenant!.id,
+        step_key: "other-tenant",
+        kind: "request",
+        status: "succeeded",
+        held: true,
+      },
+    ]);
+
+    const held = await listExecutions(tenantA, { held_effects: true, limit: 20 }, ctx.db);
+    expect(held.total).toBe(2);
+    expect(held.rows.map((row) => row.id).sort()).toEqual([canonical!.id, legacy!.id].sort());
+
+    const notHeld = await listExecutions(tenantA, { held_effects: false, limit: 20 }, ctx.db);
+    expect(notHeld.total).toBe(12);
+    expect(notHeld.rows.some((row) => row.id === canonical!.id || row.id === legacy!.id)).toBe(
+      false,
+    );
   });
 });

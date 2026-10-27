@@ -4,6 +4,7 @@ import { listConnectors } from "../connectors/service.ts";
 import {
   auditLog,
   connectors,
+  executionSteps,
   executions,
   tenants,
   workflows,
@@ -122,6 +123,41 @@ test("the success and repair ratios are the operating figures' counts", async ()
   const repairs = sectionMetric(overview, "repairs.applied_ratio");
   expect(repairs?.value).toBe(figures.repairs.applied / figures.repairs.decided);
   expect(repairs?.value).toBe(0.5);
+});
+
+test("held succeeded runs are excluded from the operating success ratio", async () => {
+  const [held] = await testDb.db
+    .insert(executions)
+    .values({
+      tenant_id,
+      source_kind: "saved",
+      status: "succeeded",
+      request_source: "scheduler",
+      execution_mode: "dev",
+      created_at: hoursAgo(1),
+      started_at: hoursAgo(1),
+      finished_at: hoursAgo(0.5),
+    })
+    .returning();
+  await testDb.db.insert(executionSteps).values({
+    tenant_id,
+    execution_id: held!.id,
+    step_key: "write",
+    kind: "request",
+    status: "succeeded",
+    held: true,
+  });
+
+  const bounds = resolveOperatingBounds({ window: "24h" }, new Date(getTestNow()));
+  if (!bounds.ok) throw new Error(bounds.reason);
+  const figures = await readOperatingFigures(testDb.db, tenant_id, bounds);
+  expect(figures.runs).toMatchObject({
+    total: 4,
+    succeeded: 1,
+    failed: 1,
+    finished: 3,
+    success_rate_percent: 33,
+  });
 });
 
 test("connector health and sign-in counts use their persisted states and tenant scope", async () => {

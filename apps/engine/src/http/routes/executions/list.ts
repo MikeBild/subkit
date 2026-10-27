@@ -67,6 +67,13 @@ const listExecutionsRoute = createRoute({
           .datetime({ offset: true })
           .optional()
           .describe("Only runs that started before this instant (ISO 8601, exclusive)."),
+        held_effects: z
+          .enum(["true", "false"])
+          .transform((value) => value === "true")
+          .optional()
+          .describe(
+            "Filter by whether one or more steps were held. `true` returns only runs with held effects; `false` returns runs without them.",
+          ),
         parent_execution_id: z.string().uuid().optional(),
       })
       .openapi("ListExecutionsQuery"),
@@ -159,6 +166,7 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
         ...(q.q !== undefined ? { q: q.q } : {}),
         ...(q.started_from !== undefined ? { started_from: new Date(q.started_from) } : {}),
         ...(q.started_to !== undefined ? { started_to: new Date(q.started_to) } : {}),
+        ...(q.held_effects !== undefined ? { held_effects: q.held_effects } : {}),
         ...(q.parent_execution_id !== undefined
           ? { parent_execution_id: q.parent_execution_id }
           : {}),

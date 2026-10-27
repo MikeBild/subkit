@@ -134,6 +134,20 @@ describe("execution outcome", () => {
       .items;
     expect(items.find((item) => item.id === id)?.held_effects).toBe(true);
     expect(items.find((item) => item.id === readOnlyId)?.held_effects).toBe(false);
+    const heldOnly = await fetch(`${ctx.baseUrl}/v1/executions?held_effects=true`, {
+      headers: auth(),
+    });
+    expect(heldOnly.status).toBe(200);
+    const heldItems = ((await heldOnly.json()) as { items: { id: string }[] }).items;
+    expect(heldItems.some((item) => item.id === id)).toBe(true);
+    expect(heldItems.some((item) => item.id === readOnlyId)).toBe(false);
+    const withoutHeldEffects = await fetch(`${ctx.baseUrl}/v1/executions?held_effects=false`, {
+      headers: auth(),
+    });
+    expect(withoutHeldEffects.status).toBe(200);
+    const regularItems = ((await withoutHeldEffects.json()) as { items: { id: string }[] }).items;
+    expect(regularItems.some((item) => item.id === id)).toBe(false);
+    expect(regularItems.some((item) => item.id === readOnlyId)).toBe(true);
   });
 
   test("a succeeded run has no failed step and records its output contract", async () => {
