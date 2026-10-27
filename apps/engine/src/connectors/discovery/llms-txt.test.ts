@@ -61,7 +61,7 @@ describe("llmsTxtStrategy", () => {
     expect(typeof result.text_corpus).toBe("string");
     expect(result.text_corpus ?? "").toContain("ACME API");
     expect(result.text_corpus ?? "").toContain("/widgets");
-    expect(result.source_url).toBe("https://docs.acme.example.com/.well-known/llms-full.txt");
+    expect(result.source_url).toBe("https://docs.acme.example.com/api/.well-known/llms-full.txt");
   });
 
   seamTest("falls back to llms.txt and fetches index entries in parallel", async () => {
@@ -103,7 +103,7 @@ describe("llmsTxtStrategy", () => {
     const result = await llmsTxtStrategy.fetch("https://docs.acme.example.com/api", {});
 
     expect(result.strategy).toBe("llms-txt");
-    expect(result.source_url).toBe("https://docs.acme.example.com/.well-known/llms.txt");
+    expect(result.source_url).toBe("https://docs.acme.example.com/api/.well-known/llms.txt");
     const corpus = result.text_corpus ?? "";
     expect(corpus).toContain("Bearer tokens");
     expect(corpus).toContain("List widgets");
@@ -113,7 +113,7 @@ describe("llmsTxtStrategy", () => {
     expect(calls).toContain("https://docs.acme.example.com/gadgets.md");
   });
 
-  seamTest("prefers root /llms-full.txt over the .well-known mirror", async () => {
+  seamTest("prefers service /llms-full.txt over the .well-known mirror", async () => {
     const calls: string[] = [];
     fetchSpy.mockImplementation((input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
@@ -131,9 +131,9 @@ describe("llmsTxtStrategy", () => {
 
     const result = await llmsTxtStrategy.fetch("https://docs.acme.example.com/api", {});
 
-    expect(result.source_url).toBe("https://docs.acme.example.com/llms-full.txt");
+    expect(result.source_url).toBe("https://docs.acme.example.com/api/llms-full.txt");
     expect(result.text_corpus ?? "").toContain("ACME API");
-    expect(calls[0]).toBe("https://docs.acme.example.com/llms-full.txt");
+    expect(calls[0]).toBe("https://docs.acme.example.com/api/llms-full.txt");
   });
 
   seamTest("uses root /llms.txt when it is the only file present", async () => {
@@ -167,4 +167,52 @@ describe("llmsTxtStrategy", () => {
     }
     expect(caught?.code).toBe("spec_not_found");
   });
+});
+
+seamTest(
+  "resolves relative docs under the service path without forwarding foreign credentials",
+  async () => {
+    const requests: { url: string; init: RequestInit | undefined }[] = [];
+    fetchSpy.mockImplementation(async (input, init) => {
+      const url = String(input);
+      requests.push({ url, init });
+      if (url === "https://docs.acme.example.com/support/llms.txt") {
+        return new Response(
+          "# Docs\n- [Guide](authoring.md)\n- [Skill](/support/skill.md)\n- [External](https://other.example.com/doc.md)",
+        );
+      }
+      if (url.endsWith(".md")) return new Response("Useful documentation");
+      return new Response(null, { status: 404 });
+    });
+    const result = await llmsTxtStrategy.fetch("https://docs.acme.example.com/support", {
+      headers: { authorization: "Bearer private" },
+    });
+    expect(result.source_url).toBe("https://docs.acme.example.com/support/llms.txt");
+    expect(
+      requests.find((r) => r.url.endsWith("/support/authoring.md"))?.init?.headers,
+    ).toMatchObject({ authorization: "Bearer private" });
+    expect(
+      requests.find((r) => r.url.startsWith("https://other.example.com/"))?.init?.headers,
+    ).not.toHaveProperty("authorization");
+    expect(requests.every((r) => r.init?.redirect === "error")).toBe(true);
+    expect(result.text_corpus).toContain("/support/skill.md");
+  },
+);
+
+seamTest("stops reading an oversized discovery document at the configured limit", async () => {
+  let cancelled = false;
+  fetchSpy.mockImplementation(async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(5 * 1024 * 1024).fill(65));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    return new Response(stream);
+  });
+  const result = await llmsTxtStrategy.fetch("https://docs.acme.example.com/support", {});
+  expect(Buffer.byteLength(result.text_corpus ?? "")).toBeLessThanOrEqual(50 * 1024);
+  expect(cancelled).toBe(true);
 });

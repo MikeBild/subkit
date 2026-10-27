@@ -7,9 +7,49 @@ import {
   type DiscoveryResult,
   type ServiceDescriptor,
   ServiceDescriptorSchema,
+  type ServicePackage,
+  ServicePackageSchema,
 } from "./types.ts";
 
 const DISCOVERY_TIMEOUT_MS = 10_000;
+const MAX_DISCOVERY_JSON_BYTES = 256 * 1024;
+
+export function resolvePackageUrl(baseUrl: string, href: string | undefined): string | null {
+  if (!href) return null;
+  try {
+    const descriptorUrl = new URL(`${baseUrl}/.well-known/service-descriptor.json`);
+    const target = new URL(href, descriptorUrl);
+    if (
+      target.origin !== descriptorUrl.origin ||
+      target.protocol !== descriptorUrl.protocol ||
+      target.username ||
+      target.password
+    ) {
+      return null;
+    }
+    return target.href;
+  } catch {
+    return null;
+  }
+}
+
+export function resolvePackageArtifactUrl(packageUrl: string, href: string): string | null {
+  try {
+    const source = new URL(packageUrl);
+    const target = new URL(href, source);
+    if (
+      target.origin !== source.origin ||
+      target.protocol !== source.protocol ||
+      target.username ||
+      target.password
+    ) {
+      return null;
+    }
+    return target.href;
+  } catch {
+    return null;
+  }
+}
 
 export function normalizeBaseUrl(input: string): string {
   let url: URL;
@@ -37,16 +77,50 @@ export function normalizeBaseUrl(input: string): string {
   return `${url.origin}${pathname}`;
 }
 
+async function parseDiscoveryJson(response: Response): Promise<unknown> {
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_DISCOVERY_JSON_BYTES) {
+    await response.body?.cancel();
+    throw new CredentialRequestError("credential_response_rejected", 413);
+  }
+  if (!response.body)
+    throw new CredentialRequestError("credential_response_invalid", response.status);
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_DISCOVERY_JSON_BYTES) {
+      await reader.cancel();
+      throw new CredentialRequestError("credential_response_rejected", 413);
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch {
+    throw new CredentialRequestError("credential_response_invalid", response.status);
+  }
+}
+
 async function fetchJson(url: string, context: EgressGuardContext): Promise<unknown | null> {
   const res = await fetchCredentialRequest(context, url, {
     method: "GET",
     headers: { accept: "application/json" },
     signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
-    redirect: "follow",
+    redirect: "error",
   });
   if (res.status === 404) return null;
   if (!res.ok) throw new CredentialRequestError("credential_response_rejected", res.status);
-  return res.json();
+  return parseDiscoveryJson(res);
 }
 
 async function discoverAuthorization(
@@ -94,6 +168,10 @@ async function discoverDescriptor(
     name: name ? name.slice(0, 120) : null,
     description: parsed.data.description ? parsed.data.description.slice(0, 500) : null,
     version: parsed.data.version ?? null,
+    package_url: resolvePackageUrl(
+      baseUrl,
+      parsed.data.links?.find((entry) => entry.rel === "package")?.href,
+    ),
   };
 }
 
@@ -106,7 +184,17 @@ export async function discoverService(
     discoverAuthorization(base_url, context),
     discoverDescriptor(base_url, context),
   ]);
-  return { base_url, authorization, descriptor };
+  let discoveredPackage: ServicePackage | null = null;
+  if (descriptor?.package_url) {
+    try {
+      const body = await fetchJson(descriptor.package_url, context);
+      const parsed = ServicePackageSchema.safeParse(body);
+      if (parsed.success) discoveredPackage = parsed.data;
+    } catch {
+      discoveredPackage = null;
+    }
+  }
+  return { base_url, authorization, descriptor, package: discoveredPackage };
 }
 
 export function requireConnectable(result: DiscoveryResult): AuthorizationServerMetadata {

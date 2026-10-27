@@ -20,19 +20,70 @@ export const ServiceDescriptorSchema = z
     title: z.string().optional(),
     description: z.string().optional(),
     version: z.string().optional(),
+    links: z
+      .array(z.object({ rel: z.string().max(80), href: z.string().max(2048) }).passthrough())
+      .optional(),
   })
   .passthrough();
+
+const PackageArtifactSchema = z.object({
+  href: z.string().min(1).max(2048),
+  format: z.string().max(120).optional(),
+  sha256: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional(),
+  connectorBinding: z.literal("connector_id").optional(),
+  prefixDefault: z.string().max(120).optional(),
+});
+
+export const ServicePackageEnrollmentSchema = z.object({
+  type: z.literal("enrollment"),
+  endpoint: z.string().min(1).max(2048),
+  acknowledgement: z.string().min(1).max(2048),
+  revocation: z.string().min(1).max(2048).optional(),
+  request: z.object({
+    body: z.record(z.string().max(80), z.unknown()),
+  }),
+  credential: z.object({
+    header: z.string().min(1).max(128),
+    prefix: z.string().min(1).max(64),
+    responseField: z.string().min(1).max(80),
+    recoverableUntilAcknowledged: z.boolean(),
+  }),
+  recovery: z.object({
+    idempotencyHeader: z.string().min(1).max(128),
+    proofHeader: z.string().min(1).max(128),
+    acknowledgeAfterEncryptedStorage: z.literal(true),
+  }),
+});
+export type ServicePackageEnrollment = z.infer<typeof ServicePackageEnrollmentSchema>;
+
+export const ServicePackageSchema = z.object({
+  format: z.literal("subkit.package/v1"),
+  id: z.string().min(1).max(160),
+  version: z.string().min(1).max(40),
+  name: z.string().min(1).max(120),
+  description: z.string().max(500).optional(),
+  api: z.object({ openapi: z.string().max(2048) }).optional(),
+  artifacts: z.record(z.string().max(80), PackageArtifactSchema).optional(),
+  authentication: ServicePackageEnrollmentSchema.optional(),
+  permissions: z.array(z.string().max(120)).max(100).optional(),
+});
+export type ServicePackage = z.infer<typeof ServicePackageSchema>;
 
 export interface ServiceDescriptor {
   name: string | null;
   description: string | null;
   version: string | null;
+  package_url: string | null;
 }
 
 export interface DiscoveryResult {
   base_url: string;
   authorization: AuthorizationServerMetadata | null;
   descriptor: ServiceDescriptor | null;
+  package: ServicePackage | null;
 }
 
 export const RegistrationResponseSchema = z

@@ -31,27 +31,30 @@ function originOf(url: string): string | null {
   }
 }
 
-function parseUrlsFromIndex(content: string): string[] {
+function parseUrlsFromIndex(content: string, sourceUrl: string): string[] {
   const urls: string[] = [];
   const seen = new Set<string>();
   for (const rawLine of content.split(/\r?\n/)) {
     const line = rawLine.trim().replace(/^[-*•]\s+/, "");
     if (!line || line.startsWith("#") || line.startsWith("//")) continue;
-    const md = line.match(/\[[^\]]+\]\((https?:\/\/[^)\s]+)\)/);
-    if (md?.[1]) {
-      if (!seen.has(md[1])) {
-        seen.add(md[1]);
-        urls.push(md[1]);
+    const target =
+      line.match(/\[[^\]]+\]\(([^)\s]+)\)/)?.[1] ?? line.match(/^(https?:\/\/\S+)\s*$/)?.[1];
+    if (!target) continue;
+    try {
+      const resolved = new URL(target, sourceUrl);
+      if (
+        !["https:", "http:"].includes(resolved.protocol) ||
+        resolved.username ||
+        resolved.password
+      )
+        continue;
+      resolved.hash = "";
+      const url = resolved.href;
+      if (!seen.has(url)) {
+        seen.add(url);
+        urls.push(url);
       }
-      continue;
-    }
-    const bare = line.match(/^(https?:\/\/\S+)\s*$/);
-    if (bare?.[1]) {
-      if (!seen.has(bare[1])) {
-        seen.add(bare[1]);
-        urls.push(bare[1]);
-      }
-    }
+    } catch {}
   }
   return urls;
 }
@@ -63,7 +66,7 @@ function looksLikeIndex(content: string): boolean {
     .filter((l) => l.length > 0 && !l.startsWith("#"));
   if (nonEmpty.length === 0) return false;
   const urlLines = nonEmpty.filter(
-    (l) => /^https?:\/\//.test(l) || /\[[^\]]+\]\(https?:\/\/[^)\s]+\)/.test(l),
+    (l) => /^https?:\/\//.test(l) || /\[[^\]]+\]\([^)\s]+\)/.test(l),
   );
   return urlLines.length / nonEmpty.length >= 0.5;
 }
@@ -85,13 +88,30 @@ async function fetchText(
       ...(opts.headers ?? {}),
     };
     assertEgressAllowed(url, {});
-    const res = await getDriverFetch()(url, { method: "GET", headers, signal: controller.signal });
+    const res = await getDriverFetch()(url, {
+      method: "GET",
+      headers,
+      redirect: "error",
+      signal: controller.signal,
+    });
     if (!res.ok) return null;
-    const buf = await res.arrayBuffer();
-    if (buf.byteLength > maxBytes) {
-      return new TextDecoder().decode(buf.slice(0, maxBytes));
+    if (!res.body) return "";
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+    while (received < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const remaining = maxBytes - received;
+      const chunk = value.byteLength > remaining ? value.subarray(0, remaining) : value;
+      chunks.push(chunk);
+      received += chunk.byteLength;
+      if (chunk.byteLength < value.byteLength) {
+        await reader.cancel();
+        break;
+      }
     }
-    return new TextDecoder().decode(buf);
+    return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
   } catch {
     return null;
   } finally {
@@ -140,8 +160,12 @@ class LlmsTxtStrategy implements DiscoveryStrategy {
     let chosenUrl: string | null = null;
     let chosenBody: string | null = null;
 
-    for (const { path } of CANDIDATE_PATHS) {
-      const candidate = `${origin}${path}`;
+    const serviceBase = new URL(baseUrl);
+    serviceBase.search = "";
+    serviceBase.hash = "";
+    const bases = [...new Set([serviceBase.href.replace(/\/$/, ""), origin])];
+    const candidates = bases.flatMap((base) => CANDIDATE_PATHS.map(({ path }) => `${base}${path}`));
+    for (const candidate of candidates) {
       const body = await fetchText(candidate, opts);
       if (!body) continue;
       const trimmed = body.trim();
@@ -173,8 +197,16 @@ class LlmsTxtStrategy implements DiscoveryStrategy {
     let mode: "full" | "index";
     if (looksLikeIndex(chosenBody)) {
       mode = "index";
-      const urls = parseUrlsFromIndex(chosenBody).slice(0, MAX_INDEX_FANOUT);
-      const fetched = await Promise.all(urls.map((u) => fetchText(u, opts)));
+      const urls = parseUrlsFromIndex(chosenBody, chosenUrl).slice(0, MAX_INDEX_FANOUT);
+      const { headers: _headers, ...requestOptions } = opts;
+      const fetched = await Promise.all(
+        urls.map((u) =>
+          fetchText(u, {
+            ...requestOptions,
+            headers: new URL(u).origin === origin ? { ...(opts.headers ?? {}) } : {},
+          }),
+        ),
+      );
       const parts: string[] = [];
       for (let i = 0; i < urls.length; i++) {
         const body = fetched[i];

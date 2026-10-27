@@ -16,6 +16,7 @@ import {
   listConnections,
   permissionScopes,
   resolvePublicOrigin,
+  ServicePackageSchema,
   startConnection,
 } from "../../../credentials/index.ts";
 import type { Db } from "../../../db/client.ts";
@@ -80,6 +81,8 @@ const DiscoverResponse = z
     service_name: z.string().nullable(),
     service_description: z.string().nullable(),
     service_version: z.string().nullable(),
+    package_url: z.string().nullable(),
+    package: ServicePackageSchema.nullable(),
     issuer: z.string().nullable(),
     scopes_supported: z.array(z.string()),
   })
@@ -270,6 +273,8 @@ export function registerConnectionRoutes(app: OpenAPIHono<AppEnv>): void {
           service_name: result.descriptor?.name ?? null,
           service_description: result.descriptor?.description ?? null,
           service_version: result.descriptor?.version ?? null,
+          package_url: result.descriptor?.package_url ?? null,
+          package: result.package,
           issuer: metadata?.issuer ?? null,
           scopes_supported: permissionScopes(metadata?.scopes_supported ?? []),
         },

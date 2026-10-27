@@ -28,6 +28,16 @@ describe("toolLabel", () => {
       "Informationen zusammengestellt",
     );
   });
+  test("service package setup has a plain user-facing label", () => {
+    expect(toolLabel("enroll_service_package_connector")).toEqual({
+      kind: "key",
+      key: "tool.name.enrollServicePackageConnector",
+    });
+    expect(translate("de", "tool.name.enrollServicePackageConnector")).toBe(
+      "Verbindung eingerichtet",
+    );
+    expect(translate("en", "tool.name.enrollServicePackageConnector")).toBe("Connected a service");
+  });
   test("passes a saved workflow's own name through instead of mangling it", () => {
     expect(toolLabel("wf_ga4-daily-report")).toEqual({
       kind: "workflow",

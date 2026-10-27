@@ -22740,6 +22740,53 @@ export interface components {
             service_name: string | null;
             service_description: string | null;
             service_version: string | null;
+            package_url: string | null;
+            package: {
+                /** @enum {string} */
+                format: "subkit.package/v1";
+                id: string;
+                version: string;
+                name: string;
+                description?: string;
+                api?: {
+                    openapi: string;
+                };
+                artifacts?: {
+                    [key: string]: {
+                        href: string;
+                        format?: string;
+                        sha256?: string;
+                        /** @enum {string} */
+                        connectorBinding?: "connector_id";
+                        prefixDefault?: string;
+                    };
+                };
+                authentication?: {
+                    /** @enum {string} */
+                    type: "enrollment";
+                    endpoint: string;
+                    acknowledgement: string;
+                    revocation?: string;
+                    request: {
+                        body: {
+                            [key: string]: unknown;
+                        };
+                    };
+                    credential: {
+                        header: string;
+                        prefix: string;
+                        responseField: string;
+                        recoverableUntilAcknowledged: boolean;
+                    };
+                    recovery: {
+                        idempotencyHeader: string;
+                        proofHeader: string;
+                        /** @enum {boolean} */
+                        acknowledgeAfterEncryptedStorage: true;
+                    };
+                };
+                permissions?: string[];
+            } | null;
             issuer: string | null;
             scopes_supported: string[];
         };

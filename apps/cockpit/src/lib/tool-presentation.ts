@@ -170,6 +170,7 @@ const ACTION_TOOLS: Record<string, TranslationKey> = {
   discover_systems_from_files: "tool.name.discoverSystemsFromFiles",
   authenticate_oauth: "tool.name.authenticateOauth",
   request_connector_reauth: "tool.name.requestConnectorReauth",
+  enroll_service_package_connector: "tool.name.enrollServicePackageConnector",
   create_schedule: "tool.name.createSchedule",
   update_schedule: "tool.name.updateSchedule",
   delete_schedule: "tool.name.deleteSchedule",

@@ -202,8 +202,36 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the offset is past the end of the stored value. Restart get_raw_result at offset 0, or follow next_ref / next_offset from the previous chunk instead of computing offsets",
   preview_empty:
     "the last preview produced no output — call run_workflow with concrete input, or dry_run_workflow with a non-empty input payload",
+  connector_auth_type_conflict:
+    "this connection already uses another sign-in method. Leave its settings unchanged; ask the person whether to use that connection or create a separate one.",
+  connector_credential_conflict:
+    "this connection already has different sign-in details. Leave them unchanged; ask the person whether to use them or create a separate connection.",
+  connector_not_eligible:
+    "choose a saved HTTP service connection with the service address filled in, then retry setup.",
   connector_auth_unset:
     "the connector draft has no auth_type — call update_connector_draft with the correct auth_type (bearer, basic, api_key, oauth2, or none) before asking for credentials",
+  no_service_package:
+    "the service does not publish a verified setup guide. Offer its available connector documentation and do not invent package steps.",
+  package_has_no_workflows:
+    "this service package has no workflow to prepare. Explain that the connection is available, then use the service documentation for any other setup.",
+  package_prefix_invalid:
+    "the requested workflow name prefix is not accepted. Retry with a short lowercase name using letters, numbers, and hyphens.",
+  package_workflow_artifact_invalid:
+    "the workflow file could not be verified. Fetch the package once more; if it still fails, stop and tell the person the setup is unavailable.",
+  package_workflow_not_found:
+    "that workflow is not in the service package. Offer only the available_workflows returned by the tool; do not create a replacement by guessing.",
+  service_enrollment_package_invalid:
+    "the service's setup instructions failed verification, so no connection details were changed. Stop automatic setup and tell the person it could not be verified.",
+  service_has_no_enrollment_package:
+    "the service does not offer automatic setup. Show its available documentation and continue only with the person's approval; do not guess its sign-in steps.",
+  service_package_artifacts_unavailable:
+    "none of the service's setup files passed verification. Do not use them; retry the fetch once, then report that setup is unavailable.",
+  service_package_enrollment_failed:
+    "the connection setup did not finish. Retry the same setup once so it can resume safely; do not create another connection or ask the person to copy a key.",
+  user_confirmation_required:
+    "a signed-in person must complete this connection setup. Continue only from their authenticated conversation; do not use an API key or another person's identity.",
+  workflow_draft_in_progress:
+    "the current workflow draft has work in progress. Preserve it; finish or save it before preparing the service workflow in a fresh authoring conversation.",
   endpoint_not_in_discovered_spec:
     "a request step targets a path the connector's discovered spec does not document — do NOT invent or REST-ify routes; call discover_connector_endpoints (or read the listed nearest routes in the error) and bind each request step to a documented method + path verbatim, encoding the body in the declared media type",
   verifier_rejected:

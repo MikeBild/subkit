@@ -77,6 +77,7 @@ const ALWAYS_AVAILABLE_CLEANUP: ReadonlySet<string> = new Set([
 
 const CONNECTOR_AUTHORING: ReadonlySet<string> = new Set([
   "inspect_connector_draft",
+  "enroll_service_package_connector",
   "probe_connector_draft",
   "start_connector_from_description",
   "start_connector_from_template",
@@ -93,6 +94,7 @@ const WORKFLOW_AUTHORING: ReadonlySet<string> = new Set([
   "edit_workflow_patch",
   "inspect_workflow_draft",
   "open_workflow_draft",
+  "prepare_service_package_workflow",
   "start_workflow_from_recipe",
   "validate_draft",
 ]);

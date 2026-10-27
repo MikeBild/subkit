@@ -239,6 +239,7 @@ const ADMIN_TOOLS = [
   "dry_run_patch_candidate",
   "dry_run_transform",
   "edit_role",
+  "enroll_service_package_connector",
   "export_diagnostic_context",
   "fetch_connector_docs",
   "fetch_connector_self_description",

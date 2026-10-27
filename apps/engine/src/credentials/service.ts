@@ -79,6 +79,7 @@ export type CredentialWriteSource =
   | "cli_bootstrap"
   | "connector_promotion"
   | "credential_setup_grant"
+  | "service_package_enrollment"
   | "unspecified";
 
 export async function upsertCredential(

@@ -84,15 +84,24 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
       body: JSON.stringify({ base_url: `${fake.baseUrl}/` }),
     });
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({
+    const discovered = (await res.json()) as {
+      package: { id: string; version: string; artifacts: Record<string, unknown> } | null;
+    };
+    expect(discovered).toMatchObject({
       base_url: fake.baseUrl,
       connectable: true,
       reason: null,
       service_name: "Probe Service",
       service_version: "0.0.1",
+      package_url: `${fake.baseUrl}/package.json`,
       issuer: fake.baseUrl,
       scopes_supported: ["read", "write", "admin"],
     });
+    expect(discovered.package).toMatchObject({
+      id: "com.subkit.support",
+      version: "1.1.0",
+    });
+    expect(discovered.package).not.toHaveProperty("scripts");
   });
 
   test("discover names a server without registration as not connectable, not as broken", async () => {
@@ -137,7 +146,7 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
       "GET /.well-known/oauth-authorization-server",
       "GET /.well-known/service-descriptor.json",
     ]);
-    expect(fake.requests.slice(2)).toEqual(["POST /register"]);
+    expect(fake.requests.slice(2).sort()).toEqual(["GET /package.json", "POST /register"]);
 
     const landed = await approveInBrowser(body.authorization_url);
     expect(landed.status).toBe(200);

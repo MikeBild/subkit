@@ -1,10 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { normalizeBaseUrl, requireConnectable } from "../discovery.ts";
+import {
+  discoverService,
+  normalizeBaseUrl,
+  requireConnectable,
+  resolvePackageUrl,
+} from "../discovery.ts";
 import {
   type AuthorizationServerMetadata,
   ConnectionError,
   type ConnectionFailureCode,
+  ServicePackageSchema,
 } from "../types.ts";
+import { startFakeOAuthServer } from "./fake-oauth-server.ts";
 
 describe("normalizeBaseUrl", () => {
   test("keeps origin and path, drops the trailing slash and credentials", () => {
@@ -42,6 +49,7 @@ describe("requireConnectable", () => {
         base_url: "https://s.example",
         authorization: metadata,
         descriptor: null,
+        package: null,
       }).registration_endpoint,
     ).toBe("https://s.example/register");
   });
@@ -51,7 +59,12 @@ describe("requireConnectable", () => {
     [{ ...metadata, code_challenge_methods_supported: ["plain"] }, "pkce_unsupported"],
   ])("names why a server cannot be connected: %o → %s", (authorization, code) => {
     try {
-      requireConnectable({ base_url: "https://s.example", authorization, descriptor: null });
+      requireConnectable({
+        base_url: "https://s.example",
+        authorization,
+        descriptor: null,
+        package: null,
+      });
       throw new Error("expected a ConnectionError");
     } catch (error) {
       expect(error).toBeInstanceOf(ConnectionError);
@@ -61,7 +74,74 @@ describe("requireConnectable", () => {
 
   test("a server without metadata is discovery_missing", () => {
     expect(() =>
-      requireConnectable({ base_url: "https://s.example", authorization: null, descriptor: null }),
+      requireConnectable({
+        base_url: "https://s.example",
+        authorization: null,
+        descriptor: null,
+        package: null,
+      }),
     ).toThrow(new ConnectionError("discovery_missing", "authorization_metadata_missing"));
   });
+});
+
+describe("resolvePackageUrl", () => {
+  test("resolves a relative package link against the service path", () => {
+    expect(resolvePackageUrl("https://support.example.com/support", "../package.json")).toBe(
+      "https://support.example.com/support/package.json",
+    );
+  });
+
+  test.each([
+    "https://other.example.com/package.json",
+    "https://user:secret@support.example.com/package.json",
+    "javascript:alert(1)",
+  ])("refuses an unsafe package link: %s", (href) => {
+    expect(resolvePackageUrl("https://support.example.com/support", href)).toBeNull();
+  });
+});
+
+test("service packages accept versioned, hash checked artifact metadata", () => {
+  const valid = ServicePackageSchema.safeParse({
+    format: "subkit.package/v1",
+    id: "com.subkit.support",
+    version: "1.1.0",
+    name: "SubKit Support",
+    artifacts: {
+      skill: { href: "skill.md", sha256: "a".repeat(64) },
+      workflows: { href: "workflows.json?connector_id={connector_id}" },
+    },
+    scripts: [{ command: "install arbitrary code" }],
+  });
+  expect(valid.success).toBe(true);
+  if (valid.success) expect(valid.data).not.toHaveProperty("scripts");
+  expect(
+    ServicePackageSchema.safeParse({
+      format: "subkit.package/v1",
+      id: "com.subkit.support",
+      version: "1.1.0",
+      name: "SubKit Support",
+      artifacts: { skill: { href: "skill.md", sha256: "not-a-hash" } },
+    }).success,
+  ).toBe(false);
+});
+
+test("service discovery fetches only the linked, same-origin package manifest", async () => {
+  const service = await startFakeOAuthServer();
+  try {
+    const result = await discoverService(service.baseUrl, { mode: "permissive" });
+    expect(result.package).toMatchObject({
+      id: "com.subkit.support",
+      version: "1.1.0",
+      name: "SubKit Support",
+    });
+    expect(result.package).not.toHaveProperty("scripts");
+    expect(service.requests).toContain("GET /package.json");
+    service.redirectPackage = true;
+    expect((await discoverService(service.baseUrl, { mode: "permissive" })).package).toBeNull();
+    service.redirectPackage = false;
+    service.oversizePackage = true;
+    expect((await discoverService(service.baseUrl, { mode: "permissive" })).package).toBeNull();
+  } finally {
+    await service.close();
+  }
 });

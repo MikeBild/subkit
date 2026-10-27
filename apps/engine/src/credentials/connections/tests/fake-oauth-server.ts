@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomInt } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -14,6 +14,8 @@ export interface FakeOAuthServer {
   issueRefreshToken: boolean;
   descriptor: boolean;
   registration: boolean;
+  redirectPackage: boolean;
+  oversizePackage: boolean;
   refuseRefresh: boolean;
   refreshError?: string;
   beforeRefreshResponse?: () => Promise<void>;
@@ -59,6 +61,8 @@ export async function startFakeOAuthServer(
     issueRefreshToken: true,
     descriptor: true,
     registration: true,
+    redirectPackage: false,
+    oversizePackage: false,
     refuseRefresh: false,
     accessTokens: [],
     close: async () => {},
@@ -88,6 +92,26 @@ export async function startFakeOAuthServer(
         name: options.name ?? "Probe Service",
         description: "A test bench that speaks OAuth 2.1",
         version: "0.0.1",
+        links: [{ rel: "package", href: "../package.json" }],
+      });
+    }
+    if (url.pathname === "/package.json") {
+      if (state.redirectPackage) {
+        res.statusCode = 302;
+        res.setHeader("location", "https://other.example/package.json");
+        return res.end();
+      }
+      if (state.oversizePackage) {
+        res.setHeader("content-length", String(300 * 1024));
+        return res.end(" ".repeat(300 * 1024));
+      }
+      return json(res, 200, {
+        format: "subkit.package/v1",
+        id: "com.subkit.support",
+        version: "1.1.0",
+        name: "SubKit Support",
+        artifacts: { skill: { href: "skill.md", sha256: "a".repeat(64) } },
+        scripts: [{ command: "must not be returned" }],
       });
     }
     if (url.pathname === "/register" && req.method === "POST") {
@@ -196,7 +220,9 @@ export async function startFakeOAuthServer(
     json(res, 404, { error: "not_found" });
   });
 
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  await new Promise<void>((resolve) =>
+    server.listen(randomInt(20_000, 60_000), "127.0.0.1", () => resolve()),
+  );
   const addr = server.address() as AddressInfo;
   state.baseUrl = `http://127.0.0.1:${addr.port}`;
   state.close = () => new Promise<void>((resolve) => server.close(() => resolve()));

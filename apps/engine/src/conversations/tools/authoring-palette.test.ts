@@ -33,11 +33,28 @@ describe("existing workflow authoring palette", () => {
   test("can open a saved workflow before the workflow skill is loaded", () => {
     const tools = [
       { name: "open_workflow_draft" },
+      { name: "prepare_service_package_workflow" },
       { name: "edit_workflow_patch" },
       { name: "save_workflow_draft" },
     ];
     const names = filterByAuthoringPalette(tools, {} as never, new Set()).map((tool) => tool.name);
     expect(names).toEqual(["open_workflow_draft"]);
+  });
+
+  test("exposes package workflow preparation with workflow authoring", () => {
+    const tools = [{ name: "prepare_service_package_workflow" }, { name: "save_workflow_draft" }];
+    const names = filterByAuthoringPalette(tools, {} as never, new Set(["workflow-authoring"])).map(
+      (tool) => tool.name,
+    );
+    expect(names).toEqual(["prepare_service_package_workflow", "save_workflow_draft"]);
+  });
+
+  test("exposes secure package enrollment only with connector authoring", () => {
+    const tools = [{ name: "enroll_service_package_connector" }];
+    expect(filterByAuthoringPalette(tools, {} as never, new Set())).toEqual([]);
+    expect(
+      filterByAuthoringPalette(tools, {} as never, new Set(["connector-creation-guidance"])),
+    ).toEqual(tools);
   });
 });
 
