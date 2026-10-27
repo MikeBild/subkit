@@ -7,7 +7,7 @@ import {
 } from "../authoring-state.ts";
 import type { WorkflowDraftDocument } from "../types.ts";
 import { fetchServicePackage } from "./fetch-connector-self-description.ts";
-import type { ConversationTool, ToolResult } from "./index.ts";
+import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 import { resolveSavedWorkflow } from "./open-workflow-draft.ts";
 
 const inputSchema = z
@@ -20,6 +20,10 @@ const inputSchema = z
       .optional(),
   })
   .openapi("PrepareServicePackageWorkflowToolInput");
+
+function userMessage(ctx: ToolContext, english: string, german: string) {
+  return ctx.locale === "en" ? english : german;
+}
 
 export const prepareServicePackageWorkflowTool: ConversationTool = {
   name: "prepare_service_package_workflow",
@@ -43,7 +47,11 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
       return {
         ok: false,
         error_code: "no_connector_in_scope",
-        message: "select the service connector before preparing a workflow",
+        message: userMessage(
+          ctx,
+          "Choose the service connection you want to set up first.",
+          "Wähle zuerst die Verbindung aus, die du einrichten möchtest.",
+        ),
         next_best_actions: ["find_connector", "list_connectors"],
         data: {},
       };
@@ -53,8 +61,11 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
       return {
         ok: false,
         error_code: "workflow_draft_in_progress",
-        message:
-          "finish the current workflow conversation before preparing a package workflow in this conversation",
+        message: userMessage(
+          ctx,
+          "Finish reviewing the current setup first. Then I can prepare the next part.",
+          "Schließe zuerst die aktuelle Einrichtung ab. Danach kann ich den nächsten Teil vorbereiten.",
+        ),
         next_best_actions: ["inspect_workflow_draft", "save_workflow_draft"],
         data: { current_slug: current.workflow.slug ?? null },
       };
@@ -64,7 +75,11 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
       return {
         ok: false,
         error_code: "workflow_already_exists",
-        message: `a saved workflow already uses '${args.workflow_slug}'; open it and review an update instead of replacing it`,
+        message: userMessage(
+          ctx,
+          "A workflow for this part already exists. Open it to review an update; nothing was replaced.",
+          "Für diesen Teil gibt es bereits einen Ablauf. Öffne ihn, um ein Update zu prüfen. Es wurde nichts ersetzt.",
+        ),
         next_best_actions: ["open_workflow_draft", "get_workflow"],
         data: { workflow_id: existing.id, slug: existing.slug },
       };
@@ -74,7 +89,11 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
       return {
         ok: false,
         error_code: "connector_not_found",
-        message: "the selected service connector was not found in this workspace",
+        message: userMessage(
+          ctx,
+          "That service connection is no longer available. Choose another connection and try again.",
+          "Diese Verbindung ist nicht mehr verfügbar. Wähle eine andere Verbindung und versuche es erneut.",
+        ),
         next_best_actions: ["list_connectors", "get_connector"],
         data: { connector_id },
       };
@@ -90,7 +109,11 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
       return {
         ok: false,
         error_code: "package_has_no_workflows",
-        message: "this service package does not publish workflows that can be prepared here",
+        message: userMessage(
+          ctx,
+          "This service does not currently offer setup steps here.",
+          "Dieser Dienst bietet hier zurzeit keine Einrichtungsschritte an.",
+        ),
         data: { package: data.package },
       };
     }
@@ -116,7 +139,11 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
       return {
         ok: false,
         error_code: "package_workflow_not_found",
-        message: `the service package does not contain workflow '${args.workflow_slug}'`,
+        message: userMessage(
+          ctx,
+          "I couldn't find that part of the service setup.",
+          "Diesen Teil der Einrichtung konnte ich beim Dienst nicht finden.",
+        ),
         data: {
           package: data.package,
           available_workflows: envelope.workflows

@@ -463,6 +463,41 @@ describe("fetch_connector_self_description", () => {
     expect(data.errors.map((error) => error.name)).toContain("workflows");
   });
 
+  test("explains a pending package setup in plain German", async () => {
+    const toolCtx = makeCtx(package_connector);
+    toolCtx.locale = "de";
+    toolCtx.workflow_id = crypto.randomUUID();
+
+    const result = await prepareServicePackageWorkflowTool.execute(toolCtx, {
+      workflow_slug: "support-preview-status",
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected the current draft to block package setup");
+    expect(result.message).toBe(
+      "Schließe zuerst die aktuelle Einrichtung ab. Danach kann ich den nächsten Teil vorbereiten.",
+    );
+    expect(result.message).not.toContain("workflow");
+    expect(result.message).not.toContain("Paket");
+  });
+
+  test("hides package slugs from user-facing missing-workflow messages", async () => {
+    const toolCtx = makeCtx(package_connector);
+    toolCtx.locale = "de";
+
+    const result = await withSelfHostedDriverFetchForTests(packageFetch(), () =>
+      prepareServicePackageWorkflowTool.execute(toolCtx, {
+        workflow_slug: "not-published",
+        prefix: "support-preview",
+      }),
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected the missing package workflow to be rejected");
+    expect(result.message).toBe("Diesen Teil der Einrichtung konnte ich beim Dienst nicht finden.");
+    expect(result.message).not.toContain("not-published");
+  });
+
   test("prepares a verified package workflow as an inactive draft", async () => {
     const ctx = makeCtx(package_connector);
     const result = await withSelfHostedDriverFetchForTests(packageFetch(), () =>
