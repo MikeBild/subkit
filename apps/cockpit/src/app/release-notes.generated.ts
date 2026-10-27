@@ -1,7 +1,7 @@
 export type ReleaseNotes = { version: string; notes: string[] };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: string[] } = {
-  "source": "b9de131bbbfba6f6394a0b56b8f344d1d3930439",
+  "source": "7b5bb670a0dbf3a19de6c3bbd3c24b6a0f1d1dca",
   "releases": [
     {
       "version": "v1.0.0",
@@ -1397,6 +1397,226 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
     },
     {
       "version": "v10.4.3",
+      "notes": []
+    },
+    {
+      "version": "v10.4.4",
+      "notes": []
+    },
+    {
+      "version": "v10.4.5",
+      "notes": []
+    },
+    {
+      "version": "v10.4.6",
+      "notes": []
+    },
+    {
+      "version": "v10.4.7",
+      "notes": []
+    },
+    {
+      "version": "v10.4.8",
+      "notes": []
+    },
+    {
+      "version": "v10.4.9",
+      "notes": []
+    },
+    {
+      "version": "v10.4.10",
+      "notes": []
+    },
+    {
+      "version": "v10.4.11",
+      "notes": []
+    },
+    {
+      "version": "v10.4.12",
+      "notes": []
+    },
+    {
+      "version": "v10.4.13",
+      "notes": []
+    },
+    {
+      "version": "v10.4.14",
+      "notes": []
+    },
+    {
+      "version": "v10.4.15",
+      "notes": []
+    },
+    {
+      "version": "v10.4.16",
+      "notes": []
+    },
+    {
+      "version": "v10.4.17",
+      "notes": []
+    },
+    {
+      "version": "v10.4.18",
+      "notes": []
+    },
+    {
+      "version": "v10.4.19",
+      "notes": []
+    },
+    {
+      "version": "v10.4.20",
+      "notes": []
+    },
+    {
+      "version": "v10.4.21",
+      "notes": []
+    },
+    {
+      "version": "v10.4.22",
+      "notes": []
+    },
+    {
+      "version": "v10.5.0",
+      "notes": []
+    },
+    {
+      "version": "v10.5.1",
+      "notes": []
+    },
+    {
+      "version": "v10.6.0",
+      "notes": []
+    },
+    {
+      "version": "v10.6.1",
+      "notes": []
+    },
+    {
+      "version": "v10.6.2",
+      "notes": []
+    },
+    {
+      "version": "v10.7.0",
+      "notes": []
+    },
+    {
+      "version": "v10.8.0",
+      "notes": []
+    },
+    {
+      "version": "v10.8.1",
+      "notes": []
+    },
+    {
+      "version": "v10.9.0",
+      "notes": []
+    },
+    {
+      "version": "v10.9.1",
+      "notes": []
+    },
+    {
+      "version": "v10.10.0",
+      "notes": []
+    },
+    {
+      "version": "v10.11.0",
+      "notes": []
+    },
+    {
+      "version": "v10.12.0",
+      "notes": []
+    },
+    {
+      "version": "v10.13.0",
+      "notes": []
+    },
+    {
+      "version": "v10.14.0",
+      "notes": []
+    },
+    {
+      "version": "v10.15.0",
+      "notes": []
+    },
+    {
+      "version": "v10.15.1",
+      "notes": []
+    },
+    {
+      "version": "v10.15.2",
+      "notes": []
+    },
+    {
+      "version": "v10.15.3",
+      "notes": []
+    },
+    {
+      "version": "v10.16.0",
+      "notes": []
+    },
+    {
+      "version": "v10.16.1",
+      "notes": []
+    },
+    {
+      "version": "v10.16.2",
+      "notes": []
+    },
+    {
+      "version": "v10.16.3",
+      "notes": []
+    },
+    {
+      "version": "v10.16.4",
+      "notes": []
+    },
+    {
+      "version": "v10.16.5",
+      "notes": []
+    },
+    {
+      "version": "v10.17.0",
+      "notes": []
+    },
+    {
+      "version": "v10.17.1",
+      "notes": []
+    },
+    {
+      "version": "v10.17.2",
+      "notes": []
+    },
+    {
+      "version": "v10.18.0",
+      "notes": []
+    },
+    {
+      "version": "v10.18.1",
+      "notes": [
+        "sichere Wissensübernahme und verlässliche KI-Prüfungen"
+      ]
+    },
+    {
+      "version": "v10.18.2",
+      "notes": [
+        "verworfene Eingänge löschen und Freigaben klar anzeigen"
+      ]
+    },
+    {
+      "version": "v10.18.3",
+      "notes": [
+        "gehaltene Läufe überall klar kennzeichnen"
+      ]
+    },
+    {
+      "version": "v10.18.4",
+      "notes": [
+        "gehaltene Läufe aus Erfolgsquoten ausschließen"
+      ]
+    },
+    {
+      "version": "v10.18.5",
       "notes": []
     }
   ],
