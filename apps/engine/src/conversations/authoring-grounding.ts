@@ -1,4 +1,4 @@
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { domainsOfItem } from "../agent/domains.ts";
 import { connectors as connectorsTable } from "../db/schema/index.ts";
 import { loadChunks } from "../llm/core/context-assembler/loaders.ts";
@@ -47,7 +47,13 @@ export async function resolveConnectors(
       category: connectorsTable.category,
     })
     .from(connectorsTable)
-    .where(and(eq(connectorsTable.tenant_id, ctx.tenant_id), refFilter));
+    .where(
+      and(
+        eq(connectorsTable.tenant_id, ctx.tenant_id),
+        isNull(connectorsTable.deleted_at),
+        refFilter,
+      ),
+    );
   const resolved: GroundedConnector[] = rows.map((row) => ({
     id: row.id,
     slug: row.slug,
