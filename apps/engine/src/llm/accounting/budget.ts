@@ -5,6 +5,7 @@ import { type Executor, getDb } from "../../db/client.ts";
 import { llmUsage, tenants, userLlmSettings } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { LlmQuotaExhausted } from "../errors.ts";
+import { cacheWeightsFor } from "../model-price-catalog.ts";
 import { billedTokenUsage, weightedTotalTokens } from "../pricing.ts";
 import type { LlmCallLogEntry } from "../types.ts";
 
@@ -224,7 +225,7 @@ export async function recordUsage(entry: LlmCallLogEntry, exec?: Executor): Prom
     cache_read_tokens: entry.cache_read_tokens ?? 0,
     cache_creation_tokens: entry.cache_creation_tokens ?? 0,
   });
-  const total_tokens = weightedTotalTokens(billed);
+  const total_tokens = weightedTotalTokens(billed, cacheWeightsFor(entry.model));
   await db.insert(llmUsage).values({
     tenant_id: entry.tenant_id,
     flow: entry.flow,

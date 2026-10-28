@@ -1,4 +1,11 @@
-import { type ModelPrice, type SourcedModelPrice, vendorModelId } from "./pricing.ts";
+import {
+  type CacheWeights,
+  DEFAULT_CACHE_WEIGHTS,
+  findModelPrice,
+  type ModelPrice,
+  type SourcedModelPrice,
+  vendorModelId,
+} from "./pricing.ts";
 
 export const MODEL_PRICE_CATALOG_CURRENCY = "USD";
 
@@ -129,4 +136,17 @@ export function effectiveModelPrices(tokens: {
     });
   }
   return [...byModel.values()].sort((a, b) => (a.model < b.model ? -1 : a.model > b.model ? 1 : 0));
+}
+
+export function cacheWeightsFor(model: string): CacheWeights {
+  const price = findModelPrice(model, effectiveModelPrices({}))?.rate;
+  if (
+    !price ||
+    price.input_per_mtok <= 0 ||
+    price.cache_read_per_mtok <= 0 ||
+    price.cache_write_per_mtok <= 0
+  )
+    return DEFAULT_CACHE_WEIGHTS;
+  const ratio = (rate: number) => Math.round((rate / price.input_per_mtok) * 10_000) / 10_000;
+  return { read: ratio(price.cache_read_per_mtok), create: ratio(price.cache_write_per_mtok) };
 }

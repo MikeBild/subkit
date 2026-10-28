@@ -9,13 +9,26 @@ export const CACHE_READ_WEIGHT = 0.1;
 
 export const CACHE_CREATE_WEIGHT = 2;
 
-export function weightedTotalTokens(u: TokenUsageBreakdown): number {
+export interface CacheWeights {
+  read: number;
+  create: number;
+}
+
+export const DEFAULT_CACHE_WEIGHTS: CacheWeights = {
+  read: CACHE_READ_WEIGHT,
+  create: CACHE_CREATE_WEIGHT,
+};
+
+export function weightedTotalTokens(
+  u: TokenUsageBreakdown,
+  weights: CacheWeights = DEFAULT_CACHE_WEIGHTS,
+): number {
   const uncached = Math.max(0, u.prompt_tokens - u.cache_read_tokens - u.cache_creation_tokens);
   return (
     u.completion_tokens +
     uncached +
-    Math.round(u.cache_read_tokens * CACHE_READ_WEIGHT) +
-    Math.round(u.cache_creation_tokens * CACHE_CREATE_WEIGHT)
+    Math.round(u.cache_read_tokens * weights.read) +
+    Math.round(u.cache_creation_tokens * weights.create)
   );
 }
 

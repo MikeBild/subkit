@@ -3,12 +3,14 @@ import { PROMPT_CACHE_TTL } from "../core/cache-blocks.ts";
 import { routeTop, routeUp } from "../core/step-router.ts";
 import {
   ANTHROPIC_ONE_HOUR_CACHE_WRITE_MULTIPLIER,
+  cacheWeightsFor,
   effectiveModelPrices,
   MODEL_PRICE_CATALOG,
 } from "../model-price-catalog.ts";
 import {
   bareModelId,
   CACHE_CREATE_WEIGHT,
+  DEFAULT_CACHE_WEIGHTS,
   longContextThresholds,
   type PricedTokens,
   priceCalls,
@@ -61,6 +63,22 @@ describe("cache writes are priced at the TTL SubKit writes", () => {
       const p = MODEL_PRICE_CATALOG.find((e) => e.model === model);
       expect(p?.cache_write_per_mtok).toBe(p?.input_per_mtok);
     }
+  });
+
+  test("the budget ledger weights cache reads and writes by each model's catalog prices", () => {
+    expect(cacheWeightsFor("claude-sonnet-4-6")).toEqual({ read: 0.1, create: 2 });
+    expect(cacheWeightsFor("gpt-5.6-sol")).toEqual({ read: 0.1, create: 1.25 });
+    expect(cacheWeightsFor("gpt-4o")).toEqual({ read: 0.5, create: 1 });
+    expect(cacheWeightsFor("gemini-2.5-flash").create).toBe(1);
+    expect(cacheWeightsFor("some-unpriced-model")).toEqual(DEFAULT_CACHE_WEIGHTS);
+    const cold = {
+      prompt_tokens: 1000,
+      completion_tokens: 0,
+      cache_read_tokens: 0,
+      cache_creation_tokens: 1000,
+    };
+    expect(weightedTotalTokens(cold, cacheWeightsFor("gpt-5.6-sol"))).toBe(1250);
+    expect(weightedTotalTokens(cold, cacheWeightsFor("claude-sonnet-4-6"))).toBe(2000);
   });
 
   test("the budget ledger weights a cache write at the one-hour rate too", () => {
