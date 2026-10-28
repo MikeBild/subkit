@@ -7,7 +7,9 @@ import {
   inArray,
   isNull,
   lt,
+  ne,
   notExists,
+  or,
   type SQL,
   sql,
 } from "drizzle-orm";
@@ -21,12 +23,14 @@ import {
   executions,
   fileLinks,
   files,
+  packageInstalls,
   workflows,
   workflowsSchedules,
 } from "../db/schema/index.ts";
 import { retryTransient } from "../db/transient.ts";
-import { hasNoRetainedFileReference } from "../files/reference-protection.ts";
+import { findRetainedFileReferences } from "../files/reference-protection.ts";
 import { removeStoredFile } from "../files/remove-stored-file.ts";
+import { PACKAGE_CONTENT_TYPE } from "../identity/portability/format.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import {
   recordFilesCleanupPgbossScanMissing,
@@ -45,6 +49,8 @@ const PENDING_EXPIRY_GRACE = sql`interval '1 hour'`;
 
 const STUCK_SCAN_GRACE = sql`interval '1 hour'`;
 
+const PACKAGE_ARCHIVE_MIN_AGE = sql`interval '1 day'`;
+
 export const FILES_CLEANUP_BATCH_SIZE = 256;
 export const FILES_UNLINKED_CLEANUP_BATCH_SIZE = 16;
 type CleanupPass = "pending" | "soft" | "hard";
@@ -61,7 +67,12 @@ async function cleanupCandidates(
   // tenant-filter:exempt — bounded global cleanup keys retain tenant ownership for exact mutation-time rechecks.
   const select = (after?: string) =>
     db
-      .select({ id: files.id, tenant_id: files.tenant_id })
+      .select({
+        id: files.id,
+        tenant_id: files.tenant_id,
+        slug: files.slug,
+        content_type: files.content_type,
+      })
       .from(files)
       .where(and(eligible, after ? gt(files.id, after) : undefined))
       .orderBy(asc(files.id))
@@ -279,6 +290,22 @@ async function loadInFlightFidStrings(
   };
 }
 
+function isNotInstalledPackageArchive(): SQL {
+  return notExists(
+    sql`(select 1 from ${packageInstalls} where ${packageInstalls.archive_file_id}=${files.id} and ${packageInstalls.tenant_id}=${files.tenant_id})`,
+  );
+}
+
+function isSettledForCleanup(): SQL {
+  return (
+    or(
+      isNull(files.content_type),
+      ne(files.content_type, PACKAGE_CONTENT_TYPE),
+      lt(files.created_at, sql`now() - ${PACKAGE_ARCHIVE_MIN_AGE}`),
+    ) ?? sql`true`
+  );
+}
+
 function hasNoFileLink() {
   return notExists(
     sql`(select 1 from ${fileLinks} where ${fileLinks.file_id}=${files.id} and ${fileLinks.tenant_id}=${files.tenant_id})`,
@@ -317,16 +344,20 @@ async function sweepUnlinkedTtlPass(
   const candidates = await cleanupCandidates(
     db,
     "soft",
-    and(eq(files.status, "ready"), isNull(files.deleted_at)),
+    and(
+      eq(files.status, "ready"),
+      isNull(files.deleted_at),
+      isSettledForCleanup(),
+      isNotInstalledPackageArchive(),
+    ),
     FILES_UNLINKED_CLEANUP_BATCH_SIZE,
   );
 
   const hardSelection = lt(files.deleted_at, sql`now() - ${UNLINKED_HARD_DELETE_AFTER}`);
-  const eligible = and(hardSelection, hasNoFileLink(), hasNoRetainedFileReference());
   const hardCandidates = await cleanupCandidates(
     db,
     "hard",
-    hardSelection,
+    and(hardSelection, isNotInstalledPackageArchive()),
     FILES_UNLINKED_CLEANUP_BATCH_SIZE,
   );
   if (candidates.length === 0 && hardCandidates.length === 0)
@@ -340,10 +371,18 @@ async function sweepUnlinkedTtlPass(
     });
     return { soft: 0, hard: 0, incomplete: true };
   }
-  const isReferenced = (candidate: { id: string; tenant_id: string }) =>
+  const isQueued = (candidate: { id: string; tenant_id: string }) =>
     scan.blockedTenants.has(candidate.tenant_id) ||
     scan.globalHaystack.includes(candidate.id) ||
     (scan.tenantHaystacks.get(candidate.tenant_id)?.includes(candidate.id) ?? false);
+  const retained = await findRetainedFileReferences(
+    db,
+    [...candidates, ...hardCandidates].filter(
+      (candidate) => candidate.content_type !== PACKAGE_CONTENT_TYPE && !isQueued(candidate),
+    ),
+  );
+  const isReferenced = (candidate: { id: string; tenant_id: string }) =>
+    isQueued(candidate) || retained.has(candidate.id);
   let softDeleted = 0;
   for (const candidate of candidates) {
     if (isReferenced(candidate)) continue;
@@ -373,8 +412,9 @@ async function sweepUnlinkedTtlPass(
             eq(files.id, candidate.id),
             eq(files.status, "ready"),
             isNull(files.deleted_at),
+            isSettledForCleanup(),
             hasNoFileLink(),
-            hasNoRetainedFileReference(),
+            isNotInstalledPackageArchive(),
           ),
         )
         .returning({ id: files.id });
@@ -405,7 +445,7 @@ async function sweepUnlinkedTtlPass(
         db,
         candidate.tenant_id,
         candidate.id,
-        eligible,
+        and(hardSelection, hasNoFileLink(), isNotInstalledPackageArchive()),
         "unlinked_ttl",
       );
       if (row) hardDeleted++;
