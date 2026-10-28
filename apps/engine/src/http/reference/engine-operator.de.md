@@ -1,50 +1,51 @@
 ---
 slug: engine-operator
-summary: Welcher Workspace die Engine betreibt und was nur er darf.
+summary: Lege fest, welcher Arbeitsbereich die ganze Engine verwaltet.
 section: operate
 order: 3
 audience: operator
 ---
 ## Engine-Betreiber
 
-Ein Workspace ist der Engine-Betreiber: der Workspace, der das erstmalige Setup abgeschlossen hat
-(bei einem lokalen Entwicklungs-Seed `default`). Nur dessen Admins können die gesamte Engine ändern
-oder lesen: engineweite Einstellungen und ihre Revisionen, Laufzeit-Secrets und vorbereitete
-Secret-Freigaben, Engine-Neustarts, Engine-Diagnosen und -Logs, `/metrics` sowie das Deaktivieren
-eines MCP-OAuth-Clients für alle Workspaces. Diese Berechtigungen sind in
-`GET /v1/rbac/permissions` mit `operator: true` markiert (`settings:read:global`,
-`settings:write:global`, `system:restart`, `metrics:read`, `mcp_oauth_client:disable`). Keine Rolle,
-kein Grant und kein Key-Scope außerhalb des Betreiber-Workspace kann sie freischalten; eine solche
-Anfrage antwortet mit `403` und `details.cause: "operator_only"`. `GET /v1/identity/whoami`
-meldet `engine_operator`.
+Eine Engine kann mehrere Arbeitsbereiche tragen; einer davon ist der Engine-Betreiber und verwaltet die Engine als Ganzes. Dieses Kapitel brauchst du, wenn du Einstellungen änderst, Secrets pflegst oder API-Schlüssel ausstellst. Danach weißt du, welche Änderung für alle gilt und welche nur für deinen Arbeitsbereich.
 
-Jeder andere Workspace behält seine eigenen Einstellungen. `GET /v1/settings` liefert die
-Mandantensicht: nur Einstellungen, die ein Mandanten-Overlay unterstützen, mit ihrem wirksamen
-Wert. Eine Änderung gilt nur dann für deinen Workspace, wenn du ihn benennst:
+### Was nur der Betreiber darf
 
-```bash
-sk settings set llm.model '"<model>"' --tenant <your-tenant-id>
-```
+Jeder Arbeitsbereich ist technisch ein eigener Mandant (Tenant) mit getrennten Daten, Nutzern und Rechten. Betreiber ist der Arbeitsbereich, der die Ersteinrichtung abgeschlossen hat (bei einem lokalen Entwicklungs-Seed `default`). Nur seine Admins können die ganze Engine lesen oder ändern:
 
-Im Cockpit sehen Workspaces außerhalb des Engine-Betreibers Einstellungen derzeit nur lesend.
-Verwende den obigen CLI-Befehl, um die Einstellungen deines eigenen Workspace zu ändern.
+- engineweite Einstellungen und ihre Revisionen,
+- Laufzeit-Secrets und vorbereitete Secret-Freigaben,
+- Neustarts der Engine,
+- Diagnosen und Logs der Engine sowie `/metrics`,
+- das Abschalten eines MCP-OAuth-Clients für alle Arbeitsbereiche.
 
-Ohne `--tenant` lehnt die Engine die Änderung ab, statt sie für alle anzuwenden. Solange der
-Betreiber engineweite Einstellungen gespeichert hat, die noch nicht aktiv sind, antwortet eine
-Workspace-Änderung mit `409 operator_change_pending` und wird nicht gespeichert. Das Widerrufen
-eines MCP-OAuth-Clients außerhalb des Betreiber-Workspace entzieht ihm nur in deinem Workspace den
-Zugriff.
+In `GET /v1/rbac/permissions` tragen diese Rechte `operator: true`: `settings:read:global`, `settings:write:global`, `system:restart`, `metrics:read` und `mcp_oauth_client:disable`. Außerhalb des Betreiber-Arbeitsbereichs schaltet sie keine Rolle, keine Rechtezuweisung und kein Key-Scope frei. Eine solche Anfrage endet mit `403` und `details.cause: "operator_only"`. `GET /v1/identity/whoami` meldet dazu `engine_operator`.
 
-Der Betreiber-Workspace wird einmal gewählt und nur auf dem Host verschoben:
+Der Betreiber-Arbeitsbereich wird einmal gewählt. Verschieben kannst du ihn nur auf dem Host:
 
 ```bash
 engine --set-operator-tenant <slug>
 ```
 
-API-Schlüssel und Einladungen tragen Scopes aus dem Berechtigungskatalog, `*` oder die
-MCP-Modusmarker `mcp:read`, `mcp:authoring` und `mcp:admin`. Jeder Scope muss von der Anmeldung
-gehalten werden, die ihn ausstellt; nur eine Anmeldung ohne Scope-Grenzen kann `*` ausstellen, und
-ein Schlüssel, der Scopes weglässt, erbt die eigenen Grenzen des Ausstellers. Das Rotieren eines
-Schlüssels wendet dieselbe Prüfung auf die Scopes an, die er bereits trägt. Unbekannte Scopes
-antworten mit `422 unknown_scope`, Scopes jenseits des Ausstellers mit `403 scope_exceeds_issuer`.
+### Einstellungen deines Arbeitsbereichs
 
+Jeder andere Arbeitsbereich behält seine eigenen Einstellungen. `GET /v1/settings` liefert die Sicht deines Mandanten: nur Einstellungen, die eine Überlagerung je Mandant unterstützen, jeweils mit ihrem wirksamen Wert. Eine Änderung gilt nur für deinen Arbeitsbereich, wenn du ihn ausdrücklich nennst:
+
+```bash
+sk settings set llm.model '"<model>"' --tenant <your-tenant-id>
+```
+
+Im Cockpit sehen Arbeitsbereiche außerhalb des Betreibers die Einstellungen derzeit nur lesend. Zum Ändern nimmst du den CLI-Befehl oben.
+
+Ohne `--tenant` lehnt die Engine die Änderung ab, statt sie für alle anzuwenden. Hat der Betreiber engineweite Einstellungen gespeichert, die noch nicht aktiv sind, antwortet eine Änderung im Arbeitsbereich mit `409 operator_change_pending` und wird nicht gespeichert. Widerrufst du außerhalb des Betreibers einen MCP-OAuth-Client, verliert er den Zugriff nur in deinem Arbeitsbereich.
+
+### Scopes für API-Schlüssel und Einladungen
+
+Ein Scope begrenzt, was ein API-Schlüssel oder eine Einladung darf. Erlaubt sind Scopes aus dem Berechtigungskatalog, `*` oder die MCP-Modi `mcp:read`, `mcp:authoring` und `mcp:admin`. Dabei gilt:
+
+- Jeden Scope muss die ausstellende Anmeldung selbst haben.
+- Nur eine Anmeldung ohne Scope-Grenzen kann `*` ausstellen.
+- Ein Schlüssel ohne Scopes erbt die Grenzen der Person oder des Schlüssels, der ihn ausstellt.
+- Beim Rotieren gilt dieselbe Prüfung für die Scopes, die der Schlüssel schon trägt.
+
+Unbekannte Scopes antworten mit `422 unknown_scope`, Scopes über den Rechten des Ausstellers mit `403 scope_exceeds_issuer`.

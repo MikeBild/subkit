@@ -1,18 +1,17 @@
 ---
 slug: sandbox-data-tools
-summary: Welche sk-Helfer JavaScript-Transformationen nutzen können und wo ihre Grenzen liegen.
+summary: Rechne, zerlege und prüfe Daten in JavaScript-Umformungen mit eingebauten Helfern.
 section: operate
 order: 10
 audience: operator
 ---
 ## Sandbox-Datenwerkzeuge
 
-JavaScript-Workflow-Transformationen können begrenzte, synchrone `sk`-Helfer verwenden. Sie
-führen keinen Netzwerk-, Dateisystem- oder Zugangsdatenzugriff aus. Namensräume sind unveränderlich.
-Promises und nicht initialisierte Zufallswerte werden nicht unterstützt; verwende die
-Ausführungsuhr und `sk.uuid()` für wiederholbare Werte.
+In einem Umformungs-Schritt mit JavaScript rechnest, zerlegst und prüfst du Daten mit den eingebauten `sk`-Helfern. Du brauchst sie, wenn ein Workflow Beträge rechnet, CSV oder XML liest, Zeiten über Zeitzonen umrechnet oder Eingaben prüft. Danach weißt du, was jeder Helfer kann und wo seine Grenzen liegen.
 
-| Aufgabe | Helfer | Vertrag |
+Die Helfer laufen synchron und begrenzt in der Sandbox, der abgeschotteten Laufzeit des Schritts. Sie greifen nie auf Netzwerk, Dateisystem oder Zugangsdaten zu. Die Namensräume der Helfer sind unveränderlich. Promises und Zufallswerte ohne festen Startwert werden nicht unterstützt; für wiederholbare Werte nimmst du die Ausführungsuhr und `sk.uuid()`.
+
+| Aufgabe | Helfer | Regeln |
 | --- | --- | --- |
 | Dezimalbeträge | `sk.money.add/sub/mul/div/round/compare` | Dezimalzeichenketten; `div` und `round` erfordern Skalierung und `down`, `halfUp`, `halfEven` oder `up`. Keine Währungsumrechnung. |
 | CSV | `sk.csv.parse/stringify` | Explizite Trennzeichen-/Header-Optionen; der Export maskiert Tabellenkalkulationsformeln standardmäßig. Bis zu 10.000 Zeilen. |
@@ -31,12 +30,16 @@ return {
 };
 ```
 
+### Grenzen und Betrieb
+
 Text-Ein- und -Ausgaben sind auf 1 MiB begrenzt, Strukturen auf 100.000 Knoten und 64 Ebenen.
 Die bestehenden Sandbox-Budgets für Speicher, Ausführung und Ausgabe gelten weiterhin. Jeder
-Helfer ist eingebettet und wird in jeder Sandbox beim ersten Zugriff geladen.
-Paketversionen und Zeitzonendaten sind für jedes Release festgeschrieben. Diese Werkzeuge fügen
-weder Dokumenten-Rendering noch OCR noch einen Browser hinzu. JavaScript-Transformationen, JSONata
-und Binär-Parsing nutzen begrenzte Worker-Prozesse. Die Standardspur kann zwei Worker parallel
-ausführen; Hooks haben eine eigene Spur. Pro Engine-Prozess gelten globale und mandantenbezogene
-Warteschlangengrenzen über Standard- und Hook-Worker hinweg. Der RSS-Watchdog ist unter Linux
-verfügbar; er ist eine Polling-Grenze und keine vom Kernel durchgesetzte Speicherobergrenze.
+Helfer ist eingebettet und wird in jeder Sandbox erst beim ersten Zugriff geladen.
+Paketversionen und Zeitzonendaten sind je Release festgeschrieben. Dokumenten-Rendering, OCR
+oder einen Browser bringen die Helfer nicht mit.
+
+JavaScript-Umformungen, JSONata und Binär-Parsing laufen in begrenzten Worker-Prozessen. Die
+Standardspur führt bis zu zwei Worker parallel aus; Hooks haben eine eigene Spur.
+Je Engine-Prozess gelten globale Grenzen und Grenzen je Mandant (im Cockpit: Arbeitsbereich) für die Warteschlange, über beide
+Spuren hinweg. Unter Linux gibt es einen RSS-Watchdog, der den Speicherverbrauch regelmäßig abfragt.
+Er ist keine vom Kernel durchgesetzte Speicherobergrenze.

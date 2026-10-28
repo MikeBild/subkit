@@ -1,28 +1,23 @@
 ---
 slug: direct-signed-jwt-connector-credentials
-summary: Authentifiziere Konnektoren bei APIs, die ein signiertes JWT direkt akzeptieren.
+summary: Verbinde APIs wie App Store Connect, die ein signiertes JWT direkt akzeptieren.
 section: operate
 order: 9
 audience: operator
 ---
 ## Direkte signierte JWT-Konnektor-Zugangsdaten
 
-Einige Ressourcen-APIs akzeptieren ein signiertes JWT direkt im Header `Authorization: Bearer`.
-Das unterscheidet sich von OAuth `private_key_jwt`: Ein direktes signiertes JWT wird an die
-Ressourcen-API selbst gesendet und geht nie an einen Token-Endpunkt. SubKit erzeugt es für die
-ausgehende Anfrage, hält es nur im Speicher und legt es weder in einem Workflow noch in einem
-Audit-Eintrag oder Log ab.
+Manche APIs, etwa App Store Connect, erwarten statt eines Passworts oder OAuth-Tokens ein JWT, das mit deinem privaten Schlüssel signiert ist. Du brauchst dieses Kapitel, wenn du einen solchen Dienst als Konnektor einrichtest. Danach erzeugt SubKit für jede Anfrage ein frisches Token, und dein privater Schlüssel liegt nur verschlüsselt am Konnektor.
 
-Die Konnektorkonfiguration enthält die öffentliche Signaturrichtlinie: Algorithmus (`ES256`
-oder `RS256`), Audience, optionaler Aussteller, Subject, Schlüssel-ID, wörtliche benutzerdefinierte Claims
-und eine Lebensdauer von 60–3600 Sekunden. Die Konnektor-Zugangsdaten enthalten nur den verschlüsselten
-privaten Schlüssel. SubKit setzt `iat` und `exp`; sie können nicht als benutzerdefinierte
-Claims gesetzt werden. Ersetze die Zugangsdaten über die normale Konnektor-Zugangsdatenmaske, um
-einen Schlüssel zu rotieren, und verifiziere ihn dann mit der authentifizierten Probe des Konnektors.
+Ein JWT (JSON Web Token) ist ein kurzes, signiertes Datenpaket; der Empfänger prüft es mit deinem öffentlichen Schlüssel. Hier schickt SubKit es direkt im Header `Authorization: Bearer` an die Ressourcen-API. Das unterscheidet sich von OAuth `private_key_jwt`: Ein direktes signiertes JWT geht nie an einen Token-Endpunkt. SubKit erzeugt es für die ausgehende Anfrage, hält es nur im Speicher und legt es weder in einem Workflow noch in einem Audit-Eintrag oder Log ab.
+
+Die Konnektorkonfiguration enthält die öffentliche Signaturrichtlinie: Algorithmus (`ES256` oder `RS256`), Audience, optionaler Aussteller, Subject und Schlüssel-ID. Dazu kommen wörtliche eigene Claims (Felder im Token) und eine Lebensdauer von 60–3600 Sekunden. Die Konnektor-Zugangsdaten enthalten nur den verschlüsselten privaten Schlüssel. SubKit setzt `iat` und `exp`; als eigene Claims lassen sie sich nicht setzen. Um einen Schlüssel zu rotieren, ersetze die Zugangsdaten über die normale Zugangsdaten-Maske des Konnektors und prüfe ihn dann mit dem authentifizierten Test des Konnektors.
 
 Die eingebaute Vorlage **App Store Connect** ist ein Konnektor mit direktem signiertem JWT für
 `https://api.appstoreconnect.apple.com`. Die Richtlinie der Vorlage ist fest auf `ES256`, die Audience
-`appstoreconnect-v1` und eine Lebensdauer von fünf Minuten gesetzt. Füge den privaten `.p8`-Schlüssel als
+`appstoreconnect-v1` und eine Lebensdauer von fünf Minuten gesetzt.
+
+Füge den privaten `.p8`-Schlüssel als
 Zugangsdatum hinzu und konfiguriere die öffentliche Key ID. Setze bei einem Team-Schlüssel die App-Store-Connect-Issuer-ID
 als `issuer`; lass bei einem individuellen Schlüssel `issuer` weg und setze
 `subject` auf `user`. Die erste Probe ist `GET /v1/apps`. Konfiguriere für diesen Konnektor weder OAuth,
@@ -31,7 +26,7 @@ noch einen Token-Endpunkt, noch eine OAuth-Client-Assertion.
 Die Vorlage ermittelt Endpunkte aus dem offiziellen OpenAPI-ZIP-Download von Apple.
 Die Discovery akzeptiert eine einzelne JSON- oder YAML-Spezifikation in einem Archiv, begrenzt
 komprimierte und extrahierte Inhalte auf 16 MiB und lehnt mehrdeutige Archive ab.
-Der entstehende Endpunktkatalog steht Agents zur Verfügung; die Konnektor-Dokumentation
+Der entstehende Endpunktkatalog steht Agenten zur Verfügung; die Konnektor-Dokumentation
 kann außerdem mit `POST /v1/connectors/{id}/docs/ingest` importiert werden, mit
 `source_type: "openapi"` und der extrahierten Spezifikation als `content`.
 
@@ -40,8 +35,8 @@ kann außerdem mit `POST /v1/connectors/{id}/docs/ingest` importiert werden, mit
 Wähle im Cockpit unter **Konnektoren** **Konnektor hinzufügen → Aus Vorlage → App Store Connect** und öffne dann den
 vorhandenen Bearbeitungsdialog des Konnektors. Gib die öffentliche Key ID und entweder die Issuer-ID
 (Team-Schlüssel) oder das Subject `user` (individueller Schlüssel) ein. Füge den privaten Schlüssel in das
-Feld für den privaten Schlüssel ein, speichere und führe den Konnektortest aus. Das Speichern eines Schlüssels ist kein Beleg dafür,
-dass der Anbieter ihn akzeptiert; ein erfolgreicher authentifizierter Test ist es.
+Feld für den privaten Schlüssel ein, speichere und führe den Konnektortest aus. Dass ein Schlüssel gespeichert ist,
+belegt nicht, dass der Anbieter ihn akzeptiert; das belegt erst ein erfolgreicher authentifizierter Test.
 
 Verwende einen App-Store-Connect-API-Schlüssel, der die vorgesehenen Apps und TestFlight-Ressourcen lesen kann.
 Ein Sign-in-with-Apple-Schlüssel ist ein anderes Zugangsdatum. Die Vorlage
@@ -68,13 +63,14 @@ Konfiguration, ohne Apple-spezifischen Transport oder Token-Austausch:
 }
 ```
 
-Das ist das Auth-Fragment einer Konnektordefinition, keine vollständige Anlege-Anfrage.
-Behalte den üblichen Konnektornamen, Treiber, die Umgebung und die Basis-URL bei.
-Setze bei GraphQL den Endpunkt über die bestehende GraphQL-Konfiguration. Öffentliche
-Claims müssen dem dokumentierten Vertrag des Anbieters entsprechen. Die App-Store-Vorlage legt
-Algorithmus, Audience, benutzerdefinierte Claims und Lebensdauer fest; deren Änderung erfordert das ausdrückliche
-Löschen oder Ersetzen der Vorlagenbindung. Änderungen an öffentlicher Identität oder Schlüssel werden
-gegen bestehende Ausführungsautoritäten geprüft.
+Das ist der Auth-Teil einer Konnektordefinition, keine vollständige Anlege-Anfrage.
+Konnektorname, Treiber, Umgebung und Basis-URL setzt du wie üblich.
+Bei GraphQL setzt du den Endpunkt über die bestehende GraphQL-Konfiguration. Öffentliche
+Claims müssen den dokumentierten Vorgaben des Anbieters entsprechen.
+
+Die App-Store-Vorlage legt Algorithmus, Audience, eigene Claims und Lebensdauer fest. Willst du sie ändern, musst du die
+Vorlagenbindung ausdrücklich löschen oder ersetzen. Änderungen an öffentlicher Identität oder Schlüssel prüft SubKit
+gegen bestehende Freigaben.
 
 Hänge den Schlüssel über die CLI an einen bereits konfigurierten Konnektor an oder ersetze ihn:
 
@@ -92,8 +88,8 @@ und liefert die Zugangsdaten-ID zurück, nie den Schlüssel oder ein erzeugtes T
 Schlüssel müssen unverschlüsseltes PKCS#8-PEM sein: P-256 für ES256 oder RSA mit 2048–4096 Bit für
 RS256. SubKit verschlüsselt gespeicherte Schlüssel, erzeugt für jeden tatsächlichen
 Anfrageversuch ein frisches Token und erzeugt Tokens nach einem Neustart ohne Refresh-Job neu.
-Die Entwurfseinrichtung hält das übermittelte Geheimnis im bestehenden geschützten
-Zugangsdaten-Ablauf vorübergehend, bis es gespeichert ist; es wird nicht in Konversationsnachrichten abgelegt.
+Beim Einrichten eines Entwurfs hält SubKit den übermittelten Schlüssel nur vorübergehend im geschützten
+Zugangsdaten-Weg, bis er gespeichert ist; in Chat-Nachrichten landet er nicht.
 Anfragen können nicht auf eine andere Ressource umleiten, und Konnektor-Hooks sehen das
 erzeugte Token nicht. Gespiegelte Tokens werden aus Anbieterergebnissen entfernt.
 
@@ -106,11 +102,11 @@ erzeugte Token nicht. Gespiegelte Tokens werden aus Anbieterergebnissen entfernt
 | Der Anbieter ist nicht verfügbar | Wiederhole den schreibgeschützten Test nach der Wiederherstellung; ersetze einen gültigen Schlüssel nicht allein wegen eines vorübergehenden Ausfalls. |
 | Schlüsselrotation | Aktualisiere bei Bedarf die öffentlichen Identitätsfelder, ersetze das Zugangsdatum mit dem privaten Schlüssel und führe dann den schreibgeschützten Test erneut aus. Verwende nie ein zuvor erzeugtes JWT wieder. |
 
-### Agent-Vertrag für signierte JWTs
+### Regeln für Agenten bei signierten JWTs
 
 Ermittle die Vorlage, bevor du einen Konnektor erstellst. Konfiguriere nur öffentliche Felder
 unter `config.signed_jwt`. Fordere den privaten Schlüssel über das bestehende sensible
-Zugangsdatenformular von SubKit oder die Übergabe an die Browser-Einrichtung an; fordere ihn nicht im Freitext-Chat an
+Zugangsdatenformular von SubKit oder die Übergabe an die Browser-Einrichtung an. Fordere ihn nie im Freitext-Chat an,
 und erzeuge, drucke oder speichere JWTs nicht selbst. Das sichere Formularfeld ist
 `private_key`; `token` und OAuth-`client_secret` sind kein Ersatz.
 
@@ -119,7 +115,7 @@ ohne Konnektivität zu behaupten. Prüfe den aktuellen Build-/Prüfstatus, bevor
 Einladung verwendet werden kann. Eine Einladung oder jede andere Anbieter-Mutation erfordert einen eigenen
 autorisierten Workflow; der Einrichtungstest des Konnektors führt nur einen Lesezugriff aus.
 
-Verwende die generierten OpenAPI-Schemas als maschinenlesbaren Vertrag und den an die Vorlage gebundenen
+Verwende die generierten OpenAPI-Schemas als maschinenlesbare Beschreibung und den an die Vorlage gebundenen
 Skill `app-store-connect-basics` für Anbieterhinweise. Die generierten `/llms/setup.md`,
 `/llms/connectors.md`, `/llms/cli.md` und `/llms-full.txt` werden mit der Engine ausgeliefert und
 aus diesen Quellen neu generiert; pflege keine zweite Auth-Spezifikation.

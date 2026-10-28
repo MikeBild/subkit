@@ -1,18 +1,17 @@
 ---
 slug: sandbox-data-tools
-summary: Which sk helpers JavaScript transforms can use and where their limits are.
+summary: Calculate, parse and validate data in JavaScript transforms with built-in helpers.
 section: operate
 order: 10
 audience: operator
 ---
 ## Sandbox data tools
 
-JavaScript workflow transforms can use bounded, synchronous `sk` helpers. They
-perform no network, filesystem or credential access. Namespaces are immutable.
-Promises and unseeded randomness are unsupported; use the execution clock and
-`sk.uuid()` for repeatable values.
+In a JavaScript transform step you calculate, parse and validate data with the built-in `sk` helpers. You need them when a workflow calculates amounts, reads CSV or XML, converts times across time zones or validates input. Afterwards you know what each helper does and where its limits are.
 
-| Task | Helpers | Contract |
+The helpers run synchronously and bounded inside the sandbox, the isolated runtime of the step. They never access the network, filesystem or credentials. Their namespaces are immutable. Promises and unseeded randomness are unsupported; for repeatable values use the execution clock and `sk.uuid()`.
+
+| Task | Helpers | Rules |
 | --- | --- | --- |
 | Decimal amounts | `sk.money.add/sub/mul/div/round/compare` | Decimal strings; `div` and `round` require scale and `down`, `halfUp`, `halfEven` or `up`. No currency conversion. |
 | CSV | `sk.csv.parse/stringify` | Explicit delimiter/header options; export escapes spreadsheet formulas by default. Up to 10,000 rows. |
@@ -31,13 +30,16 @@ return {
 };
 ```
 
+### Limits and operation
+
 Text inputs and outputs are limited to 1 MiB, structures to 100,000 nodes and
 64 levels. Existing sandbox memory, execution and output budgets still apply.
-Each helper is embedded and loaded on first access in each sandbox.
-Package versions and timezone data are pinned for each release. These tools do not add document rendering, OCR or a browser.
-JavaScript transforms, JSONata and binary parsing use bounded worker processes.
-The default lane can run two workers in parallel; hooks have a separate lane.
-Per-engine-process global and per-tenant queue limits apply across default and
-hook workers.
-The RSS watchdog is available on Linux; it is a polling limit rather than a
-kernel-enforced memory ceiling.
+Each helper is embedded and loaded only on first access in each sandbox.
+Package versions and timezone data are pinned for each release. The helpers do not
+bring document rendering, OCR or a browser.
+
+JavaScript transforms, JSONata and binary parsing run in bounded worker processes.
+The default lane runs up to two workers in parallel; hooks have a separate lane.
+Per engine process, global and per-tenant queue limits apply across both lanes.
+On Linux an RSS watchdog polls memory use regularly.
+It is not a kernel-enforced memory ceiling.

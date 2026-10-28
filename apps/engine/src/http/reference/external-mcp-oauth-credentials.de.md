@@ -1,28 +1,26 @@
 ---
 slug: external-mcp-oauth-credentials
-summary: Verbinde externe MCP-Server, die OAuth-Client-Zugangsdaten verlangen.
+summary: Binde externe MCP-Server über OAuth an, ohne dass Geheimnisse umgeleitet werden.
 section: operate
 order: 8
 audience: operator
 ---
 ## OAuth-Zugangsdaten für externe MCP-Server
 
-Für externe MCP-Konnektoren mit `oauth2_client_credentials` oder `oauth2_private_key_jwt`
-konfiguriere vor dem Verbinden die vertrauenswürdige Adresse des Autorisierungsservers als
-`config.mcp.auth.issuer`. SubKit weigert sich, diese Zugangsdaten ohne diese Bindung zu verwenden.
-Die Discovery kann ein Client-Secret oder eine signierte Assertion nicht an einen anderen
-Autorisierungsserver umleiten.
+Manche externen MCP-Server verlangen eine OAuth-Anmeldung, bevor SubKit ihre Tools nutzen darf. Du brauchst dieses Kapitel, wenn du einen solchen Server als Konnektor einrichtest oder ältere gespeicherte Anmeldungen weiterverwenden willst. Danach ist jede Anmeldung an einen festen Autorisierungsserver gebunden, und Client-Secrets gehen nur dorthin.
 
-Interaktives MCP-OAuth speichert den Aussteller des Autorisierungsservers zusammen mit den
-verschlüsselten Client-Informationen und Tokens. Ältere gespeicherte Zugangsdaten ohne Aussteller
-werden nicht wiederverwendet. Anbieter mit dynamischer Client-Registrierung können über das
-OAuth-Setup des Konnektors eine neue Anmeldung starten. Die Wiederherstellung älterer
-vertraulicher Clients bei Anbietern ohne dynamische Registrierung ist über die öffentlichen
-Setup-APIs noch nicht verifiziert; geh nicht davon aus, dass die Eingabe eines Ausstellers
-diese gespeicherten Zugangsdaten wiederherstellt. Halte solche Verbindungen aus dem Rollout
-heraus, bis ihre Wiederherstellung verifiziert ist. Bearbeite gespeicherte Zugangsdaten nicht,
-um diese Prüfung zu umgehen. Das Ändern der Discovery-Metadaten migriert bestehende Zugangsdaten
-nicht, und eine neue Anmeldung erbt nie ein Refresh-Token, das von einem anderen Server ausgestellt
-wurde. Prüfe Anbieterwechsel, bevor du sie autorisierst; die Bindung stellt nicht fest, dass
-ein neu gewählter Anbieter vertrauenswürdig ist.
+OAuth ist das übliche Verfahren, mit dem ein Dienst einem anderen Zugriff gewährt. Der Autorisierungsserver stellt dafür die Tokens aus.
 
+### Anmeldung mit Client-Zugangsdaten
+
+Für Konnektoren mit `oauth2_client_credentials` oder `oauth2_private_key_jwt` trägst du vor dem Verbinden die vertrauenswürdige Adresse des Autorisierungsservers als `config.mcp.auth.issuer` ein. Ohne diese Bindung verwendet SubKit die Zugangsdaten nicht. Die Discovery, das automatische Nachschlagen der Server-Adressen, kann ein Client-Secret oder eine signierte Assertion dann nicht an einen anderen Autorisierungsserver umleiten.
+
+### Interaktive Anmeldung
+
+Bei interaktivem MCP-OAuth speichert SubKit den Aussteller des Autorisierungsservers zusammen mit den verschlüsselten Client-Daten und Tokens. Ältere gespeicherte Zugangsdaten ohne Aussteller verwendet SubKit nicht weiter. Bei Anbietern mit dynamischer Client-Registrierung startest du über das OAuth-Setup des Konnektors eine neue Anmeldung.
+
+### Ältere Zugangsdaten ohne dynamische Registrierung
+
+Ob sich ältere vertrauliche Clients bei Anbietern ohne dynamische Registrierung über die öffentlichen Setup-APIs wiederherstellen lassen, ist noch nicht geprüft. Geh nicht davon aus, dass ein nachgetragener Aussteller diese Zugangsdaten wiederherstellt. Nimm solche Verbindungen erst in Betrieb, wenn ihre Wiederherstellung geprüft ist. Bearbeite gespeicherte Zugangsdaten nicht, um diese Prüfung zu umgehen.
+
+Geänderte Discovery-Metadaten übertragen bestehende Zugangsdaten nicht. Eine neue Anmeldung übernimmt nie ein Refresh-Token, das ein anderer Server ausgestellt hat. Prüfe einen Anbieterwechsel, bevor du ihn autorisierst: Die Bindung sagt nichts darüber, ob ein neu gewählter Anbieter vertrauenswürdig ist.

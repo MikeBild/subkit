@@ -1,44 +1,37 @@
 ---
 slug: execution-identity-and-permission
-summary: Wer einen Lauf ausführt und welche Rechte dabei gelten.
+summary: Erkenne, wer einen Lauf ausgelöst hat und was er darf.
 section: operate
 order: 4
 audience: operator
 ---
 ## Ausführungsidentität und Berechtigung
 
-Der Chat behält lokale Workflow-Änderungen, wenn sich ein gespeicherter Entwurf gleichzeitig
-ändert. Speichern, Aktivieren und Ausführen sind getrennte Ergebnisse. Nachdem du einen
-Entwurf in DEV übernommen hast, startet ein Einzellauf mit seinen aufgezeichneten Testeingaben nur,
-wenn du **Danach einen Lauf starten** anhakst. Eine Bitte, nicht live auszuführen, verhindert
-diese Fortsetzung. PROD erfordert eine ausdrückliche Anforderung zur
-Live-Ausführung. Der aufgezeichnete Lauf zeigt, was tatsächlich geschehen ist.
+Bei jedem Lauf zählen vier getrennte Dinge: wer ihn ausgelöst hat, womit er sich anmeldet, was er darf und was eine Person freigegeben hat. Dieses Kapitel brauchst du, wenn ein Workflow nur für bestimmte angemeldete Personen oder Apps laufen soll oder du einen Lauf im Nachhinein zuordnen willst. Danach weißt du, wo du die Identität eines Laufs findest und welche Angaben dafür nicht taugen.
 
-Die Modellkosten des Chats sind eine ungefähre Berechnung aus gemeldeter Anbieternutzung und
-konfigurierten Preisen, keine Rechnung. Die Token-Anzahl enthält wiederholten Kontext über
-mehrere Modellaufrufe hinweg. Öffne **Changes** im Kontomenü unten links für kurze
-Versionshinweise; unveröffentlichte Änderungen werden separat aufgeführt.
+### Die vier Begriffe
 
-`$caller` beantwortet, wer diese Ausführung authentifiziert hat. Konnektor-Zugangsdaten
-authentifizieren eine ausgehende Anfrage an einen anderen Dienst. RBAC entscheidet, welche
-Workflows und Ressourcen dieser Principal verwenden darf. Die menschliche Freigabe erlaubt eine
-geprüfte Wirkungsgrenze für eine Umgebung. Diese vier Konzepte sind unabhängig voneinander:
-Zugangsdaten oder eine Freigabe erzeugen keine Aufruferidentität und ersetzen keine Autorisierung,
-und der Freigebende muss nicht der Aufrufer der Ausführung sein.
+- `$caller` beantwortet, wer diesen Lauf authentifiziert hat.
+- Konnektor-Zugangsdaten melden eine ausgehende Anfrage bei einem anderen Dienst an.
+- RBAC, die rollenbasierte Rechteprüfung, entscheidet, welche Workflows und Ressourcen dieser Principal nutzen darf. Ein Principal ist die angemeldete Identität, also eine Person, eine App oder ein Schlüssel.
+- Die Freigabe einer Person erlaubt für eine Umgebung eine geprüfte Reichweite der Wirkung.
 
-HTTP- und MCP-Läufe leiten die Aufruferidentität aus ihrem authentifizierten Principal ab.
-Vertrauenswürdige aufruferlose Webhook- und geplante Läufe erhalten `null`; die Person, die sie
-konfiguriert oder freigegeben hat, ist nicht automatisch ihr Aufrufer. Untergeordnete Workflows
-behalten den Aufrufer des übergeordneten. Verwende `required_caller_kind` und `product_id`,
-wenn ein Workflow eine bestimmte authentifizierte Identität verlangt, und leite eine solche
-nie aus Eingabefeldern oder `request_source` ab.
+Die vier hängen nicht voneinander ab. Zugangsdaten oder eine Freigabe erzeugen keine Aufruferidentität und ersetzen keine Rechteprüfung. Wer freigibt, muss nicht der Aufrufer des Laufs sein.
 
-Die Laufinspektion zeigt über HTTP und MCP Quelle, Status, Workflow-Version, Ausführungsautorität,
-Schrittnachweise und eine sichere `caller`-Zusammenfassung. Die Zusammenfassung nennt den
-gespeicherten Principal, das Produkt, die Authentifizierungsmethode, den Kanal und den
-Ursprungslauf, ohne Zugangsdaten oder Sitzungskennungen offenzulegen. Eine fehlende gespeicherte
-Identität ist `kind: unknown`; ein Kanal allein kann keinen Aufrufer identifizieren.
-HTTP-Audit-Abfragen und MCP `list_audit` können nach Akteur und Trace filtern. Diese Einträge
-bieten eine teilweise Korrelation, keine vollständige Aufrufer-Zeitleiste. Den Vertrag und seine
-Grenzen findest du in den eingebauten Hinweisen zu Kernkonzepten, Auth-Abläufen und REST-API.
+### Wer der Aufrufer ist
 
+HTTP- und MCP-Läufe übernehmen den Aufrufer aus ihrem angemeldeten Principal. Vertrauenswürdige Webhook- und Zeitplan-Läufe ohne Aufrufer bekommen `null`. Wer sie eingerichtet oder freigegeben hat, wird dadurch nicht automatisch ihr Aufrufer. Untergeordnete Workflows behalten den Aufrufer des übergeordneten.
+
+Soll ein Workflow nur für eine bestimmte angemeldete Identität laufen, setze `required_caller_kind` und `product_id`. Leite diese Identität nie aus Eingabefeldern oder `request_source` ab.
+
+### Einen Lauf nachvollziehen
+
+Über HTTP und MCP zeigt jeder Lauf Quelle, Status, Workflow-Version, Freigabe, Schrittnachweise und eine sichere Zusammenfassung unter `caller`. Sie nennt gespeicherten Principal, Produkt, Anmeldeart, Kanal und Ursprungslauf, aber keine Zugangsdaten und keine Sitzungskennungen. Fehlt die gespeicherte Identität, steht dort `kind: unknown`; ein Kanal allein identifiziert keinen Aufrufer.
+
+Audit-Abfragen über HTTP und `list_audit` über MCP filtern nach Akteur und Trace. Diese Einträge lassen sich nur teilweise zuordnen und ergeben keine vollständige Zeitleiste eines Aufrufers. Die genauen Regeln und ihre Grenzen stehen in den eingebauten Hinweisen zu Kernkonzepten, Auth-Abläufen und REST-API.
+
+### Im Chat: Entwurf, Lauf und Kosten
+
+Ändert sich ein gespeicherter Entwurf, während du im Chat daran arbeitest, behält der Chat deine lokalen Änderungen. Speichern, Aktivieren und Ausführen sind getrennte Schritte mit eigenem Ergebnis. Übernimmst du einen Entwurf in DEV, startet ein einzelner Lauf mit den aufgezeichneten Testeingaben nur, wenn du **Danach einen Lauf starten** anhakst. Bittest du darum, nicht live auszuführen, unterbleibt dieser Lauf. In PROD braucht ein Live-Lauf eine ausdrückliche Anforderung.
+
+Was tatsächlich geschehen ist, zeigt der aufgezeichnete Lauf. Die Modellkosten im Chat sind eine Schätzung aus der gemeldeten Nutzung beim Anbieter und den hinterlegten Preisen, keine Rechnung. Die Token-Zahl enthält Kontext, der über mehrere Modellaufrufe wiederholt gesendet wird. Kurze Versionshinweise findest du unter **Änderungen** im Kontomenü unten links; noch nicht veröffentlichte Änderungen stehen dort getrennt.

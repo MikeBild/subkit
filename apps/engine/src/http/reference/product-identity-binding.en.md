@@ -1,17 +1,42 @@
 ---
 slug: product-identity-binding
-summary: Bind your product's signed-in users to a minimal SubKit identity.
+summary: Link your app's users to a SubKit account with minimal rights.
 section: operate
 order: 5
 audience: operator
 ---
 ## Product identity binding
 
-For an OIDC provider configured with `product_id`, an operator first provisions an active tenant user, assigns a minimal custom role and grants only the intended saved workflows. Built-in member roles allow broader workflow execution.
+With an identity binding, a user of your app who signs in through your own sign-in service lands on exactly one prepared account in SubKit. You need it when an app or customer portal should start selected workflows without its users getting full SubKit accounts. Afterwards every sign-in is bound to an account with minimal rights, and no new accounts appear on their own.
 
-Bind its verified issuer subject with `POST /v1/identity/users/{id}/provider-identities` and JSON `{"provider_id":"<provider-id>","subject":"<verified-subject>"}`. This requires administrator policy and `identity:write`. Tenant, issuer and product come from provider configuration. Exact retries are idempotent; owner, subject, issuer or product conflicts are refused. The endpoint changes neither roles nor grants.
+Three terms first. A product is your own app or service, which you mark in SubKit with `product_id`. OIDC (OpenID Connect) is a standard through which an external sign-in service, the issuer, confirms who signed in. The subject is the stable user identifier that this issuer provides.
 
-Product providers require this binding and disable account creation and email linking even when signup is globally enabled. Older product bindings need an operator to pin the same owner and subject before login. Unbound providers retain email linking by default; set `link_by_email: false` to disable it. Older unbound bindings pin the configured issuer at their first verified login; this cannot establish historical issuer provenance.
+### Prepare the account
 
-Pins are checked for new logins. Changing provider configuration does not revoke existing browser sessions; revoke those separately or let their configured lifetime expire.
+For an OIDC provider configured with `product_id`, you as operator prepare the account first:
 
+1. Create an active user in the tenant.
+2. Give it a custom role with minimal rights.
+3. Grant it only the intended saved workflows.
+
+Do not use a built-in member role for this. It allows running considerably more workflows.
+
+### Bind the subject
+
+Bind the issuer's verified subject to this user:
+
+```http
+POST /v1/identity/users/{id}/provider-identities
+
+{"provider_id":"<provider-id>","subject":"<verified-subject>"}
+```
+
+This requires administrator policy and `identity:write`. Tenant, issuer and product come from the provider configuration. An exactly repeated request changes nothing. If it conflicts with an existing binding on owner, subject, issuer or product, SubKit refuses it. The endpoint changes neither roles nor grants.
+
+### What applies at sign-in
+
+Product providers require this binding. They create no accounts and link none by email address, even when signup is enabled globally. For older product bindings, an operator must pin the same owner and subject before sign-in.
+
+Providers without a product binding link by email address by default; `link_by_email: false` turns that off. Older bindings without a product pin the configured issuer at their first verified sign-in. That cannot establish which issuer applied earlier.
+
+Pins are checked for new sign-ins. If you change the provider configuration, existing browser sessions stay valid. Revoke them separately or let their configured lifetime expire.

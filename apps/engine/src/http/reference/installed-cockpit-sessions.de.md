@@ -1,85 +1,76 @@
 ---
 slug: installed-cockpit-sessions
-summary: Wie ein installiertes Cockpit seine Workspace-Sitzung erhält und behält.
+summary: Installiere das Cockpit als App und erhalte neutrale Hinweise per Push.
 section: operate
 order: 2
 audience: operator
 ---
 ## Sitzungen installierter Cockpits
 
-Eine authentifizierte Browsersitzung kann ihre Workspace-Installation mit
-`POST /v1/cockpit/installations` und einem leeren JSON-Objekt anlegen oder wiederverwenden. Diese
-Operation erfordert das normale Browser-CSRF-Token. Sie liefert die Installationsadresse und die
-Manifest-Adresse und stellt für diese Installation eine unabhängige Browsersitzung aus. Die
-bestehende Root-Cockpit-Sitzung bleibt aktiv. Eine Installation ist pro aktivem Workspace und
-Eigentümer auf dem aktuellen Host eindeutig; ein anderer Workspace hat seine eigene
-Installationsidentität. `GET /v1/cockpit/installations` liest die aktuelle Installation dieses
-Eigentümers, ohne eine Sitzung auszustellen. Das Root-Cockpit bietet das Widerrufen der Installation
-über `DELETE /v1/cockpit/installations/{id}` an.
+Du kannst das Cockpit deines Arbeitsbereichs als Web-App auf Handy oder Rechner installieren. Das lohnt sich, wenn dein Team Hinweise per Push bekommen oder Dateien und Texte aus anderen Apps an SubKit teilen soll. Danach hat die App eine eigene Adresse, eine eigene Sitzung und ein eigenes Symbol, und sie prüft dieselben Rechte wie das normale Cockpit.
 
-Jede App verwendet `/cockpit/i/{installationId}/` und ein eigenes HttpOnly-, SameSite=Lax-Cookie
-mit genau diesem Pfad. HTTPS-Cookies sind Secure. Die API-Fassade der App unter
-`/cockpit/i/{installationId}/api/v1/` führt dieselben API-Handler, Berechtigungen, CSRF-Prüfungen,
-Mandantenkontext-Prüfungen und gehosteten Kontingente aus wie die normale API. Installationssitzungen
-können den Workspace nicht wechseln und nicht auf die Root-Sitzung zurückfallen. Eigentümer,
-Workspace, Installation, Ablauf und Widerruf der Sitzung werden auf dem Server geprüft.
-Ereignisströme der App prüfen die Sitzung vor jedem ausgelieferten Abschnitt erneut. Die Abmeldung
-widerruft nur die vorgelegte App-Sitzung. Das Widerrufen der Installation aus dem Root-Cockpit
-macht alle ihre Sitzungen ungültig; eine Neuerstellung erzeugt eine neue Identität und belebt alte
-Links nicht wieder. Die OIDC-Neuauthentifizierung erfordert genau die bestehende Eigentümeridentität
-und legt nie ein Konto an und verknüpft nie eines per E-Mail. Die Anmeldung mit API-Schlüssel kann
-eine installierte Sitzung nicht erneuern; öffne stattdessen das normale Cockpit und öffne
-die Arbeitsbereich-App erneut.
+### Installation anlegen
 
-Das authentifizierte Manifest hat eine eigene ID, einen eigenen Scope und eine eigene Startadresse
-und verwendet den gespeicherten Workspace-Namen, die Palette und das optionale quadratische
-App-Symbol. Symbole werden zu PNGs mit 192 und 512 Pixeln normalisiert; hochgeladene Quellen müssen
-quadratisch sein und mindestens 512 Pixel pro Kante haben, innerhalb der bestehenden Byte- und
-Pixelgrenzen des Brandings. Antworten zu Name, Symbol und Manifest sind privat und werden nicht im
-HTTP-Cache gespeichert. Einstiegsseiten im abgemeldeten Zustand bleiben neutral. Der Browser oder
-das Betriebssystem kann Name und Symbol einer bereits installierten App nach der Abmeldung
-behalten.
+Aus einer angemeldeten Browsersitzung legst du die Installation mit `POST /v1/cockpit/installations` und einem leeren JSON-Objekt an. Gibt es schon eine, verwendet SubKit sie wieder. Die Anfrage braucht das übliche CSRF-Token des Browsers. Die Antwort enthält die Adresse der Installation und ihres Manifests, und die Installation bekommt eine eigene Browsersitzung. Deine Sitzung im normalen Cockpit (Root-Cockpit) bleibt aktiv.
 
-Der Service Worker mit eigenem Scope verarbeitet begrenzte eingehende Freigaben und neutrale
-Push-Nachrichten. Er legt keine Seiten, API-Antworten oder privaten Entwürfe im Cache ab und
-reiht keine Offline-Schreibvorgänge ein. Eingehende Dateien und Texte bleiben bis zu einer
-ausdrücklichen Importbestätigung im flüchtigen Speicher. Das Hochladen oder Sammeln einer Quelle
-nimmt sie nicht in das Wissen auf, erstellt keinen Skill, ruft kein Modell auf und startet keinen
-Workflow. Quellen behalten ihre ursprünglichen Verweise; lokale Dateien und Zwischenablagetext
-behalten ein gespeichertes Quellartefakt. Gehen die Authentifizierung oder der flüchtige Empfang des
-Workers verloren, wiederhole nach der Anmeldung die Freigabe oder Dateiauswahl. Dateistart,
-Zwischenablage und native Dateidialoge erfordern Laufzeit-Fähigkeitsprüfungen und eine ausdrückliche
-Benutzeraktion; kein Datei- oder Verzeichnis-Handle wird dauerhaft gespeichert.
+Je aktivem Arbeitsbereich und Eigentümer gibt es auf dem aktuellen Host genau eine Installation; ein anderer Arbeitsbereich bekommt eine eigene.
 
-Push erfordert eine separate Zustimmung für App und Gerät. Die ausdrückliche Vorbereitungsoperation
-erstellt ein mandanteneigenes, verschlüsseltes VAPID-Schlüsselpaar; Abonnements sind verschlüsselt
-und an die Installation und ihren Eigentümer gebunden. Der Ablauf einer untätigen Sitzung beendet
-Push nicht; beim erneuten Öffnen der App wird das bestehende Geräteabonnement an die neue Sitzung
-gebunden. Push endet bei Abmeldung, jedem ausdrücklichen Sitzungswiderruf, Widerruf der
-Installation, Deaktivierung des Eigentümers, Workspace-Wechsel oder -Löschung sowie nach 30 Tagen
-ohne App-Nutzung. Inaktive oder gelöschte Eigentümer und Workspaces erhalten keine neuen Sendungen.
-Eine Benachrichtigung wird gesendet, sobald ein neuer oder geänderter Aufmerksamkeitspunkt
-erscheint, innerhalb von etwa einer Minute; unveränderte Punkte benachrichtigen nicht erneut.
-Benachrichtigungen enthalten nur einen generischen SubKit-Aufmerksamkeitshinweis und fokussieren
-oder öffnen die App-Wurzel; sie enthalten kein Workspace-Branding, keine privaten Inhalte und keine
-Freigabeaktionen. Bereits gesendete neutrale Nachrichten können nach der Abmeldung eintreffen. Eine
-Benachrichtigungsberechtigung des Browsers kann von Apps auf demselben Origin gemeinsam genutzt
-werden und wird durch die Abmeldung nicht automatisch widerrufen. Pfadgebundene Sitzungen erzeugen
-keine getrennten Browser-Origins und isolieren weder den Browser-Speicher noch lokale
-Berechtigungen.
+- `GET /v1/cockpit/installations` liest die aktuelle Installation dieses Eigentümers, ohne eine Sitzung auszustellen.
+- `DELETE /v1/cockpit/installations/{id}` widerruft die Installation. Das normale Cockpit bietet diesen Widerruf an.
 
-Das normale Browser-Cockpit unter `/cockpit/` kann diese neutralen Benachrichtigungen auch ohne
-Installation empfangen. Die Glocke öffnet dieselbe Zustimmung; das Einschalten fragt die
-Browser-Berechtigung ab, registriert den reinen Push-Worker unter `/cockpit/sw.js` und bindet das
-Abonnement an den angemeldeten Benutzer und Workspace. Dieselben Push-Routen akzeptieren eine
-Root-Browsersitzung mit CSRF; API-Schlüssel und Bearer-Tokens werden abgewiesen, und
-Installationspfade fallen nie auf die Root-Sitzung zurück. Der Ablauf einer untätigen Sitzung
-beendet es nicht; eine erneute Anmeldung bindet das Abonnement ohne erneute Nachfrage an die neue
-Sitzung. Es endet bei Abmeldung, ausdrücklichem Sitzungswiderruf, Workspace-Wechsel, Deaktivierung
-oder Löschung des Benutzers, Workspace-Lebenszyklus, Ausschalten, einem abgelaufenen Endpunkt und
-nach 30 Tagen ohne Nutzung. Ein anderer Benutzer oder Workspace im selben Browser muss erneut
-zustimmen. Jedes Gerät erhält pro Aufmerksamkeitsänderung höchstens eine Benachrichtigung; ist die
-installierte App auf demselben Gerät aktiviert, wird die App benachrichtigt und der Browser-Tab
-übersprungen. Browser ohne Push im Tab, etwa Safari auf iOS, bieten stattdessen den
-Installationsweg an.
+### Sitzung und Abmeldung
 
+Jede App läuft unter `/cockpit/i/{installationId}/` mit einem eigenen Cookie genau für diesen Pfad: HttpOnly, SameSite=Lax und bei HTTPS zusätzlich Secure. Unter `/cockpit/i/{installationId}/api/v1/` erreicht die App dieselbe API wie das normale Cockpit. Es gelten dieselben Handler, Berechtigungen, CSRF-Prüfungen, Prüfungen des Mandantenkontexts (Mandant, im Cockpit: Arbeitsbereich) und gehosteten Kontingente.
+
+Der Server prüft Eigentümer, Arbeitsbereich, Installation, Ablauf und Widerruf der Sitzung. Eine App-Sitzung kann den Arbeitsbereich nicht wechseln und fällt nie auf die Sitzung des normalen Cockpits zurück. Ereignisströme der App prüfen die Sitzung vor jedem ausgelieferten Abschnitt neu.
+
+So endet eine App-Sitzung:
+
+- Abmelden widerruft nur die vorgelegte Sitzung dieser App.
+- Widerrufst du die Installation im normalen Cockpit, werden alle ihre Sitzungen ungültig. Legst du sie neu an, bekommt sie eine neue Identität; alte Links werden nicht wieder gültig.
+- Eine erneute Anmeldung über OIDC (OpenID Connect, die Anmeldung über einen externen Identitätsanbieter) muss genau die bisherige Eigentümer-Identität liefern. Sie legt nie ein Konto an und verknüpft nie eines über die E-Mail-Adresse.
+- Mit einem API-Schlüssel lässt sich eine App-Sitzung nicht erneuern. Öffne dann das normale Cockpit und von dort die Arbeitsbereich-App neu.
+
+### App-Name und Symbol
+
+Das Manifest der App ist nur angemeldet abrufbar und hat eine eigene ID, einen eigenen Scope und eine eigene Startadresse. Es nutzt den gespeicherten Namen des Arbeitsbereichs, die Palette und ein optionales quadratisches App-Symbol. Das hochgeladene Symbol muss quadratisch sein und mindestens 512 Pixel je Kante haben; es gelten die Byte- und Pixelgrenzen des Brandings. SubKit erzeugt daraus PNGs mit 192 und 512 Pixeln.
+
+Antworten zu Name, Symbol und Manifest sind privat und landen in keinem HTTP-Cache. Einstiegsseiten ohne Anmeldung bleiben neutral. Browser oder Betriebssystem können Name und Symbol einer installierten App nach dem Abmelden trotzdem behalten.
+
+### Teilen und Dateien
+
+Der Service Worker der App ist ein Hintergrundskript mit eigenem Scope. Er nimmt in begrenztem Umfang Inhalte an, die du über „Teilen“ aus anderen Apps schickst, und zeigt neutrale Push-Nachrichten. Seiten, API-Antworten und private Entwürfe legt er nicht im Cache ab, und er sammelt keine Schreibvorgänge für später.
+
+Geteilte Dateien und Texte bleiben im flüchtigen Speicher, bis du den Import ausdrücklich bestätigst. Auch danach passiert nichts von selbst: Hochladen oder Sammeln nimmt die Quelle nicht ins Wissen auf, erstellt keinen Skill, ruft kein Modell auf und startet keinen Workflow. Quellen behalten ihre ursprünglichen Verweise. Lokale Dateien und Text aus der Zwischenablage werden als Quellartefakt gespeichert.
+
+Gehen die Anmeldung oder der flüchtige Empfang des Workers verloren, teile den Inhalt nach dem Anmelden erneut oder wähle die Datei noch einmal. Dateistart, Zwischenablage und native Dateidialoge prüft die App zur Laufzeit und nutzt sie nur nach einer ausdrücklichen Aktion von dir. Einen Zugriff auf Dateien oder Ordner speichert sie nie dauerhaft.
+
+### Push in der installierten App
+
+Push schaltest du je App und Gerät gesondert ein. Beim ausdrücklichen Vorbereiten erzeugt SubKit für deinen Arbeitsbereich ein verschlüsseltes VAPID-Schlüsselpaar, mit dem der Server Web-Push-Nachrichten signiert. Abonnements werden verschlüsselt gespeichert und sind an die Installation und ihren Eigentümer gebunden.
+
+Eine Nachricht kommt innerhalb von etwa einer Minute, wenn ein Punkt, der Aufmerksamkeit braucht, neu ist oder sich ändert. Unveränderte Punkte melden sich nicht erneut. Die Nachricht enthält nur einen allgemeinen SubKit-Hinweis und öffnet oder fokussiert die Startseite der App. Branding, private Inhalte oder Freigabe-Aktionen stehen nie darin.
+
+Wann Push endet:
+
+- Läuft eine untätige Sitzung ab, bleibt Push aktiv. Öffnest du die App wieder, wird das bestehende Abonnement an die neue Sitzung gebunden.
+- Push endet beim Abmelden, bei jedem ausdrücklichen Sitzungswiderruf und beim Widerruf der Installation.
+- Push endet auch, wenn der Eigentümer deaktiviert wird, der Arbeitsbereich wechselt oder gelöscht wird, und nach 30 Tagen ohne App-Nutzung.
+- Inaktive oder gelöschte Eigentümer und Arbeitsbereiche bekommen keine neuen Nachrichten.
+
+Drei Grenzen solltest du kennen. Bereits versendete neutrale Nachrichten können nach dem Abmelden noch ankommen. Die Benachrichtigungs-Erlaubnis des Browsers kann für alle Apps auf demselben Origin gelten (Schema, Host und Port der Adresse) und wird beim Abmelden nicht automatisch entzogen. Pfadgebundene Sitzungen erzeugen keinen eigenen Origin; Browserspeicher und lokale Berechtigungen sind also nicht getrennt.
+
+### Push im normalen Browser-Cockpit
+
+Auch das normale Cockpit unter `/cockpit/` kann diese neutralen Hinweise ohne Installation empfangen. Die Glocke öffnet dieselbe Zustimmung. Schaltest du Push ein, fragt der Browser nach seiner Erlaubnis. SubKit registriert dann den reinen Push-Worker unter `/cockpit/sw.js` und bindet das Abonnement an dich und deinen Arbeitsbereich.
+
+Dieselben Push-Routen akzeptieren eine Sitzung des normalen Cockpits mit CSRF-Token. API-Schlüssel und Bearer-Tokens, also Zugangsnachweise im Header `Authorization`, weist SubKit ab. Installationspfade fallen nie auf diese Sitzung zurück.
+
+Läuft eine untätige Sitzung ab, bleibt das Abonnement bestehen. Nach der nächsten Anmeldung gilt es ohne neue Nachfrage für die neue Sitzung. Es endet:
+
+- beim Abmelden, bei einem ausdrücklichen Sitzungswiderruf oder wenn du Push ausschaltest,
+- beim Wechsel des Arbeitsbereichs oder wenn sich sein Lebenszyklus ändert,
+- wenn der Benutzer deaktiviert oder gelöscht wird,
+- wenn der Push-Endpunkt abläuft oder nach 30 Tagen ohne Nutzung.
+
+Ein anderer Benutzer oder Arbeitsbereich im selben Browser muss neu zustimmen. Jedes Gerät bekommt je Änderung höchstens eine Nachricht. Ist auf dem Gerät die installierte App aktiviert, geht die Nachricht an die App und nicht an den Browser-Tab. Browser ohne Push im Tab, etwa Safari auf iOS, bieten stattdessen die Installation als App an.

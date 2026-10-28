@@ -1,26 +1,28 @@
 ---
 slug: supabase-backed-product-workflows
-summary: Führe Produkt-Workflows mit dem supabase-Konnektor gegen dein Supabase-Projekt aus.
+summary: Nutze Daten deines Supabase-Projekts in Produkt-Workflows, ohne Schlüssel preiszugeben.
 section: operate
 order: 7
 audience: operator
 ---
 ## Produkt-Workflows mit Supabase
 
-Dieser Abschnitt behandelt nur den `supabase`-Konnektor; er hängt nicht davon ab, welcher
-Identitätsanbieter die Benutzer der App anmeldet. Verwende Supabase über den
-`supabase`-Konnektor und gewöhnliche Workflow-Erstellung; Workflows benötigen weder direkten
-PostgreSQL-Zugriff noch SQL-Schritte. Speichere erforderliche Gateway-Header als
-verschlüsselte Konnektor-Zugangsdaten. `apikey` ist der öffentliche Projektschlüssel;
-`Authorization` trägt das JWT für die vorgesehene Datenbankrolle. Eine mandantenweite
-Konnektor-Zugangsdatei kann nicht einzelne mobile Benutzer abbilden; übergib das JWT eines
-App-Benutzers nie als Workflow-Eingabe. Verwende eine Owner-Binding-RPC, die das unveränderliche
-`$caller` abbildet, wenn ein Workflow benutzereigene Daten benötigt. Eine geschützte
-Server-zu-Server-RPC kann zusätzlich `x-subkit-token` verlangen, das nur am Konnektor gespeichert
-wird. Es authentifiziert SubKit gegenüber dem Produkt-Backend; es ist nicht die Identität des
-Endbenutzers und ersetzt nie das unveränderliche `$caller` des Workflows. Lege Zugangsdaten
-nie in App-Code, Workflow-Eingaben oder -Schritten, Client-Kontext, generiertem Workflow-Quelltext
-oder Logs ab. Verwende `service_role` nicht für aufruferbezogenen Zugriff, da es RLS umgeht.
-Binde Produkt-Workflows an ihr Produkt und die erforderliche Aufruferart, leite
-Eigentümerkennungen aus `$caller` ab und schlage geschlossen fehl, wenn eine atomare
-Autorisierung oder Kontingentreservierung den nächsten Schritt nicht ausdrücklich erlaubt.
+Mit dem `supabase`-Konnektor greifen deine Produkt-Workflows auf dein Supabase-Projekt zu, ohne direkten PostgreSQL-Zugang und ohne SQL-Schritte. Du brauchst das, wenn eine App über SubKit Daten ihrer Nutzer lesen oder ändern soll. Danach liegen alle Schlüssel verschlüsselt am Konnektor, und nutzereigene Daten erreichst du über den geprüften Aufrufer statt über ein mitgeschicktes Nutzer-Token.
+
+Dieser Abschnitt behandelt nur den `supabase`-Konnektor. Welcher Identitätsanbieter die Nutzer der App anmeldet, spielt dafür keine Rolle. Workflows baust du wie gewohnt.
+
+### Zugangsdaten am Konnektor
+
+Speichere die nötigen Gateway-Header als verschlüsselte Zugangsdaten am Konnektor:
+
+- `apikey` ist der öffentliche Projektschlüssel.
+- `Authorization` trägt das JWT (ein signiertes Token) für die vorgesehene Datenbankrolle.
+- `x-subkit-token` kann eine geschützte Server-zu-Server-RPC zusätzlich verlangen. Es liegt nur am Konnektor und weist SubKit gegenüber deinem Produkt-Backend aus. Es ist nicht die Identität des Endnutzers und ersetzt nie das unveränderliche `$caller` des Workflows.
+
+Verwende `service_role` nicht für Zugriffe im Namen eines Aufrufers: Diese Rolle umgeht RLS, die zeilenweisen Zugriffsregeln der Datenbank. Zugangsdaten gehören nie in App-Code, Workflow-Eingaben oder -Schritte, Client-Kontext, generierten Workflow-Quelltext oder Logs.
+
+### Daten einzelner Nutzer
+
+Ein Zugangsdatum am Konnektor gilt für den ganzen Mandanten (im Cockpit: Arbeitsbereich) und kann keine einzelnen mobilen Nutzer abbilden. Übergib das JWT eines App-Nutzers deshalb nie als Workflow-Eingabe. Braucht ein Workflow nutzereigene Daten, nimm eine RPC, also eine Datenbankfunktion hinter einem Endpunkt, die den Eigentümer aus dem unveränderlichen `$caller` ableitet.
+
+Binde Produkt-Workflows an ihr Produkt und die erforderliche Aufruferart. Leite Eigentümerkennungen aus `$caller` ab. Erlaubt eine atomare Rechteprüfung oder Kontingent-Reservierung den nächsten Schritt nicht ausdrücklich, muss der Workflow mit einem Fehler abbrechen, statt weiterzulaufen.

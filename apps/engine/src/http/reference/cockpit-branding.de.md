@@ -1,44 +1,43 @@
 ---
 slug: cockpit-branding
-summary: Passe Name, Logos und Farben des Cockpits für deinen Workspace an.
+summary: Gib dem Cockpit den Namen, das Logo und die Farben deiner Firma.
 section: operate
 order: 1
 audience: operator
 ---
 ## Cockpit-Branding
 
-Workspace-Administratoren mit `settings:write` und `identity:write` können unter
-Settings → Branding das Wortzeichen, einen optionalen Untertitel, themenspezifische
-Logos und eines von drei geprüften Farbpaletten-Paaren des angemeldeten Cockpits ändern.
-Entwurfsvorschauen bleiben lokal, bis sie gespeichert werden. Zurücksetzen stellt das
-bisherige SubKit-Erscheinungsbild wieder her. Konfiguriertes Branding behält einen
-barrierefreien Hinweis „powered by SubKit“; Anmeldung, E-Mail und andere Clients behalten
-ihre bisherige Identität.
+Mit dem Branding zeigt das angemeldete Cockpit deinen Namen, dein Logo und eine passende Farbpalette statt des SubKit-Auftritts. Du brauchst es, wenn dein Team das Cockpit als eigenes Werkzeug erkennen soll. Danach sehen alle Angemeldeten deines Arbeitsbereichs denselben Auftritt; Anmeldung, E-Mails und andere Clients bleiben bei SubKit.
 
-Das Branding wird im PostgreSQL-Schema des Workspace gespeichert und zählt auf die
-Speichergrenzen des Hostings. PNG-, JPEG- und WebP-Uploads sind auf 2 MiB und 4 Megapixel
-begrenzt, werden dekodiert und zu einem Standbild-PNG mit höchstens 512 Pixeln pro Kante
-normalisiert. Animationen, SVG, externe Bildadressen, Skripte und beliebiges CSS werden
-abgelehnt. Die neue Kodierung entfernt Quell-Metadaten. Die Palettenauswahl erhält die
-semantischen Statusfarben.
+### Im Cockpit ändern
 
-HTTP, sk CLI, MCP und Cockpit teilen sich denselben mandanteneigenen Branding-Vertrag,
-dieselbe Normalisierung, dieselben Berechtigungen und optimistische Revisionen.
-Authentifizierte Aufrufer lesen mit `GET /v1/tenant/branding`, speichern mit `PUT` und
-setzen mit `DELETE` zurück. Schreibzugriffe erfordern sowohl `settings:write` als auch
-`identity:write`; API-Schlüssel mit Scope behalten ihre Berechtigungsobergrenze.
-Schreibzugriffe aus dem Browser behalten zusätzlich den CSRF-Schutz. Bei einem Konflikt
-bleibt die gespeicherte Konfiguration erhalten; lade vor einem erneuten Versuch neu.
-Logo-Abrufe sind an Workspace und Revision gebunden und wenden in jedem Client denselben
-Rückgriff auf ein einzelnes Logo an.
+Dein Arbeitsbereich ist in der Engine ein eigener Mandant: eigene Daten, eigene Nutzer, eigene Rechte. Zum Ändern brauchst du dort die Rechte `settings:write` und `identity:write`. In den Einstellungen unter „Arbeitsbereich-Branding“ legst du fest:
 
-Die CLI bietet `sk branding get`, `sk branding update <json-file|->`,
-`sk branding reset <revision>` und `sk branding logo <light|dark> --output <file>`.
-MCP stellt `get_tenant_branding`, `update_tenant_branding`,
-`reset_tenant_branding` und `get_tenant_branding_logo` bereit. MCP-Änderungen behalten den
-normalen Freigabeweg durch einen authentifizierten Menschen; beide Schreibberechtigungen
-werden geprüft, bevor eine Freigabe angefordert wird. Gewöhnliche Lesezugriffe enthalten
-Metadaten, während die ausdrückliche Logo-Operation normalisierte PNG-Bytes liefert. Die
-generierten OpenAPI- und MCP-Eingabeschemas leiten sich aus dem gemeinsamen
-Anfragevertrag ab. Visuelles Branding bleibt auf das angemeldete Cockpit beschränkt.
+- das Wortzeichen, also den angezeigten Namen, und einen optionalen Untertitel,
+- je ein Logo für die helle und die dunkle Darstellung,
+- eines von drei geprüften Farbpaletten-Paaren.
 
+Die Vorschau bleibt in deinem Browser, bis du speicherst. Zurücksetzen stellt den SubKit-Auftritt wieder her. Ein barrierefreier Hinweis „powered by SubKit“ bleibt auch mit eigenem Branding erhalten.
+
+### Was mit hochgeladenen Logos passiert
+
+Erlaubt sind PNG, JPEG und WebP bis 2 MiB und 4 Megapixel. SubKit dekodiert jedes Bild und speichert es neu als unbewegtes PNG mit höchstens 512 Pixeln je Kante; Metadaten der Quelle fallen dabei weg. Animationen, SVG, externe Bildadressen, Skripte und eigenes CSS lehnt SubKit ab. Die Palette lässt die Statusfarben unverändert, die etwa Fehler oder Erfolg anzeigen.
+
+Das Branding liegt im PostgreSQL-Schema deines Arbeitsbereichs. Im gehosteten Betrieb wird es auf das Speicherkontingent angerechnet.
+
+### Über HTTP, CLI und MCP
+
+Cockpit, HTTP-API, `sk` und MCP folgen denselben Regeln: gleiche Bildprüfung, gleiche Berechtigungen, gleiche Revisionen. Jede gespeicherte Fassung hat eine Revision. Hat jemand anderes inzwischen gespeichert, schlägt dein Speichern mit einem Konflikt fehl und die gespeicherte Fassung bleibt erhalten. Lade dann neu und versuche es noch einmal.
+
+Angemeldete Aufrufer lesen mit `GET /v1/tenant/branding`, speichern mit `PUT` und setzen mit `DELETE` zurück. Schreiben braucht beide Rechte, `settings:write` und `identity:write`. Ein API-Schlüssel mit Scope bleibt auf seine Rechte begrenzt; Schreibzugriffe aus dem Browser prüfen zusätzlich das CSRF-Token. Logo-Abrufe sind an Arbeitsbereich und Revision gebunden. Ist nur ein Logo hinterlegt, gilt in jedem Client dieselbe Rückfallregel.
+
+Die CLI bietet diese Befehle:
+
+```bash
+sk branding get
+sk branding update <json-file|->
+sk branding reset <revision>
+sk branding logo <light|dark> --output <file>
+```
+
+Über MCP stehen `get_tenant_branding`, `update_tenant_branding`, `reset_tenant_branding` und `get_tenant_branding_logo` bereit. Änderungen über MCP brauchen wie üblich die Freigabe einer angemeldeten Person. SubKit prüft beide Schreibrechte, bevor es die Freigabe anfordert. Normale Lesezugriffe liefern Metadaten; nur `get_tenant_branding_logo` liefert die normalisierten PNG-Bytes. Die OpenAPI- und MCP-Eingabeschemas werden aus derselben Anfragebeschreibung erzeugt.
