@@ -271,10 +271,6 @@ const EXPECTED_INVENTORY = {
       rate_limits: { requests_per_second: 100, burst_size: 25, recommended_backoff_ms: 500 },
     },
   },
-  "subkit-support": {
-    version: 1,
-    capabilities: { webhooks: false, webhook_events: [], rate_limits: null },
-  },
   supabase: {
     version: 1,
     capabilities: { webhooks: false, webhook_events: [], rate_limits: null },

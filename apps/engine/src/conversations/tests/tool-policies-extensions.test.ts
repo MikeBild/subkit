@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildPendingOutputForTool,
+  decideToolMode,
   hasInlineCredential,
   prerequisitesForTool,
   resolveToolMode,
@@ -114,5 +115,37 @@ describe("buildPendingOutputForTool", () => {
 
   test("returns null for tools without a buildPendingOutput hook", () => {
     expect(buildPendingOutputForTool("inspect_connector_draft", {})).toBeNull();
+  });
+});
+
+describe("execution data transfer", () => {
+  test("sending collected execution data requires confirmation in every permission mode", () => {
+    for (const permission_mode of ["auto", "ask", "plan", "yolo", null] as const) {
+      for (const connector_trust of [false, true]) {
+        expect(
+          decideToolMode({
+            tool: "run_workflow",
+            category: "tenant_write",
+            input: { workflow: "subkit-support-send" },
+            overrides: { run_workflow: "no_confirm" },
+            permission_mode,
+            connector_trust,
+            execution_data_transfer: true,
+          }).mode,
+        ).toBe("confirm_before_execution");
+      }
+    }
+  });
+
+  test("an ordinary workflow run keeps its existing mode", () => {
+    expect(
+      decideToolMode({
+        tool: "run_workflow",
+        category: "tenant_write",
+        input: { workflow: "subkit-support-list" },
+        overrides: {},
+        permission_mode: "auto",
+      }).mode,
+    ).toBe("no_confirm");
   });
 });

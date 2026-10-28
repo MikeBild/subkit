@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
+import { sql } from "drizzle-orm";
 import { getConnector } from "../../connectors/service.ts";
 import { ConflictError } from "../../http/errors.ts";
 import { createSkill, getSkill, listSkills, updateSkill } from "../../skills/service.ts";
@@ -389,142 +390,155 @@ export const manageServicePackageSkillTool: ConversationTool = {
       packageContentHash,
     ];
     if (args.action === "install") {
-      const existing = (
-        await listSkills(
-          { tenant_id: ctx.tenant_id, scope: "connector", connector_id: connector.id, limit: 500 },
-          ctx.db,
-        )
-      ).filter((item) => item.tags.includes(originTag));
-      if (existing.length > 1) {
-        return {
-          ok: false,
-          error_code: "service_package_skill_duplicate",
-          message:
-            ctx.locale === "en"
-              ? "More than one guide is marked as belonging to this package. Nothing was changed."
-              : "Mehrere Gesprächshilfen sind diesem Paket zugeordnet. Es wurde nichts geändert.",
-        };
-      }
-      const [existingSkill] = existing;
-      if (existingSkill) {
-        if (
-          existingSkill.body === remote.artifact.body &&
-          existingSkill.title === remote.package.name &&
-          existingSkill.description === (remote.package.description ?? null) &&
-          existingSkill.doc_refs.length === 1 &&
-          existingSkill.doc_refs[0] === remote.artifact.url &&
-          existingSkill.tags.includes(bodyHashTag(remote.artifact.sha256)) &&
-          existingSkill.tags.includes(packageContentHash)
-        ) {
-          if (existingSkill.status === "archived") {
-            const restored = await updateSkill(
-              ctx.tenant_id,
-              existingSkill.id,
-              {
-                expected_version: existingSkill.version,
-                status: "draft",
-                tags: mergePackageTags(existingSkill.tags, nextTags),
-              },
-              ctx.principal.id,
-              ctx.db,
-              "user",
-            );
-            if (!restored) {
+      const principalId = ctx.principal.id;
+      return await ctx.db.transaction(async (tx) => {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtext(${`service-package-skill:${ctx.tenant_id}:${connector.id}:${originTag}`}))`,
+        );
+        const existing = (
+          await listSkills(
+            {
+              tenant_id: ctx.tenant_id,
+              scope: "connector",
+              connector_id: connector.id,
+              limit: 500,
+            },
+            tx,
+          )
+        ).filter((item) => item.tags.includes(originTag));
+        if (existing.length > 1) {
+          return {
+            ok: false,
+            error_code: "service_package_skill_duplicate",
+            message:
+              ctx.locale === "en"
+                ? "More than one guide is marked as belonging to this package. Nothing was changed."
+                : "Mehrere Gesprächshilfen sind diesem Paket zugeordnet. Es wurde nichts geändert.",
+            data: { skill_ids: existing.map((item) => item.id) },
+            next_best_actions: ["get_skill", "manage_service_package_skill"],
+          };
+        }
+        const [existingSkill] = existing;
+        if (existingSkill) {
+          if (
+            existingSkill.body === remote.artifact.body &&
+            existingSkill.title === remote.package.name &&
+            existingSkill.description === (remote.package.description ?? null) &&
+            existingSkill.doc_refs.length === 1 &&
+            existingSkill.doc_refs[0] === remote.artifact.url &&
+            existingSkill.tags.includes(bodyHashTag(remote.artifact.sha256)) &&
+            existingSkill.tags.includes(packageContentHash)
+          ) {
+            if (existingSkill.status === "archived") {
+              const restored = await updateSkill(
+                ctx.tenant_id,
+                existingSkill.id,
+                {
+                  expected_version: existingSkill.version,
+                  status: "draft",
+                  tags: mergePackageTags(existingSkill.tags, nextTags),
+                },
+                principalId,
+                tx,
+                "user",
+              );
+              if (!restored) {
+                return {
+                  ok: false,
+                  error_code: "service_package_skill_not_found",
+                  message: message(ctx, "missing"),
+                };
+              }
               return {
-                ok: false,
-                error_code: "service_package_skill_not_found",
-                message: message(ctx, "missing"),
+                ok: true,
+                data: {
+                  message: message(ctx, "created"),
+                  skill_id: restored.id,
+                  skill_version: restored.version,
+                  state: "draft_review_required",
+                },
               };
             }
             return {
               ok: true,
               data: {
-                message: message(ctx, "created"),
-                skill_id: restored.id,
-                skill_version: restored.version,
-                state: "draft_review_required",
+                message: message(ctx, "current"),
+                skill_id: existingSkill.id,
+                skill_version: existingSkill.version,
+                state: "current",
               },
             };
           }
           return {
-            ok: true,
-            data: {
-              message: message(ctx, "current"),
-              skill_id: existingSkill.id,
-              skill_version: existingSkill.version,
-              state: "current",
-            },
+            ok: false,
+            error_code: "service_package_skill_exists",
+            message:
+              ctx.locale === "en"
+                ? "A conversation guide for this package already exists. Review it or request an update."
+                : "Für dieses Paket gibt es bereits eine Gesprächshilfe. Prüfe sie oder fordere ein Update an.",
+            data: { skill_id: existingSkill.id, skill_version: existingSkill.version },
+            next_best_actions: ["get_skill", "manage_service_package_skill"],
           };
         }
-        return {
-          ok: false,
-          error_code: "service_package_skill_exists",
-          message:
-            ctx.locale === "en"
-              ? "A conversation guide for this package already exists. Review it or request an update."
-              : "Für dieses Paket gibt es bereits eine Gesprächshilfe. Prüfe sie oder fordere ein Update an.",
-          data: { skill_id: existingSkill.id, skill_version: existingSkill.version },
-          next_best_actions: ["get_skill", "manage_service_package_skill"],
-        };
-      }
-      const titleConflict = (
-        await listSkills(
+        const titleConflict = (
+          await listSkills(
+            {
+              tenant_id: ctx.tenant_id,
+              scope: "connector",
+              connector_id: connector.id,
+              q: remote.package.name,
+              limit: 200,
+            },
+            tx,
+          )
+        ).find((item) => item.title === remote.package.name);
+        if (titleConflict) {
+          return {
+            ok: false,
+            error_code: "service_package_skill_title_conflict",
+            message:
+              ctx.locale === "en"
+                ? "A different conversation guide already uses this title. Nothing was changed."
+                : "Eine andere Gesprächshilfe verwendet bereits diesen Titel. Es wurde nichts geändert.",
+            data: { skill_id: titleConflict.id },
+          };
+        }
+        const created = await createSkill(
           {
             tenant_id: ctx.tenant_id,
-            scope: "connector",
-            connector_id: connector.id,
-            q: remote.package.name,
-            limit: 200,
+            actor_id: principalId,
+            actor_type: "user",
+            input: {
+              scope: "connector",
+              connector_id: connector.id,
+              title: remote.package.name,
+              ...(remote.package.description ? { description: remote.package.description } : {}),
+              body: remote.artifact.body,
+              doc_refs: [remote.artifact.url],
+              tags: nextTags,
+              source: "template",
+              status: "draft",
+              applies_to: "both",
+              side_effects: "read",
+            },
           },
-          ctx.db,
-        )
-      ).find((item) => item.title === remote.package.name);
-      if (titleConflict) {
+          tx,
+        );
         return {
-          ok: false,
-          error_code: "service_package_skill_title_conflict",
-          message:
-            ctx.locale === "en"
-              ? "A different conversation guide already uses this title. Nothing was changed."
-              : "Eine andere Gesprächshilfe verwendet bereits diesen Titel. Es wurde nichts geändert.",
-          data: { skill_id: titleConflict.id },
+          ok: true,
+          data: {
+            message: message(ctx, "created"),
+            skill_id: created.id,
+            skill_version: created.version,
+            state: "draft_review_required",
+            package: {
+              id: remote.package.id,
+              version: remote.package.version,
+              name: remote.package.name,
+            },
+          },
         };
-      }
-      const created = await createSkill(
-        {
-          tenant_id: ctx.tenant_id,
-          actor_id: ctx.principal.id,
-          actor_type: "user",
-          input: {
-            scope: "connector",
-            connector_id: connector.id,
-            title: remote.package.name,
-            ...(remote.package.description ? { description: remote.package.description } : {}),
-            body: remote.artifact.body,
-            doc_refs: [remote.artifact.url],
-            tags: nextTags,
-            source: "template",
-            status: "draft",
-            applies_to: "both",
-            side_effects: "read",
-          },
-        },
-        ctx.db,
-      );
-      return {
-        ok: true,
-        data: {
-          message: message(ctx, "created"),
-          skill_id: created.id,
-          skill_version: created.version,
-          state: "draft_review_required",
-          package: {
-            id: remote.package.id,
-            version: remote.package.version,
-            name: remote.package.name,
-          },
-        },
-      };
+      });
     }
 
     const managedSkill = skill;
@@ -605,10 +619,7 @@ export const manageServicePackageSkillTool: ConversationTool = {
     return {
       ok: true,
       data: {
-        message:
-          managedSkill.body === remote.artifact.body
-            ? message(ctx, "current")
-            : message(ctx, "updated"),
+        message: managedContentChanged ? message(ctx, "updated") : message(ctx, "current"),
         skill_id: updated.id,
         skill_version: updated.version,
         state: updated.status,

@@ -193,10 +193,10 @@ export async function saveWorkflowDraft(
   const storageGate = await applyStorageBindingGate(input.tenant_id, validation.workflow, exec);
   if (!storageGate.ok) return { code: "invalid_definition", errors: storageGate.errors };
   const def = annotateRuntime(validation.workflow);
+  const defDigest = workflowJsonDigest(def);
   const servicePackageNote =
-    input.service_package_source &&
-    input.service_package_source.definition_hash === workflowJsonDigest(def)
-      ? packageWorkflowNote(input.service_package_source, workflowJsonDigest(def))
+    input.service_package_source?.definition_hash === defDigest
+      ? packageWorkflowNote(input.service_package_source, defDigest)
       : null;
   const createMetadata: CatalogMetadataPatch = {
     ...(def.description !== undefined ? { description: def.description } : {}),

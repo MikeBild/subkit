@@ -525,6 +525,7 @@ export interface UpdateWorkflowMetadataInput {
   description?: string | null;
   category?: string | null;
   lifecycle?: "active" | "archived";
+  expected_head_version_id?: string;
   actor_id: string | null;
   actor_type?: AuditActorType;
 }
@@ -581,7 +582,9 @@ export async function updateWorkflowMetadata(
         .limit(1)
         .for("update");
       const wf = wfRows[0];
-      if (!wf) return null;
+      const head = wf ? (wf.draft_version_id ?? wf.current_version_id) : null;
+      if (!wf || (input.expected_head_version_id && head !== input.expected_head_version_id))
+        return null;
       if (desiredSlug && desiredSlug !== wf.slug) {
         const conflictRows = await tx
           .select({ id: workflows.id, slug: workflows.slug, name: workflows.name })

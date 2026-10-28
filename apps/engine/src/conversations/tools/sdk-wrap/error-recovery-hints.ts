@@ -244,6 +244,20 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "none of the service's setup files passed verification. Do not use them; retry the fetch once, then report that setup is unavailable.",
   service_package_enrollment_failed:
     "the connection setup did not finish. Retry the same setup once so it can resume safely; do not create another connection or ask the person to copy a key.",
+  package_workflow_not_ready:
+    "the service workflow needs a change before review, so nothing was saved. Tell the person the setup is not ready yet; do not edit the published definition to force it through.",
+  service_package_unreachable:
+    "the service could not be reached to read its setup offer. Nothing changed; retry once later and otherwise tell the person the service is unavailable.",
+  service_package_workflow_local_changes:
+    "someone changed this workflow locally, so the service update or archive was refused. Read the current workflow and keep those edits; ask the person before doing anything else.",
+  service_package_workflow_not_found:
+    "the saved service workflow to update is missing. List the person's workflows and let them choose; never substitute a guessed workflow.",
+  service_package_workflow_not_managed:
+    "this workflow was not set up from the selected service package, so it was left alone. Offer to set up the service version separately and archive the old workflow only after the person reviews it.",
+  service_package_workflow_version_changed:
+    "the workflow changed since it was reviewed, so nothing changed. Read the current version again and retry only with that version after the person reviews it.",
+  workflow_archive_failed:
+    "the workflow could not be archived and nothing changed. Read it again and retry once; otherwise tell the person archiving is currently unavailable.",
   user_confirmation_required:
     "a signed-in person must complete this connection setup. Continue only from their authenticated conversation; do not use an API key or another person's identity.",
   workflow_draft_in_progress:

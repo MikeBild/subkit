@@ -76,7 +76,7 @@ export async function exportDiagnosticContext(ctx: DiagnosticContext, now: Date)
         name: artifact.name,
         media_type: "application/json",
         status: "unavailable",
-        reason: "The case's 100 MB collection limit was reached.",
+        reason: "The case's 10 MB collection limit was reached.",
         parts: [],
       });
       continue;

@@ -623,6 +623,7 @@ export function wrapOne(
           overrides: toolPolicies,
           permission_mode: permissionMode,
           prior_approval: priorApproval,
+          ...(preparedGate.execution_data_transfer ? { execution_data_transfer: true } : {}),
           db,
           tenant_id: ctx.tenant_id,
           principal,

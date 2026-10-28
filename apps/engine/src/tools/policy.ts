@@ -90,6 +90,7 @@ export interface PolicyDecideInput {
   readonly overrides?: ToolPolicies;
   readonly connector_trust?: boolean;
   readonly prior_approval?: boolean;
+  readonly execution_data_transfer?: boolean;
 }
 
 export function policyDecide(input: PolicyDecideInput): PolicyDecision {
@@ -100,6 +101,7 @@ export function policyDecide(input: PolicyDecideInput): PolicyDecision {
     overrides: input.overrides ?? {},
     permission_mode: input.permission_mode ?? null,
     ...(input.connector_trust ? { connector_trust: true } : {}),
+    ...(input.execution_data_transfer ? { execution_data_transfer: true } : {}),
   });
 
   if (input.category === "draft_write" && input.surface === "mcp") {

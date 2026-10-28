@@ -13,7 +13,6 @@ const UNGATED_BY_DESIGN: Readonly<Record<string, readonly string[]>> = {
     "discover_systems_from_files",
     "dry_run_transform",
     "fetch_connector_docs",
-    "fetch_connector_self_description",
     "match_connector_template_by_url",
     "suggest_connector_templates",
     "suggest_jsonata_paths",
@@ -115,10 +114,10 @@ describe("MCP RBAC descriptor coverage", () => {
       .flatMap(([, names]) => names);
     const knownGap = UNGATED_BY_DESIGN["known gap — needs a permission"] ?? [];
 
-    expect(byDesign.length, "deliberate exemptions").toBe(19);
+    expect(byDesign.length, "deliberate exemptions").toBe(18);
     expect(knownGap.length, "known gaps still needing a permission").toBe(38);
-    expect(ALLOWED.size, "the list has no duplicates across groups").toBe(57);
-    expect(ungatedIn("admin").length, "admin catalog, ungated").toBe(57);
+    expect(ALLOWED.size, "the list has no duplicates across groups").toBe(56);
+    expect(ungatedIn("admin").length, "admin catalog, ungated").toBe(56);
     expect(ungatedIn("product").length, "product catalog, ungated").toBe(38);
   });
 

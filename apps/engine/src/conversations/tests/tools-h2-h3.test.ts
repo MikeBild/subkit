@@ -58,6 +58,7 @@ describe("conversation tools — registration", () => {
     "import_connector_from_spec",
     "prepare_service_package_workflow",
     "manage_service_package_skill",
+    "manage_service_package_workflow",
     "test_connector",
     "update_connector_draft",
     "edit_workflow_patch",

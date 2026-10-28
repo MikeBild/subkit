@@ -517,6 +517,7 @@ export function decideToolMode(args: {
   overrides: ToolPolicies;
   permission_mode?: PermissionMode | null;
   connector_trust?: boolean;
+  execution_data_transfer?: boolean;
 }): ToolModeDecision {
   const { tool, category, input, overrides, permission_mode } = args;
 
@@ -538,6 +539,10 @@ export function decideToolMode(args: {
     noConfirmOverrideTools.has(tool) &&
     def?.computeModeFromInput?.(input) === "confirm_before_execution"
   ) {
+    return { mode: "confirm_before_execution", rule: "computed_from_input" };
+  }
+
+  if (args.execution_data_transfer === true) {
     return { mode: "confirm_before_execution", rule: "computed_from_input" };
   }
 

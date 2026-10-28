@@ -505,3 +505,19 @@ describe("tools/policy.policyDecide — call_connector gates on real side effect
     ).toMatchObject({ kind: "proceed", mode: "no_confirm", rule: "permission_mode" });
   });
 });
+
+describe("tools/policy.policyDecide execution data transfer", () => {
+  test("a workflow run carrying collected execution data waits for confirmation even in yolo mode", () => {
+    expect(
+      policyDecide({
+        tool: "run_workflow",
+        category: "tenant_write",
+        surface: "chat",
+        args: { workflow: "service-send" },
+        permission_mode: "yolo",
+        overrides: { run_workflow: "no_confirm" },
+        execution_data_transfer: true,
+      }),
+    ).toMatchObject({ kind: "needs_confirm", mode: "confirm_before_execution" });
+  });
+});

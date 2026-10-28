@@ -31,6 +31,7 @@ import { withoutApprovalHandle } from "../ask-user/commit-intent.ts";
 import { WORKFLOW_TOOL_PREFIX as TOOL_PREFIX } from "../authoring-palette.ts";
 import type { ToolContext } from "../index.ts";
 import { sampleWorkflowOutputForLlm } from "../truncate.ts";
+import { executionDataTransfer } from "./gate-subjects.ts";
 import { jsonSafeModelOutput } from "./json-safe-output.ts";
 import type { TurnSignals, WrappedToolOutput } from "./state.ts";
 
@@ -180,11 +181,14 @@ async function executeSyntheticRun(
     const policies = p.toolPolicies ?? {};
     const specificPolicy = policies[name] ?? policies.run_workflow;
     const permissionMode = p.permissionMode ?? ctx.permission_mode ?? null;
+    const transfersExecutionData =
+      (await executionDataTransfer(workflowInput, ctx.tenant_id, db)) !== null;
     const decision = policyDecide({
       tool: "run_workflow",
       category: "tenant_write",
       surface: "chat",
       args: { environment },
+      ...(transfersExecutionData ? { execution_data_transfer: true } : {}),
       overrides: specificPolicy ? { run_workflow: specificPolicy } : {},
       permission_mode: permissionMode,
     });

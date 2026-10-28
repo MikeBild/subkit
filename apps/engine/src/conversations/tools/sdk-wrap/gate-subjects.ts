@@ -1,4 +1,7 @@
+import { and, eq, inArray } from "drizzle-orm";
+import { parseFileId } from "../../../api/files-schemas.ts";
 import type { Executor } from "../../../db/client.ts";
+import { fileLinks, files } from "../../../db/schema/files.ts";
 import { getIntakeItemsForReview } from "../../../knowledge/index.ts";
 import { getSkillCandidatesForReview } from "../../../skill-candidates/index.ts";
 import { buildPendingOutputForTool } from "../../tool-policies.ts";
@@ -164,6 +167,44 @@ export function unresolvedGateSubjects(
 export interface PreparedGate {
   args: Record<string, unknown>;
   pending_output: Record<string, unknown> | null;
+  execution_data_transfer?: true;
+}
+
+function referencedFileIds(value: unknown, found: Set<string>, depth = 0): void {
+  if (depth > 32 || found.size > 64 || !value || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    for (const item of value) referencedFileIds(item, found, depth + 1);
+    return;
+  }
+  for (const [key, item] of Object.entries(value)) {
+    if ((key === "$file" || key === "id") && typeof item === "string") {
+      const fileId = parseFileId(item);
+      if (fileId && UUID_RE.test(fileId)) found.add(fileId);
+    } else referencedFileIds(item, found, depth + 1);
+  }
+}
+
+export async function executionDataTransfer(
+  args: Record<string, unknown>,
+  tenantId: string,
+  db: Executor,
+): Promise<{ size_bytes: number } | null> {
+  const ids = new Set<string>();
+  referencedFileIds(args, ids);
+  if (ids.size === 0) return null;
+  const rows = await db
+    .select({ size_bytes: files.size_bytes })
+    .from(fileLinks)
+    .innerJoin(files, and(eq(files.id, fileLinks.file_id), eq(files.tenant_id, tenantId)))
+    .where(
+      and(
+        eq(fileLinks.tenant_id, tenantId),
+        inArray(fileLinks.file_id, [...ids]),
+        eq(fileLinks.role, "execution_data"),
+      ),
+    );
+  if (rows.length === 0) return null;
+  return { size_bytes: Math.max(...rows.map((row) => row.size_bytes)) };
 }
 
 export async function prepareGate(
@@ -172,6 +213,17 @@ export async function prepareGate(
   tenantId: string,
   db: Executor,
 ): Promise<PreparedGate> {
+  const transfer = tool === "run_workflow" ? await executionDataTransfer(args, tenantId, db) : null;
+  if (transfer) {
+    return {
+      args,
+      pending_output: {
+        ...(buildPendingOutputForTool(tool, args) ?? {}),
+        execution_data_transfer: { size_bytes: transfer.size_bytes },
+      },
+      execution_data_transfer: true,
+    };
+  }
   const card = await resolveGateSubjects(tool, args, tenantId, db);
   const base = buildPendingOutputForTool(tool, args);
   if (!card) return { args, pending_output: base };

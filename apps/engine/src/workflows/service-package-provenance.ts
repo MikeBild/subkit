@@ -1,3 +1,7 @@
+import { and, desc, eq, like } from "drizzle-orm";
+import type { Executor } from "../db/client.ts";
+import { workflowVersions } from "../db/schema/index.ts";
+
 export interface ServicePackageWorkflowSource {
   package_id: string;
   package_version: string;
@@ -54,4 +58,28 @@ export function parsePackageWorkflowNote(
   } catch {
     return null;
   }
+}
+
+export async function findPackageWorkflowProvenance(
+  exec: Executor,
+  tenant_id: string,
+  workflow_id: string,
+  matches: (source: ServicePackageWorkflowProvenance) => boolean,
+): Promise<ServicePackageWorkflowProvenance | null> {
+  const notes = await exec
+    .select({ note: workflowVersions.note })
+    .from(workflowVersions)
+    .where(
+      and(
+        eq(workflowVersions.tenant_id, tenant_id),
+        eq(workflowVersions.workflow_id, workflow_id),
+        like(workflowVersions.note, `${NOTE_PREFIX}%`),
+      ),
+    )
+    .orderBy(desc(workflowVersions.version));
+  for (const row of notes) {
+    const source = parsePackageWorkflowNote(row.note);
+    if (source && matches(source)) return source;
+  }
+  return null;
 }

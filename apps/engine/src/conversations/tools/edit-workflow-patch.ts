@@ -314,6 +314,23 @@ export async function applyWorkflowPatchToDraft(
       };
     }
 
+    if (
+      canonicalJson(patched.service_package_source ?? null) !==
+      canonicalJson(workflowDraft.service_package_source ?? null)
+    ) {
+      return {
+        ok: false,
+        data: buildGateError(currentDraft, {
+          error_code: "patch_invalid",
+          message:
+            "The service package source is set by the service setup and cannot be edited. Edit the workflow itself; a changed definition is saved as a local workflow.",
+          recommended_mode: "workflow",
+          next_best_actions: ["inspect_workflow_draft"],
+          extra: { patches: patches.map(({ op, path }) => ({ op, path })) },
+        }),
+      };
+    }
+
     if (patched.steps !== undefined && !Array.isArray(patched.steps)) {
       return {
         ok: false,

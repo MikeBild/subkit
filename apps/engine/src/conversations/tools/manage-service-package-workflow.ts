@@ -1,11 +1,12 @@
 import { z } from "@hono/zod-openapi";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { getConnector } from "../../connectors/service.ts";
 import { workflows, workflowVersions } from "../../db/schema/index.ts";
 import { workflowJsonDigest } from "../../workflows/canonical-json.ts";
 import { updateWorkflowMetadata } from "../../workflows/service.ts";
-import { parsePackageWorkflowNote } from "../../workflows/service-package-provenance.ts";
+import { findPackageWorkflowProvenance } from "../../workflows/service-package-provenance.ts";
 import type { ConversationTool, ToolContext } from "./index.ts";
+import { checkToolPermission } from "./permission-gate.ts";
 import { prepareServicePackageWorkflowTool } from "./prepare-service-package-workflow.ts";
 
 const inputSchema = z
@@ -19,10 +20,25 @@ const inputSchema = z
 
 function message(
   ctx: ToolContext,
-  key: "archived" | "changed" | "missing" | "local_changes" | "not_managed",
+  key:
+    | "archived"
+    | "archive_failed"
+    | "changed"
+    | "connector_denied"
+    | "missing"
+    | "local_changes"
+    | "not_managed",
 ) {
   const copy = {
     archived: ["The service workflow was archived.", "Der Dienstablauf wurde archiviert."],
+    archive_failed: [
+      "The service workflow couldn't be archived. Nothing was changed.",
+      "Der Dienstablauf konnte nicht archiviert werden. Es wurde nichts geändert.",
+    ],
+    connector_denied: [
+      "You don't have access to the service connection behind this workflow.",
+      "Du hast keinen Zugriff auf die Verbindung, zu der dieser Ablauf gehört.",
+    ],
     changed: [
       "This workflow changed since it was reviewed. Read it again before continuing.",
       "Dieser Ablauf wurde seit der Prüfung geändert. Lies ihn erneut, bevor du fortfährst.",
@@ -120,59 +136,14 @@ export const manageServicePackageWorkflowTool: ConversationTool = {
         next_best_actions: ["get_workflow", "manage_service_package_workflow"],
       };
     }
-    if (args.action === "update") {
-      const history = await ctx.db
-        .select({ note: workflowVersions.note })
-        .from(workflowVersions)
-        .where(
-          and(
-            eq(workflowVersions.tenant_id, ctx.tenant_id),
-            eq(workflowVersions.workflow_id, workflow.id),
-          ),
-        )
-        .orderBy(desc(workflowVersions.version))
-        .limit(100);
-      const provenance = history
-        .map((version) => parsePackageWorkflowNote(version.note))
-        .find(
-          (source) =>
-            source?.workflow_slug === workflow.slug &&
-            (args.connector_id === undefined || source.connector_id === args.connector_id),
-        );
-      if (!provenance) {
-        return {
-          ok: false,
-          error_code: "service_package_workflow_not_managed",
-          message: message(ctx, "not_managed"),
-          data: { workflow_id: workflow.id },
-        };
-      }
-      return await prepareServicePackageWorkflowTool.execute(ctx, {
-        action: "update",
-        connector_id: provenance.connector_id,
-        prefix: provenance.prefix,
-        workflow_slug: workflow.slug,
-        expected_version: head.version,
-      });
-    }
-    const history = await ctx.db
-      .select({ note: workflowVersions.note })
-      .from(workflowVersions)
-      .where(
-        and(
-          eq(workflowVersions.tenant_id, ctx.tenant_id),
-          eq(workflowVersions.workflow_id, workflow.id),
-        ),
-      )
-      .orderBy(desc(workflowVersions.version))
-      .limit(100);
-    const provenance = history
-      .map((version) => parsePackageWorkflowNote(version.note))
-      .find(
-        (source) =>
-          source?.workflow_slug === workflow.slug &&
-          (args.connector_id === undefined || source.connector_id === args.connector_id),
-      );
+    const provenance = await findPackageWorkflowProvenance(
+      ctx.db,
+      ctx.tenant_id,
+      workflow.id,
+      (source) =>
+        source.workflow_slug === workflow.slug &&
+        (args.connector_id === undefined || source.connector_id === args.connector_id),
+    );
     if (!provenance) {
       return {
         ok: false,
@@ -180,6 +151,28 @@ export const manageServicePackageWorkflowTool: ConversationTool = {
         message: message(ctx, "not_managed"),
         data: { workflow_id: workflow.id },
       };
+    }
+    const connectorAccess = await checkToolPermission(
+      ctx,
+      { action: "connector:read", resourceType: "connector", resourceIdArg: "connector_id" },
+      { connector_id: provenance.connector_id },
+    );
+    if (!connectorAccess.allow) {
+      return {
+        ok: false,
+        error_code: "permission_denied",
+        message: message(ctx, "connector_denied"),
+        data: { permission: connectorAccess.permission, reason: connectorAccess.reason },
+      };
+    }
+    if (args.action === "update") {
+      return await prepareServicePackageWorkflowTool.execute(ctx, {
+        action: "update",
+        connector_id: provenance.connector_id,
+        prefix: provenance.prefix,
+        workflow_slug: workflow.slug,
+        expected_version: head.version,
+      });
     }
     const connector = await getConnector(ctx.tenant_id, provenance.connector_id, ctx.db);
     if (connector?.driver !== "http") {
@@ -218,17 +211,36 @@ export const manageServicePackageWorkflowTool: ConversationTool = {
         tenant_id: ctx.tenant_id,
         id: workflow.id,
         lifecycle: "archived",
+        ...(headVersionId ? { expected_head_version_id: headVersionId } : {}),
         actor_id: ctx.principal.id,
         actor_type: "user",
       },
       ctx.db,
     );
     if (!archived.workflow) {
-      return {
-        ok: false,
-        error_code: "workflow_archive_failed",
-        message: archived.errors.join("; "),
-      };
+      const [after] = await ctx.db
+        .select({
+          draft_version_id: workflows.draft_version_id,
+          current_version_id: workflows.current_version_id,
+        })
+        .from(workflows)
+        .where(and(eq(workflows.tenant_id, ctx.tenant_id), eq(workflows.id, workflow.id)))
+        .limit(1);
+      const changed = (after?.draft_version_id ?? after?.current_version_id) !== headVersionId;
+      return changed
+        ? {
+            ok: false,
+            error_code: "service_package_workflow_version_changed",
+            message: message(ctx, "changed"),
+            data: { workflow_id: workflow.id },
+            next_best_actions: ["get_workflow", "manage_service_package_workflow"],
+          }
+        : {
+            ok: false,
+            error_code: "workflow_archive_failed",
+            message: message(ctx, "archive_failed"),
+            data: { workflow_id: workflow.id, errors: archived.errors },
+          };
     }
     return {
       ok: true,

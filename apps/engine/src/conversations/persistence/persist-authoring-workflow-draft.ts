@@ -213,6 +213,10 @@ export async function persistAuthoringWorkflowDraft(input: {
   const scheduleWarning = cadence?.matched
     ? "WARNING: the draft names a recurring cadence but has NO schedule trigger declared. Saving this draft did not activate it. Declare the intended trigger before requesting activation."
     : null;
+  const packageSource = fullDraft.workflow?.service_package_source;
+  const packageLinkRemoved = Boolean(
+    packageSource && packageSource.definition_hash !== saved.digest,
+  );
   return {
     ok: true,
     ...(changed ? { committed_workflow_id: saved.workflow_id } : {}),
@@ -234,9 +238,13 @@ export async function persistAuthoringWorkflowDraft(input: {
       activation_required: true,
       current_version_id: saved.current_version_id,
       ...(scheduleWarning ? { schedule_warning: scheduleWarning } : {}),
+      ...(packageLinkRemoved ? { service_package_link: "removed_local_changes" } : {}),
       next_best_actions: ["inspect_workflow_draft", "dry_run_workflow"],
       next_prompt: [
         scheduleWarning,
+        packageLinkRemoved
+          ? "Tell the user plainly: this version differs from the service's published setup, so it is saved as a local workflow and will not receive service updates."
+          : null,
         changed
           ? null
           : `No new version was written: this definition already IS version ${saved.version}, once the values the schema fills in are applied. The edits are in that version — saving again cannot produce a different result.`,

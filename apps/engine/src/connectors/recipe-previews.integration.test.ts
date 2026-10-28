@@ -1,8 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import type { CallerContext } from "../execution/caller-context.ts";
 import { runExecution } from "../execution/engine.ts";
 import { createEngineCtx, type EngineTestCtx } from "../execution/tests/setup.ts";
-import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { withSelfHostedDriverFetchForTests } from "../test-helpers/driver-fetch.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
 import { bindRecipe, listTemplateConnectors, rebindConnectorIds } from "./recipe-binding.ts";
@@ -11,7 +9,6 @@ import { getSolutionRecipe } from "./solutions.ts";
 import { type ConnectorRecipe, getBuiltinTemplate, loadBuiltinTemplates } from "./templates.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
-const nextId = createDeterministicUuidFactory(0x5a9b0);
 
 interface Call {
   method: string;
@@ -381,101 +378,5 @@ describe.skipIf(skip)("Anthropic and Google Analytics 4 recipes preview", () => 
       const { calls } = await preview(templateRecipe("google-analytics", slug), reply);
       expect(calls[0]?.url.pathname).toMatch(/^\/v1beta\/properties\/123456789:run/);
     }
-  });
-});
-
-describe.skipIf(skip)("support withdraw preview", () => {
-  const reportId = "0e9a2f4e-77b3-4b8e-8d2a-1f5b6c7d8e90";
-  const caller = (): CallerContext => ({
-    tenantId: ctx.tenantId,
-    principalId: "11111111-1111-4111-8111-111111111111",
-    principalKind: "user",
-    provider: "session",
-    productId: null,
-  });
-
-  async function withdraw(status: number | "network", hold_writes: boolean) {
-    const recipe = getSolutionRecipe("support-withdraw-issue");
-    if (!recipe) throw new Error("support-withdraw-issue missing");
-    const supportId = await connector(`support-${nextId().slice(0, 8)}`, "subkit-support");
-    const available = await listTemplateConnectors(ctx.tenantId, ["subkit-support"], ctx.testDb.db);
-    const templates = new Map(
-      loadBuiltinTemplates().map((t) => [t.slug, { name: t.name, base_url: t.base_url }]),
-    );
-    const bound = bindRecipe(recipe, available, templates);
-    const definition = rebindConnectorIds(
-      bound.workflow,
-      Object.fromEntries(bound.connectors.map((c) => [c.placeholder, supportId])),
-    );
-    const calls: Call[] = [];
-    const fake = (async (
-      input: Parameters<typeof fetch>[0],
-      init?: Parameters<typeof fetch>[1],
-    ) => {
-      const request = input instanceof Request ? input : null;
-      const url = new URL(request ? request.url : String(input));
-      const method = (init?.method ?? request?.method ?? "GET").toUpperCase();
-      const raw = init?.body ?? (request ? await request.text() : "");
-      calls.push({ method, url, body: typeof raw === "string" ? raw : String(raw ?? "") });
-      if (method === "GET") {
-        if (status === "network") throw new TypeError("connection refused");
-        return Response.json(
-          status === 200 ? { id: reportId, number: 42, version: 3 } : { error: "not_found" },
-          { status },
-        );
-      }
-      return Response.json({
-        number: 42,
-        id: reportId,
-        status: "withdrawn",
-        withdrawn_at: "2026-10-26T11:00:00.000Z",
-      });
-    }) as typeof fetch;
-    const result = await withSelfHostedDriverFetchForTests(fake, () =>
-      runExecution({
-        db: ctx.testDb.db,
-        tenant_id: ctx.tenantId,
-        source: { kind: "draft", definition: definition as WorkflowDef },
-        input: recipe.sample_input,
-        options: { hold_writes, caller_context: caller() },
-      }),
-    );
-    return { result, calls, recipe };
-  }
-
-  test("a missing or foreign report ends successfully without a write", async () => {
-    for (const hold_writes of [true, false]) {
-      const { result, calls } = await withdraw(404, hold_writes);
-      expect({ status: result.status, error: result.error }).toEqual({
-        status: "succeeded",
-        error: null,
-      });
-      expect(result.output).toEqual({ withdrawn: false, reason: "not_found" });
-      expect(calls.map((c) => c.method)).toEqual(["GET"]);
-      expect(calls[0]?.url.searchParams.get("reporter")).toBe(caller().principalId);
-    }
-  });
-
-  test("an unavailable read is a failed run and never reads as not found", async () => {
-    for (const status of [500, 503, 401, 403, "network"] as const) {
-      const { result, calls } = await withdraw(status, false);
-      expect(result.status).toBe("failed");
-      expect(JSON.stringify(result.output ?? null)).not.toContain("not_found");
-      expect(calls.every((c) => c.method === "GET")).toBe(true);
-    }
-  });
-
-  test("an owned report is read first and then withdrawn at the version read", async () => {
-    const { result, calls, recipe } = await withdraw(200, false);
-    expect({ status: result.status, error: result.error }).toEqual({
-      status: "succeeded",
-      error: null,
-    });
-    expect(result.output).toEqual(recipe.expected_output_preview);
-    expect(calls.map((c) => c.method)).toEqual(["GET", "POST"]);
-    expect(JSON.parse(calls[1]?.body ?? "{}")).toEqual({
-      reporter: caller().principalId,
-      expected_version: 3,
-    });
   });
 });

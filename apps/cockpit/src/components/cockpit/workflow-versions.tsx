@@ -68,9 +68,34 @@ export function useCurrentVersionDag(
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
+const SERVICE_PACKAGE_NOTE_PREFIX = "subkit-service-package-workflow/v1:";
+
+export function servicePackageVersion(note: string): string | null {
+  try {
+    const encoded = note.slice(SERVICE_PACKAGE_NOTE_PREFIX.length);
+    const padded = encoded.replaceAll("-", "+").replaceAll("_", "/");
+    const bytes = Uint8Array.from(atob(padded + "=".repeat((4 - (padded.length % 4)) % 4)), (c) =>
+      c.charCodeAt(0),
+    );
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    const version =
+      parsed && typeof parsed === "object"
+        ? (parsed as Record<string, unknown>).package_version
+        : null;
+    return typeof version === "string" && version.length > 0 && version.length <= 40
+      ? version
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function versionNote(note: string | null, t: Translate): string {
-  if (note?.startsWith("subkit-service-package-workflow/v1:")) {
-    return t("workflowVersions.servicePackage");
+  if (note?.startsWith(SERVICE_PACKAGE_NOTE_PREFIX)) {
+    const packageVersion = servicePackageVersion(note);
+    return packageVersion
+      ? t("workflowVersions.servicePackageVersion", { version: packageVersion })
+      : t("workflowVersions.servicePackage");
   }
   const from = restoredFrom(note);
   if (from !== null) return t("workflowVersions.restoredFrom", { version: `v${from}` });

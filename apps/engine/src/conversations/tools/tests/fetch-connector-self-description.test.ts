@@ -18,7 +18,9 @@ import { makeTestPrincipal } from "../../../tools/tests/_helpers.ts";
 import { saveWorkflowDraft } from "../../../workflows/drafts.ts";
 import { createWorkflow } from "../../../workflows/service.ts";
 import { parsePackageWorkflowNote } from "../../../workflows/service-package-provenance.ts";
+import { workflowDefFromDraft } from "../../persistence/commit-workflow.ts";
 import type { DraftDocument } from "../../types.ts";
+import { applyWorkflowPatchToDraft } from "../edit-workflow-patch.ts";
 import { enrollServicePackageConnectorTool } from "../enroll-service-package-connector.ts";
 import { fetchConnectorSelfDescriptionTool } from "../fetch-connector-self-description.ts";
 import type { ToolContext } from "../index.ts";
@@ -154,6 +156,10 @@ function packageFetch(
     packageName?: string;
     workflowSlug?: string;
     workflowPath?: string;
+    prefixDefault?: string;
+    expectedPrefix?: string;
+    callerBound?: boolean;
+    workflowsManifestHash?: string;
   } = {},
 ): typeof fetch {
   const packageId = options.packageId ?? "com.example.service";
@@ -167,6 +173,9 @@ function packageFetch(
     {
       name: "Read status",
       slug: options.workflowSlug ?? "support-preview-status",
+      ...(options.callerBound
+        ? { required_caller_kind: "user", tool_effect: "read", timeout_ms: 30_000 }
+        : {}),
       steps: [
         {
           kind: "request",
@@ -241,7 +250,8 @@ function packageFetch(
       workflows: {
         href: "package/workflows.json?connector_id={connector_id}&prefix={prefix}",
         ...(options.missingWorkflowBinding ? {} : { connectorBinding: "connector_id" }),
-        prefixDefault: "service",
+        ...(options.workflowsManifestHash ? { sha256: options.workflowsManifestHash } : {}),
+        prefixDefault: options.prefixDefault ?? "service",
       },
     },
   };
@@ -278,7 +288,7 @@ function packageFetch(
       });
     else if (url.pathname === "/support/package/workflows.json") {
       expect(url.searchParams.get("connector_id")).toBe(package_connector);
-      expect(url.searchParams.get("prefix")).toBe("support-preview");
+      expect(url.searchParams.get("prefix")).toBe(options.expectedPrefix ?? "support-preview");
       body = workflowBody;
     } else if (url.hostname === "foreign.example") {
       throw new Error("foreign package artifact was fetched");
@@ -373,7 +383,7 @@ describe("fetch_connector_self_description", () => {
     expect(result.ok).toBe(true);
     const data = result.data as {
       package: { id: string; version: string };
-      artifacts: Array<{ name: string; verified: boolean; body: string }>;
+      artifacts: Array<{ name: string; checksum_matched: boolean; body: string }>;
       review_required: boolean;
       install_state: string;
     };
@@ -387,7 +397,7 @@ describe("fetch_connector_self_description", () => {
       "skill",
       "workflows",
     ]);
-    expect(data.artifacts.every((artifact) => artifact.verified)).toBe(true);
+    expect(data.artifacts.every((artifact) => artifact.checksum_matched)).toBe(true);
     expect(data.artifacts.find((artifact) => artifact.name === "workflows")?.body).toContain(
       "support-preview-status",
     );
@@ -568,6 +578,160 @@ describe("fetch_connector_self_description", () => {
     });
   });
 
+  test("keeps caller binding and provenance for a caller-bound package installed with its default prefix", async () => {
+    const principal = {
+      ...makeTestPrincipal({
+        tenant_id,
+        id: "00000000-0000-4000-8000-000000000046",
+        roles: ["admin"],
+      }),
+      auth_source: { kind: "browser_session" as const, session_id: nextUuid() },
+    };
+    const installContext = makeCtx(package_connector, undefined, principal);
+    const fixture = {
+      callerBound: true,
+      prefixDefault: "subkit-support",
+      expectedPrefix: "subkit-support",
+      workflowSlug: "subkit-support-status",
+    };
+    const installed = await withSelfHostedDriverFetchForTests(packageFetch(fixture), () =>
+      prepareServicePackageWorkflowTool.execute(installContext, {
+        workflow_slug: "subkit-support-status",
+      }),
+    );
+    if (!installed.ok) throw new Error(JSON.stringify(installed));
+    const draft = installContext.getDraft().workflow as unknown as Record<string, unknown>;
+    expect(draft.required_caller_kind).toBe("user");
+    expect(draft.tool_effect).toBe("read");
+    expect(draft.timeout_ms).toBe(30_000);
+    expect(installContext.getDraft().workflow.service_package_source?.prefix).toBe(
+      "subkit-support",
+    );
+    const source = installContext.getDraft().workflow.service_package_source;
+    if (!source) throw new Error("service package provenance was not retained in the draft");
+    const saved = await saveWorkflowDraft(
+      {
+        tenant_id,
+        actor_id: principal.id,
+        actor_type: "user",
+        request_source: "tool-chain",
+        def: workflowDefFromDraft(installContext.getDraft().workflow),
+        service_package_source: source,
+      },
+      ctx.db,
+    );
+    if (!saved.draft) throw new Error(saved.errors.join(", "));
+    expect(saved.draft.definition.required_caller_kind).toBe("user");
+    const [version] = await ctx.db
+      .select({ note: workflowVersions.note })
+      .from(workflowVersions)
+      .where(eq(workflowVersions.id, saved.draft.version_id))
+      .limit(1);
+    expect(parsePackageWorkflowNote(version?.note ?? null)).toMatchObject({
+      prefix: "subkit-support",
+      installed_hash: saved.draft.digest,
+    });
+
+    const updateContext = makeCtx(package_connector, undefined, principal);
+    const updated = await withSelfHostedDriverFetchForTests(
+      packageFetch({ ...fixture, packageVersion: "2.1.0", workflowPath: "/v2/status" }),
+      () =>
+        manageServicePackageWorkflowTool.execute(updateContext, {
+          action: "update",
+          workflow_id: saved.draft.workflow_id,
+          expected_version: 1,
+        }),
+    );
+    if (!updated.ok) throw new Error(JSON.stringify(updated));
+    expect(
+      (updateContext.getDraft().workflow as unknown as Record<string, unknown>)
+        .required_caller_kind,
+    ).toBe("user");
+  });
+
+  test("refuses a workflow artifact that differs from the manifest checksum", async () => {
+    const result = await withSelfHostedDriverFetchForTests(
+      packageFetch({ workflowsManifestHash: "0".repeat(64) }),
+      () =>
+        fetchConnectorSelfDescriptionTool.execute(makeCtx(package_connector), {
+          kind: "package",
+          prefix: "support-preview",
+        }),
+    );
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      artifacts: Array<{ name: string }>;
+      errors: Array<{ name: string }>;
+    };
+    expect(data.artifacts.map((artifact) => artifact.name)).not.toContain("workflows");
+    expect(data.errors.map((error) => error.name)).toContain("workflows");
+  });
+
+  test("refuses draft patches that rewrite the service package source", async () => {
+    const toolCtx = makeCtx(package_connector);
+    const prepared = await withSelfHostedDriverFetchForTests(
+      packageFetch({ workflowSlug: "support-patch-guard" }),
+      () =>
+        prepareServicePackageWorkflowTool.execute(toolCtx, {
+          workflow_slug: "support-patch-guard",
+          prefix: "support-preview",
+        }),
+    );
+    if (!prepared.ok) throw new Error(JSON.stringify(prepared));
+    const before = toolCtx.getDraft().workflow.service_package_source;
+    const patched = await applyWorkflowPatchToDraft(toolCtx, [
+      { op: "replace", path: "/service_package_source/connector_id", value: FOREIGN_CONNECTOR_ID },
+    ]);
+    expect(patched.ok).toBe(false);
+    expect(toolCtx.getDraft().workflow.service_package_source).toEqual(before);
+  });
+
+  test("leaves a workflow without package provenance unchanged on update and archive", async () => {
+    const principal = {
+      ...makeTestPrincipal({
+        tenant_id,
+        id: "00000000-0000-4000-8000-000000000047",
+        roles: ["admin"],
+      }),
+      auth_source: { kind: "browser_session" as const, session_id: nextUuid() },
+    };
+    const created = await createWorkflow(
+      {
+        tenant_id,
+        actor_id: null,
+        def: {
+          name: "Built-in support",
+          slug: "support-legacy-flow",
+          steps: [
+            {
+              kind: "request",
+              id: "read-status",
+              connector_id: package_connector,
+              method: "GET",
+              path: "/v1/status",
+            },
+          ],
+        },
+      },
+      ctx.db,
+    );
+    if ("errors" in created) throw new Error(created.errors.join(", "));
+    for (const action of ["update", "archive"] as const) {
+      const result = await withSelfHostedDriverFetchForTests(
+        packageFetch({ workflowSlug: "support-legacy-flow" }),
+        () =>
+          manageServicePackageWorkflowTool.execute(
+            makeCtx(package_connector, undefined, principal),
+            { action, workflow_id: created.workflow.id, expected_version: 1 },
+          ),
+      );
+      expect(result).toMatchObject({
+        ok: false,
+        error_code: "service_package_workflow_not_managed",
+      });
+    }
+  });
+
   test("repeated package setup recognizes an identical saved workflow without rewriting it", async () => {
     const created = await createWorkflow(
       {
@@ -643,7 +807,11 @@ describe("fetch_connector_self_description", () => {
 
   test("updates an unchanged installed service workflow into a review draft", async () => {
     const principal = {
-      ...makeTestPrincipal({ tenant_id, id: "00000000-0000-4000-8000-000000000044" }),
+      ...makeTestPrincipal({
+        tenant_id,
+        id: "00000000-0000-4000-8000-000000000044",
+        roles: ["admin"],
+      }),
       auth_source: { kind: "browser_session" as const, session_id: nextUuid() },
     };
     const installContext = makeCtx(package_connector, undefined, principal);
@@ -726,7 +894,11 @@ describe("fetch_connector_self_description", () => {
 
   test("archives only unchanged service workflows after a signed-in request", async () => {
     const principal = {
-      ...makeTestPrincipal({ tenant_id, id: "00000000-0000-4000-8000-000000000045" }),
+      ...makeTestPrincipal({
+        tenant_id,
+        id: "00000000-0000-4000-8000-000000000045",
+        roles: ["admin"],
+      }),
       auth_source: { kind: "browser_session" as const, session_id: nextUuid() },
     };
     const installContext = makeCtx(package_connector, undefined, principal);
@@ -775,7 +947,11 @@ describe("fetch_connector_self_description", () => {
 
   test("installs a package skill as a connector-scoped draft and is idempotent", async () => {
     const principal = {
-      ...makeTestPrincipal({ tenant_id, id: "00000000-0000-4000-8000-000000000042" }),
+      ...makeTestPrincipal({
+        tenant_id,
+        id: "00000000-0000-4000-8000-000000000042",
+        roles: ["admin"],
+      }),
       auth_source: { kind: "browser_session" as const, session_id: nextUuid() },
     };
     const toolCtx = makeCtx(package_connector, undefined, principal);
@@ -821,6 +997,34 @@ describe("fetch_connector_self_description", () => {
     expect(repeated.data).toMatchObject({ skill_id: skillId, state: "current", skill_version: 1 });
   });
 
+  test("concurrent package skill installs create one guide", async () => {
+    const principal = {
+      ...makeTestPrincipal({
+        tenant_id,
+        id: "00000000-0000-4000-8000-000000000048",
+        roles: ["admin"],
+      }),
+      auth_source: { kind: "browser_session" as const, session_id: nextUuid() },
+    };
+    const installPackage = {
+      packageId: "com.example.concurrent-skill",
+      packageName: "Concurrent Service",
+    };
+    const results = await withSelfHostedDriverFetchForTests(packageFetch(installPackage), () =>
+      Promise.all(
+        [0, 1, 2].map(() =>
+          manageServicePackageSkillTool.execute(makeCtx(package_connector, undefined, principal), {
+            action: "install",
+            connector_id: package_connector,
+          }),
+        ),
+      ),
+    );
+    expect(results.filter((result) => !result.ok)).toEqual([]);
+    const ids = new Set(results.map((result) => (result.data as { skill_id: string }).skill_id));
+    expect(ids.size).toBe(1);
+  });
+
   test("requires a signed-in person before installing service package content", async () => {
     const toolCtx = makeCtx(package_connector, undefined, {
       ...makeTestPrincipal({ tenant_id }),
@@ -836,7 +1040,11 @@ describe("fetch_connector_self_description", () => {
 
   test("updates only an unchanged package skill and returns it to draft review", async () => {
     const principal = {
-      ...makeTestPrincipal({ tenant_id, id: "00000000-0000-4000-8000-000000000043" }),
+      ...makeTestPrincipal({
+        tenant_id,
+        id: "00000000-0000-4000-8000-000000000043",
+        roles: ["admin"],
+      }),
       auth_source: { kind: "browser_session" as const, session_id: nextUuid() },
     };
     const toolCtx = makeCtx(package_connector, undefined, principal);
@@ -938,7 +1146,11 @@ describe("fetch_connector_self_description", () => {
 
   test("refuses package-skill updates after local edits", async () => {
     const principal = {
-      ...makeTestPrincipal({ tenant_id, id: "00000000-0000-4000-8000-000000000044" }),
+      ...makeTestPrincipal({
+        tenant_id,
+        id: "00000000-0000-4000-8000-000000000044",
+        roles: ["admin"],
+      }),
       auth_source: { kind: "browser_session" as const, session_id: nextUuid() },
     };
     const toolCtx = makeCtx(package_connector, undefined, principal);
@@ -985,7 +1197,11 @@ describe("fetch_connector_self_description", () => {
 
   test("preserves local skill tags through package update and reinstall", async () => {
     const principal = {
-      ...makeTestPrincipal({ tenant_id, id: "00000000-0000-4000-8000-000000000045" }),
+      ...makeTestPrincipal({
+        tenant_id,
+        id: "00000000-0000-4000-8000-000000000045",
+        roles: ["admin"],
+      }),
       auth_source: { kind: "browser_session" as const, session_id: nextUuid() },
     };
     const toolCtx = makeCtx(package_connector, undefined, principal);
@@ -1051,7 +1267,22 @@ describe("fetch_connector_self_description", () => {
       id: "user-support-enrollment",
       tenant_id,
       roles: ["admin"],
+      auth_source: { kind: "browser_session" as const, session_id: nextUuid() },
     };
+    const refused = await withSelfHostedDriverFetchForTests(packageFetch({ calls }), () =>
+      enrollServicePackageConnectorTool.execute(
+        makeCtx(package_connector, undefined, {
+          provider: principal.provider,
+          kind: principal.kind,
+          id: principal.id,
+          tenant_id,
+          roles: principal.roles,
+        }),
+        { connector_id: package_connector },
+      ),
+    );
+    expect(refused).toMatchObject({ ok: false, error_code: "user_confirmation_required" });
+    expect(calls).toHaveLength(0);
     const run = () =>
       enrollServicePackageConnectorTool.execute(makeCtx(package_connector, undefined, principal), {
         connector_id: package_connector,

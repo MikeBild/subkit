@@ -12,7 +12,7 @@ export const DiagnosticArtifactSchema = z
   .strict();
 
 export const DIAGNOSTIC_PART_BYTES = 262_144;
-export const DIAGNOSTIC_COLLECTION_BYTES = 100_000_000;
+export const DIAGNOSTIC_COLLECTION_BYTES = 10_000_000;
 
 export function diagnosticParts(artifact: string, fileId: string, bytes: Uint8Array) {
   const name = DiagnosticArtifactSchema.shape.name.parse(artifact);

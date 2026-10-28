@@ -1,12 +1,12 @@
 import { z } from "@hono/zod-openapi";
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getConnector } from "../../connectors/service.ts";
 import { workflows, workflowVersions } from "../../db/schema/index.ts";
 import { workflowJsonDigest } from "../../workflows/canonical-json.ts";
 import { annotateRuntime } from "../../workflows/runtime-annotation.ts";
-import { parsePackageWorkflowNote } from "../../workflows/service-package-provenance.ts";
+import { findPackageWorkflowProvenance } from "../../workflows/service-package-provenance.ts";
 import { validateTenantWorkflowDefForSave } from "../../workflows/tenant-validator.ts";
-import { WorkflowDefSchema } from "../../workflows/types.ts";
+import { WORKFLOW_DEF_FIELD_KEYS, WorkflowDefSchema } from "../../workflows/types.ts";
 import {
   hasInProgressWorkflowDraft,
   startNewWorkflowDraft,
@@ -16,6 +16,7 @@ import type { WorkflowDraftDocument } from "../types.ts";
 import { fetchServicePackage } from "./fetch-connector-self-description.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 import { openWorkflowDraftTool, resolveSavedWorkflow } from "./open-workflow-draft.ts";
+import { checkToolPermission } from "./permission-gate.ts";
 
 const inputSchema = z
   .object({
@@ -52,6 +53,11 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
   inputSchema,
   category: "draft_write",
   authoring_resource: "workflow",
+  permission: {
+    action: "workflow:write",
+    resourceType: "workflow",
+    resolveResourceId: async () => "*",
+  },
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const connector_id = args.connector_id ?? ctx.connector_id ?? undefined;
@@ -110,10 +116,28 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
         data: { connector_id },
       };
     }
+    const connectorAccess = await checkToolPermission(
+      ctx,
+      { action: "connector:read", resourceType: "connector", resourceIdArg: "connector_id" },
+      { connector_id: connector.id },
+    );
+    if (!connectorAccess.allow) {
+      return {
+        ok: false,
+        error_code: "permission_denied",
+        message: userMessage(
+          ctx,
+          "You don't have access to this service connection.",
+          "Du hast keinen Zugriff auf diese Verbindung.",
+        ),
+        data: { permission: connectorAccess.permission, reason: connectorAccess.reason },
+      };
+    }
     const preview = await fetchServicePackage(ctx, connector, args.prefix);
     if (!preview.ok) return preview;
     const data = preview.data as {
       package: { id: string; version: string };
+      prefix: string;
       artifacts: Array<{ name: string; body: string; sha256: string }>;
     };
     const artifact = data.artifacts.find((item) => item.name === "workflows");
@@ -136,7 +160,11 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
       return {
         ok: false,
         error_code: "package_workflow_artifact_invalid",
-        message: "the verified workflow artifact could not be read",
+        message: userMessage(
+          ctx,
+          "This service setup could not be read. Nothing was changed.",
+          "Diese Einrichtung ließ sich nicht lesen. Es wurde nichts geändert.",
+        ),
         data: { package: data.package },
       };
     }
@@ -237,33 +265,23 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
             .limit(1)
         : [];
       if (args.action === "update") {
-        const history = await ctx.db
-          .select({ note: workflowVersions.note })
-          .from(workflowVersions)
-          .where(
-            and(
-              eq(workflowVersions.tenant_id, ctx.tenant_id),
-              eq(workflowVersions.workflow_id, existing.id),
-            ),
-          )
-          .orderBy(desc(workflowVersions.version))
-          .limit(100);
-        const provenance = history
-          .map((version) => parsePackageWorkflowNote(version.note))
-          .find(
-            (source) =>
-              source?.package_id === data.package.id &&
-              source.connector_id === connector.id &&
-              source.workflow_slug === existing.slug,
-          );
+        const provenance = await findPackageWorkflowProvenance(
+          ctx.db,
+          ctx.tenant_id,
+          existing.id,
+          (source) =>
+            source.package_id === data.package.id &&
+            source.connector_id === connector.id &&
+            source.workflow_slug === existing.slug,
+        );
         if (!provenance) {
           return {
             ok: false,
             error_code: "service_package_workflow_not_managed",
             message: userMessage(
               ctx,
-              "This workflow isn't an unchanged copy from this service, so I left it alone.",
-              "Dieser Ablauf ist keine unveränderte Vorlage dieses Dienstes und bleibt daher unangetastet.",
+              "This workflow wasn't set up from this service package, so I left it alone. You can set up the service version separately and archive this one after reviewing it.",
+              "Dieser Ablauf wurde nicht aus diesem Dienstpaket eingerichtet und bleibt daher unangetastet. Du kannst die Dienstversion separat einrichten und diesen Ablauf nach Prüfung archivieren.",
             ),
             data: { workflow_id: existing.id },
           };
@@ -323,18 +341,6 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
           },
         };
       }
-      if (args.action === "update" && !updateExisting) {
-        return {
-          ok: false,
-          error_code: "service_package_workflow_not_managed",
-          message: userMessage(
-            ctx,
-            "This workflow isn't managed by the service package, so I left it alone.",
-            "Dieser Ablauf wird nicht vom Dienstpaket verwaltet und bleibt daher unangetastet.",
-          ),
-          data: { workflow_id: existing.id, slug: existing.slug },
-        };
-      }
       if (!updateExisting) {
         return {
           ok: false,
@@ -349,49 +355,28 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
         };
       }
     }
-    const definition = candidate as Record<string, unknown>;
-    const workflow: WorkflowDraftDocument = {
-      name: String(definition.name),
-      slug: String(definition.slug),
-      ...(typeof definition.description === "string"
-        ? { description: definition.description }
-        : {}),
-      ...(typeof definition.execution_privacy === "string"
-        ? {
-            execution_privacy:
-              definition.execution_privacy as WorkflowDraftDocument["execution_privacy"],
-          }
-        : {}),
-      steps: definition.steps as Array<Record<string, unknown>>,
-      ...(definition.input_schema && typeof definition.input_schema === "object"
-        ? { input_schema: definition.input_schema as Record<string, unknown> }
-        : {}),
-      ...(definition.output_schema && typeof definition.output_schema === "object"
-        ? { output_schema: definition.output_schema as Record<string, unknown> }
-        : {}),
-      ...(Array.isArray(definition.response_filters)
-        ? {
-            response_filters:
-              definition.response_filters as WorkflowDraftDocument["response_filters"],
-          }
-        : {}),
-      ...(typeof definition.timeout_ms === "number" ? { timeout_ms: definition.timeout_ms } : {}),
-      ...(Array.isArray(definition.edges)
-        ? { edges: definition.edges as NonNullable<WorkflowDraftDocument["edges"]> }
-        : {}),
-      ...(definition.trigger && typeof definition.trigger === "object"
-        ? { trigger: definition.trigger as NonNullable<WorkflowDraftDocument["trigger"]> }
-        : {}),
+    const definition: Record<string, unknown> = {};
+    const validated = parsedCandidate.data as Record<string, unknown>;
+    for (const key of WORKFLOW_DEF_FIELD_KEYS) {
+      if (validated[key] !== undefined) definition[key] = validated[key];
+    }
+    const rawEdges = (candidate as Record<string, unknown>).edges;
+    if (Array.isArray(rawEdges)) definition.edges = rawEdges;
+    const workflow = {
+      ...definition,
+      name: parsedCandidate.data.name,
+      slug: args.workflow_slug,
+      steps: parsedCandidate.data.steps as Array<Record<string, unknown>>,
       service_package_source: {
         package_id: data.package.id,
         package_version: data.package.version,
         connector_id: connector.id,
         workflow_slug: args.workflow_slug,
-        prefix: args.prefix ?? "service",
+        prefix: data.prefix,
         artifact_hash: artifact.sha256,
         definition_hash: packageDefinitionHash,
       },
-    };
+    } as WorkflowDraftDocument;
     let base = startNewWorkflowDraft(current, "service_package_workflow_prepared");
     if (updateExisting && existing) {
       const opened = await openWorkflowDraftTool.execute(ctx, { workflow: existing.id });

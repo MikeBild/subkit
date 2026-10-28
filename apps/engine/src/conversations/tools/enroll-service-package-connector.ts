@@ -27,8 +27,17 @@ function uuidFromDigest(digest: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-function enrollmentIdentity(ctx: ToolContext, connectorId: string, serviceOrigin: string) {
-  const context = JSON.stringify([ctx.tenant_id, connectorId, serviceOrigin]);
+function enrollmentIdentity(
+  ctx: ToolContext,
+  connector: { id: string; environment: string },
+  serviceOrigin: string,
+) {
+  const context = JSON.stringify([
+    ctx.tenant_id,
+    connector.id,
+    connector.environment,
+    serviceOrigin,
+  ]);
   const enrollmentId = uuidFromDigest(
     secretComparisonProof("service-package-enrollment-id", context),
   );
@@ -154,7 +163,7 @@ export const enrollServicePackageConnectorTool: ConversationTool = {
     "Finish setting up a saved HTTP service connector when its published package describes a recoverable enrollment and encrypted credential acknowledgement flow.",
   important_notes: [
     "Only same-origin HTTPS or local loopback enrollment endpoints are accepted; redirects and oversized responses are rejected.",
-    "A deterministic per-tenant connector enrollment identity makes retries recover the same service credential until the engine has stored and acknowledged it.",
+    "A deterministic per-tenant, per-environment connector enrollment identity makes retries recover the same service credential until the engine has stored and acknowledged it.",
     "The saved credential is written through the existing encrypted connector credential service and is never returned by this tool.",
   ],
   inputSchema,
@@ -200,7 +209,7 @@ export const enrollServicePackageConnectorTool: ConversationTool = {
         data: { connector_id: connectorId },
       };
     }
-    if (ctx.principal?.kind !== "user") {
+    if (ctx.principal?.kind !== "user" || ctx.principal.auth_source?.kind !== "browser_session") {
       return {
         ok: false,
         error_code: "user_confirmation_required",
@@ -316,7 +325,7 @@ export const enrollServicePackageConnectorTool: ConversationTool = {
           packageUrl,
           enrollment.acknowledgement,
         );
-        const identity = enrollmentIdentity(ctx, connector.id, new URL(connector.base_url).origin);
+        const identity = enrollmentIdentity(ctx, connector, new URL(connector.base_url).origin);
         const ack = await postJson(
           ctx,
           endpoint,
@@ -353,7 +362,7 @@ export const enrollServicePackageConnectorTool: ConversationTool = {
           data: { connector_id: connector.id },
         };
       }
-      const identity = enrollmentIdentity(ctx, connector.id, new URL(connector.base_url).origin);
+      const identity = enrollmentIdentity(ctx, connector, new URL(connector.base_url).origin);
       const body = requestBody(enrollment.request.body, connector.display_name ?? connector.slug);
       const endpoint = serviceEndpoint(connector.base_url, packageUrl, enrollment.endpoint);
       const registration = await postJson(

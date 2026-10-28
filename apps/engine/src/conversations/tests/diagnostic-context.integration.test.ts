@@ -15,6 +15,7 @@ import { logRing } from "../../observability/log-ring.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 import { collectDiagnosticContext, type DiagnosticContext } from "../diagnostic-context.ts";
 import { exportDiagnosticContext } from "../diagnostic-export.ts";
+import { executionDataTransfer, prepareGate } from "../tools/sdk-wrap/gate-subjects.ts";
 import { loadWorkflowInputFile } from "../tools/workflow-file-input.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
@@ -113,6 +114,36 @@ test("projects only the authenticated owner's current conversation and scoped lo
     ],
   });
   expect(modelFiles.blocks).toEqual([]);
+  const transferGate = await prepareGate(
+    "run_workflow",
+    { workflow: "service-send", input_file: exported.input_file },
+    ctx.tenant_id,
+    ctx.db,
+  );
+  expect(transferGate.execution_data_transfer).toBe(true);
+  expect(transferGate.pending_output?.execution_data_transfer).toBeDefined();
+  const ordinaryGate = await prepareGate(
+    "run_workflow",
+    { workflow: "service-send", input: { title: "x" } },
+    ctx.tenant_id,
+    ctx.db,
+  );
+  expect(ordinaryGate.execution_data_transfer).toBeUndefined();
+  const inlineGate = await prepareGate(
+    "run_workflow",
+    { workflow: "service-send", input: { parts: transfer.parts, manifest: transfer.manifest } },
+    ctx.tenant_id,
+    ctx.db,
+  );
+  expect(inlineGate.execution_data_transfer).toBe(true);
+  expect(
+    await executionDataTransfer(
+      { parts: transfer.parts, manifest: transfer.manifest },
+      ctx.tenant_id,
+      ctx.db,
+    ),
+  ).not.toBeNull();
+  expect(await executionDataTransfer({ title: "x" }, ctx.tenant_id, ctx.db)).toBeNull();
 
   expect(
     await analyzeConversationAttachments({
