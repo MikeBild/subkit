@@ -267,7 +267,15 @@ async function configureProviders(
       "Add claude-key.txt or openai-key.txt for real AI, or explicitly use --mock for offline testing",
     );
   const digest = createHash("sha256")
-    .update(JSON.stringify({ anthropic, openai, mock }))
+    .update(
+      JSON.stringify({
+        anthropic,
+        openai,
+        mock,
+        primary: "openai",
+        fallback: "anthropic-elevation",
+      }),
+    )
     .digest("hex");
   if (state.providers === digest) return;
   const put = (path: string, value: unknown) =>
@@ -280,11 +288,14 @@ async function configureProviders(
     await put("llm.providers.openai.api_key", openai);
     await put("llm.providers.openai.model", "gpt-5.6-sol");
   }
-  await put("llm.provider", anthropic ? "anthropic" : openai ? "openai" : "mock");
-  await put("llm.api_key", anthropic || openai || "mock");
-  await put("llm.model", anthropic ? "claude-sonnet-4-6" : openai ? "gpt-5.6-sol" : "");
-  await put("llm.fallback_provider", anthropic && openai ? "openai" : null);
-  await put("llm.fallback_model", anthropic && openai ? "gpt-5.6-sol" : "");
+  await put("llm.provider", openai ? "openai" : anthropic ? "anthropic" : "mock");
+  await put("llm.api_key", openai || anthropic || "mock");
+  await put("llm.model", openai ? "gpt-5.6-sol" : anthropic ? "claude-sonnet-4-6" : "");
+  await put("llm.fallback_provider", anthropic && openai ? "anthropic" : openai ? "openai" : null);
+  await put(
+    "llm.fallback_model",
+    anthropic && openai ? "claude-sonnet-4-6" : openai ? "gpt-5.6-sol" : "",
+  );
   state.providers = digest;
   save(STATE_FILE, state);
 }
