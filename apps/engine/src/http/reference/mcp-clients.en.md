@@ -1,15 +1,17 @@
 ---
 slug: mcp-clients
-summary: Connect an AI client via MCP so it can find and run your workflows.
+summary: Let an AI client such as Claude Code find and run your workflows.
 order: 2
 section: work
 audience: public
 ---
 ## Connect AI clients via MCP
 
-Connect an AI client such as Claude, ChatGPT, Cursor or Codex to SubKit over MCP.
-The client can then find and run your workflows.
-Every call is checked against your permissions and recorded in the audit log.
+This chapter is for anyone who wants to use SubKit from an AI client such as Claude, ChatGPT, Cursor or Codex.
+You register your engine there once as a server and sign in.
+Afterwards the client finds and runs your workflows, with your permissions and with an entry in the history.
+
+For Claude Code, Codex, Cursor and other AI clients, SubKit is an MCP server: every approved workflow is a tool there, plus connectors, knowledge and skills – with the permissions of the access, nothing beyond. Anything that writes waits for a person to choose "Allow once". The other way round, an MCP server you already use becomes a connector in SubKit; the operator decides per tool which of its tools run without asking.
 
 ### What you need
 
@@ -21,23 +23,23 @@ Every call is checked against your permissions and recorded in the audit log.
 
   On SubKit Cloud it is `https://subkit-cloud.mikebild.info/mcp`, always without `/cockpit`.
   Your own engine needs HTTPS. Plain HTTP works only on `localhost`.
-- An account in a workspace whose role allows MCP access. Without it, the sign-in ends with `access_denied`.
-- An AI client that supports remote MCP servers over HTTP.
+- An account whose role allows MCP access. Without it, the sign-in ends with `access_denied`.
+- An AI client that supports remote MCP servers over HTTP. If it can only start local servers, see "Connect with an API key".
 
 ### Choose how to sign in
 
 | Way | When | What you do |
 | --- | --- | --- |
-| **Browser sign-in (OAuth)** | SubKit Cloud and engines with an identity provider | Enter the address. The client opens your browser. In the cloud, select **Sign in with work account** there. |
+| **Browser sign-in (OAuth)** | SubKit Cloud and engines with an identity provider | Enter the address. The client opens your browser, where you sign in and consent. In the cloud, select **Sign in with work account**. |
 | **API key** | Clients that use a key, and engines without an identity provider | Enter a key in the client as a bearer token. |
 
-Prefer browser sign-in. You copy no key, and the access renews itself.
-An API key is long-lived access that sits on your machine.
+Use the browser sign-in when you can. You copy no key, a consent page shows what the client may do, and the access renews itself.
+An API key, by contrast, is long-lived access that sits on your machine.
 
 ### Connect with browser sign-in
 
 1. In your client, add a remote MCP server with the address `https://<your-engine>/mcp` and name it `sk`.
-2. In the browser window the client opens, sign in as you do in the Cockpit.
+2. In the browser window the client opens, sign in the same way as in the Cockpit.
 3. On the page **Allow access**, check which client wants access to which workspace.
 4. Check the boxes for what the client may do. **Read** is always on.
 5. Select **Allow**. The browser returns to your client.
@@ -51,7 +53,7 @@ Where you add the server depends on the client:
   claude mcp add --transport http --scope user sk https://<your-engine>/mcp
   ```
 
-  Then run `/mcp` in Claude Code and choose `sk` to sign in.
+  Then run `/mcp` in Claude Code and select `sk` to sign in.
 - **ChatGPT and Cursor:** the client's MCP or connector settings.
 
 Menu names change between client versions. If a step looks different, follow your client's guide for remote MCP servers.
@@ -81,8 +83,10 @@ codex mcp add sk --url https://<your-engine>/mcp --bearer-token-env-var SK_API_K
 
 Other clients send the header `Authorization: Bearer <your-key>` with every request.
 
-A key without an MCP mode marker connects in **Read** mode.
-For authoring, add `mcp:authoring` to `--scopes` when you create the key with `sk apikeys create`.
+If your client can only start local MCP servers, there is the command `sk mcp`. It uses your signed-in `sk` profile but offers only five tools: a connection check and four tools for conversations with SubKit. Your client reaches workflows, connectors and knowledge only through your engine's `/mcp` address.
+
+A key without an MCP scope connects in **Read** mode.
+If the client should also build, add `mcp:authoring` to `--scopes` when you create the key with `sk apikeys create`.
 
 ### Check the connection
 
@@ -109,39 +113,48 @@ If all three work, the client is connected.
 
 ### What the client may do
 
-The scope decides which tools the client sees. It never widens your permissions; your role still limits every call.
+A scope is the level you give the client when it connects. It decides which tools the client sees at all.
+Your role still limits every single call. A scope never gives the client more than you may do yourself.
 
-| On the consent page | Scope | The client can |
+| On the access page | Scope | The client can |
 | --- | --- | --- |
 | **Read** | `mcp:read` | Read workflows, runs, connectors and knowledge, and run saved workflows. |
 | **Authoring** | `mcp:authoring` | Additionally build workflows and connectors in a guided conversation. |
 | **Administration** | `mcp:admin` | Additionally create, change and delete things in the workspace. |
 | **Operational counters** | `metrics:read` | Read the operational counters, nothing else. |
 
-- The consent page offers only what your role allows.
-- A key with `*` does not include authoring. Authoring needs `mcp:authoring` on purpose.
-- An engine set to `mcp.read_only` hides all write tools, even with `mcp:admin`.
+- The access page only offers what your role allows.
+- A key with `*` does not include authoring. That takes a deliberate `mcp:authoring`.
+- An engine with `mcp.read_only` hides every write tool, even with `mcp:admin`.
 
-### Reads, runs and writes
+### Read, run, write
 
 - **Reads** run right away. Examples: `find_workflow`, `get_execution`, `search_knowledge`.
 - **Runs** start a saved workflow, for example with `run_workflow` or a `wf_<slug>` tool.
-  A short run answers right away. A long run answers with an `execution_id`, which the client follows with `get_execution`.
+  A short run answers right away. A long run answers with an `execution_id` that the client follows with `get_execution`.
 - **Writes** change something: send an email, change data, change the workspace.
 - **Packages** move your workspace's own resources to another engine with `export_tenant_package`, `preview_package_import` and `apply_package_import`.
-  They ask for confirmation first. An import creates only drafts and proposals.
+  They ask for confirmation first. An import only creates drafts and proposals.
 
-Writes always need a person. There are two checks:
+Writing always needs a person, in two places:
 
-- **Writes inside a workflow:** A workflow writes for real only after a person approves it in the Cockpit. The approval covers the exact version, its targets and its limits.
-  Without approval, the run is a trial run: writes are held and nothing is sent.
-- **Write tools in the client:** A write tool can pause and return a link to allow it once.
-  Open the link, sign in, check what will happen, and select **Allow once** or **Decline**.
-  Only after you allow it can the client finish the call with `confirm_tool_call`.
+- **Writes inside a workflow:** A workflow writes for real only after a person approves it in the Cockpit. Without approval the run is a dry run: writes are held back and nothing is sent.
+  A new version needs no new approval as long as it touches no more systems, addresses or write permissions than the approved one. If it reaches further, SubKit asks again and names the difference.
+- **Write tools in the client:** A write tool pauses and returns a link.
+  Open it, sign in, check what will happen, and select **Allow once** or **Decline**.
+  Only then can the client finish the call with `confirm_tool_call`.
 
 The AI cannot approve or allow anything itself. The link alone allows nothing either.
 
+### Use an MCP server as a connector
+
+The other direction: an MCP server your team already uses becomes a connector in SubKit. Workflows and the chat then call its tools.
+Each tool asks before it runs, unless the operator has enabled it individually. Only someone allowed to change the connector can do that; a normal edit of the connector does not change this list.
+`sk connectors mcp-inspect <id>` shows which tools the server actually offers. If the server needs OAuth client credentials, follow "External MCP OAuth credentials".
+
 ### If something does not work
+
+The engine returns these messages in English; they are quoted verbatim here.
 
 | What you see | What to do |
 | --- | --- |

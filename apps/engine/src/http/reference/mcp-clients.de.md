@@ -1,15 +1,17 @@
 ---
 slug: mcp-clients
-summary: Verbinde einen KI-Client per MCP, damit er deine Workflows findet und startet.
+summary: Lass einen KI-Client wie Claude Code deine Workflows finden und starten.
 order: 2
 section: work
 audience: public
 ---
 ## KI-Clients per MCP anbinden
 
-Verbinde einen KI-Client wie Claude, ChatGPT, Cursor oder Codex per MCP mit SubKit.
-Der Client findet und startet dann deine Workflows.
-Jeder Aufruf wird gegen deine Rechte geprüft und im Audit-Log festgehalten.
+Dieses Kapitel ist für alle, die SubKit aus einem KI-Client wie Claude, ChatGPT, Cursor oder Codex heraus nutzen wollen.
+Du trägst deine Engine dort einmal als Server ein und meldest dich an.
+Danach findet und startet der Client deine Workflows, mit deinen Rechten und mit einem Eintrag im Verlauf.
+
+SubKit ist für Claude Code, Codex, Cursor und andere KI-Clients ein MCP-Server: Jeder freigegebene Workflow ist dort ein Tool, dazu Konnektoren, Wissen und Skills – mit den Rechten des Zugangs, keinem darüber hinaus. Was schreibt, wartet auf ein „Einmal erlauben“ einer Person. Umgekehrt wird ein MCP-Server, den ihr schon nutzt, in SubKit ein Konnektor; welche seiner Tools ohne Rückfrage laufen, legt der Betreiber je Tool fest.
 
 ### Was du brauchst
 
@@ -21,23 +23,23 @@ Jeder Aufruf wird gegen deine Rechte geprüft und im Audit-Log festgehalten.
 
   In SubKit Cloud ist das `https://subkit-cloud.mikebild.info/mcp`, immer ohne `/cockpit`.
   Deine eigene Engine braucht HTTPS. Reines HTTP geht nur auf `localhost`.
-- Ein Konto in einem Arbeitsbereich, dessen Rolle MCP-Zugriff erlaubt. Ohne dieses Recht endet die Anmeldung mit `access_denied`.
-- Einen KI-Client, der entfernte MCP-Server über HTTP unterstützt.
+- Ein Konto, dessen Rolle MCP-Zugriff erlaubt. Ohne dieses Recht endet die Anmeldung mit `access_denied`.
+- Einen KI-Client, der entfernte MCP-Server über HTTP unterstützt. Kann er nur lokale Server starten, siehe „Mit API-Schlüssel verbinden“.
 
 ### Anmeldung wählen
 
 | Weg | Wann | Was du tust |
 | --- | --- | --- |
-| **Browser-Anmeldung (OAuth)** | SubKit Cloud und Engines mit Anmeldeanbieter | Adresse eintragen. Der Client öffnet deinen Browser. In der Cloud wählst du dort **Mit Firmenkonto anmelden**. |
+| **Browser-Anmeldung (OAuth)** | SubKit Cloud und Engines mit Anmeldeanbieter | Adresse eintragen. Der Client öffnet deinen Browser, dort meldest du dich an und stimmst zu. In der Cloud wählst du **Mit Firmenkonto anmelden**. |
 | **API-Schlüssel** | Clients, die einen Schlüssel nutzen, und Engines ohne Anmeldeanbieter | Einen Schlüssel als Bearer-Token in den Client eintragen. |
 
-Nimm die Browser-Anmeldung, wenn du kannst. Du kopierst keinen Schlüssel, und der Zugang erneuert sich selbst.
-Ein API-Schlüssel ist ein langlebiger Zugang, der auf deinem Rechner liegt.
+Nimm die Browser-Anmeldung, wenn du kannst. Du kopierst keinen Schlüssel, siehst auf einer Zustimmungsseite, was der Client darf, und der Zugang erneuert sich selbst.
+Ein API-Schlüssel dagegen ist ein langlebiger Zugang, der auf deinem Rechner liegt.
 
 ### Mit Browser-Anmeldung verbinden
 
 1. Füge in deinem Client einen entfernten MCP-Server mit der Adresse `https://<deine-engine>/mcp` hinzu und nenne ihn `sk`.
-2. Melde dich in dem Browserfenster, das der Client öffnet, an wie im Cockpit.
+2. Melde dich in dem Browserfenster, das der Client öffnet, so an wie im Cockpit.
 3. Prüfe auf der Seite **Zugriff erlauben**, welcher Client auf welchen Arbeitsbereich zugreifen will.
 4. Hake an, was der Client darf. **Lesen** ist immer an.
 5. Wähle **Erlauben**. Der Browser kehrt zu deinem Client zurück.
@@ -81,8 +83,10 @@ codex mcp add sk --url https://<deine-engine>/mcp --bearer-token-env-var SK_API_
 
 Andere Clients schicken bei jeder Anfrage den Header `Authorization: Bearer <dein-schluessel>` mit.
 
-Ein Schlüssel ohne MCP-Modusmarker verbindet im Modus **Lesen**.
-Zum Bearbeiten ergänzt du `mcp:authoring` in `--scopes`, wenn du den Schlüssel mit `sk apikeys create` anlegst.
+Kann dein Client nur lokale MCP-Server starten, gibt es den Befehl `sk mcp`. Er nutzt dein angemeldetes `sk`-Profil, bietet aber nur fünf Tools: einen Verbindungstest und vier Tools für Unterhaltungen mit SubKit. Workflows, Konnektoren und Wissen erreicht dein Client nur über die Adresse `/mcp` deiner Engine.
+
+Ein Schlüssel ohne MCP-Scope verbindet im Modus **Lesen**.
+Soll der Client auch bauen dürfen, ergänzt du `mcp:authoring` in `--scopes`, wenn du den Schlüssel mit `sk apikeys create` anlegst.
 
 ### Die Verbindung prüfen
 
@@ -109,7 +113,8 @@ Klappen alle drei, ist der Client verbunden.
 
 ### Was der Client darf
 
-Der Scope bestimmt, welche Tools der Client sieht. Er erweitert nie deine Rechte, deine Rolle begrenzt weiterhin jeden Aufruf.
+Ein Scope ist die Stufe, die du dem Client beim Verbinden gibst. Er bestimmt, welche Tools der Client überhaupt sieht.
+Deine Rolle begrenzt trotzdem jeden einzelnen Aufruf. Ein Scope gibt dem Client nie mehr, als du selbst darfst.
 
 | Auf der Zugriffsseite | Scope | Der Client kann |
 | --- | --- | --- |
@@ -131,17 +136,25 @@ Der Scope bestimmt, welche Tools der Client sieht. Er erweitert nie deine Rechte
 - **Pakete** bringen die eigenen Ressourcen deines Arbeitsbereichs mit `export_tenant_package`, `preview_package_import` und `apply_package_import` auf eine andere Engine.
   Sie fragen vorher nach einer Bestätigung. Ein Import legt nur Entwürfe und Vorschläge an.
 
-Schreiben braucht immer einen Menschen. Es gibt zwei Prüfungen:
+Schreiben braucht immer einen Menschen, und zwar an zwei Stellen:
 
-- **Schreiben in einem Workflow:** Ein Workflow schreibt erst wirklich, wenn eine Person ihn im Cockpit freigegeben hat. Die Freigabe gilt für die genaue Version, ihre Ziele und ihre Grenzen.
-  Ohne Freigabe ist der Lauf ein Probelauf: Schreibzugriffe werden zurückgehalten, nichts wird gesendet.
-- **Schreibende Tools im Client:** Ein schreibendes Tool kann anhalten und einen Link zum einmaligen Erlauben liefern.
-  Öffne den Link, melde dich an, prüfe, was passieren wird, und wähle **Einmal erlauben** oder **Ablehnen**.
-  Erst wenn du es erlaubt hast, kann der Client den Aufruf mit `confirm_tool_call` abschließen.
+- **Schreiben in einem Workflow:** Ein Workflow schreibt erst wirklich, wenn eine Person ihn im Cockpit freigegeben hat. Ohne Freigabe ist der Lauf ein Probelauf: Schreibzugriffe werden zurückgehalten, nichts wird gesendet.
+  Eine neue Version braucht keine neue Freigabe, solange sie nicht mehr Systeme, Adressen oder Schreibrechte anfasst als die freigegebene. Greift sie weiter, fragt SubKit erneut und nennt den Unterschied.
+- **Schreibende Tools im Client:** Ein schreibendes Tool hält an und liefert einen Link.
+  Öffne ihn, melde dich an, prüfe, was passieren wird, und wähle **Einmal erlauben** oder **Ablehnen**.
+  Erst danach kann der Client den Aufruf mit `confirm_tool_call` abschließen.
 
 Die KI kann nichts selbst freigeben oder erlauben. Auch der Link allein erlaubt nichts.
 
+### MCP-Server als Konnektor nutzen
+
+Der umgekehrte Weg: Ein MCP-Server, den dein Team schon nutzt, wird in SubKit ein Konnektor. Workflows und der Chat rufen dann seine Tools auf.
+Jedes Tool fragt vor dem Lauf nach, es sei denn, der Betreiber hat es einzeln freigeschaltet. Das darf nur, wer den Konnektor ändern darf; eine normale Bearbeitung des Konnektors ändert diese Liste nicht.
+`sk connectors mcp-inspect <id>` zeigt, welche Tools der Server wirklich anbietet. Verlangt der Server OAuth-Zugangsdaten, folge „OAuth-Zugangsdaten für externe MCP-Server“.
+
 ### Wenn etwas nicht klappt
+
+Die Engine liefert diese Meldungen auf Englisch; sie stehen hier deshalb wörtlich.
 
 | Was du siehst | Was du tust |
 | --- | --- |

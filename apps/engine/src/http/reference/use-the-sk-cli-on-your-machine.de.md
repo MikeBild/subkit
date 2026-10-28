@@ -1,21 +1,25 @@
 ---
 slug: use-the-sk-cli-on-your-machine
-summary: Installiere die sk-CLI von deiner Engine und arbeite damit im Terminal.
+summary: Hol dir die sk-CLI von deiner Engine und arbeite im Terminal.
 section: work
 order: 1
 audience: public
 ---
 ## Die sk-CLI auf deinem Rechner verwenden
 
-Deine Engine liefert die CLI selbst aus. Es gibt kein npm-Paket.
-Du installierst `sk` einmal, meldest dich an und arbeitest dann im Terminal mit Workflows, Läufen und Konnektoren.
+Dieses Kapitel ist für alle, die lieber im Terminal oder in Skripten arbeiten als im Cockpit.
+Du installierst die Kommandozeile `sk`, meldest dich an und hältst sie aktuell.
+Danach legst du Workflows, Konnektoren und Wissen als Dateien an und startest Läufe aus dem Terminal.
+
+Die Kommandozeile `sk` bekommst du direkt von deiner Engine. Mit ihr entwirfst, änderst und startest du Workflows als Dateien; `sk agent init` trägt SubKit in Claude Code und Codex ein.
+Ein npm-Paket gibt es nicht.
 
 ### Was du brauchst
 
 - Die Adresse deiner Engine, ohne Pfad. Die Beispiele nutzen `http://localhost:3000`.
-  Für SubKit Cloud siehe das Kapitel „SubKit Cloud nutzen“.
+  Für SubKit Cloud siehe „SubKit Cloud nutzen“.
 - Bash und curl.
-- Für einen API-Schlüssel auf einer selbst betriebenen Engine: Zugriff auf den Engine-Host.
+- Für die Anmeldung mit API-Schlüssel auf einer selbst betriebenen Engine: Zugriff auf den Engine-Host.
 
 ### Installieren und anmelden
 
@@ -31,14 +35,14 @@ Du installierst `sk` einmal, meldest dich an und arbeitest dann im Terminal mit 
    sk login --engine-url http://localhost:3000
    ```
 
-   Dein Browser öffnet sich. Nach der Anmeldung gibt `sk` die Zeile `sk: signed in as …` aus und speichert das Profil.
-3. Starte mit `sk`. `sk --help` listet alle Befehle.
+   Dein Browser öffnet sich. Nach der Anmeldung gibt `sk` die Zeile `sk: signed in as …` aus und speichert die Verbindung als Profil.
+3. Starte `sk`. Ohne Befehl öffnet sich eine interaktive Sitzung; `sk --help` listet alle Befehle.
 
-Die Engine beschreibt sich selbst unter `/openapi.json` und `/llms.txt`.
+Die Engine beschreibt sich auch selbst: die HTTP-API unter `/openapi.json`, die Dokumentation für KI-Clients unter `/llms.txt`.
 
 ### Mit einem API-Schlüssel anmelden
 
-Nutze diesen Weg für Skripte oder für eine selbst betriebene Engine ohne Anmeldeanbieter.
+Diesen Weg nimmst du für Skripte oder für eine selbst betriebene Engine ohne Anmeldeanbieter.
 
 1. Erstelle auf dem Engine-Host einen Admin-Schlüssel. Der Befehl gibt eine fertige `sk login`-Zeile aus:
 
@@ -46,55 +50,63 @@ Nutze diesen Weg für Skripte oder für eine selbst betriebene Engine ohne Anmel
    docker compose exec engine engine --issue-admin-key --tenant my-org
    ```
 
-2. Führe die ausgegebene Zeile aus. Die Zeile hat diese Form:
+2. Führe die ausgegebene Zeile aus. Sie hat diese Form:
 
    ```bash
    sk login --engine-url http://localhost:3000 --api-key <key>
    ```
 
-   `sk` gibt `sk: profile 'default' saved` und den Zustand der Engine aus.
+   `sk` antwortet mit `sk: profile 'default' saved` und dem Zustand der Engine.
 
-### Aus einem öffentlichen GitHub-Release installieren
+### Mit mehreren Engines arbeiten
 
-Nutze diesen Weg, um ein signiertes öffentliches Release statt des Downloads von deiner Engine zu installieren.
-Du brauchst Bash, curl und OpenSSL mit Ed25519-Unterstützung, zum Beispiel OpenSSL 3 im PATH.
+Ein Profil ist eine gespeicherte Anmeldung an einer Engine. So arbeitest du mit Test- und Produktions-Engine oder mit mehreren Arbeitsbereichen, ohne dich neu anzumelden.
+Die Profile liegen in `~/.sk/config.json`.
 
-1. Checke das veröffentlichte öffentliche Release aus und prüfe es.
-2. Führe im Checkout den Installer aus:
+| Befehl | Was er tut |
+| --- | --- |
+| `sk login --engine-url <adresse> --profile <name>` | Legt ein weiteres Profil an. |
+| `sk profile list` | Zeigt alle Profile. |
+| `sk profile use <name>` | Wechselt das aktive Profil. |
+| `sk status` | Zeigt das aktive Profil und ob die Engine erreichbar ist. |
+| `sk profile delete <name>` | Löscht ein Profil. |
 
-   ```bash
-   bash scripts/install.sh
-   ```
+Für einen einzelnen Befehl hängst du `--profile <name>` an, ohne das aktive Profil zu wechseln.
 
-Das Skript installiert die passende CLI für Linux oder macOS und legt den lokalen `subkit`-Kompatibilitätslink an.
-Neben die CLI legt es `subkit.LICENSE` und `subkit.THIRD_PARTY_NOTICES.txt`.
-Die Release-Dateien müssen öffentlich herunterladbar sein. Ein lokaler Build oder ein privates Repository genügt nicht.
+### Die CLI aktualisieren
+
+`sk update` installiert die neueste Fassung, `sk update --check` meldet sie nur.
+`sk` holt die Fassung zuerst von der Engine deines aktiven Profils und erst danach aus den öffentlichen Releases. Ein GitHub-Zugang ist dafür nicht nötig.
+Vor dem Austausch prüft `sk` die signierten Prüfsummen. Passt eine Datei nicht, bleibt deine bisherige Installation unverändert.
+
+Die vorherige Fassung bleibt erhalten. `sk update --rollback` stellt sie wieder her.
 
 ### Was die Installer prüfen
 
 Jeder Installer prüft die Dateien, bevor er eine bestehende Installation ersetzt.
-Fehlende Lizenzdateien, fehlende Signaturen oder nicht unterstützte Kryptografie stoppen die Installation.
+Fehlende Lizenzdateien, fehlende Signaturen oder nicht unterstützte Kryptografie brechen die Installation ab.
 
 | Installer | Was er prüft | Wem er vertraut |
 | --- | --- | --- |
-| `scripts/install.sh` | Das signierte Prüfsummen-Manifest, danach die gewählte Binärdatei und beide Lizenzdateien | Dem festgelegten öffentlichen Release-Schlüssel |
-| `/install` von der Engine | Die Binärdatei, `LICENSE` und `THIRD_PARTY_NOTICES.txt` aus demselben Engine-Bundle oder einem ausdrücklichen Mirror, gegen das Prüfsummen-Manifest dieser Quelle | Der gewählten Engine oder dem gewählten Mirror, nicht einer Release-Signatur |
-| `sk update` | Das signierte Prüfsummen-Manifest des Releases, danach die Binärdatei und beide Lizenzdateien. Er liest Version und Dateien von der Engine deines aktiven Profils und fällt auf GitHub-Releases zurück. Die bestehenden Hinweise behält er mit ihren Prüfsummen für den Rollback. | Dem festgelegten öffentlichen Release-Schlüssel, egal ob die Dateien von deiner Engine oder von GitHub kommen |
+| `/install` von der Engine | Binärdatei, `LICENSE` und `THIRD_PARTY_NOTICES.txt` gegen das Prüfsummen-Manifest der Engine oder eines ausdrücklich gewählten Mirrors | Der gewählten Engine oder dem Mirror, nicht einer Release-Signatur |
+| `sk update` | Das signierte Prüfsummen-Manifest des Releases, danach Binärdatei und beide Lizenzdateien | Dem festen öffentlichen Release-Schlüssel, egal ob die Dateien von deiner Engine oder von GitHub kommen |
+| `scripts/install.sh` | Das signierte Prüfsummen-Manifest, danach Binärdatei und beide Lizenzdateien | Dem festen öffentlichen Release-Schlüssel |
 
-### Die CLI aktualisieren
+### Aus einem öffentlichen Release installieren
 
-`sk update` installiert die neueste Version, `sk update --check` meldet sie nur.
-`sk` fragt zuerst die Engine deines aktiven Profils. Ein privates Repository oder ein fehlendes GitHub-Token blockiert das Update deshalb nicht. Die Engine liefert die signierten Release-Prüfsummen, und `sk` prüft sie, bevor es die Binärdatei ersetzt.
-Versionen vor 10.15.1 fragen nur GitHub. Installiere einmal neu mit `curl -fsSL <engine-url>/install | bash`; danach funktionieren Updates ohne Token.
+Statt von deiner Engine kannst du `sk` auch aus einem signierten öffentlichen Release installieren.
+Die öffentliche Beta wird vorbereitet. Pakete und Anleitung folgen nach der Freigabe.
 
-Ältere behaltene Versionen ohne Hinweis-Metadaten können fehlende historische Lizenzdateien nicht rekonstruieren.
-Das Rollback dieser Versionen funktioniert weiter wie bisher.
+Sobald ein Release veröffentlicht ist, checkst du es aus, prüfst es und führst im Checkout `bash scripts/install.sh` aus.
+Dafür brauchst du zusätzlich OpenSSL mit Ed25519-Unterstützung im PATH, zum Beispiel OpenSSL 3.
+Das Skript installiert die passende CLI für Linux oder macOS und legt `subkit.LICENSE` und `subkit.THIRD_PARTY_NOTICES.txt` daneben.
+Ein lokaler Build oder ein privates Repository genügt nicht.
 
 ### Den Arbeitsbereich auf eine andere Engine umziehen
 
-Ein Paket bringt deine eigenen Workflows, Konnektoren, Konnektor-Vorlagen, Skills, Zeitpläne, Knowledge Sources und ihre Dateien auf eine andere Engine.
-Zugangsdaten, Freigaben, Rollen, Kategorien, Einstellungen und der Laufverlauf bleiben zurück.
-Um eine ganze selbst betriebene Installation zu kopieren, mach stattdessen ein Backup wie in „Die Engine betreiben“ beschrieben.
+Ein Paket bringt deine eigenen Workflows, Konnektoren, Konnektor-Vorlagen, Skills, Zeitpläne, Quellen und ihre Dateien auf eine andere Engine.
+Zugangsdaten, Freigaben, Rollen, Kategorien, Einstellungen und der Verlauf bleiben zurück.
+Um eine ganze selbst betriebene Installation zu kopieren, machst du stattdessen ein Backup wie in „Die Engine betreiben“ beschrieben.
 
 Du brauchst `package:export` auf der Quell-Engine und `package:import` auf der Ziel-Engine. Beides sind Administrationsrechte.
 
@@ -111,8 +123,8 @@ Du brauchst `package:export` auf der Quell-Engine und `package:import` auf der Z
    sk packages export --out workspace.zip --profile a
    ```
 
-   `--category <kategorien>` exportiert nur einen Bereich, zum Beispiel `--category devops,cloud`. Alles, wovon der Bereich abhängt, kommt mit: Konnektoren, Templates, Sub-Workflows und Zeitpläne.
-   `--only <kinds>` exportiert nur einige Arten. `--json` gibt das Ergebnis als JSON aus.
+   `--category <kategorien>` exportiert nur einen Bereich, zum Beispiel `--category devops,cloud`. Was der Bereich braucht, kommt mit: Konnektoren, Konnektor-Vorlagen, Sub-Workflows und Zeitpläne.
+   `--only <arten>` exportiert nur einige Arten. `--json` gibt das Ergebnis als JSON aus.
 3. Importiere in Engine B:
 
    ```bash
@@ -120,7 +132,7 @@ Du brauchst `package:export` auf der Quell-Engine und `package:import` auf der Z
    ```
 
    `sk` zeigt zuerst den Plan: Jeder Eintrag ist `create`, `update`, `unchanged` oder `conflict`. Bestätige ihn oder gib `--yes` mit.
-   Hat sich Engine B nach dem Plan geändert, bricht der Import ab und ändert nichts. Starte ihn erneut.
+   Hat sich Engine B nach dem Plan geändert, bricht der Import ab und ändert nichts. Starte ihn dann erneut.
 4. Schließe auf Engine B ab. Bis dahin läuft und schreibt nichts:
    - Hinterlege die Zugangsdaten jedes Konnektors. Das Paket enthält keine.
    - Aktiviere die Skills. Sie kommen als Entwürfe an.
@@ -133,7 +145,7 @@ Importierst du dasselbe Paket erneut, ist jeder Eintrag `unchanged`.
 Einen Eintrag, den du auf Engine B geändert hast, zeigt der Import als `conflict` und überschreibt ihn nie.
 `sk packages installs` listet frühere Importe.
 
-Du kannst Bereich für Bereich umziehen: ein Paket pro Kategorie, jeweils mit Vorschau, Einrichtung und Testlauf.
+Du kannst Bereich für Bereich umziehen: ein Paket je Kategorie, jeweils mit Vorschau, Einrichtung und Testlauf.
 Ein Konnektor, den ein früheres Paket schon mitgebracht hat, bleibt `unchanged`, auch wenn du auf Engine B schon seine Zugangsdaten hinterlegt hast.
 
 ### Wenn etwas nicht klappt
@@ -142,5 +154,7 @@ Ein Konnektor, den ein früheres Paket schon mitgebracht hat, bleibt `unchanged`
 | --- | --- |
 | `sk: browser login failed` | Die Anmeldung im Browser ist nicht abgeschlossen. Versuche es erneut oder folge „Mit einem API-Schlüssel anmelden“. |
 | `sk login` erreicht die Engine nicht | Prüfe die `--engine-url`. Gib die Adresse ohne Pfad an. |
-| `scripts/install.sh` stoppt wegen einer fehlenden Lizenzdatei oder Signatur | Nutze ein veröffentlichtes öffentliches Release. Ein lokaler Build oder ein privates Repository funktioniert nicht. |
-| `scripts/install.sh` stoppt wegen nicht unterstützter Kryptografie | Stelle OpenSSL mit Ed25519-Unterstützung, zum Beispiel OpenSSL 3, in den PATH. |
+| Ein Befehl landet auf der falschen Engine | Prüfe mit `sk status` das aktive Profil und wechsle mit `sk profile use <name>`. |
+| `sk update` fragt nur GitHub oder verlangt ein GitHub-Token | Deine CLI ist älter als der Update-Weg über die Engine. Installiere sie einmal neu wie unter „Installieren und anmelden“. Danach laufen Updates über deine Engine. |
+| `scripts/install.sh` bricht wegen einer fehlenden Lizenzdatei oder Signatur ab | Nutze ein veröffentlichtes öffentliches Release. Ein lokaler Build oder ein privates Repository funktioniert nicht. |
+| `scripts/install.sh` bricht wegen nicht unterstützter Kryptografie ab | Stelle OpenSSL mit Ed25519-Unterstützung, zum Beispiel OpenSSL 3, in den PATH. |

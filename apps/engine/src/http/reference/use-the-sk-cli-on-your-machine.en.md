@@ -1,21 +1,25 @@
 ---
 slug: use-the-sk-cli-on-your-machine
-summary: Install the sk CLI from your engine and work with it in the terminal.
+summary: Get the sk CLI from your engine and work in the terminal.
 section: work
 order: 1
 audience: public
 ---
 ## Use the sk CLI on your machine
 
-Your engine serves the CLI itself. There is no npm package.
-You install `sk` once, sign in, and then work with workflows, runs and connectors in the terminal.
+This chapter is for anyone who prefers the terminal or scripts to the Cockpit.
+You install the `sk` command line, sign in and keep it up to date.
+Afterwards you write workflows, connectors and knowledge as files and start runs from the terminal.
+
+You get the `sk` command line straight from your engine. With it you draft, change and run workflows as files; `sk agent init` adds SubKit to Claude Code and Codex.
+There is no npm package.
 
 ### What you need
 
 - The address of your engine, without a path. The examples use `http://localhost:3000`.
   For SubKit Cloud, see "Use SubKit Cloud".
 - Bash and curl.
-- For an API key on a self-hosted engine: access to the engine host.
+- To sign in with an API key on a self-hosted engine: access to the engine host.
 
 ### Install and sign in
 
@@ -31,10 +35,10 @@ You install `sk` once, sign in, and then work with workflows, runs and connector
    sk login --engine-url http://localhost:3000
    ```
 
-   Your browser opens. After you sign in, `sk` prints `sk: signed in as …` and saves the profile.
-3. Run `sk` to start. `sk --help` lists every command.
+   Your browser opens. After you sign in, `sk` prints `sk: signed in as …` and saves the connection as a profile.
+3. Run `sk`. Without a command it opens an interactive session; `sk --help` lists every command.
 
-The engine describes itself at `/openapi.json` and `/llms.txt`.
+The engine also describes itself: the HTTP API at `/openapi.json`, the documentation for AI clients at `/llms.txt`.
 
 ### Sign in with an API key
 
@@ -52,48 +56,56 @@ Use this for scripts, or for a self-hosted engine without an identity provider.
    sk login --engine-url http://localhost:3000 --api-key <key>
    ```
 
-   `sk` prints `sk: profile 'default' saved` and the engine health.
+   `sk` replies with `sk: profile 'default' saved` and the engine health.
 
-### Install from a public GitHub release
+### Work with several engines
 
-Use this to install a signed public release instead of the download from your engine.
-You need Bash, curl, and OpenSSL with Ed25519 support, for example OpenSSL 3 on your PATH.
+A profile is a saved sign-in to one engine. It lets you work with a test and a production engine, or with several workspaces, without signing in again.
+Profiles live in `~/.sk/config.json`.
 
-1. Check out the published public release and review it.
-2. In the checkout, run the installer:
+| Command | What it does |
+| --- | --- |
+| `sk login --engine-url <address> --profile <name>` | Adds another profile. |
+| `sk profile list` | Shows all profiles. |
+| `sk profile use <name>` | Switches the active profile. |
+| `sk status` | Shows the active profile and whether the engine is reachable. |
+| `sk profile delete <name>` | Deletes a profile. |
 
-   ```bash
-   bash scripts/install.sh
-   ```
+For a single command, add `--profile <name>` without switching the active profile.
 
-The script installs the matching CLI for Linux or macOS and creates the local `subkit` compatibility link.
-It puts `subkit.LICENSE` and `subkit.THIRD_PARTY_NOTICES.txt` beside the CLI.
-The release assets must be publicly downloadable. A local build or a private repository is not sufficient.
+### Update the CLI
+
+`sk update` installs the newest version, `sk update --check` only reports it.
+`sk` fetches the version from the engine of your active profile first and only then from the public releases. You need no GitHub access for this.
+Before replacing anything, `sk` verifies the signed checksums. If a file does not match, your current installation stays as it is.
+
+The previous version is kept. `sk update --rollback` restores it.
 
 ### What the installers check
 
 Each installer checks the files before it replaces an existing installation.
-Missing license assets, missing signatures or unsupported cryptography stop the installation.
+Missing license files, missing signatures or unsupported cryptography stop the installation.
 
 | Installer | What it checks | What it trusts |
 | --- | --- | --- |
-| `scripts/install.sh` | The signed checksum manifest, then the selected binary and both license assets | The pinned release public key |
-| `/install` from the engine | The binary, `LICENSE` and `THIRD_PARTY_NOTICES.txt` from the same engine bundle or an explicit mirror, against that source's checksum manifest | The engine or mirror you selected, not a release signature |
-| `sk update` | The signed checksum manifest of the release, then the binary and both license assets. It reads the version and files from the engine of your active profile and falls back to GitHub releases. It keeps the existing notices with their checksums for rollback. | The pinned release public key, whether the files come from your engine or from GitHub |
+| `/install` from the engine | The binary, `LICENSE` and `THIRD_PARTY_NOTICES.txt` against the checksum manifest of the engine or of an explicitly chosen mirror | The engine or mirror you chose, not a release signature |
+| `sk update` | The signed checksum manifest of the release, then the binary and both license files | The pinned public release key, whether the files come from your engine or from GitHub |
+| `scripts/install.sh` | The signed checksum manifest, then the binary and both license files | The pinned public release key |
 
-### Update the CLI
+### Install from a public release
 
-Run `sk update` to install the newest version. `sk update --check` only reports it.
-`sk` asks the engine of your active profile first, so a private repository or a missing GitHub token does not block the update. The engine serves the signed release checksums, and `sk` verifies them before it replaces the binary.
-Versions before 10.15.1 only ask GitHub. Install once again with `curl -fsSL <engine-url>/install | bash`; later updates then work without a token.
+Instead of your engine, you can also install `sk` from a signed public release.
+The public beta is in preparation. Packages and the guide follow once released.
 
-Older retained versions without notice metadata cannot rebuild missing historical license files.
-Their rollback still works as before.
+Once a release is published, check it out, review it and run `bash scripts/install.sh` in the checkout.
+For this you also need OpenSSL with Ed25519 support on your PATH, for example OpenSSL 3.
+The script installs the matching CLI for Linux or macOS and puts `subkit.LICENSE` and `subkit.THIRD_PARTY_NOTICES.txt` next to it.
+A local build or a private repository is not enough.
 
 ### Move your workspace to another engine
 
-A package carries your own workflows, connectors, connector templates, skills, schedules, knowledge sources and their files to another engine.
-Credentials, approvals, roles, categories, settings and run history stay behind.
+A package carries your own workflows, connectors, connector templates, skills, schedules, sources and their files to another engine.
+Credentials, approvals, roles, categories, settings and the history stay behind.
 To copy a whole self-hosted installation, make a backup instead, as described in "Run the engine".
 
 You need `package:export` on the source engine and `package:import` on the target engine. Both are administrator permissions.
@@ -111,7 +123,7 @@ You need `package:export` on the source engine and `package:import` on the targe
    sk packages export --out workspace.zip --profile a
    ```
 
-   `--category <categories>` exports one area only, for example `--category devops,cloud`. Everything the area depends on comes along: connectors, templates, sub-workflows and schedules.
+   `--category <categories>` exports one area only, for example `--category devops,cloud`. Whatever the area needs comes along: connectors, connector templates, sub-workflows and schedules.
    `--only <kinds>` exports only some kinds. `--json` prints the result as JSON.
 3. Import into engine B:
 
@@ -120,7 +132,7 @@ You need `package:export` on the source engine and `package:import` on the targe
    ```
 
    `sk` first shows the plan: each item is `create`, `update`, `unchanged` or `conflict`. Confirm it, or pass `--yes`.
-   If engine B changed after the plan, the import stops and changes nothing. Run it again.
+   If engine B changed after the plan, the import stops and changes nothing. Then run it again.
 4. Finish on engine B. Nothing runs or writes until you do:
    - Enter the credentials of each connector. The package contains none.
    - Activate the skills. They arrive as drafts.
@@ -142,5 +154,7 @@ A connector that an earlier package already brought stays `unchanged`, even afte
 | --- | --- |
 | `sk: browser login failed` | The browser sign-in did not complete. Try again, or follow "Sign in with an API key". |
 | `sk login` cannot reach the engine | Check the `--engine-url`. Give the address without a path. |
-| `scripts/install.sh` stops with a missing license asset or signature | Use a published public release. A local build or a private repository does not work. |
+| A command lands on the wrong engine | Check the active profile with `sk status` and switch with `sk profile use <name>`. |
+| `sk update` only asks GitHub or wants a GitHub token | Your CLI predates updating through the engine. Reinstall it once as in "Install and sign in". Updates then run through your engine. |
+| `scripts/install.sh` stops with a missing license file or signature | Use a published public release. A local build or a private repository does not work. |
 | `scripts/install.sh` stops because of unsupported cryptography | Put OpenSSL with Ed25519 support, for example OpenSSL 3, on your PATH. |
