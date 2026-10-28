@@ -90,6 +90,48 @@ Versionen vor 10.15.1 fragen nur GitHub. Installiere einmal neu mit `curl -fsSL 
 Ältere behaltene Versionen ohne Hinweis-Metadaten können fehlende historische Lizenzdateien nicht rekonstruieren.
 Das Rollback dieser Versionen funktioniert weiter wie bisher.
 
+### Den Arbeitsbereich auf eine andere Engine umziehen
+
+Ein Paket bringt deine eigenen Workflows, Konnektoren, Konnektor-Vorlagen, Skills, Zeitpläne, Knowledge Sources und ihre Dateien auf eine andere Engine.
+Zugangsdaten, Freigaben, Rollen, Kategorien, Einstellungen und der Laufverlauf bleiben zurück.
+Um eine ganze selbst betriebene Installation zu kopieren, mach stattdessen ein Backup wie in „Die Engine betreiben“ beschrieben.
+
+Du brauchst `package:export` auf der Quell-Engine und `package:import` auf der Ziel-Engine. Beides sind Administrationsrechte.
+
+1. Melde dich bei beiden Engines an, jeweils mit einem eigenen Profil:
+
+   ```bash
+   sk login --engine-url https://<engine-a> --profile a
+   sk login --engine-url https://<engine-b> --profile b
+   ```
+
+2. Exportiere aus Engine A:
+
+   ```bash
+   sk packages export --out workspace.zip --profile a
+   ```
+
+   `--only <kinds>` exportiert nur einige Arten. `--json` gibt das Ergebnis als JSON aus.
+3. Importiere in Engine B:
+
+   ```bash
+   sk packages import workspace.zip --profile b
+   ```
+
+   `sk` zeigt zuerst den Plan: Jeder Eintrag ist `create`, `update`, `unchanged` oder `conflict`. Bestätige ihn oder gib `--yes` mit.
+   Hat sich Engine B nach dem Plan geändert, bricht der Import ab und ändert nichts. Starte ihn erneut.
+4. Schließe auf Engine B ab. Bis dahin läuft und schreibt nichts:
+   - Hinterlege die Zugangsdaten jedes Konnektors. Das Paket enthält keine.
+   - Aktiviere die Skills. Sie kommen als Entwürfe an.
+   - Bestätige das Wissen in der Prüfung im Cockpit. Es kommt als Vorschlag an und wird nie automatisch übernommen.
+   - Prüfe die Workflows und erteile ihre Freigaben. Sie kommen als inaktive Entwürfe an.
+   - Setze die Zeitpläne fort. Sie kommen pausiert an.
+   - Starte einen Testlauf.
+
+Importierst du dasselbe Paket erneut, ist jeder Eintrag `unchanged`.
+Einen Eintrag, den du auf Engine B geändert hast, zeigt der Import als `conflict` und überschreibt ihn nie.
+`sk packages installs` listet frühere Importe.
+
 ### Wenn etwas nicht klappt
 
 | Was du siehst | Was du tust |

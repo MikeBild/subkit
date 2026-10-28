@@ -6,6 +6,8 @@ const ADMIN_ONLY_PERMISSIONS: ReadonlySet<string> = new Set([
   "discovery:approve",
   "connector:promote",
   "system:restart",
+  "package:export",
+  "package:import",
 ]);
 
 const ADMIN_ONLY_PREFIXES: readonly string[] = ["rbac:"];

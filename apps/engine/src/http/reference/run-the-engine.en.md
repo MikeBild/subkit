@@ -87,6 +87,9 @@ and ship the browser licenses. This path is not part of the release checks.
 
 ### Backup and recovery
 
+A backup copies the whole installation and restores it with the same image.
+To move only a workspace's own workflows, connectors, skills and knowledge to another engine, export a package instead, as described in "Use the sk CLI on your machine".
+
 Use a maintenance window for a consistent backup. These steps apply to the bundled
 PostgreSQL and object store; external services need their own recovery procedure.
 Run commands from the installation directory with its original Compose project name.

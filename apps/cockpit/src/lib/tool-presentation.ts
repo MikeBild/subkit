@@ -14,6 +14,14 @@ const BACKGROUND_TOOLS: Record<string, BackgroundWords> = {
     active: "tool.background.exportDiagnosticContext.active",
     past: "tool.background.exportDiagnosticContext.past",
   },
+  export_tenant_package: {
+    active: "tool.background.exportTenantPackage.active",
+    past: "tool.background.exportTenantPackage.past",
+  },
+  preview_package_import: {
+    active: "tool.background.previewPackageImport.active",
+    past: "tool.background.previewPackageImport.past",
+  },
   inspect_playbook: {
     active: "tool.background.inspectPlaybook.active",
     past: "tool.background.inspectPlaybook.past",
@@ -150,6 +158,7 @@ const ACTION_TOOLS: Record<string, TranslationKey> = {
   update_workflow: "tool.name.updateWorkflow",
   delete_workflow: "tool.name.deleteWorkflow",
   restore_workflow_version: "tool.name.restoreWorkflowVersion",
+  apply_package_import: "tool.name.applyPackageImport",
   start_workflow_from_recipe: "tool.name.startWorkflowFromRecipe",
   approve_patch_candidate: "tool.name.approvePatchCandidate",
   dry_run_patch_candidate: "tool.name.dryRunPatchCandidate",

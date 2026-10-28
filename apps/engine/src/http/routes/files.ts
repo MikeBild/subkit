@@ -54,6 +54,7 @@ import type { ScanResult } from "../../files/scanner.ts";
 import { getScanner, SCANNER_TIMEOUT_SECONDS } from "../../files/scanner.ts";
 import { fileReference, insertFileRow, reviveFileRow } from "../../files/slug.ts";
 import { workflowUsageCounts } from "../../files/usage.ts";
+import { PACKAGE_CONTENT_TYPE } from "../../identity/index.ts";
 import { logger } from "../../logging/index.ts";
 import {
   observeFileUploadDuration,
@@ -1072,6 +1073,9 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     try {
       row = await requireFileForTenant(db, principal.tenant_id, parseFileIdOrThrow(id));
     } catch {
+      return c.json({ code: "not_found", message: "file not found" }, 404);
+    }
+    if (row.content_type === PACKAGE_CONTENT_TYPE) {
       return c.json({ code: "not_found", message: "file not found" }, 404);
     }
     const key = storageKey(row.storage_uri);

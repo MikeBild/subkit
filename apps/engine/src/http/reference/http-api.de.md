@@ -181,6 +181,21 @@ Beim Speichern eines Workflows (`POST /v1/workflows`, `PUT /v1/workflows/{id}`) 
 `state` ist `eligible`, wenn ein Mensch wiederkehrende Läufe freigeben kann, `repair_required`, wenn keine Freigabe die genannten Schritte abdecken kann, bevor sie geändert sind, oder `verification_unavailable`.
 Jeder Eintrag in `issues` nennt `step_id` und `code`; `repair_guidance` sagt, wie du den Schritt änderst. Ein pausierter Zeitplan bekommt kein Urteil.
 
+### Ein Paket exportieren und importieren
+
+Ein Paket bringt die eigenen Ressourcen deines Arbeitsbereichs auf eine andere Engine. Die Schritte nach dem Import stehen in „Die sk-CLI auf deinem Rechner verwenden“.
+Der Export braucht `package:export`, der Import `package:import`.
+
+| Route | Macht |
+| --- | --- |
+| `POST /v1/packages/export` | Erstellt das Paket und antwortet mit seiner `file_id`. |
+| `GET /v1/packages/archives/{file_id}` | Lädt das Paket als ZIP-Datei herunter. |
+| `POST /v1/packages/import/preview` | Nimmt die ZIP-Datei als Multipart-Feld `archive` oder `{"archive_file_id": "<file-id>"}`. Antwortet mit einem Plan pro Eintrag und einem `plan_digest`. Ändert nichts. |
+| `POST /v1/packages/import/apply` | Nimmt `{"archive_file_id": "<file-id>", "expected_plan_digest": "<plan-digest>"}` und wendet den Plan an. |
+| `GET /v1/packages/installs`, `GET /v1/packages/installs/{id}` | Listet frühere Importe. |
+
+Hat sich das Ziel nach der Vorschau geändert, antwortet apply mit `409`. Starte die Vorschau erneut.
+
 ### Seitenweise lesen
 
 Listen liefern jeweils eine Seite. `total` zählt alle Treffer.

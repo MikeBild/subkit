@@ -110,6 +110,7 @@ export interface CreateSkillParams {
   actor_id?: string | null;
   actor_type?: AuditActorType;
   conventions?: SkillConventionsWrite;
+  slug?: string;
 }
 
 export async function createSkill(p: CreateSkillParams, exec?: Executor): Promise<Skill> {
@@ -128,6 +129,7 @@ export async function createSkill(p: CreateSkillParams, exec?: Executor): Promis
       .insert(skills)
       .values({
         tenant_id: p.tenant_id,
+        ...(p.slug !== undefined ? { slug: p.slug } : {}),
         scope: p.input.scope,
         connector_id: p.input.connector_id ?? null,
         workflow_id: p.input.workflow_id ?? null,

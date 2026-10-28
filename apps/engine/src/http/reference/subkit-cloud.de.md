@@ -131,7 +131,8 @@ Einige Einstellungen verwaltet aber der Betreiber, nicht du.
 - **API-Schlüssel nur für Werkzeuge.** API-Schlüssel funktionieren weiter für die sk-CLI, den Web Clipper,
   die HTTP-API (Bearer) und MCP-Clients mit Schlüssel. Die Browser-Anmeldung mit einem API-Schlüssel
   gibt es nur bei selbst betriebenen Installationen ohne Anmeldeanbieter.
-- **Noch kein Datenexport.** Ein Export der Daten eines Arbeitsbereichs kommt später.
+- **Export als Paket.** Du kannst deine eigenen Workflows, Konnektoren, Skills, Zeitpläne, Knowledge Sources und Dateien als Paket exportieren und in eine andere Engine importieren.
+  Zugangsdaten, Freigaben und der Laufverlauf sind nicht enthalten. Siehe „Die sk-CLI auf deinem Rechner verwenden“.
 
 ### Limits und ihre Meldungen
 

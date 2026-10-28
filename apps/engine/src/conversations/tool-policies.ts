@@ -52,6 +52,7 @@ const AUTO_PREPARATION_WRITES: ReadonlyMap<string, PolicyCategory> = new Map([
   ["create_knowledge_source", "tenant_write"],
   ["analyze_knowledge_source", "tenant_write"],
   ["export_diagnostic_context", "tenant_write"],
+  ["export_tenant_package", "tenant_write"],
 ]);
 
 export type PermissionMode = "auto" | "ask" | "plan" | "yolo";
@@ -409,6 +410,12 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   inspect_workflow_draft: { defaultMode: "no_confirm" },
   inspect_authoring_context: { defaultMode: "no_confirm" },
   export_diagnostic_context: { defaultMode: "no_confirm" },
+  export_tenant_package: { defaultMode: "no_confirm" },
+  apply_package_import: {
+    defaultMode: "confirm_before_execution",
+    computeDangerFromInput: () => true,
+    buildPendingOutput: (input) => pickFields(input, ["file_id", "expected_plan_digest"]),
+  },
   dry_run_step: { defaultMode: "no_confirm" },
   dry_run_transform: { defaultMode: "no_confirm" },
   dry_run_workflow: {

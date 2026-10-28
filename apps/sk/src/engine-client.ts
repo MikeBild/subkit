@@ -28,6 +28,7 @@ import { identityMethods } from "./engine-client/identity.ts";
 import { intakeMethods } from "./engine-client/intake.ts";
 import { knowledgeMethods } from "./engine-client/knowledge.ts";
 import { oauthMethods } from "./engine-client/oauth.ts";
+import { packagesMethods } from "./engine-client/packages.ts";
 import { rbacMethods } from "./engine-client/rbac.ts";
 import { selfHealingMethods } from "./engine-client/self-healing.ts";
 import { settingsMethods } from "./engine-client/settings.ts";
@@ -88,6 +89,15 @@ export type {
   UserInviteWire,
 } from "./engine-client/identity.ts";
 export type { IntakeItem } from "./engine-client/intake.ts";
+export type {
+  PackageApplyResult,
+  PackageExportResult,
+  PackageInstall,
+  PackageInstallDetail,
+  PackageItemKind,
+  PackagePlan,
+  PackagePreviewResult,
+} from "./engine-client/packages.ts";
 export type {
   AttentionItem,
   DigestAttention,
@@ -593,6 +603,7 @@ export interface EngineClient
     ApiMethods<typeof intakeMethods>,
     ApiMethods<typeof knowledgeMethods>,
     ApiMethods<typeof oauthMethods>,
+    ApiMethods<typeof packagesMethods>,
     ApiMethods<typeof rbacMethods>,
     ApiMethods<typeof selfHealingMethods>,
     ApiMethods<typeof settingsMethods>,
@@ -617,6 +628,7 @@ Object.assign(
   intakeMethods,
   knowledgeMethods,
   oauthMethods,
+  packagesMethods,
   rbacMethods,
   selfHealingMethods,
   settingsMethods,

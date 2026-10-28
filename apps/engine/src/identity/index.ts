@@ -7,6 +7,7 @@ export * from "./membership-invite.ts";
 export * from "./oauth-connections.ts";
 export * from "./oidc-discovery.ts";
 export * from "./owned-tenant.ts";
+export * from "./portability/index.ts";
 export * from "./provider-identities.ts";
 export * from "./provisioning.ts";
 export * from "./recovery.ts";

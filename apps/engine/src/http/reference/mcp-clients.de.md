@@ -128,6 +128,8 @@ Der Scope bestimmt, welche Tools der Client sieht. Er erweitert nie deine Rechte
 - **Ausführen** startet einen gespeicherten Workflow, etwa mit `run_workflow` oder einem `wf_<slug>`-Tool.
   Ein kurzer Lauf antwortet sofort. Ein langer Lauf antwortet mit einer `execution_id`, die der Client mit `get_execution` verfolgt.
 - **Schreiben** verändert etwas: eine E-Mail senden, Daten ändern, den Arbeitsbereich ändern.
+- **Pakete** bringen die eigenen Ressourcen deines Arbeitsbereichs mit `export_tenant_package`, `preview_package_import` und `apply_package_import` auf eine andere Engine.
+  Sie fragen vorher nach einer Bestätigung. Ein Import legt nur Entwürfe und Vorschläge an.
 
 Schreiben braucht immer einen Menschen. Es gibt zwei Prüfungen:
 

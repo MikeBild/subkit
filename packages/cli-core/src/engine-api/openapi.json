@@ -27339,6 +27339,650 @@
           "other_links"
         ]
       },
+      "PackageExportResult": {
+        "type": "object",
+        "properties": {
+          "file_id": {
+            "$ref": "#/components/schemas/FileId"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "size_bytes": {
+            "type": "integer"
+          },
+          "content_digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "items_summary": {
+            "type": "object",
+            "properties": {
+              "connector_template": {
+                "type": "integer"
+              },
+              "connector": {
+                "type": "integer"
+              },
+              "file": {
+                "type": "integer"
+              },
+              "skill": {
+                "type": "integer"
+              },
+              "workflow": {
+                "type": "integer"
+              },
+              "schedule": {
+                "type": "integer"
+              },
+              "knowledge": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "connector_template",
+              "connector",
+              "file",
+              "skill",
+              "workflow",
+              "schedule",
+              "knowledge"
+            ]
+          },
+          "requires": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackageRequirement"
+            }
+          }
+        },
+        "required": [
+          "file_id",
+          "filename",
+          "sha256",
+          "size_bytes",
+          "content_digest",
+          "items_summary",
+          "requires"
+        ]
+      },
+      "PackageRequirement": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "credential"
+                ]
+              },
+              "connector": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*@(dev|prod)$"
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "kind",
+              "connector",
+              "fields"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "approval"
+                ]
+              },
+              "workflow": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+              }
+            },
+            "required": [
+              "kind",
+              "workflow"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "schedule_resume"
+                ]
+              },
+              "workflow": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+              }
+            },
+            "required": [
+              "kind",
+              "workflow"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "knowledge_review"
+                ]
+              },
+              "knowledge": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+              }
+            },
+            "required": [
+              "kind",
+              "knowledge"
+            ]
+          }
+        ]
+      },
+      "PackageExportRequest": {
+        "type": "object",
+        "properties": {
+          "kinds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "connector_template",
+                "connector",
+                "file",
+                "skill",
+                "workflow",
+                "schedule",
+                "knowledge"
+              ]
+            },
+            "minItems": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "PackagePreviewResult": {
+        "type": "object",
+        "properties": {
+          "archive_file_id": {
+            "$ref": "#/components/schemas/FileId"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/PackagePlan"
+          }
+        },
+        "required": [
+          "archive_file_id",
+          "plan"
+        ]
+      },
+      "PackagePlan": {
+        "type": "object",
+        "properties": {
+          "package_id": {
+            "type": "string"
+          },
+          "package_version": {
+            "type": "string"
+          },
+          "content_digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "plan_digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackagePlanItem"
+            }
+          },
+          "requires": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackageRequirement"
+            }
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "create": {
+                "type": "integer"
+              },
+              "update": {
+                "type": "integer"
+              },
+              "unchanged": {
+                "type": "integer"
+              },
+              "conflict": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "create",
+              "update",
+              "unchanged",
+              "conflict"
+            ]
+          }
+        },
+        "required": [
+          "package_id",
+          "package_version",
+          "content_digest",
+          "plan_digest",
+          "items",
+          "requires",
+          "summary"
+        ]
+      },
+      "PackagePlanItem": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "connector_template",
+              "connector",
+              "file",
+              "skill",
+              "workflow",
+              "schedule",
+              "knowledge"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "create",
+              "update",
+              "unchanged",
+              "conflict"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "exists_unmanaged",
+              "local_changes",
+              "reserved",
+              "manual_update_required",
+              "missing_dependency",
+              "knowledge_changed"
+            ]
+          },
+          "missing": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "local_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "key",
+          "action",
+          "local_id"
+        ]
+      },
+      "PackagePreviewRequest": {
+        "type": "object",
+        "properties": {
+          "archive_file_id": {
+            "$ref": "#/components/schemas/FileId"
+          }
+        },
+        "required": [
+          "archive_file_id"
+        ],
+        "additionalProperties": false
+      },
+      "PackageApplyResult": {
+        "type": "object",
+        "properties": {
+          "install_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "plan_digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackageAppliedItem"
+            }
+          },
+          "requires": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackageRequirement"
+            }
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "create": {
+                "type": "integer"
+              },
+              "update": {
+                "type": "integer"
+              },
+              "unchanged": {
+                "type": "integer"
+              },
+              "conflict": {
+                "type": "integer"
+              },
+              "failed": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "create",
+              "update",
+              "unchanged",
+              "conflict",
+              "failed"
+            ]
+          }
+        },
+        "required": [
+          "install_id",
+          "plan_digest",
+          "items",
+          "requires",
+          "summary"
+        ]
+      },
+      "PackageAppliedItem": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "connector_template",
+              "connector",
+              "file",
+              "skill",
+              "workflow",
+              "schedule",
+              "knowledge"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "create",
+              "update",
+              "unchanged",
+              "conflict",
+              "failed"
+            ]
+          },
+          "local_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "review": {
+            "type": "object",
+            "properties": {
+              "intake_item_id": {
+                "type": "string"
+              },
+              "proposal_id": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "intake_item_id",
+              "proposal_id",
+              "path"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "key",
+          "action",
+          "local_id"
+        ]
+      },
+      "PackageApplyRequest": {
+        "type": "object",
+        "properties": {
+          "archive_file_id": {
+            "$ref": "#/components/schemas/FileId"
+          },
+          "expected_plan_digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "archive_file_id",
+          "expected_plan_digest"
+        ],
+        "additionalProperties": false
+      },
+      "PackageInstallList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackageInstall"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "PackageInstall": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "package_id": {
+            "type": "string"
+          },
+          "package_version": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          },
+          "content_digest": {
+            "type": "string"
+          },
+          "archive_file_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "installed_by_type": {
+            "type": "string"
+          },
+          "installed_by_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "summary": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "package_id",
+          "package_version",
+          "format",
+          "content_digest",
+          "archive_file_id",
+          "source",
+          "installed_by_type",
+          "installed_by_id",
+          "summary",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "PackageInstallDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PackageInstall"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PackageInstallItem"
+                }
+              }
+            },
+            "required": [
+              "items"
+            ]
+          }
+        ]
+      },
+      "PackageInstallItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "item_key": {
+            "type": "string"
+          },
+          "local_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "imported_hash": {
+            "type": "string"
+          },
+          "local_hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string"
+          },
+          "intake_proposal_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "item_key",
+          "local_id",
+          "imported_hash",
+          "local_hash",
+          "state",
+          "intake_proposal_id",
+          "created_at",
+          "updated_at"
+        ]
+      },
       "McpPromptsResponse": {
         "type": "object",
         "properties": {
@@ -56181,6 +56825,346 @@
           },
           "404": {
             "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/packages/export": {
+      "post": {
+        "tags": [
+          "packages"
+        ],
+        "summary": "Export the tenant as a package archive",
+        "description": "Collects workflows, connectors without secrets, skills, files, schedules and knowledge into a stored package archive. Download it with GET /v1/packages/archives/{file_id}.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackageExportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Package archive stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageExportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Package exceeds the size limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/packages/archives/{file_id}": {
+      "get": {
+        "tags": [
+          "packages"
+        ],
+        "summary": "Download a stored package archive",
+        "description": "The x-subkit-sha256 response header verifies the archive bytes.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "$ref": "#/components/schemas/FileId"
+            },
+            "required": true,
+            "name": "file_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Package archive",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid file id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Package archive not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/packages/import/preview": {
+      "post": {
+        "tags": [
+          "packages"
+        ],
+        "summary": "Preview a package import",
+        "description": "Upload an archive as multipart field `archive`, or reference a stored archive by archive_file_id. Returns the stored archive id and the plan to confirm with POST /v1/packages/import/apply.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackagePreviewRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "archive"
+                ],
+                "properties": {
+                  "archive": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Package archive"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Import plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackagePreviewResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid archive or request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Package archive not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Archive exceeds the size limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/packages/import/apply": {
+      "post": {
+        "tags": [
+          "packages"
+        ],
+        "summary": "Apply a previewed package import",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackageApplyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Import result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageApplyResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid archive or request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Package archive not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The plan changed since preview; details.plan holds the current plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Archive exceeds the size limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/packages/installs": {
+      "get": {
+        "tags": [
+          "packages"
+        ],
+        "summary": "List package installs",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Package installs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageInstallList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/packages/installs/{id}": {
+      "get": {
+        "tags": [
+          "packages"
+        ],
+        "summary": "Get one package install with its items",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Package install",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageInstallDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Package install not found",
             "content": {
               "application/json": {
                 "schema": {

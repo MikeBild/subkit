@@ -13,6 +13,8 @@ const ROLE_TIER: Record<string, number> = {
 const PERM_TIER: Record<string, number> = {
   "audit:read": 4,
   "system:restart": 4,
+  "package:export": 4,
+  "package:import": 4,
   "rbac:read": 4,
   "api_key:read": 4,
   "portal_token:read": 4,

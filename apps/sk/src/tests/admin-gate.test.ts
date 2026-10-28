@@ -14,6 +14,8 @@ describe("isAdminFromPermissions", () => {
     expect(isAdminFromPermissions(["discovery:approve"])).toBe(true);
     expect(isAdminFromPermissions(["connector:promote"])).toBe(true);
     expect(isAdminFromPermissions(["system:restart"])).toBe(true);
+    expect(isAdminFromPermissions(["package:export"])).toBe(true);
+    expect(isAdminFromPermissions(["package:import"])).toBe(true);
   });
 
   test("credential:read stays a member-scoped permission and does NOT light up the Admin tab", () => {

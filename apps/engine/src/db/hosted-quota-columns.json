@@ -5838,6 +5838,143 @@
     "tenant": false
   },
   {
+    "table": "package_install_items",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "tenant_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "install_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "kind",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "item_key",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "local_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "imported_hash",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "local_hash",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "state",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "intake_proposal_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      }
+    ],
+    "tenant": true
+  },
+  {
+    "table": "package_installs",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "tenant_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "package_id",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "package_version",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "format",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "content_digest",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "archive_file_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "source",
+        "type": "jsonb",
+        "enum": null
+      },
+      {
+        "name": "installed_by_type",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "installed_by_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "summary",
+        "type": "jsonb",
+        "enum": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      }
+    ],
+    "tenant": true
+  },
+  {
     "table": "patch_candidates",
     "columns": [
       {

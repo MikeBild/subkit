@@ -33,6 +33,7 @@ import { joinCommand } from "./commands/join.ts";
 import { knowledgeSourcesCommand } from "./commands/knowledge-sources.ts";
 import { logsCommand } from "./commands/logs.ts";
 import { notificationsCommand } from "./commands/notifications.ts";
+import { packagesCommand } from "./commands/packages.ts";
 import { patchCandidatesCommand } from "./commands/patch-candidates.ts";
 import { portalTokensCommand } from "./commands/portal-tokens.ts";
 import { profileCommand } from "./commands/profile.ts";
@@ -460,6 +461,7 @@ const mainCommand = defineCommand({
     subscriptions: subscriptionsCommand,
     events: eventsCommand,
     notifications: notificationsCommand,
+    packages: packagesCommand,
     diagnostics: diagnosticsCommand,
     stats: statsCommand,
     init: initCommand,
@@ -631,6 +633,7 @@ export const SUB_COMMANDS: Record<string, SubEntry> = {
   subscriptions: { command: subscriptionsCommand, requires: "subscription:read" },
   events: { command: eventsCommand, requires: "audit:read" },
   notifications: { command: notificationsCommand, requires: "notification:read" },
+  packages: { command: packagesCommand, requires: "package:import" },
   diagnostics: { command: diagnosticsCommand, requires: "audit:read" },
   stats: { command: statsCommand, requires: "stats:read" },
   init: { command: initCommand },

@@ -116,6 +116,7 @@ import { registerOAuthClientAdminRoutes } from "./routes/oauth-clients.ts";
 import { registerAttentionRoute } from "./routes/operator/attention.ts";
 import { registerOperatorRoutes } from "./routes/operator/health-digest.ts";
 import { registerOperationalOverviewRoute } from "./routes/operator/operational-overview.ts";
+import { registerPackageRoutes } from "./routes/packages.ts";
 import { registerPatchCandidateRoutes } from "./routes/patch-candidates.ts";
 import { registerProductStatusRoutes } from "./routes/product-status.ts";
 import { registerRbacRoutes } from "./routes/rbac/index.ts";
@@ -359,6 +360,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerConversationAttachmentRoutes(app);
   registerFileRoutes(app);
   registerFileManageRoutes(app);
+  registerPackageRoutes(app);
   registerMcpCatalogRoutes(app);
   registerAiGenerateRoute(app);
   registerAiExtractRoute(app);

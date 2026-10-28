@@ -89,6 +89,9 @@ es und liefere die Browser-Lizenzen mit. Dieser Weg ist nicht Teil der Release-P
 
 ### Backup und Wiederherstellung
 
+Ein Backup kopiert die ganze Installation und stellt sie mit demselben Image wieder her.
+Um nur die eigenen Workflows, Konnektoren, Skills und das Wissen eines Arbeitsbereichs auf eine andere Engine zu bringen, exportiere stattdessen ein Paket wie in „Die sk-CLI auf deinem Rechner verwenden“ beschrieben.
+
 Nutze ein Wartungsfenster für ein konsistentes Backup. Diese Schritte gelten für die
 mitgelieferte PostgreSQL und den Objektspeicher; externe Dienste benötigen ein eigenes
 Wiederherstellungsverfahren. Führe Befehle im Installationsverzeichnis mit dem ursprünglichen

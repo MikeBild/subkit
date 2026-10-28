@@ -35,6 +35,7 @@ export * from "./mcp_oauth.ts";
 export * from "./mcp_oauth_states.ts";
 export * from "./mcp_tasks.ts";
 export * from "./notifications.ts";
+export * from "./packages.ts";
 export * from "./rbac.ts";
 export * from "./request_hooks.ts";
 export * from "./runtime_config.ts";

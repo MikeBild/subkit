@@ -144,6 +144,7 @@ const RESOURCE_KEYS: Record<string, TranslationKey> = {
   user: "people.section.people",
   settings: "nav.settings",
   connection: "permission.resource.connections",
+  package: "permission.resource.packages",
   schedule: "permission.resource.schedules",
   subscription: "permission.resource.subscriptions",
   inbound_hook: "permission.resource.inboundHooks",

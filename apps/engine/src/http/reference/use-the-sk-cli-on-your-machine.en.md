@@ -90,6 +90,48 @@ Versions before 10.15.1 only ask GitHub. Install once again with `curl -fsSL <en
 Older retained versions without notice metadata cannot rebuild missing historical license files.
 Their rollback still works as before.
 
+### Move your workspace to another engine
+
+A package carries your own workflows, connectors, connector templates, skills, schedules, knowledge sources and their files to another engine.
+Credentials, approvals, roles, categories, settings and run history stay behind.
+To copy a whole self-hosted installation, make a backup instead, as described in "Run the engine".
+
+You need `package:export` on the source engine and `package:import` on the target engine. Both are administrator permissions.
+
+1. Sign in to both engines, each with its own profile:
+
+   ```bash
+   sk login --engine-url https://<engine-a> --profile a
+   sk login --engine-url https://<engine-b> --profile b
+   ```
+
+2. Export from engine A:
+
+   ```bash
+   sk packages export --out workspace.zip --profile a
+   ```
+
+   `--only <kinds>` exports only some kinds. `--json` prints the result as JSON.
+3. Import into engine B:
+
+   ```bash
+   sk packages import workspace.zip --profile b
+   ```
+
+   `sk` first shows the plan: each item is `create`, `update`, `unchanged` or `conflict`. Confirm it, or pass `--yes`.
+   If engine B changed after the plan, the import stops and changes nothing. Run it again.
+4. Finish on engine B. Nothing runs or writes until you do:
+   - Enter the credentials of each connector. The package contains none.
+   - Activate the skills. They arrive as drafts.
+   - Confirm the knowledge in the Cockpit review. It arrives as a proposal and is never admitted automatically.
+   - Review the workflows and grant their approvals. They arrive as inactive drafts.
+   - Resume the schedules. They arrive paused.
+   - Start a test run.
+
+Importing the same package again shows every item as `unchanged`.
+An item you changed on engine B shows as `conflict` and is never overwritten.
+`sk packages installs` lists past imports.
+
 ### If something does not work
 
 | What you see | What to do |

@@ -131,7 +131,8 @@ Some settings are managed by the operator instead of by you.
 - **API keys for tools only.** API keys still work for the sk CLI, the Web Clipper, the HTTP API (Bearer)
   and MCP clients that use a key. Signing in to the browser with an API key exists only for
   self-hosted installations without an identity provider.
-- **No data export yet.** A workspace data export comes later.
+- **Export as a package.** You can export your own workflows, connectors, skills, schedules, knowledge sources and files as a package and import it into another engine.
+  Credentials, approvals and run history are not included. See "Use the sk CLI on your machine".
 
 ### Limits and their messages
 

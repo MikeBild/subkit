@@ -47,6 +47,11 @@ import { manageServicePackageSkillTool } from "./manage-service-package-skill.ts
 import { manageServicePackageWorkflowTool } from "./manage-service-package-workflow.ts";
 import { matchConnectorTemplateByUrlTool } from "./match-connector-template-by-url.ts";
 import { openWorkflowDraftTool } from "./open-workflow-draft.ts";
+import {
+  applyPackageImportTool,
+  exportTenantPackageTool,
+  previewPackageImportTool,
+} from "./package-portability.ts";
 import { inspectPlaybookTool, updatePlaybookTool } from "./playbook.ts";
 import { prepareServicePackageWorkflowTool } from "./prepare-service-package-workflow.ts";
 import { previewAttachmentTool } from "./preview-attachment.ts";
@@ -202,6 +207,9 @@ register(manageServicePackageSkillTool);
 register(manageServicePackageWorkflowTool);
 register(inspectAuthoringContextTool);
 register(exportDiagnosticContextTool);
+register(exportTenantPackageTool);
+register(previewPackageImportTool);
+register(applyPackageImportTool);
 register(inspectConnectorDraftTool);
 register(inspectWorkflowDraftTool);
 register(inspectWorkflowTool);

@@ -41,6 +41,7 @@ const PERMISSION_RESOURCE_KEYS: Readonly<Record<string, TranslationKey>> = {
   mcp_oauth_client: "permission.resource.mcpClients",
   metrics: "permission.resource.metrics",
   notification: "resource.inbox.title",
+  package: "permission.resource.packages",
   portal_token: "permission.resource.portalTokens",
   rbac: "permission.resource.rbac",
   self_healing: "resource.operations.title",

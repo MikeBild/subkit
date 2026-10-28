@@ -75,6 +75,7 @@ import {
   settingsViewFromUrl,
 } from "@/pages/settings-model";
 import { type AreaCard, SettingsAreaFrame, SettingsOverview } from "@/pages/settings-overview";
+import { PackagesSettings } from "@/pages/settings-packages";
 import {
   RESTART_STATUS_QUERY_KEY,
   SettingsRestartDialog,
@@ -562,17 +563,20 @@ function GuidedArea({ area, ctx }: { area: SettingAreaId; ctx: GuidedContext }) 
           <p className="text-sm text-muted-foreground">{t("settings.question.operations.hint")}</p>
         }
         after={
-          <section className="grid gap-3" data-testid="settings-branding">
-            <div className="grid gap-1">
-              <SectionHeading className="text-base font-semibold">
-                {t("settings.question.operations.branding")}
-              </SectionHeading>
-              <p className="text-sm text-muted-foreground">
-                {t("settings.question.operations.brandingLine")}
-              </p>
-            </div>
-            <BrandingSettings />
-          </section>
+          <>
+            <section className="grid gap-3" data-testid="settings-branding">
+              <div className="grid gap-1">
+                <SectionHeading className="text-base font-semibold">
+                  {t("settings.question.operations.branding")}
+                </SectionHeading>
+                <p className="text-sm text-muted-foreground">
+                  {t("settings.question.operations.brandingLine")}
+                </p>
+              </div>
+              <BrandingSettings />
+            </section>
+            <PackagesSettings />
+          </>
         }
       />
     );

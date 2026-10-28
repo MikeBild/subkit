@@ -52,6 +52,7 @@ const RELEVANT_READS: ReadonlySet<string> = new Set([
 
 const ALWAYS_AVAILABLE_CLEANUP: ReadonlySet<string> = new Set([
   "analyze_knowledge_source",
+  "apply_package_import",
   "create_knowledge_source",
   "create_schedule",
   "delete_connector",
@@ -59,6 +60,7 @@ const ALWAYS_AVAILABLE_CLEANUP: ReadonlySet<string> = new Set([
   "delete_schedule",
   "delete_subscription",
   "delete_workflow",
+  "export_tenant_package",
   "restore_workflow_version",
   "revoke_api_key",
   "revoke_portal_token",

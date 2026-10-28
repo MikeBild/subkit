@@ -128,6 +128,8 @@ The scope decides which tools the client sees. It never widens your permissions;
 - **Runs** start a saved workflow, for example with `run_workflow` or a `wf_<slug>` tool.
   A short run answers right away. A long run answers with an `execution_id`, which the client follows with `get_execution`.
 - **Writes** change something: send an email, change data, change the workspace.
+- **Packages** move your workspace's own resources to another engine with `export_tenant_package`, `preview_package_import` and `apply_package_import`.
+  They ask for confirmation first. An import creates only drafts and proposals.
 
 Writes always need a person. There are two checks:
 

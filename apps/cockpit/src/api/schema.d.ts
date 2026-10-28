@@ -17828,6 +17828,362 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/packages/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export the tenant as a package archive
+         * @description Collects workflows, connectors without secrets, skills, files, schedules and knowledge into a stored package archive. Download it with GET /v1/packages/archives/{file_id}.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["PackageExportRequest"];
+                };
+            };
+            responses: {
+                /** @description Package archive stored */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PackageExportResult"];
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Package exceeds the size limit */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/packages/archives/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a stored package archive
+         * @description The x-subkit-sha256 response header verifies the archive bytes.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    file_id: components["schemas"]["FileId"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Package archive */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/zip": string;
+                    };
+                };
+                /** @description Invalid file id */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Package archive not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/packages/import/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview a package import
+         * @description Upload an archive as multipart field `archive`, or reference a stored archive by archive_file_id. Returns the stored archive id and the plan to confirm with POST /v1/packages/import/apply.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["PackagePreviewRequest"];
+                    "multipart/form-data": {
+                        /**
+                         * Format: binary
+                         * @description Package archive
+                         */
+                        archive: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Import plan */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PackagePreviewResult"];
+                    };
+                };
+                /** @description Invalid archive or request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Package archive not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Archive exceeds the size limit */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/packages/import/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply a previewed package import */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PackageApplyRequest"];
+                };
+            };
+            responses: {
+                /** @description Import result */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PackageApplyResult"];
+                    };
+                };
+                /** @description Invalid archive or request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Package archive not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The plan changed since preview; details.plan holds the current plan */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Archive exceeds the size limit */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/packages/installs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List package installs */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Package installs */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PackageInstallList"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/packages/installs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one package install with its items */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Package install */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PackageInstallDetail"];
+                    };
+                };
+                /** @description Package install not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/mcp/prompts": {
         parameters: {
             query?: never;
@@ -28653,6 +29009,149 @@ export interface components {
                 id: string;
                 name: string | null;
             }[];
+        };
+        PackageExportResult: {
+            file_id: components["schemas"]["FileId"];
+            filename: string;
+            sha256: string;
+            size_bytes: number;
+            content_digest: string;
+            items_summary: {
+                connector_template: number;
+                connector: number;
+                file: number;
+                skill: number;
+                workflow: number;
+                schedule: number;
+                knowledge: number;
+            };
+            requires: components["schemas"]["PackageRequirement"][];
+        };
+        PackageRequirement: {
+            /** @enum {string} */
+            kind: "credential";
+            connector: string;
+            fields: string[];
+        } | {
+            /** @enum {string} */
+            kind: "approval";
+            workflow: string;
+        } | {
+            /** @enum {string} */
+            kind: "schedule_resume";
+            workflow: string;
+        } | {
+            /** @enum {string} */
+            kind: "knowledge_review";
+            knowledge: string;
+        };
+        PackageExportRequest: {
+            kinds?: ("connector_template" | "connector" | "file" | "skill" | "workflow" | "schedule" | "knowledge")[];
+        };
+        PackagePreviewResult: {
+            archive_file_id: components["schemas"]["FileId"];
+            plan: components["schemas"]["PackagePlan"];
+        };
+        PackagePlan: {
+            package_id: string;
+            package_version: string;
+            content_digest: string;
+            plan_digest: string;
+            items: components["schemas"]["PackagePlanItem"][];
+            requires: components["schemas"]["PackageRequirement"][];
+            summary: {
+                create: number;
+                update: number;
+                unchanged: number;
+                conflict: number;
+            };
+        };
+        PackagePlanItem: {
+            /** @enum {string} */
+            kind: "connector_template" | "connector" | "file" | "skill" | "workflow" | "schedule" | "knowledge";
+            key: string;
+            /** @enum {string} */
+            action: "create" | "update" | "unchanged" | "conflict";
+            /** @enum {string} */
+            reason?: "exists_unmanaged" | "local_changes" | "reserved" | "manual_update_required" | "missing_dependency" | "knowledge_changed";
+            missing?: string[];
+            local_id: string | null;
+        };
+        PackagePreviewRequest: {
+            archive_file_id: components["schemas"]["FileId"];
+        };
+        PackageApplyResult: {
+            /** Format: uuid */
+            install_id: string | null;
+            plan_digest: string;
+            items: components["schemas"]["PackageAppliedItem"][];
+            requires: components["schemas"]["PackageRequirement"][];
+            summary: {
+                create: number;
+                update: number;
+                unchanged: number;
+                conflict: number;
+                failed: number;
+            };
+        };
+        PackageAppliedItem: {
+            /** @enum {string} */
+            kind: "connector_template" | "connector" | "file" | "skill" | "workflow" | "schedule" | "knowledge";
+            key: string;
+            /** @enum {string} */
+            action: "create" | "update" | "unchanged" | "conflict" | "failed";
+            local_id: string | null;
+            errors?: string[];
+            review?: {
+                intake_item_id: string;
+                proposal_id: string;
+                path: string;
+            };
+        };
+        PackageApplyRequest: {
+            archive_file_id: components["schemas"]["FileId"];
+            expected_plan_digest: string;
+        };
+        PackageInstallList: {
+            items: components["schemas"]["PackageInstall"][];
+        };
+        PackageInstall: {
+            /** Format: uuid */
+            id: string;
+            package_id: string;
+            package_version: string;
+            format: string;
+            content_digest: string;
+            archive_file_id: components["schemas"]["FileId"] | null;
+            source: {
+                [key: string]: unknown;
+            };
+            installed_by_type: string;
+            /** Format: uuid */
+            installed_by_id: string | null;
+            summary: {
+                [key: string]: unknown;
+            };
+            created_at: string;
+            updated_at: string;
+        };
+        PackageInstallDetail: components["schemas"]["PackageInstall"] & {
+            items: components["schemas"]["PackageInstallItem"][];
+        };
+        PackageInstallItem: {
+            /** Format: uuid */
+            id: string;
+            kind: string;
+            item_key: string;
+            /** Format: uuid */
+            local_id: string | null;
+            imported_hash: string;
+            local_hash: string | null;
+            state: string;
+            /** Format: uuid */
+            intake_proposal_id: string | null;
+            created_at: string;
+            updated_at: string;
         };
         McpPromptsResponse: {
             items: components["schemas"]["McpPrompt"][];

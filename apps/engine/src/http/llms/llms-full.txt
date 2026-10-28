@@ -159,7 +159,8 @@ Some settings are managed by the operator instead of by you.
 - **API keys for tools only.** API keys still work for the sk CLI, the Web Clipper, the HTTP API (Bearer)
   and MCP clients that use a key. Signing in to the browser with an API key exists only for
   self-hosted installations without an identity provider.
-- **No data export yet.** A workspace data export comes later.
+- **Export as a package.** You can export your own workflows, connectors, skills, schedules, knowledge sources and files as a package and import it into another engine.
+  Credentials, approvals and run history are not included. See "Use the sk CLI on your machine".
 
 ### Limits and their messages
 
@@ -263,6 +264,9 @@ A derived image is yours to maintain: keep Playwright and the browser updated, s
 and ship the browser licenses. This path is not part of the release checks.
 
 ### Backup and recovery
+
+A backup copies the whole installation and restores it with the same image.
+To move only a workspace's own workflows, connectors, skills and knowledge to another engine, export a package instead, as described in "Use the sk CLI on your machine".
 
 Use a maintenance window for a consistent backup. These steps apply to the bundled
 PostgreSQL and object store; external services need their own recovery procedure.
@@ -533,6 +537,48 @@ Versions before 10.15.1 only ask GitHub. Install once again with `curl -fsSL <en
 Older retained versions without notice metadata cannot rebuild missing historical license files.
 Their rollback still works as before.
 
+### Move your workspace to another engine
+
+A package carries your own workflows, connectors, connector templates, skills, schedules, knowledge sources and their files to another engine.
+Credentials, approvals, roles, categories, settings and run history stay behind.
+To copy a whole self-hosted installation, make a backup instead, as described in "Run the engine".
+
+You need `package:export` on the source engine and `package:import` on the target engine. Both are administrator permissions.
+
+1. Sign in to both engines, each with its own profile:
+
+   ```bash
+   sk login --engine-url https://<engine-a> --profile a
+   sk login --engine-url https://<engine-b> --profile b
+   ```
+
+2. Export from engine A:
+
+   ```bash
+   sk packages export --out workspace.zip --profile a
+   ```
+
+   `--only <kinds>` exports only some kinds. `--json` prints the result as JSON.
+3. Import into engine B:
+
+   ```bash
+   sk packages import workspace.zip --profile b
+   ```
+
+   `sk` first shows the plan: each item is `create`, `update`, `unchanged` or `conflict`. Confirm it, or pass `--yes`.
+   If engine B changed after the plan, the import stops and changes nothing. Run it again.
+4. Finish on engine B. Nothing runs or writes until you do:
+   - Enter the credentials of each connector. The package contains none.
+   - Activate the skills. They arrive as drafts.
+   - Confirm the knowledge in the Cockpit review. It arrives as a proposal and is never admitted automatically.
+   - Review the workflows and grant their approvals. They arrive as inactive drafts.
+   - Resume the schedules. They arrive paused.
+   - Start a test run.
+
+Importing the same package again shows every item as `unchanged`.
+An item you changed on engine B shows as `conflict` and is never overwritten.
+`sk packages installs` lists past imports.
+
 ### If something does not work
 
 | What you see | What to do |
@@ -664,6 +710,8 @@ The scope decides which tools the client sees. It never widens your permissions;
 - **Runs** start a saved workflow, for example with `run_workflow` or a `wf_<slug>` tool.
   A short run answers right away. A long run answers with an `execution_id`, which the client follows with `get_execution`.
 - **Writes** change something: send an email, change data, change the workspace.
+- **Packages** move your workspace's own resources to another engine with `export_tenant_package`, `preview_package_import` and `apply_package_import`.
+  They ask for confirmation first. An import creates only drafts and proposals.
 
 Writes always need a person. There are two checks:
 
@@ -1264,6 +1312,21 @@ Without `--scopes`, the key gets the same scopes as your own access.
 Saving a workflow (`POST /v1/workflows`, `PUT /v1/workflows/{id}`) and creating or changing a schedule (`POST /v1/schedules`, `PUT /v1/schedules/{id}`) answer with `automation_readiness`: `{environment, workflow_version_id, state, issues, repair_guidance}`.
 `state` is `eligible` when a person can approve recurring runs, `repair_required` when no approval can cover the named steps until they change, or `verification_unavailable`.
 Each `issues` entry names a `step_id` and a `code`; `repair_guidance` says how to change that step. A paused schedule gets no verdict.
+
+### Export and import a package
+
+A package moves your workspace's own resources to another engine. The steps after the import are in "Use the sk CLI on your machine".
+Export needs `package:export`, import needs `package:import`.
+
+| Route | Does |
+| --- | --- |
+| `POST /v1/packages/export` | Creates the package and answers with its `file_id`. |
+| `GET /v1/packages/archives/{file_id}` | Downloads the package as a zip file. |
+| `POST /v1/packages/import/preview` | Takes the zip as multipart field `archive`, or `{"archive_file_id": "<file-id>"}`. Answers with a plan per item and a `plan_digest`. Changes nothing. |
+| `POST /v1/packages/import/apply` | Takes `{"archive_file_id": "<file-id>", "expected_plan_digest": "<plan-digest>"}` and applies the plan. |
+| `GET /v1/packages/installs`, `GET /v1/packages/installs/{id}` | Lists past imports. |
+
+If the target changed after the preview, apply answers `409`. Run the preview again.
 
 ### Page through lists
 
@@ -2682,6 +2745,7 @@ every API call.
 | `sk ls` | — | List cached conversation sessions for the active profile | — |
 | `sk mcp` | — | Run a stdio MCP server proxied to the engine | — |
 | `sk notifications` | `notification:read` | Manage notification channels, rules, deliveries, and the inbox | `channels`, `deliveries`, `inbox`, `rules` |
+| `sk packages` | `package:import` | Move this workspace to another engine: export a package archive, import one with a reviewed plan, list past imports | `export`, `import`, `installs` |
 | `sk patch-candidates` | `workflow:read` | Manage patch candidates | `approve`, `get`, `list`, `preview`, `reject` |
 | `sk portal-tokens` | `portal_token:read` | Manage portal tokens | `create`, `list`, `revoke` |
 | `sk profile` | — | Manage named profiles (environments) | `add`, `delete`, `list`, `show`, `use` |
@@ -3894,6 +3958,43 @@ Read and acknowledge queued notifications
 Manage notification rules
 
 _No arguments._
+
+
+### `sk packages`
+
+Move this workspace to another engine: export a package archive, import one with a reviewed plan, list past imports
+
+#### `sk packages export`
+
+Export this workspace as a package archive (workflows, connectors without credentials, templates, skills, schedules, knowledge, files)
+
+- `--out` (string, required) — Path of the archive to write
+- `--only` (string) — Comma-separated kinds to export (connector_template, connector, file, skill, workflow, schedule, knowledge)
+- `--json` — JSON output
+- `--profile` (string) — Profile name
+- `--engine-url` (string) — Engine base URL
+- `--api-key` (string) — API key
+
+#### `sk packages import`
+
+Import a package archive: shows the plan, asks for confirmation (--yes to skip), then applies exactly that plan
+
+- `<file>` (positional, required) — Package archive (.zip)
+- `--yes` — Apply without asking
+- `--json` — JSON output
+- `--profile` (string) — Profile name
+- `--engine-url` (string) — Engine base URL
+- `--api-key` (string) — API key
+
+#### `sk packages installs`
+
+List past package imports, or show one with its items
+
+- `<id>` (positional) — Install id
+- `--json` — JSON output
+- `--profile` (string) — Profile name
+- `--engine-url` (string) — Engine base URL
+- `--api-key` (string) — API key
 
 
 ### `sk patch-candidates`

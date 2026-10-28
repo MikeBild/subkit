@@ -47,6 +47,7 @@ export {
   type ResolvedConnectorTemplate,
   resolveConnectorTemplate,
 } from "./template-resolver.ts";
+export * from "./template-service.ts";
 export * from "./template-url-match.ts";
 export * from "./templates.ts";
 export * from "./types.ts";

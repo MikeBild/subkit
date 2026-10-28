@@ -22,6 +22,16 @@
     "resource_type": "workflow"
   },
   {
+    "name": "package:export",
+    "description": "Export the tenant as a package archive and download stored package archives",
+    "resource_type": "package"
+  },
+  {
+    "name": "package:import",
+    "description": "Preview, apply and list package imports into this tenant",
+    "resource_type": "package"
+  },
+  {
     "name": "workflow:restore",
     "description": "Restore a previous workflow version",
     "resource_type": "workflow"

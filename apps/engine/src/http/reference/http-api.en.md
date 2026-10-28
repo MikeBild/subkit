@@ -181,6 +181,21 @@ Saving a workflow (`POST /v1/workflows`, `PUT /v1/workflows/{id}`) and creating 
 `state` is `eligible` when a person can approve recurring runs, `repair_required` when no approval can cover the named steps until they change, or `verification_unavailable`.
 Each `issues` entry names a `step_id` and a `code`; `repair_guidance` says how to change that step. A paused schedule gets no verdict.
 
+### Export and import a package
+
+A package moves your workspace's own resources to another engine. The steps after the import are in "Use the sk CLI on your machine".
+Export needs `package:export`, import needs `package:import`.
+
+| Route | Does |
+| --- | --- |
+| `POST /v1/packages/export` | Creates the package and answers with its `file_id`. |
+| `GET /v1/packages/archives/{file_id}` | Downloads the package as a zip file. |
+| `POST /v1/packages/import/preview` | Takes the zip as multipart field `archive`, or `{"archive_file_id": "<file-id>"}`. Answers with a plan per item and a `plan_digest`. Changes nothing. |
+| `POST /v1/packages/import/apply` | Takes `{"archive_file_id": "<file-id>", "expected_plan_digest": "<plan-digest>"}` and applies the plan. |
+| `GET /v1/packages/installs`, `GET /v1/packages/installs/{id}` | Lists past imports. |
+
+If the target changed after the preview, apply answers `409`. Run the preview again.
+
 ### Page through lists
 
 Lists return one page at a time. `total` counts all matches.
