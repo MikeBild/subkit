@@ -106,6 +106,11 @@ describe("package portability tools", () => {
     expect(exportTenantPackageTool.inputSchema.safeParse({ kinds: ["secret"] }).success).toBe(
       false,
     );
+    expect(
+      exportTenantPackageTool.inputSchema.safeParse({ categories: ["devops", "cloud"] }).success,
+    ).toBe(true);
+    expect(exportTenantPackageTool.inputSchema.safeParse({ categories: [] }).success).toBe(false);
+    expect(exportTenantPackageTool.inputSchema.safeParse({ categories: [""] }).success).toBe(false);
     expect(applyPackageImportTool.inputSchema.safeParse({ file_id: "fid_x" }).success).toBe(false);
   });
 });

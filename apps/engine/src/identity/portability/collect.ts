@@ -72,10 +72,12 @@ export interface CollectedPackage {
   payloads: PackagePayload[];
   requires: PackageRequirement[];
   index: PackageIndex;
+  categories?: readonly string[];
 }
 
 export interface CollectOptions {
   kinds?: readonly PackageItemKind[] | undefined;
+  categories?: readonly string[] | undefined;
   include_bytes: boolean;
 }
 
@@ -500,9 +502,21 @@ export async function collectTenantPackage(
     );
   }
 
-  const selected = opts.kinds?.length
-    ? closure(payloads, deps, new Set(opts.kinds))
-    : new Set(payloads.map((p) => `${p.kind}:${p.key}`));
+  const kinds = opts.kinds?.length ? new Set(opts.kinds) : null;
+  const categories = opts.categories?.length ? [...new Set(opts.categories)].sort() : null;
+  const categorySet = categories ? new Set(categories) : null;
+  const selected =
+    kinds || categorySet
+      ? closure(
+          payloads,
+          deps,
+          payloads.filter(
+            (p) =>
+              (!kinds || kinds.has(p.kind)) &&
+              (!categorySet || categorySet.has(categoryOf(p) ?? "")),
+          ),
+        )
+      : new Set(payloads.map((p) => `${p.kind}:${p.key}`));
   const kept = sortPayloads(payloads.filter((p) => selected.has(`${p.kind}:${p.key}`)));
   const keptKeys = new Set(kept.map((p) => `${p.kind}:${p.key}`));
   const keptRequires = requires.filter((r) => {
@@ -511,22 +525,41 @@ export async function collectTenantPackage(
     if (r.kind === "schedule_resume") return keptKeys.has(`schedule:${r.workflow}`);
     return keptKeys.has(`knowledge:${r.knowledge}`);
   });
-  return { tenant_slug: tenant?.slug ?? null, payloads: kept, requires: keptRequires, index };
+  return {
+    tenant_slug: tenant?.slug ?? null,
+    payloads: kept,
+    requires: keptRequires,
+    index,
+    ...(categories ? { categories } : {}),
+  };
+}
+
+function categoryOf(item: PackagePayload): string | null {
+  const payload = item.payload as { category?: string | null };
+  return payload.category ?? null;
 }
 
 function closure(
   payloads: readonly PackagePayload[],
   deps: ReadonlyMap<string, Dependency[]>,
-  kinds: ReadonlySet<PackageItemKind>,
+  roots: readonly PackagePayload[],
 ): Set<string> {
   const available = new Set(payloads.map((p) => `${p.kind}:${p.key}`));
   const out = new Set<string>();
-  const queue = payloads.filter((p) => kinds.has(p.kind)).map((p) => `${p.kind}:${p.key}`);
-  while (queue.length > 0) {
-    const next = queue.pop();
-    if (!next || out.has(next) || !available.has(next)) continue;
-    out.add(next);
-    for (const dep of deps.get(next) ?? []) queue.push(`${dep.kind}:${dep.key}`);
+  const queue = roots.map((p) => `${p.kind}:${p.key}`);
+  const drain = () => {
+    while (queue.length > 0) {
+      const next = queue.pop();
+      if (!next || out.has(next) || !available.has(next)) continue;
+      out.add(next);
+      for (const dep of deps.get(next) ?? []) queue.push(`${dep.kind}:${dep.key}`);
+    }
+  };
+  drain();
+  for (const file of payloads) {
+    if (file.kind !== "file") continue;
+    const owners = deps.get(`file:${file.key}`) ?? [];
+    if (owners.some((dep) => out.has(`${dep.kind}:${dep.key}`))) out.add(`file:${file.key}`);
   }
   return out;
 }

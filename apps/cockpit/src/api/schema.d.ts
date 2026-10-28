@@ -29047,6 +29047,7 @@ export interface components {
         };
         PackageExportRequest: {
             kinds?: ("connector_template" | "connector" | "file" | "skill" | "workflow" | "schedule" | "knowledge")[];
+            categories?: string[];
         };
         PackagePreviewResult: {
             archive_file_id: components["schemas"]["FileId"];

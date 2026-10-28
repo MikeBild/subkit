@@ -62,7 +62,7 @@
       "flags": [],
       "positionals": ["sub"],
       "subcommands": {
-        "export": { "flags": ["out", "only", "json"], "positionals": [] },
+        "export": { "flags": ["out", "only", "category", "json"], "positionals": [] },
         "import": { "flags": ["yes", "json"], "positionals": ["file"] },
         "installs": { "flags": ["json"], "positionals": ["id"] }
       }

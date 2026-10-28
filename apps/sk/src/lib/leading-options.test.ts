@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { splitLeadingOptions } from "./leading-options.ts";
+import { profileOption, splitLeadingOptions } from "./leading-options.ts";
 
 const defs = {
   profile: { type: "string" },
@@ -46,5 +46,24 @@ describe("splitLeadingOptions", () => {
       command: "--",
       rest: ["settings"],
     });
+  });
+});
+
+describe("profileOption", () => {
+  test("reads a profile given after the command", () => {
+    expect(profileOption(["workflows", "list", "--profile", "cloud"])).toBe("cloud");
+  });
+
+  test("reads the inline form", () => {
+    expect(profileOption(["--profile=cloud", "connectors", "list"])).toBe("cloud");
+  });
+
+  test("ignores everything after the argument separator", () => {
+    expect(profileOption(["run", "x", "--", "--profile", "cloud"])).toBeUndefined();
+  });
+
+  test("returns nothing without a profile", () => {
+    expect(profileOption(["workflows", "list", "--json"])).toBeUndefined();
+    expect(profileOption(["workflows", "--profile"])).toBeUndefined();
   });
 });

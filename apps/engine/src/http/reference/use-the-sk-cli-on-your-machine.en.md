@@ -111,6 +111,7 @@ You need `package:export` on the source engine and `package:import` on the targe
    sk packages export --out workspace.zip --profile a
    ```
 
+   `--category <categories>` exports one area only, for example `--category devops,cloud`. Everything the area depends on comes along: connectors, templates, sub-workflows and schedules.
    `--only <kinds>` exports only some kinds. `--json` prints the result as JSON.
 3. Import into engine B:
 
@@ -131,6 +132,9 @@ You need `package:export` on the source engine and `package:import` on the targe
 Importing the same package again shows every item as `unchanged`.
 An item you changed on engine B shows as `conflict` and is never overwritten.
 `sk packages installs` lists past imports.
+
+You can move area by area: one package per category, each with its preview, setup and test run.
+A connector that an earlier package already brought stays `unchanged`, even after you stored its credentials on engine B.
 
 ### If something does not work
 

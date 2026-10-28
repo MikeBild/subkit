@@ -63,7 +63,7 @@ import {
 import { EngineClient } from "./engine-client.ts";
 import type { OutputFormat } from "./headless.ts";
 import { runHeadless } from "./headless.ts";
-import { splitLeadingOptions } from "./lib/leading-options.ts";
+import { profileOption, splitLeadingOptions } from "./lib/leading-options.ts";
 import { riskSummaryLine } from "./lib/operator-digest.ts";
 import { suggestCommand } from "./lib/suggest.ts";
 import { runCliOAuthLogin } from "./login-oauth.ts";
@@ -694,6 +694,8 @@ async function dispatch(): Promise<void> {
     rest,
   } = splitLeadingOptions(rawArgs, mainCommand.args as Record<string, { type?: string }>);
   const sub = first ? SUB_COMMANDS[first] : undefined;
+  const profile = profileOption(rawArgs);
+  if (profile) process.env.SK_PROFILE = profile;
   if (sub) {
     const separator = rest.indexOf("--");
     const subArgs =

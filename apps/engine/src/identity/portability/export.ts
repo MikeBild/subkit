@@ -60,7 +60,12 @@ export function buildPackageArchive(
   const manifest: PackageManifest = {
     format: PACKAGE_FORMAT,
     kind: "tenant-export",
-    package_id: `tenant-export:${tenantSlug ?? "tenant"}`,
+    package_id: [
+      `tenant-export:${tenantSlug ?? "tenant"}`,
+      ...(collected.categories?.length ? [collected.categories.join("+")] : []),
+    ]
+      .join(":")
+      .slice(0, 200),
     version: digest.slice(0, 16),
     source: {
       instance: source.instance,
@@ -107,6 +112,7 @@ export interface ExportTenantPackageParams {
   actor_id: string;
   request_source: string;
   kinds?: readonly PackageItemKind[] | undefined;
+  categories?: readonly string[] | undefined;
   source: PackageSource;
 }
 
@@ -142,6 +148,7 @@ export async function exportTenantPackage(
 ): Promise<ExportTenantPackageResult> {
   const collected = await collectTenantPackage(db, p.tenant_id, {
     kinds: p.kinds,
+    categories: p.categories,
     include_bytes: true,
   });
   const exported_at = new Date(now()).toISOString();

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { EngineError } from "@cli-core/errors.ts";
 import {
+  parseCategories,
   parseKinds,
   planChangedPlan,
   renderApplyResult,
@@ -59,6 +60,17 @@ describe("parseKinds", () => {
 
   test("rejects unknown kinds", () => {
     expect(() => parseKinds("workflow,credential")).toThrow("unknown kind: credential");
+  });
+});
+
+describe("parseCategories", () => {
+  test("splits, trims and dedupes", () => {
+    expect(parseCategories("devops, cloud,devops")).toEqual(["devops", "cloud"]);
+  });
+
+  test("returns undefined without a filter", () => {
+    expect(parseCategories(undefined)).toBeUndefined();
+    expect(parseCategories(" , ")).toBeUndefined();
   });
 });
 

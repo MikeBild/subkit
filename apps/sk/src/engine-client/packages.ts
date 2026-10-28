@@ -14,7 +14,7 @@ export type PackageItemKind = PackagePlan["items"][number]["kind"];
 export const packagesMethods = {
   exportPackage(
     this: EngineClient,
-    body: { kinds?: PackageItemKind[] } = {},
+    body: { kinds?: PackageItemKind[]; categories?: string[] } = {},
   ): Promise<PackageExportResult> {
     return this.request<PackageExportResult>("POST", "/v1/packages/export", body);
   },

@@ -57,6 +57,19 @@ export function parseKinds(raw: string | undefined): PackageItemKind[] | undefin
   return [...new Set(kinds)] as PackageItemKind[];
 }
 
+export function parseCategories(raw: string | undefined): string[] | undefined {
+  if (!raw) return undefined;
+  const categories = [
+    ...new Set(
+      raw
+        .split(",")
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0),
+    ),
+  ];
+  return categories.length > 0 ? categories : undefined;
+}
+
 type Requirement = PackagePlan["requires"][number];
 
 export function describeRequirement(req: Requirement): string {
@@ -156,6 +169,10 @@ const exportCmd = defineCommand({
       type: "string",
       description: `Comma-separated kinds to export (${PACKAGE_KINDS.join(", ")})`,
     },
+    category: {
+      type: "string",
+      description: "Comma-separated catalog categories to export, one area per package",
+    },
     json: { type: "boolean", description: "JSON output" },
     ...connectionArgs,
   },
@@ -163,8 +180,12 @@ const exportCmd = defineCommand({
     const asJson = Boolean(args.json);
     try {
       const kinds = parseKinds(args.only as string | undefined);
+      const categories = parseCategories(args.category as string | undefined);
       const client = makeClient(args);
-      const exported = await client.exportPackage(kinds ? { kinds } : {});
+      const exported = await client.exportPackage({
+        ...(kinds ? { kinds } : {}),
+        ...(categories ? { categories } : {}),
+      });
       const archive = await client.downloadPackageArchive(exported.file_id);
       const actual = sha256Hex(archive.bytes);
       if (actual !== exported.sha256) {

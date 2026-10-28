@@ -91,7 +91,7 @@ function mapPackageError(err: unknown): never {
   if (err instanceof PackageTooLargeError) {
     throw new HttpError(413, "package_too_large", "package exceeds the size limit", {
       details: { total_bytes: err.total_bytes, limit_bytes: err.limit_bytes },
-      hint: "Export fewer kinds with the kinds filter.",
+      hint: "Export fewer kinds or categories.",
     });
   }
   throw err;
@@ -290,6 +290,7 @@ export function registerPackageRoutes(app: OpenAPIHono<AppEnv>): void {
         actor_id: principal.id,
         request_source: readRequestSource(c) ?? "api",
         kinds: body.kinds,
+        categories: body.categories,
         source: { instance: publicInstance(), engine_version: OPENAPI_INFO.version },
       });
       return c.json({ ...result, file_id: toFileId(result.file_id) }, 201);

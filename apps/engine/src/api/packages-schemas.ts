@@ -23,7 +23,10 @@ const ItemSummarySchema = z.object({
 });
 
 export const PackageExportRequestSchema = z
-  .object({ kinds: z.array(PackageItemKindSchema).min(1).optional() })
+  .object({
+    kinds: z.array(PackageItemKindSchema).min(1).optional(),
+    categories: z.array(z.string().min(1).max(100)).min(1).max(50).optional(),
+  })
   .strict()
   .openapi("PackageExportRequest");
 

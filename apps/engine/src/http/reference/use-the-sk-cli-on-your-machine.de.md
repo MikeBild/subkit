@@ -111,6 +111,7 @@ Du brauchst `package:export` auf der Quell-Engine und `package:import` auf der Z
    sk packages export --out workspace.zip --profile a
    ```
 
+   `--category <kategorien>` exportiert nur einen Bereich, zum Beispiel `--category devops,cloud`. Alles, wovon der Bereich abhängt, kommt mit: Konnektoren, Templates, Sub-Workflows und Zeitpläne.
    `--only <kinds>` exportiert nur einige Arten. `--json` gibt das Ergebnis als JSON aus.
 3. Importiere in Engine B:
 
@@ -131,6 +132,9 @@ Du brauchst `package:export` auf der Quell-Engine und `package:import` auf der Z
 Importierst du dasselbe Paket erneut, ist jeder Eintrag `unchanged`.
 Einen Eintrag, den du auf Engine B geändert hast, zeigt der Import als `conflict` und überschreibt ihn nie.
 `sk packages installs` listet frühere Importe.
+
+Du kannst Bereich für Bereich umziehen: ein Paket pro Kategorie, jeweils mit Vorschau, Einrichtung und Testlauf.
+Ein Konnektor, den ein früheres Paket schon mitgebracht hat, bleibt `unchanged`, auch wenn du auf Engine B schon seine Zugangsdaten hinterlegt hast.
 
 ### Wenn etwas nicht klappt
 

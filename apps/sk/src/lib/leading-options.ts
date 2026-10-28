@@ -27,3 +27,18 @@ export function splitLeadingOptions(
   }
   return { leading, command: rawArgs[i], rest: rawArgs.slice(i + 1) };
 }
+
+export function profileOption(rawArgs: readonly string[]): string | undefined {
+  let found: string | undefined;
+  for (let i = 0; i < rawArgs.length; i += 1) {
+    const token = rawArgs[i]!;
+    if (token === "--") break;
+    if (token.startsWith("--profile=")) found = token.slice("--profile=".length);
+    else if (token === "--profile" && i + 1 < rawArgs.length) {
+      found = rawArgs[i + 1];
+      i += 1;
+    }
+  }
+  const trimmed = found?.trim();
+  return trimmed ? trimmed : undefined;
+}

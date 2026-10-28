@@ -108,7 +108,7 @@ function reviewUrl(path: string): string {
 export const exportTenantPackageTool: ConversationTool = {
   name: "export_tenant_package",
   description:
-    "Export this tenant's connector templates, connectors (without secrets), files, skills, workflows, schedules and knowledge as one SubKit package file. Optional kinds limits the export. Returns only a file reference (input_file id and sha256), size, content digest, item counts and what an importer must supply (credentials, approvals, reviews). Never returns the archive contents.",
+    "Export this tenant's connector templates, connectors (without secrets), files, skills, workflows, schedules and knowledge as one SubKit package file. Optional kinds and categories limit the export; everything the selection depends on comes along. Returns only a file reference (input_file id and sha256), size, content digest, item counts and what an importer must supply (credentials, approvals, reviews). Never returns the archive contents.",
   inputSchema: z
     .object({
       kinds: z
@@ -116,6 +116,12 @@ export const exportTenantPackageTool: ConversationTool = {
         .min(1)
         .optional()
         .describe("Item kinds to include; omit for all kinds."),
+      categories: z
+        .array(z.string().min(1).max(100))
+        .min(1)
+        .max(50)
+        .optional()
+        .describe("Catalog categories to export, one area per package; omit for all."),
     })
     .strict()
     .openapi("ExportTenantPackageToolInput"),
@@ -125,7 +131,10 @@ export const exportTenantPackageTool: ConversationTool = {
   async execute(ctx, args) {
     const principal = ctx.principal;
     if (!principal) return authRequired();
-    const input = args as { kinds?: z.infer<typeof PackageItemKindSchema>[] };
+    const input = args as {
+      kinds?: z.infer<typeof PackageItemKindSchema>[];
+      categories?: string[];
+    };
     try {
       const exported = await exportTenantPackage(ctx.db, {
         tenant_id: ctx.tenant_id,
@@ -133,6 +142,7 @@ export const exportTenantPackageTool: ConversationTool = {
         actor_id: principal.id,
         request_source: requestSource(ctx),
         kinds: input.kinds,
+        categories: input.categories,
         source: { instance: instanceName(), engine_version: OPENAPI_INFO.version },
       });
       return {
@@ -150,7 +160,7 @@ export const exportTenantPackageTool: ConversationTool = {
       if (err instanceof PackageTooLargeError) {
         return failure(
           "package_too_large",
-          `The package would hold ${err.total_bytes} bytes; the limit is ${err.limit_bytes}. Export fewer kinds.`,
+          `The package would hold ${err.total_bytes} bytes; the limit is ${err.limit_bytes}. Export fewer kinds or categories.`,
         );
       }
       throw err;
