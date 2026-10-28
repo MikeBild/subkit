@@ -3,86 +3,30 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const REPO = join(import.meta.dir, "..", "..");
-const WORKFLOW = readFileSync(join(REPO, ".github/workflows/release.yml"), "utf8");
+const WORKFLOW = readFileSync(
+  join(REPO, ".github/workflows/release.yml"),
+  "utf8",
+);
 
 describe("release manifest workflow", () => {
-  test("a separate job without repository rights dispatches the published tag to deployment", () => {
-    const deploy = WORKFLOW.indexOf("\n  deploy:\n");
-    expect(deploy).toBeGreaterThan(0);
-    const publishJob = WORKFLOW.slice(0, deploy);
-    const deployJob = WORKFLOW.slice(deploy);
-    expect(publishJob).not.toContain("DEPLOY_TOKEN");
-    expect(publishJob).not.toContain("/dispatches");
-    expect(deployJob).toContain("needs: release");
-    expect(deployJob).toContain("permissions: {}");
-    expect(deployJob).not.toContain("RELEASE_SIGNING_KEY");
-    expect(deployJob).toContain('event_type:"subkit-release"');
-    expect(deployJob).toContain("https://api.github.com/repos/MikeBild/subkit-deploy/dispatches");
+  test("a tag publishes the image to Docker Hub and nothing else deploys it", () => {
+    expect(WORKFLOW).toContain("docker.io/mikebild/subkit");
+    expect(WORKFLOW).toContain('for tag in "$VERSION" latest');
+    expect(WORKFLOW).not.toContain("subkit-deploy");
+    expect(WORKFLOW).not.toContain("/dispatches");
+    expect(WORKFLOW).not.toContain("SUBKIT_DEPLOY_DISPATCH_TOKEN");
     expect(WORKFLOW).toContain("- name: Require mandatory local release gate");
     expect(WORKFLOW).toContain("- name: Sign SHA256SUMS");
   });
 
-  test("after the deployment request production is verified against the tag and the result lands on the release", () => {
-    const deployStart = WORKFLOW.indexOf("\n  deploy:\n");
-    const verifyJobStart = WORKFLOW.indexOf("\n  verify-production:\n");
-    expect(verifyJobStart).toBeGreaterThan(deployStart);
-    const deployJob = WORKFLOW.slice(deployStart, verifyJobStart);
-    expect(deployJob).toContain("requested_at: ${{ steps.request.outputs.requested_at }}");
-    expect(deployJob.indexOf('echo "requested_at=')).toBeGreaterThan(-1);
-    expect(deployJob.indexOf('echo "requested_at=')).toBeLessThan(deployJob.indexOf("/dispatches"));
-
-    const job = WORKFLOW.slice(verifyJobStart);
-    expect(job).toContain("needs: deploy");
-    expect(job).not.toContain("vars.");
-    expect(job).not.toContain("SUBKIT_PROD_ENGINE_URL");
-    expect(job).not.toMatch(/https:\/\/[^\s"]*mikebild\.dev/);
-    expect(job).not.toContain("RELEASE_SIGNING_KEY");
-
-    const resolve = job.indexOf(
-      "- name: Resolve the production engine URL reported by the deployment",
-    );
-    const wait = job.indexOf("- name: Wait for production to report the release version");
-    const verify = job.indexOf("- name: Verify production against the release");
-    const attach = job.indexOf("- name: Attach the production verification to the release");
-    expect(resolve).toBeGreaterThan(-1);
-    expect(wait).toBeGreaterThan(resolve);
-    expect(verify).toBeGreaterThan(wait);
-    expect(attach).toBeGreaterThan(verify);
-
-    const resolveStep = job.slice(resolve, wait);
-    expect(resolveStep).toContain("GH_TOKEN: ${{ secrets.SUBKIT_DEPLOY_DISPATCH_TOKEN }}");
-    expect(resolveStep).toContain("REQUESTED_AT: ${{ needs.deploy.outputs.requested_at }}");
-    expect(resolveStep).toContain(
-      'bun run scripts/production-engine-url.ts --repository MikeBild/subkit-deploy --since "$REQUESTED_AT"',
-    );
-    expect(resolveStep).not.toContain("exit 1");
-    expect(job.slice(0, resolve)).not.toContain("SUBKIT_DEPLOY_DISPATCH_TOKEN");
-    expect(job.slice(wait)).not.toContain("SUBKIT_DEPLOY_DISPATCH_TOKEN");
-
-    const waitStep = job.slice(wait, verify);
-    expect(waitStep).toContain("if: steps.target.outputs.url != ''");
-    expect(waitStep).toContain('VERSION="${TAG#v}"');
-    expect(waitStep).toContain("/health");
-    expect(waitStep).toContain("deadline=$((SECONDS + 1200))");
-
-    const verifyStep = job.slice(verify, attach);
-    expect(verifyStep).toContain("if: steps.target.outputs.url != ''");
-    expect(verifyStep).toContain(
-      'bun run verify:release -- --engine-url "$ENGINE_URL" --version "${TAG#v}"',
-    );
-
-    const attachStep = job.slice(attach);
-    expect(attachStep).toContain("if: always()");
-    expect(attachStep).toContain("SKIP_REASON: ${{ steps.target.outputs.reason }}");
-    expect(attachStep).toContain("Not verified: no production engine URL could be determined");
-    expect(attachStep).toContain("## Production verification");
-    expect(attachStep).toContain('gh release edit "$TAG"');
-  });
-
   test("checksums every shipped artifact and signs the manifest before publishing", () => {
-    const extract = WORKFLOW.indexOf("- name: Extract release binaries from the image");
+    const extract = WORKFLOW.indexOf(
+      "- name: Extract release binaries from the image",
+    );
     const sign = WORKFLOW.indexOf("- name: Sign SHA256SUMS");
-    const verify = WORKFLOW.indexOf("- name: Verify signature against the updater trust root");
+    const verify = WORKFLOW.indexOf(
+      "- name: Verify signature against the updater trust root",
+    );
     const upload = WORKFLOW.indexOf("- name: Push image");
     const publish = WORKFLOW.indexOf("- name: Publish GitHub release");
 
@@ -116,6 +60,8 @@ describe("release manifest workflow", () => {
     expect(WORKFLOW.slice(publish)).toContain(
       "assets/docker-compose.yml assets/subkit-clipper.zip assets/LICENSE assets/THIRD_PARTY_NOTICES.txt",
     );
-    expect(WORKFLOW.slice(sign, publish)).toContain("-out assets/SHA256SUMS.sig");
+    expect(WORKFLOW.slice(sign, publish)).toContain(
+      "-out assets/SHA256SUMS.sig",
+    );
   });
 });
