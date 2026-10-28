@@ -3,10 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const REPO = join(import.meta.dir, "..", "..");
-const WORKFLOW = readFileSync(
-  join(REPO, ".github/workflows/release.yml"),
-  "utf8",
-);
+const WORKFLOW = readFileSync(join(REPO, ".github/workflows/release.yml"), "utf8");
 
 describe("release manifest workflow", () => {
   test("a tag publishes the image to Docker Hub and nothing else deploys it", () => {
@@ -20,13 +17,9 @@ describe("release manifest workflow", () => {
   });
 
   test("checksums every shipped artifact and signs the manifest before publishing", () => {
-    const extract = WORKFLOW.indexOf(
-      "- name: Extract release binaries from the image",
-    );
+    const extract = WORKFLOW.indexOf("- name: Extract release binaries from the image");
     const sign = WORKFLOW.indexOf("- name: Sign SHA256SUMS");
-    const verify = WORKFLOW.indexOf(
-      "- name: Verify signature against the updater trust root",
-    );
+    const verify = WORKFLOW.indexOf("- name: Verify signature against the updater trust root");
     const upload = WORKFLOW.indexOf("- name: Push image");
     const publish = WORKFLOW.indexOf("- name: Publish GitHub release");
 
@@ -60,8 +53,6 @@ describe("release manifest workflow", () => {
     expect(WORKFLOW.slice(publish)).toContain(
       "assets/docker-compose.yml assets/subkit-clipper.zip assets/LICENSE assets/THIRD_PARTY_NOTICES.txt",
     );
-    expect(WORKFLOW.slice(sign, publish)).toContain(
-      "-out assets/SHA256SUMS.sig",
-    );
+    expect(WORKFLOW.slice(sign, publish)).toContain("-out assets/SHA256SUMS.sig");
   });
 });
