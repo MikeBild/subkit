@@ -7,6 +7,7 @@ type Execution = components["schemas"]["Execution"];
 type PatchCandidate = components["schemas"]["PatchCandidate"];
 type ApiKey = components["schemas"]["ApiKey"];
 type SystemAccount = components["schemas"]["SystemAccount"];
+type PackageInstall = components["schemas"]["PackageInstall"];
 
 function asConnectors(items: readonly unknown[]): readonly Connector[] {
   return items as readonly Connector[];
@@ -109,6 +110,15 @@ export async function dispatchAdminListSlash(
         return `${String(dr.id ?? "").slice(0, 8)}  ${String(dr.label ?? "").padEnd(20)}  ${String(dr.status ?? "")}`;
       });
       return panify(ctx, "discovery runs", lines, `${r.items.length} found`);
+    }
+    case "packages": {
+      const items: readonly PackageInstall[] = await ctx.client.listPackageInstalls();
+      if (items.length === 0) return "no package imports";
+      const lines = items.map(
+        (i) =>
+          `${i.id.slice(0, 8)}  ${i.package_id.padEnd(20)}  ${i.package_version}  ${i.created_at}`,
+      );
+      return panify(ctx, "package imports", lines, `${items.length} found`);
     }
     case "apikeys": {
       const r = await ctx.client.listApiKeys();

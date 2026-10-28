@@ -58,6 +58,15 @@
     "install": { "flags": [], "positionals": [] },
     "rbac": { "flags": ["json"], "positionals": ["sub"] },
     "audit": { "flags": ["limit", "json", "filter"], "positionals": [] },
+    "packages": {
+      "flags": [],
+      "positionals": ["sub"],
+      "subcommands": {
+        "export": { "flags": ["out", "only", "json"], "positionals": [] },
+        "import": { "flags": ["yes", "json"], "positionals": ["file"] },
+        "installs": { "flags": ["json"], "positionals": ["id"] }
+      }
+    },
     "apikeys": {
       "flags": [],
       "positionals": ["sub"],

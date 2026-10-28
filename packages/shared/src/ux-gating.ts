@@ -27,6 +27,7 @@ export const UX_GATING_PERMISSIONS = [
   "rbac:read",
   "api_key:read",
   "portal_token:read",
+  "package:import",
   "knowledge:read",
   "intake:read",
   "stats:read:all",

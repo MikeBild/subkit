@@ -78,4 +78,36 @@ describe("dispatchAdminListSlash", () => {
     expect(await dispatchAdminListSlash("executions", ctx)).toBe("no executions");
     expect(await dispatchAdminListSlash("runs", ctx)).toBe("no executions");
   });
+
+  test("/packages empty list returns the canonical banner", async () => {
+    const ctx = buildCtx({ listPackageInstalls: () => Promise.resolve([]) });
+    expect(await dispatchAdminListSlash("packages", ctx)).toBe("no package imports");
+  });
+
+  test("/packages renders one row per import", async () => {
+    const ctx = buildCtx({
+      listPackageInstalls: () =>
+        Promise.resolve([
+          {
+            id: "a1b2c3d4e5f6",
+            package_id: "tenant-export",
+            package_version: "1",
+            format: "subkit-package/v1",
+            content_digest: "d",
+            archive_file_id: null,
+            source: {},
+            installed_by_type: "user",
+            installed_by_id: null,
+            summary: {},
+            created_at: "2025-01-01",
+            updated_at: "2025-01-01",
+          },
+        ]),
+    });
+    const result = await dispatchAdminListSlash("packages", ctx);
+    expect(result).toContain("package imports");
+    expect(result).toContain("a1b2c3d4");
+    expect(result).toContain("tenant-export");
+    expect(result).toContain("1 found");
+  });
 });

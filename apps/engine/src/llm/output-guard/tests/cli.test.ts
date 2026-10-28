@@ -58,6 +58,21 @@ describe("cliScanner", () => {
     expect(cliScanner.scan(text, ctx)).toEqual([]);
   });
 
+  it("passes the package export and import commands with their real flags", () => {
+    const text = bash(
+      "sk packages export --out workspace.zip --only workflow,skill --profile api",
+      "sk packages import workspace.zip --profile cloud --yes",
+      "sk packages installs --json",
+    );
+    expect(cliScanner.scan(text, ctx)).toEqual([]);
+  });
+
+  it("flags an invented package subcommand flag", () => {
+    const text = bash("sk packages import workspace.zip --force");
+    const vs = cliScanner.scan(text, ctx);
+    expect(vs.map((v) => v.kind)).toContain("cli.invented_flag");
+  });
+
   it("does not flag plain prose mentioning sk", () => {
     expect(cliScanner.scan("sk is a CLI", ctx)).toEqual([]);
   });

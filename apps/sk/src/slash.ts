@@ -431,6 +431,12 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     requires: "discovery:read",
   },
   {
+    name: "packages",
+    help: "List package imports into this workspace",
+    category: "admin",
+    requires: "package:import",
+  },
+  {
     name: "apikeys",
     help: "List API keys (masked)",
     category: "admin",
