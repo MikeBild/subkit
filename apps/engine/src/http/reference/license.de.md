@@ -1,6 +1,6 @@
 ---
 slug: license
-summary: Unter welcher Lizenz du SubKit nutzen und weitergeben darfst.
+summary: Erfahre, unter welcher Lizenz du SubKit nutzen und weitergeben darfst.
 section: reference
 order: 4
 audience: public

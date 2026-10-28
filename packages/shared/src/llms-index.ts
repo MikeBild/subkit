@@ -58,12 +58,12 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       en: {
         title: "Getting started",
         description:
-          "Learn what SubKit is, get an engine running and build your first workflow, in this order.",
+          "Get to know SubKit, choose the cloud or your own engine, set it up and build your first workflow, in this order.",
       },
       de: {
         title: "Erste Schritte",
         description:
-          "Lerne, was SubKit ist, bring eine Engine zum Laufen und baue deinen ersten Workflow, in dieser Reihenfolge.",
+          "Lerne SubKit kennen, wähle Cloud oder eigene Engine, richte sie ein und baue deinen ersten Workflow, in dieser Reihenfolge.",
       },
     },
   },
@@ -73,12 +73,12 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       en: {
         title: "Working with SubKit",
         description:
-          "Reach SubKit from your terminal, an AI client, a coding agent, the browser, the HTTP API or your own app.",
+          "Use SubKit from the terminal, an AI client, a coding agent, the browser or your own app, and keep knowledge and costs in view.",
       },
       de: {
         title: "Mit SubKit arbeiten",
         description:
-          "Erreiche SubKit aus deinem Terminal, einem KI-Client, einem Coding-Agenten, dem Browser, der HTTP-API oder deiner eigenen App.",
+          "Arbeite mit SubKit im Terminal, aus einem KI-Client, einem Coding-Agenten, dem Browser oder deiner App, und behalte Wissen und Kosten im Blick.",
       },
     },
   },
@@ -88,12 +88,12 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       en: {
         title: "Operating SubKit",
         description:
-          "Run your own engine: branding, sessions, identities, permissions, credentials and sandbox limits.",
+          "Run your own engine: decide who may do what, how apps and connectors sign in, how the Cockpit looks and where the sandbox ends.",
       },
       de: {
         title: "Selbst betreiben",
         description:
-          "Betreibe deine eigene Engine: Branding, Sitzungen, Identitäten, Berechtigungen, Zugangsdaten und Sandbox-Grenzen.",
+          "Betreibe deine eigene Engine: Lege fest, wer was darf, wie sich Apps und Konnektoren anmelden, wie das Cockpit aussieht und wo die Sandbox endet.",
       },
     },
   },
@@ -102,11 +102,11 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     locales: {
       en: {
         title: "Reference",
-        description: "Look up commands, settings, connectors and the license.",
+        description: "Look up sk commands, settings, the connector catalog and the license.",
       },
       de: {
         title: "Referenz",
-        description: "Schlag Befehle, Einstellungen, Konnektoren und die Lizenz nach.",
+        description: "Schlag sk-Befehle, Einstellungen, den Konnektor-Katalog und die Lizenz nach.",
       },
     },
   },

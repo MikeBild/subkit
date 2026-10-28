@@ -113,14 +113,15 @@ function main(): void {
     "",
     "# Connector & recipe catalog",
     "",
-    `What ships in the box: **${all.length} connector templates** across ` +
-      `**${order.length} categories**, carrying **${recipeCount} recipes** — ` +
-      "pre-authored, runnable workflows you clone instead of starting from a blank page.",
+    "Find the connector templates and recipes that ship with SubKit. " +
+      `There are **${all.length} connector templates** in **${order.length} categories**, ` +
+      `carrying **${recipeCount} recipes**: complete, runnable workflows you clone ` +
+      "instead of starting from a blank page.",
     "",
-    "A **template** connects a system: base URL, auth flow, endpoint schema, and a " +
-      "vendor-basics Skill. A **recipe** is a complete workflow shipped on that template — " +
-      "say what you want in a conversation and sk clones the closest recipe as your " +
-      "starting draft.",
+    "A **template** connects a system: base URL, sign-in flow, endpoint schema and a " +
+      "vendor-basics skill. A **recipe** is a complete workflow built on that template. " +
+      "Say what you want in a conversation, and SubKit clones the closest recipe as " +
+      "your first draft.",
     "",
     "## Connector templates",
     "",
