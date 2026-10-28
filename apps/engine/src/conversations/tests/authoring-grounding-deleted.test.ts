@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { resolveConnectors } from "../authoring-grounding.ts";
 
 let db: TestDb;
@@ -24,7 +25,7 @@ beforeAll(async () => {
     base_url: "https://api.open-meteo.com",
     config: {},
   };
-  await db.db.insert(connectors).values({ ...base, deleted_at: new Date() });
+  await db.db.insert(connectors).values({ ...base, deleted_at: new Date(FROZEN_NOW) });
   const [live] = await db.db.insert(connectors).values(base).returning();
   live_id = live!.id;
 });
