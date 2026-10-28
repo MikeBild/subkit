@@ -1,17 +1,16 @@
 ---
 slug: usage-and-costs
 title: Nutzung und Kosten im Blick
-summary: Sieh, was KI-Aufrufe kosten und wofür, und pass Kontingent und Preise an.
+summary: Sieh, was KI-Aufrufe kosten, und lege Budget und Preise fest.
 section: work
 order: 11
 audience: public
 ---
 ## Nutzung und Kosten im Blick
 
-Die Seite **Nutzung** zeigt, was KI-Aufrufe kosten und wofür.
-Ein KI-Aufruf ist eine Anfrage von SubKit an ein KI-Modell. Jeder Aufruf kostet.
-Ganz oben steht ein Satz, der den Zeitraum zusammenfasst, etwa „Diese Woche 84,20 $ für 1.240 KI-Aufrufe.“
-Steigen die Kosten, nennt der Satz den größten Treiber.
+Dieses Kapitel ist für alle, die wissen müssen, was die KI im Arbeitsbereich kostet, meist Teamleitung oder Admin. Danach kennst du die Kosten je Workflow, Person und Modell und legst fest, wie viele Token pro Monat erlaubt sind. Ein KI-Aufruf ist dabei eine Anfrage von SubKit an ein KI-Modell.
+
+Alles steht auf der Seite **Nutzung**. Ganz oben fasst ein Satz den Zeitraum zusammen, etwa „Diese Woche 84,20 $ für 1.240 KI-Aufrufe.“ Steigen die Kosten, nennt der Satz den größten Treiber.
 
 ### Was du brauchst
 
@@ -24,6 +23,8 @@ Steigen die Kosten, nennt der Satz den größten Treiber.
 Wähle oben rechts den **Zeitraum**: **24 Std**, **Diese Woche**, **Letzte Woche**, **Dieser Monat** oder **Letzter Monat**.
 Wochen beginnen am Montag, und es gilt deine Zeitzone.
 Alle Zahlen vergleichen den Zeitraum mit dem gleich langen Abschnitt davor.
+
+Die **Übersicht** bietet dieselbe Auswahl. Dort folgt die Kachel **Nutzung** dem gewählten Zeitraum und zeigt die Kosten darin oder „Keine KI-Aufrufe im Zeitraum“. Darunter steht, wie viel des Monatskontingents verbraucht ist, etwa „42 % des Monatskontingents“. Für den schnellen Blick reicht diese Kachel, für die Gründe öffnest du **Nutzung**.
 
 So liest du den Trend:
 
@@ -38,7 +39,7 @@ So liest du den Trend:
 - **KI-Aufrufe**: wie oft SubKit ein KI-Modell gefragt hat. Gibt es Fehler, steht darunter etwa **3 fehlgeschlagen**. Ein Klick öffnet die Fehlgeschlagenen KI-Aufrufe.
 - **Kontingent · Monat**: wie viel vom Monatskontingent verbraucht ist. Diese Kachel gilt immer für den laufenden Monat.
 - **Gespart durch Cache**: was wiederverwendete Eingaben gegenüber dem vollen Preis gespart haben.
-- **Aus dem Zwischenspeicher**: welcher Anteil der Eingabe wiederverwendet statt neu bezahlt wurde. Darunter zeigt **Zwischenspeicher je Ablauf** den Anteil je Herkunft. Höher ist günstiger und schneller. **Ohne Daten** heißt: Der Anbieter meldet für diesen Ablauf keinen Zwischenspeicher.
+- **Aus dem Zwischenspeicher**: welcher Anteil der Eingabe wiederverwendet statt neu bezahlt wurde. Darunter zeigt **Zwischenspeicher je Ablauf** den Anteil je Herkunft. Höher ist günstiger und schneller. **Ohne Daten** heißt: Der Anbieter meldet für diese Herkunft keinen Zwischenspeicher.
 
 Unter dem Kontingent steht die Prognose. SubKit rechnet dafür den Verbrauch der letzten 7 Tage hoch:
 
@@ -113,13 +114,13 @@ Klick auf eine Zeile, um ihre Details seitlich zu öffnen:
 Lange Unterhaltungen werden teurer, weil jede Antwort den bisherigen Verlauf mitliest. Für ein neues Thema lohnt eine neue Unterhaltung.
 
 **Fehlgeschlagene KI-Aufrufe** öffnest du über die Kachel **KI-Aufrufe**.
-Fehlgeschlagene Aufrufe kosten trotzdem. Das Sheet nennt den Betrag.
+Fehlgeschlagene Aufrufe können trotzdem kosten. Das Sheet nennt den Betrag.
 Unter **Wo sie auftreten** siehst du Workflow oder Unterhaltung und den Grund:
 **Fehler beim Anbieter**, **Eingabe zu groß** oder **Kontingent aufgebraucht**.
 
 ### Kontingent anpassen
 
-Das Monatskontingent ist die Höchstmenge an Token je Monat.
+Das Monatskontingent ist die Höchstmenge an Token, die dein Arbeitsbereich im Monat verbrauchen darf. Es gilt für alle Personen und Workflows zusammen.
 
 1. Klick auf **Kontingent anpassen** in den Auffälligkeiten oder auf die Prognose in der Kachel.
    Ohne Kontingent wählst du **Kontingent setzen** in der Kachel.
@@ -132,8 +133,9 @@ Ohne dieses Recht siehst du nur den Stand und „Frag eine Person mit Admin-Roll
 Was beim Verbrauch passiert:
 
 - Ab 75 % erscheint ein Hinweis.
-- Ab 100 % pausieren Chat, Erstellen und Korrekturen bis zum Monatsersten.
-- Freigegebene Workflows laufen weiter.
+- Ab 100 % pausieren Chat, das Entwerfen von Workflows und Korrekturen bis zum Monatsersten.
+- Freigegebene Workflows laufen weiter. Was schon im Betrieb ist, bleibt also nicht stehen.
+- Anfragen, die SubKit wegen des Kontingents abweist, zählen nicht zum Verbrauch.
 
 Ohne Kontingent sind KI-Aufrufe unbegrenzt.
 
@@ -169,20 +171,6 @@ Klappe **Technische Angaben** am Ende der Seite auf. Dort stehen:
 - Deine **Zeitzone** und die **Internen Abläufe je Herkunft**.
 - Die **Abfrage**, mit der du dieselben Zahlen per CLI oder API holst.
 
-### Dieselben Zahlen per CLI oder API
-
-`sk stats llm` und `GET /v1/stats/llm` liefern dieselben Zahlen wie die Seite.
-Jede Antwort enthält Token, Kosten und die Ersparnis durch den Cache.
-
-```bash
-sk stats llm --bucket day --from <from> --to <to> --group-by workflow
-```
-
-- `group_by` schlüsselt nach `model`, `flow`, `user`, `workflow`, `conversation` oder `execution` auf. Höchstens zwei Werte zugleich.
-- `result=` filtert nach Ergebnis: `success`, `quota_exhausted`, `context_too_large` oder `error`.
-- `workflow_id=` zeigt nur die Aufrufe eines Workflows.
-- Aufschlüsselungen nach `user` oder `conversation` brauchen `stats:read:all`. Das gilt nicht, wenn `user_id` deine eigene Kennung ist.
-
 ### Wenn etwas nicht klappt
 
 | Was du siehst | Was du tust |
@@ -192,6 +180,19 @@ sk stats llm --bucket day --from <from> --to <to> --group-by workflow
 | **mind.** vor den Kosten | Für manche Modelle fehlt ein Preis. Hinterleg ihn über **Preis hinterlegen**. |
 | **Kosten unbekannt** | Für keines der genutzten Modelle ist ein Preis hinterlegt. Hinterleg die Preise. |
 | „Frag eine Person mit Admin-Rolle.“ statt **Kontingent anpassen** | Dir fehlt `settings:write`. Bitte eine Person mit Admin-Rolle, das Kontingent zu ändern. |
-| Chat, Erstellen und Korrekturen stehen still | Das Monatskontingent ist aufgebraucht. Erhöhe es oder warte bis zum Monatsersten. |
+| Chat, Entwerfen und Korrekturen stehen still | Das Monatskontingent ist aufgebraucht. Erhöhe es oder warte bis zum Monatsersten. |
 | „Das Kontingent war nicht lesbar …“ | Lad die Seite neu. Das sagt nichts darüber, ob ein Kontingent gesetzt ist. |
 | „Keine KI-Aufrufe in diesem Zeitraum.“ | Wähle **Dieser Monat anzeigen** oder einen anderen Zeitraum. |
+
+### Dasselbe im Terminal
+
+Dieselben Zahlen holst du mit `sk stats llm` oder über die HTTP-API mit `GET /v1/stats/llm`. Jede Antwort enthält Token, Kosten und die Ersparnis durch den Cache. Wie du `sk` einrichtest, steht im Kapitel „Die sk-CLI auf deinem Rechner verwenden“.
+
+```bash
+sk stats llm --bucket day --from <from> --to <to> --group-by workflow
+```
+
+- `group_by` schlüsselt nach `model`, `flow`, `user`, `workflow`, `conversation` oder `execution` auf. Höchstens zwei Werte zugleich.
+- `result=` filtert nach Ergebnis: `success`, `quota_exhausted`, `context_too_large` oder `error`.
+- `workflow_id=` zeigt nur die Aufrufe eines Workflows.
+- Aufschlüsselungen nach `user` oder `conversation` brauchen `stats:read:all`. Das gilt nicht, wenn `user_id` deine eigene Kennung ist.

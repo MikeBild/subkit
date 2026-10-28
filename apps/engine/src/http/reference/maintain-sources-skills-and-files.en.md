@@ -1,15 +1,20 @@
 ---
 slug: maintain-sources-skills-and-files
 title: Maintain sources, skills and files
-summary: Compare earlier versions, restore them and find conversations about a source or a skill.
+summary: Keep your team's knowledge current and bring back earlier states.
 section: work
 order: 10
 audience: public
 ---
 ## Maintain sources, skills and files
 
-You find sources, skills and files in the Cockpit in the **Knowledge** group.
-SubKit keeps earlier states. You see what changed, and you bring back an earlier state.
+This chapter is for anyone who maintains their team's knowledge in the Cockpit. You find sources, skills and files in the **Knowledge** group. Afterwards you know who changed what, and you bring back an earlier state without losing the current one.
+
+The three terms in everyday words:
+
+- **Source**: a document the assistant looks things up in, such as a price list or a manual.
+- **Skill**: a rule the assistant follows, such as your guidelines for invoice texts.
+- **File**: a file a workflow reads or produces, such as a template or a report.
 
 ### What you need
 
@@ -18,10 +23,11 @@ SubKit keeps earlier states. You see what changed, and you bring back an earlier
 
 ### Compare versions of a source or a skill
 
+Every change to a source or a skill becomes a new version. For each version you see who saved it and when. Sources often also say why. For sources, SubKit keeps up to 50 versions.
+
 1. Open **Sources** or **Skills** and click a source or a skill.
 2. Open the **Versions** tab. The newest version is on top and marked **Current**.
-3. Click a version.
-   Under **Change since v…** you see **Before** and **After** side by side.
+3. Click a version. Under **Change since v…** you see **Before** and **After** side by side.
 
 ### Restore an earlier version
 
@@ -29,21 +35,18 @@ SubKit keeps earlier states. You see what changed, and you bring back an earlier
 2. Select **Restore this version**. The current version cannot be restored.
 3. The question **Restore this version?** appears. Confirm with **Restore**.
 
-SubKit saves the restored content as a new version. The previous version stays under **Versions**.
+SubKit saves the restored content as a new version. The previous version stays under **Versions**, so you can always go back.
 
 ### Find conversations about a source or a skill
 
 1. Open the source or the skill.
 2. Open the **Usage** tab and expand **Conversations about this**.
 
-The list shows conversations that name the source or the skill with an `@` reference.
-For a source, it also counts conversations in which a knowledge tool read or found the source.
-For a skill, it also counts conversations that loaded the skill.
-Click a conversation to open it. If there is none yet, start one with **Ask in chat**.
+The list shows conversations that name the source or the skill with an `@` reference. For a source, it also counts conversations in which the assistant read or found the source. For a skill, it also counts conversations that loaded the skill. Click a conversation to open it. If there is none yet, start one with **Ask in chat**.
 
 ### Decide skill proposals
 
-SubKit proposes skills from recurring patterns. You decide them on the **Skill candidates** page, not in the skills table.
+SubKit proposes skills when a pattern keeps recurring. You decide them on the **Skill candidates** page, not in the skills table.
 
 1. Open **Skills** and click **… proposals open** in the header.
 2. Click a candidate and review its content and scope.
@@ -57,8 +60,7 @@ Discarding needs `skill:write`; accepting also needs `skill:activate`. SubKit do
 2. Open **More actions** and choose **Replace**.
 3. Choose the new file and confirm with **Replace**.
 
-The new filename is adopted. The reference stays the same, so workflows and the chat use the new content right away.
-The previous content stays as an earlier version.
+The reference to the file stays the same. Workflows and the chat therefore use the new content right away, without you changing them. The new filename is adopted, and the previous content stays as an earlier version.
 
 ### Restore an earlier state of a file
 
@@ -74,14 +76,6 @@ Good to know:
 - SubKit keeps the last 20 earlier versions of a file.
 - Deleting a file also removes all its earlier versions.
 
-You do the same with the sk CLI:
-
-```bash
-sk files replace <file-id> <path>
-sk files versions <file-id>
-sk files restore <file-id> <version>
-```
-
 ### If something does not work
 
 | What you see | What to do |
@@ -90,3 +84,13 @@ sk files restore <file-id> <version>
 | "This version has no saved state, so it cannot be restored." | Choose another version, or change the skill directly. |
 | The **Replaced** section is missing | The file was never replaced. It has no earlier versions yet. |
 | **Replace** is missing in the menu | Ask an administrator for `file:write`. |
+
+### The same in the terminal
+
+You can also replace files with the `sk` command line. How to set it up is in the chapter "Use the sk CLI on your machine".
+
+```bash
+sk files replace <file-id> <path>
+sk files versions <file-id>
+sk files restore <file-id> <version>
+```

@@ -1,22 +1,25 @@
 ---
 slug: http-api
-summary: Call SubKit from your own program or script over HTTP.
+summary: Start workflows from your own code and read their results.
 section: work
 order: 6
 audience: public
 ---
 ## Use the HTTP API
 
-Start workflows from your own program or script and read their result.
+Your program, script or backend should start an approved workflow and keep working with its result.
+This chapter is for developers and takes you from the first key to a run you have read.
+Afterwards you know how to start runs, wait for them and handle errors cleanly.
+
 Every example uses `curl`, so you can try it in a terminal first.
-It works the same in SubKit Cloud and on a self-hosted engine.
+SubKit Cloud and a self-hosted engine behave the same here.
 
 ### What you need
 
 - Your engine address.
   - Cloud: `https://subkit-cloud.mikebild.info` (without `/cockpit`)
   - Self-hosted: `https://<your-engine>`
-- An API key with `workflow:read`, `workflow:run` and `execution:read`. Create it with the sk CLI, as shown in this chapter, or in the Cockpit under **API access**. For the CLI, sign in as described in "Use the sk CLI on your machine".
+- An API key with the scopes `workflow:read`, `workflow:run` and `execution:read`. A scope is a single permission the key carries. Create the key with the sk CLI, as shown below, or in the Cockpit under **API access**. For the CLI, sign in as described in "Use the sk CLI on your machine".
 - A workflow that is active and approved. See "Your first workflow".
 - `curl` in your terminal.
 
@@ -62,7 +65,7 @@ It works the same in SubKit Cloud and on a self-hosted engine.
      -H "Authorization: Bearer $SK_KEY"
    ```
 
-   The answer names your account, your workspace and the key's scopes (shortened):
+   The answer names your account, your workspace and the key's scopes (shortened). The workspace is your team's separate area in the engine:
 
    ```json
    {
@@ -86,7 +89,7 @@ Without `--scopes`, the key gets the same scopes as your own access.
      -H "Authorization: Bearer $SK_KEY"
    ```
 
-   Each entry in `items` carries, among others, `id`, `slug`, `name`, `lifecycle` and `operating_status` (shortened):
+   Each entry in `items` carries, among others, `id`, `slug`, `name`, `lifecycle` and `operating_status`. In the example the workflow is called "Daily report" (shortened):
 
    ```json
    {
@@ -104,7 +107,7 @@ Without `--scopes`, the key gets the same scopes as your own access.
    }
    ```
 
-2. Copy the `id`. Runs need the ID; a slug is not accepted.
+2. Copy the `id`. A run needs the ID; the engine does not accept a slug.
 
 `q=<text>` searches name, slug, description and category.
 
@@ -125,7 +128,7 @@ Without `--scopes`, the key gets the same scopes as your own access.
 
 ### Start a long run in the background
 
-1. Send the run with `"async":true`. Optional: add an `Idempotency-Key` header:
+1. Send the run with `"async":true`. Optionally add an `Idempotency-Key` header. With it, a call sent twice by accident still starts only one run:
 
    ```bash
    curl -s -X POST "$SK_URL/v1/executions" \
@@ -177,9 +180,17 @@ Without `--scopes`, the key gets the same scopes as your own access.
 
 ### Check whether a workflow can run automatically
 
-Saving a workflow (`POST /v1/workflows`, `PUT /v1/workflows/{id}`) and creating or changing a schedule (`POST /v1/schedules`, `PUT /v1/schedules/{id}`) answer with `automation_readiness`: `{environment, workflow_version_id, state, issues, repair_guidance}`.
-`state` is `eligible` when a person can approve recurring runs, `repair_required` when no approval can cover the named steps until they change, or `verification_unavailable`.
-Each `issues` entry names a `step_id` and a `code`; `repair_guidance` says how to change that step. A paused schedule gets no verdict.
+Before a workflow runs on a schedule, you want to know whether an approval can cover it at all. The field `automation_readiness` holds that answer.
+
+You get it when you save a workflow (`POST /v1/workflows`, `PUT /v1/workflows/{id}`). You also get it when you create or change a schedule (`POST /v1/schedules`, `PUT /v1/schedules/{id}`). The field has the shape `{environment, workflow_version_id, state, issues, repair_guidance}`.
+
+| `state` | Meaning |
+| --- | --- |
+| `eligible` | A person can approve recurring runs. |
+| `repair_required` | No approval can cover the named steps until they change. |
+| `verification_unavailable` | The engine could not run the check. Try again later. |
+
+Each `issues` entry names a `step_id` and a `code`. `repair_guidance` says how to change that step. A paused schedule gets no verdict.
 
 ### Export and import a package
 
@@ -217,7 +228,7 @@ curl -s "$SK_URL/v1/executions?workflow_id=<workflow-id>&status=failed,timed_out
 ### How the API is organized
 
 - Every route starts with `/v1`, for example `/v1/workflows`.
-- You send your API key in the `Authorization` header as a bearer token.
+- You send your API key in the `Authorization` header as `Bearer <api-key>`. "Bearer" means: whoever presents the key counts as authorized.
 - Requests and responses are JSON.
 - `/openapi.json` describes every route, field and status code in OpenAPI format.
 - `/docs` shows the same description as a searchable reference. Open `https://<your-engine>/docs` in a browser.
@@ -245,8 +256,8 @@ Branch on `code` in your program, not on `message`. Keep `trace_id` when you rep
 | `401` | `unauthorized` | The key is missing, wrong, expired or revoked. Check `Authorization: Bearer <api-key>`, or create a new key. |
 | `403` | `forbidden` | The key lacks a scope or your role lacks the permission. Create a key with `workflow:read`, `workflow:run` and `execution:read`. |
 | `404` | `not_found` | The ID does not exist in your workspace. |
-| `409` | `conflict` | The current state does not allow it. For a run: no active version, or the approval is missing or used up. |
-| `429` | `rate_limit_exceeded`, `rate_limited` | A limit is reached. Wait as long as the `Retry-After` header says, then retry with the same `Idempotency-Key`. |
+| `409` | `conflict` | The current state does not allow it. For a run: there is no active version, or the approval is missing or used up. |
+| `429` | `rate_limit_exceeded`, `rate_limited` | A limit is reached. Wait as long as the `Retry-After` header says. Then retry with the same `Idempotency-Key`. |
 | `500` | `internal_error` | An error in the engine. Report the `trace_id`. |
 
 ### If something does not work

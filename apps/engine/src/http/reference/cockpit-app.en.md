@@ -1,15 +1,14 @@
 ---
 slug: cockpit-app
 title: Cockpit as an app
-summary: Install the Cockpit of each workspace as its own app with the workspace's name, icon and colors.
+summary: Launch your workspace's Cockpit as its own app in its own window.
 section: work
 order: 9
 audience: public
 ---
 ## Cockpit as an app
 
-Install the Cockpit of a workspace as its own app in its own window.
-If you work in several workspaces, each one gets its own app with its own name, icon and colors.
+This chapter is for anyone who works in the Cockpit every day and does not want to hunt for it among browser tabs. You install the Cockpit of a workspace as an app on your computer or phone, provided your browser can install web apps. You then start it like any other program, in its own window and with the workspace's name, icon and colors.
 
 ### What you need
 
@@ -29,9 +28,11 @@ If you work in several workspaces, each one gets its own app with its own name, 
 4. The Cockpit moves to this workspace's own address and shows the dialog again. Select **Install app** once more.
 5. Confirm the installation in your browser's dialog.
 
-The app carries the workspace name, uses the stored app icon or the SubKit icon, and takes the color of the selected color palette.
+The app carries the workspace name. It uses the stored app icon or the SubKit icon and takes the color of the selected color palette.
 
 ### Use several workspaces as separate apps
+
+If you work in several workspaces, each one gets its own app.
 
 1. In the regular Cockpit, switch to the next workspace from the workspace menu.
 2. Install it as above through **Install this workspace**.
@@ -71,8 +72,8 @@ If you install again later, the app gets a new address. Old links stop working.
 
 ### Good to know
 
-- In the app, open **Notifications** and turn on **Enable neutral notifications**. The alerts contain no workspace or workflow details.
-- Text and files you share with the app only reach the **Inbox** after you confirm them. This neither admits them to knowledge nor starts a workflow.
+- To get notifications, open **Notifications** in the app and turn on **Enable neutral notifications**. The alerts contain no workspace or workflow details.
+- Text and files you share with the app only reach the **Inbox** after you confirm them. This neither turns them into knowledge nor starts a workflow.
 - Your browser or operating system may keep showing an installed app's name and icon after you sign out.
 
 ### If something does not work

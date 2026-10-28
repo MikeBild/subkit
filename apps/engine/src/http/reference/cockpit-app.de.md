@@ -1,15 +1,14 @@
 ---
 slug: cockpit-app
 title: Cockpit als App
-summary: Installiere das Cockpit jedes Arbeitsbereichs als eigene App mit Name, Symbol und Farben des Arbeitsbereichs.
+summary: Starte das Cockpit deines Arbeitsbereichs als eigene App im eigenen Fenster.
 section: work
 order: 9
 audience: public
 ---
 ## Cockpit als App
 
-Installiere das Cockpit eines Arbeitsbereichs als eigene App mit eigenem Fenster.
-Arbeitest du in mehreren Arbeitsbereichen, bekommt jeder seine eigene App mit eigenem Namen, Symbol und Farben.
+Dieses Kapitel ist für alle, die täglich im Cockpit arbeiten und es nicht jedes Mal in einem Browser-Tab suchen wollen. Du installierst das Cockpit eines Arbeitsbereichs als App auf dem Rechner oder Handy, sofern dein Browser Web-Apps installieren kann. Danach startest du es wie jedes andere Programm, in eigenem Fenster und mit Name, Symbol und Farben des Arbeitsbereichs.
 
 ### Was du brauchst
 
@@ -29,9 +28,11 @@ Arbeitest du in mehreren Arbeitsbereichen, bekommt jeder seine eigene App mit ei
 4. Das Cockpit wechselt zur eigenen Adresse dieses Arbeitsbereichs und zeigt den Dialog erneut. Wähle noch einmal **App installieren**.
 5. Bestätige die Installation im Dialog deines Browsers.
 
-Die App heißt wie der Arbeitsbereich, nutzt das hinterlegte App-Icon oder das SubKit-Symbol und übernimmt die Farbe der gewählten Farbpalette.
+Die App heißt wie der Arbeitsbereich. Sie nutzt das hinterlegte App-Icon oder das SubKit-Symbol und übernimmt die Farbe der gewählten Farbpalette.
 
 ### Mehrere Arbeitsbereiche als getrennte Apps nutzen
+
+Arbeitest du in mehreren Arbeitsbereichen, bekommt jeder seine eigene App.
 
 1. Wechsle im normalen Cockpit im Menü des Arbeitsbereichs zum nächsten Arbeitsbereich.
 2. Installiere ihn wie oben über **Arbeitsbereich installieren**.
@@ -71,8 +72,8 @@ Installierst du später neu, entsteht eine neue App-Adresse. Alte Links funktion
 
 ### Gut zu wissen
 
-- In der App öffnest du **Benachrichtigungen** und schaltest **Neutrale Benachrichtigungen aktivieren** ein. Die Hinweise enthalten keine Details zu Arbeitsbereich oder Workflow.
-- Texte und Dateien, die du mit der App teilst, landen erst nach deiner Bestätigung im **Eingang**. Das nimmt sie weder ins Wissen auf noch startet es einen Workflow.
+- Benachrichtigungen schaltest du in der App unter **Benachrichtigungen** mit **Neutrale Benachrichtigungen aktivieren** ein. Die Hinweise enthalten keine Details zu Arbeitsbereich oder Workflow.
+- Texte und Dateien, die du mit der App teilst, landen erst nach deiner Bestätigung im **Eingang**. Sie werden dadurch weder Wissen, noch starten sie einen Workflow.
 - Name und Symbol einer installierten App kann dein Browser oder Betriebssystem auch nach dem Abmelden weiter anzeigen.
 
 ### Wenn etwas nicht klappt

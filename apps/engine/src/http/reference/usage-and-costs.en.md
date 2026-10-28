@@ -1,17 +1,16 @@
 ---
 slug: usage-and-costs
 title: Keep track of usage and costs
-summary: See what AI calls cost and what for, and adjust the budget and prices.
+summary: See what AI calls cost, and set the budget and prices.
 section: work
 order: 11
 audience: public
 ---
 ## Keep track of usage and costs
 
-The **Usage** page shows what AI calls cost, and what for.
-An AI call is one request from SubKit to an AI model. Every call costs money.
-At the top, one sentence sums up the time window, for example "This week: $84.20 for 1,240 AI calls."
-When costs rise, the sentence names the largest driver.
+This chapter is for anyone who needs to know what AI costs in the workspace, usually team leads or admins. Afterwards you know the cost per workflow, person and model, and you set how many tokens a month allows. An AI call is one request from SubKit to an AI model.
+
+Everything is on the **Usage** page. At the top, one sentence sums up the time window, for example "This week: $84.20 for 1,240 AI calls." When costs rise, the sentence names the largest driver.
 
 ### What you need
 
@@ -24,6 +23,8 @@ When costs rise, the sentence names the largest driver.
 Choose the **Time window** at the top right: **24 h**, **This week**, **Last week**, **This month** or **Last month**.
 Weeks start on Monday, and your time zone applies.
 All figures compare the window with the same span before.
+
+The **Overview** offers the same choice. Its **Usage** tile follows the chosen time window and shows the cost in it or "No AI calls in this window". Below that it shows how much of the monthly budget is used, for example "42% of the monthly token budget". The tile is enough for a quick look; for the reasons, open **Usage**.
 
 How to read the trend:
 
@@ -38,7 +39,7 @@ How to read the trend:
 - **AI calls**: how often SubKit asked an AI model. When calls failed, it shows for example **3 failed**. A click opens the Failed AI calls.
 - **Budget · Month**: how much of the monthly budget is used. This tile always covers the current month.
 - **Saved by cache**: what reused input saved compared with full price.
-- **From the cache**: the share of input that was reused instead of paid again. Below it, **Cache per flow** shows the share for each source. Higher is cheaper and faster. **No data** means the provider reports no cache for that flow.
+- **From the cache**: the share of input that was reused instead of paid again. Below it, **Cache per flow** shows the share for each source. Higher is cheaper and faster. **No data** means the provider reports no cache for that source.
 
 The forecast sits below the budget. SubKit projects it from the last 7 days:
 
@@ -113,13 +114,13 @@ Click a row to open its details at the side:
 Long conversations get more expensive because every reply reads the history so far. A new topic is worth a new conversation.
 
 You open **Failed AI calls** from the **AI calls** tile.
-Failed calls still cost money. The sheet names the amount.
+Failed calls can still cost money. The sheet names the amount.
 Under **Where they happen** you see the workflow or conversation and the reason:
 **Provider error**, **Input too large** or **Budget used up**.
 
 ### Adjust the budget
 
-The monthly budget is the maximum number of tokens per month.
+The monthly budget is the maximum number of tokens your workspace may use in a month. It covers all people and workflows together.
 
 1. Click **Adjust budget** under Worth a look, or the forecast in the tile.
    Without a budget, choose **Set a budget** in the tile.
@@ -132,8 +133,9 @@ Without it you only see the current state and "Ask someone with the Admin role."
 What happens as tokens are used:
 
 - From 75% a notice appears.
-- At 100% chat, creating and fixes pause until the first of the month.
-- Approved workflows keep running.
+- At 100% chat, designing workflows and fixes pause until the first of the month.
+- Approved workflows keep running. What is already in operation does not stop.
+- Requests SubKit rejects because of the budget never count towards usage.
 
 Without a budget, AI calls are unlimited.
 
@@ -169,20 +171,6 @@ Expand **Technical details** at the end of the page. It shows:
 - Your **Time zone** and the **Internal flows per origin**.
 - The **Query** that fetches the same numbers through the CLI or the API.
 
-### The same numbers through the CLI or the API
-
-`sk stats llm` and `GET /v1/stats/llm` return the same numbers as the page.
-Each answer includes tokens, cost and the savings from the cache.
-
-```bash
-sk stats llm --bucket day --from <from> --to <to> --group-by workflow
-```
-
-- `group_by` breaks down by `model`, `flow`, `user`, `workflow`, `conversation` or `execution`. At most two values at once.
-- `result=` filters by result: `success`, `quota_exhausted`, `context_too_large` or `error`.
-- `workflow_id=` shows only the calls of one workflow.
-- Breakdowns by `user` or `conversation` need `stats:read:all`. That does not apply when `user_id` is your own ID.
-
 ### When something does not work
 
 | What you see | What you do |
@@ -192,6 +180,19 @@ sk stats llm --bucket day --from <from> --to <to> --group-by workflow
 | **at least** in front of the cost | Some models have no price. Add it through **Set a price**. |
 | **Cost unknown** | None of the models used has a price. Add the prices. |
 | "Ask someone with the Admin role." instead of **Adjust budget** | You lack `settings:write`. Ask someone with the Admin role to change the budget. |
-| Chat, creating and fixes are paused | The monthly budget is used up. Raise it or wait for the first of the month. |
+| Chat, designing and fixes are paused | The monthly budget is used up. Raise it or wait for the first of the month. |
 | "The budget could not be read …" | Reload the page. This says nothing about whether a budget is set. |
 | "No AI calls in this window." | Choose **Show this month** or another window. |
+
+### The same in the terminal
+
+You get the same numbers with `sk stats llm` or through the HTTP API with `GET /v1/stats/llm`. Each answer includes tokens, cost and the savings from the cache. How to set up `sk` is in the chapter "Use the sk CLI on your machine".
+
+```bash
+sk stats llm --bucket day --from <from> --to <to> --group-by workflow
+```
+
+- `group_by` breaks down by `model`, `flow`, `user`, `workflow`, `conversation` or `execution`. At most two values at once.
+- `result=` filters by result: `success`, `quota_exhausted`, `context_too_large` or `error`.
+- `workflow_id=` shows only the calls of one workflow.
+- Breakdowns by `user` or `conversation` need `stats:read:all`. That does not apply when `user_id` is your own ID.

@@ -1,22 +1,25 @@
 ---
 slug: http-api
-summary: Rufe SubKit per HTTP aus deinem eigenen Programm oder Skript auf.
+summary: Starte Workflows aus deinem eigenen Programm und lies ihre Ergebnisse.
 section: work
 order: 6
 audience: public
 ---
 ## Die HTTP-API nutzen
 
-Starte Workflows aus deinem eigenen Programm oder Skript und lies ihr Ergebnis.
+Dein Programm, Skript oder Backend soll einen freigegebenen Workflow starten und mit dem Ergebnis weiterarbeiten.
+Dieses Kapitel ist für Entwickler und führt dich vom ersten Schlüssel bis zum gelesenen Lauf.
+Danach weißt du, wie du Läufe startest, auf sie wartest und Fehler sauber behandelst.
+
 Alle Beispiele nutzen `curl`, du kannst sie also zuerst im Terminal ausprobieren.
-Es funktioniert in SubKit Cloud und auf einer selbst betriebenen Engine gleich.
+SubKit Cloud und eine selbst betriebene Engine verhalten sich dabei gleich.
 
 ### Was du brauchst
 
 - Die Adresse deiner Engine.
   - Cloud: `https://subkit-cloud.mikebild.info` (ohne `/cockpit`)
   - Selbst betrieben: `https://<deine-engine>`
-- Einen API-Schlüssel mit `workflow:read`, `workflow:run` und `execution:read`. Leg ihn mit der sk-CLI an, wie in diesem Kapitel gezeigt, oder im Cockpit unter **API-Zugang**. Für die CLI meldest du dich an wie in „Die sk-CLI auf deinem Rechner verwenden“ beschrieben.
+- Einen API-Schlüssel mit den Scopes `workflow:read`, `workflow:run` und `execution:read`. Ein Scope ist ein einzelnes Recht, das der Schlüssel mitbringt. Leg den Schlüssel mit der sk-CLI an, wie unten gezeigt, oder im Cockpit unter **API-Zugang**. Für die CLI meldest du dich an wie in „Die sk-CLI auf deinem Rechner verwenden“ beschrieben.
 - Einen Workflow, der aktiv und freigegeben ist. Siehe „Dein erster Workflow“.
 - `curl` in deinem Terminal.
 
@@ -62,7 +65,7 @@ Es funktioniert in SubKit Cloud und auf einer selbst betriebenen Engine gleich.
      -H "Authorization: Bearer $SK_KEY"
    ```
 
-   Die Antwort nennt dein Konto, deinen Arbeitsbereich und die Scopes des Schlüssels (gekürzt):
+   Die Antwort nennt dein Konto, deinen Arbeitsbereich und die Scopes des Schlüssels (gekürzt). Der Arbeitsbereich ist der abgetrennte Bereich deines Teams in der Engine:
 
    ```json
    {
@@ -86,15 +89,15 @@ Ohne `--scopes` bekommt der Schlüssel dieselben Scopes wie dein eigener Zugang.
      -H "Authorization: Bearer $SK_KEY"
    ```
 
-   Jeder Eintrag in `items` trägt unter anderem `id`, `slug`, `name`, `lifecycle` und `operating_status` (gekürzt):
+   Jeder Eintrag in `items` trägt unter anderem `id`, `slug`, `name`, `lifecycle` und `operating_status`. Im Beispiel heißt der Workflow „Tagesbericht“ (gekürzt):
 
    ```json
    {
      "items": [
        {
          "id": "<workflow-id>",
-         "slug": "daily-report",
-         "name": "Daily report",
+         "slug": "tagesbericht",
+         "name": "Tagesbericht",
          "lifecycle": "active",
          "operating_status": "active"
        }
@@ -104,7 +107,7 @@ Ohne `--scopes` bekommt der Schlüssel dieselben Scopes wie dein eigener Zugang.
    }
    ```
 
-2. Kopiere die `id`. Läufe brauchen die ID, ein Slug wird nicht angenommen.
+2. Kopiere die `id`. Ein Lauf braucht die ID, einen Slug nimmt die Engine nicht an.
 
 `q=<text>` durchsucht Name, Slug, Beschreibung und Kategorie.
 
@@ -125,13 +128,13 @@ Ohne `--scopes` bekommt der Schlüssel dieselben Scopes wie dein eigener Zugang.
 
 ### Einen langen Lauf im Hintergrund starten
 
-1. Schick den Lauf mit `"async":true`. Optional: Ergänze einen Header `Idempotency-Key`:
+1. Schick den Lauf mit `"async":true`. Optional ergänzt du einen Header `Idempotency-Key`. Mit ihm startet ein versehentlich doppelt gesendeter Aufruf trotzdem nur einen Lauf:
 
    ```bash
    curl -s -X POST "$SK_URL/v1/executions" \
      -H "Authorization: Bearer $SK_KEY" \
      -H "Content-Type: application/json" \
-     -H "Idempotency-Key: daily-report-<date>" \
+     -H "Idempotency-Key: tagesbericht-<datum>" \
      -d '{"source":"saved","workflow_id":"<workflow-id>","input":{},"async":true}'
    ```
 
@@ -177,9 +180,17 @@ Ohne `--scopes` bekommt der Schlüssel dieselben Scopes wie dein eigener Zugang.
 
 ### Prüfen, ob ein Workflow automatisch laufen kann
 
-Beim Speichern eines Workflows (`POST /v1/workflows`, `PUT /v1/workflows/{id}`) und beim Anlegen oder Ändern eines Zeitplans (`POST /v1/schedules`, `PUT /v1/schedules/{id}`) enthält die Antwort `automation_readiness`: `{environment, workflow_version_id, state, issues, repair_guidance}`.
-`state` ist `eligible`, wenn ein Mensch wiederkehrende Läufe freigeben kann, `repair_required`, wenn keine Freigabe die genannten Schritte abdecken kann, bevor sie geändert sind, oder `verification_unavailable`.
-Jeder Eintrag in `issues` nennt `step_id` und `code`; `repair_guidance` sagt, wie du den Schritt änderst. Ein pausierter Zeitplan bekommt kein Urteil.
+Bevor ein Workflow nach Zeitplan läuft, willst du wissen, ob eine Freigabe ihn überhaupt abdecken kann. Diese Antwort steckt im Feld `automation_readiness`.
+
+Du bekommst es beim Speichern eines Workflows (`POST /v1/workflows`, `PUT /v1/workflows/{id}`). Ebenso beim Anlegen oder Ändern eines Zeitplans (`POST /v1/schedules`, `PUT /v1/schedules/{id}`). Das Feld hat die Form `{environment, workflow_version_id, state, issues, repair_guidance}`.
+
+| `state` | Bedeutung |
+| --- | --- |
+| `eligible` | Eine Person kann wiederkehrende Läufe freigeben. |
+| `repair_required` | Keine Freigabe kann die genannten Schritte abdecken, solange sie nicht geändert sind. |
+| `verification_unavailable` | Die Engine konnte die Prüfung nicht durchführen. Versuch es später erneut. |
+
+Jeder Eintrag in `issues` nennt `step_id` und `code`. `repair_guidance` sagt, wie du den Schritt änderst. Ein pausierter Zeitplan bekommt kein Urteil.
 
 ### Ein Paket exportieren und importieren
 
@@ -217,7 +228,7 @@ curl -s "$SK_URL/v1/executions?workflow_id=<workflow-id>&status=failed,timed_out
 ### So ist die API aufgebaut
 
 - Jede Route beginnt mit `/v1`, zum Beispiel `/v1/workflows`.
-- Deinen API-Schlüssel schickst du im Header `Authorization` als Bearer-Token.
+- Deinen API-Schlüssel schickst du im Header `Authorization` als `Bearer <api-key>`. „Bearer“ heißt: Wer den Schlüssel vorzeigt, gilt als berechtigt.
 - Anfragen und Antworten sind JSON.
 - `/openapi.json` beschreibt jede Route, jedes Feld und jeden Statuscode im OpenAPI-Format.
 - `/docs` zeigt dieselbe Beschreibung als durchsuchbare Referenz. Öffne `https://<deine-engine>/docs` im Browser.
@@ -245,8 +256,8 @@ Verzweige in deinem Programm nach `code`, nicht nach `message`. Heb `trace_id` a
 | `401` | `unauthorized` | Der Schlüssel fehlt, ist falsch, abgelaufen oder widerrufen. Prüfe `Authorization: Bearer <api-key>` oder leg einen neuen Schlüssel an. |
 | `403` | `forbidden` | Dem Schlüssel fehlt ein Scope oder deiner Rolle das Recht. Leg einen Schlüssel mit `workflow:read`, `workflow:run` und `execution:read` an. |
 | `404` | `not_found` | Die ID gibt es in deinem Arbeitsbereich nicht. |
-| `409` | `conflict` | Der aktuelle Zustand erlaubt es nicht. Bei einem Lauf: keine aktive Version, oder die Freigabe fehlt oder ist aufgebraucht. |
-| `429` | `rate_limit_exceeded`, `rate_limited` | Ein Limit ist erreicht. Warte so lange, wie der Header `Retry-After` sagt, und versuch es dann mit demselben `Idempotency-Key` erneut. |
+| `409` | `conflict` | Der aktuelle Zustand erlaubt es nicht. Bei einem Lauf: Es gibt keine aktive Version, oder die Freigabe fehlt oder ist aufgebraucht. |
+| `429` | `rate_limit_exceeded`, `rate_limited` | Ein Limit ist erreicht. Warte so lange, wie der Header `Retry-After` sagt. Versuch es dann mit demselben `Idempotency-Key` erneut. |
 | `500` | `internal_error` | Ein Fehler in der Engine. Melde die `trace_id`. |
 
 ### Wenn etwas nicht klappt

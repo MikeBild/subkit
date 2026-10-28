@@ -1,41 +1,52 @@
 ---
 slug: onboard-an-app
-summary: Binde eine App an SubKit an, die ihre Benutzer bei einem Identitätsanbieter anmeldet.
+summary: Binde eine App mit eigener Anmeldung an, damit sie Workflows startet.
 section: work
 order: 7
 audience: public
 ---
 ## Eine App anbinden
 
-Nutze diese Checkliste für eine App, die ihre Benutzer bei einem eigenen Identitätsanbieter anmeldet und SubKit mit diesem Token aufruft.
+Deine App meldet ihre Nutzer bei einem eigenen Identitätsanbieter an und soll in deren Namen SubKit-Workflows starten.
+Diese Checkliste ist für Entwickler, die diese Anbindung einrichten.
+Am Ende ruft die App SubKit mit dem Token ihrer Nutzer auf und braucht dafür nur die Produkt-ID und die Workflow-IDs.
+
+Der Identitätsanbieter ist der Dienst, bei dem sich deine Nutzer anmelden.
+Nach der Anmeldung stellt er ein Access-Token aus, einen signierten und befristeten Nachweis, wer die Person ist.
+Die App schickt dieses Token als Bearer-Token im Header `Authorization` an SubKit.
+SubKit prüft Signatur, Aussteller und Empfänger des Tokens, bevor ein Lauf startet.
+
 Arbeite die Schritte der Reihe nach ab.
-Am Ende braucht die App nur die Produkt-ID und die Workflow-IDs.
 Hosts und IDs in den Beispielen sind Platzhalter (`example.test`, `<...>`).
 
 ### Was du brauchst
 
 - Die `sk`-CLI, angemeldet an deiner Engine. In SubKit Cloud ist die Engine-Adresse `https://subkit-cloud.mikebild.info`, ohne `/cockpit`.
 - Ein echtes Access-Token eines Testkontos der App.
-- Einen Zugang zu den Upstreams der Workflows, etwa der Modell-API.
+- Zugang zu den Diensten, die die Workflows aufrufen, etwa zur API deines KI-Modells.
 
 ### 1. Produkt-ID und Anmelderegeln festlegen
 
-Leg diese Werte fest, bevor du eine Einstellung änderst. Lies `iss` und `aud` aus einem echten Token der App.
+Leg diese Werte fest, bevor du eine Einstellung änderst.
+Ein Claim ist ein Feld im Token, etwa `iss` (wer es ausgestellt hat) oder `aud` (für wen es gedacht ist).
+Lies beide aus einem echten Token der App.
 
 | Einstellung | Was du einträgst | Beispiel |
 | --- | --- | --- |
 | `product_id` | Ein kleingeschriebener Name (`^[a-z][a-z0-9-]{0,62}$`), einer pro App. Er verbindet Anbieter, Workflows, Budget und Identitätsbindung. | `<product-id>` |
 | `issuer_url` | Der Aussteller des Anbieters, genau wie im `iss`-Claim des Tokens. HTTPS außerhalb von localhost. | `https://idp.example.test` |
-| `audience` | Der Wert des `aud`-Claims im Token. Der Aussteller legt ihn fest, SubKit hat keinen Standardwert. | `<audience>` |
+| `audience` | Für wen das Token gedacht ist: der Wert des `aud`-Claims. Der Aussteller legt ihn fest, SubKit hat keinen Standardwert. | `<audience>` |
 | `required_claims` | Wer sich anmelden darf: ein Punktpfad in das verifizierte Token mit exaktem Wert. Der Schlüssel ist erforderlich. | `[{"path":"idp","equals":"primary"}]` |
 
-Das erste verifizierte Token einer Person legt einen Produktbenutzer mit der eingebauten Mitgliedsrolle an.
+Das erste geprüfte Token einer Person legt einen Produktbenutzer mit der eingebauten Mitgliedsrolle an.
 Eine leere Liste `required_claims: []` lässt jedes Token dieses Ausstellers und dieser Audience zu.
-Darf nicht jeder Inhaber eines Tokens Benutzer werden, schränke `required_claims` auf die vorgesehenen Konten ein.
+Soll nicht jede Person mit einem Token Benutzer werden, schränke `required_claims` auf die vorgesehenen Konten ein.
 
 ### 2. Laufzeitkonfiguration setzen
 
-`auth.providers` und `products` werden jeweils als Ganzes ersetzt. Lies jeden Wert zuerst und schreib ihn mit deiner Ergänzung zurück.
+Die Laufzeitkonfiguration sind Einstellungen deiner Engine, die du mit `sk settings` liest und schreibst.
+`auth.providers` und `products` werden dabei jeweils als Ganzes ersetzt.
+Lies deshalb jeden Wert zuerst und schreib ihn mit deiner Ergänzung zurück.
 
 1. Lies die aktuellen Anmeldeanbieter.
 
@@ -69,15 +80,18 @@ sk settings set products '{"<product-id>":{"execution_environment":"prod",
   "assistant_workflow_id":"<assistant-workflow-id>","budget_bucket":"<bucket>"}}'
 ```
 
-`assistant_workflow_id` ist die ID, die du in Schritt 4 für den abgesicherten Workflow wählst. Sobald die Schritte 3 bis 5 erledigt sind, zeigt `sk apps show <product-id>`, was die Werte ergeben.
+`tenant_slug` nennt den Arbeitsbereich, also den abgetrennten Bereich in der Engine, in dem SubKit die Nutzer der App anlegt.
+`assistant_workflow_id` ist die ID, die du in Schritt 4 für den abgesicherten Workflow wählst.
+Sobald die Schritte 3 bis 5 erledigt sind, zeigt `sk apps show <product-id>`, was die Werte ergeben.
 
 ### 3. Konnektoren anlegen
 
-Lege pro aufgerufenem Upstream der Workflows einen Konnektor an: die Modell-API und, falls die App Konten löscht, die Admin-API des Identitätsanbieters.
+Lege für jeden Dienst, den die Workflows aufrufen, einen Konnektor an.
+Das ist meist die API des KI-Modells und, falls die App Konten löscht, die Admin-API des Identitätsanbieters.
 
 1. Schreibe jede Definition ohne Zugangsdaten in eine JSON-Datei.
 2. Lege den Konnektor an.
-3. Hinterlege das Zugangsdatum.
+3. Hinterlege die Zugangsdaten.
 
 ```bash
 sk connectors create --file connector-model.json --skip-checks
@@ -85,22 +99,25 @@ sk credentials set <model-connector-id> --mode bearer --token "$MODEL_API_KEY"
 sk credentials set <idp-admin-connector-id> --mode header --header "Authorization=Bearer $IDP_ADMIN_KEY,apikey=$IDP_ADMIN_KEY"
 ```
 
-- `--skip-checks` ist nötig, weil das Zugangsdatum beim Anlegen des Konnektors noch nicht existiert. `credentials set` prüft es anschließend.
+- `--skip-checks` ist nötig, weil die Zugangsdaten beim Anlegen des Konnektors noch fehlen. `credentials set` prüft sie anschließend.
 - `bearer` sendet `Authorization: Bearer <token>`. `header` sendet die genannten Header (kommagetrennt `Name=Value`).
 - Zugangsdaten stammen aus deiner Shell oder deinem Secret-Speicher, nie aus einer Datei, der App oder diesem Repository.
-- Um ein Zugangsdatum mit mehreren Headern im Cockpit zu ersetzen, füll alle Header-Felder aus oder lass alle leer, um sie zu behalten.
+- Ersetzt du im Cockpit Zugangsdaten mit mehreren Headern, füll alle Header-Felder aus. Lässt du alle leer, bleiben die alten Werte.
 
-Um ein Zugangsdatum zu prüfen, gib dem Konnektor einen günstigen authentifizierten Lesezugriff als Probe:
+Damit SubKit die Zugangsdaten prüfen kann, gib dem Konnektor eine Probe. Das ist ein kleiner Lesezugriff, der eine Anmeldung braucht:
 
 ```json
 "config": {"probe_endpoint": {"method": "GET", "path": "/admin/users?per_page=1", "expected_status": [200, 200]}}
 ```
 
-Führe dann `sk connectors test <id>` aus. Ein Konnektor, dessen Probe mit 401 oder 403 antwortet, gilt als abgemeldet, und seine Workflows sind blockiert.
+Führe dann `sk connectors test <id>` aus.
+Antwortet die Probe mit 401 oder 403, gilt der Konnektor als abgemeldet. Seine Workflows sind dann blockiert.
 
 ### 4. Workflows anlegen
 
-Halte die Definitionen im eigenen Repository der App. Lege sie mit festen IDs an, damit die App sie fest hinterlegen kann. Nur ein Administrator darf eine Workflow-`id` (eine unbenutzte UUID) wählen.
+Halte die Definitionen im eigenen Repository der App.
+Lege sie mit festen IDs an, damit die App sie fest im Code hinterlegen kann.
+Nur ein Administrator darf eine Workflow-`id` (eine unbenutzte UUID) wählen.
 
 ```bash
 sk workflows create --file workflows/assistant.json
@@ -111,20 +128,22 @@ Jeder Produkt-Workflow setzt:
 
 - `"id": "<fixed-uuid>"` und `"product_id": "<product-id>"`.
 - `"required_caller_kind": "user"` und `"execution_privacy": "sensitive"`.
-- Beim abgerechneten Workflow `execution_guards.caller_daily_limit` (Bucket gleich `budget_bucket`, Limit, `tz`, Einheitenpfad) und `execution_guards.input_bytes`.
+- Beim Workflow, dessen Verbrauch je Nutzer und Tag begrenzt ist, `execution_guards.caller_daily_limit` (Bucket gleich `budget_bucket`, Limit, `tz`, Einheitenpfad) und `execution_guards.input_bytes`.
 - Beim Lösch-Workflow `"caller_erasure": "on_success"`.
 
-Das Konto gehört dem Identitätsanbieter. SubKit besitzt nur seine eigenen Datensätze über den Aufrufer. Der Lösch-Workflow läuft deshalb in dieser Reihenfolge:
+Das Konto gehört dem Identitätsanbieter. SubKit besitzt nur seine eigenen Datensätze über die aufrufende Person.
+Der Lösch-Workflow läuft deshalb in dieser Reihenfolge:
 
 1. Lösche das Konto beim Identitätsanbieter mit dem Admin-Konnektor, über `${caller.subject}` (gebunden mit `{caller_bound: true}`). Ein 404 bedeutet „schon weg“ und gilt als Erfolg.
-2. Widerrufe Tokens bei anderen Upstreams nach bestem Bemühen. Ein Fehler hier darf Schritt 3 nicht blockieren.
+2. Widerrufe Tokens bei anderen Diensten, so weit das möglich ist. Ein Fehler hier darf Schritt 3 nicht blockieren.
 3. SubKit löscht seine eigenen Aufruferdaten zuletzt, über `caller_erasure: "on_success"`. Früher ausgestellte Tokens werden danach abgelehnt.
 
 Schlägt Schritt 1 fehl, schlägt der Lauf fehl, und nichts wird gelöscht. Die App versucht es mit demselben `idempotency_key` erneut.
 
 ### 5. Die Workflows freigeben
 
-Ohne gültige Freigabe antwortet ein Produktlauf mit 403. Eine Person mit Schreibrecht gibt jeden Produkt-Workflow einmal pro Umgebung frei.
+Ohne gültige Freigabe antwortet ein Produktlauf mit 403.
+Eine Person mit Schreibrecht gibt jeden Produkt-Workflow einmal pro Umgebung frei.
 
 1. Öffne im Cockpit **Workflows** und klicke auf den Workflow.
 2. Wähle **Freigeben** in der Statuszeile oder auf dem Tab **Freigaben**. Der Dialog **<Workflow> v<n> freigeben** öffnet sich.
@@ -133,9 +152,11 @@ Ohne gültige Freigabe antwortet ein Produktlauf mit 403. Eine Person mit Schrei
 5. Wähle unter **Gültigkeit** **7 Tage**, **30 Tage** oder **Bis auf Widerruf**. **Bis auf Widerruf** ist vorausgewählt und setzt weder eine Laufgrenze noch ein Ablaufdatum.
 6. Wähle **Freigeben**. Die Freigabe startet keinen Lauf.
 
-Ein Workflow, den nur die HTTP-Aufrufe der App starten, wird in der Umgebung seiner Konnektoren geprüft. Seine Statuszeile zeigt dann eventuell „Nicht freigegeben“ ohne Korrekturbanner. Fehlt ein Konnektor oder liegt er in einer anderen Umgebung, behebe das zuerst.
+Ein Workflow, den nur die HTTP-Aufrufe der App starten, wird in der Umgebung seiner Konnektoren geprüft.
+Seine Statuszeile zeigt dann eventuell „Nicht freigegeben“ ohne Korrekturbanner.
+Fehlt ein Konnektor oder liegt er in einer anderen Umgebung, behebe das zuerst.
 
-Die Freigabe gilt weiter für eine neue Version, deren Grenze nicht wächst. Wächst die Grenze, gibst du erneut frei.
+Eine neue Version braucht keine neue Freigabe, solange sie nicht mehr Systeme, Adressen oder Schreibrechte anfasst als die freigegebene. Greift sie weiter, fragt SubKit erneut und nennt den Unterschied.
 
 ### 6. Den Zugriff der App testen
 
@@ -145,7 +166,11 @@ Prüfe zuerst die Bereitschaft. Jede Prüfung sollte `ok` lauten. Eine fehlschla
 sk apps show <product-id>
 ```
 
-Ruf dann die Engine mit einem echten Token auf. `$TOKEN` ist das Access-Token eines Testkontos. `$BAD_TOKEN` ist `$TOKEN` mit geänderten letzten Zeichen der Signatur. `$BASE` ist die Engine-URL.
+Ruf dann die Engine mit einem echten Token auf:
+
+- `$TOKEN` ist das Access-Token eines Testkontos.
+- `$BAD_TOKEN` ist `$TOKEN`, bei dem du die letzten Zeichen der Signatur änderst.
+- `$BASE` ist die Adresse der Engine.
 
 ```bash
 curl -s -w '\n%{http_code}\n' -H "Authorization: Bearer $BAD_TOKEN" $BASE/v1/budget
@@ -158,11 +183,13 @@ curl -s -X POST $BASE/v1/executions -H "Authorization: Bearer $TOKEN" -H 'conten
 Erwartet:
 
 - `$BAD_TOKEN`, eine falsche Audience, ein fehlender Pflicht-Claim oder ein abgelaufenes Token antworten `401 invalid bearer token`.
-- `sk executions` und der Datensatz des Laufs zeigen die Aufruferzusammenfassung und die verwendete Freigabe.
+- `sk executions` und der Datensatz des Laufs zeigen, wer aufgerufen hat und welche Freigabe galt.
 
 ### Zugangsdaten eines Konnektors erneuern
 
-Zugangsdaten in Konnektoren können ablaufen, und Admin-Schlüssel werden rotiert. Halte Name, Konnektor, Verantwortliche und Ablaufdatum aller Zugangsdaten im Repository der App fest, nie den Wert. Erneuere sie vor Ablauf.
+Zugangsdaten in Konnektoren können ablaufen, und Admin-Schlüssel werden regelmäßig getauscht.
+Halte Name, Konnektor, Verantwortliche und Ablaufdatum aller Zugangsdaten im Repository der App fest, nie den Wert.
+Erneuere sie vor Ablauf.
 
 1. Hinterlege den neuen Wert mit `sk credentials set`.
 2. Prüfe ihn mit `sk connectors test <connector-id>`.
@@ -258,16 +285,16 @@ Das heutige Budget zeigt die heute verbrauchten und reservierten Einheiten, die 
 | Freigaben der Workflows | Eine Person, pro Workflow und Umgebung, im Cockpit |
 | Ablaufnachweise für Zugangsdaten | Das eigene Repository der App (nur Metadaten) |
 
-Jede Änderung an einem Anmeldeanbieter oder `products`-Eintrag schreibt einen Audit-Eintrag. Er nennt die geänderten Felder, nicht ihre Werte.
+Jede Änderung an einem Anmeldeanbieter oder `products`-Eintrag landet im Verlauf. Der Eintrag nennt die geänderten Felder, nicht ihre Werte.
 
 ### Wenn etwas nicht klappt
 
 | Was du siehst | Was du tust |
 | --- | --- |
 | `401 invalid bearer token` | Das Token wurde abgelehnt. Prüfe `issuer_url`, `audience` und `required_claims` gegen ein echtes Token und ob es abgelaufen ist. |
-| `403` bei einem Produktlauf oder `ok: false` bei `GET /v1/health` | Es fehlt die Freigabe aus Schritt 5 oder ein Zugangsdatum. Prüfe `sk apps show <product-id>`. |
+| `403` bei einem Produktlauf oder `ok: false` bei `GET /v1/health` | Es fehlt die Freigabe aus Schritt 5 oder Zugangsdaten. Prüfe `sk apps show <product-id>`. |
 | `429 rate_limited` | Das Tageslimit ist verbraucht. `sk apps show` nennt, wann der Tag zurückgesetzt wird. |
-| `409 turn_busy` | Ein Aufruf läuft noch. Warte ab oder wiederhole mit demselben `idempotency_key`; das spielt den Aufruf erneut ab. |
+| `409 turn_busy` | Ein Aufruf läuft noch. Warte ab oder wiederhole ihn mit demselben `idempotency_key`. Die Engine spielt dann den ersten Aufruf erneut ab. |
 | `credential_unverified` und `PROBE_AUTH_UNVERIFIED`, oder „Verbunden · Anmeldung nicht geprüft“ im Cockpit | Der Konnektor hat keine Probe, und `GET /` lieferte keine klare Antwort. Setze einen Probe-Pfad mit authentifiziertem Lesezugriff (Schritt 3) und prüfe mit `sk connectors test <id>`. |
-| Ein Konnektor gilt als abgemeldet | Dessen Probe hat 401 oder 403 geliefert. Hinterlege das Zugangsdatum neu (Schritt 3) und prüfe mit `sk connectors test <id>`. |
+| Ein Konnektor gilt als abgemeldet | Dessen Probe hat 401 oder 403 geliefert. Hinterlege die Zugangsdaten neu (Schritt 3) und prüfe mit `sk connectors test <id>`. |
 | `409` beim Löschen eines App-Benutzers | Die Person hat Anmeldeverknüpfungen zu einer anderen App oder zu SubKit selbst und wird nicht gelöscht. |
