@@ -129,7 +129,14 @@ export async function loadCleanupQueuePayloads(
   };
   const reader = createBossReadOnlyReader(boss, adapter);
   if (readProduct) await readProduct(adapter);
-  const jobs = await reader.findJobs<unknown>(EXECUTION_RUN_QUEUE, { db: adapter });
+  const pendingJobs = {
+    executeSql: (text: string, values?: unknown[]) =>
+      adapter.executeSql(
+        `SELECT * FROM (${text}) AS jobs WHERE jobs.state IN ('created', 'retry', 'active')`,
+        values,
+      ),
+  };
+  const jobs = await reader.findJobs<unknown>(EXECUTION_RUN_QUEUE, { db: pendingJobs });
   const schedules = await reader.getSchedules();
   remaining();
   const parts: Array<{ tenant_id: string | null; payload: string }> = [];

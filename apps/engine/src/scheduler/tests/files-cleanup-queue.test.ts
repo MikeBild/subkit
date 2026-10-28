@@ -85,17 +85,18 @@ test("bounded SDK scan preserves queued, active, retry and schedules without rea
   await boss.unschedule(EXECUTION_RUN_QUEUE, "inflight");
 });
 
-test("retained completed history and schedule rows share the row budget and never return partial scans", async () => {
+test("retained completed history stays outside the row budget while pending jobs and schedules never return partial scans", async () => {
   for (let i = 0; i < 3; i++) await boss.send(EXECUTION_RUN_QUEUE, { history: i });
   const jobs = await boss.fetch(EXECUTION_RUN_QUEUE, { batchSize: 3 });
   await boss.complete(
     EXECUTION_RUN_QUEUE,
     jobs.map((job) => job.id),
   );
+  expect(await loadCleanupQueuePayloads(boss, ctx.pool, { ...budget, rows: 2 })).toEqual([]);
+  for (let i = 0; i < 3; i++) await boss.send(EXECUTION_RUN_QUEUE, { pending: i });
   await expect(loadCleanupQueuePayloads(boss, ctx.pool, { ...budget, rows: 2 })).rejects.toThrow(
     "budget_exceeded",
   );
-  expect(await loadCleanupQueuePayloads(boss, ctx.pool, budget)).toEqual([]);
   await boss.deleteAllJobs(EXECUTION_RUN_QUEUE);
   for (const key of ["one", "two", "three"])
     await boss.schedule(EXECUTION_RUN_QUEUE, "0 0 1 1 *", { key }, { key });
