@@ -95,7 +95,7 @@ function buildIndex(): ProductDocSection[] {
           sha256: content.sha256,
           text: part.text,
           titleTokens: new Set(stems(`${content.title} ${page.slug.replaceAll("-", " ")}`)),
-          headingTokens: new Set(stems(heading)),
+          headingTokens: new Set(heading === content.title ? [] : stems(heading)),
           bodyTokens,
           bodyLength: bodyStems.length,
         });
