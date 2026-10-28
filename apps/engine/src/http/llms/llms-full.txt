@@ -1746,7 +1746,7 @@ Every change to a sign-in provider or a `products` entry lands in the audit log.
 | `401 invalid bearer token` | The token was refused. Check `issuer_url`, `audience` and `required_claims` against a real token, and whether it has expired. |
 | `403` on a product run, or `ok: false` at `GET /v1/health` | The approval from step 5 or credentials are missing. Check `sk apps show <product-id>`. |
 | `429 rate_limited` | The daily limit is used up. `sk apps show` tells when the day resets. |
-| `409 turn_busy` | A call is still running. Wait, or repeat it with the same `idempotency_key`. The engine then replays the first call. |
+| `409 turn_busy` | Another call of the same turn is still running. Wait, or resend the first call with its `idempotency_key` and the engine returns that call's result again. A different key keeps getting 409 until the first call has finished. |
 | `credential_unverified` and `PROBE_AUTH_UNVERIFIED`, or "Connected · sign-in not verified" in the Cockpit | The connector has no probe, and `GET /` gave no clear answer. Set a probe path with an authenticated read (step 3) and check with `sk connectors test <id>`. |
 | A connector counts as signed out | Its probe answered 401 or 403. Store the credentials again (step 3) and check with `sk connectors test <id>`. |
 | `409` when erasing an app user | The person has sign-in links to another app or to SubKit itself and is not erased. |
@@ -2243,7 +2243,7 @@ Branding makes the signed-in Cockpit show your name, your logo and a matching co
 
 ### Change it in the Cockpit
 
-A workspace is your tenant in the engine: its own data, its own users, its own permissions. To make changes you need `settings:write` and `identity:write` there. Under Settings → Workspace branding you set:
+A workspace is your tenant in the engine: its own data, its own users, its own permissions. To make changes you need `settings:write` and `identity:write` there. Under Settings → Operations, in the Appearance area (section Workspace branding), you set:
 
 - the wordmark, meaning the displayed name, and an optional subtitle,
 - one logo each for the light and the dark theme,
@@ -2261,7 +2261,7 @@ Branding lives in your workspace's PostgreSQL schema. In hosted operation it cou
 
 Cockpit, HTTP API, `sk` and MCP follow the same rules: the same image checks, the same permissions, the same revisions. Every saved version has a revision. If someone else has saved in the meantime, your save fails with a conflict and the saved version stays. Reload and try again.
 
-Authenticated callers read with `GET /v1/tenant/branding`, save with `PUT` and reset with `DELETE`. Writing needs both permissions, `settings:write` and `identity:write`. A scoped API key stays limited to its permissions; browser writes additionally check the CSRF token. Logo reads are bound to the workspace and revision. If only one logo is stored, every client applies the same fallback.
+Authenticated callers read with `GET /v1/tenant/branding`, save with `PUT` and reset with `DELETE`. Writing needs both permissions, `settings:write` and `identity:write`. A scoped API key stays limited to its permissions; browser writes additionally check the CSRF token. Logo reads are bound to the workspace and revision. If only one logo is stored, the Cockpit uses it for both the light and the dark theme; HTTP, CLI and MCP return both logo addresses.
 
 The CLI offers these commands:
 

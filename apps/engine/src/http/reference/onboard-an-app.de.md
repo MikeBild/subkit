@@ -294,7 +294,7 @@ Jede Änderung an einem Anmeldeanbieter oder `products`-Eintrag landet im Verlau
 | `401 invalid bearer token` | Das Token wurde abgelehnt. Prüfe `issuer_url`, `audience` und `required_claims` gegen ein echtes Token und ob es abgelaufen ist. |
 | `403` bei einem Produktlauf oder `ok: false` bei `GET /v1/health` | Es fehlt die Freigabe aus Schritt 5 oder Zugangsdaten. Prüfe `sk apps show <product-id>`. |
 | `429 rate_limited` | Das Tageslimit ist verbraucht. `sk apps show` nennt, wann der Tag zurückgesetzt wird. |
-| `409 turn_busy` | Ein Aufruf läuft noch. Warte ab oder wiederhole ihn mit demselben `idempotency_key`. Die Engine spielt dann den ersten Aufruf erneut ab. |
+| `409 turn_busy` | Ein Aufruf desselben Durchgangs läuft noch. Warte ab, oder sende den ersten Aufruf mit seinem `idempotency_key` erneut; dann liefert die Engine dessen Ergebnis noch einmal. Ein anderer Schlüssel bekommt weiter 409, bis der erste Aufruf fertig ist. |
 | `credential_unverified` und `PROBE_AUTH_UNVERIFIED`, oder „Verbunden · Anmeldung nicht geprüft“ im Cockpit | Der Konnektor hat keine Probe, und `GET /` lieferte keine klare Antwort. Setze einen Probe-Pfad mit authentifiziertem Lesezugriff (Schritt 3) und prüfe mit `sk connectors test <id>`. |
 | Ein Konnektor gilt als abgemeldet | Dessen Probe hat 401 oder 403 geliefert. Hinterlege die Zugangsdaten neu (Schritt 3) und prüfe mit `sk connectors test <id>`. |
 | `409` beim Löschen eines App-Benutzers | Die Person hat Anmeldeverknüpfungen zu einer anderen App oder zu SubKit selbst und wird nicht gelöscht. |

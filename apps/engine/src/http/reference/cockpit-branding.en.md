@@ -11,7 +11,7 @@ Branding makes the signed-in Cockpit show your name, your logo and a matching co
 
 ### Change it in the Cockpit
 
-A workspace is your tenant in the engine: its own data, its own users, its own permissions. To make changes you need `settings:write` and `identity:write` there. Under Settings → Workspace branding you set:
+A workspace is your tenant in the engine: its own data, its own users, its own permissions. To make changes you need `settings:write` and `identity:write` there. Under Settings → Operations, in the Appearance area (section Workspace branding), you set:
 
 - the wordmark, meaning the displayed name, and an optional subtitle,
 - one logo each for the light and the dark theme,
@@ -29,7 +29,7 @@ Branding lives in your workspace's PostgreSQL schema. In hosted operation it cou
 
 Cockpit, HTTP API, `sk` and MCP follow the same rules: the same image checks, the same permissions, the same revisions. Every saved version has a revision. If someone else has saved in the meantime, your save fails with a conflict and the saved version stays. Reload and try again.
 
-Authenticated callers read with `GET /v1/tenant/branding`, save with `PUT` and reset with `DELETE`. Writing needs both permissions, `settings:write` and `identity:write`. A scoped API key stays limited to its permissions; browser writes additionally check the CSRF token. Logo reads are bound to the workspace and revision. If only one logo is stored, every client applies the same fallback.
+Authenticated callers read with `GET /v1/tenant/branding`, save with `PUT` and reset with `DELETE`. Writing needs both permissions, `settings:write` and `identity:write`. A scoped API key stays limited to its permissions; browser writes additionally check the CSRF token. Logo reads are bound to the workspace and revision. If only one logo is stored, the Cockpit uses it for both the light and the dark theme; HTTP, CLI and MCP return both logo addresses.
 
 The CLI offers these commands:
 

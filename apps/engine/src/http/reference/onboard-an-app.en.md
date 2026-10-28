@@ -294,7 +294,7 @@ Every change to a sign-in provider or a `products` entry lands in the audit log.
 | `401 invalid bearer token` | The token was refused. Check `issuer_url`, `audience` and `required_claims` against a real token, and whether it has expired. |
 | `403` on a product run, or `ok: false` at `GET /v1/health` | The approval from step 5 or credentials are missing. Check `sk apps show <product-id>`. |
 | `429 rate_limited` | The daily limit is used up. `sk apps show` tells when the day resets. |
-| `409 turn_busy` | A call is still running. Wait, or repeat it with the same `idempotency_key`. The engine then replays the first call. |
+| `409 turn_busy` | Another call of the same turn is still running. Wait, or resend the first call with its `idempotency_key` and the engine returns that call's result again. A different key keeps getting 409 until the first call has finished. |
 | `credential_unverified` and `PROBE_AUTH_UNVERIFIED`, or "Connected · sign-in not verified" in the Cockpit | The connector has no probe, and `GET /` gave no clear answer. Set a probe path with an authenticated read (step 3) and check with `sk connectors test <id>`. |
 | A connector counts as signed out | Its probe answered 401 or 403. Store the credentials again (step 3) and check with `sk connectors test <id>`. |
 | `409` when erasing an app user | The person has sign-in links to another app or to SubKit itself and is not erased. |

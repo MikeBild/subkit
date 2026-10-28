@@ -11,7 +11,7 @@ Mit dem Branding zeigt das angemeldete Cockpit deinen Namen, dein Logo und eine 
 
 ### Im Cockpit ändern
 
-Dein Arbeitsbereich ist in der Engine ein eigener Mandant: eigene Daten, eigene Nutzer, eigene Rechte. Zum Ändern brauchst du dort die Rechte `settings:write` und `identity:write`. In den Einstellungen unter „Arbeitsbereich-Branding“ legst du fest:
+Dein Arbeitsbereich ist in der Engine ein eigener Mandant: eigene Daten, eigene Nutzer, eigene Rechte. Zum Ändern brauchst du dort die Rechte `settings:write` und `identity:write`. In den Einstellungen unter „Betrieb“, Bereich „Erscheinungsbild“ (Abschnitt „Arbeitsbereich-Branding“), legst du fest:
 
 - das Wortzeichen, also den angezeigten Namen, und einen optionalen Untertitel,
 - je ein Logo für die helle und die dunkle Darstellung,
@@ -29,7 +29,7 @@ Das Branding liegt im PostgreSQL-Schema deines Arbeitsbereichs. Im gehosteten Be
 
 Cockpit, HTTP-API, `sk` und MCP folgen denselben Regeln: gleiche Bildprüfung, gleiche Berechtigungen, gleiche Revisionen. Jede gespeicherte Fassung hat eine Revision. Hat jemand anderes inzwischen gespeichert, schlägt dein Speichern mit einem Konflikt fehl und die gespeicherte Fassung bleibt erhalten. Lade dann neu und versuche es noch einmal.
 
-Angemeldete Aufrufer lesen mit `GET /v1/tenant/branding`, speichern mit `PUT` und setzen mit `DELETE` zurück. Schreiben braucht beide Rechte, `settings:write` und `identity:write`. Ein API-Schlüssel mit Scope bleibt auf seine Rechte begrenzt; Schreibzugriffe aus dem Browser prüfen zusätzlich das CSRF-Token. Logo-Abrufe sind an Arbeitsbereich und Revision gebunden. Ist nur ein Logo hinterlegt, gilt in jedem Client dieselbe Rückfallregel.
+Angemeldete Aufrufer lesen mit `GET /v1/tenant/branding`, speichern mit `PUT` und setzen mit `DELETE` zurück. Schreiben braucht beide Rechte, `settings:write` und `identity:write`. Ein API-Schlüssel mit Scope bleibt auf seine Rechte begrenzt; Schreibzugriffe aus dem Browser prüfen zusätzlich das CSRF-Token. Logo-Abrufe sind an Arbeitsbereich und Revision gebunden. Ist nur ein Logo hinterlegt, nutzt das Cockpit es für das helle und das dunkle Design; HTTP, CLI und MCP liefern beide Logo-Adressen aus.
 
 Die CLI bietet diese Befehle:
 
