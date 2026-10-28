@@ -1,22 +1,25 @@
 ---
 slug: intro
 title: What is SubKit?
-summary: What SubKit is and how governed, recorded workflows help you.
+summary: Learn which recurring work SubKit takes over and how to start.
 section: start
 order: 1
 audience: public
 ---
 ## What is SubKit?
 
-SubKit runs your business tasks as governed workflows.
-You describe the work in plain language. You approve what it may touch. Every run is recorded.
+SubKit runs recurring business tasks that span several systems and today depend on one person or a fragile script.
+It is for teams that want such routine work to run reliably without writing software for it.
+You describe the task in your own words, the AI drafts a workflow from it, and a person checks it and approves what it may touch.
+After that it runs in fixed steps, with only the approved permissions.
+Every run is recorded.
+
+You work in the Cockpit in the browser, with the `sk` command line, or from AI clients such as Claude Code over MCP; the Web Clipper also collects web pages into your inbox.
 
 ![Overview with key figures for runs, success rate, connector health and cost, the "Needs you" list with open decisions and the latest failed runs](images/intro-overview.en.webp)
 
-The **Overview** shows its key figures for a **Time window**: **24 h**, **This week**, **Last week**, **This month** or **Last month**.
-Weeks start on Monday, and your time zone applies. The **Usage** page offers the same choice.
-The **Usage** tile follows the chosen time window. It shows the cost in the window or "No AI calls in this window". Below it, it shows how much of the monthly budget is used, for example "42% of the monthly token budget".
-What the **Usage** page shows and how you adjust the budget is in "Keep track of usage and costs".
+The **Overview** shows at a glance what ran, what failed and what is waiting for your decision.
+How to track cost and budget is in "Keep track of usage and costs".
 
 Use it as SubKit Cloud or run your own engine:
 

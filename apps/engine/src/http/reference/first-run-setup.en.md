@@ -1,11 +1,14 @@
 ---
 slug: first-run-setup
-summary: Set up providers, admin access and the Cockpit after the first start.
+summary: Create the admin account, workspace and AI provider after the first start.
 section: start
 order: 4
 audience: operator
 ---
 ## First-run setup
+
+After this step your engine has an admin account, a first workspace and a verified AI provider, and you can sign in to the Cockpit.
+The engine writes the one-time setup token to its log on first start; the command reads it from there.
 
 ```bash
 docker compose exec engine sk init \
@@ -16,10 +19,11 @@ docker compose exec engine sk init \
   --llm-api-key <your-provider-key>
 ```
 
-`sk init` checks the key with one minimal call before it saves anything; a refused key stops
-the setup, nothing is stored, and the same token works for the next try.
+Replace the email address, the name and the key with your own values.
+`sk init` checks the key with one small test call before it saves anything.
+If the provider refuses it, the setup stops and nothing is stored. The same token works for the next try.
 
 Open the Cockpit at `http://localhost:3000/cockpit`.
-Without a configured sign-in provider, sign in with an API key. This applies only to self-hosted
-installations without an identity provider; SubKit Cloud signs you in through Upraft Auth.
+If no sign-in provider is configured, sign in with an API key.
+Then build your first workflow with "Your first workflow".
 

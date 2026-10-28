@@ -1,6 +1,6 @@
 ---
 slug: subkit-cloud
-summary: Nutze SubKit als Dienst, ohne eine eigene Engine zu betreiben.
+summary: Nutze SubKit im Browser, ohne einen eigenen Server zu betreiben.
 section: start
 path_choice: hosting
 order: 2
@@ -10,7 +10,7 @@ audience: public
 
 > Cloud (Hosted Beta, auf Einladung)
 
-SubKit Cloud ist SubKit als Dienst, du installierst und betreibst also keine eigene Engine.
+Mit SubKit Cloud läuft SubKit für dich. Du installierst nichts und betreibst keine eigene Engine.
 Du meldest dich im Browser an und arbeitest im Cockpit deines Arbeitsbereichs.
 
 ### Was du brauchst
@@ -21,6 +21,7 @@ Du meldest dich im Browser an und arbeitest im Cockpit deines Arbeitsbereichs.
 ### Zugang erhalten
 
 Eine Administratorin oder ein Administrator lädt dich unter **Personen & Rechte** > **Person einladen** ein.
+Anmeldung, Einladungen und Passwort-E-Mails laufen über Upraft Auth, den Anmeldedienst der Plattform, auf der SubKit Cloud läuft.
 
 1. Öffne die E-Mail von „Upraft Auth“.
 2. Wähle den Link und lege ein Passwort fest.
@@ -131,13 +132,13 @@ Einige Einstellungen verwaltet aber der Betreiber, nicht du.
 - **API-Schlüssel nur für Werkzeuge.** API-Schlüssel funktionieren weiter für die sk-CLI, den Web Clipper,
   die HTTP-API (Bearer) und MCP-Clients mit Schlüssel. Die Browser-Anmeldung mit einem API-Schlüssel
   gibt es nur bei selbst betriebenen Installationen ohne Anmeldeanbieter.
-- **Export als Paket.** Du kannst deine eigenen Workflows, Konnektoren, Skills, Zeitpläne, Knowledge Sources und Dateien als Paket exportieren und in eine andere Engine importieren.
+- **Export als Paket.** Du kannst deine eigenen Workflows, Konnektoren, Skills, Zeitpläne, Quellen und Dateien als Paket exportieren und in eine andere Engine importieren.
   Zugangsdaten, Freigaben und der Laufverlauf sind nicht enthalten. Siehe „Die sk-CLI auf deinem Rechner verwenden“.
 
 ### Limits und ihre Meldungen
 
 Jeder Arbeitsbereich hat Limits. Die Werte legt der Betreiber fest.
-Erreichst du eines, zeigt SubKit eine Meldung. Die meisten Meldungen sind auf Englisch.
+Erreichst du eines, zeigt SubKit eine Meldung. Die meisten dieser Meldungen erscheinen auf Englisch; die Tabelle zitiert sie wörtlich.
 
 | Was du siehst | Was du tust |
 | --- | --- |

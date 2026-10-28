@@ -1,6 +1,6 @@
 ---
 slug: subkit-cloud
-summary: Use SubKit as a hosted service without running your own engine.
+summary: Use SubKit in the browser without running your own server.
 section: start
 path_choice: hosting
 order: 2
@@ -10,7 +10,7 @@ audience: public
 
 > Cloud (hosted beta, by invitation)
 
-SubKit Cloud is SubKit run for you, so you do not install or operate an engine.
+With SubKit Cloud, SubKit runs for you. You install nothing and operate no engine of your own.
 You sign in from the browser and work in the Cockpit of your workspace.
 
 ### What you need
@@ -21,6 +21,7 @@ You sign in from the browser and work in the Cockpit of your workspace.
 ### Get access
 
 An administrator invites you from **People & access** > **Invite person**.
+Sign-in, invitations and password emails go through Upraft Auth, the sign-in service of the platform SubKit Cloud runs on.
 
 1. Open the email from "Upraft Auth".
 2. Select the link and set a password.
@@ -137,7 +138,7 @@ Some settings are managed by the operator instead of by you.
 ### Limits and their messages
 
 Every workspace has limits. The operator sets their values.
-When you reach one, SubKit shows a message.
+When you reach one, SubKit shows a message. Most of these messages appear in English; the table quotes them verbatim.
 
 | What you see | What to do |
 | --- | --- |

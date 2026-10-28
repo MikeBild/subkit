@@ -1,22 +1,25 @@
 ---
 slug: intro
 title: Was ist SubKit?
-summary: Was SubKit ist und wie dir kontrollierte, aufgezeichnete Workflows helfen.
+summary: Verstehe, welche wiederkehrende Arbeit SubKit übernimmt und wie du startest.
 section: start
 order: 1
 audience: public
 ---
 ## Was ist SubKit?
 
-SubKit führt deine Geschäftsaufgaben als kontrollierte Workflows aus.
-Du beschreibst die Arbeit in einfacher Sprache. Du gibst frei, was sie berühren darf. Jeder Lauf wird aufgezeichnet.
+SubKit übernimmt wiederkehrende Geschäftsaufgaben, die mehrere Systeme berühren und heute an einer Person oder einem anfälligen Skript hängen.
+Es ist für Teams gedacht, die solche Routine verlässlich laufen lassen wollen, ohne dafür Software zu entwickeln.
+Du beschreibst die Aufgabe in eigenen Worten, die KI entwirft daraus einen Workflow, und eine Person prüft ihn und gibt frei, was er berühren darf.
+Danach läuft er in festen Schritten, nur mit den freigegebenen Rechten.
+Jeder Lauf wird aufgezeichnet.
+
+Du arbeitest im Cockpit im Browser, mit der Kommandozeile `sk` oder aus KI-Clients wie Claude Code über MCP; der Web Clipper sammelt dazu Webseiten in deinem Eingang.
 
 ![Übersicht mit Kennzahlen zu Läufen, Erfolgsquote, Konnektorzustand und Kosten, der Liste „Braucht dich“ mit offenen Entscheidungen und den letzten fehlgeschlagenen Läufen](images/intro-overview.de.webp)
 
-Die **Übersicht** zeigt ihre Kennzahlen für einen **Zeitraum**: **24 Std**, **Diese Woche**, **Letzte Woche**, **Dieser Monat** oder **Letzter Monat**.
-Wochen beginnen am Montag, und es gilt deine Zeitzone. Die Seite **Nutzung** bietet dieselbe Auswahl.
-Die Kachel **Nutzung** folgt dem gewählten Zeitraum. Sie zeigt die Kosten im Zeitraum oder „Keine KI-Aufrufe im Zeitraum“. Darunter steht, wie viel Prozent des Monatskontingents verbraucht sind, etwa „42 % des Monatskontingents“.
-Was die Seite **Nutzung** zeigt und wie du das Kontingent anpasst, steht in „Nutzung und Kosten im Blick“.
+Die **Übersicht** zeigt dir auf einen Blick, was gelaufen ist, was gescheitert ist und was auf deine Entscheidung wartet.
+Wie du Kosten und Kontingent verfolgst, steht in „Nutzung und Kosten im Blick“.
 
 Nutze SubKit Cloud oder betreibe deine eigene Engine:
 

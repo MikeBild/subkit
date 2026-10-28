@@ -1,13 +1,13 @@
 ---
 slug: first-workflow
-summary: Baue deinen ersten Workflow im Cockpit-Chat, gib ihn frei und starte ihn.
+summary: Bring deinen ersten Workflow vom Satz im Chat bis zum geprüften Lauf.
 order: 5
 section: start
 audience: public
 ---
 ## Dein erster Workflow
 
-Hier kommst du von der Anmeldung zu deinem ersten erfolgreichen Lauf.
+Am Ende dieses Kapitels hast du einen freigegebenen Workflow und einen ersten Lauf, dessen Schritte du nachlesen kannst.
 Du beschreibst eine Aufgabe im Chat, speicherst den Workflow, gibst ihn frei, startest ihn und liest das Ergebnis.
 Das funktioniert in SubKit Cloud und auf einer selbst betriebenen Engine gleich.
 
@@ -31,7 +31,7 @@ Selbst betrieben ohne Anmeldeanbieter? Wähle stattdessen **Mit API-Schlüssel a
 
 1. Öffne in der Navigation **Chat**.
 2. Wähle **Neue Unterhaltung**.
-3. Beschreibe die Aufgabe in einfachen Worten: was hineingeht, was passieren soll, was herauskommt.
+3. Beschreibe die Aufgabe in eigenen Worten: was hineingeht, was passieren soll, was herauskommt.
    Beispiel: „Hol die offenen Issues meines GitHub-Repositorys und gib mir eine kurze Liste mit Titel und Link.“
 4. Beantworte die Rückfragen von SubKit. Braucht die Aufgabe einen Dienst, bittet dich SubKit,
    ihn zu verbinden oder dich dort anzumelden.
@@ -64,7 +64,7 @@ Ohne Freigabe startet ein Lauf nur als Probelauf ohne Wirkung.
 ![Freigabedialog für „Invoice export v1“ mit der Umgebung „Test“, der Gültigkeit „Bis auf Widerruf“, einem Lesezugriff auf die Sales reporting API, keinem Schreibzugriff und den Schaltflächen „Nur übernehmen“ und „Freigeben“](images/first-workflow-approval.de.webp)
 
 Die Freigabe startet keinen Lauf. Eine Freigabe gilt für eine Umgebung und eine Dauer.
-Auch eine neue Version, deren Grenze nicht wächst, ist davon gedeckt.
+Eine neue Version braucht keine neue Freigabe, solange sie nicht mehr Systeme, Adressen oder Schreibrechte anfasst als die freigegebene. Greift sie weiter, fragt SubKit erneut und nennt den Unterschied.
 Im Tab **Freigaben** kannst du sie jederzeit widerrufen.
 Bietet dir der Chat eine Freigabe an, öffnet sie denselben Dialog.
 
@@ -74,7 +74,7 @@ Bietet dir der Chat eine Freigabe an, öffnet sie denselben Dialog.
 | **Operationen und externe Ziele** | Welche Dienste und Adressen der Workflow erreicht. Jeder Dienst trägt das Logo seines Anbieters. |
 | **Gültigkeit** | Wie lange die Freigabe gilt: **7 Tage**, **30 Tage** oder **Bis auf Widerruf**. |
 
-**Wenn Freigeben fehlt.** Manche Schritte kann keine Freigabe abdecken, etwa eine Mail, deren Empfänger aus Daten stammt, oder ein Aufruf mit freier Adresse. Der Status lautet dann **Umbau nötig vor der Freigabe** und nennt den Schritt. Wähle **Im Chat beheben**: SubKit baut genau diese Schritte um, prüft sie ohne Live-Wirkungen und speichert einen Entwurf. Danach gibst du die neue Version frei. `sk workflows create`, `sk workflows update` und `sk schedules create` melden dasselbe als `automation: repair required`.
+**Wenn Freigeben fehlt.** Manche Schritte kann keine Freigabe abdecken, etwa eine Mail, deren Empfänger aus Daten stammt, oder ein Aufruf mit freier Adresse. Der Status lautet dann **Umbau nötig vor der Freigabe** und nennt den Schritt. Wähle **Im Chat beheben**: SubKit baut genau diese Schritte um, prüft sie ohne Live-Wirkungen und speichert einen Entwurf. Danach gibst du die neue Version frei.
 
 ### Den Workflow starten
 
@@ -97,16 +97,6 @@ Du siehst **Lauf gestartet**. Ist der Button nicht verfügbar, nennt der Hinweis
 
 3. Optional: Wähle **Im Audit-Trail**, um zu sehen, wer den Lauf gestartet und freigegeben hat.
 
-Dasselbe prüfst du mit der sk-CLI:
-
-```bash
-sk executions list --limit 5
-sk executions steps <run-id>
-sk executions result <run-id>
-```
-
-`sk workflows run <workflow-slug> --follow` startet einen weiteren Lauf und zeigt seine Schritte live.
-
 ### Wenn etwas nicht klappt
 
 | Was du siehst | Was du tust |
@@ -116,3 +106,18 @@ sk executions result <run-id>
 | „… muss neu verbunden werden“ | Öffne den Konnektor unter **Konnektoren** und wähle **Neu anmelden**. |
 | **Du darfst diesen Workflow nicht starten.** | Bitte eine Administratorin oder einen Administrator um eine Rolle, die Workflows starten darf. |
 | Ein Schritt ist fehlgeschlagen | Öffne den Lauf, lies den Fehler und beschreibe ihn im selben Chat. SubKit schlägt eine Korrektur vor, die du erneut prüfst. |
+
+### Dasselbe im Terminal
+
+Mit der Kommandozeile `sk` legst du Workflows mit `sk workflows create` an, änderst sie mit `sk workflows update` und planst sie mit `sk schedules create` ein.
+Braucht ein Schritt einen Umbau vor der Freigabe, melden diese Befehle `automation: repair required`.
+Läufe prüfst du so:
+
+```bash
+sk executions list --limit 5
+sk executions steps <run-id>
+sk executions result <run-id>
+```
+
+`sk workflows run <workflow-slug> --follow` startet einen weiteren Lauf und zeigt seine Schritte live.
+Mehr steht in „Die sk-CLI auf deinem Rechner verwenden“.

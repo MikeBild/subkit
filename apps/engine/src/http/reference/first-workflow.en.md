@@ -1,13 +1,13 @@
 ---
 slug: first-workflow
-summary: Build, approve and run your first workflow from the Cockpit chat.
+summary: Take your first workflow from a sentence in the chat to a checked run.
 order: 5
 section: start
 audience: public
 ---
 ## Your first workflow
 
-Go from signing in to your first successful run.
+By the end of this chapter you have an approved workflow and a first run whose steps you can read.
 You describe a task in the chat, save the workflow, approve it, start it and read the result.
 It works the same in SubKit Cloud and on a self-hosted engine.
 
@@ -31,7 +31,7 @@ Self-hosted without an identity provider? Select **Sign in with API key** instea
 
 1. In the navigation, open **Chat**.
 2. Select **New conversation**.
-3. Describe the task in plain words: what goes in, what should happen, what comes out.
+3. Describe the task in your own words: what goes in, what should happen, what comes out.
    Example: "Fetch the open issues of my GitHub repository and give me a short list with title and link."
 4. Answer the questions SubKit asks. If the task needs a service, SubKit asks you to connect it
    or to sign in to it.
@@ -63,8 +63,8 @@ Without an approval, a run starts only as a trial run without effects.
 
 ![Approval dialog for "Invoice export v1" with the environment "Test", the validity "Until revoked", one read on the Sales reporting API, no writes, and the "Apply only" and "Approve" buttons](images/first-workflow-approval.en.webp)
 
-Approving starts no run. An approval covers one environment and a duration.
-It also follows a new version whose boundary does not grow.
+Approving starts no run. It covers one environment and a duration.
+A new version needs no new approval as long as it touches no more systems, addresses or write permissions than the approved one. If it reaches further, SubKit asks again and names the difference.
 You can revoke it at any time in the **Approvals** tab.
 If the chat offers an approval, it opens the same dialog.
 
@@ -74,7 +74,7 @@ If the chat offers an approval, it opens the same dialog.
 | **Operations and external targets** | Which services and addresses the workflow reaches. Each service shows its provider's logo. |
 | **Validity** | How long the approval applies: **7 days**, **30 days** or **Until revoked**. |
 
-**When Approve is missing.** Some steps cannot be covered by any approval, for example a mail whose recipient comes from data, or a request with a free address. The status then reads **Change needed before approval** and names the step. Select **Fix it in the chat**: SubKit changes exactly those steps, checks them without live effects and saves a draft. Approve the new version afterwards. `sk workflows create`, `sk workflows update` and `sk schedules create` print the same verdict as `automation: repair required`.
+**When Approve is missing.** Some steps cannot be covered by any approval, for example a mail whose recipient comes from data, or a request with a free address. The status then reads **Change needed before approval** and names the step. Select **Fix it in the chat**: SubKit changes exactly those steps, checks them without live effects and saves a draft. Approve the new version afterwards.
 
 ### Start the workflow
 
@@ -97,16 +97,6 @@ You see **Run started**. If the button is unavailable, the hint says why, for ex
 
 3. Optional: Select **In the audit trail** to see who started and approved the run.
 
-You can check the same with the sk CLI:
-
-```bash
-sk executions list --limit 5
-sk executions steps <run-id>
-sk executions result <run-id>
-```
-
-`sk workflows run <workflow-slug> --follow` starts another run and streams its steps.
-
 ### If something does not work
 
 | What you see | What to do |
@@ -116,3 +106,18 @@ sk executions result <run-id>
 | "… must be reconnected" | Open the connector under **Connectors** and select **Sign in again**. |
 | **You may not start this workflow.** | Ask your administrator for a role that may run workflows. |
 | A step failed | Open the run, read the error and describe it in the same chat. SubKit suggests a fix that you review again. |
+
+### The same in the terminal
+
+With the `sk` command line you create workflows with `sk workflows create`, change them with `sk workflows update` and schedule them with `sk schedules create`.
+If a step needs a change before approval, these commands report `automation: repair required`.
+Check runs like this:
+
+```bash
+sk executions list --limit 5
+sk executions steps <run-id>
+sk executions result <run-id>
+```
+
+`sk workflows run <workflow-slug> --follow` starts another run and streams its steps.
+For more, see "Use the sk CLI on your machine".
