@@ -894,6 +894,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
 
   const tools = wrappedTools;
   let paletteSkills = loadedSkills;
+  let paletteIntakeItems = intakeReviewInProgress(draft);
 
   if (intakeReviewInProgress(draft)) {
     removeIntakeReviewTools(tools, draft);
@@ -1162,7 +1163,12 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
                 ...parseLoadedSkills(skillRow?.loaded_skills).map((entry) => entry.slug),
               ]),
             ];
-            if (nextSkills.length !== paletteSkills.length) {
+            const intakeItemsNow = intakeReviewInProgress(ctx.getDraft());
+            if (
+              nextSkills.length !== paletteSkills.length ||
+              intakeItemsNow !== paletteIntakeItems
+            ) {
+              paletteIntakeItems = intakeItemsNow;
               const refreshed = await wrapTools(
                 ctx,
                 signals,

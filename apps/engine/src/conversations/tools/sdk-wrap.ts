@@ -14,6 +14,10 @@ import { filterByAuthoringPalette, filterByChatReadOnlyPalette } from "./authori
 import { filterBySkillGate } from "./gated.ts";
 import { listTools, type ToolContext } from "./index.ts";
 import { buildExternalMcpTools } from "./sdk-wrap/external-mcp-tools.ts";
+import {
+  INTAKE_ITEM_DEPENDENT_TOOLS,
+  intakeReviewInProgress,
+} from "./sdk-wrap/intake-review-guard.ts";
 import { wrapOne } from "./sdk-wrap/invoke.ts";
 import type { TurnSignals, WrappedToolOutput } from "./sdk-wrap/state.ts";
 import { buildSyntheticWorkflowTools } from "./sdk-wrap/synthetic-workflow-tools.ts";
@@ -68,12 +72,14 @@ export async function wrapTools(
         ctx.getDraft(),
         loadedSkillSet,
       );
+  const intakeItemRead = intakeReviewInProgress(ctx.getDraft());
   for (const t of visibleTools) {
     if (
       ctx.playbook_mode === "off" &&
       (t.name === "inspect_playbook" || t.name === "update_playbook")
     )
       continue;
+    if (!intakeItemRead && INTAKE_ITEM_DEPENDENT_TOOLS.has(t.name)) continue;
     out[t.name] = wrapOne(t, ctx, signals, events, db, toolPolicies, permissionMode, loadedSkills);
   }
   if (principal) {

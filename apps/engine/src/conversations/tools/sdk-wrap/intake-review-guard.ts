@@ -8,6 +8,14 @@ export const INTAKE_REVIEW_REMOVED_TOOLS: readonly string[] = [
   "analyze_knowledge_source",
 ];
 
+export const INTAKE_ITEM_DEPENDENT_TOOLS: ReadonlySet<string> = new Set([
+  "create_intake_proposal",
+  "revise_intake_proposal",
+  "discard_intake_items",
+  "restore_intake_item",
+  "move_intake_item",
+]);
+
 export const INTAKE_REVIEW_BLOCKED_WRITES = new Set([
   ...INTAKE_REVIEW_REMOVED_TOOLS,
   "delete_knowledge_source",
