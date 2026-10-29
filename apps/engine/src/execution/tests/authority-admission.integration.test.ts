@@ -1,10 +1,14 @@
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { AuditAction } from "../../audit/types.ts";
 import { getConnectorForEnvironment } from "../../connectors/service.ts";
 import { secretNames } from "../../credentials/connections/service.ts";
 import { upsertCredential } from "../../credentials/service.ts";
+import {
+  CatalogVocabularyBusyError,
+  waitForCatalogVocabulary,
+} from "../../db/catalog-vocabulary.ts";
 import {
   auditLog,
   connectors,
@@ -20,6 +24,7 @@ import {
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { RunLlmBudget } from "../../llm/accounting/index.ts";
+import { logger } from "../../logging/logger.ts";
 import { EXECUTION_RUN_QUEUE } from "../../queue/queues.ts";
 import { createSecretVersion } from "../../runtime-config/service.ts";
 import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
@@ -505,6 +510,55 @@ test("concurrent retries preserve one execution and one reservation", async () =
     admitAuthorizedWorkflowExecution({ ...params, input: { message: "different" } }, ctx.db),
   ).rejects.toMatchObject({ code: "execution_boundary_mismatch" });
   expect(await reservations(f.authority.id)).toBe(1);
+});
+
+function holdCatalogLock(tenant_id: string, ms: number) {
+  let held!: () => void;
+  const acquired = new Promise<void>((resolve) => {
+    held = resolve;
+  });
+  const done = ctx.db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${tenant_id}::text, 741937))`,
+    );
+    held();
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  });
+  return { acquired, done };
+}
+
+test("admission waits for a briefly held tenant catalog lock instead of retrying", async () => {
+  const f = await fixture(2);
+  const warn = spyOn(logger, "warn");
+  try {
+    const holder = holdCatalogLock(f.params.tenant_id, 300);
+    await holder.acquired;
+    const admitted = await admitAuthorizedWorkflowExecution(f.params, ctx.db);
+    await holder.done;
+    expect(admitted.status).toBe("queued");
+    expect(warn.mock.calls.filter((call) => call[0]?.action === "retry_transient")).toHaveLength(0);
+  } finally {
+    warn.mockRestore();
+  }
+});
+
+test("the catalog lock wait is bounded and restores the transaction lock timeout", async () => {
+  const f = await fixture(1);
+  const holder = holdCatalogLock(f.params.tenant_id, 400);
+  await holder.acquired;
+  await expect(
+    ctx.db.transaction((tx) => waitForCatalogVocabulary(tx, f.params.tenant_id, 50)),
+  ).rejects.toBeInstanceOf(CatalogVocabularyBusyError);
+  await holder.done;
+  const timeout = await ctx.db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT set_config('lock_timeout', '7s', true)`);
+    await waitForCatalogVocabulary(tx, f.params.tenant_id, 50);
+    const result = await tx.execute<{ lock_timeout: string }>(
+      sql`SELECT current_setting('lock_timeout') AS lock_timeout`,
+    );
+    return result.rows[0]?.lock_timeout;
+  });
+  expect(timeout).toBe("7s");
 });
 
 test("input validation runs before a reservation is consumed", async () => {
