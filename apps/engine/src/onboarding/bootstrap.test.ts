@@ -356,6 +356,9 @@ describe("buildBootstrapBanner", () => {
     const out = buildBootstrapBanner("abc123", expires);
     expect(out).toContain("sk init --token abc123");
     expect(out).toContain("2030-01-01T00:00:00.000Z");
+    expect(out).toContain("docker exec <container> sk init --token abc123");
+    expect(out).toContain("--admin-email");
+    expect(out).toContain("engine --issue-admin-key --tenant <slug>");
   });
 });
 

@@ -137,9 +137,20 @@ export function buildBootstrapBanner(plaintextToken: string, expiresAt: Date): s
   const banner = pc.bgYellow(pc.black(" SUBKIT FIRST-RUN BOOTSTRAP "));
   const headline = pc.bold("This engine has no tenants yet. Complete first-run setup:");
   const cmd = pc.cyan(`sk init --token ${plaintextToken}`);
+  const docker = pc.dim(
+    [
+      "In a container, run it there and pass the first admin and model:",
+      `  docker exec <container> sk init --token ${plaintextToken} \\`,
+      '      --admin-email you@example.com --tenant-name "My Org" \\',
+      "      --llm-provider anthropic --llm-api-key <key>",
+      "More admin keys later: docker exec <container> engine --issue-admin-key --tenant <slug>",
+    ].join("\n"),
+  );
   const ttl = pc.dim(`Token expires at ${expiresAt.toISOString()} (15 minutes).`);
-  const note = pc.dim("This banner only prints once per fresh install. Copy the command now.");
-  return `\n${banner}\n${headline}\n\n  ${cmd}\n\n${ttl}\n${note}\n\n`;
+  const note = pc.dim(
+    "This banner prints only while first-run setup is pending. Copy the command now.",
+  );
+  return `\n${banner}\n${headline}\n\n  ${cmd}\n\n${docker}\n\n${ttl}\n${note}\n\n`;
 }
 
 export interface BootstrapRunResult {

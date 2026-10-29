@@ -104,13 +104,6 @@ cat >&2 <<'BANNER'
    API    : http://localhost:3000   (publish with -p 127.0.0.1:3000:3000)
    Health : GET /health
    Ready  : GET /ready
- First-run onboarding (a one-time `sk init --token …` banner with the
- bootstrap token is printed below once the engine is up):
-   1. copy the token from this log
-   2. docker exec <container> sk init --token <token> \
-          --admin-email you@example.com --tenant-name "My Org" \
-          --llm-provider anthropic --llm-api-key sk-ant-…
- More keys later:  docker exec <container> engine --issue-admin-key --tenant <slug>
 ──────────────────────────────────────────────────────────────────────
 BANNER
 
