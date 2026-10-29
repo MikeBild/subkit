@@ -114,8 +114,6 @@ export async function admitAuthorizedWorkflowExecution(
   return retryTransient(
     () =>
       db.transaction(async (tx) => {
-        // Concurrent admissions for one tenant (e.g. a scheduler fanout) queue for the
-        // tenant catalog lock instead of failing instantly; keep this the first lock.
         await waitForCatalogVocabulary(tx, input.tenant_id);
         await assertTenantActive(input.tenant_id, tx);
         if (input.idempotency_key) {

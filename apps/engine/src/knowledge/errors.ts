@@ -9,7 +9,6 @@ export class KnowledgeSourceSlugTakenError extends ConflictError {
   }
 }
 
-/** True when a write hit the unique (tenant_id, slug) constraint of knowledge_sources. */
 export function isKnowledgeSlugViolation(error: unknown): boolean {
   let current: unknown = error;
   for (let depth = 0; depth < 4 && current && typeof current === "object"; depth++) {

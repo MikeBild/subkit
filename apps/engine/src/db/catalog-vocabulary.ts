@@ -23,14 +23,6 @@ function isLockNotAvailable(error: unknown, depth = 0): boolean {
   return "cause" in error && isLockNotAvailable(error.cause, depth + 1);
 }
 
-/**
- * Queues for the tenant catalog lock instead of failing on the first conflict.
- * Must be the first lock a transaction takes: the waiter then holds nothing another
- * session could wait on, and every other holder uses the non-blocking variant, so
- * no wait cycle can form. The wait is bounded by a transaction-local lock_timeout
- * that is restored afterwards so later row locks keep their usual timeout; a
- * timeout surfaces as CatalogVocabularyBusyError like the non-blocking variant.
- */
 export async function waitForCatalogVocabulary(
   exec: Executor,
   tenant_id: string,

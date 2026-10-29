@@ -538,7 +538,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       continue;
     }
     if (skippedStepIds.has(step.id) || containerChildIds.has(step.id)) {
-      // A skipped branch never chooses an arm, so both arms stay unreached.
       if (step.kind === "branch" && skippedStepIds.has(step.id)) {
         const nested = step as BranchStep;
         for (const id of [...(nested.then_steps ?? []), ...(nested.else_steps ?? [])]) {

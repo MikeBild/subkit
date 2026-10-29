@@ -64,10 +64,6 @@ export function knownContextModelIds(): string[] {
   return Object.keys(MODEL_CONTEXT_LENGTHS);
 }
 
-/**
- * Reasoning models (OpenAI o-series, GPT-5 family) reject sampling parameters such as
- * temperature. Provider prefixes ("openai:", "openai/") are ignored.
- */
 export function isReasoningModel(modelId: string): boolean {
   const bare = modelId.trim().split(/[:/]/).pop() ?? modelId;
   return /^(o\d|gpt-5)/i.test(bare);
@@ -386,7 +382,6 @@ export class AiSdkModel implements SubkitLlm {
       },
       stopWhen: stepCountIs(maxAttempts),
     };
-    // Reasoning models drop the temperature per call in callWithFallback.
     cwfParams.temperature = input.temperature ?? 0;
     if (input.metadata) cwfParams.metadata = input.metadata;
     if (input.signal) cwfParams.signal = input.signal;

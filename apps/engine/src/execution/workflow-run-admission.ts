@@ -112,8 +112,6 @@ export async function admitWorkflowRun(
     if (!check.valid) fail("input_schema_violation", check.errors.join("; "));
   }
   return db.transaction(async (tx) => {
-    // Same queueing as authority admission, so a held run is not starved by
-    // concurrent admissions that wait for the tenant catalog lock.
     await waitForCatalogVocabulary(tx, input.tenant_id);
     if (input.idempotency_key) {
       await tx.execute(

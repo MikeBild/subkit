@@ -156,8 +156,6 @@ function databaseErrorCode(value: unknown): string | undefined {
   return undefined;
 }
 
-// A SQLSTATE is a fixed five-character class code that never carries user
-// data, so every well-formed code is kept for diagnosis (e.g. 55P03 lock busy).
 function allowedSqlstate(value: unknown): string | undefined {
   return isSqlstate(value) ? value : undefined;
 }

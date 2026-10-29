@@ -522,7 +522,6 @@ function holdCatalogLock(tenant_id: string, ms: number) {
       sql`SELECT pg_advisory_xact_lock(hashtextextended(${tenant_id}::text, 741937))`,
     );
     held();
-    // Hold the lock server-side; a wall-clock sleep in the test process is banned.
     await tx.execute(sql`SELECT pg_sleep(${ms / 1000})`);
   });
   return { acquired, done };

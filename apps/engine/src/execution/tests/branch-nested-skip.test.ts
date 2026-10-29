@@ -12,9 +12,6 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-// Mirrors a polling workflow: when the queue is empty the outer branch takes the
-// empty else arm, and nothing inside the then arm may run, including the arms of
-// a nested branch.
 const DRAFT = {
   name: "nested",
   steps: [

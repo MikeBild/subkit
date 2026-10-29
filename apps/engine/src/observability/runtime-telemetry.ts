@@ -121,8 +121,6 @@ function finishErr(
       fields.rss_mb = toMb(rssNow);
       fields.rss_delta_mb = toMb(rssNow - rssBefore);
     }
-    // 55P03 (lock_not_available) is expected contention from NOWAIT lockers such as
-    // the scheduler sweep cursor while another replica holds the row; not a fault.
     (fields.sqlstate === LOCK_NOT_AVAILABLE ? logger.debug : logger.warn)(fields);
   });
 }
