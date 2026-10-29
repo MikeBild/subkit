@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { type generateText, NoObjectGeneratedError } from "ai";
 import { classifyProviderError, isFallbackEligible } from "../../provider-errors.ts";
-import { AiSdkModel, LlmCallAbortedError, usageOf } from "../ai-sdk-model.ts";
+import { AiSdkModel, isReasoningModel, LlmCallAbortedError, usageOf } from "../ai-sdk-model.ts";
 import type { SubkitLlmMessage } from "../base-types.ts";
 
 let previousLlmProvider: string | undefined;
@@ -231,6 +231,21 @@ describe("AiSdkModel per-call timeout + abort", () => {
   });
 });
 
+describe("isReasoningModel", () => {
+  it("matches o-series and GPT-5 models with or without a provider prefix", () => {
+    for (const id of [
+      "o1-preview",
+      "o3-mini",
+      "gpt-5.6-sol",
+      "openai:gpt-5-mini",
+      "openai/o4-mini",
+    ])
+      expect(isReasoningModel(id)).toBe(true);
+    for (const id of ["gpt-4o", "claude-sonnet-4-5", "openai:gpt-4.1", "ollama"])
+      expect(isReasoningModel(id)).toBe(false);
+  });
+});
+
 describe("AiSdkModel.generateText", () => {
   it("prepends the date, returns text + usage", async () => {
     const stub = makeStub({
@@ -250,6 +265,38 @@ describe("AiSdkModel.generateText", () => {
     const call = stub.calls[0] as { messages: SubkitLlmMessage[] };
     expect(call.messages[0]?.content).toMatch(/^The current date and time is /);
     expect(call.messages[1]?.content).toBe("hi");
+  });
+
+  it("omits the default temperature for a GPT-5 reasoning model", async () => {
+    const stub = makeStub({ text: "ok" });
+    const model = new AiSdkModel({
+      defaultModel: "gpt-5.6-sol",
+      // biome-ignore lint/suspicious/noExplicitAny: stub
+      generateTextFn: stub.fn as any,
+    });
+    await model.generateText([{ role: "user", content: "x" }]);
+    expect("temperature" in (stub.calls[0] as object)).toBe(false);
+  });
+
+  it("keeps the temperature for a non-reasoning fallback after a reasoning primary fails", async () => {
+    const calls: Array<{ temperature?: number }> = [];
+    let i = 0;
+    const fn = async (opts: { temperature?: number }) => {
+      calls.push(opts);
+      i += 1;
+      if (i === 1) throw new Error("overloaded");
+      return stubResult({ text: "ok" });
+    };
+    const model = new AiSdkModel({
+      defaultModel: "gpt-5.6-sol",
+      fallback: { defaultModel: "gpt-4.1" },
+      // biome-ignore lint/suspicious/noExplicitAny: stub
+      generateTextFn: fn as any,
+    });
+    const r = await model.generateText([{ role: "user", content: "x" }], { temperature: 0.3 });
+    expect(r.fell_back).toBe(true);
+    expect("temperature" in (calls[0] ?? {})).toBe(false);
+    expect(calls[1]?.temperature).toBe(0.3);
   });
 
   it("honours temperature and metadata", async () => {
@@ -465,6 +512,47 @@ describe("AiSdkModel.generateObject — structured outcome", () => {
     });
     expect(r.success).toBe(false);
     expect(r.response).toBe("empty_value");
+  });
+
+  it("omits temperature for GPT-5 reasoning models, including the fallback", async () => {
+    const calls: StructuredCall[] = [];
+    let i = 0;
+    const fn = async (opts: StructuredCall) => {
+      calls.push(opts);
+      i += 1;
+      if (i === 1) throw new Error("overloaded");
+      return stubResult(outcome({ key: "value" }));
+    };
+    const model = new AiSdkModel({
+      defaultModel: "claude-sonnet-4-5",
+      fallback: { defaultModel: "gpt-5.6-sol" },
+      // biome-ignore lint/suspicious/noExplicitAny: stub
+      generateTextFn: fn as any,
+    });
+    const r = await model.generateObject({
+      messages: [{ role: "user", content: "x" }],
+      schema: keySchema,
+      temperature: 0.5,
+    });
+    expect(r.fell_back).toBe(true);
+    expect(calls[0]?.temperature).toBe(0.5);
+    expect(calls[1]?.temperature).toBeUndefined();
+    expect("temperature" in (calls[1] ?? {})).toBe(false);
+  });
+
+  it("omits temperature for a GPT-5 primary in generateObject", async () => {
+    const stub = makeStub(outcome({ key: "value" }));
+    const model = new AiSdkModel({
+      defaultModel: "gpt-5.6-sol",
+      // biome-ignore lint/suspicious/noExplicitAny: stub
+      generateTextFn: stub.fn as any,
+    });
+    await model.generateObject({
+      messages: [{ role: "user", content: "x" }],
+      schema: keySchema,
+      temperature: 0.5,
+    });
+    expect((stub.calls[0] as StructuredCall).temperature).toBeUndefined();
   });
 
   it("treats o-model temperature as undefined", async () => {

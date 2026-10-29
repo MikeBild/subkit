@@ -64,6 +64,15 @@ export function knownContextModelIds(): string[] {
   return Object.keys(MODEL_CONTEXT_LENGTHS);
 }
 
+/**
+ * Reasoning models (OpenAI o-series, GPT-5 family) reject sampling parameters such as
+ * temperature. Provider prefixes ("openai:", "openai/") are ignored.
+ */
+export function isReasoningModel(modelId: string): boolean {
+  const bare = modelId.trim().split(/[:/]/).pop() ?? modelId;
+  return /^(o\d|gpt-5)/i.test(bare);
+}
+
 function contextLengthFor(modelId: string): number {
   const bare = modelId.includes("/") ? (modelId.split("/").pop() ?? modelId) : modelId;
   return MODEL_CONTEXT_LENGTHS[bare] ?? 128_000;
@@ -246,7 +255,8 @@ export class AiSdkModel implements SubkitLlm {
       allowSystemInMessages: true,
     };
     if (params.signal) callOpts.abortSignal = params.signal;
-    if (params.temperature !== undefined) callOpts.temperature = params.temperature;
+    if (params.temperature !== undefined && !isReasoningModel(primary.modelId))
+      callOpts.temperature = params.temperature;
     if (params.tools) callOpts.tools = params.tools;
     if (params.output) {
       callOpts.output = params.output;
@@ -297,11 +307,14 @@ export class AiSdkModel implements SubkitLlm {
         primary: primary.modelId,
         fallback: this.fallbackResolved.modelId,
       });
+      const { temperature: _primaryTemperature, ...sharedOpts } = callOpts;
       const fbOpts: GenerateTextOptions = {
-        ...callOpts,
+        ...sharedOpts,
         model: this.fallbackResolved.model,
       };
       const fallbackModelId = this.fallbackResolved.modelId;
+      if (params.temperature !== undefined && !isReasoningModel(fallbackModelId))
+        fbOpts.temperature = params.temperature;
       try {
         const result = await instrument({
           module: "llm",
@@ -361,8 +374,6 @@ export class AiSdkModel implements SubkitLlm {
       schema: jsonSchema(schema as Parameters<typeof jsonSchema>[0]),
     });
 
-    const isOModel = this.modelId.startsWith("o");
-    const temperature = isOModel ? undefined : (input.temperature ?? 0);
     const maxAttempts = input.maxAttempts ?? MAX_TOOL_LOOP_ATTEMPTS;
 
     const seeded = withCurrentDate(input.messages);
@@ -375,7 +386,8 @@ export class AiSdkModel implements SubkitLlm {
       },
       stopWhen: stepCountIs(maxAttempts),
     };
-    if (temperature !== undefined) cwfParams.temperature = temperature;
+    // Reasoning models drop the temperature per call in callWithFallback.
+    cwfParams.temperature = input.temperature ?? 0;
     if (input.metadata) cwfParams.metadata = input.metadata;
     if (input.signal) cwfParams.signal = input.signal;
     if (input.maxOutputTokens !== undefined) cwfParams.maxOutputTokens = input.maxOutputTokens;
