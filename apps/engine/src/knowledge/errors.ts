@@ -1,3 +1,25 @@
+import { ConflictError } from "../http/errors.ts";
+
+export class KnowledgeSourceSlugTakenError extends ConflictError {
+  constructor(readonly slug: string) {
+    super(`a knowledge source with slug "${slug}" already exists; choose a different slug`, {
+      slug,
+    });
+    this.name = "KnowledgeSourceSlugTakenError";
+  }
+}
+
+/** True when a write hit the unique (tenant_id, slug) constraint of knowledge_sources. */
+export function isKnowledgeSlugViolation(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < 4 && current && typeof current === "object"; depth++) {
+    const e = current as { code?: unknown; constraint?: unknown; cause?: unknown };
+    if (e.code === "23505" && e.constraint === "knowledge_sources_tenant_slug_key") return true;
+    current = e.cause;
+  }
+  return false;
+}
+
 export class KnowledgeSourceAddressConflictError extends Error {
   constructor() {
     super("knowledge source address changed while refreshing");

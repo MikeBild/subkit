@@ -6,6 +6,7 @@ import { knowledgeChunks } from "../db/schema/knowledge_sources.ts";
 import { retryTransient } from "../db/transient.ts";
 import { canonicalBundleSerialization, normalizeBundlePath, parseBundle } from "./bundle.ts";
 import { getKnowledgeSource } from "./catalog.ts";
+import { KnowledgeSourceSlugTakenError } from "./errors.ts";
 import {
   createKnowledgeSource,
   getKnowledgeSourceBySlug,
@@ -56,6 +57,7 @@ function structuralFirst(tags: readonly string[]): string[] {
 }
 
 function isUniqueViolation(err: unknown): boolean {
+  if (err instanceof KnowledgeSourceSlugTakenError) return true;
   const msg = err instanceof Error ? err.message : String(err);
   const cause = (err as { cause?: { code?: string } }).cause;
   const code = (err as { code?: string }).code ?? cause?.code;

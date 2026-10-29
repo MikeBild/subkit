@@ -13575,6 +13575,15 @@ export interface paths {
                         "application/json": components["schemas"]["KnowledgeSourceUploadError"];
                     };
                 };
+                /** @description A knowledge source with this slug already exists */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
                 /** @description File exceeds maximum size */
                 413: {
                     headers: {
@@ -14133,6 +14142,15 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["KnowledgeSource"];
+                    };
+                };
+                /** @description A knowledge source with this slug already exists */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
                     };
                 };
                 /** @description Content exceeds maximum size */

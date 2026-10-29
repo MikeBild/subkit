@@ -29,8 +29,10 @@ import {
   KnowledgeBudgetExceededError,
 } from "./budgets.ts";
 import {
+  isKnowledgeSlugViolation,
   KnowledgeSourceAddressConflictError,
   KnowledgeSourceAddressReadOnlyError,
+  KnowledgeSourceSlugTakenError,
   KnowledgeVersionAlreadyCurrentError,
   KnowledgeVersionConflictError,
 } from "./errors.ts";
@@ -323,6 +325,7 @@ export async function createKnowledgeSource(
       );
     } catch (error) {
       await cleanupPersistedKnowledgeFile(db, persisted);
+      if (isKnowledgeSlugViolation(error)) throw new KnowledgeSourceSlugTakenError(parsed.slug);
       throw error;
     }
     finishKnowledgeWrite(p.tenant_id, created.id, db);

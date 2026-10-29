@@ -115,6 +115,31 @@ describe("POST /v1/knowledge-sources/inline — happy path", () => {
   });
 });
 
+describe("POST /v1/knowledge-sources/inline — slug conflict", () => {
+  test("an existing slug answers 409 conflict instead of an internal error", async () => {
+    const create = () =>
+      fetch(`${ctx.baseUrl}${INLINE_PATH}`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${ctx.apiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ name: "Taken slug", slug: "taken-slug", content: "page body" }),
+      });
+    expect((await create()).status).toBe(201);
+    const res = await create();
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as {
+      code: string;
+      message: string;
+      details?: { slug?: string };
+    };
+    expect(body.code).toBe("conflict");
+    expect(body.message).toContain('"taken-slug" already exists');
+    expect(body.details?.slug).toBe("taken-slug");
+  });
+});
+
 describe("POST /v1/knowledge-sources — legacy multipart path stays intact", () => {
   test("multipart upload still works and ships source_type=file_upload", async () => {
     const form = new FormData();

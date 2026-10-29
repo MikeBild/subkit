@@ -190,6 +190,10 @@ const createInlineRoute = createRoute({
       description: "Created",
       content: { "application/json": { schema: KnowledgeSourceSchema } },
     },
+    409: {
+      description: "A knowledge source with this slug already exists",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
     413: {
       description: "Content exceeds maximum size",
       content: { "application/json": { schema: ErrorSchema } },
@@ -238,6 +242,10 @@ const createUploadRoute = createRoute({
     400: {
       description: "Missing file field or invalid metadata JSON",
       content: { "application/json": { schema: KnowledgeSourceUploadError } },
+    },
+    409: {
+      description: "A knowledge source with this slug already exists",
+      content: { "application/json": { schema: ErrorSchema } },
     },
     413: {
       description: "File exceeds maximum size",
