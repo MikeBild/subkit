@@ -102,23 +102,6 @@ export type LogFields = {
 };
 
 const SENSITIVE_DATABASE_FIELD = /^(?:sql|query|params?|parameters?|bindings?)$/i;
-const SAFE_SQLSTATES = new Set([
-  "08000",
-  "08001",
-  "08003",
-  "08006",
-  "23503",
-  "23505",
-  "23514",
-  "28P01",
-  "40001",
-  "40P01",
-  "42501",
-  "53300",
-  "53400",
-  "57014",
-  "57P01",
-]);
 
 export function isDatabaseQueryError(value: unknown): boolean {
   if (!(value instanceof Error)) return false;
@@ -173,8 +156,10 @@ function databaseErrorCode(value: unknown): string | undefined {
   return undefined;
 }
 
+// A SQLSTATE is a fixed five-character class code that never carries user
+// data, so every well-formed code is kept for diagnosis (e.g. 55P03 lock busy).
 function allowedSqlstate(value: unknown): string | undefined {
-  return typeof value === "string" && SAFE_SQLSTATES.has(value) ? value : undefined;
+  return isSqlstate(value) ? value : undefined;
 }
 
 function emitPretty(level: LogLevel, fields: LogFields): void {

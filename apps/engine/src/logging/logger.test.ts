@@ -89,7 +89,18 @@ describe("errorFields", () => {
     expect(errorFields(transient).error_class).toBe("transient");
   });
 
-  test("removes Drizzle query text and parameters while retaining an allowlisted SQLSTATE", () => {
+  test("keeps every well-formed SQLSTATE, including lock-busy 55P03", () => {
+    const busy = new Error("Failed query: select 1 for update nowait\nparams: secret", {
+      cause: Object.assign(new Error("could not obtain lock"), { code: "55P03" }),
+    });
+    const out = errorFields(busy);
+    expect(out.sqlstate).toBe("55P03");
+    expect(JSON.stringify(out)).not.toContain("secret");
+    const malformed = Object.assign(new Error("odd"), { code: "x'; drop" });
+    expect(errorFields(malformed).sqlstate).toBeUndefined();
+  });
+
+  test("removes Drizzle query text and parameters while retaining the SQLSTATE", () => {
     const pgErr = Object.assign(new Error("connection terminated unexpectedly"), { code: "23505" });
     const wrapped = new Error(
       "Failed query: select * from users where email = $1\nparams: secret@example.test",

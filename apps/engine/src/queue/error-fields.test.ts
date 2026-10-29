@@ -31,7 +31,7 @@ test("plain timeout envelopes preserve their message and classification", () => 
   });
 });
 
-test("query envelopes discard parameter values and unsafe SQLSTATE details", () => {
+test("query envelopes discard parameter values but keep the SQLSTATE class code", () => {
   const fields = queueErrorFields({
     message: "Failed query: select private_column\nparams: private-query-canary",
     stack: "private-stack-canary",
@@ -41,6 +41,7 @@ test("query envelopes discard parameter values and unsafe SQLSTATE details", () 
   expect(fields).toEqual({
     error: "database query failed",
     error_class: "validation",
+    sqlstate: "22P02",
     cause: "database error cause omitted",
   });
   expect(JSON.stringify(fields)).not.toContain("private-");
