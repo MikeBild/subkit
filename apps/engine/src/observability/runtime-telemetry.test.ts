@@ -36,6 +36,27 @@ describe("when an instrumented operation is rejected", () => {
     }
   });
 
+  test("expected lock contention (55P03) logs at debug instead of warn", async () => {
+    const warn = spyOn(logger, "warn").mockImplementation(() => {});
+    const debug = spyOn(logger, "debug").mockImplementation(() => {});
+    try {
+      const busy = new Error("Failed query: select 1 for update nowait", {
+        cause: Object.assign(new Error("could not obtain lock on row"), { code: "55P03" }),
+      });
+      expect(await reject(busy)).toBe(busy);
+      expect(warn).not.toHaveBeenCalled();
+      expect(debug).toHaveBeenCalledTimes(1);
+      expect(debug.mock.calls[0]?.[0]).toMatchObject({
+        action: "transaction.failed",
+        outcome: "error",
+        sqlstate: "55P03",
+      });
+    } finally {
+      warn.mockRestore();
+      debug.mockRestore();
+    }
+  });
+
   test("plain and database errors still warn as failures", async () => {
     const warn = spyOn(logger, "warn").mockImplementation(() => {});
     try {
