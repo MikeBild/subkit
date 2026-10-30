@@ -26,10 +26,16 @@ export type PackageApplyResult = components["schemas"]["PackageApplyResult"];
 export type PackageInstall = components["schemas"]["PackageInstall"];
 export type PackageInstallList = components["schemas"]["PackageInstallList"];
 
-export function exportPackage(kinds: readonly PackageKind[]): Promise<PackageExportResult> {
+export function exportPackage(input: {
+  kinds: readonly PackageKind[];
+  categories?: readonly string[];
+}): Promise<PackageExportResult> {
   return apiRequest("/v1/packages/export", {
     method: "POST",
-    body: JSON.stringify({ kinds }),
+    body: JSON.stringify({
+      kinds: input.kinds,
+      ...(input.categories && input.categories.length > 0 ? { categories: input.categories } : {}),
+    }),
   });
 }
 

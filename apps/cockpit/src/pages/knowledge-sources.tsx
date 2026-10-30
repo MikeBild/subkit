@@ -28,8 +28,10 @@ import { recordCategory } from "@/components/cockpit/catalog-metadata-model";
 import { ConversationsAbout } from "@/components/cockpit/conversations-about";
 import { type UsageCard, UsageCards } from "@/components/cockpit/knowledge-usage";
 import { KnowledgeVersions, useKnowledgeHistory } from "@/components/cockpit/knowledge-versions";
+import { usePackageActions } from "@/components/cockpit/package-dialogs";
 import {
   ActionMenu,
+  type ActionMenuItem,
   Button,
   type CockpitColumn,
   CodeBlock,
@@ -242,6 +244,11 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
   const [first] = sorting;
   const [adding, setAdding] = useState<{ mode: AddMode; name?: string } | null>(null);
   const categoryFilter = useCategoryFilter("knowledge_source");
+  const packages = usePackageActions({
+    permissions,
+    kind: "knowledge",
+    category: categoryFilter.category,
+  });
   const origin = useCatalogCreatedBy();
   const list = useInfiniteList<
     KnowledgeSource,
@@ -333,6 +340,19 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
       </Button>
     ) : undefined;
 
+  const pageMenu: ActionMenuItem[] = [
+    ...(canChat
+      ? [
+          {
+            label: t("knowledge.addInChat"),
+            href: absolute(chatNewHref({ prompt: t("knowledge.addPrompt") })),
+            testId: "knowledge-add-in-chat",
+          },
+        ]
+      : []),
+    ...packages.items,
+  ];
+
   return (
     <Page
       kind="list"
@@ -344,18 +364,8 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
           title={title}
           action={empty ? undefined : addButton("knowledge-add")}
           menu={
-            canChat ? (
-              <ActionMenu
-                alwaysMenu
-                testId="knowledge-page-actions"
-                items={[
-                  {
-                    label: t("knowledge.addInChat"),
-                    href: absolute(chatNewHref({ prompt: t("knowledge.addPrompt") })),
-                    testId: "knowledge-add-in-chat",
-                  },
-                ]}
-              />
+            pageMenu.length > 0 ? (
+              <ActionMenu alwaysMenu testId="knowledge-page-actions" items={pageMenu} />
             ) : undefined
           }
         />
@@ -492,6 +502,7 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
           onOpenChange={(open) => !open && setAdding(null)}
         />
       ) : null}
+      {packages.dialogs}
     </Page>
   );
 }

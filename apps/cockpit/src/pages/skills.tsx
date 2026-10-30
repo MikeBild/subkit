@@ -49,8 +49,10 @@ import { ConversationsAbout } from "@/components/cockpit/conversations-about";
 import { VersionChange } from "@/components/cockpit/diff-card";
 import { type UsageCard, UsageCards } from "@/components/cockpit/knowledge-usage";
 import { RestoreVersionConfirm } from "@/components/cockpit/knowledge-versions";
+import { usePackageActions } from "@/components/cockpit/package-dialogs";
 import {
   ActionMenu,
+  type ActionMenuItem,
   Button,
   type CockpitColumn,
   CollapsibleSection,
@@ -226,6 +228,11 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
   const [sorting, setSorting] = useState<SortingState>([{ id: "updated_at", desc: true }]);
   const [first] = sorting;
   const categoryFilter = useCategoryFilter("skill");
+  const packages = usePackageActions({
+    permissions,
+    kind: "skill",
+    category: categoryFilter.category,
+  });
   const origin = useCatalogCreatedBy();
   const list = useInfiniteList<Skill>(
     ENDPOINT,
@@ -331,6 +338,19 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
       </Button>
     ) : undefined;
 
+  const pageMenu: ActionMenuItem[] = [
+    ...(canChat
+      ? [
+          {
+            label: t("skills.draftInChat"),
+            href: absolute(chatNewHref({ prompt: t("skills.draftPrompt") })),
+            testId: "skills-draft-in-chat",
+          },
+        ]
+      : []),
+    ...packages.items,
+  ];
+
   return (
     <Page
       kind="list"
@@ -342,18 +362,8 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
           title={title}
           action={empty ? undefined : newButton("skills-new")}
           menu={
-            canChat ? (
-              <ActionMenu
-                alwaysMenu
-                testId="skills-page-actions"
-                items={[
-                  {
-                    label: t("skills.draftInChat"),
-                    href: absolute(chatNewHref({ prompt: t("skills.draftPrompt") })),
-                    testId: "skills-draft-in-chat",
-                  },
-                ]}
-              />
+            pageMenu.length > 0 ? (
+              <ActionMenu alwaysMenu testId="skills-page-actions" items={pageMenu} />
             ) : undefined
           }
         />
@@ -485,6 +495,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
           />
         </div>
       )}
+      {packages.dialogs}
     </Page>
   );
 }

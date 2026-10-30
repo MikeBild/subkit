@@ -8,7 +8,9 @@ import type {
   PackageRequirement,
 } from "@/api/packages";
 import { connectorsHref, workflowsHref } from "@/app/links";
-import type { BadgeTone } from "@/components/cockpit/patterns";
+import { type CategoryUsage, categoryMatches } from "@/components/cockpit/catalog-categories-model";
+import type { CatalogKind } from "@/components/cockpit/catalog-metadata-model";
+import type { ActionMenuItem, BadgeTone } from "@/components/cockpit/patterns";
 import type { PluralKey, TranslationKey } from "@/lib/i18n";
 
 export type PackagePermissions = { canExport: boolean; canImport: boolean };
@@ -18,6 +20,104 @@ export function packagePermissions(permissions: readonly string[]): PackagePermi
     canExport: permissions.includes("package:export"),
     canImport: permissions.includes("package:import"),
   };
+}
+
+export interface PackageExportPrefill {
+  kinds: PackageKind[];
+  categories: string[];
+}
+
+export const EXCLUDED_PACKAGE_CATEGORIES: ReadonlySet<string> = new Set(["other", "platform"]);
+
+export function packageCategories(categories: readonly string[] | undefined): string[] {
+  return [
+    ...new Set(
+      (categories ?? []).filter(
+        (category) => category && !EXCLUDED_PACKAGE_CATEGORIES.has(category),
+      ),
+    ),
+  ];
+}
+
+const COUNT_KIND: Partial<Record<PackageKind, CatalogKind>> = {
+  workflow: "workflow",
+  connector: "connector",
+  skill: "skill",
+  knowledge: "knowledge_source",
+  file: "file",
+};
+
+export const CATEGORY_SEARCH_THRESHOLD = 12;
+
+export interface ExportCategoryOption {
+  category: string;
+  count: number;
+}
+
+export function exportCategoryOptions(
+  categories: readonly CategoryUsage[],
+  kinds: ReadonlySet<PackageKind>,
+  selected: ReadonlySet<string>,
+): ExportCategoryOption[] {
+  const counted = [...new Set([...kinds].flatMap((kind) => COUNT_KIND[kind] ?? []))];
+  const known = new Set(categories.map((usage) => usage.category));
+  const listed = categories
+    .filter((usage) => !EXCLUDED_PACKAGE_CATEGORIES.has(usage.category))
+    .map((usage) => ({
+      category: usage.category,
+      count: counted.reduce((sum, kind) => sum + (usage.counts?.[kind] ?? 0), 0),
+    }))
+    .filter(({ category, count }) => count > 0 || selected.has(category));
+  const unknown = packageCategories([...selected])
+    .filter((category) => !known.has(category))
+    .map((category) => ({ category, count: 0 }));
+  return [...listed, ...unknown];
+}
+
+export function filterExportCategories(
+  categories: readonly CategoryUsage[],
+  options: readonly ExportCategoryOption[],
+  query: string,
+): ExportCategoryOption[] {
+  if (!query.trim()) return [...options];
+  const byName = new Map(categories.map((usage) => [usage.category, usage]));
+  return options.filter((option) => {
+    const usage = byName.get(option.category);
+    return usage ? categoryMatches(usage, query) : option.category.includes(query.trim());
+  });
+}
+
+export function packageMenuItems({
+  permissions,
+  kind,
+  category,
+  t,
+  onExport,
+  onImport,
+}: {
+  permissions: readonly string[];
+  kind: PackageKind;
+  category: string | undefined;
+  t(key: TranslationKey): string;
+  onExport(prefill: PackageExportPrefill): void;
+  onImport(): void;
+}): ActionMenuItem[] {
+  const access = packagePermissions(permissions);
+  const items: ActionMenuItem[] = [];
+  if (access.canExport)
+    items.push({
+      label: t("packages.menu.export"),
+      onSelect: () =>
+        onExport({ kinds: [kind], categories: packageCategories(category ? [category] : []) }),
+      testId: `${kind}-package-export`,
+    });
+  if (access.canImport)
+    items.push({
+      label: t("packages.menu.import"),
+      onSelect: onImport,
+      testId: `${kind}-package-import`,
+    });
+  return items;
 }
 
 export const KIND_LABEL: Record<PackageKind, TranslationKey> = {
@@ -119,6 +219,10 @@ export function summaryEntries<A extends PackageAppliedAction>(
 
 export function canApplyPlan(plan: PackagePlan): boolean {
   return plan.summary.create + plan.summary.update > 0;
+}
+
+export function canSubmitImport(plan: PackagePlan, changed: boolean): boolean {
+  return canApplyPlan(plan) && !changed;
 }
 
 export function sortedPlanItems(plan: PackagePlan): PackagePlanItem[] {

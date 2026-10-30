@@ -6,6 +6,9 @@ import {
   failedItems,
   installSource,
   nextSteps,
+  type PackageExportPrefill,
+  packageCategories,
+  packageMenuItems,
   packagePermissions,
   planFromConflict,
   planHint,
@@ -190,5 +193,61 @@ describe("import result", () => {
     expect(installSource({ instance: "https://subkit.example.test" })).toBe("subkit.example.test");
     expect(installSource({ instance: null, tenant_slug: "acme" })).toBe("acme");
     expect(installSource({})).toBeNull();
+  });
+});
+
+describe("package menu entries", () => {
+  const t = (key: string) => key;
+  const build = (permissions: string[], category: string | undefined) => {
+    const exported: PackageExportPrefill[] = [];
+    let imported = 0;
+    const items = packageMenuItems({
+      permissions,
+      kind: "skill",
+      category,
+      t,
+      onExport: (prefill) => exported.push(prefill),
+      onImport: () => {
+        imported += 1;
+      },
+    });
+    return { items, exported, imported: () => imported };
+  };
+
+  test("offers export and import only with the matching permission", () => {
+    expect(build([], undefined).items).toEqual([]);
+    expect(build(["package:export"], undefined).items.map((item) => item.testId)).toEqual([
+      "skill-package-export",
+    ]);
+    expect(build(["package:import"], undefined).items.map((item) => item.testId)).toEqual([
+      "skill-package-import",
+    ]);
+    const both = build(["package:export", "package:import"], undefined).items;
+    expect(both.map((item) => item.label)).toEqual([
+      "packages.menu.export",
+      "packages.menu.import",
+    ]);
+    expect(new Set(both.map((item) => item.label)).size).toBe(both.length);
+  });
+
+  test("prefills the kind and the active category", () => {
+    const menu = build(["package:export", "package:import"], "crm");
+    menu.items[0]?.onSelect?.();
+    menu.items[1]?.onSelect?.();
+    expect(menu.exported).toEqual([{ kinds: ["skill"], categories: ["crm"] }]);
+    expect(menu.imported()).toBe(1);
+  });
+
+  test("exports every category without an active filter", () => {
+    const menu = build(["package:export"], undefined);
+    menu.items[0]?.onSelect?.();
+    expect(menu.exported).toEqual([{ kinds: ["skill"], categories: [] }]);
+  });
+
+  test("does not narrow the export to other or platform", () => {
+    expect(packageCategories(["other", "platform", "crm", "crm", ""])).toEqual(["crm"]);
+    const menu = build(["package:export"], "other");
+    menu.items[0]?.onSelect?.();
+    expect(menu.exported).toEqual([{ kinds: ["skill"], categories: [] }]);
   });
 });

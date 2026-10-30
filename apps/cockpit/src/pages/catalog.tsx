@@ -18,7 +18,9 @@ import { CATALOG_CREATED_BY_FILTER } from "@/components/cockpit/catalog-origin-m
 import { connectorService } from "@/components/cockpit/connector-names";
 import { ConnectorOnboarding } from "@/components/cockpit/connector-onboarding";
 import { CreateAction } from "@/components/cockpit/create-choice";
+import { usePackageActions } from "@/components/cockpit/package-dialogs";
 import {
+  ActionMenu,
   Button,
   type CockpitColumn,
   DataTable,
@@ -501,6 +503,11 @@ export function CatalogPage({
       kind: "all",
     });
   }, [setState, origin.setValue]);
+  const packages = usePackageActions({
+    permissions,
+    kind: resource === "workflows" ? "workflow" : "connector",
+    category: state.category === "all" ? undefined : state.category,
+  });
 
   if (!permissions.includes(config.permission)) {
     return (
@@ -591,6 +598,15 @@ export function CatalogPage({
             showsZeroStateAction && !onboarding && !onboardsConnectors
               ? undefined
               : primaryAction("catalog-primary-action")
+          }
+          menu={
+            packages.items.length > 0 ? (
+              <ActionMenu
+                alwaysMenu
+                testId={`catalog-${resource}-page-actions`}
+                items={packages.items}
+              />
+            ) : undefined
           }
         />
       }
@@ -744,6 +760,7 @@ export function CatalogPage({
           />
         </div>
       )}
+      {packages.dialogs}
     </Page>
   );
 }

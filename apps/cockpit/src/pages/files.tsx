@@ -45,6 +45,7 @@ import { FileVersionsSection, useFileVersions } from "@/components/cockpit/file-
 import { IconButton } from "@/components/cockpit/icon-button";
 import { InstallationInputActions } from "@/components/cockpit/installation-dialogs";
 import { type UsageCard, UsageCards } from "@/components/cockpit/knowledge-usage";
+import { usePackageActions } from "@/components/cockpit/package-dialogs";
 import {
   ActionMenu,
   Button,
@@ -181,6 +182,11 @@ export function FilesPage() {
   const [groupMode, setGroupMode] = useSearchParamState("group", "category");
   const [upload, setUpload] = useState<{ files: File[]; replace: StoredFile | null } | null>(null);
   const categoryFilter = useCategoryFilter("file");
+  const packages = usePackageActions({
+    permissions: session.permissions,
+    kind: "file",
+    category: categoryFilter.category,
+  });
   const origin = useCatalogCreatedBy();
   const list = useInfiniteList<ListedFile>(LIST_PATH, {
     ...LIST_PARAMS,
@@ -195,7 +201,7 @@ export function FilesPage() {
   const hasFiles = items.length > 0 || !unfiltered;
 
   const dropOnPage = useMemo(() => (files: File[]) => setUpload({ files, replace: null }), []);
-  const dragging = usePageDrop(canWrite && upload === null, dropOnPage);
+  const dragging = usePageDrop(canWrite && upload === null && !packages.open, dropOnPage);
 
   const columns = useMemo<CockpitColumn<ListedFile>[]>(() => {
     const column = tableColumns<ListedFile>({ t, dateTime });
@@ -280,6 +286,11 @@ export function FilesPage() {
         <PageHeader
           title={t("files.title")}
           action={(onboarding ? installationActions : fileActions) ?? undefined}
+          menu={
+            packages.items.length > 0 ? (
+              <ActionMenu alwaysMenu testId="files-page-actions" items={packages.items} />
+            ) : undefined
+          }
         />
       }
     >
@@ -446,6 +457,7 @@ export function FilesPage() {
           onClose={() => setUpload(null)}
         />
       ) : null}
+      {packages.dialogs}
     </Page>
   );
 }

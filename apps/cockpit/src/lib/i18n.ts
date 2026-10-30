@@ -2069,6 +2069,26 @@ const EN = {
   "settings.question.operations.sandboxLine": "How own code in workflows runs shielded.",
   "settings.question.operations.branding": "Appearance",
   "settings.question.operations.brandingLine": "Name and logo of this workspace.",
+  "packages.menu.export": "Export as package…",
+  "packages.menu.import": "Import package…",
+  "packages.export.title": "Export as package",
+  "packages.export.description":
+    "Choose what goes into the package. You download it in the next step.",
+  "packages.export.categories": "Categories",
+  "packages.export.categorySearch": "Search categories",
+  "packages.export.categoriesLoading": "Loading categories …",
+  "packages.export.categoriesNone": "No categories for the selected contents.",
+  "packages.export.categoriesAll":
+    "No category selected: everything is exported, including entries without a category.",
+  "packages.export.categoriesSome":
+    "Only the selected categories. Entries without a category come along only without a category filter.",
+  "packages.import.title": "Import package",
+  "packages.import.description":
+    "Check the preview first. Nothing changes until you apply the import.",
+  "packages.dialog.back": "Back",
+  "chat.attachment.packageTooLarge":
+    "{name} is larger than {max}. Import packages up to {packageMax} with “Import package…” in the lists or in the packages section of the settings.",
+  "chat.attachment.openPackages": "Open packages",
   "settings.packages.title": "Packages: export and import",
   "settings.packages.line":
     "Move your own workflows, skills, knowledge, files, connectors and schedules to another SubKit instance. Credentials and approvals never travel along.",
@@ -2091,7 +2111,6 @@ const EN = {
   "settings.packages.action.unchanged": "Unchanged",
   "settings.packages.action.conflict": "Conflict",
   "settings.packages.action.failed": "Failed",
-  "settings.packages.export.title": "Export",
   "settings.packages.export.dependencies": "Dependencies are added automatically",
   "settings.packages.export.kinds": "Contents",
   "settings.packages.export.action": "Export package",
@@ -2109,7 +2128,6 @@ const EN = {
   "settings.packages.requires.schedule.other": "Resume {count} schedules after review",
   "settings.packages.requires.knowledge.one": "Confirm {count} knowledge source in the inbox",
   "settings.packages.requires.knowledge.other": "Confirm {count} knowledge sources in the inbox",
-  "settings.packages.import.title": "Import",
   "settings.packages.import.stepFile": "Choose file",
   "settings.packages.import.stepPreview": "Preview",
   "settings.packages.import.stepResult": "Result",
@@ -2128,8 +2146,6 @@ const EN = {
     "Workflows arrive as inactive drafts, schedules paused, skills as drafts, connectors without credentials. Knowledge is only admitted after you confirm it in the inbox. Conflicts are skipped.",
   "settings.packages.import.nothing": "Nothing to apply: every entry is unchanged or in conflict.",
   "settings.packages.import.apply": "Apply import",
-  "settings.packages.import.object": "package",
-  "settings.packages.import.verb": "Import",
   "settings.packages.import.consequence":
     "{create} entries will be created and {update} updated. Conflicts are skipped. Nothing runs until you approve it.",
   "settings.packages.import.applyFailed": "The import could not be applied.",
@@ -8525,6 +8541,25 @@ const DE: Record<TranslationKey, string> = {
   "settings.question.operations.sandboxLine": "Wie eigener Code in Workflows abgeschirmt läuft.",
   "settings.question.operations.branding": "Erscheinungsbild",
   "settings.question.operations.brandingLine": "Name und Logo dieses Arbeitsbereichs.",
+  "packages.menu.export": "Als Paket exportieren…",
+  "packages.menu.import": "Paket importieren…",
+  "packages.export.title": "Als Paket exportieren",
+  "packages.export.description":
+    "Wähle, was ins Paket kommt. Im nächsten Schritt lädst du es herunter.",
+  "packages.export.categories": "Kategorien",
+  "packages.export.categorySearch": "Kategorien durchsuchen",
+  "packages.export.categoriesLoading": "Kategorien werden geladen …",
+  "packages.export.categoriesNone": "Keine Kategorien für die gewählten Inhalte.",
+  "packages.export.categoriesAll":
+    "Keine Kategorie gewählt: Alles kommt mit, auch Einträge ohne Kategorie.",
+  "packages.export.categoriesSome":
+    "Nur die gewählten Kategorien. Einträge ohne Kategorie kommen nur ohne Kategoriefilter mit.",
+  "packages.import.title": "Paket importieren",
+  "packages.import.description": "Prüfe zuerst die Vorschau. Erst „Import anwenden“ ändert etwas.",
+  "packages.dialog.back": "Zurück",
+  "chat.attachment.packageTooLarge":
+    "{name} ist größer als {max}. Pakete bis {packageMax} spielst du über „Paket importieren…“ in den Listen oder im Paketbereich der Einstellungen ein.",
+  "chat.attachment.openPackages": "Pakete öffnen",
   "settings.packages.title": "Pakete: Export und Import",
   "settings.packages.line":
     "Eigene Workflows, Skills, Wissen, Dateien, Konnektoren und Zeitpläne in eine andere SubKit-Instanz übertragen. Zugangsdaten und Freigaben werden nie mitgenommen.",
@@ -8547,7 +8582,6 @@ const DE: Record<TranslationKey, string> = {
   "settings.packages.action.unchanged": "Unverändert",
   "settings.packages.action.conflict": "Konflikt",
   "settings.packages.action.failed": "Fehlgeschlagen",
-  "settings.packages.export.title": "Exportieren",
   "settings.packages.export.dependencies": "Abhängigkeiten werden automatisch ergänzt",
   "settings.packages.export.kinds": "Inhalte",
   "settings.packages.export.action": "Paket exportieren",
@@ -8566,7 +8600,6 @@ const DE: Record<TranslationKey, string> = {
   "settings.packages.requires.schedule.other": "{count} Zeitpläne nach Prüfung fortsetzen",
   "settings.packages.requires.knowledge.one": "{count} Wissensquelle im Eingang bestätigen",
   "settings.packages.requires.knowledge.other": "{count} Wissensquellen im Eingang bestätigen",
-  "settings.packages.import.title": "Importieren",
   "settings.packages.import.stepFile": "Datei wählen",
   "settings.packages.import.stepPreview": "Vorschau",
   "settings.packages.import.stepResult": "Ergebnis",
@@ -8586,8 +8619,6 @@ const DE: Record<TranslationKey, string> = {
   "settings.packages.import.nothing":
     "Nichts zu übernehmen: Alle Einträge sind unverändert oder im Konflikt.",
   "settings.packages.import.apply": "Import anwenden",
-  "settings.packages.import.object": "Paket",
-  "settings.packages.import.verb": "Importieren",
   "settings.packages.import.consequence":
     "{create} Einträge werden angelegt und {update} aktualisiert. Konflikte werden übersprungen. Nichts davon läuft, bis du es freigibst.",
   "settings.packages.import.applyFailed": "Der Import konnte nicht angewendet werden.",

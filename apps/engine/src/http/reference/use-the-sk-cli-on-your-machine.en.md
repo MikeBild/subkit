@@ -108,7 +108,8 @@ A package carries your own workflows, connectors, connector templates, skills, s
 Credentials, approvals, roles, categories, settings and the history stay behind.
 To copy a whole self-hosted installation, make a backup instead, as described in "Run the engine".
 
-You need `package:export` on the source engine and `package:import` on the target engine. Both are administrator permissions.
+You need `package:export` on the source engine and `package:import` on the target engine. Members and administrators have both.
+After the import, someone with `credential:write`, usually an administrator, adds the credentials. A member can complete an OAuth sign-in.
 
 1. Sign in to both engines, each with its own profile:
 
@@ -144,6 +145,9 @@ You need `package:export` on the source engine and `package:import` on the targe
 Importing the same package again shows every item as `unchanged`.
 An item you changed on engine B shows as `conflict` and is never overwritten.
 `sk packages installs` lists past imports.
+
+In the Cockpit you find the same in the "…" menu of workflows, connectors, skills, sources and files: "Export as package…" and "Import package…". If a category is filtered, the export already selects it.
+In the chat, attach a package of up to 5 MB and ask to import it. The chat shows the plan and asks before importing, unless the conversation runs without confirmations. Import larger packages of up to 256 MB through the menu.
 
 You can move area by area: one package per category, each with its preview, setup and test run.
 A connector that an earlier package already brought stays `unchanged`, even after you stored its credentials on engine B.

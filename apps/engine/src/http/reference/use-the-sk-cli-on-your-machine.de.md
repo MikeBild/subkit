@@ -108,7 +108,8 @@ Ein Paket bringt deine eigenen Workflows, Konnektoren, Konnektor-Vorlagen, Skill
 Zugangsdaten, Freigaben, Rollen, Kategorien, Einstellungen und der Verlauf bleiben zurück.
 Um eine ganze selbst betriebene Installation zu kopieren, machst du stattdessen ein Backup wie in „Die Engine betreiben“ beschrieben.
 
-Du brauchst `package:export` auf der Quell-Engine und `package:import` auf der Ziel-Engine. Beides sind Administrationsrechte.
+Du brauchst `package:export` auf der Quell-Engine und `package:import` auf der Ziel-Engine. Beide Rechte haben Mitglieder und Administratoren.
+Die Zugangsdaten nach dem Import hinterlegt jemand mit `credential:write`, in der Regel ein Administrator. Eine OAuth-Anmeldung kann auch ein Mitglied abschließen.
 
 1. Melde dich bei beiden Engines an, jeweils mit einem eigenen Profil:
 
@@ -144,6 +145,9 @@ Du brauchst `package:export` auf der Quell-Engine und `package:import` auf der Z
 Importierst du dasselbe Paket erneut, ist jeder Eintrag `unchanged`.
 Einen Eintrag, den du auf Engine B geändert hast, zeigt der Import als `conflict` und überschreibt ihn nie.
 `sk packages installs` listet frühere Importe.
+
+Im Cockpit findest du dasselbe im „…“-Menü von Workflows, Konnektoren, Skills, Quellen und Dateien: „Als Paket exportieren…“ und „Paket importieren…“. Ist eine Kategorie gefiltert, ist sie im Export schon ausgewählt.
+Im Chat hängst du ein Paket bis 5 MB an und bittest darum, es einzuspielen. Der Chat zeigt den Plan und fragt vor dem Einspielen nach, außer die Unterhaltung läuft ohne Rückfragen. Größere Pakete bis 256 MB importierst du über das Menü.
 
 Du kannst Bereich für Bereich umziehen: ein Paket je Kategorie, jeweils mit Vorschau, Einrichtung und Testlauf.
 Ein Konnektor, den ein früheres Paket schon mitgebracht hat, bleibt `unchanged`, auch wenn du auf Engine B schon seine Zugangsdaten hinterlegt hast.

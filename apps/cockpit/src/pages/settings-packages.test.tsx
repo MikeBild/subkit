@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import type { PackageApplyResult, PackagePreviewResult } from "@/api/packages";
-import { render, renderInRouter } from "@/components/cockpit/patterns/test-utils";
+import { PACKAGE_KINDS, type PackageApplyResult, type PackagePreviewResult } from "@/api/packages";
+import type { CategoryUsage } from "@/components/cockpit/catalog-categories-model";
 import {
+  PackageExportChoice,
   PackageExportResultView,
-  PackageInstallsTable,
   PackagePreviewView,
   PackageResultView,
-} from "@/pages/settings-packages";
+} from "@/components/cockpit/package-dialogs";
+import { render, renderInRouter } from "@/components/cockpit/patterns/test-utils";
+import { PackageInstallsTable } from "@/pages/settings-packages";
+import { canSubmitImport } from "@/pages/settings-packages-model";
 
 const preview: PackagePreviewResult = {
   archive_file_id: "file_1",
@@ -41,21 +44,12 @@ const preview: PackagePreviewResult = {
 
 const noop = () => {};
 
-function applyDisabled(html: string): boolean {
-  const tag = html.match(/<button[^>]*data-testid="settings-packages-preview-apply"[^>]*>/)?.[0];
-  if (!tag) throw new Error("apply button missing");
-  return /\sdisabled=""/.test(tag);
-}
-
 function previewHtml(overrides: Partial<Parameters<typeof PackagePreviewView>[0]> = {}) {
   return render(
     <PackagePreviewView
       preview={preview}
       changed={false}
       refreshing={false}
-      applying={false}
-      onCancel={noop}
-      onApply={noop}
       onRefresh={noop}
       {...overrides}
     />,
@@ -76,30 +70,98 @@ describe("package import preview", () => {
     expect(html).toContain("Abhängigkeit fehlt: workflow:briefing");
     expect(html).toContain('data-testid="settings-packages-preview-landing"');
     expect(html).not.toContain('data-testid="settings-packages-preview-changed"');
-    expect(applyDisabled(html)).toBe(false);
+    expect(html).toContain("Hinweis");
+    expect(canSubmitImport(preview.plan, false)).toBe(true);
   });
 
   test("blocks apply and offers a new preview when the target changed", () => {
     const html = previewHtml({ changed: true });
     expect(html).toContain('data-testid="settings-packages-preview-changed"');
     expect(html).toContain('data-testid="settings-packages-preview-refresh"');
-    expect(applyDisabled(html)).toBe(true);
+    expect(html).toMatch(
+      /<button[^>]*type="button"[^>]*data-testid="settings-packages-preview-refresh"/,
+    );
+    expect(canSubmitImport(preview.plan, true)).toBe(false);
   });
 
   test("blocks apply when nothing would change", () => {
-    const html = previewHtml({
-      preview: {
-        ...preview,
-        plan: {
-          ...preview.plan,
-          items: [{ kind: "file", key: "logo.svg", action: "unchanged", local_id: "f1" }],
-          summary: { create: 0, update: 0, unchanged: 1, conflict: 0 },
-        },
-      },
-    });
+    const plan = {
+      ...preview.plan,
+      items: [
+        { kind: "file" as const, key: "logo.svg", action: "unchanged" as const, local_id: "f1" },
+      ],
+      summary: { create: 0, update: 0, unchanged: 1, conflict: 0 },
+    };
+    const html = previewHtml({ preview: { ...preview, plan } });
     expect(html).toContain('data-testid="settings-packages-preview-nothing"');
     expect(html).toContain("Bereits vorhanden");
-    expect(applyDisabled(html)).toBe(true);
+    expect(canSubmitImport(plan, false)).toBe(false);
+  });
+});
+
+function usage(category: string, counts: Partial<CategoryUsage["counts"]> = {}): CategoryUsage {
+  return {
+    category,
+    total: Object.values(counts).reduce((sum, value) => sum + (value ?? 0), 0),
+    counts: { workflow: 0, connector: 0, knowledge_source: 0, skill: 0, file: 0, ...counts },
+    purpose: category === "billing" ? "Invoices and payment runs" : null,
+    aliases: [],
+  };
+}
+
+function choiceHtml(overrides: Partial<Parameters<typeof PackageExportChoice>[0]> = {}): string {
+  return render(
+    <PackageExportChoice
+      kinds={new Set(PACKAGE_KINDS)}
+      onKind={noop}
+      categories={[
+        usage("crm", { workflow: 3, connector: 1 }),
+        usage("billing", { skill: 2 }),
+        usage("other", { workflow: 4 }),
+        usage("platform", { connector: 2 }),
+      ]}
+      selected={new Set(["crm"])}
+      onCategory={noop}
+      search=""
+      onSearch={noop}
+      {...overrides}
+    />,
+  );
+}
+
+function checkboxChecked(html: string, testId: string): boolean {
+  const tag = html.match(new RegExp(`<button[^>]*data-testid="${testId}"[^>]*>`))?.[0];
+  if (!tag) throw new Error(`${testId} missing`);
+  return tag.includes('aria-checked="true"');
+}
+
+describe("package export choice", () => {
+  test("checks the prefilled categories and leaves out other and platform", () => {
+    const html = choiceHtml();
+    expect(checkboxChecked(html, "settings-packages-category-crm")).toBe(true);
+    expect(checkboxChecked(html, "settings-packages-category-billing")).toBe(false);
+    expect(html).not.toContain('data-testid="settings-packages-category-other"');
+    expect(html).not.toContain('data-testid="settings-packages-category-platform"');
+    expect(html).toContain("Nur die gewählten Kategorien.");
+    expect(html).not.toContain('data-testid="settings-packages-category-search"');
+  });
+
+  test("counts only the selected kinds and hides categories without them", () => {
+    const html = choiceHtml({ kinds: new Set(["skill"]), selected: new Set() });
+    expect(html).toContain('data-testid="settings-packages-category-billing"');
+    expect(html).not.toContain('data-testid="settings-packages-category-crm"');
+    expect(html).toContain("Keine Kategorie gewählt");
+  });
+
+  test("offers a search above twelve categories and filters by purpose", () => {
+    const many = Array.from({ length: 13 }, (_, index) => usage(`team-${index}`, { workflow: 1 }));
+    const categories = [...many, usage("billing", { workflow: 1 })];
+    expect(choiceHtml({ categories, selected: new Set() })).toContain(
+      'data-testid="settings-packages-category-search"',
+    );
+    const html = choiceHtml({ categories, selected: new Set(), search: "invoices" });
+    expect(html).toContain('data-testid="settings-packages-category-billing"');
+    expect(html).not.toContain('data-testid="settings-packages-category-team-0"');
   });
 });
 

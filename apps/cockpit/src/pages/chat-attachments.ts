@@ -1,10 +1,12 @@
 import { toast } from "sonner";
 import { apiRequest, type Conversation, type ConversationTarget } from "@/api/client";
 import { tenantContentHref } from "@/api/tenant-context";
+import { absolute, settingsHref } from "@/app/links";
 import { fileRefusal, formatBytes } from "@/components/cockpit/patterns";
 import type { TranslationKey } from "@/lib/i18n";
 
 export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+const PACKAGE_MAX_BYTES = 256 * 1024 * 1024;
 
 export type PendingAttachment =
   | { key: string; kind: "upload"; file: File }
@@ -55,17 +57,47 @@ export function addAttachments(
   return out;
 }
 
+const ZIP_TYPES = new Set(["application/zip", "application/x-zip-compressed"]);
+
+export function isZipFile(file: Pick<File, "name" | "type">): boolean {
+  return file.name.toLowerCase().endsWith(".zip") || ZIP_TYPES.has(file.type.toLowerCase());
+}
+
+export function packagesSettingsHref(): string {
+  return `${absolute(settingsHref(null, { area: "operations" }))}#packages`;
+}
+
+export type AttachmentNotice = (
+  message: string,
+  options?: { action: { label: string; onClick(): void } },
+) => void;
+
 export function takeAttachmentFiles(
   files: readonly File[],
   t: (key: TranslationKey, values?: Record<string, string | number>) => string,
+  options: { notify?: AttachmentNotice; openPackages?(): void } = {},
 ): PendingAttachment[] {
+  const notify: AttachmentNotice =
+    options.notify ?? ((message, extra) => void toast.error(message, extra));
+  const openPackages =
+    options.openPackages ?? (() => window.location.assign(packagesSettingsHref()));
   const taken: PendingAttachment[] = [];
   for (const file of files) {
-    if (fileRefusal(file, { maxBytes: MAX_ATTACHMENT_BYTES }) === "size")
-      toast.error(
+    if (fileRefusal(file, { maxBytes: MAX_ATTACHMENT_BYTES }) !== "size")
+      taken.push({ key: pendingKey(), kind: "upload", file });
+    else if (isZipFile(file))
+      notify(
+        t("chat.attachment.packageTooLarge", {
+          name: file.name,
+          max: formatBytes(MAX_ATTACHMENT_BYTES),
+          packageMax: formatBytes(PACKAGE_MAX_BYTES),
+        }),
+        { action: { label: t("chat.attachment.openPackages"), onClick: openPackages } },
+      );
+    else
+      notify(
         t("platform.file.tooLarge", { name: file.name, max: formatBytes(MAX_ATTACHMENT_BYTES) }),
       );
-    else taken.push({ key: pendingKey(), kind: "upload", file });
   }
   return taken;
 }
