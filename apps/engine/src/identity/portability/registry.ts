@@ -42,6 +42,19 @@ export async function loadStoredPackageArchive(
   return { file_id: row.id, filename: row.filename, sha256: row.sha256, bytes };
 }
 
+export async function markStoredPackageArchive(
+  exec: Executor,
+  tenant_id: string,
+  file_id: string,
+): Promise<typeof files.$inferSelect | null> {
+  const [row] = await exec
+    .update(files)
+    .set({ content_type: PACKAGE_CONTENT_TYPE })
+    .where(and(eq(files.tenant_id, tenant_id), eq(files.id, file_id)))
+    .returning();
+  return row ?? null;
+}
+
 export async function listPackageInstalls(exec: Executor, tenant_id: string) {
   return exec
     .select()

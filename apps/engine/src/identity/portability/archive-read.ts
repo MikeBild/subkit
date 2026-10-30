@@ -165,3 +165,13 @@ export async function readPackageArchive(archive: Buffer): Promise<ReadPackage> 
   }
   return { manifest, payloads: sortPayloads(payloads) };
 }
+
+export async function isPackageArchive(bytes: Uint8Array): Promise<boolean> {
+  if (bytes.byteLength < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) return false;
+  try {
+    await readPackageArchive(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength));
+    return true;
+  } catch {
+    return false;
+  }
+}

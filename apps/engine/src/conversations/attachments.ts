@@ -76,6 +76,16 @@ export async function lookupSlugsToFileIds(
   return out;
 }
 
+export async function pinAttachmentFileId(
+  args: Record<string, unknown>,
+  ctx: SlugLookupCtx,
+): Promise<Record<string, unknown>> {
+  const slug = typeof args.file_id === "string" ? parseFileReference(args.file_id) : null;
+  if (!slug) return args;
+  const fileId = (await lookupSlugsToFileIds([slug], ctx)).get(slug);
+  return fileId ? { ...args, file_id: fileId } : args;
+}
+
 export async function lookupSlugsToFileRows(
   slugs: string[],
   ctx: SlugLookupCtx,

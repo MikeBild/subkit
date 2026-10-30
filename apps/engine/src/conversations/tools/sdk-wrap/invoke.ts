@@ -17,6 +17,7 @@ import { stripConfirmMarkers } from "../../../tools/approval.ts";
 import { listWorkflowsUsingConnector } from "../../../workflows/connector-refs.ts";
 import {
   FileNotFoundError,
+  pinAttachmentFileId,
   type ResolvedFile,
   resolveAttachmentSlugsInArgs,
   walkAndResolve,
@@ -70,7 +71,7 @@ import {
   withTruncationMarkers,
 } from "../truncate.ts";
 import { buildCapAlternatives } from "./error-recovery-hints.ts";
-import { prepareGate } from "./gate-subjects.ts";
+import { type GateSubject, prepareGate } from "./gate-subjects.ts";
 import {
   INTAKE_REVIEW_BLOCKED_WRITES,
   INTAKE_REVIEW_KNOWLEDGE_EDIT_NOTE,
@@ -194,7 +195,14 @@ export function wrapOne(
     ...(inner.strict !== undefined ? { strict: inner.strict } : {}),
     ...toInputExamples(inner.example_input),
     async execute(modelArgs: Record<string, unknown>): Promise<WrappedToolOutput> {
-      const rawArgs = decodeAskUserPromptEscapes(inner.name, modelArgs);
+      const decodedArgs = decodeAskUserPromptEscapes(inner.name, modelArgs);
+      const rawArgs = inner.accepts_attachment_file_id
+        ? await pinAttachmentFileId(decodedArgs, {
+            db,
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+          })
+        : decodedArgs;
       const prevChain = signals.toolChain;
       let release!: () => void;
       signals.toolChain = new Promise<void>((resolve) => {
@@ -770,6 +778,12 @@ export function wrapOne(
                 ? ` · last preview: ${lastPreview.summary.slice(0, 80)}`
                 : "";
               return `Run workflow "${wfName}" in ${env}${previewBit}`;
+            }
+            if (inner.name === "apply_package_import") {
+              const [subject] = Array.isArray(pendingOutput?.subjects)
+                ? (pendingOutput.subjects as GateSubject[])
+                : [];
+              return subject?.title ? `Import package ${subject.title}` : "Import package";
             }
             if (gatedEffect) return describeToolEffect(gatedEffect);
             return `Confirm ${inner.name} (policy: ${resolvedMode})`;

@@ -11,6 +11,7 @@ import {
   PackageArchiveNotFoundError,
   type PackagePlan,
   PackagePlanChangedError,
+  type PackageRequirement,
   PackageTooLargeError,
   previewPackageImport,
 } from "../../identity/index.ts";
@@ -23,7 +24,9 @@ export const PACKAGE_ITEM_LIMIT = 100;
 const FileIdInput = z
   .string()
   .min(1)
-  .describe("The package file id (fid_…) returned by export_tenant_package or an upload.");
+  .describe(
+    "The package file: its fid_… id from export_tenant_package, list_attachments or the attached file's description, or @attachment:<slug> for a package attached to this chat.",
+  );
 
 function requestSource(ctx: ToolContext): "mcp" | "chat" {
   return ctx.direct_mcp_invocation === true ? "mcp" : "chat";
@@ -50,9 +53,11 @@ function authRequired(): ToolResult {
 }
 
 function invalidFileId(): ToolResult {
-  return failure("invalid_file_id", "file_id must be a package file id in the fid_… form.", {
-    next_best_actions: ["export_tenant_package", "list_attachments"],
-  });
+  return failure(
+    "invalid_file_id",
+    "file_id must be a package file id (fid_…) or @attachment:<slug> of a package attached to this chat.",
+    { next_best_actions: ["list_attachments", "export_tenant_package"] },
+  );
 }
 
 function archiveFailure(err: unknown): ToolResult | null {
@@ -98,6 +103,35 @@ function compactPlan(file_id: string, plan: PackagePlan) {
     items_truncated: truncated,
     requires: plan.requires,
   };
+}
+
+const REQUIREMENT_WORDS: Record<PackageRequirement["kind"], [string, string]> = {
+  credential: ["credential", "credentials"],
+  approval: ["approval", "approvals"],
+  schedule_resume: ["paused schedule", "paused schedules"],
+  knowledge_review: ["knowledge review", "knowledge reviews"],
+};
+
+function counted(count: number, [one, other]: readonly [string, string]): string {
+  return `${count} ${count === 1 ? one : other}`;
+}
+
+export function formatPackagePlanTitle(filename: string, plan: PackagePlan): string {
+  const actions = (["create", "update", "unchanged", "conflict"] as const)
+    .filter((action) => plan.summary[action] > 0)
+    .map((action) => `${plan.summary[action]} ${action}`);
+  const needs = Object.entries(REQUIREMENT_WORDS)
+    .map(([kind, words]) => ({
+      count: plan.requires.filter((requirement) => requirement.kind === kind).length,
+      words,
+    }))
+    .filter((entry) => entry.count > 0)
+    .map((entry) => counted(entry.count, entry.words));
+  return [
+    filename,
+    ...(actions.length > 0 ? actions : ["nothing to import"]),
+    ...(needs.length > 0 ? [`then ${needs.join(", ")}`] : []),
+  ].join(" · ");
 }
 
 function reviewUrl(path: string): string {
@@ -175,6 +209,7 @@ export const previewPackageImportTool: ConversationTool = {
   inputSchema: z.object({ file_id: FileIdInput }).strict().openapi("PreviewPackageImportToolInput"),
   category: "tenant_read",
   authoring_only: true,
+  accepts_attachment_file_id: true,
   permission: { action: "package:import", resourceType: "package" },
   async execute(ctx, args) {
     const { file_id } = args as { file_id: string };
@@ -208,6 +243,7 @@ export const applyPackageImportTool: ConversationTool = {
     .openapi("ApplyPackageImportToolInput"),
   category: "tenant_write",
   authoring_only: true,
+  accepts_attachment_file_id: true,
   permission: { action: "package:import", resourceType: "package" },
   async execute(ctx, args) {
     const principal = ctx.principal;

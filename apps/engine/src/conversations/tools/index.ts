@@ -168,6 +168,7 @@ export interface ConversationTool {
   readonly inert_proposal?: boolean;
   readonly captures_draft_snapshot?: boolean;
   readonly authoring_only?: boolean;
+  readonly accepts_attachment_file_id?: boolean;
   readonly example_input?: Readonly<Record<string, unknown>>;
   readonly strict?: boolean;
   readonly requires_persisted_workflow?: boolean;

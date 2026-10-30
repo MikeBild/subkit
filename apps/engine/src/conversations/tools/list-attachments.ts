@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
 import { listedDescription } from "../../api/catalog-metadata.ts";
+import { toFileId } from "../../api/files-schemas.ts";
 import { fileLinks, files } from "../../db/schema/index.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
@@ -37,6 +38,7 @@ export const listAttachmentsTool: ConversationTool = {
       data: {
         persistence: "none" as const,
         attachments: rows.map((r) => ({
+          file_id: toFileId(r.file.id),
           slug: r.link.slug,
           original_filename: r.file.filename,
           description: listedDescription(r.file.description),

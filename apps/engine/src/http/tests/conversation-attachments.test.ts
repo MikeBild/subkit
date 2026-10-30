@@ -1,6 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { auditLog, conversations, fileLinks } from "../../db/schema/index.ts";
+import { auditLog, conversations, fileLinks, files } from "../../db/schema/index.ts";
+import { persistInlineUpload } from "../../files/persist-inline-upload.ts";
+import { PACKAGE_CONTENT_TYPE } from "../../identity/portability/format.ts";
+import { skillPackageArchive } from "../../test-helpers/package-archive.ts";
+import { writeDeterministicZip } from "../../utils/zip-write.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -144,5 +148,51 @@ describe("DELETE /v1/conversations/:id/attachments/:slug", () => {
     expect(remaining.length).toBe(0);
     const again = await api("DELETE", `/v1/conversations/${conversation_id}/attachments/${slug}`);
     expect(again.status).toBe(404);
+  });
+});
+
+describe("SubKit package attachments", () => {
+  async function upload(filename: string, bytes: Buffer, content_type?: string) {
+    const res = await api("POST", `/v1/conversations/${conversation_id}/attachments`, {
+      filename,
+      ...(content_type ? { content_type } : {}),
+      content_base64: bytes.toString("base64"),
+    });
+    expect(res.status).toBe(201);
+    return (await res.json()) as { id: string; content_type: string | null };
+  }
+
+  test("a package uploaded without a content type is stored as a SubKit package", async () => {
+    const body = await upload(
+      "beispiele.subkit-package.zip",
+      skillPackageArchive(["attached-without-type"]),
+    );
+    expect(body.content_type).toBe(PACKAGE_CONTENT_TYPE);
+  });
+
+  test("an ordinary zip keeps the content type it was sent with", async () => {
+    const plain = writeDeterministicZip(new Map([["notes.txt", Buffer.from("just notes")]]));
+    const body = await upload("notes.zip", plain, "application/zip");
+    expect(body.content_type).toBe("application/zip");
+  });
+
+  test("re-attaching package bytes stored earlier without a type marks the stored file as a package", async () => {
+    const bytes = skillPackageArchive(["stored-earlier-untyped"]);
+    const earlier = await persistInlineUpload(srv.db, {
+      tenant_id: srv.tenantId,
+      actor_id: srv.userId,
+      filename: "earlier.zip",
+      content_type: null,
+      bytes: new Uint8Array(bytes),
+    });
+    expect(earlier.row.content_type).toBeNull();
+    const body = await upload("again.subkit-package.zip", bytes, "application/octet-stream");
+    expect(body.id).toBe(`fid_${earlier.row.id}`);
+    expect(body.content_type).toBe(PACKAGE_CONTENT_TYPE);
+    const [stored] = await srv.db
+      .select({ content_type: files.content_type })
+      .from(files)
+      .where(eq(files.id, earlier.row.id));
+    expect(stored?.content_type).toBe(PACKAGE_CONTENT_TYPE);
   });
 });

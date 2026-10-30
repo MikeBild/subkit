@@ -5,6 +5,7 @@ import { getTool, type ToolContext } from "../index.ts";
 import {
   applyPackageImportTool,
   exportTenantPackageTool,
+  formatPackagePlanTitle,
   previewPackageImportTool,
 } from "../package-portability.ts";
 
@@ -53,7 +54,7 @@ describe("package portability tools", () => {
     expect(mcpNames("admin", true).has("apply_package_import")).toBe(false);
   });
 
-  test("apply always asks before execution; export prepares without asking", () => {
+  test("apply asks before execution unless the chat runs in yolo; export prepares without asking", () => {
     for (const permission_mode of [null, "auto", "ask"] as const) {
       expect(
         resolveToolMode({
@@ -65,6 +66,15 @@ describe("package portability tools", () => {
         }),
       ).toBe("confirm_before_execution");
     }
+    expect(
+      resolveToolMode({
+        tool: "apply_package_import",
+        category: "tenant_write",
+        input: { file_id: "fid_x", expected_plan_digest: "d" },
+        overrides: {},
+        permission_mode: "yolo",
+      }),
+    ).toBe("no_confirm");
     expect(
       resolveToolMode({
         tool: "export_tenant_package",
@@ -87,6 +97,39 @@ describe("package portability tools", () => {
       file_id: "00000000-0000-4000-8000-000000000000",
     });
     expect(preview).toMatchObject({ ok: false, error_code: "invalid_file_id" });
+    expect(preview).toMatchObject({ message: expect.stringContaining("@attachment:<slug>") });
+  });
+
+  test("preview and apply take a chat attachment; export does not", () => {
+    expect(previewPackageImportTool.accepts_attachment_file_id).toBe(true);
+    expect(applyPackageImportTool.accepts_attachment_file_id).toBe(true);
+    expect(exportTenantPackageTool.accepts_attachment_file_id).toBeUndefined();
+  });
+
+  test("the plan line lists the changes and what to set up afterwards", () => {
+    const plan = {
+      package_id: "tenant-export:source",
+      package_version: "1",
+      content_digest: "c",
+      plan_digest: "p",
+      items: [],
+      requires: [
+        { kind: "credential" as const, connector: "gmail@prod", fields: ["token"] },
+        { kind: "credential" as const, connector: "linkedin@dev", fields: ["token"] },
+        { kind: "approval" as const, workflow: "send-digest" },
+      ],
+      summary: { create: 3, update: 0, unchanged: 2, conflict: 1 },
+    };
+    expect(formatPackagePlanTitle("finance.subkit-package.zip", plan)).toBe(
+      "finance.subkit-package.zip · 3 create · 2 unchanged · 1 conflict · then 2 credentials, 1 approval",
+    );
+    expect(
+      formatPackagePlanTitle("empty.zip", {
+        ...plan,
+        requires: [],
+        summary: { create: 0, update: 0, unchanged: 0, conflict: 0 },
+      }),
+    ).toBe("empty.zip · nothing to import");
   });
 
   test("writes require an authenticated caller", async () => {

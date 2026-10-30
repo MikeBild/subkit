@@ -2,9 +2,11 @@ import { and, eq, inArray } from "drizzle-orm";
 import { parseFileId } from "../../../api/files-schemas.ts";
 import type { Executor } from "../../../db/client.ts";
 import { fileLinks, files } from "../../../db/schema/files.ts";
+import { loadStoredPackageArchive, previewPackageImport } from "../../../identity/index.ts";
 import { getIntakeItemsForReview } from "../../../knowledge/index.ts";
 import { getSkillCandidatesForReview } from "../../../skill-candidates/index.ts";
 import { buildPendingOutputForTool } from "../../tool-policies.ts";
+import { formatPackagePlanTitle } from "../package-portability.ts";
 
 export const GATE_BODY_EXCERPT_CHARS = 280;
 
@@ -73,7 +75,37 @@ async function loadIntakeItems(
   }));
 }
 
+async function loadPackagePlans(
+  tenantId: string,
+  ids: string[],
+  db: Executor,
+): Promise<GateRecord[]> {
+  const records: GateRecord[] = [];
+  for (const id of ids) {
+    try {
+      const stored = await loadStoredPackageArchive(db, tenantId, id);
+      const plan = await previewPackageImport(db, tenantId, stored.bytes);
+      records.push({
+        id,
+        title: formatPackagePlanTitle(stored.filename, plan),
+        status: "previewed",
+      });
+    } catch {}
+  }
+  return records;
+}
+
+function packageFileIds(args: Record<string, unknown>): string[] {
+  const id = typeof args.file_id === "string" ? parseFileId(args.file_id) : null;
+  return id ? [id] : [];
+}
+
 const SOURCES: Record<string, GateSubjectSource> = {
+  apply_package_import: {
+    ids: packageFileIds,
+    load: loadPackagePlans,
+    actionable: () => true,
+  },
   approve_skill_candidate: {
     ids: (args) =>
       uniqueIds([

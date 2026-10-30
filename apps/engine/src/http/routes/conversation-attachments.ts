@@ -25,6 +25,11 @@ import { FileLinkError, linkStoredFile } from "../../files/links.ts";
 import { persistInlineUpload } from "../../files/persist-inline-upload.ts";
 import { requireFileForTenant } from "../../files/resolver.ts";
 import { fileReference, slugifyFilename } from "../../files/slug.ts";
+import {
+  isPackageArchive,
+  markStoredPackageArchive,
+  PACKAGE_CONTENT_TYPE,
+} from "../../identity/index.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -167,13 +172,19 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
         413,
       );
     }
-    const { row, dedup, scan } = await persistInlineUpload(db, {
+    const isPackage = await isPackageArchive(bytes);
+    const stored = await persistInlineUpload(db, {
       tenant_id,
       actor_id: principal.id,
       filename,
-      content_type,
+      content_type: isPackage ? PACKAGE_CONTENT_TYPE : content_type,
       bytes,
     });
+    const { dedup, scan } = stored;
+    const row =
+      isPackage && stored.row.content_type !== PACKAGE_CONTENT_TYPE
+        ? ((await markStoredPackageArchive(db, tenant_id, stored.row.id)) ?? stored.row)
+        : stored.row;
     if (dedup) {
       await recordFilesDedupSeen(db, tenant_id);
     }
@@ -219,7 +230,7 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
         metadata: FileCreatedMetadataSchema.parse({
           file_id: row.id,
           filename,
-          content_type,
+          content_type: row.content_type,
           size_bytes_bucket: bucketSize(bytes.byteLength),
           sha256_prefix: row.sha256 ? row.sha256.slice(0, 16) : undefined,
           dedup,
