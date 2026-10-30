@@ -6,6 +6,7 @@ import { loadStoredPackageArchive, previewPackageImport } from "../../../identit
 import { getIntakeItemsForReview } from "../../../knowledge/index.ts";
 import { getSkillCandidatesForReview } from "../../../skill-candidates/index.ts";
 import { buildPendingOutputForTool } from "../../tool-policies.ts";
+import type { ToolContext } from "../index.ts";
 import { formatPackagePlanTitle } from "../package-portability.ts";
 
 export const GATE_BODY_EXCERPT_CHARS = 280;
@@ -39,7 +40,12 @@ interface GateRecord {
 
 interface GateSubjectSource {
   ids(args: Record<string, unknown>): string[];
-  load(tenantId: string, ids: string[], db: Executor): Promise<GateRecord[]>;
+  load(
+    tenantId: string,
+    ids: string[],
+    db: Executor,
+    locale: ToolContext["locale"],
+  ): Promise<GateRecord[]>;
   actionable(status: string): boolean;
   reviewed?: true;
 }
@@ -79,6 +85,7 @@ async function loadPackagePlans(
   tenantId: string,
   ids: string[],
   db: Executor,
+  locale: ToolContext["locale"],
 ): Promise<GateRecord[]> {
   const records: GateRecord[] = [];
   for (const id of ids) {
@@ -87,7 +94,7 @@ async function loadPackagePlans(
       const plan = await previewPackageImport(db, tenantId, stored.bytes);
       records.push({
         id,
-        title: formatPackagePlanTitle(stored.filename, plan),
+        title: formatPackagePlanTitle(stored.filename, plan, locale),
         status: "previewed",
       });
     } catch {}
@@ -140,6 +147,7 @@ export async function resolveGateSubjects(
   args: Record<string, unknown>,
   tenantId: string,
   db: Executor,
+  locale?: ToolContext["locale"],
 ): Promise<GateCard | null> {
   const source = SOURCES[tool];
   if (!source) return null;
@@ -148,6 +156,7 @@ export async function resolveGateSubjects(
     tenantId,
     ids.filter((id) => UUID_RE.test(id)),
     db,
+    locale,
   );
   const byId = new Map(rows.map((row) => [row.id.toLowerCase(), row]));
   const subjects: GateSubject[] = ids.map((id) => {
@@ -244,6 +253,7 @@ export async function prepareGate(
   args: Record<string, unknown>,
   tenantId: string,
   db: Executor,
+  locale?: ToolContext["locale"],
 ): Promise<PreparedGate> {
   const transfer = tool === "run_workflow" ? await executionDataTransfer(args, tenantId, db) : null;
   if (transfer) {
@@ -256,7 +266,7 @@ export async function prepareGate(
       execution_data_transfer: true,
     };
   }
-  const card = await resolveGateSubjects(tool, args, tenantId, db);
+  const card = await resolveGateSubjects(tool, args, tenantId, db, locale);
   const base = buildPendingOutputForTool(tool, args);
   if (!card) return { args, pending_output: base };
   const { review_digest, review_digests, ...shown } = card;

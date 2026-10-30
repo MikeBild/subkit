@@ -17,6 +17,15 @@ import {
 
 const INSTALLS_KEY = ["packages", "installs"] as const;
 
+const REVEAL_SETTLE_MS = 3000;
+
+function revealWhenLinked(section: HTMLElement | null) {
+  if (!section || window.location.hash !== "#packages") return;
+  const observer = new ResizeObserver(() => section.scrollIntoView({ block: "start" }));
+  observer.observe(section.parentElement ?? section);
+  setTimeout(() => observer.disconnect(), REVEAL_SETTLE_MS);
+}
+
 export function PackagesSettings() {
   const { t } = useI18n();
   const session = useSession();
@@ -25,7 +34,12 @@ export function PackagesSettings() {
   const [importing, setImporting] = useState(false);
   if (!access.canExport && !access.canImport) return null;
   return (
-    <section id="packages" className="grid scroll-mt-4 gap-3" data-testid="settings-packages">
+    <section
+      id="packages"
+      ref={revealWhenLinked}
+      className="grid scroll-mt-4 gap-3"
+      data-testid="settings-packages"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="grid gap-1">
           <SectionHeading className="flex items-center gap-2 text-base font-semibold">

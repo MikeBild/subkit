@@ -622,6 +622,7 @@ export function wrapOne(
           stripConfirmMarkers(rawArgs),
           ctx.tenant_id,
           db,
+          ctx.locale,
         );
         const gate = await runConfirmGate({
           tool: inner.name,
@@ -783,7 +784,8 @@ export function wrapOne(
               const [subject] = Array.isArray(pendingOutput?.subjects)
                 ? (pendingOutput.subjects as GateSubject[])
                 : [];
-              return subject?.title ? `Import package ${subject.title}` : "Import package";
+              const label = ctx.locale === "en" ? "Import package" : "Paket importieren";
+              return subject?.title ? `${label}: ${subject.title}` : label;
             }
             if (gatedEffect) return describeToolEffect(gatedEffect);
             return `Confirm ${inner.name} (policy: ${resolvedMode})`;
@@ -1337,7 +1339,7 @@ export function wrapOne(
               : undefined;
           const pausePending =
             pauseInputRecord?.pending_output ??
-            (await prepareGate(inner.name, rawArgs, ctx.tenant_id, db)).pending_output;
+            (await prepareGate(inner.name, rawArgs, ctx.tenant_id, db, ctx.locale)).pending_output;
           events.push({
             type: "elicit_request",
             elicitation_id: result.pause.elicitation_id,

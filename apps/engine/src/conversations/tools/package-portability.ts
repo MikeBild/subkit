@@ -11,7 +11,6 @@ import {
   PackageArchiveNotFoundError,
   type PackagePlan,
   PackagePlanChangedError,
-  type PackageRequirement,
   PackageTooLargeError,
   previewPackageImport,
 } from "../../identity/index.ts";
@@ -105,32 +104,59 @@ function compactPlan(file_id: string, plan: PackagePlan) {
   };
 }
 
-const REQUIREMENT_WORDS: Record<PackageRequirement["kind"], [string, string]> = {
-  credential: ["credential", "credentials"],
-  approval: ["approval", "approvals"],
-  schedule_resume: ["paused schedule", "paused schedules"],
-  knowledge_review: ["knowledge review", "knowledge reviews"],
-};
+type PlanWords = readonly [one: string, other: string];
 
-function counted(count: number, [one, other]: readonly [string, string]): string {
+const PLAN_COPY = {
+  en: {
+    create: ["create", "create"],
+    update: ["update", "update"],
+    unchanged: ["unchanged", "unchanged"],
+    conflict: ["conflict", "conflict"],
+    credential: ["credential", "credentials"],
+    approval: ["approval", "approvals"],
+    schedule_resume: ["paused schedule", "paused schedules"],
+    knowledge_review: ["knowledge review", "knowledge reviews"],
+    afterwards: "then",
+    nothing: "nothing to import",
+  },
+  de: {
+    create: ["neu", "neu"],
+    update: ["aktualisiert", "aktualisiert"],
+    unchanged: ["unverändert", "unverändert"],
+    conflict: ["Konflikt", "Konflikte"],
+    credential: ["Zugangsdaten", "Zugangsdaten"],
+    approval: ["Freigabe", "Freigaben"],
+    schedule_resume: ["pausierter Zeitplan", "pausierte Zeitpläne"],
+    knowledge_review: ["Wissensprüfung", "Wissensprüfungen"],
+    afterwards: "danach",
+    nothing: "nichts zu importieren",
+  },
+} as const;
+
+function counted(count: number, [one, other]: PlanWords): string {
   return `${count} ${count === 1 ? one : other}`;
 }
 
-export function formatPackagePlanTitle(filename: string, plan: PackagePlan): string {
+export function formatPackagePlanTitle(
+  filename: string,
+  plan: PackagePlan,
+  locale: ToolContext["locale"],
+): string {
+  const copy = PLAN_COPY[locale ?? "de"];
   const actions = (["create", "update", "unchanged", "conflict"] as const)
     .filter((action) => plan.summary[action] > 0)
-    .map((action) => `${plan.summary[action]} ${action}`);
-  const needs = Object.entries(REQUIREMENT_WORDS)
-    .map(([kind, words]) => ({
+    .map((action) => counted(plan.summary[action], copy[action]));
+  const needs = (["credential", "approval", "schedule_resume", "knowledge_review"] as const)
+    .map((kind) => ({
       count: plan.requires.filter((requirement) => requirement.kind === kind).length,
-      words,
+      words: copy[kind],
     }))
     .filter((entry) => entry.count > 0)
     .map((entry) => counted(entry.count, entry.words));
   return [
     filename,
-    ...(actions.length > 0 ? actions : ["nothing to import"]),
-    ...(needs.length > 0 ? [`then ${needs.join(", ")}`] : []),
+    ...(actions.length > 0 ? actions : [copy.nothing]),
+    ...(needs.length > 0 ? [`${copy.afterwards} ${needs.join(", ")}`] : []),
   ].join(" · ");
 }
 

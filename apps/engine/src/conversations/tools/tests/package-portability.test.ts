@@ -120,16 +120,24 @@ describe("package portability tools", () => {
       ],
       summary: { create: 3, update: 0, unchanged: 2, conflict: 1 },
     };
-    expect(formatPackagePlanTitle("finance.subkit-package.zip", plan)).toBe(
+    expect(formatPackagePlanTitle("finance.subkit-package.zip", plan, "en")).toBe(
       "finance.subkit-package.zip · 3 create · 2 unchanged · 1 conflict · then 2 credentials, 1 approval",
     );
-    expect(
-      formatPackagePlanTitle("empty.zip", {
-        ...plan,
-        requires: [],
-        summary: { create: 0, update: 0, unchanged: 0, conflict: 0 },
-      }),
-    ).toBe("empty.zip · nothing to import");
+    expect(formatPackagePlanTitle("finance.subkit-package.zip", plan, "de")).toBe(
+      "finance.subkit-package.zip · 3 neu · 2 unverändert · 1 Konflikt · danach 2 Zugangsdaten, 1 Freigabe",
+    );
+    expect(formatPackagePlanTitle("finance.subkit-package.zip", plan, undefined)).toContain(
+      "3 neu",
+    );
+    const empty = {
+      ...plan,
+      requires: [],
+      summary: { create: 0, update: 0, unchanged: 0, conflict: 0 },
+    };
+    expect(formatPackagePlanTitle("empty.zip", empty, "en")).toBe("empty.zip · nothing to import");
+    expect(formatPackagePlanTitle("empty.zip", empty, "de")).toBe(
+      "empty.zip · nichts zu importieren",
+    );
   });
 
   test("writes require an authenticated caller", async () => {

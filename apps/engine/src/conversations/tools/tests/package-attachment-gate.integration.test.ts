@@ -84,12 +84,24 @@ describe("package import from a chat attachment", () => {
     );
     const subjects = gate.pending_output?.subjects as GateSubject[];
     expect(subjects).toHaveLength(1);
-    expect(subjects[0]?.title).toBe("beispiele.subkit-package.zip · 2 create");
+    expect(subjects[0]?.title).toBe("beispiele.subkit-package.zip · 2 neu");
     expect(subjects[0]?.status).toBe("previewed");
     expect(gate.pending_output).toMatchObject({
       file_id: package_file_id,
       expected_plan_digest: "d",
     });
+  });
+
+  test("the plan follows an English interface", async () => {
+    const gate = await prepareGate(
+      "apply_package_import",
+      { file_id: package_file_id, expected_plan_digest: "d" },
+      tenant_id,
+      ctx.db,
+      "en",
+    );
+    const subjects = gate.pending_output?.subjects as GateSubject[];
+    expect(subjects[0]?.title).toBe("beispiele.subkit-package.zip · 2 create");
   });
 
   test("an unreadable package does not block the confirmation card", async () => {
