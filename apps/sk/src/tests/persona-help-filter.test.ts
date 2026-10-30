@@ -36,6 +36,12 @@ describe("personaCanSee — known personas stay tailored", () => {
     expect(personaCanSee("member", "audit:read")).toBe(false);
   });
 
+  it("members see the package commands, end users do not", () => {
+    expect(personaCanSee("member", "package:export")).toBe(true);
+    expect(personaCanSee("member", "package:import")).toBe(true);
+    expect(personaCanSee("enduser", "package:import")).toBe(false);
+  });
+
   it("portal/enduser stay narrowed to tier 1", () => {
     for (const persona of ["portal", "enduser"]) {
       expect(personaCanSee(persona, "conversation:write")).toBe(true);
