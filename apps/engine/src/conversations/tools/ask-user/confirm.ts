@@ -188,7 +188,7 @@ const inputSchema = z
 export const askUserConfirmTool: ConversationTool = {
   name: "ask_user_confirm",
   description:
-    'Ask the user to approve or reject a specific action. The client renders a styled confirm prompt with an optional feedback reason; the resolved boolean resumes the loop. In permission_mode=auto a non-destructive question without commit_intent is skipped: the result has auto_skipped=true and user_asked=false, meaning the user was NOT asked and confirmed nothing; continue by calling the tool that performs the action and never claim the user confirmed. If you pass `commit_intent`, the harness applies the intended write atomically when the operator approves — you DO NOT need to call the underlying tool afterwards (the next turn will already see a synthetic tool result with source="harness_auto_persist").',
+    'Ask the user to approve or reject a specific action. The client renders a styled confirm prompt with an optional feedback reason; the resolved boolean resumes the loop. In permission_mode=auto a non-destructive question without commit_intent is skipped: the result has auto_skipped=true and user_asked=false, meaning the user was NOT asked and confirmed nothing; continue by calling the tool that performs the action, or repeat the question with a commit_intent when the action needs the user\'s own yes, and never claim the user confirmed. A question with commit_intent is asked in every mode. If you pass `commit_intent`, the harness applies the intended write atomically when the operator approves — you DO NOT need to call the underlying tool afterwards (the next turn will already see a synthetic tool result with source="harness_auto_persist").',
   inputSchema,
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
@@ -241,7 +241,7 @@ export const askUserConfirmTool: ConversationTool = {
           auto_skipped: true,
           user_asked: false,
           performed: null,
-          reason: `permission_mode=auto skipped the ${args.kind} question: the user was NOT asked and did not confirm anything, and nothing ran. Never tell the user they confirmed. Call the action's own tool, which applies its own gate.`,
+          reason: `permission_mode=auto skipped the ${args.kind} question: the user was NOT asked and did not confirm anything, and nothing ran. Never tell the user they confirmed. If this action needs the user's own yes, repeat this question with a commit_intent such as {kind: "run_workflow", payload: {workflow_id, input_partial}}: that question is asked in auto mode too, and the engine performs the action after the yes. Otherwise call the action's own tool; a run in auto mode may not ask again.`,
         },
       };
     }

@@ -49,7 +49,28 @@ describe("ask_user_confirm — permission_mode=auto auto-resolve", () => {
       performed: null,
     });
     expect((result.data as { reason: string }).reason).toContain("NOT asked");
+    expect((result.data as { reason: string }).reason).toContain("input_partial");
     expect((result.data as { auto_resolved?: unknown }).auto_resolved).toBeUndefined();
+  });
+
+  test("a run_workflow commit_intent is asked in auto mode instead of skipped", async () => {
+    let result: Awaited<ReturnType<typeof askUserConfirmTool.execute>> | null = null;
+    let reachedPausePath = false;
+    try {
+      result = await askUserConfirmTool.execute(ctx({ permission_mode: "auto" }) as never, {
+        question: "Send this report?",
+        kind: "external_write",
+        commit_intent: {
+          kind: "run_workflow",
+          payload: { workflow_id: "00000000-0000-0000-0000-000000000001" },
+          description: "Send the report",
+        },
+      });
+    } catch {
+      reachedPausePath = true;
+    }
+    expect((result?.data as { auto_skipped?: boolean } | undefined)?.auto_skipped).not.toBe(true);
+    expect(reachedPausePath).toBe(true);
   });
 
   test("the description tells the model an auto-skipped question is no confirmation", () => {

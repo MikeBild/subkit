@@ -11,6 +11,7 @@ import {
   inferReplyLocale,
   type SavePreviewEvidence,
   saveVerificationEvidence,
+  turnHandoff,
 } from "./handoff-summary.ts";
 import type { DraftDocument } from "./types.ts";
 
@@ -25,7 +26,7 @@ const PREVIEWS: SavePreviewEvidence[] = [
   "skipped_by_user",
   "missing",
 ];
-const OTHER_KINDS: HandoffKind[] = ["confirm", "choice", "input", "review"];
+const OTHER_KINDS: HandoffKind[] = ["confirm", "choice", "input", "answer", "review"];
 
 function sentences(text: string): string[] {
   return text
@@ -71,6 +72,20 @@ describe("handoff summary", () => {
       });
     }
   }
+
+  test("a text question points to the message box because it has no card", () => {
+    const pending = turnHandoff({ tool_name: "ask_user_text" }, false);
+    expect(pending?.handoff).toBe("answer");
+    for (const locale of ["de", "en"] as const) {
+      const text = handoffSummary({ locale, handoff: "answer" });
+      expect(text).not.toMatch(/Karte|card/);
+      expect(text).toMatch(locale === "de" ? /Eingabefeld/ : /message box/);
+    }
+  });
+
+  test("a form keeps pointing to its card", () => {
+    expect(turnHandoff({ tool_name: "ask_user_form" }, false)?.handoff).toBe("input");
+  });
 
   test("German sensitive save reports the confidential test run and that nothing is activated", () => {
     const text = handoffSummary({

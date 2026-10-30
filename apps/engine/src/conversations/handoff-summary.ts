@@ -4,7 +4,7 @@ import type { DraftDocument } from "./types.ts";
 
 export type ReplyLocale = "de" | "en";
 
-export type HandoffKind = "save_confirm" | "confirm" | "choice" | "input" | "review";
+export type HandoffKind = "save_confirm" | "confirm" | "choice" | "input" | "answer" | "review";
 
 export type SavePreviewEvidence =
   | "passed"
@@ -61,6 +61,8 @@ const OTHER_HANDOFFS: Record<ReplyLocale, Record<Exclude<HandoffKind, "save_conf
       "Hier fehlt noch eine Entscheidung von dir. Nächster Schritt: Wähle in der Karte eine Option, dann mache ich weiter.",
     input:
       "Hier fehlen noch Angaben von dir. Nächster Schritt: Ergänze sie in der Karte, dann mache ich weiter.",
+    answer:
+      "Hier fehlt noch eine Antwort von dir. Nächster Schritt: Schreib sie ins Eingabefeld, dann mache ich weiter.",
     review:
       "Die Prüfung für den automatischen Betrieb ist vorbereitet; aktiviert wurde nichts. Nächster Schritt: Prüfe die Karte und entscheide dort.",
   },
@@ -71,6 +73,8 @@ const OTHER_HANDOFFS: Record<ReplyLocale, Record<Exclude<HandoffKind, "save_conf
       "A decision from you is still missing. Next step: pick an option in the card and I will continue.",
     input:
       "Some details from you are still missing. Next step: fill them in the card and I will continue.",
+    answer:
+      "An answer from you is still missing. Next step: type it in the message box and I will continue.",
     review:
       "The review for automatic operation is ready; nothing was activated. Next step: review the card and decide there.",
   },
@@ -162,6 +166,7 @@ export function turnHandoff(
   if (pending.tool_name === "ask_user_choice" || pending.tool_name === "ask_user_multi") {
     return { handoff: "choice", evidence: null };
   }
+  if (pending.tool_name === "ask_user_text") return { handoff: "answer", evidence: null };
   return { handoff: "input", evidence: null };
 }
 
