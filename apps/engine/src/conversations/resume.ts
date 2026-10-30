@@ -404,6 +404,14 @@ function pendingSubjects(value: unknown): string[] | undefined {
   return [...subjects, ...(target ? [target] : []), ...(excerpt ? [excerpt] : [])];
 }
 
+function pendingTransferBytes(value: unknown): number | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const transfer = (value as Record<string, unknown>).execution_data_transfer;
+  if (!transfer || typeof transfer !== "object" || Array.isArray(transfer)) return undefined;
+  const size = (transfer as Record<string, unknown>).size_bytes;
+  return typeof size === "number" && Number.isFinite(size) && size > 0 ? size : undefined;
+}
+
 export function pendingPrompt(input: unknown): {
   prompt?: {
     question: string;
@@ -413,6 +421,7 @@ export function pendingPrompt(input: unknown): {
     external_tool?: ExternalToolSubject;
     effect?: ConnectorCallSubject;
     subjects?: string[];
+    transfer_bytes?: number;
   };
 } {
   if (!input || typeof input !== "object" || Array.isArray(input)) return {};
@@ -422,6 +431,7 @@ export function pendingPrompt(input: unknown): {
   const externalTool = externalToolSubject(value.external_tool);
   const effect = connectorCallSubject(value.effect);
   const subjects = pendingSubjects(value.pending_output);
+  const transferBytes = pendingTransferBytes(value.pending_output);
   const intent = value.commit_intent as { kind?: unknown } | undefined;
   let authorizationUrl: string | undefined;
   if (intent?.kind === "oauth_completed" && typeof value.authorization_url === "string") {
@@ -446,6 +456,7 @@ export function pendingPrompt(input: unknown): {
       ...(externalTool ? { external_tool: externalTool } : {}),
       ...(effect ? { effect } : {}),
       ...(subjects ? { subjects } : {}),
+      ...(transferBytes ? { transfer_bytes: transferBytes } : {}),
     },
   };
 }

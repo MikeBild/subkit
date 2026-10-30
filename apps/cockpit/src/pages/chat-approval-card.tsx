@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { contextualHref } from "@/app/installation-context";
 import { Button, ChatCard, ContextHelp, Spinner } from "@/components/cockpit/patterns";
+import { formatBytes } from "@/components/cockpit/patterns/file-kinds";
 import { WorkflowReview } from "@/components/cockpit/workflow-review";
-import { formatDateTime } from "@/lib/i18n";
+import { formatDateTime, LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import { approvalLine, type ChatApproval } from "./chat-approval";
@@ -43,7 +44,12 @@ export function ChatApprovalCard({
           ? "chat.decision.saveTitle"
           : "chat.decision.title",
   );
-  const line = approvalLine(approval, t, readable);
+  const effect = approvalLine(approval, t, readable);
+  const line = approval.transferBytes
+    ? `${effect} ${t("chat.decision.transferSize", {
+        size: formatBytes(approval.transferBytes, LOCALE_TAGS[locale]),
+      })}`
+    : effect;
   const details = approval.description ?? (approval.singleRun ? approval.question : null);
   return (
     <>

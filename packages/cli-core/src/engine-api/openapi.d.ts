@@ -28402,6 +28402,7 @@ export interface components {
                             target: string | null;
                         };
                         subjects?: string[];
+                        transfer_bytes?: number;
                     };
                     expires_at: string;
                 } | null;

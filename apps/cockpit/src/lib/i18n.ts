@@ -3835,6 +3835,7 @@ const EN = {
   "chat.decision.connectorCall": "Call {connector}: {method} {target}",
   "chat.decision.connectorCallBare": "Call {connector}: {method}",
   "chat.decision.gatedAction": "Allow this action once to continue.",
+  "chat.decision.transferSize": "{size} of diagnostic data will be sent.",
   "chat.decision.recorded": "Your decision: {verdict}",
   "chat.decision.serverClaim": "The server describes this as: {claim}",
 
@@ -10343,6 +10344,7 @@ const DE: Record<TranslationKey, string> = {
   "chat.decision.connectorCall": "{connector} aufrufen: {method} {target}",
   "chat.decision.connectorCallBare": "{connector} aufrufen: {method}",
   "chat.decision.gatedAction": "Erlaube diese Aktion einmal, damit es weitergeht.",
+  "chat.decision.transferSize": "Übertragen werden {size} Diagnosedaten.",
   "chat.decision.recorded": "Deine Entscheidung: {verdict}",
   "chat.decision.serverClaim": "Laut Server: {claim}",
 

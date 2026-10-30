@@ -37,6 +37,20 @@ const approval: ChatApproval = {
   externalTool: { connector: "Reporting MCP", tool: "drop_all", server_claim: "Read-only (safe)" },
 };
 
+test("a diagnostic transfer names its size on the card", () => {
+  const transfer: ChatApproval = {
+    ...approval,
+    externalTool: undefined,
+    gatedTool: "run_workflow",
+    transferBytes: 65_360,
+  };
+  expect(render(transfer, "de")).toContain("Übertragen werden");
+  expect(render(transfer, "en")).toContain("of diagnostic data will be sent.");
+  expect(render({ ...transfer, transferBytes: undefined }, "de")).not.toContain(
+    "Übertragen werden",
+  );
+});
+
 function claim(html: string): string {
   return html.match(/<p[^>]*data-testid="approval-server-claim"[^>]*>(.*?)<\/p>/)?.[1] ?? "";
 }

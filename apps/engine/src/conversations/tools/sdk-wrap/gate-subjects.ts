@@ -1,13 +1,15 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { parseFileId } from "../../../api/files-schemas.ts";
 import type { Executor } from "../../../db/client.ts";
 import { fileLinks, files } from "../../../db/schema/files.ts";
+import { resolvedFromRow } from "../../../files/resolver.ts";
 import { loadStoredPackageArchive, previewPackageImport } from "../../../identity/index.ts";
 import { getIntakeItemsForReview } from "../../../knowledge/index.ts";
 import { getSkillCandidatesForReview } from "../../../skill-candidates/index.ts";
 import { buildPendingOutputForTool } from "../../tool-policies.ts";
 import type { ToolContext } from "../index.ts";
 import { formatPackagePlanTitle } from "../package-portability.ts";
+import { decodeWorkflowInputFile, WorkflowInputFileSchema } from "../workflow-file-input.ts";
 
 export const GATE_BODY_EXCERPT_CHARS = 280;
 
@@ -225,6 +227,49 @@ function referencedFileIds(value: unknown, found: Set<string>, depth = 0): void 
   }
 }
 
+function declaredPartBytes(value: unknown): number {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return 0;
+  const parts = (value as { parts?: unknown }).parts;
+  if (!Array.isArray(parts)) return 0;
+  return parts.reduce<number>((total, part) => {
+    const bytes = (part as { bytes?: unknown } | null)?.bytes;
+    return typeof bytes === "number" && Number.isFinite(bytes) && bytes > 0 ? total + bytes : total;
+  }, 0);
+}
+
+async function inputFileContent(
+  args: Record<string, unknown>,
+  tenantId: string,
+  db: Executor,
+): Promise<{ inputFileId: string; content: Record<string, unknown> } | null> {
+  const source = WorkflowInputFileSchema.safeParse(args.input_file);
+  if (!source.success) return null;
+  const inputFileId = parseFileId(source.data.id);
+  if (!inputFileId) return null;
+  const [row] = await db
+    .select({ file: files })
+    .from(files)
+    .where(
+      and(
+        eq(files.tenant_id, tenantId),
+        eq(files.id, inputFileId),
+        eq(files.sha256, source.data.sha256),
+        eq(files.status, "ready"),
+        isNull(files.deleted_at),
+      ),
+    )
+    .limit(1);
+  if (!row) return null;
+  try {
+    return {
+      inputFileId,
+      content: await decodeWorkflowInputFile(resolvedFromRow(row.file), source.data.sha256),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function executionDataTransfer(
   args: Record<string, unknown>,
   tenantId: string,
@@ -233,8 +278,14 @@ export async function executionDataTransfer(
   const ids = new Set<string>();
   referencedFileIds(args, ids);
   if (ids.size === 0) return null;
+  const inputFile = await inputFileContent(args, tenantId, db);
+  if (inputFile) {
+    ids.delete(inputFile.inputFileId);
+    referencedFileIds(inputFile.content, ids);
+  }
+  const declaredBytes = declaredPartBytes(inputFile?.content ?? args.input ?? args);
   const rows = await db
-    .select({ size_bytes: files.size_bytes })
+    .select({ id: files.id, size_bytes: files.size_bytes })
     .from(fileLinks)
     .innerJoin(files, and(eq(files.id, fileLinks.file_id), eq(files.tenant_id, tenantId)))
     .where(
@@ -245,7 +296,9 @@ export async function executionDataTransfer(
       ),
     );
   if (rows.length === 0) return null;
-  return { size_bytes: Math.max(...rows.map((row) => row.size_bytes)) };
+  const sizes = new Map(rows.map((row) => [row.id, row.size_bytes]));
+  const fileBytes = [...sizes.values()].reduce((total, size) => total + size, 0);
+  return { size_bytes: Math.max(declaredBytes, fileBytes) };
 }
 
 export async function prepareGate(

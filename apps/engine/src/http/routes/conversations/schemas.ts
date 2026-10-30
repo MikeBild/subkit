@@ -205,6 +205,7 @@ export const ConversationDetailSchema = z
                   })
                   .optional(),
                 subjects: z.array(z.string()).optional(),
+                transfer_bytes: z.number().int().positive().optional(),
               })
               .optional(),
             expires_at: z.string(),

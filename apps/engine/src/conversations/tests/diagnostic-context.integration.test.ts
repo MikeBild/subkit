@@ -121,7 +121,12 @@ test("projects only the authenticated owner's current conversation and scoped lo
     ctx.db,
   );
   expect(transferGate.execution_data_transfer).toBe(true);
-  expect(transferGate.pending_output?.execution_data_transfer).toBeDefined();
+  expect(transferGate.pending_output?.execution_data_transfer).toEqual({
+    size_bytes: (transfer.parts as Array<{ bytes: number }>).reduce(
+      (total, part) => total + part.bytes,
+      0,
+    ),
+  });
   const ordinaryGate = await prepareGate(
     "run_workflow",
     { workflow: "service-send", input: { title: "x" } },

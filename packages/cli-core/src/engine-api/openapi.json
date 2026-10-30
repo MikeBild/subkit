@@ -24516,6 +24516,10 @@
                         "items": {
                           "type": "string"
                         }
+                      },
+                      "transfer_bytes": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
                       }
                     },
                     "required": [
