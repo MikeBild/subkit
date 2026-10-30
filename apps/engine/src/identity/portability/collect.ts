@@ -1,4 +1,5 @@
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { ZodError } from "zod";
 import { PLATFORM_CATEGORY } from "../../api/catalog-metadata.ts";
 import { toPublicConnector } from "../../connectors/public-view.ts";
 import { rebindConnectorIds } from "../../connectors/recipe-binding.ts";
@@ -15,6 +16,7 @@ import {
 import { storageKey } from "../../files/resolver.ts";
 import { listKnowledgeSources } from "../../knowledge/catalog.ts";
 import { getKnowledgeSourceContent } from "../../knowledge/content.ts";
+import { logger } from "../../logging/logger.ts";
 import { listSkills } from "../../skills/service.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
 import { getWorkflowDraft } from "../../workflows/drafts.ts";
@@ -111,6 +113,21 @@ function uniqueSlug(base: string, taken: Set<string>): string {
   for (let n = 2; taken.has(slug); n += 1) slug = `${base}-${n}`;
   taken.add(slug);
   return slug;
+}
+
+async function portableDraftDefinition(tenant_id: string, workflow_id: string, exec: Executor) {
+  try {
+    return (await getWorkflowDraft(tenant_id, workflow_id, exec))?.definition;
+  } catch (err) {
+    if (!(err instanceof ZodError)) throw err;
+    logger.warn({
+      module: "identity.portability",
+      action: "package.workflow_draft_skipped",
+      tenant_id,
+      workflow_id,
+    });
+    return undefined;
+  }
 }
 
 function replaceCallWorkflowIds(value: unknown, slugs: ReadonlyMap<string, string>): unknown {
@@ -293,7 +310,7 @@ export async function collectTenantPackage(
     const definition =
       wf.current_version_id !== null
         ? wf.definition
-        : (await getWorkflowDraft(tenant_id, wf.id, exec))?.definition;
+        : await portableDraftDefinition(tenant_id, wf.id, exec);
     if (!definition) continue;
     const tokens: Record<string, string> = {};
     for (const [id, key] of connectorKeyById) tokens[id] = `${CONNECTOR_REF_PREFIX}${key}`;

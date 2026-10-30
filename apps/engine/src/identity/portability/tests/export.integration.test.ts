@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { auditLog } from "../../../db/schema/index.ts";
+import { auditLog, workflows, workflowVersions } from "../../../db/schema/index.ts";
 import {
   createDeterministicClock,
   installClock,
@@ -10,12 +10,14 @@ import {
   type MemoryOffloadStorage,
   useMemoryOffloadStorage,
 } from "../../../test-helpers/offload-storage.ts";
+import { skillPackageArchive } from "../../../test-helpers/package-archive.ts";
 import {
   createJourneyCtx,
   JOURNEY_HOOK_TIMEOUT,
   type JourneyCtx,
 } from "../../../tests/journeys/setup.ts";
 import { walkZipEntries } from "../../../utils/zip-walk.ts";
+import { previewPackageImport } from "../apply.ts";
 import { readPackageArchive } from "../archive-read.ts";
 import { collectTenantPackage } from "../collect.ts";
 import { buildPackageArchive, exportTenantPackage } from "../export.ts";
@@ -169,6 +171,29 @@ describe("tenant package export", () => {
         "workflow:widget-report",
       ].sort(),
     );
+  });
+
+  test("a draft without steps stays out and blocks neither export nor preview", async () => {
+    const { tenant_id: tenant } = await seedTenant(ctx, "pkg-export-empty-draft");
+    const [workflow] = await ctx.db
+      .insert(workflows)
+      .values({ tenant_id: tenant, slug: "empty-draft", name: "Empty draft", lifecycle: "draft" })
+      .returning();
+    if (!workflow) throw new Error("seed workflow failed");
+    const [version] = await ctx.db
+      .insert(workflowVersions)
+      .values({ tenant_id: tenant, workflow_id: workflow.id, version: 1, dag: { steps: [] } })
+      .returning();
+    if (!version) throw new Error("seed version failed");
+    await ctx.db
+      .update(workflows)
+      .set({ draft_version_id: version.id })
+      .where(eq(workflows.id, workflow.id));
+
+    const collected = await collectTenantPackage(ctx.db, tenant, { include_bytes: false });
+    expect(collected.payloads.some((item) => item.key === "empty-draft")).toBe(false);
+    const plan = await previewPackageImport(ctx.db, tenant, skillPackageArchive(["after-draft"]));
+    expect(plan.summary.create).toBe(1);
   });
 
   test("the export is audited without content", async () => {
