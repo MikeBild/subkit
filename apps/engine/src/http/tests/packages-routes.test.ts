@@ -9,21 +9,22 @@ import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 let source: HttpTestServer;
 let target: HttpTestServer;
 let memberKey = "";
+let enduserKey = "";
 
 function sha256Hex(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-async function seedMemberKey(srv: HttpTestServer): Promise<string> {
+async function seedRoleKey(srv: HttpTestServer, role: "member" | "enduser"): Promise<string> {
   const [member] = await srv.db
     .insert(users)
     .values({
       tenant_id: srv.tenantId,
-      email: "member-packages@test.local",
-      role_id: await builtinRoleId(srv.db, "member"),
+      email: `${role}-packages@test.local`,
+      role_id: await builtinRoleId(srv.db, role),
     })
     .returning();
-  if (!member) throw new Error("seed member failed");
+  if (!member) throw new Error(`seed ${role} failed`);
   const plaintext = `wf_live_${randomBytes(24).toString("base64url").slice(0, 32)}`; // allow-random: test only
   await srv.db.insert(apiKeys).values({
     tenant_id: srv.tenantId,
@@ -55,7 +56,8 @@ function call(
 beforeAll(async () => {
   source = await createHttpTestServer("pkg-source");
   target = await createHttpTestServer("pkg-target");
-  memberKey = await seedMemberKey(target);
+  memberKey = await seedRoleKey(target, "member");
+  enduserKey = await seedRoleKey(target, "enduser");
   const created = await call(source, "POST", "/v1/skills", {
     scope: "global",
     title: "Package Tone",
@@ -70,29 +72,38 @@ afterAll(async () => {
 }, 60_000);
 
 describe("package routes", () => {
-  test("a member is denied every package route", async () => {
+  function everyPackageRoute(key: string): Promise<Response[]> {
     const fid = "fid_00000000-0000-4000-8000-000000000000";
-    const denied = await Promise.all([
-      call(target, "POST", "/v1/packages/export", {}, memberKey),
-      call(target, "GET", `/v1/packages/archives/${fid}`, undefined, memberKey),
-      call(target, "POST", "/v1/packages/import/preview", { archive_file_id: fid }, memberKey),
+    return Promise.all([
+      call(target, "POST", "/v1/packages/export", { kinds: ["skill"] }, key),
+      call(target, "GET", `/v1/packages/archives/${fid}`, undefined, key),
+      call(target, "POST", "/v1/packages/import/preview", { archive_file_id: fid }, key),
       call(
         target,
         "POST",
         "/v1/packages/import/apply",
         { archive_file_id: fid, expected_plan_digest: "0".repeat(64) },
-        memberKey,
+        key,
       ),
-      call(target, "GET", "/v1/packages/installs", undefined, memberKey),
+      call(target, "GET", "/v1/packages/installs", undefined, key),
       call(
         target,
         "GET",
         "/v1/packages/installs/00000000-0000-4000-8000-000000000000",
         undefined,
-        memberKey,
+        key,
       ),
     ]);
+  }
+
+  test("an end user is denied every package route", async () => {
+    const denied = await everyPackageRoute(enduserKey);
     expect(denied.map((res) => res.status)).toEqual([403, 403, 403, 403, 403, 403]);
+  });
+
+  test("a member passes every package permission gate", async () => {
+    const allowed = await everyPackageRoute(memberKey);
+    expect(allowed.map((res) => res.status)).toEqual([201, 404, 404, 404, 200, 404]);
   });
 
   test("export, download, preview and apply move a skill to another engine", async () => {

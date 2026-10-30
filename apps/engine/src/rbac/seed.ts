@@ -30,7 +30,6 @@ function memberPermissionFilter(name: string): boolean {
   if (name === "connector:promote") return false;
   if (name.startsWith("credential:") && name !== "credential:read") return false;
   if (name === "discovery:approve") return false;
-  if (name.startsWith("package:")) return false;
   if (name === "mcp:admin") return false;
   if (name.startsWith("mcp_oauth_client:")) return false;
   if (name === "system:restart") return false;
@@ -93,11 +92,16 @@ async function upsertPermissions(db: Db): Promise<Map<string, string>> {
 
 async function upsertBuiltinRole(db: Db, name: string, description: string): Promise<string> {
   const existing = await db
-    .select({ id: rolesTable.id })
+    .select({ id: rolesTable.id, description: rolesTable.description })
     .from(rolesTable)
     .where(and(isNull(rolesTable.tenant_id), eq(rolesTable.name, name)))
     .limit(1);
-  if (existing[0]) return existing[0].id;
+  if (existing[0]) {
+    if (existing[0].description !== description) {
+      await db.update(rolesTable).set({ description }).where(eq(rolesTable.id, existing[0].id));
+    }
+    return existing[0].id;
+  }
   const [row] = await db
     .insert(rolesTable)
     .values({ tenant_id: null, name, description, is_builtin: true })
@@ -143,7 +147,7 @@ export async function seedBuiltinRolesAndPermissions(db: Db): Promise<SeededRole
   const memberId = await upsertBuiltinRole(
     db,
     BUILTIN_ROLE_NAMES.MEMBER,
-    "Day-to-day operator access: read + run + author + delete own operational resources (workflows, connectors, skills, schedules, subscriptions, inbound hooks, knowledge sources). NOT permitted: rbac changes, audit reads, secret/credential mutations, api_key lifecycle, discovery approvals.",
+    "Day-to-day operator access: read + run + author + delete own operational resources (workflows, connectors, skills, schedules, subscriptions, inbound hooks, knowledge sources) and export or import packages. NOT permitted: rbac changes, audit reads, secret/credential mutations, api_key lifecycle, discovery approvals.",
   );
   const enduserId = await upsertBuiltinRole(
     db,

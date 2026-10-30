@@ -58,7 +58,6 @@ function memberAllows(name: string): boolean {
   if (name === "connector:promote") return false;
   if (name.startsWith("credential:") && name !== "credential:read") return false;
   if (name === "discovery:approve") return false;
-  if (name.startsWith("package:")) return false;
   if (name === "stats:read") return false;
   if (name === "stats:read:all") return false;
   if (name.startsWith("self_healing:")) return false;
