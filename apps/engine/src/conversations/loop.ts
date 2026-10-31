@@ -23,6 +23,7 @@ import {
   monthlyUsage,
   recordUsage,
 } from "../llm/accounting/index.ts";
+import { isReasoningModel } from "../llm/core/ai-sdk-model.ts";
 import { renderAuthoringContextBlock } from "../llm/core/authoring-context-block.ts";
 import {
   promptCacheSupported,
@@ -48,8 +49,9 @@ import {
   prepareStep as routerPrepareStep,
   type StepRouterSignals,
   supportsExtendedThinking,
+  withStepNudge,
 } from "../llm/core/step-router.ts";
-import { resolveThinking } from "../llm/core/thinking-policy.ts";
+import { readReasoningEffortSetting, resolveTurnReasoning } from "../llm/core/thinking-policy.ts";
 import {
   type CriticArtifact,
   type CriticVerdict,
@@ -1041,22 +1043,18 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
     for (const t of listTools()) toolsByName[t.name] = t;
 
     const turnStageReadOnly = false;
-    const turnEnableThinking = (() => {
-      const stage = draft.summary?.stage;
-      if (
-        stage !== "connector_validated" &&
-        stage !== "connector_persisted" &&
-        stage !== "workflow_validated" &&
-        stage !== "workflow_persisted" &&
-        stage !== "repairing"
-      ) {
-        return false;
-      }
-      return supportsExtendedThinking(attemptProvider, modelId);
-    })();
+    const turnStage = draft.summary?.stage;
     const turnForcesTool = preferredTool != null;
-    const thinkingDecision = resolveThinking({
-      enableThinking: turnEnableThinking,
+    const thinkingDecision = resolveTurnReasoning({
+      setting: readReasoningEffortSetting(p.tenant_id),
+      lateStage:
+        turnStage === "connector_validated" ||
+        turnStage === "connector_persisted" ||
+        turnStage === "workflow_validated" ||
+        turnStage === "workflow_persisted" ||
+        turnStage === "repairing",
+      supportsThinking: supportsExtendedThinking(attemptProvider, modelId),
+      supportsReasoningEffort: attemptProvider === "openai" && isReasoningModel(modelId),
       forcesTool: turnForcesTool,
     });
     const thinkingThisTurn = thinkingDecision.enabled;
@@ -1071,6 +1069,8 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
       stage: draft.summary?.stage ?? "idle",
       parallel_tools_enabled: turnStageReadOnly,
       extended_thinking_enabled: thinkingThisTurn,
+      reasoning_effort: thinkingDecision.effort,
+      reasoning_source: thinkingDecision.source,
       thinking_suppressed_by_forced_tool: thinkingDecision.suppressedByForcedTool,
       cache_supported: cacheSupported,
     });
@@ -1086,7 +1086,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
       allowSystemInMessages: true,
       tools: turnTools,
       toolChoice: turnToolChoice(preferredTool, forceNoTools),
-      reasoning: thinkingThisTurn ? "high" : "none",
+      reasoning: thinkingDecision.effort,
       ...(cacheSupported
         ? {
             providerOptions: {
@@ -1289,6 +1289,8 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
               });
             }
           }
+          const nudged = withStepNudge(systemMessages, decision.system);
+          if (nudged) result.instructions = nudged;
           if (!forceNoTools && decision.toolChoice !== undefined)
             result.toolChoice = decision.toolChoice;
           if (decision.activeTools !== undefined) {

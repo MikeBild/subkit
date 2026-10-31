@@ -5267,6 +5267,7 @@ LLM configuration
 | `llm.providers.vertex.model` | string | `""` | tenant | no | no |  |
 | `llm.providers.vertex.private_key` | string | `""` | global | yes | no |  |
 | `llm.providers.vertex.project` | string | `""` | global | no | no |  |
+| `llm.reasoning_effort` | enum("default" \| "none" \| "low" \| "medium" \| "high") | `"default"` | tenant | no | no | Reasoning effort for authoring turns. default: high on supported Claude models only in validated, saved and repair stages, none otherwise. none, low, medium or high applies to every authoring stage on OpenAI reasoning models and supported Claude models; a forced tool call still turns thinking off on Claude. |
 | `llm.suggestion_model` | string | `""` | tenant | no | no | Small model used to generate post-turn suggestions; empty uses the primary provider's default |
 | `llm.summarize_model` | string | `""` | tenant | no | no | Model used for summarization passes |
 | `llm.summarize_provider` | enum("mock" \| "anthropic" \| "openai" \| "gemini" \| "azure" \| "bedrock" \| "vertex" \| "ai_gateway") | `null` | tenant | no | no | Provider used for summarization passes |

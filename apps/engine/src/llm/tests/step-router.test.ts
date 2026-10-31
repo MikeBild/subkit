@@ -6,6 +6,7 @@ import {
   routeUp,
   type StepRouterParams,
   supportsExtendedThinking,
+  withStepNudge,
 } from "../core/step-router.ts";
 import type { LlmProviderKind } from "../types.ts";
 
@@ -112,6 +113,21 @@ describe("routeUp / routeTop ladder", () => {
 
   it("identity for providers without a ladder", () => {
     expect(routeUp("mock" as LlmProviderKind, "anything")).toBe("anything");
+  });
+});
+
+describe("withStepNudge", () => {
+  const base = [{ role: "system" as const, content: "base", providerOptions: { a: 1 } }];
+
+  it("appends the nudge after the cached system blocks and leaves the base untouched", () => {
+    const nudged = withStepNudge(base, "take the permitted step");
+    expect(nudged).toEqual([...base, { role: "system", content: "take the permitted step" }]);
+    expect(base).toHaveLength(1);
+  });
+
+  it("returns undefined without a nudge so the turn instructions stay in place", () => {
+    expect(withStepNudge(base, undefined)).toBeUndefined();
+    expect(withStepNudge(base, "")).toBeUndefined();
   });
 });
 

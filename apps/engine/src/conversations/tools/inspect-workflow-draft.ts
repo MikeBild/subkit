@@ -57,6 +57,7 @@ export const inspectWorkflowDraftTool: ConversationTool = {
           name: workflow.name,
           slug: workflow.slug ?? null,
           description: workflow.description ?? null,
+          input_schema: workflow.input_schema ?? null,
           step_count: workflow.steps.length,
           steps: workflow.steps.flatMap((step, index) => {
             const id = typeof step.id === "string" ? step.id : `step-${index + 1}`;

@@ -25,6 +25,10 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the lookup failed inside the engine, so no result is available. Check the arguments against the tool schema and retry once with corrected values; if it fails again, tell the user the lookup is unavailable instead of guessing.",
   intake_review_requires_human_confirmation:
     "this conversation reviews collected material, so writes are refused here. Create or revise an intake proposal and let the signed-in person confirm content, sources and destination in the review; do not retry the write",
+  conversation_bound_to_workflow:
+    "this conversation already saved a workflow and stays bound to it; nothing else can be prepared here. Tell the user that the next part needs a new conversation and name the workflow slug to ask for there. Do not retry.",
+  input_schema_violation:
+    "the preview input did not match the workflow's input_schema. Read input_schema from this error (or from inspect_workflow_draft), supply every required field with its declared type and no other fields, then retry dry_run_workflow once. Never invent identifiers the user did not give; ask for them instead.",
   skill_prerequisites_unmet:
     "the tool needs skills that are not loaded yet. Call load_skill for every slug in missing_skills, then retry the same call once",
   draft_write_held:

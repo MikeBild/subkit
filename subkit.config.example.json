@@ -44,6 +44,7 @@
     "suggestion_model": "",
     "context_1m": false,
     "web_search": true,
+    "reasoning_effort": "default",
     "output_guard": "soft",
     "providers": {
       "anthropic": {

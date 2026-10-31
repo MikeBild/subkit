@@ -89,7 +89,20 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
       };
     }
     const current = ctx.getDraft();
-    if (ctx.workflow_id || hasInProgressWorkflowDraft(current)) {
+    if (ctx.workflow_id && args.action !== "update" && !hasInProgressWorkflowDraft(current)) {
+      return {
+        ok: false,
+        error_code: "conversation_bound_to_workflow",
+        message: userMessage(
+          ctx,
+          "This conversation belongs to the setup it already saved. Start a new conversation for the next part.",
+          "Diese Unterhaltung gehört zu der Einrichtung, die sie bereits gespeichert hat. Starte für den nächsten Teil eine neue Unterhaltung.",
+        ),
+        next_best_actions: [],
+        data: { bound_workflow_id: ctx.workflow_id, current_slug: current.workflow.slug ?? null },
+      };
+    }
+    if (hasInProgressWorkflowDraft(current)) {
       return {
         ok: false,
         error_code: "workflow_draft_in_progress",
@@ -223,7 +236,11 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
           "This service setup needs a change before it can be reviewed. Nothing was saved.",
           "Diese Einrichtung muss vor der Prüfung angepasst werden. Es wurde nichts gespeichert.",
         ),
-        data: { package: data.package },
+        data: {
+          package: data.package,
+          workflow_slug: args.workflow_slug,
+          issues: validation.errors,
+        },
       };
     }
     const packageDefinitionHash = workflowJsonDigest(annotateRuntime(validation.workflow));
@@ -388,7 +405,12 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
     return {
       ok: true,
       data: {
-        workflow: { name: workflow.name, slug: workflow.slug, step_count: workflow.steps.length },
+        workflow: {
+          name: workflow.name,
+          slug: workflow.slug,
+          step_count: workflow.steps.length,
+          input_schema: workflow.input_schema ?? null,
+        },
         ...(updateExisting && existing ? { workflow_id: existing.id } : {}),
         package: data.package,
         install_state: updateExisting ? "update_draft" : "inactive_draft",

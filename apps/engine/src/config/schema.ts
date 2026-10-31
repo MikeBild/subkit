@@ -393,6 +393,13 @@ const LlmSection = z
         "Allow the assistant to use Anthropic-native server-side web search (billed per search; Anthropic models only). Toggle off per tenant via /settings.",
       )
       .meta(tenant()),
+    reasoning_effort: z
+      .enum(["default", "none", "low", "medium", "high"])
+      .default("default")
+      .describe(
+        "Reasoning effort for authoring turns. default: high on supported Claude models only in validated, saved and repair stages, none otherwise. none, low, medium or high applies to every authoring stage on OpenAI reasoning models and supported Claude models; a forced tool call still turns thinking off on Claude.",
+      )
+      .meta(tenant()),
     output_guard: z
       .enum(["soft", "hard", "off"])
       .default("soft")

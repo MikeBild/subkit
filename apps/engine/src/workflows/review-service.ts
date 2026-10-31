@@ -46,6 +46,14 @@ const REVIEW_ERROR_STATUS: Record<string, number> = {
   workflow_review_not_found: 404,
   workflow_review_stale: 409,
   workflow_review_expired: 410,
+  workflow_not_ready: 422,
+  preview_failed: 422,
+  no_prior_approval: 422,
+  warnings_unacknowledged: 422,
+  partial_success_not_acknowledged: 422,
+  no_meaningful_change: 422,
+  playground_no_persist: 422,
+  sensitive_save_override_forbidden: 403,
 };
 
 export class WorkflowReviewError extends Error {
@@ -464,7 +472,10 @@ export async function finalizeWorkflowReview(
       reason: "workflow_review_finalized",
     });
     if (!saved.ok)
-      fail(saved.error_code ?? "workflow_review_save_failed", "workflow draft could not be saved");
+      fail(
+        saved.error_code ?? "workflow_review_save_failed",
+        saved.message ?? "workflow draft could not be saved",
+      );
     const result = (saved.data ?? {}) as Record<string, unknown>;
     const workflow_id =
       typeof result.workflow_id === "string" ? result.workflow_id : saved.committed_workflow_id;

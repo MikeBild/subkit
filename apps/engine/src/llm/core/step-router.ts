@@ -172,6 +172,20 @@ function warnOnceNoUpgrade(provider: LlmProviderKind, modelId: string, reason: s
   });
 }
 
+export interface StepInstruction {
+  role: "system";
+  content: string;
+  providerOptions?: Record<string, unknown>;
+}
+
+export function withStepNudge(
+  base: readonly StepInstruction[],
+  nudge: string | undefined,
+): StepInstruction[] | undefined {
+  if (!nudge) return undefined;
+  return [...base, { role: "system", content: nudge }];
+}
+
 export function supportsExtendedThinking(provider: LlmProviderKind, modelId: string): boolean {
   if (
     provider !== "anthropic" &&

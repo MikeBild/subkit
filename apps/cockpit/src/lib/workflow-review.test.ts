@@ -1,6 +1,23 @@
 import { expect, test } from "bun:test";
 import { ApiError } from "@/api/client";
-import { workflowReviewFailure, workflowReviewStorageKey } from "./workflow-review";
+import {
+  workflowReviewBlockedKey,
+  workflowReviewFailure,
+  workflowReviewStorageKey,
+} from "./workflow-review";
+
+test("a save gate that blocks completion names its own explanation", () => {
+  expect(workflowReviewBlockedKey(new ApiError(422, { code: "workflow_not_ready" }, null))).toBe(
+    "reviewWorkflow.blocked.workflow_not_ready",
+  );
+  expect(workflowReviewBlockedKey(new ApiError(422, { code: "preview_failed" }, null))).toBe(
+    "reviewWorkflow.blocked.preview_failed",
+  );
+  expect(workflowReviewBlockedKey(new ApiError(422, { code: "unknown_gate" }, null))).toBeNull();
+  expect(
+    workflowReviewBlockedKey(new ApiError(409, { code: "workflow_not_ready" }, null)),
+  ).toBeNull();
+});
 
 test("ambiguous completion errors require checking the persisted result", () => {
   for (const error of [

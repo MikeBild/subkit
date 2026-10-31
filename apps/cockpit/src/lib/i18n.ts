@@ -49,6 +49,12 @@ const EN = {
     "The reviewed version is saved and activated. The reviewed run permissions are in effect.",
   "reviewWorkflow.stale":
     "The draft, permissions or affected triggers changed. Review again. Nothing was completed.",
+  "reviewWorkflow.blocked.workflow_not_ready":
+    "The draft is not ready yet. Ask for a preview in the chat, then review again. Nothing was completed.",
+  "reviewWorkflow.blocked.preview_failed":
+    "The last preview failed. Fix the draft in the chat and preview it again. Nothing was completed.",
+  "reviewWorkflow.blocked.no_prior_approval":
+    "This change needs your confirmation in the chat first. Nothing was completed.",
   "reviewWorkflow.failed": "Completion failed. No changes were applied.",
   "reviewWorkflow.uncertain":
     "The connection was interrupted. Check the result before confirming again.",
@@ -4798,6 +4804,7 @@ const EN = {
     "Google Vertex AI · credentials file",
   "settings.leaf.llm.providers.ai_gateway.api_key": "AI Gateway · API key",
   "settings.leaf.llm.providers.ai_gateway.model": "AI Gateway · model",
+  "settings.leaf.llm.reasoning_effort": "Reasoning · effort",
   "settings.leaf.llm.critic.enabled": "Draft critic · on",
   "settings.leaf.llm.critic.min_steps": "Draft critic · minimum steps",
   "settings.leaf.llm.critic.max_consecutive_rejections":
@@ -4955,6 +4962,8 @@ const EN = {
     "Key for the primary provider. A key stored under the provider below takes the same role; one of the two is enough.",
   "settings.help.llm.context_1m":
     "Lets supported models read up to one million tokens per turn. Long turns then cost markedly more.",
+  "settings.help.llm.reasoning_effort":
+    "How much the model thinks before each authoring step. Default: deep thinking on Claude models only once a draft is validated, saved or being reworked. none, low, medium or high applies to every authoring stage on OpenAI reasoning models and supported Claude models; a forced tool call still turns thinking off on Claude. More effort costs more output tokens.",
   "settings.help.llm.critic.enabled":
     "Has a second model review every workflow draft after the automatic checks pass. Catches more mistakes and costs an extra call per draft.",
   "settings.help.llm.critic.max_consecutive_rejections":
@@ -6470,6 +6479,12 @@ const DE: Record<TranslationKey, string> = {
     "Die geprüfte Version ist gespeichert und aktiviert. Die geprüften Lauf-Freigaben sind wirksam.",
   "reviewWorkflow.stale":
     "Entwurf, Freigaben oder betroffene Auslöser wurden geändert. Bitte erneut prüfen. Es wurde nichts abgeschlossen.",
+  "reviewWorkflow.blocked.workflow_not_ready":
+    "Der Entwurf ist noch nicht bereit. Lass dir im Chat eine Vorschau erstellen und prüfe danach erneut. Es wurde nichts abgeschlossen.",
+  "reviewWorkflow.blocked.preview_failed":
+    "Die letzte Vorschau ist fehlgeschlagen. Behebe den Entwurf im Chat und lass die Vorschau wiederholen. Es wurde nichts abgeschlossen.",
+  "reviewWorkflow.blocked.no_prior_approval":
+    "Diese Änderung braucht zuerst deine Bestätigung im Chat. Es wurde nichts abgeschlossen.",
   "reviewWorkflow.failed": "Abschluss fehlgeschlagen. Keine Änderung wurde übernommen.",
   "reviewWorkflow.uncertain":
     "Die Verbindung wurde unterbrochen. Prüfe das Ergebnis, bevor du erneut bestätigst.",
@@ -11328,6 +11343,7 @@ const DE: Record<TranslationKey, string> = {
     "Google Vertex AI · Anmeldedatei",
   "settings.leaf.llm.providers.ai_gateway.api_key": "AI Gateway · API-Schlüssel",
   "settings.leaf.llm.providers.ai_gateway.model": "AI Gateway · Modell",
+  "settings.leaf.llm.reasoning_effort": "Reasoning · Stärke",
   "settings.leaf.llm.critic.enabled": "Entwurfsprüfung · aktiv",
   "settings.leaf.llm.critic.min_steps": "Entwurfsprüfung · Mindestschritte",
   "settings.leaf.llm.critic.max_consecutive_rejections":
@@ -11492,6 +11508,8 @@ const DE: Record<TranslationKey, string> = {
     "Schlüssel für den Hauptanbieter. Ein weiter unten beim Anbieter hinterlegter Schlüssel erfüllt denselben Zweck; einer von beiden genügt.",
   "settings.help.llm.context_1m":
     "Erlaubt unterstützten Modellen bis zu einer Million Tokens je Schritt. Lange Schritte kosten dann deutlich mehr.",
+  "settings.help.llm.reasoning_effort":
+    "Wie stark das Modell vor jedem Authoring-Schritt nachdenkt. Standard: tiefes Nachdenken nur bei Claude-Modellen, sobald ein Entwurf geprüft, gespeichert oder nachgebessert wird. none, low, medium oder high gilt für jede Authoring-Stufe bei OpenAI-Reasoning-Modellen und unterstützten Claude-Modellen; ein erzwungener Tool-Aufruf schaltet das Nachdenken bei Claude weiterhin ab. Mehr Stärke kostet mehr Ausgabe-Tokens.",
   "settings.help.llm.critic.enabled":
     "Lässt ein zweites Modell jeden Workflow-Entwurf prüfen, nachdem die automatischen Prüfungen bestanden sind. Findet mehr Fehler, kostet einen Aufruf je Entwurf.",
   "settings.help.llm.critic.max_consecutive_rejections":

@@ -451,6 +451,14 @@ export const enrollServicePackageConnectorTool: ConversationTool = {
         conversation_id: ctx.conversation_id,
         connector_id: connector.id,
         error_type: err instanceof Error ? err.name : "unknown",
+        error_code:
+          typeof (err as { code?: unknown }).code === "string"
+            ? (err as { code: string }).code
+            : null,
+        status:
+          typeof (err as { status?: unknown }).status === "number"
+            ? (err as { status: number }).status
+            : null,
       });
       return {
         ok: false,

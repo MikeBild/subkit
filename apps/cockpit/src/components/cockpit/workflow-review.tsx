@@ -3,7 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { useI18n } from "@/lib/i18n-context";
-import { workflowReviewFailure, workflowReviewStorageKey } from "@/lib/workflow-review";
+import {
+  type ReviewBlockedMessageKey,
+  workflowReviewBlockedKey,
+  workflowReviewFailure,
+  workflowReviewStorageKey,
+} from "@/lib/workflow-review";
 import {
   WorkflowReviewDialog,
   type WorkflowReviewDisplay,
@@ -32,6 +37,7 @@ export function WorkflowReview({
   const [selectedActions, setSelectedActions] = useState<Actions>(saveActions);
   const [state, setState] = useState<WorkflowReviewState>("preparing");
   const [message, setMessage] = useState<string>();
+  const [blockedKey, setBlockedKey] = useState<ReviewBlockedMessageKey | null>(null);
   const [remember, setRemember] = useState(false);
   const [policyBusy, setPolicyBusy] = useState(false);
   const [policyAvailable, setPolicyAvailable] = useState(false);
@@ -82,7 +88,10 @@ export function WorkflowReview({
         if (current !== generation.current) return;
         const failure = workflowReviewFailure(error, false);
         setState(failure);
-        if (failure === "blocked" && error instanceof ApiError) setMessage(error.message);
+        if (failure === "blocked" && error instanceof ApiError) {
+          setMessage(error.message);
+          setBlockedKey(workflowReviewBlockedKey(error));
+        }
       }
     },
     [accept, elicitationId, path],
@@ -157,7 +166,10 @@ export function WorkflowReview({
     } catch (error) {
       const failure = workflowReviewFailure(error, true);
       setState(failure);
-      if (failure === "blocked" && error instanceof ApiError) setMessage(error.message);
+      if (failure === "blocked" && error instanceof ApiError) {
+        setMessage(error.message);
+        setBlockedKey(workflowReviewBlockedKey(error));
+      }
     } finally {
       finalizing.current = false;
     }
@@ -241,7 +253,7 @@ export function WorkflowReview({
       }}
       review={review}
       state={state}
-      message={message}
+      message={blockedKey ? t(blockedKey) : message}
       grantSelected={
         receipt?.status === "completed"
           ? receipt.result?.granted === true

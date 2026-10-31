@@ -436,6 +436,25 @@ export const dryRunWorkflowTool: ConversationTool = {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         const reason = (err as { code?: string }).code ?? "draft_run_failed";
+        if (reason === "input_schema_violation") {
+          const inputSchema = (definition as { input_schema?: unknown }).input_schema ?? null;
+          return {
+            ok: false,
+            error_code: reason,
+            message: msg,
+            data: {
+              ...buildGateError(ctx.getDraft(), {
+                error_code: reason,
+                message: `${msg}. The preview input must match input_schema exactly: supply every required field with the declared type and no other fields, then call dry_run_workflow again.`,
+                next_best_actions: ["dry_run_workflow"],
+              }),
+              error: msg,
+              reason,
+              input_schema: inputSchema,
+              rejected_input: previewInput ?? null,
+            },
+          };
+        }
         return {
           ok: false,
           error_code: reason,

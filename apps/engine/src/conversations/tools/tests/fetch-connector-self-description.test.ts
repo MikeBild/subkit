@@ -480,7 +480,7 @@ describe("fetch_connector_self_description", () => {
     expect(data.errors.map((error) => error.name)).toContain("workflows");
   });
 
-  test("explains a pending package setup in plain German", async () => {
+  test("explains a conversation bound to its saved setup in plain German", async () => {
     const toolCtx = makeCtx(package_connector);
     toolCtx.locale = "de";
     toolCtx.workflow_id = nextUuid();
@@ -492,10 +492,11 @@ describe("fetch_connector_self_description", () => {
 
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("expected the current draft to block package setup");
+    expect(result.error_code).toBe("conversation_bound_to_workflow");
     expect(result.message).toBe(
-      "Schließe zuerst die aktuelle Einrichtung ab. Danach kann ich den nächsten Teil vorbereiten.",
+      "Diese Unterhaltung gehört zu der Einrichtung, die sie bereits gespeichert hat. Starte für den nächsten Teil eine neue Unterhaltung.",
     );
-    expect(result.message).not.toContain("workflow");
+    expect(result.message?.toLowerCase()).not.toContain("workflow");
     expect(result.message).not.toContain("Paket");
   });
 
@@ -530,11 +531,12 @@ describe("fetch_connector_self_description", () => {
       install_state: string;
       review_required: boolean;
     };
-    expect(data.workflow).toEqual({
+    expect(data.workflow).toMatchObject({
       slug: "support-preview-status",
       name: "Read status",
       step_count: 1,
     });
+    expect(data.workflow).toHaveProperty("input_schema");
     expect(data.install_state).toBe("inactive_draft");
     expect(data.review_required).toBe(true);
     expect(ctx.getDraft().workflow.slug).toBe("support-preview-status");
