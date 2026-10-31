@@ -29,7 +29,7 @@ import type { ConversationTool } from "../../index.ts";
 import { buildRawStepResults } from "../../step-results.ts";
 import { sampleWorkflowOutputForLlm, truncateStepPreviewForLlm } from "../../truncate.ts";
 import { loadWorkflowInputFile, WorkflowInputFileSchema } from "../../workflow-file-input.ts";
-import { workflowInputSlot } from "../../workflow-input-normalize.ts";
+import { structuredInputFields, workflowInputSlot } from "../../workflow-input-normalize.ts";
 import { activationRequiredRefusal } from "./activation-required.ts";
 import { detectRepairLoop } from "./repair-loop-history.ts";
 import { describeRunWorkflowError } from "./run-workflow-error.ts";
@@ -224,6 +224,38 @@ export const runWorkflowTool: ConversationTool = {
         return v === undefined || v === null || (typeof v === "string" && v.trim() === "");
       });
       if (missingRequired.length > 0 && propertyNames.length > 0) {
+        const structuredMissing = structuredInputFields(properties, missingRequired);
+        if (structuredMissing.length > 0) {
+          const named = structuredMissing.map((k) => `\`${k}\``).join(", ");
+          const pronoun = structuredMissing.length === 1 ? "it" : "them";
+          logger.info({
+            module: "conversation_tool",
+            action: "run_workflow.structured_input_required",
+            msg: "run_workflow refused to ask the person for array or object input",
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            workflow_slug: wf.slug,
+            structured_fields: structuredMissing,
+          });
+          recordAuthoringGateBlock({ code: "structured_input_required", tool: "run_workflow" });
+          return {
+            ok: false,
+            data: withStatus(
+              buildGateError(currentDraft, {
+                error_code: "structured_input_required",
+                message: `workflow "${wf.slug}" needs ${named} as structured data (array or object). A person cannot type ${pronoun} into a form, so no form was shown and nothing ran. Supply ${pronoun} in input, or pass input_file from the tool that produced the data (for example export_diagnostic_context), then call run_workflow again.`,
+                next_best_actions: ["run_workflow"],
+                extra: {
+                  workflow_slug: wf.slug,
+                  missing_fields: missingRequired,
+                  structured_fields: structuredMissing,
+                  input_schema: inputContract.schema,
+                },
+              }),
+              "failed",
+            ),
+          };
+        }
         const fields = missingRequired.map((name) => {
           const prop =
             properties[name] && typeof properties[name] === "object"

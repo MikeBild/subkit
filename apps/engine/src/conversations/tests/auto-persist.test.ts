@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { AuditAction } from "../../audit/types.ts";
 import {
@@ -14,6 +15,7 @@ import {
   workflowVersions,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import {
@@ -124,6 +126,7 @@ async function createCarrierElicitation(p: {
 
 async function seedRenderWorkflow(
   slug = "render-upload-slides-autopersist",
+  inputSchema?: Record<string, unknown>,
 ): Promise<{ workflow_id: string; slug: string }> {
   const [workflow] = await ctx.db
     .insert(workflows)
@@ -144,7 +147,7 @@ async function seedRenderWorkflow(
       dag: {
         name: "render-upload-slides",
         slug,
-        input_schema: {
+        input_schema: inputSchema ?? {
           type: "object",
           required: ["markdown", "filename"],
           properties: {
@@ -316,6 +319,136 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
     };
     expect(data.input).toEqual(input);
     expect(data.output).toMatchObject({ ...input, confirmed: null });
+  });
+
+  test("ask_user_confirm with run_workflow commit_intent merges the confirmed input_file beneath explicit input", async () => {
+    const [conv] = await ctx.db
+      .insert(conversations)
+      .values({ tenant_id, status: "awaiting_input" })
+      .returning();
+    const conversation_id = conv!.id;
+    const workflow = await seedRenderWorkflow("render-upload-slides-input-file");
+    const content = JSON.stringify({
+      markdown: "# From file",
+      filename: "from-file.html",
+      theme: "dark",
+    });
+    const attachment = await attachInlineForTest({
+      db: ctx.db,
+      tenant_id,
+      conversation_id,
+      filename: "workflow-input.json",
+      content,
+    });
+    const elicitation = await createCarrierElicitation({
+      conversation_id,
+      tool_name: "ask_user_confirm",
+      input: {
+        question: "Run render-upload-slides?",
+        kind: "external_write",
+        commit_intent: {
+          kind: "run_workflow",
+          payload: {
+            workflow: workflow.slug,
+            environment: "dev",
+            input_partial: { theme: "light" },
+            input_file: {
+              id: attachment.file_id,
+              sha256: createHash("sha256").update(content).digest("hex"),
+            },
+          },
+          description: "Run render-upload-slides.",
+        },
+      },
+      output: { confirmed: true },
+    });
+
+    const dispatch = await maybeAutoPersistFromElicitation({
+      answer_actor: TEST_HUMAN_ANSWER,
+      tenant_id,
+      conversation_id,
+      actor_id: null,
+      principal: {
+        provider: "test",
+        kind: "user",
+        id: principal_id,
+        tenant_id,
+        roles: ["admin"],
+      },
+      elicitation_output: { confirmed: true },
+      elicitation,
+      db: ctx.db,
+    });
+
+    expect(dispatch.dispatched).toBe(true);
+    expect(dispatch.synthetic_result?.error_code).toBeUndefined();
+    const data = dispatch.synthetic_result?.data as { input: Record<string, unknown> };
+    expect(data.input).toEqual({
+      markdown: "# From file",
+      filename: "from-file.html",
+      theme: "light",
+    });
+  });
+
+  test("run_workflow auto-dispatch with a missing structured field tells the model not to ask the person", async () => {
+    const [conv] = await ctx.db
+      .insert(conversations)
+      .values({ tenant_id, status: "awaiting_input" })
+      .returning();
+    const conversation_id = conv!.id;
+    const workflow = await seedRenderWorkflow("support-send-structured-input", {
+      type: "object",
+      required: ["description", "parts", "manifest"],
+      properties: {
+        description: { type: "string" },
+        parts: { type: "array" },
+        manifest: { type: "object" },
+      },
+    });
+    const elicitation = await createCarrierElicitation({
+      conversation_id,
+      tool_name: "ask_user_confirm",
+      input: {
+        question: "Send the report?",
+        kind: "external_write",
+        commit_intent: {
+          kind: "run_workflow",
+          payload: {
+            workflow: workflow.slug,
+            environment: "dev",
+            input_partial: { description: "Synthetic test" },
+          },
+          description: "Send the report.",
+        },
+      },
+      output: { confirmed: true },
+    });
+
+    const dispatch = await maybeAutoPersistFromElicitation({
+      answer_actor: TEST_HUMAN_ANSWER,
+      tenant_id,
+      conversation_id,
+      actor_id: null,
+      principal: {
+        provider: "test",
+        kind: "user",
+        id: principal_id,
+        tenant_id,
+        roles: ["admin"],
+      },
+      elicitation_output: { confirmed: true },
+      elicitation,
+      db: ctx.db,
+    });
+
+    expect(dispatch.synthetic_result?.error_code).toBe("missing_workflow_input");
+    expect(dispatch.synthetic_result?.data).toMatchObject({
+      missing_fields: ["parts", "manifest"],
+      structured_fields: ["parts", "manifest"],
+    });
+    expect(dispatch.synthetic_result?.message).toContain("never ask the user");
+    expect(dispatch.synthetic_result?.message).toContain("input_file");
+    expect(dispatch.synthetic_result?.message).not.toContain("ask_user_form");
   });
 
   test("run_workflow auto-dispatch with a REQUIRED field missing returns a directive error (not input_schema_violation)", async () => {

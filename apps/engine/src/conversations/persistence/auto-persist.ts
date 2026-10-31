@@ -45,7 +45,12 @@ import {
 } from "../tools/engine-api/writes/update-workflow.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
 import { checkToolPermission, resolveConversationPrincipal } from "../tools/permission-gate.ts";
-import { normalizeWorkflowInput, workflowInputRecord } from "../tools/workflow-input-normalize.ts";
+import { loadWorkflowInputFile, WorkflowInputFileSchema } from "../tools/workflow-file-input.ts";
+import {
+  normalizeWorkflowInput,
+  structuredInputFields,
+  workflowInputRecord,
+} from "../tools/workflow-input-normalize.ts";
 import { mergeFormIntoCredential } from "./auto-persist/credential-cache.ts";
 import {
   dispatchDeleteConnector,
@@ -577,11 +582,39 @@ export async function maybeAutoPersistFromElicitation(
         const partial = workflowInputRecord(normalizedPartial);
         const hasStructuredInput = normalizedPartial !== undefined && normalizedPartial !== null;
         const answers = readSubmittedWorkflowInput(p.elicitation.tool_name, p.elicitation_output);
+        let fileInput: Record<string, unknown> = {};
+        if (intent.payload.input_file !== undefined) {
+          try {
+            const source = WorkflowInputFileSchema.safeParse(intent.payload.input_file);
+            if (!source.success) throw new Error("Workflow input file reference is invalid");
+            fileInput = await loadWorkflowInputFile(
+              { db: p.db, tenant_id: p.tenant_id, conversation_id: p.conversation_id },
+              source.data,
+            );
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error);
+            result = {
+              ok: false,
+              error_code: "input_file_unavailable",
+              message: `Workflow "${workflowSlug}" cannot run: the confirmed input file is no longer available in this conversation (${detail}). Nothing ran. Re-run the tool that produced the file, then re-issue run_workflow with the fresh input_file reference; do not ask the user to paste its contents.`,
+              data: { workflow_id: workflowId, workflow_slug: workflowSlug },
+            };
+            logger.warn({
+              module: "conversation_persistence",
+              action: "auto_persist.run_workflow.input_file_unavailable",
+              tenant_id: p.tenant_id,
+              conversation_id: p.conversation_id,
+              workflow_id: workflowId,
+              detail,
+            });
+            break;
+          }
+        }
         const input =
           hasStructuredInput &&
           (typeof normalizedPartial !== "object" || Array.isArray(normalizedPartial))
             ? normalizedPartial
-            : { ...partial, ...answers };
+            : { ...fileInput, ...partial, ...answers };
         const inputIsObject = input !== null && typeof input === "object" && !Array.isArray(input);
         if (inputIsObject) {
           const wfForContract = await ctx.engineClient.workflows.get(workflowId);
@@ -596,20 +629,27 @@ export async function maybeAutoPersistFromElicitation(
             });
             if (missing.length > 0) {
               const fmt = (keys: string[]) => keys.map((k) => `\`${k}\``).join(", ");
+              const structured = structuredInputFields(contract.schema.properties, missing);
+              const missingClause = `Workflow "${workflowSlug}" cannot run: required input ${
+                missing.length === 1 ? "field" : "fields"
+              } ${fmt(missing)} ${missing.length === 1 ? "is" : "are"} missing from the submitted input.`;
+              const pronoun = structured.length === 1 ? "it" : "them";
               result = {
                 ok: false,
                 error_code: "missing_workflow_input",
-                message: `Workflow "${workflowSlug}" cannot run: required input ${
-                  missing.length === 1 ? "field" : "fields"
-                } ${fmt(missing)} ${
-                  missing.length === 1 ? "is" : "are"
-                } missing from the submitted input. Re-issue run_workflow so it pauses with an ask_user_form that collects EVERY required field (${fmt(
-                  contract.required,
-                )}) — do NOT use a single ask_user_text; the harness runs the workflow with the submitted form values.`,
+                message:
+                  structured.length > 0
+                    ? `${missingClause} ${fmt(structured)} ${
+                        structured.length === 1 ? "is" : "are"
+                      } structured data (array or object) that a person cannot type into a form — never ask the user for ${pronoun} and never show raw JSON. Supply ${pronoun} in run_workflow input, or pass input_file from the tool that produced the data (for example export_diagnostic_context), then re-issue run_workflow. Nothing ran.`
+                    : `${missingClause} Re-issue run_workflow so it pauses with an ask_user_form that collects EVERY required field (${fmt(
+                        contract.required,
+                      )}) — do NOT use a single ask_user_text; the harness runs the workflow with the submitted form values.`,
                 data: {
                   workflow_id: workflowId,
                   workflow_slug: workflowSlug,
                   missing_fields: missing,
+                  structured_fields: structured,
                   required_fields: contract.required,
                 },
               };

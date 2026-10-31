@@ -29,6 +29,10 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "this conversation already saved a workflow and stays bound to it; nothing else can be prepared here. Tell the user that the next part needs a new conversation and name the workflow slug to ask for there. Do not retry.",
   input_schema_violation:
     "the preview input did not match the workflow's input_schema. Read input_schema from this error (or from inspect_workflow_draft), supply every required field with its declared type and no other fields, then retry dry_run_workflow once. Never invent identifiers the user did not give; ask for them instead.",
+  structured_input_required:
+    "the workflow needs array or object input that a person cannot type into a form. Never ask the user for it and never show raw JSON. Supply the data in run_workflow input, or pass input_file from the tool that produced it (for example export_diagnostic_context), then retry run_workflow once.",
+  input_file_unavailable:
+    "the confirmed input file is gone from this conversation; nothing ran. Re-run the tool that produced it (for example export_diagnostic_context) and re-issue run_workflow with the fresh input_file reference. Do not ask the user to paste the contents.",
   skill_prerequisites_unmet:
     "the tool needs skills that are not loaded yet. Call load_skill for every slug in missing_skills, then retry the same call once",
   draft_write_held:

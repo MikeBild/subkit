@@ -38,6 +38,7 @@ describe("policy-gate commit-intent · policy-gated writes", () => {
     expect(body).toMatch(/intentKind === "run_workflow"/);
     expect(body).toContain('kind: "run_workflow"');
     expect(body).toContain("input_partial");
+    expect(body).toContain("input_file");
     expect(body).toContain("execute_writes");
   });
 });

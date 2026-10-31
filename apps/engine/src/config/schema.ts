@@ -397,7 +397,7 @@ const LlmSection = z
       .enum(["default", "none", "low", "medium", "high"])
       .default("default")
       .describe(
-        "Reasoning effort for authoring turns. default: high on supported Claude models only in validated, saved and repair stages, none otherwise. none, low, medium or high applies to every authoring stage on OpenAI reasoning models and supported Claude models; a forced tool call still turns thinking off on Claude.",
+        "Reasoning effort in authoring turns. default: thinking only in late stages on supported Claude models. none, low, medium or high: every stage on OpenAI reasoning and supported Claude models.",
       )
       .meta(tenant()),
     output_guard: z

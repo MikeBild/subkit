@@ -136,6 +136,7 @@ export function buildPolicyGateCommitIntent(
         ...(rawArgs.input !== undefined
           ? { input_partial: normalizeWorkflowInput(rawArgs.input) }
           : {}),
+        ...(rawArgs.input_file !== undefined ? { input_file: rawArgs.input_file } : {}),
         ...(rawArgs.execute_writes === true ? { execute_writes: true } : {}),
         ...(rawArgs.include_step_trace === true ? { include_step_trace: true } : {}),
       },

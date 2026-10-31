@@ -21,6 +21,17 @@ export function workflowInputRecord(value: unknown): Record<string, unknown> {
   return {};
 }
 
+export function structuredInputFields(properties: unknown, names: readonly string[]): string[] {
+  if (!properties || typeof properties !== "object" || Array.isArray(properties)) return [];
+  const props = properties as Record<string, unknown>;
+  return names.filter((name) => {
+    const prop = props[name];
+    const type = prop && typeof prop === "object" ? (prop as { type?: unknown }).type : undefined;
+    const types = Array.isArray(type) ? type : [type];
+    return types.some((t) => t === "array" || t === "object");
+  });
+}
+
 export const workflowInputSlot = z
   .union([z.record(z.string(), z.unknown()), z.string()])
   .transform((raw, ctx) => {
