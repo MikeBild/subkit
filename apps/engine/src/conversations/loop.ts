@@ -159,6 +159,7 @@ import {
   authoringStageOpen,
   collectSyntheticWorkflowSlugs,
   type ExecutionToolGateDecision,
+  lockedToolsBySkill,
   resolveExecutionToolGate,
   resolveNamedWorkflowSlug,
 } from "./tools/authoring-palette.ts";
@@ -603,6 +604,8 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
         blocked_by: [...draft.summary.blocked_by],
         next_required_action: draft.summary.next_required_action,
         next_suggested_tool: draft.summary.next_suggested_tool,
+        permission_mode: p.permission_mode ?? null,
+        locked_tools: lockedToolsBySkill(new Set(loadedEntries.map((entry) => entry.slug))),
         checkpoints: [...draft.summary.checkpoints],
         latest_execution: draft.summary.latest_execution
           ? {

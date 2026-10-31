@@ -272,6 +272,15 @@ export function recordPatchCandidate(args: {
   });
 }
 
+export function recordConversationToolError(args: { tool: string; error_code: string }): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.CONVERSATION_TOOL_ERRORS_TOTAL, {
+      tool: args.tool,
+      error_code: args.error_code,
+    });
+  });
+}
+
 export function recordConversationToolCall(args: {
   category: "draft_write" | "tenant_read" | "tenant_write";
   tool: string;

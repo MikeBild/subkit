@@ -3,7 +3,6 @@ import {
   buildPendingOutputForTool,
   decideToolMode,
   hasInlineCredential,
-  prerequisitesForTool,
   resolveToolMode,
 } from "../tool-policies.ts";
 
@@ -51,18 +50,6 @@ describe("resolveToolMode — credentialFields gate", () => {
       permission_mode: "auto",
     });
     expect(mode).toBe("no_confirm");
-  });
-});
-
-describe("prerequisitesForTool", () => {
-  test("tools without explicit prerequisites return an empty array", () => {
-    expect(prerequisitesForTool("edit_workflow_patch")).toEqual([]);
-    expect(prerequisitesForTool("inspect_workflow_draft")).toEqual([]);
-    expect(prerequisitesForTool("dry_run_step")).toEqual([]);
-  });
-
-  test("unknown tools return an empty array (no throws)", () => {
-    expect(prerequisitesForTool("unknown_tool_name_xyz")).toEqual([]);
   });
 });
 

@@ -128,6 +128,26 @@ export const REVIEW_DECISIONS: ReadonlySet<string> = new Set([
   "reject_skill_candidate",
 ]);
 
+const SKILL_UNLOCKS: ReadonlyArray<{ skill: string; tools: ReadonlyArray<ReadonlySet<string>> }> = [
+  {
+    skill: CONNECTOR_AUTHORING_SKILL,
+    tools: [CONNECTOR_AUTHORING, CONNECTOR_PERSISTENCE, CONNECTOR_OAUTH],
+  },
+  {
+    skill: WORKFLOW_AUTHORING_SKILL,
+    tools: [WORKFLOW_AUTHORING, WORKFLOW_PREVIEW, WORKFLOW_PERSISTENCE, DIAGNOSIS_TOOLS],
+  },
+];
+
+export function lockedToolsBySkill(
+  loadedSkills: ReadonlySet<string>,
+): Array<{ skill: string; tools: string[] }> {
+  return SKILL_UNLOCKS.filter(({ skill }) => !loadedSkills.has(skill)).map(({ skill, tools }) => ({
+    skill,
+    tools: tools.flatMap((names) => [...names]),
+  }));
+}
+
 function addNames(target: Set<string>, names: ReadonlySet<string>): void {
   for (const name of names) target.add(name);
 }
@@ -142,16 +162,8 @@ export function filterByAuthoringPalette<
   addNames(allowed, ALWAYS_AVAILABLE_EXECUTION);
   addNames(allowed, REVIEW_DECISIONS);
 
-  if (loadedSkills.has(CONNECTOR_AUTHORING_SKILL)) {
-    addNames(allowed, CONNECTOR_AUTHORING);
-    addNames(allowed, CONNECTOR_PERSISTENCE);
-    addNames(allowed, CONNECTOR_OAUTH);
-  }
-  if (loadedSkills.has(WORKFLOW_AUTHORING_SKILL)) {
-    addNames(allowed, WORKFLOW_AUTHORING);
-    addNames(allowed, WORKFLOW_PREVIEW);
-    addNames(allowed, WORKFLOW_PERSISTENCE);
-    addNames(allowed, DIAGNOSIS_TOOLS);
+  for (const { skill, tools: unlocked } of SKILL_UNLOCKS) {
+    if (loadedSkills.has(skill)) for (const names of unlocked) addNames(allowed, names);
   }
   return tools.filter(
     (tool) =>

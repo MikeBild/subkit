@@ -72,6 +72,7 @@ export const METRIC_NAMES = {
   RBAC_CHECKS_TOTAL: "rbac_checks_total",
   AUDIT_ROWS_WRITTEN_TOTAL: "audit_rows_written_total",
   CONVERSATION_TOOL_CALLS_TOTAL: "conversation_tool_calls_total",
+  CONVERSATION_TOOL_ERRORS_TOTAL: "conversation_tool_errors_total",
   CONVERSATION_TOOL_DURATION_MS: "conversation_tool_duration_ms",
   CONVERSATION_CONFIRMATIONS_TOTAL: "conversation_confirmations_total",
   CONVERSATION_COMPACTION_TOTAL: "conversation_compaction_total",
@@ -333,6 +334,11 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.CONVERSATION_TOOL_CALLS_TOTAL,
     help: "Conversation tool invocations, partitioned by category + outcome.",
     labels: ["category", "tool", "outcome"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.CONVERSATION_TOOL_ERRORS_TOTAL,
+    help: "Failed conversation tool calls, partitioned by tool and catalogued error code.",
+    labels: ["tool", "error_code"],
   });
   reg.registerCounter({
     name: METRIC_NAMES.LLM_OUTPUT_VIOLATIONS_TOTAL,

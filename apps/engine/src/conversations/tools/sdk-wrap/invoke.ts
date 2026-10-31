@@ -8,6 +8,7 @@ import { errorFields, log, logger } from "../../../logging/logger.ts";
 import { stampMcpTaskProgress } from "../../../mcp/tasks/store.ts";
 import {
   recordConversationToolCall,
+  recordConversationToolError,
   recordToolCircuitOpen,
 } from "../../../observability/instrumentation.ts";
 import { startToolSpan } from "../../../observability/langfuse-spans.ts";
@@ -42,11 +43,7 @@ import {
 } from "../../skill-autoload.ts";
 import { computeLineDiff } from "../../text-line-diff.ts";
 import { describeToolExecutionFailure } from "../../tool-execution-failure.ts";
-import {
-  type PermissionMode,
-  prerequisitesForTool,
-  type ToolPolicies,
-} from "../../tool-policies.ts";
+import type { PermissionMode, ToolPolicies } from "../../tool-policies.ts";
 import { assertConversationTurn } from "../../turns.ts";
 import type { TurnEvent } from "../../types.ts";
 import { withApprovalHandle, withoutApprovalHandle } from "../ask-user/commit-intent.ts";
@@ -71,7 +68,7 @@ import {
   truncateForLlm,
   withTruncationMarkers,
 } from "../truncate.ts";
-import { buildCapAlternatives } from "./error-recovery-hints.ts";
+import { buildCapAlternatives, metricErrorCode } from "./error-recovery-hints.ts";
 import { type GateSubject, prepareGate } from "./gate-subjects.ts";
 import {
   INTAKE_REVIEW_BLOCKED_WRITES,
@@ -237,23 +234,6 @@ export function wrapOne(
             },
           };
         }
-        const needed = prerequisitesForTool(inner.name);
-        const missingSkills = needed.filter((slug) => !loadedSkills.includes(slug));
-        if (missingSkills.length > 0) {
-          return {
-            ok: false,
-            data: {
-              error: `tool ${inner.name} requires skill(s) not yet loaded: ${missingSkills.join(", ")}. Call load_skill for each one before retrying.`,
-              error_code: "skill_prerequisites_unmet",
-              message: `tool ${inner.name} requires skill(s) not yet loaded: ${missingSkills.join(", ")}. Call load_skill for each one before retrying.`,
-              next_best_actions: ["load_skill"],
-              reason: "skill_prerequisites_unmet",
-              tool: inner.name,
-              missing_skills: missingSkills,
-            },
-          };
-        }
-
         const isAskUser = inner.name.startsWith("ask_user_");
         const isInspect =
           inner.name.startsWith("inspect_") || inner.name === "diagnose_latest_execution";
@@ -1206,6 +1186,12 @@ export function wrapOne(
           outcome: result.ok ? "ok" : "error",
           duration_ms: Date.now() - startedAt,
         });
+        if (!result.ok) {
+          recordConversationToolError({
+            tool: inner.name,
+            error_code: metricErrorCode(result),
+          });
+        }
 
         if (result.ok) {
           signals.toolLastErrorHash.delete(inner.name);

@@ -35,8 +35,6 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the workflow needs array or object input that a person cannot type into a form. Never ask the user for it and never show raw JSON. Supply the data in run_workflow input, or pass input_file from the tool that produced it (for example export_diagnostic_context), then retry run_workflow once.",
   input_file_unavailable:
     "the confirmed input file is gone from this conversation; nothing ran. Re-run the tool that produced it (for example export_diagnostic_context) and re-issue run_workflow with the fresh input_file reference. Do not ask the user to paste the contents.",
-  skill_prerequisites_unmet:
-    "the tool needs skills that are not loaded yet. Call load_skill for every slug in missing_skills, then retry the same call once",
   draft_write_held:
     "the draft probe held an external write before credential lookup or dispatch. Validate the draft with a read-only probe, save the connector, then use call_connector for the exact write with human approval. Do not retry the write through a draft probe or bypass the approval gate.",
   workflow_activation_required:
@@ -305,4 +303,11 @@ export function buildCapAlternatives(toolLastErrorHash: ReadonlyMap<string, stri
   }
   if (lines.length === 0) return "";
   return `\nConcrete alternatives derived from the recent failures:\n${lines.join("\n")}`;
+}
+
+export function metricErrorCode(result: { error_code?: unknown; data?: unknown }): string {
+  const data = result.data as { error_code?: unknown } | null | undefined;
+  const code = result.error_code ?? data?.error_code;
+  if (typeof code !== "string") return "none";
+  return Object.hasOwn(ERROR_CODE_ALTERNATIVES, code) ? code : "other";
 }

@@ -60,6 +60,14 @@ function summarizeNextSuggestedTool(hint: AuthoringPromptHint): string {
   return `- Next suggested tool: ${hint.next_suggested_tool}`;
 }
 
+function summarizeAccess(hint: AuthoringPromptHint): string[] {
+  const lines = hint.permission_mode ? [`- Permission mode: ${hint.permission_mode}.`] : [];
+  for (const { skill, tools } of hint.locked_tools ?? []) {
+    lines.push(`- Hidden until load_skill("${skill}"): ${tools.join(", ")}.`);
+  }
+  return lines;
+}
+
 function connectorFocusPrompt(hint: AuthoringPromptHint): string {
   return [
     "AUTHORING FOCUS: CONNECTOR",
@@ -77,6 +85,7 @@ function connectorFocusPrompt(hint: AuthoringPromptHint): string {
     summarizeBlockedBy(hint),
     summarizeNextRequiredAction(hint),
     summarizeNextSuggestedTool(hint),
+    ...summarizeAccess(hint),
   ].join("\n");
 }
 
@@ -97,6 +106,7 @@ function workflowFocusPrompt(hint: AuthoringPromptHint): string {
     summarizeBlockedBy(hint),
     summarizeNextRequiredAction(hint),
     summarizeNextSuggestedTool(hint),
+    ...summarizeAccess(hint),
   ].join("\n");
 }
 
@@ -114,6 +124,7 @@ function executionFocusPrompt(hint: AuthoringPromptHint): string {
     summarizeBlockedBy(hint),
     summarizeNextRequiredAction(hint),
     summarizeNextSuggestedTool(hint),
+    ...summarizeAccess(hint),
   ].join("\n");
 }
 
@@ -131,6 +142,7 @@ function diagnosisFocusPrompt(hint: AuthoringPromptHint): string {
     summarizeBlockedBy(hint),
     summarizeNextRequiredAction(hint),
     summarizeNextSuggestedTool(hint),
+    ...summarizeAccess(hint),
   ].join("\n");
 }
 

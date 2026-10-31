@@ -90,6 +90,8 @@ export interface AuthoringPromptHint {
     reason: string;
   } | null;
   scope?: "rbac";
+  permission_mode?: string | null;
+  locked_tools?: ReadonlyArray<{ skill: string; tools: readonly string[] }>;
 }
 
 export interface AssembleContextParams {

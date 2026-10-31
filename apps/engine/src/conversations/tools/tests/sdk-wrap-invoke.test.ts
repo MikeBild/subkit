@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import * as errorCodes from "../error-codes.ts";
-import { buildCapAlternatives, ERROR_CODE_ALTERNATIVES } from "../sdk-wrap/error-recovery-hints.ts";
+import {
+  buildCapAlternatives,
+  ERROR_CODE_ALTERNATIVES,
+  metricErrorCode,
+} from "../sdk-wrap/error-recovery-hints.ts";
 
 describe("buildCapAlternatives", () => {
   it("returns empty string when no failures are recorded", () => {
@@ -209,5 +213,18 @@ describe("ERROR_CODE_ALTERNATIVES catalogue completeness", () => {
       missing_from_catalogue: missing,
       hint: "every constant exported from conversations/tools/error-codes.ts must have an entry in ERROR_CODE_ALTERNATIVES (sdk-wrap/error-recovery-hints.ts). If a code legitimately needs no hint, drop it from error-codes.ts or document the exclusion explicitly here.",
     }).toEqual({ missing_from_catalogue: [], hint: expect.any(String) });
+  });
+});
+
+describe("metricErrorCode", () => {
+  it("keeps catalogued codes and folds everything else so labels stay bounded", () => {
+    expect(metricErrorCode({ error_code: "input_schema_violation" })).toBe(
+      "input_schema_violation",
+    );
+    expect(metricErrorCode({ data: { error_code: "workflow_archived" } })).toBe(
+      "workflow_archived",
+    );
+    expect(metricErrorCode({ error_code: "tenant-specific-code" })).toBe("other");
+    expect(metricErrorCode({ data: {} })).toBe("none");
   });
 });

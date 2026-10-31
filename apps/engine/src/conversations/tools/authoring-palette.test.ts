@@ -2,11 +2,14 @@ import { describe, expect, test } from "bun:test";
 import {
   applyExecutionToolGate,
   authoringStageOpen,
+  CONNECTOR_AUTHORING_SKILL,
   collectSyntheticWorkflowSlugs,
   filterByAuthoringPalette,
   isExecutionToolName,
+  lockedToolsBySkill,
   resolveExecutionToolGate,
   resolveNamedWorkflowSlug,
+  WORKFLOW_AUTHORING_SKILL,
 } from "./authoring-palette.ts";
 
 describe("intake processing palette", () => {
@@ -131,6 +134,15 @@ describe("resolveExecutionToolGate", () => {
     expect(authoringStageOpen("idle")).toBe(false);
     expect(authoringStageOpen("workflow_persisted")).toBe(false);
     expect(authoringStageOpen(undefined)).toBe(false);
+  });
+
+  test("tools behind a skill stay named until that skill is loaded", () => {
+    const locked = lockedToolsBySkill(new Set([CONNECTOR_AUTHORING_SKILL]));
+    expect(locked.map((entry) => entry.skill)).toEqual([WORKFLOW_AUTHORING_SKILL]);
+    expect(locked[0]?.tools).toContain("save_workflow_draft");
+    expect(
+      lockedToolsBySkill(new Set([CONNECTOR_AUTHORING_SKILL, WORKFLOW_AUTHORING_SKILL])),
+    ).toEqual([]);
   });
 
   test("a bound saved workflow exposes execution", () => {

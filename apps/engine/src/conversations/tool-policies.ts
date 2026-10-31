@@ -176,7 +176,6 @@ interface ToolPolicyDefinition {
   computeModeFromInput?: (input: unknown) => ToolPolicyMode | null;
   computeDangerFromInput?: (input: unknown) => boolean;
   credentialFields?: ReadonlyArray<string>;
-  prerequisites?: ReadonlyArray<string>;
   buildPendingOutput?: (input: unknown) => Record<string, unknown> | null;
 }
 
@@ -211,10 +210,6 @@ export function buildPendingOutputForTool(
   const def = TOOL_POLICIES[tool];
   if (!def?.buildPendingOutput) return null;
   return def.buildPendingOutput(input) ?? null;
-}
-
-export function prerequisitesForTool(tool: string): ReadonlyArray<string> {
-  return TOOL_POLICIES[tool]?.prerequisites ?? [];
 }
 
 function pickFields(input: unknown, fields: ReadonlyArray<string>): Record<string, unknown> {
