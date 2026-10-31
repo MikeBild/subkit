@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   detectEnvelopeResolution,
   detectMultiArtifactIntent,
+  detectsAuthoringRequest,
   detectUserIntent,
   inferStateDrivenFollowUpTool,
   matchesEnumerationIntent,
@@ -102,6 +103,12 @@ describe("detectUserIntent", () => {
     ]) {
       expect(detectUserIntent(message).requestExternalAction).toBeUndefined();
     }
+  });
+  test("authoring requests are told apart from ordinary requests", () => {
+    expect(detectsAuthoringRequest("Erstelle einen Workflow für Rechnungen")).toBe(true);
+    expect(detectsAuthoringRequest("Öffne meine Support-Seite")).toBe(false);
+    expect(detectsAuthoringRequest("Zeig meine Support-Anfragen")).toBe(false);
+    expect(detectsAuthoringRequest(null)).toBe(false);
   });
   test("a case status question exposes a saved read operation without requesting a send", () => {
     const status = detectUserIntent("Wie steht meine Anfrage Nummer 5?");

@@ -4,7 +4,7 @@ import {
   detectRepairIntent,
 } from "../loop/authoring-intent.ts";
 import { nextRecommendedAction } from "../onboarding-policy.ts";
-import type { DraftDocument } from "../types.ts";
+import type { AuthoringStage, DraftDocument } from "../types.ts";
 import type { ConversationTool } from "./index.ts";
 
 export const CONNECTOR_AUTHORING_SKILL = "connector-creation-guidance";
@@ -242,6 +242,7 @@ export interface ExecutionToolGateState {
   hasBoundSavedWorkflow: boolean;
   explicitlyNamedWorkflowSlug: string | null;
   explicitExternalAction?: boolean;
+  authoringInProgress?: boolean;
   surface?: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
   suppressExecution?: boolean;
   suppressLiveExecution?: boolean;
@@ -253,10 +254,22 @@ export interface ExecutionToolGateDecision {
     | "bound_saved_workflow"
     | "named_workflow_slug"
     | "requested_saved_workflow_action"
+    | "no_authoring_signal"
     | "chat_surface"
     | "explicit_no_run"
     | "explicit_no_live_effects"
     | "authoring_no_target";
+}
+
+const SETTLED_STAGES: ReadonlySet<AuthoringStage> = new Set([
+  "idle",
+  "connector_persisted",
+  "workflow_persisted",
+  "workflow_executed",
+]);
+
+export function authoringStageOpen(stage: AuthoringStage | undefined): boolean {
+  return stage !== undefined && !SETTLED_STAGES.has(stage);
 }
 
 export function resolveExecutionToolGate(state: ExecutionToolGateState): ExecutionToolGateDecision {
@@ -281,6 +294,9 @@ function resolveExposure(state: ExecutionToolGateState): ExecutionToolGateDecisi
   }
   if (state.explicitExternalAction) {
     return { exposeExecution: true, reason: "requested_saved_workflow_action" };
+  }
+  if (state.authoringInProgress === false) {
+    return { exposeExecution: true, reason: "no_authoring_signal" };
   }
   return { exposeExecution: false, reason: "authoring_no_target" };
 }

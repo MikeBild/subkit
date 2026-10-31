@@ -96,6 +96,7 @@ import { turnExecutionSuppression } from "./execution-suppression.ts";
 import { handoffSummary, inferReplyLocale, turnHandoff } from "./handoff-summary.ts";
 import {
   detectMultiArtifactIntent,
+  detectsAuthoringRequest,
   detectUserIntent,
   inferStateDrivenFollowUpTool,
   matchesEnumerationIntent,
@@ -106,6 +107,7 @@ import {
 import { RUN_VERB_RE } from "./intent-patterns.ts";
 import { abstentionDecision } from "./loop/abstention-gate.ts";
 import { resolveConversationAttemptRoutes } from "./loop/attempt-route.ts";
+import { detectConnectorAuthoringIntent } from "./loop/authoring-intent.ts";
 import { loadEnumerationCoverage } from "./loop/enumeration-coverage.ts";
 import {
   answeringModelLabel,
@@ -154,6 +156,7 @@ import { elideWithinTurnToolOutputs } from "./tool-output-elision.ts";
 import {
   applyExecutionToolGate,
   authoringSkillsForTurn,
+  authoringStageOpen,
   collectSyntheticWorkflowSlugs,
   type ExecutionToolGateDecision,
   resolveExecutionToolGate,
@@ -930,6 +933,10 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
     explicitlyNamedWorkflowSlug: namedWorkflowSlug,
     explicitExternalAction:
       detectedIntent.requestExternalAction === true || detectedIntent.requestExternalRead === true,
+    authoringInProgress:
+      detectsAuthoringRequest(ingestedUserMessage) ||
+      detectConnectorAuthoringIntent(ingestedUserMessage) ||
+      authoringStageOpen(draft.summary?.stage),
     ...(p.surface ? { surface: p.surface } : {}),
     suppressExecution: executionSuppression.all,
     suppressLiveExecution: executionSuppression.live,

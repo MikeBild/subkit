@@ -123,6 +123,15 @@ export const NO_SNAPSHOT_COVERAGE: EnumerationCoverage = {
   connectors_complete: false,
 };
 
+export function detectsAuthoringRequest(latestUserText: string | null | undefined): boolean {
+  const text = latestUserText?.trim();
+  if (!text) return false;
+  return (
+    matchesWorkflowAuthoringPattern(text) ||
+    matchesPositiveWorkflowCreationPattern(text, NEW_WORKFLOW_MODIFIER_PATTERN)
+  );
+}
+
 export function detectUserIntent(
   latestUserText: string | null | undefined,
   coverage: EnumerationCoverage = FULL_COVERAGE,

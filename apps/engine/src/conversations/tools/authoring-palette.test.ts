@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   applyExecutionToolGate,
+  authoringStageOpen,
   collectSyntheticWorkflowSlugs,
   filterByAuthoringPalette,
   isExecutionToolName,
@@ -91,6 +92,45 @@ describe("resolveExecutionToolGate", () => {
     });
     expect(d.exposeExecution).toBe(false);
     expect(d.reason).toBe("authoring_no_target");
+  });
+
+  test("no authoring signal exposes saved workflows for ordinary requests", () => {
+    expect(
+      resolveExecutionToolGate({
+        hasBoundSavedWorkflow: false,
+        explicitlyNamedWorkflowSlug: null,
+        authoringInProgress: false,
+      }),
+    ).toEqual({ exposeExecution: true, reason: "no_authoring_signal" });
+  });
+
+  test("an authoring request or open draft keeps execution hidden", () => {
+    expect(
+      resolveExecutionToolGate({
+        hasBoundSavedWorkflow: false,
+        explicitlyNamedWorkflowSlug: null,
+        authoringInProgress: true,
+      }).reason,
+    ).toBe("authoring_no_target");
+  });
+
+  test("an explicit no-run request wins over a missing authoring signal", () => {
+    expect(
+      resolveExecutionToolGate({
+        hasBoundSavedWorkflow: false,
+        explicitlyNamedWorkflowSlug: null,
+        authoringInProgress: false,
+        suppressExecution: true,
+      }).reason,
+    ).toBe("explicit_no_run");
+  });
+
+  test("open authoring stages are recognised, settled ones are not", () => {
+    expect(authoringStageOpen("workflow_draft_started")).toBe(true);
+    expect(authoringStageOpen("diagnosing")).toBe(true);
+    expect(authoringStageOpen("idle")).toBe(false);
+    expect(authoringStageOpen("workflow_persisted")).toBe(false);
+    expect(authoringStageOpen(undefined)).toBe(false);
   });
 
   test("a bound saved workflow exposes execution", () => {

@@ -52,6 +52,7 @@ import type { TurnEvent } from "../../types.ts";
 import { withApprovalHandle, withoutApprovalHandle } from "../ask-user/commit-intent.ts";
 import { decodeAskUserPromptEscapes } from "../ask-user/decode-prompt-escapes.ts";
 import { isLiveExecutionTool, isWorkflowExecutionTool } from "../authoring-palette.ts";
+import { hideCapabilityLinks } from "../capability-link.ts";
 import { compileDescription } from "../describe.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "../index.ts";
 import {
@@ -1118,17 +1119,18 @@ export function wrapOne(
         }
 
         const resultPayload: unknown = normalizeToolResultPayload(result);
+        const modelSafePayload = hideCapabilityLinks(resultPayload);
         await langfuseSpan.finish({
-          output: resultPayload,
+          output: modelSafePayload,
           status: result.ok ? "success" : "error",
         });
         const skipTruncate = inner.name === "get_raw_result";
         const truncated: TruncatedOutput = skipTruncate
-          ? { truncated: false, data: resultPayload }
-          : truncateForLlm(resultPayload);
+          ? { truncated: false, data: modelSafePayload }
+          : truncateForLlm(modelSafePayload);
         const modelVisibleOutput = truncated.truncated
           ? withTruncationMarkers(truncated)
-          : resultPayload;
+          : modelSafePayload;
         await updateToolCallOutput(
           db,
           toolCallId,
