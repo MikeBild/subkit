@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
@@ -109,6 +109,7 @@ async function selectWorkflowToolRows(p: ListWorkflowToolsParams): Promise<Workf
         and(
           eq(workflows.tenant_id, principal.tenant_id),
           isNull(workflows.deleted_at),
+          ne(workflows.lifecycle, "archived"),
           eq(workflows.is_tool, true),
           ...(allowlistSqlFilter ? [allowlistSqlFilter] : []),
         ),

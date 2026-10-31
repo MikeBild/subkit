@@ -286,6 +286,7 @@ const REFUSAL_WORDS: Record<string, TranslationKey> = {
   workflow_version_invalid: "tool.refusal.legacy",
   workflow_not_persisted: "tool.refusal.notSaved",
   workflow_not_found: "tool.refusal.notFound",
+  workflow_archived: "tool.refusal.archived",
   permission_denied: "tool.refusal.permission",
   principal_required: "tool.refusal.permission",
   repair_loop_detected: "tool.refusal.repeatedFailure",

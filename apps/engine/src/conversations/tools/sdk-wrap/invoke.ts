@@ -1171,7 +1171,7 @@ export function wrapOne(
           type: "tool_result",
           call_id: toolCallId,
           tool: inner.name,
-          output: modelVisibleOutput,
+          output: truncated.truncated ? modelVisibleOutput : resultPayload,
           parent_message_id: assistantMessageId,
         });
         const completedDurationMs = Date.now() - startedAt;

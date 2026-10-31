@@ -3,7 +3,7 @@ import { z } from "@hono/zod-openapi";
 import { and, eq, sql } from "drizzle-orm";
 import { waitForCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Db } from "../db/client.ts";
-import { executions } from "../db/schema/index.ts";
+import { executions, workflows } from "../db/schema/index.ts";
 import { RequestSourceSchema } from "../observability/service-metadata.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import { JsonValueSchema } from "../workflows/types.ts";
@@ -52,6 +52,14 @@ export async function admitWorkflowRun(
       "execution_boundary_mismatch",
       "the prepared workflow version differs from the requested workflow version",
     );
+  }
+  const [saved] = await db
+    .select({ lifecycle: workflows.lifecycle })
+    .from(workflows)
+    .where(and(eq(workflows.tenant_id, input.tenant_id), eq(workflows.id, input.workflow_id)))
+    .limit(1);
+  if (saved?.lifecycle === "archived") {
+    fail("workflow_archived", "this workflow is archived and cannot run until it is restored");
   }
   const resolved = await resolveDefinition(db, input.tenant_id, {
     kind: "saved",

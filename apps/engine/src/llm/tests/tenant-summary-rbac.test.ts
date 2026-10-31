@@ -162,6 +162,15 @@ describe("tenant snapshot under RBAC", () => {
     expect(summary.connectors_total).toBe(2);
   });
 
+  test("an archived workflow leaves the snapshot and the tool catalog", async () => {
+    const id = await seedWorkflow("archived-from-snapshot", "tests");
+    await tdb.db.update(workflows).set({ lifecycle: "archived" }).where(eq(workflows.id, id));
+    const summary = await loadTenantSummary(admin, tdb.db);
+    expect(summary.workflows.map((w) => w.slug)).not.toContain("archived-from-snapshot");
+    const slugs = await listWorkflowToolSlugs({ db: tdb.db, principal: admin });
+    expect(slugs.has("archived-from-snapshot")).toBe(false);
+  });
+
   test("a principal without any grant gets no snapshot at all", async () => {
     const summary = await loadTenantSummary(nobody, tdb.db);
     expect(summary.workflows).toEqual([]);

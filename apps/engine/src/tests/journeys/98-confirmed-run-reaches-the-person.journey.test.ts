@@ -101,6 +101,46 @@ afterAll(async () => {
 
 describe("journey 98: an ordinary request reaches a saved workflow and its result reaches the person", () => {
   test(
+    "an archived workflow refuses to run",
+    async () => {
+      const archived = await seedWorkflow(ctx, {
+        slug: "support-old-journey",
+        name: "Alte Meldung",
+        steps: [
+          { id: "result", kind: "transform", language: "javascript", expression: "return {};" },
+        ],
+      });
+      const patched = await journeyFetch(ctx, `/v1/workflows/${archived.id}/metadata`, {
+        method: "PATCH",
+        body: JSON.stringify({ lifecycle: "archived" }),
+      });
+      expect(patched.status).toBe(200);
+
+      const mock = getMockProvider();
+      const conversationId = await newConversation();
+      mock.setConversePlan(conversationId, [
+        { tool: "run_workflow", args: { workflow: "support-old-journey" } },
+        { text: "Der Workflow ist archiviert." },
+      ]);
+      const paused = await send(conversationId, "Melde ein Problem");
+      if (paused.status === "awaiting_input") {
+        await journeyFetch(
+          ctx,
+          `/v1/conversations/${conversationId}/elicitations/${paused.pending_elicitation_id}/respond`,
+          { method: "POST", body: JSON.stringify({ output: { confirmed: true } }) },
+        );
+      }
+
+      const refused = (await detail(conversationId)).tool_calls
+        .filter((call) => call.tool === "run_workflow")
+        .at(0);
+      expect(refused?.outcome).not.toBe("ok");
+      expect(JSON.stringify(refused?.output)).toContain("this workflow is archived");
+    },
+    JOURNEY_HOOK_TIMEOUT,
+  );
+
+  test(
     "ordinary requests see run_workflow, authoring requests do not",
     async () => {
       const mock = getMockProvider();

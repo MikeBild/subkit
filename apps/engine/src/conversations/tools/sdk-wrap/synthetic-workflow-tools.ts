@@ -29,6 +29,7 @@ import type { PermissionMode, ToolPolicies } from "../../tool-policies.ts";
 import type { TurnEvent } from "../../types.ts";
 import { withoutApprovalHandle } from "../ask-user/commit-intent.ts";
 import { WORKFLOW_TOOL_PREFIX as TOOL_PREFIX } from "../authoring-palette.ts";
+import { hideCapabilityLinks } from "../capability-link.ts";
 import type { ToolContext } from "../index.ts";
 import { sampleWorkflowOutputForLlm } from "../truncate.ts";
 import { executionDataTransfer } from "./gate-subjects.ts";
@@ -173,7 +174,7 @@ async function executeSyntheticRun(
     parent_message_id: assistantMessageId,
   });
 
-  const inputForRun = Object.keys(workflowInput).length > 0 ? workflowInput : null;
+  const inputForRun = Object.keys(workflowInput).length > 0 ? workflowInput : undefined;
 
   try {
     const environment = await workflowExecutionEnvironment(db, ctx.tenant_id, entry.workflow_id);
@@ -352,7 +353,7 @@ async function executeSyntheticRun(
     );
     await appendMessage(db, ctx.tenant_id, ctx.conversation_id, "tool", {
       tool: name,
-      output,
+      output: hideCapabilityLinks(output),
     });
     const sampledOutput = sampleWorkflowOutputForLlm(result.output);
     const modelOutput: Record<string, unknown> = {
@@ -478,7 +479,7 @@ async function executeSyntheticRun(
     });
     return {
       ok: heldPreview ? false : ok,
-      data: modelOutput,
+      data: hideCapabilityLinks(modelOutput) as Record<string, unknown>,
       ...(pause ? { pause } : {}),
     };
   } catch (err) {

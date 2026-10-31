@@ -29,6 +29,8 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "this conversation already saved a workflow and stays bound to it; nothing else can be prepared here. Tell the user that the next part needs a new conversation and name the workflow slug to ask for there. Do not retry.",
   input_schema_violation:
     "the preview input did not match the workflow's input_schema. Read input_schema from this error (or from inspect_workflow_draft), supply every required field with its declared type and no other fields, then retry dry_run_workflow once. Never invent identifiers the user did not give; ask for them instead.",
+  workflow_archived:
+    "this workflow is archived, so nothing ran. Look for its current replacement with find_workflow and run that one; do not restore the archived workflow unless the user asks.",
   structured_input_required:
     "the workflow needs array or object input that a person cannot type into a form. Never ask the user for it and never show raw JSON. Supply the data in run_workflow input, or pass input_file from the tool that produced it (for example export_diagnostic_context), then retry run_workflow once.",
   input_file_unavailable:

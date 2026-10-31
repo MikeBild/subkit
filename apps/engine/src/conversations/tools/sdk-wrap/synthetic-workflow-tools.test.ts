@@ -308,6 +308,47 @@ describe("buildSyntheticWorkflowTools — execute happy path", () => {
     expect((result as { ok: boolean }).ok).toBe(true);
   });
 
+  test("a workflow without required input runs from empty arguments and hides personal links from the model", async () => {
+    const link = `https://support.example/portal#access=${"a".repeat(43)}`;
+    const seeded = await seedTool("no-input-link-test");
+    await tdb.db
+      .update(workflowVersions)
+      .set({
+        dag: {
+          name: "no-input-link-test",
+          slug: "no-input-link-test",
+          input_schema: { type: "object", additionalProperties: false, properties: {} },
+          steps: [
+            {
+              id: "s1",
+              kind: "transform",
+              language: "javascript",
+              expression: `return { url: ${JSON.stringify(link)}, expires_at: "2099-01-01T00:00:00.000Z" };`,
+            },
+          ],
+        },
+      })
+      .where(eq(workflowVersions.workflow_id, seeded.id));
+    const events: TurnEvent[] = [];
+    const tools = await buildSyntheticWorkflowTools({
+      db: tdb.db,
+      principal: makePrincipal(),
+      ctx: makeCtx(),
+      signals: makeTurnSignals(),
+      events,
+    });
+
+    const result = (await tools["wf_no-input-link-test"]!.execute!(
+      {},
+      { toolCallId: "test-call-id", messages: [], context: {} },
+    )) as { ok: boolean; data: Record<string, unknown> };
+
+    expect(result.ok).toBe(true);
+    expect(JSON.stringify(result.data)).not.toContain("#access=");
+    const streamed = events.find((event) => event.type === "tool_result");
+    expect(JSON.stringify(streamed)).toContain("#access=");
+  });
+
   test("execute emits tool_call_start and tool_result events", async () => {
     await seedTool("event-test");
     const events: TurnEvent[] = [];

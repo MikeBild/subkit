@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, ne } from "drizzle-orm";
 import { compareCategoryCounts } from "../../api/catalog-metadata.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
@@ -63,7 +63,13 @@ export async function loadVisibleCatalog(
         category: workflows.category,
       })
       .from(workflows)
-      .where(and(eq(workflows.tenant_id, principal.tenant_id), isNull(workflows.deleted_at)))
+      .where(
+        and(
+          eq(workflows.tenant_id, principal.tenant_id),
+          isNull(workflows.deleted_at),
+          ne(workflows.lifecycle, "archived"),
+        ),
+      )
       .orderBy(asc(workflows.slug)),
     db
       .select({
