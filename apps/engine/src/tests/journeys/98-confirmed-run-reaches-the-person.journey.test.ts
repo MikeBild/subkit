@@ -135,7 +135,7 @@ describe("journey 98: an ordinary request reaches a saved workflow and its resul
         .filter((call) => call.tool === "run_workflow")
         .at(0);
       expect(refused?.outcome).not.toBe("ok");
-      expect(JSON.stringify(refused?.output)).toContain("this workflow is archived");
+      expect(JSON.stringify(refused?.output)).toContain("workflow_archived");
     },
     JOURNEY_HOOK_TIMEOUT,
   );

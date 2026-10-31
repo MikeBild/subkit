@@ -148,6 +148,7 @@ import {
   pendingApprovalSubject,
   recordedDecisionKey,
   waitsForPerson,
+  withWorkflowName,
 } from "./chat-approval";
 import { ChatApprovalCard } from "./chat-approval-card";
 import {
@@ -1107,7 +1108,7 @@ function ChatMessage({
             return (
               <ChatApprovalCard
                 key={`${message.id}-approval-${partIndex}`}
-                approval={approval}
+                approval={withWorkflowName(approval, workflowNameFor)}
                 conversationId={conversationId}
                 busy={approvalBusy}
                 error={approvalError}

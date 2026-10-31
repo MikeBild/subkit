@@ -12,6 +12,7 @@ export interface ChatApproval {
   oauth?: "start" | "complete";
   singleRun?: boolean;
   workflowName?: string;
+  workflowSlug?: string;
   authorizationUrl?: string;
   externalTool?: { connector: string; tool: string; server_claim?: string };
   connectorCall?: { connector: string; method: string; target: string | null };
@@ -24,6 +25,14 @@ function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+export function withWorkflowName(
+  approval: ChatApproval,
+  nameFor: (slug: string) => string | null,
+): ChatApproval {
+  const name = approval.workflowSlug ? nameFor(approval.workflowSlug) : null;
+  return name ? { ...approval, workflowName: name } : approval;
 }
 
 export function chatApproval(detail: ConversationDetail | undefined): ChatApproval | null {
@@ -60,7 +69,13 @@ export function chatApproval(detail: ConversationDetail | undefined): ChatApprov
     savesInactiveWorkflow: intent.kind === "save_workflow_draft",
     expiresAt: pending.expires_at,
     ...(intent.kind === "commit_held_workflow_writes" || intent.kind === "run_workflow"
-      ? { singleRun: true, workflowName: detail?.resume_summary?.active_target?.name ?? undefined }
+      ? {
+          singleRun: true,
+          workflowName: detail?.resume_summary?.active_target?.name ?? undefined,
+          ...(typeof record(call.input).workflow === "string"
+            ? { workflowSlug: record(call.input).workflow as string }
+            : {}),
+        }
       : {}),
     ...(call.tool === "authenticate_oauth"
       ? {

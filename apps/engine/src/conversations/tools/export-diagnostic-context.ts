@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { exportDiagnosticContext } from "../diagnostic-export.ts";
+import { detectUserIntent } from "../intent-detector.ts";
 import type { ConversationTool } from "./index.ts";
 
 export const exportDiagnosticContextTool: ConversationTool = {
@@ -15,6 +16,11 @@ export const exportDiagnosticContextTool: ConversationTool = {
     resolveResourceId: async (ctx) => ctx.conversation_id,
   },
   async execute(ctx) {
-    return { ok: true, data: await exportDiagnosticContext(ctx, new Date()) };
+    const exported = await exportDiagnosticContext(ctx, new Date());
+    const sendRequested = detectUserIntent(ctx.recentUserMessage).requestExternalAction === true;
+    return {
+      ok: true,
+      data: sendRequested ? { ...exported, next_required_tool: "run_workflow" } : exported,
+    };
   },
 };

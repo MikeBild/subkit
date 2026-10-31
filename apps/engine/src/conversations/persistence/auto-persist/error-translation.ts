@@ -13,6 +13,13 @@ export function translateAutoPersistError(
       ? ((err as { detail: string }).detail as string)
       : null;
   const lower = msg.toLowerCase();
+  if (code === "workflow_archived") {
+    return {
+      error_code: code,
+      message: `${msg}. Nothing ran. Look for the current replacement with find_workflow.`,
+      next_best_actions: ["find_workflow"],
+    };
+  }
   if (code === "23505" || /unique constraint|duplicate key|already exists/i.test(lower)) {
     const isConnector =
       intentKind === "save_connector_draft" ||

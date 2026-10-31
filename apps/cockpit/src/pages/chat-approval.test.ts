@@ -3,12 +3,14 @@ import type { ConversationDetail } from "@/api/client";
 import { type TranslationKey, translate } from "@/lib/i18n";
 import {
   approvalLine,
+  type ChatApproval,
   chatApproval,
   conversationRefreshInterval,
   OPEN_QUESTION_REFRESH_MS,
   pendingApprovalSubject,
   recordedDecisionKey,
   waitsForPerson,
+  withWorkflowName,
 } from "./chat-approval";
 
 function fixture(tool = "ask_user_confirm", callId: string | null = "call-1") {
@@ -295,4 +297,12 @@ test("an open approval in the context panel reads in the viewer's language, not 
     null,
   );
   expect(approvalLine(gated, de, same)).toBe(translate("de", "chat.decision.gatedAction"));
+});
+
+test("the card names the requested workflow, not the conversation target", () => {
+  const approval = { workflowName: "Anderer Ablauf", workflowSlug: "support-send" } as ChatApproval;
+  expect(withWorkflowName(approval, () => "Support-Anfrage senden").workflowName).toBe(
+    "Support-Anfrage senden",
+  );
+  expect(withWorkflowName(approval, () => null).workflowName).toBe("Anderer Ablauf");
 });

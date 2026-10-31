@@ -30,6 +30,12 @@ function record(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+export function declaredContinuation(output: unknown): string | null {
+  const envelope = record(output);
+  const next = record(envelope?.data)?.next_required_tool ?? envelope?.next_required_tool;
+  return typeof next === "string" ? next : null;
+}
+
 export function refusalRemedies(output: unknown): string[] | null {
   const envelope = record(output);
   if (!envelope) return null;

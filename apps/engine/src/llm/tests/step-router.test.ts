@@ -909,3 +909,33 @@ describe("prepareStep — permitted remedy continuation", () => {
     expect(decision?.system).toContain("dry_run_workflow");
   });
 });
+
+describe("prepareStep: a finished tool can declare its next step", () => {
+  const paletteToolNames = Object.keys(TOOLS);
+  const finished = (next?: string) => [
+    {
+      toolResults: [
+        {
+          toolName: "export_diagnostic_context",
+          output: { ok: true, data: { bytes: 1, ...(next ? { next_required_tool: next } : {}) } },
+        },
+      ],
+    },
+  ];
+
+  it("requires the declared tool in the next step", () => {
+    const decision = prepareStep(baseParams({ steps: finished("run_workflow"), paletteToolNames }));
+    expect(decision?.toolChoice).toBe("required");
+    expect(decision?.activeTools).toContain("run_workflow");
+    expect(decision?.system).toContain("declares the next step: run_workflow");
+  });
+
+  it("leaves the step open without a declaration or outside the palette", () => {
+    expect(prepareStep(baseParams({ steps: finished(), paletteToolNames }))?.toolChoice).not.toBe(
+      "required",
+    );
+    expect(
+      prepareStep(baseParams({ steps: finished("unknown_tool"), paletteToolNames }))?.toolChoice,
+    ).not.toBe("required");
+  });
+});

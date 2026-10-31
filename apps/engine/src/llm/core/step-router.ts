@@ -7,6 +7,7 @@ import { logger } from "../../logging/logger.ts";
 import { vendorModelId } from "../pricing.ts";
 import type { LlmProviderKind } from "../types.ts";
 import {
+  declaredContinuation,
   isQuestionTool,
   pendingPermittedRemedy,
   type RemedyToolResult,
@@ -363,7 +364,8 @@ export function prepareStep(params: StepRouterParams): StepDecision | undefined 
     );
   }
 
-  const remedy = permittedRemedyForStep(params);
+  const continuation = declaredContinuationForStep(params);
+  const remedy = continuation.length > 0 ? continuation : permittedRemedyForStep(params);
   let remedyTools: string[] | undefined;
   if (remedy.length > 0 && systemNudge === undefined) {
     const thinking = resolveThinking({
@@ -377,7 +379,10 @@ export function prepareStep(params: StepRouterParams): StepDecision | undefined 
         isQuestionTool(name) ||
         toolsByName[name]?.category === "tenant_read",
     );
-    systemNudge = `The last refused tool call named a permitted next step: ${remedy.join(", ")}. The user's instructions allow it and it activates nothing. Take that step now, or ask exactly one business question with options and a recommendation. Do not end the turn on the refusal.`;
+    systemNudge =
+      continuation.length > 0
+        ? `The previous tool finished and declares the next step: ${remedy.join(", ")}. Take it now with the reference that tool returned.`
+        : `The last refused tool call named a permitted next step: ${remedy.join(", ")}. The user's instructions allow it and it activates nothing. Take that step now, or ask exactly one business question with options and a recommendation. Do not end the turn on the refusal.`;
     reasonParts.push(
       thinking.suppressedByForcedTool
         ? "permitted_remedy_continue_nudge_only"
@@ -412,6 +417,14 @@ function stepToolResults(step: unknown): RemedyToolResult[] {
           : [],
       )
     : [];
+}
+
+function declaredContinuationForStep(params: StepRouterParams): string[] {
+  const palette = new Set(params.paletteToolNames ?? []);
+  return stepToolResults(params.steps[params.steps.length - 1]).flatMap((result) => {
+    const next = declaredContinuation(result.output);
+    return next && palette.has(next) ? [next] : [];
+  });
 }
 
 function permittedRemedyForStep(params: StepRouterParams): string[] {
