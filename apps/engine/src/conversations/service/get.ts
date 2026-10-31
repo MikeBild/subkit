@@ -21,6 +21,7 @@ import type {
   ConversationToolCallRecord,
   DraftDocument,
 } from "../types.ts";
+import { pairConfirmedRunResults } from "./confirmed-run-result.ts";
 import { loadOwners, rowToRecord } from "./shared.ts";
 
 function stripContentSentinels(content: unknown): unknown {
@@ -150,6 +151,10 @@ export async function getConversation(
         : [],
     ),
   );
+  const confirmedRuns = pairConfirmedRunResults(
+    calls,
+    (id) => confirmations.get(id)?.accepted === true,
+  );
   const transcriptMessages = [
     ...msgs,
     ...textAnswers.flatMap((answer) => {
@@ -249,11 +254,12 @@ export async function getConversation(
         conversation_id: c.conversation_id,
         tool: c.tool,
         input: historySafeToolPayload(c.tool, c.input),
-        output:
-          closedForms.has(c.id) &&
-          (c.tool === "ask_user_form" ||
-            ((c.outcome === "pending" || c.outcome === null) &&
-              closedForms.get(c.id)?.status !== "resolved"))
+        output: confirmedRuns.has(c.id)
+          ? confirmedRuns.get(c.id)?.output
+          : closedForms.has(c.id) &&
+              (c.tool === "ask_user_form" ||
+                ((c.outcome === "pending" || c.outcome === null) &&
+                  closedForms.get(c.id)?.status !== "resolved"))
             ? { status: closedForms.get(c.id)?.status, elicitation_id: closedForms.get(c.id)?.id }
             : (c.tool === "ask_user_text" || c.tool === "ask_user_choice") &&
                 answeredTextCalls.has(c.id)
@@ -279,11 +285,12 @@ export async function getConversation(
         parent_message_id: c.parent_message_id,
         confirmation_state: c.confirmation_state,
         approved_at: c.approved_at ? c.approved_at.toISOString() : null,
-        outcome:
-          closedForms.has(c.id) &&
-          (c.tool === "ask_user_form" ||
-            ((c.outcome === "pending" || c.outcome === null) &&
-              closedForms.get(c.id)?.status !== "resolved"))
+        outcome: confirmedRuns.has(c.id)
+          ? (confirmedRuns.get(c.id)?.outcome as ConversationToolCallRecord["outcome"])
+          : closedForms.has(c.id) &&
+              (c.tool === "ask_user_form" ||
+                ((c.outcome === "pending" || c.outcome === null) &&
+                  closedForms.get(c.id)?.status !== "resolved"))
             ? closedForms.get(c.id)?.status === "resolved"
               ? "ok"
               : "denied"

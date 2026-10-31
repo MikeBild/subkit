@@ -9,6 +9,7 @@ import {
   toolOutcomeKey,
   toolTier,
   workflowRefusalKey,
+  workflowResultLink,
   workflowRunKind,
   workflowRunTitleKey,
   workflowSlugFromTool,
@@ -320,6 +321,16 @@ describe("what a workflow call really was", () => {
     );
     expect(workflowRefusalKey({ ok: false, data: { error_code: "run_failed" } })).toBeNull();
     expect(workflowRefusalKey(undefined)).toBeNull();
+    const output = { url: "https://support.example/portal", expires_at: "2026-11-01T10:00:00Z" };
+    expect(workflowResultLink({ ok: true, data: { output } })).toEqual({
+      url: output.url,
+      expiresAt: output.expires_at,
+    });
+    expect(
+      workflowResultLink({ ok: true, data: { output: { ...output, url: "javascript:alert(1)" } } }),
+    ).toBeNull();
+    expect(workflowResultLink({ ok: true, data: { output: { url: output.url } } })).toBeNull();
+    expect(workflowResultLink({ status: "resolved" })).toBeNull();
   });
 
   test("every reason word exists in both catalogs", () => {

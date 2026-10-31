@@ -23,6 +23,9 @@ const RUN_WORKFLOW_PATTERNS = [
 const EXTERNAL_ACTION_PATTERN =
   /\b(?:sende|schicke|übermittle|übertrage|melde|send|submit)\b.{0,120}\b(?:problem|fehler|anfrage|bericht|report|ticket|daten|informationen|das|dieses|this)\b.{0,80}\b(?:an|to|via|über)\b/i;
 
+const REPORT_PROBLEM_PATTERN =
+  /\b(?:melde|report)\b.{0,60}\b(?:problem|fehler|störung|bug|issue|error)\b(?!\s+(?:nicht|niemals|not|never)\b)|(?<!\bkein(?:e|en)?\s)\b(?:problem|fehler|störung|bug|issue)\b.{0,40}\bmelden\b/i;
+
 const EXTERNAL_READ_PATTERN =
   /\b(?:wie\s+steht|status(?:\s+von)?|stand\s+(?:meiner|meines|der|des)|what\s+is\s+the\s+status|check\s+(?:the\s+)?status|show\s+(?:the\s+)?status)\b.{0,120}\b(?:anfrage|ticket|fall|vorgang|auftrag|bestellung|case|report|request|order)\b/i;
 
@@ -175,7 +178,7 @@ export function detectUserIntent(
     }
   }
   const remaining = detectRemainingIntent(text, authoringSignal, coverage);
-  const externalAction = EXTERNAL_ACTION_PATTERN.exec(text);
+  const externalAction = EXTERNAL_ACTION_PATTERN.exec(text) ?? REPORT_PROBLEM_PATTERN.exec(text);
   if (
     externalAction &&
     !/\b(?:nicht|niemals|keinesfalls|kein(?:e|en|em|er|es)?)\b/i.test(externalAction[0])

@@ -941,6 +941,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
     syntheticWorkflowSlugs,
   );
   if (readTool && detectedIntent.requestExternalRead === true) tools.run_workflow = readTool;
+  ctx.availableToolNames = new Set(Object.keys(tools));
   if (removedExecutionTools > 0) {
     logger.debug({
       module: "conversation",

@@ -295,6 +295,17 @@ const REFUSAL_WORDS: Record<string, TranslationKey> = {
   execution_authority_changed: "tool.refusal.approval",
 };
 
+export type WorkflowResultLink = { url: string; expiresAt: string };
+
+export function workflowResultLink(output: unknown): WorkflowResultLink | null {
+  const result = runPayload(output)?.output;
+  if (result === null || typeof result !== "object" || Array.isArray(result)) return null;
+  const { url, expires_at: expiresAt } = result as Record<string, unknown>;
+  if (typeof url !== "string" || !url.startsWith("https://")) return null;
+  if (typeof expiresAt !== "string" || Number.isNaN(Date.parse(expiresAt))) return null;
+  return { url, expiresAt };
+}
+
 export function workflowRefusalKey(output: unknown): TranslationKey | null {
   const payload = runPayload(output);
   if (!payload) return null;

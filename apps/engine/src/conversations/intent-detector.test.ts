@@ -86,6 +86,23 @@ describe("detectUserIntent", () => {
       detectUserIntent("Bitte sende dieses Problem nicht an den Dienst.").requestExternalAction,
     ).toBeUndefined();
   });
+  test("reporting a problem exposes the saved operation without naming a recipient", () => {
+    for (const message of [
+      "Ich möchte ein Problem melden. Titel: Kein Versand",
+      "Melde ein Problem",
+      "Melde bitte dem Support ein Problem mit Diagnose.",
+      "Report this problem to support",
+    ]) {
+      expect(detectUserIntent(message).requestExternalAction).toBe(true);
+    }
+    for (const message of [
+      "Melde dieses Problem nicht.",
+      "Dieses Problem nicht melden.",
+      "Ich will kein Problem melden.",
+    ]) {
+      expect(detectUserIntent(message).requestExternalAction).toBeUndefined();
+    }
+  });
   test("a case status question exposes a saved read operation without requesting a send", () => {
     const status = detectUserIntent("Wie steht meine Anfrage Nummer 5?");
     expect(status.requestExternalRead).toBe(true);

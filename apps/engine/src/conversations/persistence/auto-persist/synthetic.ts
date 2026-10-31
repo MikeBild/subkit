@@ -4,6 +4,7 @@ import { conversationToolCalls } from "../../../db/schema/index.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
 import { COMMIT_INTENT_KINDS, type CommitIntent } from "../../tools/ask-user/commit-intent.ts";
 import { interpretConfirmDecision } from "../../tools/ask-user/interpret-confirm.ts";
+import { hideCapabilityLinks } from "../../tools/capability-link.ts";
 import type { ToolResult } from "../../tools/index.ts";
 
 export interface SyntheticToolResult {
@@ -203,7 +204,7 @@ export async function injectSyntheticToolCall(p: {
     );
   await appendMessage(p.db, p.tenant_id, p.conversation_id, "tool", {
     tool: p.synthetic.tool,
-    output: p.synthetic,
+    output: hideCapabilityLinks(p.synthetic),
     _harness_auto_persist: true,
   });
   return callId;

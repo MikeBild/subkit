@@ -116,6 +116,7 @@ import {
   useMessageScroller,
 } from "@/components/cockpit/patterns";
 import { queryView } from "@/components/failure-state";
+import { buttonVariants } from "@/components/ui/button";
 import { formatDateTime, formatRelativeTime, LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { nameIdentifiers, type ResolvedIdentifier } from "@/lib/identifiers";
@@ -129,8 +130,10 @@ import {
   isWorkflowRunTool,
   toolLabel,
   toolOutcomeKey,
+  type WorkflowResultLink,
   type WorkflowRunKind,
   workflowRefusalKey,
+  workflowResultLink,
   workflowRunKind,
   workflowRunTitleKey,
 } from "@/lib/tool-presentation";
@@ -905,6 +908,32 @@ function UsagePills({
   );
 }
 
+function ResultLink({ link, testId }: { link: WorkflowResultLink; testId: string }) {
+  const { t, locale } = useI18n();
+  if (Date.parse(link.expiresAt) <= Date.now()) {
+    return (
+      <p className="text-sm text-muted-foreground" data-testid={testId}>
+        {t("chat.resultLink.expired")}
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-3" data-testid={testId}>
+      <a
+        className={buttonVariants({ variant: "default", size: "sm" })}
+        href={link.url}
+        rel="noopener noreferrer"
+        target="_blank"
+      >
+        {t("chat.resultLink.open")}
+      </a>
+      <span className="text-sm text-muted-foreground">
+        {t("chat.resultLink.validUntil", { time: formatDateTime(locale, link.expiresAt) })}
+      </span>
+    </div>
+  );
+}
+
 function ChatMessage({
   conversationId,
   message,
@@ -1234,85 +1263,96 @@ function ChatMessage({
                 </p>
               </div>
             );
+          const resultLink =
+            tool.type === "dynamic-tool" && verdict.outcome === "ok"
+              ? workflowResultLink(tool.output)
+              : null;
           return (
-            <Tool
-              key={`${message.id}-tool-${partIndex}`}
-              defaultOpen={false}
-              data-testid={`chat-message-${messageIndex}-tool-${partIndex}`}
-            >
-              {tool.type === "dynamic-tool" ? (
-                <ToolHeader
-                  type={tool.type}
-                  state={tool.state}
-                  toolName={tool.toolName}
-                  title={actionLabel(
-                    t,
-                    tool.toolName,
-                    notRun,
-                    workflowNameFor,
-                    runKind,
-                    stale,
-                    tool.output,
-                  )}
-                  outcomeKey={headerOutcomeKey}
-                  data-testid={`chat-message-${messageIndex}-tool-${partIndex}-toggle`}
-                />
-              ) : (
-                <ToolHeader
-                  type={tool.type}
-                  state={tool.state}
-                  title={actionLabel(
-                    t,
-                    tool.type.replace(/^tool-/, ""),
-                    notRun,
-                    workflowNameFor,
-                    runKind,
-                    stale,
-                    tool.output,
-                  )}
-                  outcomeKey={headerOutcomeKey}
-                  data-testid={`chat-message-${messageIndex}-tool-${partIndex}-toggle`}
-                />
-              )}
-              <ToolContent>
-                {stale && (
-                  <p
-                    className="text-muted-foreground text-sm"
-                    data-testid={`chat-message-${messageIndex}-tool-${partIndex}-stale`}
-                  >
-                    {t("tool.stale.description")}
-                  </p>
-                )}
-                <ToolInput input={tool.input} />
-                {candidateId && (
-                  <PatchProposalDiff
-                    candidateId={candidateId}
-                    testId={`chat-message-${messageIndex}-tool-${partIndex}-diff`}
+            <Fragment key={`${message.id}-tool-${partIndex}`}>
+              <Tool
+                defaultOpen={false}
+                data-testid={`chat-message-${messageIndex}-tool-${partIndex}`}
+              >
+                {tool.type === "dynamic-tool" ? (
+                  <ToolHeader
+                    type={tool.type}
+                    state={tool.state}
+                    toolName={tool.toolName}
+                    title={actionLabel(
+                      t,
+                      tool.toolName,
+                      notRun,
+                      workflowNameFor,
+                      runKind,
+                      stale,
+                      tool.output,
+                    )}
+                    outcomeKey={headerOutcomeKey}
+                    data-testid={`chat-message-${messageIndex}-tool-${partIndex}-toggle`}
+                  />
+                ) : (
+                  <ToolHeader
+                    type={tool.type}
+                    state={tool.state}
+                    title={actionLabel(
+                      t,
+                      tool.type.replace(/^tool-/, ""),
+                      notRun,
+                      workflowNameFor,
+                      runKind,
+                      stale,
+                      tool.output,
+                    )}
+                    outcomeKey={headerOutcomeKey}
+                    data-testid={`chat-message-${messageIndex}-tool-${partIndex}-toggle`}
                   />
                 )}
-                <Confirmation approval={tool.approval} state={tool.state}>
-                  <ConfirmationRequest>
-                    <ConfirmationTitle>{t("chat.approval.review")}</ConfirmationTitle>
-                    <ConfirmationActions>
-                      <ConfirmationAction
-                        variant="outline"
-                        data-testid={`chat-message-${messageIndex}-tool-${partIndex}-decline`}
-                        onClick={() => onDecision(tool.toolCallId, false)}
-                      >
-                        {t("chat.approval.decline")}
-                      </ConfirmationAction>
-                      <ConfirmationAction
-                        data-testid={`chat-message-${messageIndex}-tool-${partIndex}-approve`}
-                        onClick={() => onDecision(tool.toolCallId, true)}
-                      >
-                        {t("chat.approval.approve")}
-                      </ConfirmationAction>
-                    </ConfirmationActions>
-                  </ConfirmationRequest>
-                </Confirmation>
-                <ToolOutput output={tool.output} errorText={tool.errorText} />
-              </ToolContent>
-            </Tool>
+                <ToolContent>
+                  {stale && (
+                    <p
+                      className="text-muted-foreground text-sm"
+                      data-testid={`chat-message-${messageIndex}-tool-${partIndex}-stale`}
+                    >
+                      {t("tool.stale.description")}
+                    </p>
+                  )}
+                  <ToolInput input={tool.input} />
+                  {candidateId && (
+                    <PatchProposalDiff
+                      candidateId={candidateId}
+                      testId={`chat-message-${messageIndex}-tool-${partIndex}-diff`}
+                    />
+                  )}
+                  <Confirmation approval={tool.approval} state={tool.state}>
+                    <ConfirmationRequest>
+                      <ConfirmationTitle>{t("chat.approval.review")}</ConfirmationTitle>
+                      <ConfirmationActions>
+                        <ConfirmationAction
+                          variant="outline"
+                          data-testid={`chat-message-${messageIndex}-tool-${partIndex}-decline`}
+                          onClick={() => onDecision(tool.toolCallId, false)}
+                        >
+                          {t("chat.approval.decline")}
+                        </ConfirmationAction>
+                        <ConfirmationAction
+                          data-testid={`chat-message-${messageIndex}-tool-${partIndex}-approve`}
+                          onClick={() => onDecision(tool.toolCallId, true)}
+                        >
+                          {t("chat.approval.approve")}
+                        </ConfirmationAction>
+                      </ConfirmationActions>
+                    </ConfirmationRequest>
+                  </Confirmation>
+                  <ToolOutput output={tool.output} errorText={tool.errorText} />
+                </ToolContent>
+              </Tool>
+              {resultLink ? (
+                <ResultLink
+                  link={resultLink}
+                  testId={`chat-message-${messageIndex}-tool-${partIndex}-link`}
+                />
+              ) : null}
+            </Fragment>
           );
         })}
         {from === "assistant" && (
