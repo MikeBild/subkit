@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  declinesSaving,
   detectEnvelopeResolution,
   detectMultiArtifactIntent,
   detectsAuthoringRequest,
@@ -102,6 +103,20 @@ describe("detectUserIntent", () => {
       "Ich will kein Problem melden.",
     ]) {
       expect(detectUserIntent(message).requestExternalAction).toBeUndefined();
+    }
+  });
+  test("a request not to save is recognised", () => {
+    for (const message of [
+      "Prüfe ihn mit einer Vorschau, speichere ihn aber nicht.",
+      "Nur testen, nicht speichern.",
+      "Bitte noch nicht speichern",
+      "Führe die Vorschau aus, ohne zu speichern.",
+      "Preview it but do not save.",
+    ]) {
+      expect(declinesSaving(message)).toBe(true);
+    }
+    for (const message of ["Speichere den Workflow.", "Save it now", null]) {
+      expect(declinesSaving(message)).toBe(false);
     }
   });
   test("authoring requests are told apart from ordinary requests", () => {

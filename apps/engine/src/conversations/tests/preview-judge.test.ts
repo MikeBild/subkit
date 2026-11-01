@@ -230,6 +230,26 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect(getMockProvider().calls.filter((c) => c.flow === "judge").length).toBe(0);
   });
 
+  test("a request not to save keeps a green auto-mode preview unsaved", async () => {
+    getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
+    const toolCtx = makeCtx(wrongContentDraft("judge-do-not-save", null), {
+      permission_mode: "auto",
+    });
+    toolCtx.recentUserMessage = "Prüfe ihn mit einer Vorschau, speichere ihn aber nicht.";
+
+    const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
+
+    expect(result.ok).toBe(true);
+    const data = result.data as JudgeEnvelope & {
+      next_best_actions?: string[];
+      save_required?: boolean;
+    };
+    expect(data.auto_committed).toBe(false);
+    expect(data.save_required).not.toBe(true);
+    expect(data.next_best_actions).toEqual([]);
+    expect(result.committed_workflow_id).toBeUndefined();
+  });
+
   test('UNATTENDED (permission_mode "auto"): green + no-goal preview AUTO-COMMITS', async () => {
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
     const toolCtx = makeCtx(wrongContentDraft("judge-unattended-auto", null), {

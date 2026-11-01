@@ -36,6 +36,19 @@ const NEGATED_RUN_PATTERNS = [
   /\b(?:do\s+not|don't|never|must\s+not)\b.{0,32}\b(?:run|execute|dispatch|trigger|start)\b/i,
 ];
 
+const NEGATED_SAVE_PATTERNS = [
+  /\b(?:nicht|niemals|keinesfalls)\s+(?:\w+\s+)?speichern\b/i,
+  /\bspeicher\w*\b.{0,40}\b(?:nicht|niemals|keinesfalls)\b/i,
+  /\bohne\s+(?:\w+\s+)?(?:zu\s+)?speichern\b/i,
+  /\b(?:do\s+not|don't|never|must\s+not)\s+save\b/i,
+  /\bwithout\s+saving\b/i,
+];
+
+export function declinesSaving(latestUserText: string | null | undefined): boolean {
+  const text = latestUserText?.trim();
+  return Boolean(text) && NEGATED_SAVE_PATTERNS.some((pattern) => pattern.test(text as string));
+}
+
 const NEGATED_PREVIEW_PATTERNS = [
   /\b(?:keinen?|kein)\s+(?:test|probe|trocken)[-\s]?(?:lauf|run|durchlauf)\b/i,
   /\b(?:keinen?|kein)\s+(?:dry[-\s]?run|testlauf|probelauf)\b/i,

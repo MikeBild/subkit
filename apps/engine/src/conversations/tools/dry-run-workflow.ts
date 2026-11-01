@@ -24,6 +24,7 @@ import type { StepDef, WorkflowDef } from "../../workflows/types.ts";
 import { draftGoal } from "../authoring-spec.ts";
 import { getWorkflowDraft, withJudgeBreaker, withLatestPreview } from "../authoring-state.ts";
 import { proposeDryRunRepairs, workflowOutputSite } from "../dry-run-repair.ts";
+import { declinesSaving } from "../intent-detector.ts";
 import { commitWorkflowAtomic } from "../persistence/commit-workflow.ts";
 import {
   attemptPreviewAutoRepair,
@@ -799,7 +800,8 @@ export const dryRunWorkflowTool: ConversationTool = {
         : null;
 
     const judgeSkipped = judgeOutcome?.verdict === "skipped";
-    const autoCommitAllowed = ctx.permission_mode === "auto";
+    const saveDeclined = declinesSaving(ctx.recentUserMessage);
+    const autoCommitAllowed = ctx.permission_mode === "auto" && !saveDeclined;
     const wouldReplacePersisted = replacesPersistedWorkflow(ctx.getDraft().summary);
     const autoUnjudgedCommit = autoCommitAllowed && !wouldReplacePersisted;
     const cleanPreview =
@@ -807,33 +809,38 @@ export const dryRunWorkflowTool: ConversationTool = {
     const greenPendingSave = dryRunGreen && !judgeBlocked && !cleanPreview;
     const judgeExhausted = judgeBlocked && judgeDoneSignal != null;
     const previewNextActions =
-      cleanPreview || greenPendingSave
-        ? ["save_workflow_draft"]
-        : judgeEscalate
+      saveDeclined && dryRunGreen
+        ? []
+        : cleanPreview || greenPendingSave
           ? ["save_workflow_draft"]
-          : judgeExhausted
-            ? ["save_workflow_draft", "edit_workflow_patch"]
-            : judgeBlocked
-              ? ["edit_workflow_patch", "inspect_workflow_draft", "dry_run_workflow"]
-              : dryRunRequiresRepair
-                ? ["diagnose_latest_execution", "edit_workflow_patch", "inspect_workflow_draft"]
-                : ["inspect_workflow_draft", "edit_workflow_patch"];
-    const previewNextPrompt = cleanPreview
-      ? "Committing the workflow"
-      : greenPendingSave
-        ? judgeSkipped
-          ? wouldReplacePersisted
-            ? "Preview is green, but no goal was set, so nothing judged it against one — and committing would REPLACE an existing persisted workflow. Not auto-committed. Tell the user which workflow would be replaced and let them decide, then call save_workflow_draft."
-            : "Preview is green — call save_workflow_draft to persist it (the preview was not judged, so it is not auto-committed)"
-          : "Preview is green and judged. Call save_workflow_draft so the normal human approval gate decides whether to persist it."
-        : judgeExhausted
-          ? (judgeDoneSignal?.guidance ??
-            "The preview still does not satisfy the goal and was NOT committed — tell the user what is missing and ask how to proceed, or commit as-is via save_workflow_draft")
-          : judgeBlocked
-            ? "Revise the workflow so the preview satisfies the goal (edit_workflow_patch), then re-run dry_run_workflow"
-            : dryRunRequiresRepair
-              ? "Open diagnosis to see why the preview needs repair"
-              : `Re-run preview after fixing step \`${stoppedForDraft}\``;
+          : judgeEscalate
+            ? ["save_workflow_draft"]
+            : judgeExhausted
+              ? ["save_workflow_draft", "edit_workflow_patch"]
+              : judgeBlocked
+                ? ["edit_workflow_patch", "inspect_workflow_draft", "dry_run_workflow"]
+                : dryRunRequiresRepair
+                  ? ["diagnose_latest_execution", "edit_workflow_patch", "inspect_workflow_draft"]
+                  : ["inspect_workflow_draft", "edit_workflow_patch"];
+    const previewNextPrompt =
+      saveDeclined && dryRunGreen
+        ? "Preview is green. The user asked not to save, so stop here and report the result."
+        : cleanPreview
+          ? "Committing the workflow"
+          : greenPendingSave
+            ? judgeSkipped
+              ? wouldReplacePersisted
+                ? "Preview is green, but no goal was set, so nothing judged it against one — and committing would REPLACE an existing persisted workflow. Not auto-committed. Tell the user which workflow would be replaced and let them decide, then call save_workflow_draft."
+                : "Preview is green — call save_workflow_draft to persist it (the preview was not judged, so it is not auto-committed)"
+              : "Preview is green and judged. Call save_workflow_draft so the normal human approval gate decides whether to persist it."
+            : judgeExhausted
+              ? (judgeDoneSignal?.guidance ??
+                "The preview still does not satisfy the goal and was NOT committed — tell the user what is missing and ask how to proceed, or commit as-is via save_workflow_draft")
+              : judgeBlocked
+                ? "Revise the workflow so the preview satisfies the goal (edit_workflow_patch), then re-run dry_run_workflow"
+                : dryRunRequiresRepair
+                  ? "Open diagnosis to see why the preview needs repair"
+                  : `Re-run preview after fixing step \`${stoppedForDraft}\``;
     const warningSummary = runWarnings.length > 0 ? (warningsBanner?.summary ?? null) : null;
 
     if (cleanPreview) {
@@ -943,7 +950,7 @@ export const dryRunWorkflowTool: ConversationTool = {
         ok: true,
         data: {
           auto_committed: false,
-          save_required: true,
+          save_required: !saveDeclined,
           next_best_actions: previewNextActions,
           next_prompt: previewNextPrompt,
           ...(judgeOutcome ? { judge: judgeOutcome } : {}),

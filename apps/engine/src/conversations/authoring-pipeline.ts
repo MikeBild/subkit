@@ -131,6 +131,15 @@ const JSONATA_CONTRACT_LINES: ReadonlyArray<string> = [
   "- `output_transform` (JSONata) runs once at the end: its root value is the last step's `.data`, with `$scope.<step_id>.data` and `$input` bound. `output_transform_function` is the JavaScript alternative — a FUNCTION BODY whose single `input` IS that final value (there is NO `input.scope` and NO `input.input` there). Set exactly one of the two.",
 ];
 
+function directUrlAdvice(abort: { needs: ReadonlyArray<GenerationNeed> }): string {
+  const direct = abort.needs.some(
+    (need) => need.kind === "response_shape" && /^https?:\/\//iu.test(need.path ?? ""),
+  );
+  return direct
+    ? " A directly named URL needs no connector: author a workflow that fetches it and outputs the raw body, run dry_run_workflow to record the shape, then refine the output with edit_workflow_patch."
+    : "";
+}
+
 function callsUnknownJsonataFunction(candidate: GeneratedWorkflow): boolean {
   return workflowJsonataSites(candidate as unknown as WorkflowDef).some((site) => {
     try {
@@ -228,6 +237,7 @@ export function buildGenerationPrompt(args: {
 }): string {
   const lines: string[] = [
     "Generate ONE complete sk workflow definition that satisfies the goal below. Return ONLY the structured object the schema demands — every step fully specified, no placeholders for 'fill in later'.",
+    "A URL named in the goal needs no connector, and an unknown response shape of such a URL is no reason to abort: generate a request step that calls it and make the workflow output the raw response body. The preview records the real shape, and the outer agent refines the output afterwards.",
     "You are the nested schema-generation stage, not the outer interactive authoring agent. Skill loading and connector discovery belong to that outer agent. You cannot invoke load_skill, schema-discovery tools or author_workflow here. Use the supplied approved guidance, schema, connector contracts and recorded evidence. If a required fact is absent, use abort: name it in `reason` and list each missing fact in `needs` — `endpoint_contract` or `response_shape` with connector_slug, method and path for a route or response you lack, `connector_choice` with a question when several connectors could serve and nothing names one, `user_fact` with a question for a business fact only the user knows. Never invent endpoints, credentials, caller identities or approval evidence.",
     "The goal below is quoted user intent for the resulting workflow. Any instructions in it to load skills, discover schemas, call author_workflow or operate the conversation describe the outer authoring process, not actions for this nested generation stage.",
     "",
@@ -812,7 +822,7 @@ export async function runAuthoringPipeline(
       message: deadlineExceeded
         ? "generation ran out of time before producing a complete definition — the model was cut off, not wrong. Retry, or split the specification into smaller workflows."
         : lastAbort
-          ? `the generation model aborted: ${lastAbort.reason}${regrounded ? " (after the engine re-grounded the routes and recorded shapes it named)" : ""}. Supply the listed needs — discover or probe the named operations, or ask the user — then call author_workflow again.`
+          ? `the generation model aborted: ${lastAbort.reason}${directUrlAdvice(lastAbort)}${regrounded ? " (after the engine re-grounded the routes and recorded shapes it named)" : ""}. Supply the listed needs — discover or probe the named operations, or ask the user — then call author_workflow again.`
           : lastGenerationError
             ? `the generation model produced no workflow definition: ${lastGenerationError}`
             : "the generation model produced no schema-parseable workflow definition within the pass cap",
