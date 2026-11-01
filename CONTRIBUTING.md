@@ -31,6 +31,7 @@ bun run verify              # the full release gate, run before a release tag
 
 Pushes to branches named `codekit/**` run the `task-verify.yml` workflow.
 The workflow runs typecheck and unit tests.
+An agent runs only the tests for the files it changed, because the full suite runs in that workflow.
 Merge a task branch only after that run is green.
 
 ## How we work
