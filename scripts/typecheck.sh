@@ -7,6 +7,8 @@ root="${TMPDIR:-/tmp}/subkit-typecheck"
 mkdir -p "$root"
 held=""
 
+export NODE_OPTIONS="${NODE_OPTIONS---max-old-space-size=6144}"
+
 release() {
   [ -n "$held" ] && rm -rf "$held"
 }
