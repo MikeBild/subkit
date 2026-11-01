@@ -45,7 +45,7 @@ async function seedSaved(slug: string, steps: Array<Record<string, unknown>>): P
   return wf.id;
 }
 
-async function openConversationFor(workflowId: string) {
+async function openConversationFor(workflowId: string | null) {
   const [conv] = await ctx.testDb.db
     .insert(conversations)
     .values({ tenant_id: ctx.tenant_id, status: "active", target_workflow_id: workflowId })
@@ -189,6 +189,26 @@ describe("author_workflow next to an archived workflow", () => {
       goal: "triage the findings",
       slug: "watchkit-finding-triage",
     });
+    expect(result.ok).toBe(true);
+    expect(draft().workflow?.slug).toBe("watchkit-finding-triage-2");
+    await ctx.testDb.db
+      .update(workflows)
+      .set({ lifecycle: "active" })
+      .where(eq(workflows.slug, "watchkit-finding-triage"));
+  });
+
+  test("a generated slug moves past an archived workflow too", async () => {
+    await ctx.testDb.db
+      .update(workflows)
+      .set({ lifecycle: "archived" })
+      .where(eq(workflows.slug, "watchkit-finding-triage"));
+    const { toolCtx, draft } = await openConversationFor(null);
+    getMockProvider().generateOverrides.generate = () => ({
+      name: "Finding triage",
+      slug: "watchkit-finding-triage",
+      steps: [{ id: "s", kind: "transform", language: "javascript", expression: "return {};" }],
+    });
+    const result = await authorWorkflowTool.execute(toolCtx, { goal: "triage the findings" });
     expect(result.ok).toBe(true);
     expect(draft().workflow?.slug).toBe("watchkit-finding-triage-2");
     await ctx.testDb.db
