@@ -63,10 +63,9 @@ test("inventory step lists packages and license files deterministically", () => 
   );
   chmodSync(query, 0o755);
   const out = join(directory, "inventory.txt");
-  const script = inventoryStep().replaceAll(
-    "/usr/local/share/subkit/BASE_IMAGE_INVENTORY.txt",
-    out,
-  );
+  const script = inventoryStep()
+    .replaceAll("/usr/local/share/subkit/BASE_IMAGE_INVENTORY.txt", out)
+    .replaceAll("/usr/share/doc/", `${join(directory, "doc")}/`);
   const run = spawnSync("sh", ["-c", script], {
     env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
     encoding: "utf8",
