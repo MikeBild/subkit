@@ -15,14 +15,19 @@ bun run start:local         # starts the stack and completes first-run setup wit
 
 ## Before you push
 
-There is no CI. The pre-push hook is the gate: lint, typecheck, determinism, invariants,
+Pushes to `codekit/**` branches run CI typecheck and unit tests; see [Task branches](#task-branches).
+The pre-push hook is the local gate: lint, typecheck, determinism, invariants,
 generated-artifact drift, commit messages, secrets, build. Run the narrowest check while you
 iterate and the full gate before you push.
+
+Before running unit tests, run `bun run compose:up`, or configure `DATABASE_URL` for an
+existing PostgreSQL server with permission to create test databases. The unit command sets
+`SKIP_DOCKER=1`, which does not remove this PostgreSQL dependency.
 
 ```bash
 bun run lint
 bun run typecheck
-bun run test:unit           # no Docker needed
+bun run test:unit           # needs PostgreSQL
 bun run test:integration    # needs Docker
 bun run verify              # the full release gate, run before a release tag
 ```
