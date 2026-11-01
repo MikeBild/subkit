@@ -38,6 +38,7 @@ jobs:
       - run: bun run typecheck
         env:
           NODE_OPTIONS: --max-old-space-size=6144
+      - run: echo "127.0.0.1 example.test identity.example.test" | sudo tee -a /etc/hosts
       - run: bun run test:unit --timeout 60000
         env:
           LC_ALL: C
