@@ -27,6 +27,12 @@ bun run test:integration    # needs Docker
 bun run verify              # the full release gate, run before a release tag
 ```
 
+## Task branches
+
+Pushes to branches named `codekit/**` run the `task-verify.yml` workflow.
+The workflow runs typecheck and unit tests.
+Merge a task branch only after that run is green.
+
 ## How we work
 
 - Work directly on `main` in focused changes. Never discard unrelated dirty-worktree state.
