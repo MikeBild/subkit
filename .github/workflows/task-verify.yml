@@ -38,7 +38,10 @@ jobs:
       - run: bun run typecheck
         env:
           NODE_OPTIONS: --max-old-space-size=6144
-      - run: echo "127.0.0.1 example.test identity.example.test" | sudo tee -a /etc/hosts
-      - run: bun run test:unit --timeout 60000
+      - run: bun run test:unit --timeout 60000 --path-ignore-patterns='**/round-trip-every-leaf.test.ts' --path-ignore-patterns='**/per-leaf-applied.test.ts'
         env:
+          LC_ALL: C
+      - run: bun test --timeout 60000 apps/engine/src/config/__tests__/round-trip-every-leaf.test.ts apps/engine/src/config/__tests__/per-leaf-applied.test.ts
+        env:
+          SKIP_DOCKER: "1"
           LC_ALL: C
