@@ -8,7 +8,7 @@ import { getWorkflowDraft, startNewWorkflowDraft, withWorkflowDraft } from "../a
 import { saveApprovalReadiness } from "../persistence/save-workflow-approval.ts";
 import { emitRecordedEvalSignals } from "../recorded-eval.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
-import type { ConversationTool, ToolResult } from "./index.ts";
+import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 import { resolveSavedWorkflow } from "./open-workflow-draft.ts";
 import { PLACEHOLDER_DESTINATION_NEXT_ACTIONS } from "./placeholder-destination-gate.ts";
 
@@ -50,6 +50,18 @@ const inputSchema = z
       ),
   })
   .openapi("AuthorWorkflowToolInput");
+
+const MAX_SLUG_SUFFIX = 20;
+
+export async function slugPastArchived(ctx: ToolContext, slug: string): Promise<string> {
+  const existing = await resolveSavedWorkflow(ctx, slug);
+  if (existing?.slug !== slug || existing.lifecycle !== "archived") return slug;
+  for (let suffix = 2; suffix <= MAX_SLUG_SUFFIX; suffix += 1) {
+    const candidate = `${slug}-${suffix}`;
+    if (!(await resolveSavedWorkflow(ctx, candidate))) return candidate;
+  }
+  return slug;
+}
 
 export const authorWorkflowTool: ConversationTool = {
   name: "author_workflow",
@@ -96,7 +108,12 @@ export const authorWorkflowTool: ConversationTool = {
 
     if (args.slug !== undefined) {
       const existing = await resolveSavedWorkflow(ctx, args.slug);
-      if (existing && existing.slug === args.slug && existing.id !== bound?.id) {
+      if (
+        existing &&
+        existing.slug === args.slug &&
+        existing.id !== bound?.id &&
+        existing.lifecycle !== "archived"
+      ) {
         return {
           ok: false,
           data: buildGateError(ctx.getDraft(), {
@@ -157,6 +174,9 @@ export const authorWorkflowTool: ConversationTool = {
 
     if (args.name !== undefined) result.definition.name = args.name;
     if (args.slug !== undefined) result.definition.slug = args.slug;
+    const authoredSlug = result.definition.slug;
+    result.definition.slug = await slugPastArchived(ctx, authoredSlug);
+    const slugChanged = args.slug !== undefined || result.definition.slug !== authoredSlug;
 
     emitRecordedEvalSignals({
       tool: "author_workflow",
@@ -188,13 +208,13 @@ export const authorWorkflowTool: ConversationTool = {
 
     if (
       args.name !== undefined ||
-      args.slug !== undefined ||
+      slugChanged ||
       (args.input_example !== undefined && args.input_example !== null)
     ) {
       const withSample = {
         ...getWorkflowDraft(ctx.getDraft()),
         ...(args.name !== undefined ? { name: args.name } : {}),
-        ...(args.slug !== undefined ? { slug: args.slug } : {}),
+        ...(slugChanged ? { slug: result.definition.slug } : {}),
         ...(args.input_example !== undefined && args.input_example !== null
           ? { input_schema_sample: args.input_example }
           : {}),

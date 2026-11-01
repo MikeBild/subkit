@@ -30,7 +30,12 @@ const inputSchema = z
 
 export async function resolveSavedWorkflow(ctx: ToolContext, ref: string) {
   const [row] = await ctx.db
-    .select({ id: workflows.id, slug: workflows.slug, name: workflows.name })
+    .select({
+      id: workflows.id,
+      slug: workflows.slug,
+      name: workflows.name,
+      lifecycle: workflows.lifecycle,
+    })
     .from(workflows)
     .where(
       and(

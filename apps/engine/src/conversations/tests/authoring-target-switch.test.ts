@@ -173,6 +173,31 @@ describe("author_workflow never regenerates a saved workflow", () => {
   });
 });
 
+describe("author_workflow next to an archived workflow", () => {
+  test("an archived workflow keeps its slug and a new draft takes the next free one", async () => {
+    await ctx.testDb.db
+      .update(workflows)
+      .set({ lifecycle: "archived" })
+      .where(eq(workflows.slug, "watchkit-finding-triage"));
+    const { toolCtx, draft } = await openConversationFor(growthId);
+    getMockProvider().generateOverrides.generate = () => ({
+      name: "Finding triage",
+      slug: "watchkit-finding-triage",
+      steps: [{ id: "s", kind: "transform", language: "javascript", expression: "return {};" }],
+    });
+    const result = await authorWorkflowTool.execute(toolCtx, {
+      goal: "triage the findings",
+      slug: "watchkit-finding-triage",
+    });
+    expect(result.ok).toBe(true);
+    expect(draft().workflow?.slug).toBe("watchkit-finding-triage-2");
+    await ctx.testDb.db
+      .update(workflows)
+      .set({ lifecycle: "active" })
+      .where(eq(workflows.slug, "watchkit-finding-triage"));
+  });
+});
+
 describe("author_workflow for a new slug in a bound conversation", () => {
   test("the new draft no longer carries the saved workflow's identity", async () => {
     const { conversationId, toolCtx, draft } = await openConversationFor(growthId);
