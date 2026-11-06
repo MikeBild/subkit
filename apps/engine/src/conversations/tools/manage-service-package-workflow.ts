@@ -1,8 +1,7 @@
 import { z } from "@hono/zod-openapi";
-import { and, eq, isNull } from "drizzle-orm";
 import { getConnector } from "../../connectors/service.ts";
-import { workflows, workflowVersions } from "../../db/schema/index.ts";
 import { workflowJsonDigest } from "../../workflows/canonical-json.ts";
+import { loadWorkflowHead } from "../../workflows/lookup.ts";
 import { updateWorkflowMetadata } from "../../workflows/service.ts";
 import { findPackageWorkflowProvenance } from "../../workflows/service-package-provenance.ts";
 import type { ConversationTool, ToolContext } from "./index.ts";
@@ -89,44 +88,15 @@ export const manageServicePackageWorkflowTool: ConversationTool = {
             : "Eine angemeldete Person muss diese Änderung freigeben.",
       };
     }
-    const [workflow] = await ctx.db
-      .select({
-        id: workflows.id,
-        slug: workflows.slug,
-        lifecycle: workflows.lifecycle,
-        draft_version_id: workflows.draft_version_id,
-        current_version_id: workflows.current_version_id,
-      })
-      .from(workflows)
-      .where(
-        and(
-          eq(workflows.tenant_id, ctx.tenant_id),
-          eq(workflows.id, args.workflow_id),
-          isNull(workflows.deleted_at),
-        ),
-      )
-      .limit(1);
-    if (!workflow) {
+    const loaded = await loadWorkflowHead(ctx.db, ctx.tenant_id, args.workflow_id);
+    if (!loaded) {
       return {
         ok: false,
         error_code: "workflow_not_found",
         message: message(ctx, "missing"),
       };
     }
-    const headVersionId = workflow.draft_version_id ?? workflow.current_version_id;
-    const [head] = headVersionId
-      ? await ctx.db
-          .select({ dag: workflowVersions.dag, version: workflowVersions.version })
-          .from(workflowVersions)
-          .where(
-            and(
-              eq(workflowVersions.tenant_id, ctx.tenant_id),
-              eq(workflowVersions.workflow_id, workflow.id),
-              eq(workflowVersions.id, headVersionId),
-            ),
-          )
-          .limit(1)
-      : [];
+    const { workflow, head, head_version_id: headVersionId } = loaded;
     if (!head || head.version !== args.expected_version) {
       return {
         ok: false,
@@ -218,15 +188,8 @@ export const manageServicePackageWorkflowTool: ConversationTool = {
       ctx.db,
     );
     if (!archived.workflow) {
-      const [after] = await ctx.db
-        .select({
-          draft_version_id: workflows.draft_version_id,
-          current_version_id: workflows.current_version_id,
-        })
-        .from(workflows)
-        .where(and(eq(workflows.tenant_id, ctx.tenant_id), eq(workflows.id, workflow.id)))
-        .limit(1);
-      const changed = (after?.draft_version_id ?? after?.current_version_id) !== headVersionId;
+      const after = await loadWorkflowHead(ctx.db, ctx.tenant_id, workflow.id);
+      const changed = (after ? after.head_version_id : undefined) !== headVersionId;
       return changed
         ? {
             ok: false,

@@ -1,6 +1,6 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { resolveToolMode } from "../../conversations/tool-policies.ts";
-import type { ToolCategory } from "../../conversations/tools/index.ts";
+import type { ToolCategory } from "../../tools/types.ts";
 
 export type McpToolAnnotations = NonNullable<Tool["annotations"]>;
 

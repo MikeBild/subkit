@@ -1,10 +1,9 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, desc, eq, isNull } from "drizzle-orm";
 import type { Context } from "hono";
 import { paginatedResponse } from "../../api/common-schemas.ts";
 import { getConfig } from "../../config/loader.ts";
-import { connectors, skills } from "../../db/schema/index.ts";
 import { assembleCatalog, listWorkflowTools, resolveMcpMode } from "../../mcp/index.ts";
+import { listActivePromptSkills, listResourceConnectors } from "../../tools/mcp-catalog-sources.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -93,16 +92,7 @@ export function registerMcpCatalogRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.openapi(promptsRoute, async (c) => {
     const principal = requireAuth(c);
-    const db = c.get("db");
-    const rows = await db
-      .select({
-        id: skills.id,
-        title: skills.title,
-        scope: skills.scope,
-      })
-      .from(skills)
-      .where(and(eq(skills.tenant_id, principal.tenant_id), eq(skills.lifecycle, "active")))
-      .orderBy(desc(skills.created_at));
+    const rows = await listActivePromptSkills(c.get("db"), principal.tenant_id);
     return c.json(
       {
         items: rows.map((r) => ({
@@ -118,17 +108,7 @@ export function registerMcpCatalogRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.openapi(resourcesRoute, async (c) => {
     const principal = requireAuth(c);
-    const db = c.get("db");
-    const rows = await db
-      .select({
-        id: connectors.id,
-        slug: connectors.slug,
-        display_name: connectors.display_name,
-        driver: connectors.driver,
-      })
-      .from(connectors)
-      .where(and(eq(connectors.tenant_id, principal.tenant_id), isNull(connectors.deleted_at)))
-      .orderBy(desc(connectors.created_at));
+    const rows = await listResourceConnectors(c.get("db"), principal.tenant_id);
     return c.json(
       {
         items: rows.map((r) => ({

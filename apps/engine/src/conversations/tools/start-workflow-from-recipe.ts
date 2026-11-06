@@ -1,10 +1,9 @@
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
 import { rebindConnectorIds } from "../../connectors/recipe-binding.ts";
 import { getBuiltinTemplate } from "../../connectors/templates.ts";
-import { conversations } from "../../db/schema/index.ts";
 import { withWorkflowDraft } from "../authoring-state.ts";
 import { saveApprovalReadiness } from "../persistence/save-workflow-approval.ts";
+import { setConversationWorkflowTarget } from "../service/tool-state.ts";
 import type { WorkflowDraftDocument } from "../types.ts";
 import { buildDraftMutationPayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -147,12 +146,11 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
     const draft = ctx.getDraft();
     const nextDraft = withWorkflowDraft(draft, nextWorkflow, "workflow_seeded_from_recipe");
     await ctx.setDraft(nextDraft);
-    await ctx.db
-      .update(conversations)
-      .set({ target_workflow_id: null, updated_at: new Date() })
-      .where(
-        and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
-      );
+    await setConversationWorkflowTarget(
+      ctx.db,
+      { tenant_id: ctx.tenant_id, conversation_id: ctx.conversation_id },
+      null,
+    );
     return {
       ok: true,
       data: buildDraftMutationPayload(nextDraft, {

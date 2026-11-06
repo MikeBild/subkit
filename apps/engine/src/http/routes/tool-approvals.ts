@@ -1,16 +1,15 @@
 import { createHash } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, eq, isNull } from "drizzle-orm";
 import { cockpitInstallationIdFromPath, signLoginState } from "../../auth/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import { completeApprovalBackedElicitation } from "../../conversations/index.ts";
 import type { Db } from "../../db/client.ts";
-import { users } from "../../db/schema/index.ts";
 import { logger } from "../../logging/index.ts";
 import { enqueueApprovalElicitationResume, getBoss } from "../../queue/index.ts";
 import {
   APPROVAL_PORTAL_PATH,
   declineApproval,
+  findActiveApproverEmail,
   grantApproval,
   resolveApprovalPortalToken,
 } from "../../tools/index.ts";
@@ -89,23 +88,12 @@ async function resolveApprovalApprover(
     session.tenant_id === tenant_id &&
     (await sessionIsLive(db, session.session_id, session.tenant_id))
   ) {
-    const [user] = await db
-      .select({ email: users.email })
-      .from(users)
-      .where(
-        and(
-          eq(users.id, session.user_id),
-          eq(users.tenant_id, tenant_id),
-          eq(users.status, "active"),
-          isNull(users.deleted_at),
-        ),
-      )
-      .limit(1);
-    if (!user) return null;
+    const email = await findActiveApproverEmail(db, tenant_id, session.user_id);
+    if (email === null) return null;
     return {
       user_id: session.user_id,
       session_id: session.session_id,
-      email: user.email,
+      email,
     };
   }
 

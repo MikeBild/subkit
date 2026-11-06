@@ -18,7 +18,7 @@ function authMiddleware(token: string | undefined, tenantId: string | undefined)
         request.headers.set("authorization", `Bearer ${token}`);
       }
       if (tenantId) {
-        request.headers.set("x-tenant-id", tenantId);
+        request.headers.set("x-subkit-tenant", tenantId);
       }
       return request;
     },

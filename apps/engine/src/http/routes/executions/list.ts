@@ -1,18 +1,17 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { executionStartTraceId, readRequestSource } from "../../../audit/index.ts";
+import { readRequestSource } from "../../../audit/index.ts";
 import { KEYSET_CURSOR_PATTERN } from "../../../db/keyset-cursor.ts";
-import { events, executionSteps, executions, workflows } from "../../../db/schema/index.ts";
 import {
   authorizeSensitiveResume,
-  executionVisibilityFilter,
-  executionVisibleToPrincipal,
+  executionStatusEventConditions,
+  findVisibleExecutionRow,
   isSensitivePayload,
-  listExecutions,
-  loadExecutionOutcome,
-  loadFailureSummaries,
+  listExecutionPage,
+  listVisibleExecutionSteps,
+  loadExecutionDetail,
   recoverExecutionPayload,
+  visibleExecutionExists,
 } from "../../../execution/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -154,10 +153,8 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const q = c.req.valid("query");
-    const { rows, total, next_cursor } = await listExecutions(
-      principal.tenant_id,
-      {
-        principal,
+    const { rows, total, next_cursor, workflow_names, failures, held_execution_ids } =
+      await listExecutionPage(db, principal, {
         ...(q.limit !== undefined ? { limit: q.limit } : {}),
         ...(q.cursor !== undefined ? { cursor: q.cursor } : {}),
         ...(q.workflow_id !== undefined ? { workflow_id: q.workflow_id } : {}),
@@ -170,45 +167,12 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
         ...(q.parent_execution_id !== undefined
           ? { parent_execution_id: q.parent_execution_id }
           : {}),
-      },
-      db,
-    );
-    const ids = [...new Set(rows.map((r) => r.workflow_id).filter((v): v is string => v !== null))];
-    const heldCandidates = rows.filter((r) => r.status === "succeeded");
-    const [named, failures, heldSteps] = await Promise.all([
-      ids.length
-        ? db
-            .select({ id: workflows.id, name: workflows.name })
-            .from(workflows)
-            .where(and(eq(workflows.tenant_id, principal.tenant_id), inArray(workflows.id, ids)))
-        : Promise.resolve([]),
-      loadFailureSummaries(principal.tenant_id, rows, db),
-      heldCandidates.length
-        ? db
-            .selectDistinct({ execution_id: executionSteps.execution_id })
-            .from(executionSteps)
-            .where(
-              and(
-                eq(executionSteps.tenant_id, principal.tenant_id),
-                inArray(
-                  executionSteps.execution_id,
-                  heldCandidates.map((r) => r.id),
-                ),
-                or(
-                  eq(executionSteps.held, true),
-                  sql`${executionSteps.request_meta}->'extras'->>'held' = 'true'`,
-                ),
-              ),
-            )
-        : Promise.resolve([]),
-    ]);
-    const nameById = new Map(named.map((w) => [w.id, w.name]));
-    const heldExecutionIds = new Set(heldSteps.map((step) => step.execution_id));
+      });
     return c.json(
       {
         items: rows.map((r) => ({
-          ...serializeExec(r, r.workflow_id ? (nameById.get(r.workflow_id) ?? null) : null),
-          held_effects: heldExecutionIds.has(r.id),
+          ...serializeExec(r, r.workflow_id ? (workflow_names.get(r.workflow_id) ?? null) : null),
+          held_effects: held_execution_ids.has(r.id),
           failure: failures.get(r.id) ?? null,
         })),
         total,
@@ -222,29 +186,14 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    const rows = await db
-      .select()
-      .from(executions)
-      .where(and(eq(executions.tenant_id, principal.tenant_id), eq(executions.id, id)))
-      .limit(1);
-    const row = rows[0];
-    if (!row || !executionVisibleToPrincipal(row.caller_context, principal))
-      throw new NotFoundError("execution");
-    const [named, outcome, traceId] = await Promise.all([
-      row.workflow_id
-        ? db
-            .select({ name: workflows.name })
-            .from(workflows)
-            .where(
-              and(eq(workflows.tenant_id, principal.tenant_id), eq(workflows.id, row.workflow_id)),
-            )
-            .limit(1)
-        : Promise.resolve([]),
-      loadExecutionOutcome(principal.tenant_id, row, db),
-      executionStartTraceId(db, principal.tenant_id, row.id),
-    ]);
+    const detail = await loadExecutionDetail(db, principal, id);
+    if (!detail) throw new NotFoundError("execution");
     return c.json(
-      { ...serializeExec(row, named[0]?.name ?? null), outcome, trace_id: traceId },
+      {
+        ...serializeExec(detail.row, detail.workflow_name),
+        outcome: detail.outcome,
+        trace_id: detail.trace_id,
+      },
       200,
     );
   });
@@ -253,25 +202,8 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    const visible = await db
-      .select({ id: executions.id })
-      .from(executions)
-      .where(
-        and(
-          eq(executions.tenant_id, principal.tenant_id),
-          eq(executions.id, id),
-          executionVisibilityFilter(principal),
-        ),
-      )
-      .limit(1);
-    if (!visible[0]) throw new NotFoundError("execution");
-    const rows = await db
-      .select()
-      .from(executionSteps)
-      .where(
-        and(eq(executionSteps.tenant_id, principal.tenant_id), eq(executionSteps.execution_id, id)),
-      )
-      .orderBy(asc(executionSteps.started_at));
+    const rows = await listVisibleExecutionSteps(db, principal, id);
+    if (!rows) throw new NotFoundError("execution");
     return c.json({ items: rows.map(serializeStep) }, 200);
   });
 
@@ -279,19 +211,7 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    const row = (
-      await db
-        .select()
-        .from(executions)
-        .where(
-          and(
-            eq(executions.tenant_id, principal.tenant_id),
-            eq(executions.id, id),
-            executionVisibilityFilter(principal),
-          ),
-        )
-        .limit(1)
-    )[0];
+    const row = await findVisibleExecutionRow(db, principal, id);
     if (
       !row ||
       row.status !== "succeeded" ||
@@ -327,26 +247,11 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const id = c.req.param("id");
-    const found = await db
-      .select({ id: executions.id })
-      .from(executions)
-      .where(
-        and(
-          eq(executions.tenant_id, principal.tenant_id),
-          eq(executions.id, id),
-          executionVisibilityFilter(principal),
-        ),
-      )
-      .limit(1);
-    if (!found[0]) throw new NotFoundError("execution");
+    if (!(await visibleExecutionExists(db, principal, id))) throw new NotFoundError("execution");
     return streamOutboxTail(c, {
       db,
       replay: "all",
-      conds: () => [
-        eq(events.tenant_id, principal.tenant_id),
-        eq(events.channel, "execution.status"),
-        sql`${events.payload}->>'execution_id' = ${id}`,
-      ],
+      conds: () => executionStatusEventConditions(principal.tenant_id, id),
       closeAfter: (row) => TERMINAL_EXECUTION_EVENTS.has(row.type),
     });
   });

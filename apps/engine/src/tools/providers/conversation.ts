@@ -1,13 +1,8 @@
-import type {
-  ConversationTool,
-  ToolCategory,
-  ToolContext,
-  ToolResult,
-} from "../../conversations/tools/index.ts";
+import type { ConversationTool, ToolContext, ToolResult } from "../../conversations/tools/index.ts";
 import { listTools } from "../../conversations/tools/index.ts";
 import { DRAFT_WRITE_MCP_UNAVAILABLE_REASON } from "../policy.ts";
 import type { ToolListFilter, ToolProvider } from "../registry.ts";
-import type { ToolDescriptor, ToolSurface } from "../types.ts";
+import type { ToolCategory, ToolDescriptor, ToolSurface } from "../types.ts";
 
 export type { ToolDescriptor } from "../types.ts";
 

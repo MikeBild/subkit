@@ -1,12 +1,13 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { resolveActor } from "../audit/recorders/types.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { patchCandidates, workflowVersions } from "../db/schema/index.ts";
 import { PatchProposalSchema } from "../llm/flows/repair.ts";
+import { toStoredDefinition } from "../workflows/core/definition.ts";
 import { carriedSpecColumns, type VersionActor, versionAuthorColumns } from "../workflows/index.ts";
-import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
+import { lockWorkflowForVersionWrite, nextVersionNumber } from "../workflows/version-write-lock.ts";
 import { PatchDecisionError } from "./candidate-decision.ts";
 import { readPatchReadiness } from "./candidate-readiness.ts";
 import { applyPatchToWorkflowDag, candidateDriftKind } from "./patch-apply.ts";
@@ -79,10 +80,10 @@ export async function preparePatchCandidate(
         ...versionAuthorColumns(params),
         tenant_id: params.tenant_id,
         workflow_id: candidate.workflow_id,
-        dag: patch.dag,
+        dag: toStoredDefinition(patch.dag, "version"),
         ...carriedSpecColumns(base),
         note,
-        version: sql<number>`(SELECT COALESCE(MAX(${workflowVersions.version}), 0) + 1 FROM ${workflowVersions} WHERE ${workflowVersions.tenant_id} = ${params.tenant_id} AND ${workflowVersions.workflow_id} = ${candidate.workflow_id})`,
+        version: await nextVersionNumber(tx, params.tenant_id, candidate.workflow_id),
       })
       .returning({ id: workflowVersions.id });
     if (!version) throw new Error("repair preparation insert failed");

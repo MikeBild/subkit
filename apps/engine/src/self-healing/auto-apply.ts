@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { patchCandidates, workflows, workflowVersions } from "../db/schema/index.ts";
@@ -5,8 +6,14 @@ import type { PatchProposal } from "../llm/flows/repair.ts";
 import { log } from "../logging/logger.ts";
 import { carryApprovalsForward } from "../workflows/authority-inheritance.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
-import { carriedSpecColumns } from "../workflows/version-spec.ts";
-import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
+import { toStoredDefinition } from "../workflows/core/definition.ts";
+import { carriedSpecColumns } from "../workflows/core/spec.ts";
+import { decide, describeRejection, evolve } from "../workflows/core/workflow.ts";
+import {
+  lockWorkflowForVersionWrite,
+  nextVersionNumber,
+  workflowStateOf,
+} from "../workflows/version-write-lock.ts";
 import {
   applyPatchToWorkflowDag,
   candidateDriftKind,
@@ -88,23 +95,27 @@ export async function autoApplyPatch(
     : [];
   if (
     params.prepared_version_id &&
-    (!prepared || workflowJsonDigest(prepared.dag) !== workflowJsonDigest(patched.dag))
+    (!prepared ||
+      workflowJsonDigest(toStoredDefinition(prepared.dag, "version")) !==
+        workflowJsonDigest(toStoredDefinition(patched.dag, "version")))
   )
     return { applied: false, reason: "patch_not_applicable" };
+  const versionId = prepared?.id ?? randomUUID();
+  const rotated = decide(workflowStateOf(wf), { type: "RotateVersion", version_id: versionId });
+  if (!rotated.ok) throw new Error(`autoApplyPatch: ${describeRejection(rotated.rejection)}`);
+  const state = evolve(workflowStateOf(wf), rotated.event);
   const [inserted] = prepared
     ? [prepared]
     : await tx
         .insert(workflowVersions)
         .values({
+          id: versionId,
           author_user_id: null,
           author_system_account_id: null,
           tenant_id: params.tenant_id,
           workflow_id: params.workflow_id,
-          version: sql<number>`(SELECT COALESCE(MAX(${workflowVersions.version}), 0) + 1
-         FROM ${workflowVersions}
-        WHERE ${workflowVersions.tenant_id} = ${params.tenant_id}
-          AND ${workflowVersions.workflow_id} = ${params.workflow_id})`,
-          dag: newDag,
+          version: await nextVersionNumber(tx, params.tenant_id, params.workflow_id),
+          dag: toStoredDefinition(newDag, "version"),
           ...carriedSpecColumns(currentVersion),
           note: `self-healing auto-apply of patch ${params.candidate_id}`,
         })
@@ -113,7 +124,7 @@ export async function autoApplyPatch(
 
   await tx
     .update(workflows)
-    .set({ current_version_id: inserted.id, updated_at: new Date() })
+    .set({ current_version_id: state.current_version_id, updated_at: new Date() })
     .where(and(eq(workflows.tenant_id, params.tenant_id), eq(workflows.id, params.workflow_id)));
   await carryApprovalsForward(tx, {
     tenant_id: params.tenant_id,

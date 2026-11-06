@@ -3,7 +3,7 @@ import { type Actor, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
-import { type Executor, getDb } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { connectorTemplateCredentials } from "../db/schema/index.ts";
 
 function aadFor(tenant_id: string, template_slug: string): string {
@@ -28,9 +28,8 @@ export async function upsertTemplateOAuthCredentials(
     actor?: Actor | null;
     actor_type?: AuditActorType;
   },
-  exec?: Executor,
+  db: Executor,
 ): Promise<{ id: string }> {
-  const db = exec ?? getDb();
   return await db.transaction(async (tx) => {
     const payload = encryptSecret(
       JSON.stringify(input.value),
@@ -96,9 +95,8 @@ export async function upsertTemplateOAuthCredentials(
 export async function getTemplateOAuthCredentials(
   tenant_id: string,
   template_slug: string,
-  exec?: Executor,
+  db: Executor,
 ): Promise<ConnectorTemplateOAuthCredentialValue | null> {
-  const db = exec ?? getDb();
   const rows = await db
     .select()
     .from(connectorTemplateCredentials)

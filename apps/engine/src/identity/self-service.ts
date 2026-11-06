@@ -3,7 +3,7 @@ import { z } from "@hono/zod-openapi";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import { type Executor, getDb } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { authIdentities, roles, tenants, userIdentities, users } from "../db/schema/index.ts";
 import { builtinRoleId } from "../rbac/roles.ts";
 import { admitHostedTenantCreation } from "./hosted-admission.ts";
@@ -33,8 +33,7 @@ export type VerifiedSelfServiceIdentity = z.input<typeof verifiedIdentitySchema>
 
 export { assertTenantActive, SelfServiceIdentityError } from "./tenant-status.ts";
 
-export async function listMembershipsForIdentity(identityId: string, exec?: Executor) {
-  const db = exec ?? getDb();
+export async function listMembershipsForIdentity(identityId: string, db: Executor) {
   return db
     .select({
       tenant_id: tenants.id,
@@ -67,21 +66,13 @@ export async function listMembershipsForIdentity(identityId: string, exec?: Exec
     .orderBy(tenants.created_at, tenants.id);
 }
 
-export async function getMembershipForIdentity(
-  identityId: string,
-  tenantId: string,
-  exec?: Executor,
-) {
-  const memberships = await listMembershipsForIdentity(identityId, exec);
+export async function getMembershipForIdentity(identityId: string, tenantId: string, db: Executor) {
+  const memberships = await listMembershipsForIdentity(identityId, db);
   return memberships.find((membership) => membership.tenant_id === tenantId) ?? null;
 }
 
-export async function provisionSelfServiceTenant(
-  raw: VerifiedSelfServiceIdentity,
-  exec?: Executor,
-) {
+export async function provisionSelfServiceTenant(raw: VerifiedSelfServiceIdentity, db: Executor) {
   const input = verifiedIdentitySchema.parse(raw);
-  const db = exec ?? getDb();
   return db.transaction(async (tx) => {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtextextended(${JSON.stringify([input.issuer_url, input.subject])}, 0))`,
@@ -229,10 +220,9 @@ export async function provisionSelfServiceTenant(
 export async function resolveHostedIdentity(
   raw: VerifiedSelfServiceIdentity,
   options: { registration_enabled: boolean },
-  exec?: Executor,
+  db: Executor,
 ) {
   const input = verifiedIdentitySchema.parse(raw);
-  const db = exec ?? getDb();
   // tenant-filter:exempt — verified issuer and subject establish the identity before selecting an existing membership.
   const [identity] = await db
     .select()

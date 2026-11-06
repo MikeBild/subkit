@@ -1,19 +1,26 @@
 import type { EngineClient } from "../engine-client.ts";
+import type { ApiBody, ApiQuery } from "./http.ts";
 
 export const skillsMethods = {
-  listSkills(
+  async listSkills(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
   ): Promise<{ items: Array<{ id: string; title: string; scope: string }> }> {
-    return this.request("GET", "/v1/skills", undefined, query);
+    const { data } = await this.api.GET("/v1/skills", {
+      params: { query: query as ApiQuery<"/v1/skills", "get"> },
+    });
+    return data as { items: Array<{ id: string; title: string; scope: string }> };
   },
 
-  listMcpPrompts(this: EngineClient): Promise<{
+  async listMcpPrompts(this: EngineClient): Promise<{
     items: Array<{ name: string; description: string | null; scope: string; skill_id: string }>;
   }> {
-    return this.request("GET", "/v1/mcp/prompts");
+    const { data } = await this.api.GET("/v1/mcp/prompts");
+    return data as {
+      items: Array<{ name: string; description: string | null; scope: string; skill_id: string }>;
+    };
   },
-  listMcpResources(this: EngineClient): Promise<{
+  async listMcpResources(this: EngineClient): Promise<{
     items: Array<{
       uri: string;
       name: string;
@@ -21,70 +28,114 @@ export const skillsMethods = {
       mime_type: string | null;
     }>;
   }> {
-    return this.request("GET", "/v1/mcp/resources");
+    const { data } = await this.api.GET("/v1/mcp/resources");
+    return data as {
+      items: Array<{
+        uri: string;
+        name: string;
+        description: string | null;
+        mime_type: string | null;
+      }>;
+    };
   },
-  listMcpTools(this: EngineClient): Promise<{
+  async listMcpTools(this: EngineClient): Promise<{
     items: Array<{ name: string; description: string; input_shape: unknown }>;
   }> {
-    return this.request("GET", "/v1/mcp/tools");
+    const { data } = await this.api.GET("/v1/mcp/tools");
+    return data as {
+      items: Array<{ name: string; description: string; input_shape: unknown }>;
+    };
   },
 
-  getSkill(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("GET", `/v1/skills/${encodeURIComponent(id)}`);
+  async getSkill(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+    const { data } = await this.api.GET("/v1/skills/{id}", { params: { path: { id } } });
+    return data as Record<string, unknown>;
   },
-  createSkill(this: EngineClient, body: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return this.request("POST", "/v1/skills", body);
+  async createSkill(
+    this: EngineClient,
+    body: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const { data } = await this.api.POST("/v1/skills", {
+      body: body as ApiBody<"/v1/skills", "post">,
+    });
+    return data as Record<string, unknown>;
   },
-  patchSkill(
+  async patchSkill(
     this: EngineClient,
     id: string,
     body: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    return this.request("PATCH", `/v1/skills/${encodeURIComponent(id)}`, body);
+    const { data } = await this.api.PATCH("/v1/skills/{id}", {
+      params: { path: { id } },
+      body: body as ApiBody<"/v1/skills/{id}", "patch">,
+    });
+    return data as Record<string, unknown>;
   },
-  activateSkill(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/skills/${encodeURIComponent(id)}/activate`);
+  async activateSkill(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+    const { data } = await this.api.POST("/v1/skills/{id}/activate", { params: { path: { id } } });
+    return data as Record<string, unknown>;
   },
-  archiveSkill(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/skills/${encodeURIComponent(id)}/archive`);
+  async archiveSkill(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+    const { data } = await this.api.POST("/v1/skills/{id}/archive", { params: { path: { id } } });
+    return data as Record<string, unknown>;
   },
-  deleteSkill(this: EngineClient, id: string): Promise<void> {
-    return this.request("DELETE", `/v1/skills/${encodeURIComponent(id)}`);
+  async deleteSkill(this: EngineClient, id: string): Promise<void> {
+    await this.api.DELETE("/v1/skills/{id}", { params: { path: { id } } });
   },
-  skillHistory(this: EngineClient, id: string): Promise<{ items: Record<string, unknown>[] }> {
-    return this.request("GET", `/v1/skills/${encodeURIComponent(id)}/history`);
+  async skillHistory(
+    this: EngineClient,
+    id: string,
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    const { data } = await this.api.GET("/v1/skills/{id}/history", { params: { path: { id } } });
+    return data as { items: Record<string, unknown>[] };
   },
-  restoreSkill(
+  async restoreSkill(
     this: EngineClient,
     id: string,
     audit_entry_id: string,
   ): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/skills/${encodeURIComponent(id)}/restore`, {
-      audit_entry_id,
+    const { data } = await this.api.POST("/v1/skills/{id}/restore", {
+      params: { path: { id } },
+      body: {
+        audit_entry_id,
+      } as ApiBody<"/v1/skills/{id}/restore", "post">,
     });
+    return data as Record<string, unknown>;
   },
 
-  listSkillCandidates(
+  async listSkillCandidates(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
   ): Promise<{ items: Record<string, unknown>[]; total: number }> {
-    return this.request("GET", "/v1/skill-candidates", undefined, query);
+    const { data } = await this.api.GET("/v1/skill-candidates", {
+      params: { query: query as ApiQuery<"/v1/skill-candidates", "get"> },
+    });
+    return data as { items: Record<string, unknown>[]; total: number };
   },
-  getSkillCandidate(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("GET", `/v1/skill-candidates/${encodeURIComponent(id)}`);
+  async getSkillCandidate(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+    const { data } = await this.api.GET("/v1/skill-candidates/{id}", { params: { path: { id } } });
+    return data as Record<string, unknown>;
   },
-  approveSkillCandidate(
+  async approveSkillCandidate(
     this: EngineClient,
     id: string,
     body: Record<string, unknown> = {},
   ): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/skill-candidates/${encodeURIComponent(id)}/approve`, body);
+    const { data } = await this.api.POST("/v1/skill-candidates/{id}/approve", {
+      params: { path: { id } },
+      body: body as ApiBody<"/v1/skill-candidates/{id}/approve", "post">,
+    });
+    return data as Record<string, unknown>;
   },
-  rejectSkillCandidate(
+  async rejectSkillCandidate(
     this: EngineClient,
     id: string,
     body: { reason?: string } = {},
   ): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/skill-candidates/${encodeURIComponent(id)}/reject`, body);
+    const { data } = await this.api.POST("/v1/skill-candidates/{id}/reject", {
+      params: { path: { id } },
+      body: body as ApiBody<"/v1/skill-candidates/{id}/reject", "post">,
+    });
+    return data as Record<string, unknown>;
   },
 };

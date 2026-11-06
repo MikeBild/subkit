@@ -11,6 +11,7 @@ export { settleExecutionGuards } from "./caller-budget.ts";
 export { assertCallerExecutionSource, CallerContextSchema } from "./caller-context.ts";
 export * from "./caller-summary.ts";
 export { PREVIEW_CLASSIFICATIONS, type PreviewClassification } from "./classify.ts";
+export * from "./control-service.ts";
 export * from "./engine.ts";
 export { describeExecutionEvidence } from "./evidence.ts";
 export { executionVisibilityFilter, executionVisibleToPrincipal } from "./execution-owner.ts";
@@ -25,6 +26,7 @@ export {
   productHealth,
   productReadiness,
 } from "./product-status.ts";
+export * from "./read-service.ts";
 export * from "./request-meta-schema.ts";
 export * from "./resolve-definition.ts";
 export * from "./response-filter.ts";
@@ -47,6 +49,12 @@ export {
   TransactionalMailReceiptSchema,
 } from "./transactional-mail.ts";
 export * from "./types.ts";
+export {
+  isBearerProductPrincipal,
+  principalExecutionEnvironment,
+  type RunRefusal,
+  runWorkflow,
+} from "./use-cases/run-workflow.ts";
 export {
   captureWorkflowPermission,
   matchingWorkflowPermission,

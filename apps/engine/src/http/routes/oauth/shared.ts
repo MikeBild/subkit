@@ -1,15 +1,13 @@
 import { createHash } from "node:crypto";
-import { and, eq } from "drizzle-orm";
 import * as jose from "jose";
 import { z } from "zod";
 import {
-  browserSessionDenyReason,
   browserSessionFromRequest,
   type ResolvedPrincipal,
+  touchSessionIfLive,
 } from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
 import type { Db } from "../../../db/client.ts";
-import { sessions } from "../../../db/schema/index.ts";
 import { env } from "../../../env.ts";
 import { can } from "../../../rbac/index.ts";
 import { PayloadTooLargeError } from "../../errors.ts";
@@ -130,25 +128,7 @@ export async function permittedMcpScopes(
 }
 
 export async function sessionIsLive(db: Db, sessionId: string, tenantId: string): Promise<boolean> {
-  const rows = await db
-    .select({
-      revoked_at: sessions.revoked_at,
-      expires_at: sessions.expires_at,
-      last_seen_at: sessions.last_seen_at,
-      absolute_expires_at: sessions.absolute_expires_at,
-    })
-    .from(sessions)
-    .where(and(eq(sessions.id, sessionId), eq(sessions.tenant_id, tenantId)))
-    .limit(1);
-  const row = rows[0];
-  const now = Date.now();
-  if (!row || browserSessionDenyReason(row, new Date(now))) return false;
-
-  await db
-    .update(sessions)
-    .set({ last_seen_at: new Date(now), expires_at: new Date(now + 8 * 60 * 60 * 1000) })
-    .where(and(eq(sessions.id, sessionId), eq(sessions.tenant_id, tenantId)));
-  return true;
+  return touchSessionIfLive(db, sessionId, tenantId);
 }
 
 export function escapeHtml(s: string): string {

@@ -4,11 +4,14 @@ import {
   canTransition,
   crashRecoveryOutcome,
   EXECUTION_STATUSES,
+  type ExecutionOutcome,
   type ExecutionStatus,
   failureStatusOf,
   isTerminalExecutionStatus,
   NON_TERMINAL_EXECUTION_STATUSES,
+  outcomeTransition,
   STEP_STATUSES,
+  settledOutcome,
   TERMINAL_EXECUTION_STATUSES,
   transitionSources,
 } from "./status.ts";
@@ -265,6 +268,95 @@ describe("crashRecoveryOutcome", () => {
           if (outcome) expect(outcome.age_ms ?? -1).toBeGreaterThanOrEqual(outcome.threshold_ms);
         },
       ),
+      FC,
+    );
+  });
+});
+
+const OUTCOMES: ExecutionOutcome[] = [
+  { type: "completed" },
+  { type: "failed" },
+  { type: "aborted" },
+  { type: "timed_out" },
+  { type: "enqueue_failed" },
+  { type: "admission_failed", refused: false },
+  { type: "admission_failed", refused: true },
+  { type: "cancelled" },
+];
+
+describe("outcomeTransition", () => {
+  test("maps every outcome to its terminal status, sources and event", () => {
+    expect(OUTCOMES.map(outcomeTransition)).toEqual([
+      {
+        status: "succeeded",
+        sources: ["queued", "running"],
+        refused: false,
+        event_type: "execution.succeeded",
+      },
+      {
+        status: "failed",
+        sources: ["queued", "running"],
+        refused: false,
+        event_type: "execution.failed",
+      },
+      {
+        status: "aborted",
+        sources: ["queued", "running"],
+        refused: false,
+        event_type: "execution.aborted",
+      },
+      {
+        status: "timed_out",
+        sources: ["queued", "running"],
+        refused: false,
+        event_type: "execution.timed_out",
+      },
+      { status: "failed", sources: ["queued"], refused: false, event_type: "execution.failed" },
+      { status: "failed", sources: ["queued"], refused: false, event_type: "execution.failed" },
+      { status: "failed", sources: ["queued"], refused: true, event_type: "execution.refused" },
+      { status: "aborted", sources: ["queued"], refused: false, event_type: "execution.aborted" },
+    ]);
+  });
+
+  test("property: every source may legally reach the outcome status", () => {
+    fc.assert(
+      fc.property(fc.constantFrom(...OUTCOMES), (outcome) => {
+        const transition = outcomeTransition(outcome);
+        expect(isTerminalExecutionStatus(transition.status)).toBe(true);
+        expect(transition.sources.length).toBeGreaterThan(0);
+        for (const from of transition.sources) {
+          expect(canTransition(from, transition.status)).toBe(true);
+          expect(NON_TERMINAL_EXECUTION_STATUSES as readonly ExecutionStatus[]).toContain(from);
+        }
+        expect(transition.refused).toBe(transition.event_type === "execution.refused");
+      }),
+      FC,
+    );
+  });
+});
+
+describe("settledOutcome", () => {
+  test("names the outcome for each terminal status", () => {
+    expect(TERMINAL_EXECUTION_STATUSES.map(settledOutcome)).toEqual([
+      { type: "completed" },
+      { type: "failed" },
+      { type: "aborted" },
+      { type: "timed_out" },
+    ]);
+  });
+
+  test("a non-terminal status settles as failed", () => {
+    expect(NON_TERMINAL_EXECUTION_STATUSES.map(settledOutcome)).toEqual([
+      { type: "failed" },
+      { type: "failed" },
+    ]);
+  });
+
+  test("property: a settled outcome round-trips to its status", () => {
+    fc.assert(
+      fc.property(fc.constantFrom(...TERMINAL_EXECUTION_STATUSES), (status) => {
+        expect(outcomeTransition(settledOutcome(status)).status).toBe(status);
+      }),
       FC,
     );
   });

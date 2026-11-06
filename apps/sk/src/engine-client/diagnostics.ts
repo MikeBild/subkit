@@ -1,10 +1,10 @@
 import {
-  DIAGNOSTICS_DRIFT_PATH,
   DIAGNOSTICS_LOG_STREAM_PATH,
   DIAGNOSTICS_LOG_TAIL_PATH,
 } from "@cli-core/diagnostics-paths.ts";
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import type { EngineClient } from "../engine-client.ts";
+import type { ApiQuery } from "./http.ts";
 
 export type DiagnosticsRuntime = components["schemas"]["DiagnosticsRuntime"];
 
@@ -85,20 +85,39 @@ function checkState(value: unknown): CheckState {
   return value === "pass" || value === "fail" ? value : "unknown";
 }
 
+type DriftReport = {
+  engine_version: string;
+  embedded_migration_count: number;
+  db_migration_count: number;
+  unknown_in_db: Array<{
+    row_id: number;
+    hash: string;
+    created_at: number | null;
+    tag: string | null;
+  }>;
+  historical_in_db: Array<{
+    row_id: number;
+    hash: string;
+    created_at: number | null;
+    tag: string | null;
+  }>;
+  missing_in_db: Array<{ idx: number; tag: string; hash: string }>;
+};
+
 export const diagnosticsMethods = {
   async health(this: EngineClient): Promise<{
     status: "ok";
     service: "subkit";
     version: string;
   }> {
-    const body = await this.request<{ status?: string; version?: unknown }>("GET", "/health");
+    const body = (await this.api.GET("/health")).data as { status?: string; version?: unknown };
     if (typeof body.version === "string") {
       return { status: "ok", service: "subkit", version: body.version };
     }
-    const descriptor = await this.request<{ version?: unknown }>(
-      "GET",
-      "/.well-known/service-descriptor.json",
-    ).catch(() => null);
+    const descriptor = await this.api
+      .GET("/.well-known/service-descriptor.json")
+      .then(({ data }) => data as { version?: unknown })
+      .catch(() => null);
     return {
       status: "ok",
       service: "subkit",
@@ -111,10 +130,10 @@ export const diagnosticsMethods = {
     service: "subkit";
     checks: { lifecycle: CheckState; database: CheckState };
   }> {
-    const body = await this.request<{
+    const body = (await this.api.GET("/ready")).data as {
       status?: string;
       checks?: { lifecycle?: unknown; database?: unknown };
-    }>("GET", "/ready");
+    };
     return {
       status: body.status === "ready" || body.status === "ok" ? "ready" : "not_ready",
       service: "subkit",
@@ -125,17 +144,24 @@ export const diagnosticsMethods = {
     };
   },
 
-  diagnosticsVersion(this: EngineClient): Promise<{
+  async diagnosticsVersion(this: EngineClient): Promise<{
     engine_version: string;
     latest_version?: string;
     update_available: boolean;
     schema_drift: boolean;
     embedded_migrations_count: number;
   }> {
-    return this.request("GET", "/v1/diagnostics/version");
+    const { data } = await this.api.GET("/v1/diagnostics/version");
+    return data as {
+      engine_version: string;
+      latest_version?: string;
+      update_available: boolean;
+      schema_drift: boolean;
+      embedded_migrations_count: number;
+    };
   },
 
-  integrationsHealth(this: EngineClient): Promise<{
+  async integrationsHealth(this: EngineClient): Promise<{
     connectors: Array<{
       id: string;
       slug: string;
@@ -160,28 +186,37 @@ export const diagnosticsMethods = {
       workflows_attention: number;
     };
   }> {
-    return this.request("GET", "/v1/diagnostics/integrations");
+    const { data } = await this.api.GET("/v1/diagnostics/integrations");
+    return data as {
+      connectors: Array<{
+        id: string;
+        slug: string;
+        environment: string;
+        effective_health: "ok" | "degraded" | "needs_update" | "needs_reauth";
+        health_reason: string | null;
+        health_error_code: string | null;
+        sunset_at: string | null;
+        successor_uri: string | null;
+        needs_reauth: boolean;
+        circuit_state: string;
+      }>;
+      workflows_attention: Array<{
+        id: string;
+        slug: string;
+        health_state: string;
+        health_reason: string | null;
+      }>;
+      summary: {
+        connectors_total: number;
+        connectors_attention: number;
+        workflows_attention: number;
+      };
+    };
   },
 
-  driftReport(this: EngineClient): Promise<{
-    engine_version: string;
-    embedded_migration_count: number;
-    db_migration_count: number;
-    unknown_in_db: Array<{
-      row_id: number;
-      hash: string;
-      created_at: number | null;
-      tag: string | null;
-    }>;
-    historical_in_db: Array<{
-      row_id: number;
-      hash: string;
-      created_at: number | null;
-      tag: string | null;
-    }>;
-    missing_in_db: Array<{ idx: number; tag: string; hash: string }>;
-  }> {
-    return this.request("GET", DIAGNOSTICS_DRIFT_PATH);
+  async driftReport(this: EngineClient): Promise<DriftReport> {
+    const { data } = await this.api.GET("/v1/diagnostics/drift");
+    return data as DriftReport;
   },
 
   logsTailWindow(
@@ -234,44 +269,58 @@ export const diagnosticsMethods = {
     return `${this.base}${DIAGNOSTICS_LOG_STREAM_PATH}${qs ? `?${qs}` : ""}`;
   },
 
-  statusSummary(this: EngineClient): Promise<StatusSummary> {
-    return this.request("GET", "/v1/status");
+  async statusSummary(this: EngineClient): Promise<StatusSummary> {
+    const { data } = await this.api.GET("/v1/status");
+    return data as StatusSummary;
   },
 
-  tailAuditLog(
+  async tailAuditLog(
     this: EngineClient,
     query: { actor_id?: string; action?: string; limit?: number } = {},
   ): Promise<{ items: Array<Record<string, unknown>> }> {
-    return this.request("GET", "/v1/audit-log", undefined, query);
+    const { data } = await this.api.GET("/v1/audit-log", {
+      params: { query: query as ApiQuery<"/v1/audit-log", "get"> },
+    });
+    return data as { items: Array<Record<string, unknown>> };
   },
 
-  tailEngineErrors(
+  async tailEngineErrors(
     this: EngineClient,
     query: { limit?: number; since?: string; trace_id?: string } = {},
   ): Promise<{ items: EngineErrorEntry[]; total_buffered: number }> {
-    return this.request("GET", "/v1/diagnostics/errors", undefined, query);
+    const { data } = await this.api.GET("/v1/diagnostics/errors", {
+      params: { query: query as ApiQuery<"/v1/diagnostics/errors", "get"> },
+    });
+    return data as { items: EngineErrorEntry[]; total_buffered: number };
   },
 
-  setupValidation(this: EngineClient): Promise<SetupValidationResponse> {
-    return this.request("GET", "/v1/diagnostics/setup");
+  async setupValidation(this: EngineClient): Promise<SetupValidationResponse> {
+    const { data } = await this.api.GET("/v1/diagnostics/setup");
+    return data as SetupValidationResponse;
   },
 
-  diagnosticsRuntime(this: EngineClient): Promise<DiagnosticsRuntime> {
-    return this.request("GET", "/v1/diagnostics/runtime");
+  async diagnosticsRuntime(this: EngineClient): Promise<DiagnosticsRuntime> {
+    const { data } = await this.api.GET("/v1/diagnostics/runtime");
+    return data as DiagnosticsRuntime;
   },
 
-  getDiagnosticsLlm(this: EngineClient): Promise<Record<string, unknown>> {
-    return this.request("GET", "/v1/diagnostics/llm");
+  async getDiagnosticsLlm(this: EngineClient): Promise<Record<string, unknown>> {
+    const { data } = await this.api.GET("/v1/diagnostics/llm");
+    return data as Record<string, unknown>;
   },
 
-  queryAuditLog(
+  async queryAuditLog(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
   ): Promise<{ items: Record<string, unknown>[]; next_cursor: string | null }> {
-    return this.request("GET", "/v1/audit-log", undefined, query);
+    const { data } = await this.api.GET("/v1/audit-log", {
+      params: { query: query as ApiQuery<"/v1/audit-log", "get"> },
+    });
+    return data as { items: Record<string, unknown>[]; next_cursor: string | null };
   },
-  getAuditEvent(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("GET", `/v1/audit-log/${encodeURIComponent(id)}`);
+  async getAuditEvent(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+    const { data } = await this.api.GET("/v1/audit-log/{id}", { params: { path: { id } } });
+    return data as Record<string, unknown>;
   },
   exportAuditLog(
     this: EngineClient,

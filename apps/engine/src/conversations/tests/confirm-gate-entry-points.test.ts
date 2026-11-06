@@ -15,9 +15,9 @@ import { getUnifiedRegistry } from "../../tools/index.ts";
 import { CHAT_READONLY_TOOLS } from "../tools/authoring-palette.ts";
 import { getTool, type ToolContext } from "../tools/index.ts";
 import { wrapOne } from "../tools/sdk-wrap/invoke.ts";
-import type { TurnSignals } from "../tools/sdk-wrap/state.ts";
 import { wrapTools } from "../tools/sdk-wrap.ts";
 import type { TurnEvent } from "../types.ts";
+import { freshSignals } from "./turn-signals.ts";
 
 const TOOL = "create_knowledge_source";
 const ARGS = { mode: "inline", name: "Entry point source", content: "# Entry point" };
@@ -34,24 +34,6 @@ let tenantId: string;
 let otherTenantId: string;
 let principal: ResolvedPrincipal;
 const originalDatabaseUrl = process.env.DATABASE_URL;
-
-function freshSignals(): TurnSignals {
-  return {
-    step: 0,
-    toolChain: Promise.resolve(),
-    pendingChildToolCallIds: [],
-    pendingChildElicitationIds: [],
-    toolInvocationCount: new Map(),
-    toolLastErrorHash: new Map(),
-    toolArgsRepeat: new Map(),
-    toolValidationFingerprint: new Map(),
-    toolErrorCodeRepeat: new Map(),
-    totalLoopWarnings: 0,
-    consecutiveFailures: 0,
-    lastAssistantText: "",
-    lastExecutionSuccess: null,
-  };
-}
 
 function toolCtx(
   conversation_id: string,

@@ -1,14 +1,13 @@
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
 import { actorOf, auditActor } from "../../audit/actor.ts";
 import { auditAwait } from "../../audit/audit.ts";
 import { resolveActor } from "../../audit/recorders/types.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { executeConnectorHttpRequest } from "../../connectors/drivers/http.ts";
+import { findConnectorRowBySlug } from "../../connectors/tool-lookups.ts";
 import type { ConnectorView } from "../../connectors/types.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
-import { connectors as connectorsTable } from "../../db/schema/index.ts";
 import type { ResolvedAuthorityReference } from "../../llm/substitution/resolver.ts";
 import { resolvePlaceholders } from "../../llm/substitution/resolver.ts";
 import { logger } from "../../logging/logger.ts";
@@ -104,18 +103,7 @@ async function lookupConnectorBySlug(
   slug: string,
   environment: "dev" | "prod" | null,
 ): Promise<ConnectorView | null> {
-  const rows = await db
-    .select()
-    .from(connectorsTable)
-    .where(
-      and(
-        eq(connectorsTable.tenant_id, tenant_id),
-        eq(connectorsTable.slug, slug),
-        ...(environment ? [eq(connectorsTable.environment, environment)] : []),
-      ),
-    )
-    .limit(1);
-  const row = rows[0];
+  const row = await findConnectorRowBySlug(db, tenant_id, slug, environment);
   if (!row) return null;
   return row as unknown as ConnectorView;
 }

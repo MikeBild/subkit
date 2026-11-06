@@ -1,5 +1,6 @@
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import type { EngineClient } from "../engine-client.ts";
+import type { ApiQuery } from "./http.ts";
 
 export type StatsQualityResponse = components["schemas"]["StatsQualityResponse"];
 export type StatsUsageResponse = components["schemas"]["StatsUsageResponse"];
@@ -117,37 +118,67 @@ export interface StatsLlmResponse extends StatsEnvelope {
 }
 
 export const statsMethods = {
-  statsExecutions(this: EngineClient, query: StatsQuery): Promise<StatsExecutionsResponse> {
-    return this.request("GET", "/v1/stats/executions", undefined, query);
+  async statsExecutions(this: EngineClient, query: StatsQuery): Promise<StatsExecutionsResponse> {
+    const { data } = await this.api.GET("/v1/stats/executions", {
+      params: { query: query as ApiQuery<"/v1/stats/executions", "get"> },
+    });
+    return data as StatsExecutionsResponse;
   },
-  statsConnectors(this: EngineClient, query: StatsQuery): Promise<StatsAuditResponse> {
-    return this.request("GET", "/v1/stats/connectors", undefined, query);
+  async statsConnectors(this: EngineClient, query: StatsQuery): Promise<StatsAuditResponse> {
+    const { data } = await this.api.GET("/v1/stats/connectors", {
+      params: { query: query as ApiQuery<"/v1/stats/connectors", "get"> },
+    });
+    return data as StatsAuditResponse;
   },
-  statsEvents(this: EngineClient, query: StatsQuery): Promise<StatsAuditResponse> {
-    return this.request("GET", "/v1/stats/events", undefined, query);
+  async statsEvents(this: EngineClient, query: StatsQuery): Promise<StatsAuditResponse> {
+    const { data } = await this.api.GET("/v1/stats/events", {
+      params: { query: query as ApiQuery<"/v1/stats/events", "get"> },
+    });
+    return data as StatsAuditResponse;
   },
-  statsLlm(this: EngineClient, query: StatsQuery): Promise<StatsLlmResponse> {
-    return this.request("GET", "/v1/stats/llm", undefined, query);
+  async statsLlm(this: EngineClient, query: StatsQuery): Promise<StatsLlmResponse> {
+    const { data } = await this.api.GET("/v1/stats/llm", {
+      params: { query: query as ApiQuery<"/v1/stats/llm", "get"> },
+    });
+    return data as StatsLlmResponse;
   },
-  statsOperatingFigures(
+  async statsOperatingFigures(
     this: EngineClient,
     query: { window?: "24h" | "7d" | "30d"; from?: string; to?: string },
   ): Promise<OperatingFigures> {
-    return this.request("GET", "/v1/stats/operating-figures", undefined, query);
+    const { data } = await this.api.GET("/v1/stats/operating-figures", {
+      params: { query: query as ApiQuery<"/v1/stats/operating-figures", "get"> },
+    });
+    return data as OperatingFigures;
   },
-  statsHttp(this: EngineClient, query: StatsQuery): Promise<StatsUsageResponse> {
-    return this.request("GET", "/v1/stats/http", undefined, query);
+  async statsHttp(this: EngineClient, query: StatsQuery): Promise<StatsUsageResponse> {
+    const { data } = await this.api.GET("/v1/stats/http", {
+      params: { query: query as ApiQuery<"/v1/stats/http", "get"> },
+    });
+    return data as StatsUsageResponse;
   },
-  statsChat(this: EngineClient, query: StatsQuery): Promise<StatsUsageResponse> {
-    return this.request("GET", "/v1/stats/chat", undefined, query);
+  async statsChat(this: EngineClient, query: StatsQuery): Promise<StatsUsageResponse> {
+    const { data } = await this.api.GET("/v1/stats/chat", {
+      params: { query: query as ApiQuery<"/v1/stats/chat", "get"> },
+    });
+    return data as StatsUsageResponse;
   },
-  statsMcp(this: EngineClient, query: StatsQuery): Promise<StatsUsageResponse> {
-    return this.request("GET", "/v1/stats/mcp", undefined, query);
+  async statsMcp(this: EngineClient, query: StatsQuery): Promise<StatsUsageResponse> {
+    const { data } = await this.api.GET("/v1/stats/mcp", {
+      params: { query: query as ApiQuery<"/v1/stats/mcp", "get"> },
+    });
+    return data as StatsUsageResponse;
   },
-  statsConversations(this: EngineClient, query: StatsQuery): Promise<StatsUsageResponse> {
-    return this.request("GET", "/v1/stats/conversations", undefined, query);
+  async statsConversations(this: EngineClient, query: StatsQuery): Promise<StatsUsageResponse> {
+    const { data } = await this.api.GET("/v1/stats/conversations", {
+      params: { query: query as ApiQuery<"/v1/stats/conversations", "get"> },
+    });
+    return data as StatsUsageResponse;
   },
-  statsQuality(this: EngineClient, query: StatsQuery): Promise<StatsQualityResponse> {
-    return this.request("GET", "/v1/stats/quality", undefined, query);
+  async statsQuality(this: EngineClient, query: StatsQuery): Promise<StatsQualityResponse> {
+    const { data } = await this.api.GET("/v1/stats/quality", {
+      params: { query: query as ApiQuery<"/v1/stats/quality", "get"> },
+    });
+    return data as StatsQualityResponse;
   },
 };

@@ -1,9 +1,8 @@
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
-import { fileLinks } from "../../db/schema/index.ts";
 import { isTextLike } from "../../files/content-type.ts";
 import { executionDataFileIds } from "../../files/model-context.ts";
 import { requireFileForTenant, storageKey } from "../../files/resolver.ts";
+import { findConversationAttachmentBySlug } from "../../files/service.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
@@ -30,18 +29,12 @@ export const previewAttachmentTool: ConversationTool = {
   category: "tenant_read",
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = PreviewInput.parse(rawArgs);
-    const [link] = await ctx.db
-      .select({ file_id: fileLinks.file_id, slug: fileLinks.slug })
-      .from(fileLinks)
-      .where(
-        and(
-          eq(fileLinks.tenant_id, ctx.tenant_id),
-          eq(fileLinks.resource_type, "conversation"),
-          eq(fileLinks.resource_id, ctx.conversation_id),
-          eq(fileLinks.slug, args.slug),
-        ),
-      )
-      .limit(1);
+    const link = await findConversationAttachmentBySlug(
+      ctx.db,
+      ctx.tenant_id,
+      ctx.conversation_id,
+      args.slug,
+    );
     if (
       !link ||
       (await executionDataFileIds(ctx.db, ctx.tenant_id, [link.file_id])).has(link.file_id)

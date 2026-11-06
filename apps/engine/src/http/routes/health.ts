@@ -1,9 +1,8 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
-import { sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { getDb } from "../../db/client.ts";
-import { logger } from "../../logging/index.ts";
+import { pingDatabase } from "../../operator/db-ping.ts";
 import { getHealthState } from "../health-state.ts";
 import type { AppEnv } from "../openapi.ts";
 import { OPENAPI_INFO } from "../openapi.ts";
@@ -72,21 +71,6 @@ const readyRoute = createRoute({
   },
 });
 
-async function pingDb(db: Db): Promise<boolean> {
-  try {
-    await db.execute(sql`select 1`);
-    return true;
-  } catch (err) {
-    logger.warn({
-      module: "http",
-      action: "health.db_ping_failed",
-      msg: "db ping failed in /ready",
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return false;
-  }
-}
-
 export interface HealthDeps {
   db?: Db;
 }
@@ -116,7 +100,7 @@ function livenessSnapshot(): HealthSnapshot {
 }
 
 async function readinessSnapshot(db: Db): Promise<{ body: ReadySnapshot; status: 200 | 503 }> {
-  const database = (await pingDb(db)) ? ("pass" as const) : ("fail" as const);
+  const database = (await pingDatabase(db)) ? ("pass" as const) : ("fail" as const);
   const lifecycle = getHealthState().draining ? ("fail" as const) : ("pass" as const);
   const ready = database === "pass" && lifecycle === "pass";
   return {

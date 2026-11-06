@@ -1,11 +1,11 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { can, type PermissionCheck } from "../../../rbac/index.ts";
+import { buildQueryPrincipal, can, type PermissionCheck } from "../../../rbac/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { buildQueryPrincipal, RbacCanResponseSchema } from "./shared.ts";
+import { RbacCanResponseSchema } from "./shared.ts";
 
 const canRoute = createRoute({
   method: "post",

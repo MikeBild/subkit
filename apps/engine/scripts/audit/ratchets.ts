@@ -21,6 +21,7 @@ import {
   pureCoreImportHits,
   type ResolvedImport,
 } from "./rules.ts";
+import { routeSchemaHits, toolSchemaHits } from "./zod-boundaries.ts";
 
 export const SIZE_LIMIT = 600;
 
@@ -173,6 +174,25 @@ export const RATCHETS: readonly Ratchet[] = [
         cache.list([ENGINE], (rel) => !isTestPath(rel)),
         (rel) => conversationsLeafHits(rel, cache.resolvedImports(rel)).length,
       ),
+  },
+  {
+    id: "zod_at_boundaries",
+    allowlist: "zod-at-boundaries.txt",
+    rule: "createRoute handler in http/routes/** reading params, query or body without a matching request schema, or a ConversationTool without inputSchema",
+    unit: "hits",
+    measure: (cache) => {
+      const routes = countBy(
+        cache.list([`${ENGINE}/http/routes`], (rel) => !isTestPath(rel)),
+        (rel) => routeSchemaHits(cache.tree(rel)).length,
+      );
+      const tools = countBy(
+        cache.list([ENGINE], (rel) => !isTestPath(rel)),
+        (rel) => toolSchemaHits(cache.tree(rel)).length,
+      );
+      const out = new Map(routes);
+      for (const [rel, n] of tools) out.set(rel, (out.get(rel) ?? 0) + n);
+      return out;
+    },
   },
 ];
 

@@ -1,12 +1,11 @@
 import { z } from "@hono/zod-openapi";
-import { and, desc, eq } from "drizzle-orm";
 import { executionStartTraceId } from "../../audit/index.ts";
-import { executions, workflows } from "../../db/schema/index.ts";
+import { describeExecutionEvidence, isSensitivePayload } from "../../execution/index.ts";
 import {
-  describeExecutionEvidence,
-  executionVisibilityFilter,
-  isSensitivePayload,
-} from "../../execution/index.ts";
+  findVisibleExecutionPayload,
+  latestVisibleExecutionId,
+} from "../../execution/visible-reads.ts";
+import { findWorkflowLabel } from "../../workflows/index.ts";
 import { persistedWorkflowResource } from "../authoring-state/summary.ts";
 import { buildExecutionDiagnosis } from "./execution-diagnosis.ts";
 import type { ConversationTool, ToolContext } from "./index.ts";
@@ -34,28 +33,12 @@ function boundWorkflowId(ctx: ToolContext): string | null {
 
 async function latestExecutionId(ctx: ToolContext, workflowId: string | null) {
   if (!ctx.principal) return null;
-  const rows = await ctx.db
-    .select({ id: executions.id })
-    .from(executions)
-    .where(
-      and(
-        eq(executions.tenant_id, ctx.tenant_id),
-        executionVisibilityFilter(ctx.principal),
-        ...(workflowId ? [eq(executions.workflow_id, workflowId)] : []),
-      ),
-    )
-    .orderBy(desc(executions.created_at))
-    .limit(1);
-  return rows[0]?.id ?? null;
+  return latestVisibleExecutionId(ctx.db, ctx.tenant_id, ctx.principal, workflowId);
 }
 
 async function describeWorkflow(ctx: ToolContext, workflowId: string | null) {
   if (!workflowId) return { slug: null, name: null };
-  const [row] = await ctx.db
-    .select({ slug: workflows.slug, name: workflows.name })
-    .from(workflows)
-    .where(and(eq(workflows.tenant_id, ctx.tenant_id), eq(workflows.id, workflowId)))
-    .limit(1);
+  const row = await findWorkflowLabel(ctx.db, ctx.tenant_id, workflowId);
   return { slug: row?.slug ?? null, name: row?.name ?? null };
 }
 
@@ -103,17 +86,12 @@ export const inspectExecutionTool: ConversationTool = {
         };
       }
     }
-    const [visible] = await ctx.db
-      .select({ input: executions.input })
-      .from(executions)
-      .where(
-        and(
-          eq(executions.tenant_id, ctx.tenant_id),
-          eq(executions.id, executionId),
-          executionVisibilityFilter(ctx.principal),
-        ),
-      )
-      .limit(1);
+    const visible = await findVisibleExecutionPayload(
+      ctx.db,
+      ctx.tenant_id,
+      executionId,
+      ctx.principal,
+    );
     if (!visible) return { ok: false, data: { error_code: "execution_not_found" } };
     if (isSensitivePayload(visible.input))
       return sensitiveExecutionUnsupported(

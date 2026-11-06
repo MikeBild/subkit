@@ -4,11 +4,13 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { staleSnapshotsIn } from "../../../scripts/lib/migration-snapshots.ts";
 import { COMMENT_EXEMPT, COMMENT_SCOPE, findComments } from "./audit/comments.ts";
 import { parseFloorFile } from "./audit/coverage-floor.ts";
 import { listFiles } from "./audit/files.ts";
 import { createCache, evaluateRatchet, RATCHETS, writeRatchetBaseline } from "./audit/ratchets.ts";
 import { auditTenantFilter } from "./audit/tenant-filter-ast.ts";
+import { loadTestLayers } from "./audit/test-layer-source.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO = resolve(dirname(__filename), "..", "..", "..");
@@ -284,6 +286,22 @@ function checkTenantFilter(): Result {
   };
 }
 
+function checkSingleMigrationSnapshot(): Result {
+  const stale = staleSnapshotsIn(join(ENGINE_SRC, "db/migrations/meta"));
+  if (stale.length === 0) {
+    return {
+      id: "single_migration_snapshot",
+      status: "PASS",
+      message: "only the latest drizzle snapshot is tracked",
+    };
+  }
+  return {
+    id: "single_migration_snapshot",
+    status: "FAIL",
+    message: `older drizzle snapshots found; run \`bun run scripts/prune-migration-snapshots.ts\`:\n  ${stale.join("\n  ")}`,
+  };
+}
+
 function checkNoSnapshots(): Result {
   const violations: string[] = [];
   for (const f of listFiles(REPO, (p) => p.endsWith(".test.ts") || p.endsWith(".test.tsx"))) {
@@ -375,12 +393,15 @@ function checkRegressionIsolation(): Result {
     };
   }
   const innerLoop = pkg.scripts?.["test:unit"] ?? "";
-  const violations = regressionFiles.filter((f) => innerLoop.includes(f));
+  const unitLayer = innerLoop.includes("scripts/test-layer.ts")
+    ? new Set(loadTestLayers(REPO).unit)
+    : new Set<string>();
+  const violations = regressionFiles.filter((f) => innerLoop.includes(f) || unitLayer.has(f));
   if (violations.length === 0) {
     return {
       id: "regression_isolation",
       status: "PASS",
-      message: `${regressionFiles.length} *.regression.test.ts(x) file(s); none named in the test:unit inner loop`,
+      message: `${regressionFiles.length} *.regression.test.ts(x) file(s); none in the test:unit inner loop`,
     };
   }
   return {
@@ -718,6 +739,7 @@ const CHECKS: Array<() => Result> = [
   checkFileSize,
   checkTenantFilter,
   checkNoSnapshots,
+  checkSingleMigrationSnapshot,
   checkNoLiveLlm,
   checkCoverageFloor,
   checkAuditLogSingleWriter,

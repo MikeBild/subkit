@@ -57,10 +57,10 @@ async function statusOf(id: string): Promise<string> {
 describe("finalizeExecution — compare-and-set", () => {
   test("a terminal row is not overwritten by a later finalize", async () => {
     const id = await newQueued();
-    await finalizeExecution(db, tenantId, id, "succeeded", null);
+    await finalizeExecution(db, tenantId, id, { type: "completed" });
     expect(await statusOf(id)).toBe("succeeded");
 
-    await finalizeExecution(db, tenantId, id, "failed", null);
+    await finalizeExecution(db, tenantId, id, { type: "failed" });
     expect(await statusOf(id)).toBe("succeeded");
   });
 });
@@ -269,14 +269,14 @@ describe("a refused dispatch reaches the audit trail", () => {
 describe("finalizeExecution — queued-only guard", () => {
   test("queued → aborted succeeds", async () => {
     const id = await newQueued();
-    await finalizeExecution(db, tenantId, id, "aborted", null, null, ["queued"]);
+    await finalizeExecution(db, tenantId, id, { type: "cancelled" });
     expect(await statusOf(id)).toBe("aborted");
   });
 
   test("a running row is left untouched by the queued-only finalize", async () => {
     const id = await newQueued();
     await markExecutionRunning(db, tenantId, id, new Date(FROZEN_NOW));
-    await finalizeExecution(db, tenantId, id, "aborted", null, null, ["queued"]);
+    await finalizeExecution(db, tenantId, id, { type: "cancelled" });
     expect(await statusOf(id)).toBe("running");
   });
 
@@ -303,7 +303,7 @@ describe("finalizeExecution — queued-only guard", () => {
       actor_id: null,
       request_source: "api",
     });
-    await finalizeExecution(db, tenantId, id, "aborted", null, null, ["queued"]);
+    await finalizeExecution(db, tenantId, id, { type: "cancelled" });
 
     const result = await runExecution({
       db,

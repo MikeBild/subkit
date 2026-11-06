@@ -8,7 +8,6 @@ import {
   runtimeConfigState,
 } from "../db/schema/index.ts";
 import { CONFIG_STATE_KEY } from "./contracts.ts";
-import { hasColumn } from "./secret-columns.ts";
 import { ensureRuntimeState } from "./state-columns.ts";
 
 export class VaultParticipationError extends Error {
@@ -49,7 +48,6 @@ export function withVaultStartupGate<T>(
 }
 
 export async function assertVaultMasterKey(tx: Executor): Promise<void> {
-  if (!(await hasColumn(tx, "runtime_config_state", "master_key_digest"))) return;
   // tenant-filter:exempt — the master-key pin belongs to the product-wide runtime state.
   const [state] = await tx
     .select({ digest: runtimeConfigState.master_key_digest })
@@ -87,22 +85,19 @@ export async function assertVaultProducersStopped(tx: Executor): Promise<void> {
     .from(runtimeConfigReplicas)
     .limit(1);
   if (replicas.length > 0) throw new VaultParticipationError("vault_producers_unresolved");
-  if (await hasColumn(tx, "hosted_work_admissions", "state")) {
-    // tenant-filter:exempt — offline key maintenance requires all product work admissions to be settled.
-    const work = await tx
-      .select({ id: hostedWorkAdmissions.id })
-      .from(hostedWorkAdmissions)
-      .where(ne(hostedWorkAdmissions.state, "released"))
-      .limit(1);
-    if (work.length > 0) throw new VaultParticipationError("vault_producers_unresolved");
-  }
+  // tenant-filter:exempt — offline key maintenance requires all product work admissions to be settled.
+  const work = await tx
+    .select({ id: hostedWorkAdmissions.id })
+    .from(hostedWorkAdmissions)
+    .where(ne(hostedWorkAdmissions.state, "released"))
+    .limit(1);
+  if (work.length > 0) throw new VaultParticipationError("vault_producers_unresolved");
 }
 
 export async function completeRegistryRewrapEpoch(
   tx: Executor,
   targetKey: Uint8Array,
 ): Promise<void> {
-  if (!(await hasColumn(tx, "runtime_config_state", "master_key_digest"))) return;
   await ensureRuntimeState(tx);
   // tenant-filter:exempt — a completed offline registry operation atomically updates its global key pin.
   const [state] = await tx

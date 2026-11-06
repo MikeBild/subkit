@@ -1,3 +1,19 @@
+import type { paths } from "@cli-core/engine-api/openapi.d.ts";
+
+type ApiOperation<P extends keyof paths, M extends string> = M extends keyof paths[P]
+  ? paths[P][M]
+  : never;
+
+export type ApiBody<P extends keyof paths, M extends string> =
+  ApiOperation<P, M> extends { requestBody?: infer R }
+    ? NonNullable<R> extends { content: { "application/json": infer B } }
+      ? B
+      : never
+    : never;
+
+export type ApiQuery<P extends keyof paths, M extends string> =
+  ApiOperation<P, M> extends { parameters: { query?: infer Q } } ? NonNullable<Q> : never;
+
 export function parseResponseBody(text: string): unknown {
   if (!text) return null;
   try {

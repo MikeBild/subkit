@@ -13,11 +13,11 @@ import {
 import { seedMcpConnector } from "../../../mcp/client/test-fixtures.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { seedTenant } from "../../../test-helpers/seed.ts";
+import { freshSignals } from "../../tests/turn-signals.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import { readOnlyPaletteSpecs } from "../sdk-wrap/external-mcp-readonly.ts";
 import { buildExternalMcpTools } from "../sdk-wrap/external-mcp-tools.ts";
-import type { TurnSignals } from "../sdk-wrap.ts";
 
 let remoteCallToolCalls = 0;
 let declared: ServerCapabilitiesLike = { tools: {} };
@@ -56,24 +56,6 @@ const fakeClient: McpClientLike = {
   },
   async close() {},
 };
-
-function freshSignals(): TurnSignals {
-  return {
-    step: 0,
-    toolChain: Promise.resolve(),
-    pendingChildToolCallIds: [],
-    pendingChildElicitationIds: [],
-    toolInvocationCount: new Map(),
-    toolLastErrorHash: new Map(),
-    toolArgsRepeat: new Map(),
-    toolValidationFingerprint: new Map(),
-    toolErrorCodeRepeat: new Map(),
-    totalLoopWarnings: 0,
-    consecutiveFailures: 0,
-    lastAssistantText: "",
-    lastExecutionSuccess: null,
-  };
-}
 
 let ctx: TestDb;
 let tenant_id: string;

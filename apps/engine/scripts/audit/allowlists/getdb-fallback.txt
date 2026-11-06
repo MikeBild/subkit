@@ -5,8 +5,6 @@
 # `bun run apps/engine/scripts/audit-invariants.ts --update-baseline` (lowers budgets, drops fixed files).
 # `--accept-new` also admits new offenders; use it only for a reviewed baseline reset.
 
-apps/engine/src/connectors/service.ts        11
-apps/engine/src/credentials/service.ts       3
 apps/engine/src/discovery/service.ts         15
 apps/engine/src/docs-ingestion/service.ts    4
 apps/engine/src/identity/service.ts          2

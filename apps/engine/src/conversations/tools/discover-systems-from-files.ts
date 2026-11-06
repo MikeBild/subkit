@@ -1,11 +1,14 @@
 import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
 import { recordKnowledgeSourceCandidatesSynthesized } from "../../audit/recorders/index.ts";
-import { assertInsertRow } from "../../db/assert-insert.ts";
-import { lockCatalogVocabulary } from "../../db/catalog-vocabulary.ts";
-import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
-import { knowledgeContentHash, recordKnowledgeVersion } from "../../knowledge/version-record.ts";
+import {
+  findFirstKnowledgeChunk,
+  findKnowledgeSourceBySlug,
+  findKnowledgeSourceRow,
+  listKnowledgeChunkRows,
+  upsertSingleChunkKnowledgeSource,
+} from "../../knowledge/discovery-candidates.ts";
+import { knowledgeContentHash } from "../../knowledge/version-record.ts";
 import { invoke } from "../../llm/core/invoke.ts";
 import { logger } from "../../logging/logger.ts";
 import { auditActorFromToolContext } from "./audit-actor.ts";
@@ -117,17 +120,7 @@ export const discoverSystemsFromFilesTool: ConversationTool = {
       source_id: args.knowledge_source_id,
     });
 
-    const sourceRows = await ctx.db
-      .select()
-      .from(knowledgeSources)
-      .where(
-        and(
-          eq(knowledgeSources.tenant_id, ctx.tenant_id),
-          eq(knowledgeSources.id, args.knowledge_source_id),
-        ),
-      )
-      .limit(1);
-    const sourceRow = sourceRows[0];
+    const sourceRow = await findKnowledgeSourceRow(ctx.db, ctx.tenant_id, args.knowledge_source_id);
     if (!sourceRow) {
       logger.warn({
         module: "conversation_tool",
@@ -166,15 +159,7 @@ export const discoverSystemsFromFilesTool: ConversationTool = {
       };
     }
 
-    const chunkRows = await ctx.db
-      .select()
-      .from(knowledgeChunks)
-      .where(
-        and(
-          eq(knowledgeChunks.tenant_id, ctx.tenant_id),
-          eq(knowledgeChunks.knowledge_source_id, args.knowledge_source_id),
-        ),
-      );
+    const chunkRows = await listKnowledgeChunkRows(ctx.db, ctx.tenant_id, args.knowledge_source_id);
     const orderedChunks = [...chunkRows].sort((a, b) => a.ordinal - b.ordinal);
     const content = orderedChunks.map((c) => c.content).join("\n\n");
 
@@ -302,26 +287,11 @@ async function readCachedCandidates(
   tenant_id: string,
   slug: string,
 ): Promise<CachedCandidates | null> {
-  const rows = await db
-    .select()
-    .from(knowledgeSources)
-    .where(and(eq(knowledgeSources.tenant_id, tenant_id), eq(knowledgeSources.slug, slug)))
-    .limit(1);
-  const row = rows[0];
+  const row = await findKnowledgeSourceBySlug(db, tenant_id, slug);
   if (!row) return null;
   if (row.source_type !== SOURCE_TYPE) return null;
   if (!isFresh(row.last_refreshed_at)) return null;
-  const chunks = await db
-    .select()
-    .from(knowledgeChunks)
-    .where(
-      and(
-        eq(knowledgeChunks.tenant_id, tenant_id),
-        eq(knowledgeChunks.knowledge_source_id, row.id),
-      ),
-    )
-    .limit(1);
-  const chunk = chunks[0];
+  const chunk = await findFirstKnowledgeChunk(db, tenant_id, row.id);
   if (!chunk) return null;
   try {
     const parsed = JSON.parse(chunk.content) as ConnectorEndpointCandidateEnvelope;
@@ -360,97 +330,19 @@ async function persistCandidates(
     mime: "application/json",
     text: json,
   };
-  return ctx.db.transaction(async (db) => {
-    await lockCatalogVocabulary(db, ctx.tenant_id);
-    const existing = await db
-      .select()
-      .from(knowledgeSources)
-      .where(and(eq(knowledgeSources.tenant_id, ctx.tenant_id), eq(knowledgeSources.slug, p.slug)))
-      .limit(1);
-    const prior = existing[0];
-
-    if (prior) {
-      await db
-        .update(knowledgeSources)
-        .set({
-          source_type: SOURCE_TYPE,
-          source_uri: p.source_knowledge_source_id,
-          version,
-          bytes_total: bytes,
-          chunk_count: 1,
-          last_refreshed_at: now,
-          status: "active",
-          updated_at: now,
-        })
-        .where(eq(knowledgeSources.id, prior.id));
-      await db
-        .delete(knowledgeChunks)
-        .where(
-          and(
-            eq(knowledgeChunks.tenant_id, ctx.tenant_id),
-            eq(knowledgeChunks.knowledge_source_id, prior.id),
-          ),
-        );
-      await db.insert(knowledgeChunks).values({
-        tenant_id: ctx.tenant_id,
-        knowledge_source_id: prior.id,
-        ordinal: 0,
-        title: `Connector candidates for ${p.source_uri}`,
-        path: p.source_knowledge_source_id,
-        content: json,
-        byte_size: bytes,
-        fingerprint: version,
-      });
-      await recordKnowledgeVersion(db, {
-        tenant_id: ctx.tenant_id,
-        knowledge_source_id: prior.id,
-        content,
-        content_hash: version,
-        actor: toolActor(ctx),
-        note: null,
-      });
-      return { row_id: prior.id, cached_at: now.toISOString(), created: false };
-    }
-
-    const [inserted] = await db
-      .insert(knowledgeSources)
-      .values({
-        tenant_id: ctx.tenant_id,
-        name: `Endpoint candidates for ${p.source_uri}`,
-        slug: p.slug,
-        description: `Connector endpoint candidates synthesised from knowledge source ${p.source_knowledge_source_id}.`,
-        scope: "global",
-        workflow_id: null,
-        status: "active",
-        source_type: SOURCE_TYPE,
-        source_uri: p.source_knowledge_source_id,
-        mime_type: "application/json",
-        version,
-        bytes_total: bytes,
-        chunk_count: 1,
-        refresh_strategy: "manual",
-        last_refreshed_at: now,
-      })
-      .returning();
-    assertInsertRow(inserted, "knowledge_sources");
-    await db.insert(knowledgeChunks).values({
-      tenant_id: ctx.tenant_id,
-      knowledge_source_id: inserted.id,
-      ordinal: 0,
-      title: `Connector candidates for ${p.source_uri}`,
-      path: p.source_knowledge_source_id,
-      content: json,
-      byte_size: bytes,
-      fingerprint: version,
-    });
-    await recordKnowledgeVersion(db, {
-      tenant_id: ctx.tenant_id,
-      knowledge_source_id: inserted.id,
-      content,
-      content_hash: version,
-      actor: toolActor(ctx),
-      note: null,
-    });
-    return { row_id: inserted.id, cached_at: now.toISOString(), created: true };
+  return upsertSingleChunkKnowledgeSource(ctx.db, {
+    tenant_id: ctx.tenant_id,
+    slug: p.slug,
+    source_type: SOURCE_TYPE,
+    source_uri: p.source_knowledge_source_id,
+    name: `Endpoint candidates for ${p.source_uri}`,
+    description: `Connector endpoint candidates synthesised from knowledge source ${p.source_knowledge_source_id}.`,
+    chunk_title: `Connector candidates for ${p.source_uri}`,
+    json,
+    version,
+    bytes,
+    now,
+    content,
+    actor: toolActor(ctx),
   });
 }

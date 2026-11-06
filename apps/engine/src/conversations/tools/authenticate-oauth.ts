@@ -3,8 +3,11 @@ import {
   OAUTH_AUTHORIZATION_URL_FIELD,
   OAuthApprovalInputSchema,
 } from "@shared/elicitation-constants.ts";
-import { and, desc, eq, gt } from "drizzle-orm";
 import type { OAuthFlowOrigin } from "../../connectors/oauth-origin.ts";
+import {
+  hasPendingConnectorOAuthState,
+  insertConnectorOAuthState,
+} from "../../connectors/oauth-states.ts";
 import { getConnector } from "../../connectors/service.ts";
 import { connectorSignIn } from "../../connectors/sign-in.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
@@ -16,7 +19,6 @@ import {
   type OAuthWaitStatus,
   waitForOAuthCredential,
 } from "../../credentials/oauth2/wait.ts";
-import { connectorOauthStates } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { withConnectorAuthenticated } from "../authoring-state.ts";
 import { decidedByFor } from "../decided-by.ts";
@@ -133,19 +135,7 @@ async function hasPendingOAuthState(
   ctx: { db: import("../../db/client.ts").Db; tenant_id: string },
   connectorId: string,
 ): Promise<boolean> {
-  const rows = await ctx.db
-    .select({ id: connectorOauthStates.id })
-    .from(connectorOauthStates)
-    .where(
-      and(
-        eq(connectorOauthStates.tenant_id, ctx.tenant_id),
-        eq(connectorOauthStates.connector_id, connectorId),
-        gt(connectorOauthStates.expires_at, new Date()),
-      ),
-    )
-    .orderBy(desc(connectorOauthStates.created_at))
-    .limit(1);
-  return rows.length > 0;
+  return hasPendingConnectorOAuthState(ctx.db, ctx.tenant_id, connectorId, new Date());
 }
 
 function remainingWaitBudgetMs(bridgeStartedAt: number): number {
@@ -298,7 +288,7 @@ export const authenticateOAuthTool: ConversationTool = {
       exec: ctx.db,
     });
     const expires = new Date(Date.now() + 10 * 60_000);
-    await ctx.db.insert(connectorOauthStates).values({
+    await insertConnectorOAuthState(ctx.db, {
       tenant_id: ctx.tenant_id,
       connector_id: connectorId,
       state: started.state,

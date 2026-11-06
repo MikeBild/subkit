@@ -22,7 +22,13 @@ import {
   resolveExecutionCallerActor,
   resolveExecutionCallerOrigin,
 } from "./caller-origin.ts";
-import { NON_TERMINAL_EXECUTION_STATUSES, transitionSources } from "./core/status.ts";
+import {
+  type ExecutionOutcome,
+  NON_TERMINAL_EXECUTION_STATUSES,
+  type OutcomeTransition,
+  outcomeTransition,
+  transitionSources,
+} from "./core/status.ts";
 import {
   isSensitivePayload,
   protectExecutionPayload,
@@ -40,6 +46,7 @@ import {
 } from "./types.ts";
 
 export interface CreateExecutionParams {
+  id?: string;
   execution_privacy?: "sensitive" | undefined;
   tenant_id: string;
   caller_context?: CallerContext | null;
@@ -129,7 +136,7 @@ export async function createExecution(
       params.execution_privacy === "sensitive" ||
       (version?.dag as { execution_privacy?: string } | undefined)?.execution_privacy ===
         "sensitive";
-    const executionId = randomUUID();
+    const executionId = params.id ?? randomUUID();
     const [row] = await tx
       .insert(executions)
       .values({
@@ -387,19 +394,37 @@ export async function terminalizeExecutionRow(
   return row ?? null;
 }
 
-export async function finalizeExecution(
+export interface FinalizeExecutionDetails {
+  result_storage_uri?: string | null;
+  failure?: ExecutionFailureDetail | null;
+  result_sha256?: string | null;
+  output_contract?: OutputContractVerdict;
+  sensitive_result?: unknown;
+}
+
+export function finalizeExecution(
   db: Db,
   tenant_id: string,
   execution_id: string,
-  status: ExecutionStatus,
-  result_storage_uri: string | null,
-  failure?: ExecutionFailureDetail | null,
-  expectedStatuses: ExecutionStatus[] = NON_TERMINAL_STATUSES,
-  result_sha256: string | null = null,
-  output_contract: OutputContractVerdict = "none",
-  refused = false,
-  sensitive_result?: unknown,
+  outcome: ExecutionOutcome,
+  details: FinalizeExecutionDetails = {},
 ): Promise<void> {
+  return applyFinalization(db, tenant_id, execution_id, outcomeTransition(outcome), details);
+}
+
+async function applyFinalization(
+  db: Db,
+  tenant_id: string,
+  execution_id: string,
+  transition: OutcomeTransition,
+  details: FinalizeExecutionDetails,
+): Promise<void> {
+  const { status, sources: expectedStatuses, refused } = transition;
+  const result_storage_uri = details.result_storage_uri ?? null;
+  const output_contract = details.output_contract ?? "none";
+  const sensitive_result = details.sensitive_result;
+  let failure = details.failure ?? null;
+  let result_sha256 = details.result_sha256 ?? null;
   let workflow_id: string | null = null;
   let request_source: string = "api";
   let duration_ms: number | null = null;
@@ -476,7 +501,7 @@ export async function finalizeExecution(
     await writeEvent(tx, {
       tenant_id,
       channel: "execution.status",
-      type: refused ? "execution.refused" : `execution.${status}`,
+      type: transition.event_type,
       payload: {
         execution_id,
         status,

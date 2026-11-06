@@ -1,8 +1,7 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
 import { parseFileId } from "../../../api/files-schemas.ts";
 import type { Executor } from "../../../db/client.ts";
-import { fileLinks, files } from "../../../db/schema/files.ts";
 import { resolvedFromRow } from "../../../files/resolver.ts";
+import { findReadyFileByHash, listExecutionDataFileSizes } from "../../../files/service.ts";
 import { loadStoredPackageArchive, previewPackageImport } from "../../../identity/index.ts";
 import { getIntakeItemsForReview } from "../../../knowledge/index.ts";
 import { getSkillCandidatesForReview } from "../../../skill-candidates/index.ts";
@@ -246,24 +245,12 @@ async function inputFileContent(
   if (!source.success) return null;
   const inputFileId = parseFileId(source.data.id);
   if (!inputFileId) return null;
-  const [row] = await db
-    .select({ file: files })
-    .from(files)
-    .where(
-      and(
-        eq(files.tenant_id, tenantId),
-        eq(files.id, inputFileId),
-        eq(files.sha256, source.data.sha256),
-        eq(files.status, "ready"),
-        isNull(files.deleted_at),
-      ),
-    )
-    .limit(1);
-  if (!row) return null;
+  const file = await findReadyFileByHash(db, tenantId, inputFileId, source.data.sha256);
+  if (!file) return null;
   try {
     return {
       inputFileId,
-      content: await decodeWorkflowInputFile(resolvedFromRow(row.file), source.data.sha256),
+      content: await decodeWorkflowInputFile(resolvedFromRow(file), source.data.sha256),
     };
   } catch {
     return null;
@@ -284,17 +271,7 @@ export async function executionDataTransfer(
     referencedFileIds(inputFile.content, ids);
   }
   const declaredBytes = declaredPartBytes(inputFile?.content ?? args.input ?? args);
-  const rows = await db
-    .select({ id: files.id, size_bytes: files.size_bytes })
-    .from(fileLinks)
-    .innerJoin(files, and(eq(files.id, fileLinks.file_id), eq(files.tenant_id, tenantId)))
-    .where(
-      and(
-        eq(fileLinks.tenant_id, tenantId),
-        inArray(fileLinks.file_id, [...ids]),
-        eq(fileLinks.role, "execution_data"),
-      ),
-    );
+  const rows = await listExecutionDataFileSizes(db, tenantId, [...ids]);
   if (rows.length === 0) return null;
   const sizes = new Map(rows.map((row) => [row.id, row.size_bytes]));
   const fileBytes = [...sizes.values()].reduce((total, size) => total + size, 0);

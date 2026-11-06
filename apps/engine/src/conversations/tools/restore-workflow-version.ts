@@ -1,6 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
-import { workflows } from "../../db/schema/index.ts";
+import { workflowIdBySlug } from "../../workflows/lookup.ts";
 import { restoreWorkflowVersion, VersionNotRestorableError } from "../../workflows/versions.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 
@@ -24,13 +23,8 @@ const inputSchema = z
   })
   .openapi("RestoreWorkflowVersionToolInput");
 
-async function resolveWorkflowIdBySlug(ctx: ToolContext, slug: string): Promise<string | null> {
-  const rows = await ctx.db
-    .select({ id: workflows.id })
-    .from(workflows)
-    .where(and(eq(workflows.tenant_id, ctx.tenant_id), eq(workflows.slug, slug)))
-    .limit(1);
-  return rows[0]?.id ?? null;
+function resolveWorkflowIdBySlug(ctx: ToolContext, slug: string): Promise<string | null> {
+  return workflowIdBySlug(ctx.db, ctx.tenant_id, slug);
 }
 
 export const restoreWorkflowVersionTool: ConversationTool = {

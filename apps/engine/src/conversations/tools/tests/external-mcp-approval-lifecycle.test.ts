@@ -23,10 +23,10 @@ import { buildMessages } from "../../parts.ts";
 import { maybeAutoPersistFromElicitation } from "../../persistence/auto-persist.ts";
 import { pendingPrompt } from "../../resume.ts";
 import { getConversation } from "../../service/get.ts";
+import { freshSignals } from "../../tests/turn-signals.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import { buildExternalMcpTools } from "../sdk-wrap/external-mcp-tools.ts";
-import type { TurnSignals } from "../sdk-wrap.ts";
 
 let remoteCalls = 0;
 
@@ -56,24 +56,6 @@ const fakeClient: McpClientLike = {
   },
   async close() {},
 };
-
-function freshSignals(): TurnSignals {
-  return {
-    step: 0,
-    toolChain: Promise.resolve(),
-    pendingChildToolCallIds: [],
-    pendingChildElicitationIds: [],
-    toolInvocationCount: new Map(),
-    toolLastErrorHash: new Map(),
-    toolArgsRepeat: new Map(),
-    toolValidationFingerprint: new Map(),
-    toolErrorCodeRepeat: new Map(),
-    totalLoopWarnings: 0,
-    consecutiveFailures: 0,
-    lastAssistantText: "",
-    lastExecutionSuccess: null,
-  };
-}
 
 type Execute = (
   input: Record<string, unknown>,

@@ -1,6 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
-import { roles, systemAccounts, tenants, users } from "../../../db/schema/index.ts";
+import { loadWhoamiProfile } from "../../../identity/index.ts";
 import { resolveEngineUrl } from "../../../llm/index.ts";
 import { isOperatorPrincipal } from "../../../rbac/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -46,52 +45,16 @@ export function registerWhoamiRoute(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
 
-    let email: string | null = null;
-    let roleName: string | null = null;
-
-    if (principal.kind === "user") {
-      const [row] = await db
-        .select({
-          email: users.email,
-          role_name: roles.name,
-        })
-        .from(users)
-        .leftJoin(roles, eq(roles.id, users.role_id))
-        .where(and(eq(users.tenant_id, principal.tenant_id), eq(users.id, principal.id)))
-        .limit(1);
-      email = row?.email ?? null;
-      roleName = row?.role_name ?? null;
-    } else if (principal.kind === "system_account") {
-      const [row] = await db
-        .select({
-          role_name: roles.name,
-        })
-        .from(systemAccounts)
-        .leftJoin(roles, eq(roles.id, systemAccounts.role_id))
-        .where(
-          and(
-            eq(systemAccounts.tenant_id, principal.tenant_id),
-            eq(systemAccounts.id, principal.id),
-          ),
-        )
-        .limit(1);
-      roleName = row?.role_name ?? null;
-    }
-
-    const [tenantRow] = await db
-      .select({ slug: tenants.slug })
-      .from(tenants)
-      .where(eq(tenants.id, principal.tenant_id))
-      .limit(1);
+    const profile = await loadWhoamiProfile(db, principal);
 
     return c.json(
       {
         id: principal.id,
         kind: principal.kind as "user" | "system_account",
         tenant_id: principal.tenant_id,
-        tenant_slug: tenantRow?.slug ?? null,
-        email,
-        role_name: roleName,
+        tenant_slug: profile.tenant_slug,
+        email: profile.email,
+        role_name: profile.role_name,
         provider: principal.provider,
         base_url: resolveEngineUrl(c.req.raw) ?? null,
         scopes: Array.isArray(principal.scopes) ? principal.scopes : null,

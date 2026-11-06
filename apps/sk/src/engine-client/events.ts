@@ -1,5 +1,6 @@
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import type { EngineClient } from "../engine-client.ts";
+import type { ApiBody, ApiQuery } from "./http.ts";
 
 export type Subscription = components["schemas"]["Subscription"];
 export type SubscriptionList = components["schemas"]["SubscriptionListResponse"];
@@ -7,20 +8,25 @@ export type CreateSubscriptionBody = components["schemas"]["CreateSubscriptionBo
 export type UpdateSubscriptionBody = components["schemas"]["UpdateSubscriptionBody"];
 
 export const eventsMethods = {
-  listHooksInbound(this: EngineClient): Promise<{ items: Record<string, unknown>[] }> {
-    return this.request("GET", "/v1/webhooks/inbound");
+  async listHooksInbound(this: EngineClient): Promise<{ items: Record<string, unknown>[] }> {
+    const { data } = await this.api.GET("/v1/webhooks/inbound");
+    return data as { items: Record<string, unknown>[] };
   },
-  getHookInbound(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("GET", `/v1/webhooks/inbound/${encodeURIComponent(id)}`);
+  async getHookInbound(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+    const { data } = await this.api.GET("/v1/webhooks/inbound/{id}", { params: { path: { id } } });
+    return data as Record<string, unknown>;
   },
-  createHookInbound(
+  async createHookInbound(
     this: EngineClient,
     body: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    return this.request("POST", "/v1/webhooks/inbound", body);
+    const { data } = await this.api.POST("/v1/webhooks/inbound", {
+      body: body as ApiBody<"/v1/webhooks/inbound", "post">,
+    });
+    return data as Record<string, unknown>;
   },
-  deleteHookInbound(this: EngineClient, id: string): Promise<void> {
-    return this.request("DELETE", `/v1/webhooks/inbound/${encodeURIComponent(id)}`);
+  async deleteHookInbound(this: EngineClient, id: string): Promise<void> {
+    await this.api.DELETE("/v1/webhooks/inbound/{id}", { params: { path: { id } } });
   },
 
   async listSubscriptions(this: EngineClient): Promise<SubscriptionList> {
@@ -63,56 +69,80 @@ export const eventsMethods = {
     return data as { replayed: boolean };
   },
 
-  listEvents(
+  async listEvents(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
   ): Promise<{ items: Record<string, unknown>[] }> {
-    return this.request("GET", "/v1/events", undefined, query);
+    const { data } = await this.api.GET("/v1/events", {
+      params: { query: query as ApiQuery<"/v1/events", "get"> },
+    });
+    return data as { items: Record<string, unknown>[] };
   },
 
-  listNotificationChannels(this: EngineClient): Promise<{ items: Record<string, unknown>[] }> {
-    return this.request("GET", "/v1/notifications/channels");
+  async listNotificationChannels(
+    this: EngineClient,
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    const { data } = await this.api.GET("/v1/notifications/channels");
+    return data as { items: Record<string, unknown>[] };
   },
-  createNotificationChannel(
+  async createNotificationChannel(
     this: EngineClient,
     body: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    return this.request("POST", "/v1/notifications/channels", body);
+    const { data } = await this.api.POST("/v1/notifications/channels", {
+      body: body as ApiBody<"/v1/notifications/channels", "post">,
+    });
+    return data as Record<string, unknown>;
   },
-  patchNotificationChannel(
-    this: EngineClient,
-    id: string,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    return this.request("PATCH", `/v1/notifications/channels/${encodeURIComponent(id)}`, body);
-  },
-  deleteNotificationChannel(this: EngineClient, id: string): Promise<void> {
-    return this.request("DELETE", `/v1/notifications/channels/${encodeURIComponent(id)}`);
-  },
-  listNotificationRules(this: EngineClient): Promise<{ items: Record<string, unknown>[] }> {
-    return this.request("GET", "/v1/notifications/rules");
-  },
-  createNotificationRule(
-    this: EngineClient,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    return this.request("POST", "/v1/notifications/rules", body);
-  },
-  patchNotificationRule(
+  async patchNotificationChannel(
     this: EngineClient,
     id: string,
     body: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    return this.request("PATCH", `/v1/notifications/rules/${encodeURIComponent(id)}`, body);
+    const { data } = await this.api.PATCH("/v1/notifications/channels/{id}", {
+      params: { path: { id } },
+      body: body as ApiBody<"/v1/notifications/channels/{id}", "patch">,
+    });
+    return data as Record<string, unknown>;
   },
-  deleteNotificationRule(this: EngineClient, id: string): Promise<void> {
-    return this.request("DELETE", `/v1/notifications/rules/${encodeURIComponent(id)}`);
+  async deleteNotificationChannel(this: EngineClient, id: string): Promise<void> {
+    await this.api.DELETE("/v1/notifications/channels/{id}", { params: { path: { id } } });
   },
-  listNotificationDeliveries(
+  async listNotificationRules(this: EngineClient): Promise<{ items: Record<string, unknown>[] }> {
+    const { data } = await this.api.GET("/v1/notifications/rules");
+    return data as { items: Record<string, unknown>[] };
+  },
+  async createNotificationRule(
+    this: EngineClient,
+    body: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const { data } = await this.api.POST("/v1/notifications/rules", {
+      body: body as ApiBody<"/v1/notifications/rules", "post">,
+    });
+    return data as Record<string, unknown>;
+  },
+  async patchNotificationRule(
+    this: EngineClient,
+    id: string,
+    body: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const { data } = await this.api.PATCH("/v1/notifications/rules/{id}", {
+      params: { path: { id } },
+      body: body as ApiBody<"/v1/notifications/rules/{id}", "patch">,
+    });
+    return data as Record<string, unknown>;
+  },
+  async deleteNotificationRule(this: EngineClient, id: string): Promise<void> {
+    await this.api.DELETE("/v1/notifications/rules/{id}", { params: { path: { id } } });
+  },
+  async listNotificationDeliveries(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
   ): Promise<{ items: Record<string, unknown>[] }> {
-    return this.request("GET", "/v1/notifications/deliveries", undefined, query);
+    const { data } = await this.api.GET("/v1/notifications/deliveries", {
+      params: { query: query as ApiQuery<"/v1/notifications/deliveries", "get"> },
+    });
+    return data as { items: Record<string, unknown>[] };
   },
   getNotificationInbox(
     this: EngineClient,
@@ -146,13 +176,25 @@ export const eventsMethods = {
       actionable_only: query.actionable_only,
     });
   },
-  ackNotificationInbox(this: EngineClient, up_to_cursor: number): Promise<{ acked: number }> {
-    return this.request("POST", "/v1/notifications/inbox/ack", { up_to_cursor });
+  async ackNotificationInbox(this: EngineClient, up_to_cursor: number): Promise<{ acked: number }> {
+    const { data } = await this.api.POST("/v1/notifications/inbox/ack", {
+      body: { up_to_cursor } as ApiBody<"/v1/notifications/inbox/ack", "post">,
+    });
+    return data as { acked: number };
   },
-  markNotificationInboxRead(this: EngineClient, ids: number[]): Promise<{ marked: number }> {
-    return this.request("POST", "/v1/notifications/inbox/read", { ids });
+  async markNotificationInboxRead(this: EngineClient, ids: number[]): Promise<{ marked: number }> {
+    const { data } = await this.api.POST("/v1/notifications/inbox/read", {
+      body: { ids } as ApiBody<"/v1/notifications/inbox/read", "post">,
+    });
+    return data as { marked: number };
   },
-  markNotificationInboxUnread(this: EngineClient, ids: number[]): Promise<{ unmarked: number }> {
-    return this.request("POST", "/v1/notifications/inbox/unread", { ids });
+  async markNotificationInboxUnread(
+    this: EngineClient,
+    ids: number[],
+  ): Promise<{ unmarked: number }> {
+    const { data } = await this.api.POST("/v1/notifications/inbox/unread", {
+      body: { ids } as ApiBody<"/v1/notifications/inbox/unread", "post">,
+    });
+    return data as { unmarked: number };
   },
 };

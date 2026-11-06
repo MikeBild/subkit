@@ -1,7 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
-import { type Executor, getDb } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { authIdentities, tenants, userInvites, users } from "../db/schema/index.ts";
 import { now } from "../utils/clock.ts";
 import { constantTimeHexEquals } from "./api-key.ts";
@@ -29,12 +29,11 @@ export class MembershipInviteError extends Error {
 
 export async function claimMembershipInvite(
   input: BrowserMembershipContext & { token: string },
-  exec?: Executor,
+  db: Executor,
 ) {
   const token = z.string().min(14).max(128).parse(input.token);
   const parsed = parseInviteToken(token);
   if (!parsed) throw new MembershipInviteError("invite_invalid");
-  const db = exec ?? getDb();
   return db.transaction(async (tx) => {
     const proof = await browserMembershipIdentity(input, tx);
     // tenant-filter:exempt — a secret invite token discovers its destination before membership exists.
@@ -126,10 +125,9 @@ export async function claimMembershipInvite(
   });
 }
 
-export async function membershipInviteLoginTarget(token: string, exec?: Executor) {
+export async function membershipInviteLoginTarget(token: string, db: Executor) {
   const parsed = parseInviteToken(z.string().min(14).max(128).parse(token));
   if (!parsed) throw new MembershipInviteError("invite_invalid");
-  const db = exec ?? getDb();
   // tenant-filter:exempt — a secret invite token discovers the login destination before any identity is authenticated.
   const [invite] = await db
     .select()
@@ -153,10 +151,9 @@ export async function membershipInviteLoginTarget(token: string, exec?: Executor
 export async function acceptVerifiedMembershipInvite(
   raw: VerifiedSelfServiceIdentity,
   inviteId: string,
-  exec?: Executor,
+  db: Executor,
 ) {
   const input = parseVerifiedSelfServiceIdentity(raw);
-  const db = exec ?? getDb();
   return db.transaction(async (tx) => {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtextextended(${JSON.stringify([input.issuer_url, input.subject])}, 0))`,

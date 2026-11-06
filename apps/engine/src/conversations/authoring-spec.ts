@@ -1,5 +1,5 @@
+import { workflowSpecDigest } from "../workflows/core/spec.ts";
 import type { WorkflowSpec } from "../workflows/draft-schemas.ts";
-import { workflowSpecDigest } from "../workflows/version-spec.ts";
 import type { WorkflowDraftDocument } from "./types.ts";
 
 const SPEC_TEXT_MAX = 2000;

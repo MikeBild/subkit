@@ -6,8 +6,9 @@ import { EngineClient } from "../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import type { ToolContext } from "../tools/index.ts";
-import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";
+import { wrapTools } from "../tools/sdk-wrap.ts";
 import type { TurnEvent } from "../types.ts";
+import { freshSignals } from "./turn-signals.ts";
 
 const TEST_NOW_MS = getTestNow();
 
@@ -32,24 +33,6 @@ beforeAll(async () => {
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
 });
-
-function freshSignals(): TurnSignals {
-  return {
-    step: 0,
-    toolChain: Promise.resolve(),
-    pendingChildToolCallIds: [],
-    pendingChildElicitationIds: [],
-    toolInvocationCount: new Map(),
-    toolLastErrorHash: new Map(),
-    toolArgsRepeat: new Map(),
-    toolValidationFingerprint: new Map(),
-    toolErrorCodeRepeat: new Map(),
-    totalLoopWarnings: 0,
-    consecutiveFailures: 0,
-    lastAssistantText: "",
-    lastExecutionSuccess: null,
-  };
-}
 
 async function freshConversation(): Promise<string> {
   const [row] = await ctx.testDb.db

@@ -3,9 +3,8 @@ import { auditAwait } from "../../../audit/audit.ts";
 import { AuditAction } from "../../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import type { Db } from "../../../db/client.ts";
-import { runExecution } from "../../../execution/engine.ts";
 import { HELD_PREVIEW_WARNING_CODE } from "../../../execution/types.ts";
-import { admitWorkflowRun } from "../../../execution/workflow-run-admission.ts";
+import { completedRun, createRunWorkflow } from "../../../execution/use-cases/run-workflow.ts";
 import { logger } from "../../../logging/logger.ts";
 import { recordConversationToolCall } from "../../../observability/instrumentation.ts";
 import { stripConfirmMarkers } from "../../../tools/approval.ts";
@@ -15,7 +14,6 @@ import {
   type WorkflowToolDescriptor,
 } from "../../../workflows/catalog.ts";
 import { workflowExecutionEnvironment } from "../../../workflows/execution-environment.ts";
-import { gateWorkflowRunRbac } from "../../../workflows/rbac.ts";
 import {
   type GateRecordInput,
   gateRecordFor,
@@ -118,21 +116,21 @@ async function executeSyntheticRun(
       tool: name,
     });
   }
-  const rbac = await gateWorkflowRunRbac({
-    db,
+  const useCase = createRunWorkflow({ db });
+  const grant = await useCase.authorize({
     principal,
     workflow_id: entry.workflow_id,
     workflow_slug: entry.slug,
-    request_source: "chat",
+    via: "chat",
     tool: name,
   });
-  if (!rbac.allow) {
+  if (grant.kind === "rejected") {
     const output: Record<string, unknown> = {
       ok: false,
       denied: true,
       permission: "workflow:run",
-      reason: rbac.reason,
-      error: rbac.error_message,
+      reason: grant.reason,
+      error: grant.message,
       status: "failed",
     };
     recordConversationToolCall({
@@ -203,37 +201,18 @@ async function executeSyntheticRun(
     };
     const holdWrites = decision.mode !== "no_confirm";
     if (!holdWrites) logGateDecision(gateRecordFor(gateRecordInput, decision, "proceed"));
-    const admitted = await admitWorkflowRun(
-      {
-        tenant_id: ctx.tenant_id,
-        workflow_id: entry.workflow_id,
-        execution_environment: environment,
-        request_source: "chat",
-        input: inputForRun,
-        ...(holdWrites ? { hold_writes: true } : {}),
-      },
-      db,
+    const outcome = await useCase.runWorkflow({
       principal,
-      rbac.workflow_permission,
-    );
-    const result = await runExecution({
-      db,
-      tenant_id: ctx.tenant_id,
-      source: {
-        kind: "saved",
-        workflow_id: entry.workflow_id,
-        version_id: admitted.workflow_version_id,
-      },
-      input: admitted.input,
-      options: {
-        request_source: "chat",
-        trace_id: null,
-        principal,
-        execution_mode: environment,
-        existing_execution_id: admitted.execution_id,
-        hold_writes: admitted.hold_writes,
-      },
+      workflow_id: entry.workflow_id,
+      execution_environment: environment,
+      request_source: "chat",
+      input: inputForRun,
+      ...(holdWrites ? { hold_writes: true } : {}),
+      authorization: { kind: "granted", workflow_permission: grant.workflow_permission },
+      audit_extra: { tool: name },
+      dispatch: { mode: "inline", trace_id: null },
     });
+    const { admitted, result } = completedRun(outcome);
     for (const step of result.steps) {
       const errMsg =
         step.error && typeof step.error === "object" && step.error !== null

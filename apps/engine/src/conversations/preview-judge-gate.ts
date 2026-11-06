@@ -1,8 +1,8 @@
 import { logger } from "../logging/logger.ts";
 import { recordPreviewJudgeVerdict } from "../observability/instrumentation.ts";
+import { workflowSpecDigest } from "../workflows/core/spec.ts";
 import type { WorkflowSpec } from "../workflows/draft-schemas.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
-import { workflowSpecDigest } from "../workflows/version-spec.ts";
 import { SPEC_GOAL_GUIDANCE } from "./authoring-spec.ts";
 import {
   buildJudgeDefinitionSummary,

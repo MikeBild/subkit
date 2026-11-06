@@ -1,4 +1,5 @@
 import type { EngineClient } from "../engine-client.ts";
+import type { ApiBody, ApiQuery } from "./http.ts";
 
 export type ChatPlatform = "slack" | "teams" | "google_chat";
 
@@ -28,22 +29,32 @@ export interface InstallChatWorkspaceBody {
 }
 
 export const chatMethods = {
-  listChatWorkspaces(this: EngineClient): Promise<{ items: ChatWorkspaceWire[] }> {
-    return this.request("GET", "/v1/chat/workspaces");
+  async listChatWorkspaces(this: EngineClient): Promise<{ items: ChatWorkspaceWire[] }> {
+    const { data } = await this.api.GET("/v1/chat/workspaces");
+    return data as { items: ChatWorkspaceWire[] };
   },
-  listPendingChatSpaces(
+  async listPendingChatSpaces(
     this: EngineClient,
     query: { platform?: ChatPlatform } = {},
   ): Promise<{ items: PendingChatSpaceWire[] }> {
-    return this.request("GET", "/v1/chat/spaces/pending", undefined, query);
+    const { data } = await this.api.GET("/v1/chat/spaces/pending", {
+      params: { query: query as ApiQuery<"/v1/chat/spaces/pending", "get"> },
+    });
+    return data as { items: PendingChatSpaceWire[] };
   },
-  installChatWorkspace(
+  async installChatWorkspace(
     this: EngineClient,
     body: InstallChatWorkspaceBody,
   ): Promise<ChatWorkspaceWire> {
-    return this.request("POST", "/v1/chat/workspaces", body);
+    const { data } = await this.api.POST("/v1/chat/workspaces", {
+      body: body as ApiBody<"/v1/chat/workspaces", "post">,
+    });
+    return data as ChatWorkspaceWire;
   },
-  removeChatWorkspace(this: EngineClient, id: string): Promise<{ deleted: true }> {
-    return this.request("DELETE", `/v1/chat/workspaces/${encodeURIComponent(id)}`);
+  async removeChatWorkspace(this: EngineClient, id: string): Promise<{ deleted: true }> {
+    const { data } = await this.api.DELETE("/v1/chat/workspaces/{id}", {
+      params: { path: { id } },
+    });
+    return data as { deleted: true };
   },
 } as const;

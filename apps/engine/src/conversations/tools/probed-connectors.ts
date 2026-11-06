@@ -1,5 +1,5 @@
-import { and, desc, eq, inArray, or } from "drizzle-orm";
-import { auditLog, connectors as connectorsTable } from "../../db/schema/index.ts";
+import { listSuccessfulProbeResourceIds } from "../../audit/probe-evidence.ts";
+import { listConnectorsByIdsOrSlugs } from "../../connectors/tool-lookups.ts";
 import type { ToolContext } from "./index.ts";
 
 function collectPlaceholderConnectorSlugs(step: Record<string, unknown>): string[] {
@@ -43,34 +43,21 @@ export async function collectProbedConnectorSlugs(
   const { connectorIds, slugCandidates } = collectDraftConnectorRefs(steps);
   if (connectorIds.size === 0 && slugCandidates.size === 0) return new Set<string>();
   try {
-    const idFilter = connectorIds.size > 0 ? inArray(connectorsTable.id, [...connectorIds]) : null;
-    const slugFilter =
-      slugCandidates.size > 0 ? inArray(connectorsTable.slug, [...slugCandidates]) : null;
-    const idOrSlugFilter =
-      idFilter && slugFilter ? or(idFilter, slugFilter) : (idFilter ?? slugFilter);
-    const connectorRows = await ctx.db
-      .select({ id: connectorsTable.id, slug: connectorsTable.slug })
-      .from(connectorsTable)
-      .where(and(eq(connectorsTable.tenant_id, ctx.tenant_id), idOrSlugFilter ?? undefined));
+    const connectorRows = await listConnectorsByIdsOrSlugs(
+      ctx.db,
+      ctx.tenant_id,
+      [...connectorIds],
+      [...slugCandidates],
+    );
     if (connectorRows.length === 0) return new Set<string>();
-    const probeRows = await ctx.db
-      .select({ resource_id: auditLog.resource_id })
-      .from(auditLog)
-      .where(
-        and(
-          eq(auditLog.tenant_id, ctx.tenant_id),
-          eq(auditLog.action, "conversation.probe_connector"),
-          eq(auditLog.result, "success"),
-          inArray(
-            auditLog.resource_id,
-            connectorRows.map((c) => c.id),
-          ),
-        ),
-      )
-      .orderBy(desc(auditLog.ts))
-      .limit(50);
-    if (probeRows.length === 0) return new Set<string>();
-    const probedConnectorIds = new Set(probeRows.map((r) => r.resource_id));
+    const probeResourceIds = await listSuccessfulProbeResourceIds(
+      ctx.db,
+      ctx.tenant_id,
+      connectorRows.map((c) => c.id),
+      50,
+    );
+    if (probeResourceIds.length === 0) return new Set<string>();
+    const probedConnectorIds = new Set(probeResourceIds);
     const out = new Set<string>();
     for (const c of connectorRows) {
       if (probedConnectorIds.has(c.id)) out.add(c.slug);

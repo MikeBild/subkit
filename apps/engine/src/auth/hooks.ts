@@ -180,3 +180,4 @@ export async function lintHookSource(
     return { ok: true };
   }
 }
+export * from "./hooks-admin.ts";

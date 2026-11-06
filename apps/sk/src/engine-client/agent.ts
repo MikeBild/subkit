@@ -1,4 +1,5 @@
 import type { EngineClient } from "../engine-client.ts";
+import type { ApiBody, ApiQuery } from "./http.ts";
 
 export interface AgentBriefing {
   markdown: string;
@@ -27,28 +28,32 @@ export interface AgentDomains {
 }
 
 export const agentMethods = {
-  getAgentBriefing(
+  async getAgentBriefing(
     this: EngineClient,
     params: { domains: string[]; budget_tokens?: number },
   ): Promise<AgentBriefing> {
-    return this.request("GET", "/v1/agent/briefing", undefined, {
+    const query = {
       domains: params.domains.join(","),
       ...(params.budget_tokens !== undefined ? { budget_tokens: params.budget_tokens } : {}),
-    });
+    } as ApiQuery<"/v1/agent/briefing", "get">;
+    const { data } = await this.api.GET("/v1/agent/briefing", { params: { query } });
+    return data as AgentBriefing;
   },
 
-  resolveAgentDomains(
+  async resolveAgentDomains(
     this: EngineClient,
     params: { prompt?: string; repo?: string; folder?: string },
   ): Promise<AgentDomains> {
-    return this.request("POST", "/v1/agent/domains", {
+    const body = {
       ...(params.prompt ? { prompt: params.prompt } : {}),
       ...(params.repo ? { repo: params.repo } : {}),
       ...(params.folder ? { folder: params.folder } : {}),
-    });
+    } as ApiBody<"/v1/agent/domains", "post">;
+    const { data } = await this.api.POST("/v1/agent/domains", { body });
+    return data as AgentDomains;
   },
 
-  captureAgentSession(
+  async captureAgentSession(
     this: EngineClient,
     body: {
       agent: string;
@@ -58,6 +63,9 @@ export const agentMethods = {
       transcript: string;
     },
   ): Promise<{ queued: boolean; transcript_chars: number }> {
-    return this.request("POST", "/v1/agent/sessions", body);
+    const { data } = await this.api.POST("/v1/agent/sessions", {
+      body: body as ApiBody<"/v1/agent/sessions", "post">,
+    });
+    return data as { queued: boolean; transcript_chars: number };
   },
 };

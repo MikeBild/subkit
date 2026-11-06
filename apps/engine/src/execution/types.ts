@@ -8,6 +8,7 @@ import type { RequestSource } from "../observability/service-metadata.ts";
 import type { StepDef, WorkflowDef } from "../workflows/types.ts";
 import type { CallerContext } from "./caller-context.ts";
 import type { CallerOrigin } from "./caller-origin.ts";
+import type { Clock, IdGen } from "./clock.ts";
 import type { ExecutionStatus, StepStatus } from "./core/status.ts";
 import type { MaterializedRequest } from "./prepared-request.ts";
 
@@ -65,6 +66,8 @@ export interface ExecutionContext {
   own_connector_credentials?: boolean;
   persist_workflow_refs: boolean;
   workflow_deadline_ms?: number;
+  clock?: Clock;
+  ids?: IdGen;
 }
 
 export interface StepRunContext extends ExecutionContext {

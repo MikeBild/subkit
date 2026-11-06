@@ -3,6 +3,8 @@ export * from "./evaluator.ts";
 export * from "./grants.ts";
 export * from "./groups.ts";
 export * from "./operator.ts";
+export * from "./query-principal.ts";
+export * from "./role-names.ts";
 export * from "./roles.ts";
 export * from "./scope-issuance.ts";
 export * from "./seed.ts";

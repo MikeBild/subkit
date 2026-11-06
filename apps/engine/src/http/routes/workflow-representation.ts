@@ -3,15 +3,17 @@ import { WORKFLOW_OPERATING_STATUSES } from "@shared/workflow-operating-status.t
 import { CatalogSourceSchema } from "../../api/catalog-metadata.ts";
 import type { Executor } from "../../db/client.ts";
 import {
-  bindingFor,
   EffectiveTriggerSchema,
-  loadTriggerBindings,
   type TriggerBinding,
   WorkflowScheduleBindingSchema,
   workflowTriggerView,
 } from "../../scheduler/index.ts";
 import type * as svc from "../../workflows/index.ts";
-import { TriggerSchema } from "../../workflows/index.ts";
+import {
+  loadWorkflowBinding,
+  TriggerSchema,
+  type WorkflowListEntry,
+} from "../../workflows/index.ts";
 
 export const WorkflowSchema = z
   .object({
@@ -167,7 +169,15 @@ export function serializeWorkflowDetail(w: svc.WorkflowView, binding: TriggerBin
   };
 }
 
+export function toWorkflowListItem(entry: WorkflowListEntry) {
+  const w = entry.workflow;
+  return {
+    ...serializeWorkflow(w, entry.binding),
+    authority_environments: w.authority_environments ?? { dev: null, prod: null },
+    connectors: entry.connectors,
+  };
+}
+
 export async function serializeOne(w: svc.WorkflowView, tenantId: string, db: Executor) {
-  const bindings = await loadTriggerBindings(tenantId, [w.id], db);
-  return serializeWorkflowDetail(w, bindingFor(bindings, w.id));
+  return serializeWorkflowDetail(w, await loadWorkflowBinding(tenantId, w.id, db));
 }

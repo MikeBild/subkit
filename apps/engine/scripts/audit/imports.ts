@@ -89,7 +89,10 @@ export function resolveImport(
   exists: (repoPath: string) => boolean,
 ): string {
   if (!specifier.startsWith(".")) return specifier;
-  const base = normalize(join(dirname(fromFile), specifier));
+  return resolveRepoPath(normalize(join(dirname(fromFile), specifier)), exists);
+}
+
+export function resolveRepoPath(base: string, exists: (repoPath: string) => boolean): string {
   if (RESOLVED_EXTENSION.test(base)) {
     if (base.endsWith(".js")) {
       const asTs = base.replace(/\.js$/, ".ts");

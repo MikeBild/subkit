@@ -1,7 +1,7 @@
 import { EngineError, TransportError } from "@cli-core/errors.ts";
 import { z } from "zod";
 import type { EngineClient } from "../engine-client.ts";
-import { parseResponseBody } from "./http.ts";
+import { type ApiBody, type ApiQuery, parseResponseBody } from "./http.ts";
 
 export type FileStatusWire = "pending" | "uploading" | "scanning" | "ready" | "failed" | "expired";
 
@@ -163,7 +163,9 @@ export const filesMethods = {
       content_base64: string;
     },
   ): Promise<FileWire> {
-    const raw = await this.request<unknown>("POST", "/v1/files/inline", file);
+    const { data: raw } = await this.api.POST("/v1/files/inline", {
+      body: file as ApiBody<"/v1/files/inline", "post">,
+    });
     return FileWireSchema.parse(raw);
   },
 
@@ -171,7 +173,9 @@ export const filesMethods = {
     this: EngineClient,
     req: BatchCreateRequest,
   ): Promise<BatchCreateResponse> {
-    const raw = await this.request<unknown>("POST", "/v1/files/batch-create", req);
+    const { data: raw } = await this.api.POST("/v1/files/batch-create", {
+      body: req as ApiBody<"/v1/files/batch-create", "post">,
+    });
     return BatchCreateResponseSchema.parse(raw);
   },
 
@@ -203,13 +207,12 @@ export const filesMethods = {
   },
 
   async finalizeFile(this: EngineClient, id: string, sha256: string): Promise<FileWire> {
-    const raw = await this.request<unknown>(
-      "POST",
-      `/v1/files/${encodeURIComponent(id)}/finalize`,
-      {
+    const { data: raw } = await this.api.POST("/v1/files/{id}/finalize", {
+      params: { path: { id } },
+      body: {
         sha256,
-      },
-    );
+      } as ApiBody<"/v1/files/{id}/finalize", "post">,
+    });
     return FileWireSchema.parse(raw);
   },
 
@@ -257,18 +260,15 @@ export const filesMethods = {
     this: EngineClient,
     query: { status?: string; linked_to?: string; cursor?: string; limit?: number } = {},
   ): Promise<{ items: FileWire[]; next_cursor?: string | null }> {
-    const raw = await this.request<unknown>(
-      "GET",
-      "/v1/files",
-      undefined,
-      query as Record<string, string | number | undefined>,
-    );
+    const { data: raw } = await this.api.GET("/v1/files", {
+      params: { query: query as ApiQuery<"/v1/files", "get"> },
+    });
     const parsed = FileListResponseSchema.parse(raw);
     return { items: parsed.items, next_cursor: parsed.next_cursor ?? null };
   },
 
   async getFile(this: EngineClient, id: string): Promise<FileWire> {
-    const raw = await this.request<unknown>("GET", `/v1/files/${encodeURIComponent(id)}`);
+    const { data: raw } = await this.api.GET("/v1/files/{id}", { params: { path: { id } } });
     return FileWireSchema.parse(raw);
   },
 
@@ -277,29 +277,29 @@ export const filesMethods = {
     id: string,
     file: { filename: string; content_type?: string; content_base64: string },
   ): Promise<FileWire> {
-    const raw = await this.request<unknown>(
-      "POST",
-      `/v1/files/${encodeURIComponent(id)}/replace`,
-      file,
-    );
+    const { data: raw } = await this.api.POST("/v1/files/{id}/replace", {
+      params: { path: { id } },
+      body: file as ApiBody<"/v1/files/{id}/replace", "post">,
+    });
     return FileWireSchema.parse(raw);
   },
 
   async listFileVersions(this: EngineClient, id: string): Promise<FileVersionWire[]> {
-    const raw = await this.request<unknown>("GET", `/v1/files/${encodeURIComponent(id)}/versions`);
+    const { data: raw } = await this.api.GET("/v1/files/{id}/versions", {
+      params: { path: { id } },
+    });
     return FileVersionListSchema.parse(raw).items;
   },
 
   async restoreFileVersion(this: EngineClient, id: string, version: number): Promise<FileWire> {
-    const raw = await this.request<unknown>(
-      "POST",
-      `/v1/files/${encodeURIComponent(id)}/versions/${version}/restore`,
-    );
+    const { data: raw } = await this.api.POST("/v1/files/{id}/versions/{version}/restore", {
+      params: { path: { id, version } },
+    });
     return FileWireSchema.parse(raw);
   },
 
-  deleteFile(this: EngineClient, id: string): Promise<void> {
-    return this.request<void>("DELETE", `/v1/files/${encodeURIComponent(id)}`);
+  async deleteFile(this: EngineClient, id: string): Promise<void> {
+    await this.api.DELETE("/v1/files/{id}", { params: { path: { id } } });
   },
 
   async linkFile(
@@ -318,16 +318,15 @@ export const filesMethods = {
       role?: string;
     },
   ): Promise<FileLinkWire> {
-    const raw = await this.request<unknown>(
-      "POST",
-      `/v1/files/${encodeURIComponent(file_id)}/links`,
-      link,
-    );
+    const { data: raw } = await this.api.POST("/v1/files/{id}/links", {
+      params: { path: { id: file_id } },
+      body: link as ApiBody<"/v1/files/{id}/links", "post">,
+    });
     return FileLinkWireSchema.parse(raw);
   },
 
   async getFileStats(this: EngineClient): Promise<FileStatsWire> {
-    const raw = await this.request<unknown>("GET", "/v1/files/stats");
+    const { data: raw } = await this.api.GET("/v1/files/stats");
     return FileStatsWireSchema.parse(raw);
   },
 };

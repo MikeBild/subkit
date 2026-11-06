@@ -1,14 +1,10 @@
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
 import { executionStartTraceId } from "../../../audit/index.ts";
 import { KEYSET_CURSOR_PATTERN } from "../../../db/keyset-cursor.ts";
-import { executionStatusEnum, executions } from "../../../db/schema/index.ts";
-import {
-  describeExecutionEvidence,
-  executionVisibilityFilter,
-  isSensitivePayload,
-} from "../../../execution/index.ts";
+import { EXECUTION_STATUSES } from "../../../execution/core/status.ts";
+import { describeExecutionEvidence, isSensitivePayload } from "../../../execution/index.ts";
 import { listExecutions } from "../../../execution/list.ts";
+import { findVisibleExecution } from "../../../execution/visible-reads.ts";
 import type { ConversationTool } from "../index.ts";
 
 const ListInput = z
@@ -28,7 +24,7 @@ const ListInput = z
       ),
     workflow_id: z.string().uuid().optional(),
     status: z
-      .enum(executionStatusEnum.enumValues)
+      .enum(EXECUTION_STATUSES)
       .optional()
       .describe("Filter by outcome only when the task requires it; omit to inspect all outcomes."),
     request_source: z
@@ -104,19 +100,7 @@ export const getExecutionTool: ConversationTool = {
   permission: { action: "execution:read", resourceType: "execution", resourceIdArg: "id" },
   async execute(ctx, args: z.infer<typeof GetInput>) {
     if (!ctx.principal) return { ok: false, data: { error: "principal_required" } };
-    const e = (
-      await ctx.db
-        .select()
-        .from(executions)
-        .where(
-          and(
-            eq(executions.tenant_id, ctx.tenant_id),
-            eq(executions.id, args.id),
-            executionVisibilityFilter(ctx.principal),
-          ),
-        )
-        .limit(1)
-    )[0];
+    const e = await findVisibleExecution(ctx.db, ctx.tenant_id, args.id, ctx.principal);
     if (!e) return { ok: false, data: { error: "execution_not_found" } };
     return {
       ok: true,

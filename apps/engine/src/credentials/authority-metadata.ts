@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
-import { type Executor, getDb } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { credentials, outboundConnections, runtimeSecretVersions } from "../db/schema/index.ts";
 import { authorityScopeSet } from "./authority-scopes.ts";
 import { secretNames } from "./connections/service.ts";
@@ -44,7 +44,7 @@ export function credentialAuthorityKey(connector_id: string, environment: "dev" 
 export async function getCredentialAuthorityMetadataBatch(
   tenantId: string,
   requests: readonly CredentialAuthorityRequest[],
-  db: Executor = getDb(),
+  db: Executor,
 ): Promise<Map<string, CredentialAuthorityMetadata>> {
   const result = new Map<string, CredentialAuthorityMetadata>();
   if (requests.length === 0) return result;
@@ -180,7 +180,7 @@ export async function getCredentialAuthorityMetadata(
   tenantId: string,
   connectorId: string,
   environment: "dev" | "prod",
-  db: Executor = getDb(),
+  db: Executor,
 ): Promise<CredentialAuthorityMetadata> {
   const rows = await getCredentialAuthorityMetadataBatch(
     tenantId,

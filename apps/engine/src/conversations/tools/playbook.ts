@@ -1,8 +1,10 @@
 import { z } from "@hono/zod-openapi";
-import { and, desc, eq } from "drizzle-orm";
-import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
 import { PlaybookConflictError, readPlaybook, updatePlaybook } from "../playbook.ts";
 import { PlaybookUpdateSchema } from "../playbook-contract.ts";
+import {
+  listRecentSuccessfulToolCalls,
+  readConversationPlaybookMode,
+} from "../service/tool-state.ts";
 import type { ConversationTool } from "./index.ts";
 
 export const inspectPlaybookTool: ConversationTool = {
@@ -19,14 +21,11 @@ export const inspectPlaybookTool: ConversationTool = {
   },
   async execute(ctx) {
     if (!ctx.principal) return { ok: false, error_code: "principal_required" };
-    const [row] = await ctx.db
-      .select({ mode: conversations.playbook_mode })
-      .from(conversations)
-      .where(
-        and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
-      )
-      .limit(1);
-    if (row?.mode === "off") return { ok: false, error_code: "playbooks_disabled" };
+    const mode = await readConversationPlaybookMode(ctx.db, {
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+    });
+    if (mode === "off") return { ok: false, error_code: "playbooks_disabled" };
     const scope = {
       tenant_id: ctx.tenant_id,
       conversation_id: ctx.conversation_id,
@@ -34,22 +33,7 @@ export const inspectPlaybookTool: ConversationTool = {
       ...(ctx.locale ? { locale: ctx.locale } : {}),
     };
     const playbook = await readPlaybook(ctx.db, scope);
-    const calls = await ctx.db
-      .select({
-        id: conversationToolCalls.id,
-        tool: conversationToolCalls.tool,
-        observed_at: conversationToolCalls.created_at,
-      })
-      .from(conversationToolCalls)
-      .where(
-        and(
-          eq(conversationToolCalls.tenant_id, ctx.tenant_id),
-          eq(conversationToolCalls.conversation_id, ctx.conversation_id),
-          eq(conversationToolCalls.outcome, "ok"),
-        ),
-      )
-      .orderBy(desc(conversationToolCalls.created_at))
-      .limit(30);
+    const calls = await listRecentSuccessfulToolCalls(ctx.db, scope, 30);
     return {
       ok: true,
       data: {

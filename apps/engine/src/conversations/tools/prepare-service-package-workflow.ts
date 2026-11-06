@@ -3,9 +3,9 @@ import { and, eq } from "drizzle-orm";
 import { getConnector } from "../../connectors/service.ts";
 import { workflows, workflowVersions } from "../../db/schema/index.ts";
 import { workflowJsonDigest } from "../../workflows/canonical-json.ts";
+import { prepareWorkflowSave } from "../../workflows/prepare-save.ts";
 import { annotateRuntime } from "../../workflows/runtime-annotation.ts";
 import { findPackageWorkflowProvenance } from "../../workflows/service-package-provenance.ts";
-import { validateTenantWorkflowDefForSave } from "../../workflows/tenant-validator.ts";
 import { WORKFLOW_DEF_FIELD_KEYS, WorkflowDefSchema } from "../../workflows/types.ts";
 import {
   hasInProgressWorkflowDraft,
@@ -221,13 +221,10 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
         data: { package: data.package },
       };
     }
-    const validation = await validateTenantWorkflowDefForSave(
-      parsedCandidate.data,
-      ctx.tenant_id,
-      ctx.db,
-      { destinationTier: "tokens" },
-    );
-    if (!validation.ok || !validation.workflow) {
+    const validation = await prepareWorkflowSave(parsedCandidate.data, ctx.tenant_id, ctx.db, {
+      destinationTier: "tokens",
+    });
+    if (!validation.ok) {
       return {
         ok: false,
         error_code: "package_workflow_not_ready",
@@ -239,7 +236,7 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
         data: {
           package: data.package,
           workflow_slug: args.workflow_slug,
-          issues: validation.errors,
+          issues: validation.issues,
         },
       };
     }

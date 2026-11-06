@@ -35,23 +35,23 @@ import {
   resolveCatalogFilter,
   WORKFLOW_LIST_MAX_LIMIT,
 } from "./catalog-view.ts";
-import { applySkillSchemaGate, applyStorageBindingGate } from "./commit-gates.ts";
 import {
   connectorReferencesForDefinition,
   loadConnectorReferenceRecords,
 } from "./connector-refs.ts";
 import { isValidSlug, toStoredDefinition, workflowSlug } from "./core/definition.ts";
+import { carriedSpecColumns } from "./core/spec.ts";
 import { decide, describeRejection, evolve, type WorkflowRejection } from "./core/workflow.ts";
 import { loadWorkflowOperatingStates } from "./operating-status.ts";
+import { prepareWorkflowSave } from "./prepare-save.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
 import { slugConflictResult } from "./slug-conflict.ts";
 import { invalidDefinitionForRead, readStoredDefinition } from "./stored-definition.ts";
-import { validateTenantWorkflowDefForSave } from "./tenant-validator.ts";
 import { applyTriggerBindings, triggerOf } from "./trigger-bindings.ts";
 import type { WorkflowDef } from "./types.ts";
 import { readVersionAuthor, type VersionActor, versionAuthorColumns } from "./version-author.ts";
 import { isUnchangedFromCurrentVersion } from "./version-dedup.ts";
-import { carriedSpecColumns, loadVersionSpec } from "./version-spec.ts";
+import { loadVersionSpec } from "./version-spec.ts";
 import {
   lockWorkflowForVersionWrite,
   nextVersionNumber,
@@ -206,23 +206,21 @@ export async function createWorkflow(
   exec?: Executor,
 ): Promise<{ workflow: WorkflowView; errors?: never } | { workflow?: never; errors: string[] }> {
   const db = exec ?? getDb();
-  const validation = await validateTenantWorkflowDefForSave(input.def, input.tenant_id, db, {
+  const prepared = await prepareWorkflowSave(input.def, input.tenant_id, db, {
     destinationTier: "tokens",
   });
-  if (!validation.ok || !validation.workflow) {
-    log.workflow.validation.failed({
-      tenant_id: input.tenant_id,
-      op: "create",
-      error_count: validation.errors.length,
-      first_error: validation.errors[0]?.message ?? null,
-    });
-    return { errors: validation.errors.map((e) => `${e.path}: ${e.message}`) };
+  if (!prepared.ok) {
+    if (prepared.stage === "definition") {
+      log.workflow.validation.failed({
+        tenant_id: input.tenant_id,
+        op: "create",
+        error_count: prepared.issues.length,
+        first_error: prepared.issues[0]?.message ?? null,
+      });
+    }
+    return { errors: prepared.errors };
   }
-  const skillGate = await applySkillSchemaGate(input.tenant_id, validation.workflow, db);
-  if (!skillGate.ok) return { errors: skillGate.errors };
-  const storageGate = await applyStorageBindingGate(input.tenant_id, validation.workflow, db);
-  if (!storageGate.ok) return { errors: storageGate.errors };
-  const def = annotateRuntime(validation.workflow);
+  const def = annotateRuntime(prepared.workflow);
   const slug = def.slug ?? slugFor(def.name);
   const metadata = humanMetadataWrite({
     ...(def.description !== undefined ? { description: def.description } : {}),
@@ -340,24 +338,22 @@ export async function updateWorkflow(
   exec?: Executor,
 ): Promise<{ workflow: WorkflowView; errors?: never } | { workflow?: never; errors: string[] }> {
   const db = exec ?? getDb();
-  const validation = await validateTenantWorkflowDefForSave(input.def, input.tenant_id, db, {
+  const prepared = await prepareWorkflowSave(input.def, input.tenant_id, db, {
     destinationTier: "tokens",
   });
-  if (!validation.ok || !validation.workflow) {
-    log.workflow.validation.failed({
-      tenant_id: input.tenant_id,
-      workflow_id: input.id,
-      op: "update",
-      error_count: validation.errors.length,
-      first_error: validation.errors[0]?.message ?? null,
-    });
-    return { errors: validation.errors.map((e) => `${e.path}: ${e.message}`) };
+  if (!prepared.ok) {
+    if (prepared.stage === "definition") {
+      log.workflow.validation.failed({
+        tenant_id: input.tenant_id,
+        workflow_id: input.id,
+        op: "update",
+        error_count: prepared.issues.length,
+        first_error: prepared.issues[0]?.message ?? null,
+      });
+    }
+    return { errors: prepared.errors };
   }
-  const skillGate = await applySkillSchemaGate(input.tenant_id, validation.workflow, db);
-  if (!skillGate.ok) return { errors: skillGate.errors };
-  const storageGate = await applyStorageBindingGate(input.tenant_id, validation.workflow, db);
-  if (!storageGate.ok) return { errors: storageGate.errors };
-  const def = annotateRuntime(validation.workflow);
+  const def = annotateRuntime(prepared.workflow);
   const updated = await db.transaction(async (tx) => {
     await lockCatalogVocabulary(tx, input.tenant_id);
     const wf = await lockWorkflowForVersionWrite(tx, input.tenant_id, input.id);

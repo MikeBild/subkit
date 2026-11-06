@@ -4,7 +4,7 @@ import * as jose from "jose";
 import { z } from "zod";
 import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../audit/index.ts";
 import { browserSessionSecret, clearBrowserSessionCookie } from "../auth/browser-session.ts";
-import { type Executor, getDb } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { authIdentities, identityRecoverySessions, tenants } from "../db/schema/index.ts";
 import { now } from "../utils/clock.ts";
 import { constantTimeHexEquals } from "./api-key.ts";
@@ -55,10 +55,9 @@ function cookieToken(request: Request): string | null {
 
 export async function issueIdentityRecovery(
   raw: VerifiedSelfServiceIdentity,
-  exec?: Executor,
+  db: Executor,
 ): Promise<Response> {
   const input = parseVerifiedSelfServiceIdentity(raw);
-  const db = exec ?? getDb();
   // tenant-filter:exempt — fresh verified OIDC issuer and subject establish an identity without tenant authority.
   const [identity] = await db
     .select({ id: authIdentities.id })
@@ -111,7 +110,7 @@ export async function issueIdentityRecovery(
   return new Response(null, { status: 302, headers });
 }
 
-export async function identityRecoveryFromRequest(request: Request, exec?: Executor) {
+export async function identityRecoveryFromRequest(request: Request, db: Executor) {
   const token = cookieToken(request);
   if (!token) throw new IdentityRecoveryError("recovery_unavailable");
   let claims: z.infer<typeof ProofSchema>;
@@ -125,7 +124,6 @@ export async function identityRecoveryFromRequest(request: Request, exec?: Execu
   } catch {
     throw new IdentityRecoveryError("recovery_unavailable");
   }
-  const db = exec ?? getDb();
   // tenant-filter:exempt — recovery sessions authenticate a global identity and never establish a tenant principal.
   const [session] = await db
     .select()
@@ -164,8 +162,7 @@ async function recoveryCsrf(proof: Awaited<ReturnType<typeof identityRecoveryFro
     .sign(browserSessionSecret());
 }
 
-export async function readIdentityRecovery(request: Request, exec?: Executor) {
-  const db = exec ?? getDb();
+export async function readIdentityRecovery(request: Request, db: Executor) {
   const proof = await identityRecoveryFromRequest(request, db);
   const [tenant] = await db
     .select({
@@ -197,9 +194,8 @@ export async function readIdentityRecovery(request: Request, exec?: Executor) {
 export async function consumeIdentityRecovery<T>(
   request: Request,
   operation: (identityId: string, tx: Executor) => Promise<T>,
-  exec?: Executor,
+  db: Executor,
 ): Promise<T> {
-  const db = exec ?? getDb();
   const proof = await identityRecoveryFromRequest(request, db);
   if (request.headers.get("sec-fetch-site") === "cross-site")
     throw new IdentityRecoveryError("recovery_csrf_rejected");

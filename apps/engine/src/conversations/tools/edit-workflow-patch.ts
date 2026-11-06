@@ -3,7 +3,8 @@ import { JsonPatchError } from "fast-json-patch";
 import { LLM_CALL_TIMEOUT_MS } from "../../llm/core/ai-sdk-model.ts";
 import { log } from "../../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../../observability/instrumentation.ts";
-import { buildStepDag, detectCycles, renderCycleReport } from "../../workflows/dag.ts";
+import { stepCycles } from "../../workflows/core/definition.ts";
+import { renderCycleReport } from "../../workflows/dag.ts";
 import {
   GRAPHQL_OVER_HTTP_LOSS,
   lossyGraphqlConversions,
@@ -455,8 +456,7 @@ export async function applyWorkflowPatchToDraft(
     }
 
     {
-      const dag = buildStepDag(patched as WorkflowDef);
-      const cycleReport = detectCycles(dag);
+      const cycleReport = stepCycles(patched as WorkflowDef);
       if (cycleReport.has_cycle) {
         recordAuthoringGateBlock({
           code: "workflow_cycle_detected",

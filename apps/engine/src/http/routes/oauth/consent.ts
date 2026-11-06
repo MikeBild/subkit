@@ -1,5 +1,4 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { and, eq, isNull } from "drizzle-orm";
 import type { Context } from "hono";
 import {
   AuditAction,
@@ -10,12 +9,17 @@ import {
 import {
   CLI_LOGIN_SCOPE,
   createMcpOAuthProvider,
+  findSessionProduct,
   oauthResource,
+  revokeSessionForAccountSwitch,
   signLoginState,
 } from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
-import { roles as rolesTable, sessions, tenants, users } from "../../../db/schema/index.ts";
-import { endCockpitPushForSessions } from "../../../identity/index.ts";
+import {
+  findActiveUserProfile,
+  findTenantSummary,
+  findUserProfile,
+} from "../../../identity/index.ts";
 import { logger } from "../../../logging/index.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { resolveAuthorizationMembership } from "./membership.ts";
@@ -182,16 +186,11 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       );
       return Response.redirect(loginUrl.toString(), 302);
     }
-    const [authorizingSession] = await db
-      .select({ product_id: sessions.product_id })
-      .from(sessions)
-      .where(
-        and(
-          eq(sessions.id, sessionPayload.session_id),
-          eq(sessions.tenant_id, sessionPayload.tenant_id),
-        ),
-      )
-      .limit(1);
+    const authorizingSession = await findSessionProduct(
+      db,
+      sessionPayload.session_id,
+      sessionPayload.tenant_id,
+    );
     if (!authorizingSession || authorizingSession.product_id) {
       return buildErrorRedirect(redirectUri, "access_denied", state);
     }
@@ -207,20 +206,11 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       return buildErrorRedirect(redirectUri, "access_denied", state);
     }
 
-    const userRows = await db
-      .select({ email: users.email, role_name: rolesTable.name })
-      .from(users)
-      .leftJoin(rolesTable, eq(rolesTable.id, users.role_id))
-      .where(
-        and(
-          eq(users.id, authorizationMembership.user_id),
-          eq(users.tenant_id, authorizationMembership.tenant_id),
-          isNull(users.deleted_at),
-          eq(users.status, "active"),
-        ),
-      )
-      .limit(1);
-    const userRow = userRows[0];
+    const userRow = await findActiveUserProfile(
+      db,
+      authorizationMembership.tenant_id,
+      authorizationMembership.user_id,
+    );
     if (!userRow) {
       await auditAwait(
         {
@@ -247,12 +237,7 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       return buildErrorRedirect(redirectUri, "access_denied", state);
     }
 
-    const tenantRows = await db
-      .select({ display_name: tenants.display_name })
-      .from(tenants)
-      .where(eq(tenants.id, authorizationMembership.tenant_id))
-      .limit(1);
-    const tenantRow = tenantRows[0];
+    const tenantRow = await findTenantSummary(db, authorizationMembership.tenant_id);
 
     let supportedScopes: string[] =
       target.kind === "cli_login" ? [CLI_LOGIN_SCOPE] : [...MCP_SCOPE_PERMISSIONS];
@@ -383,16 +368,11 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!(await sessionIsLive(db, sessionPayload.session_id, sessionPayload.tenant_id))) {
       return c.json({ error: "unauthorized", error_description: "session revoked" }, 401);
     }
-    const [authorizingSession] = await db
-      .select({ product_id: sessions.product_id })
-      .from(sessions)
-      .where(
-        and(
-          eq(sessions.id, sessionPayload.session_id),
-          eq(sessions.tenant_id, sessionPayload.tenant_id),
-        ),
-      )
-      .limit(1);
+    const authorizingSession = await findSessionProduct(
+      db,
+      sessionPayload.session_id,
+      sessionPayload.tenant_id,
+    );
     if (!authorizingSession || authorizingSession.product_id) {
       return c.json(
         { error: "access_denied", error_description: "product session is not supported" },
@@ -476,35 +456,12 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     }
 
     if (decision === "switch_account") {
-      await db
-        .update(sessions)
-        .set({ revoked_at: new Date() })
-        .where(
-          and(
-            eq(sessions.id, sessionPayload.session_id),
-            eq(sessions.tenant_id, sessionPayload.tenant_id),
-          ),
-        );
-      await endCockpitPushForSessions(
-        db,
-        { tenant_id: sessionPayload.tenant_id, session_ids: [sessionPayload.session_id] },
-        "session_replaced",
-        { actor_type: "user", actor_id: sessionPayload.user_id },
-      );
-      await auditAwait(
-        {
-          tenant_id: sessionPayload.tenant_id,
-          actor_type: "user",
-          actor_id: sessionPayload.user_id,
-          action: AuditAction.SESSION_REVOKED,
-          resource_type: "session",
-          resource_id: sessionPayload.session_id,
-          result: "success",
-          reason: "switch_account",
-          metadata: { request_source: readRequestSource(c), via: "mcp_oauth_consent" },
-        },
-        db,
-      );
+      await revokeSessionForAccountSwitch(db, {
+        session_id: sessionPayload.session_id,
+        tenant_id: sessionPayload.tenant_id,
+        user_id: sessionPayload.user_id,
+        request_source: readRequestSource(c),
+      });
       const authorizeUrl = new URL("/v1/oauth/authorize", provider.getBaseUrl());
       authorizeUrl.searchParams.set("client_id", clientId);
       authorizeUrl.searchParams.set("redirect_uri", redirectUri);
@@ -549,18 +506,11 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const codeChallenge = (csrfPayload.code_challenge as string | undefined) ?? "";
     const ceiling = (csrfPayload.offered_scopes as string | undefined) ?? "";
-    const freshUserRows = await db
-      .select({ role_name: rolesTable.name })
-      .from(users)
-      .leftJoin(rolesTable, eq(rolesTable.id, users.role_id))
-      .where(
-        and(
-          eq(users.id, authorizationMembership.user_id),
-          eq(users.tenant_id, authorizationMembership.tenant_id),
-        ),
-      )
-      .limit(1);
-    const freshRoleRow = freshUserRows[0];
+    const freshRoleRow = await findUserProfile(
+      db,
+      authorizationMembership.tenant_id,
+      authorizationMembership.user_id,
+    );
     const freshRole = freshRoleRow?.role_name ?? null;
     const freshRoleScopes =
       target.kind === "cli_login"

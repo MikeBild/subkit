@@ -1,8 +1,7 @@
 import { z } from "@hono/zod-openapi";
-import { and, desc, eq } from "drizzle-orm";
 import { listedDescription } from "../../api/catalog-metadata.ts";
 import { toFileId } from "../../api/files-schemas.ts";
-import { fileLinks, files } from "../../db/schema/index.ts";
+import { listConversationAttachments } from "../../files/service.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const ListInput = z.object({}).openapi("ListAttachmentsToolInput");
@@ -20,33 +19,21 @@ export const listAttachmentsTool: ConversationTool = {
   inputSchema: ListInput,
   category: "tenant_read",
   async execute(ctx): Promise<ToolResult> {
-    const rows = await ctx.db
-      .select({ link: fileLinks, file: files })
-      .from(fileLinks)
-      .innerJoin(files, eq(files.id, fileLinks.file_id))
-      .where(
-        and(
-          eq(fileLinks.tenant_id, ctx.tenant_id),
-          eq(fileLinks.resource_type, "conversation"),
-          eq(fileLinks.resource_id, ctx.conversation_id),
-        ),
-      )
-      .orderBy(desc(fileLinks.created_at))
-      .limit(50);
+    const rows = await listConversationAttachments(ctx.db, ctx.tenant_id, ctx.conversation_id, 50);
     return {
       ok: true,
       data: {
         persistence: "none" as const,
         attachments: rows.map((r) => ({
           file_id: toFileId(r.file.id),
-          slug: r.link.slug,
+          slug: r.link_slug,
           original_filename: r.file.filename,
           description: listedDescription(r.file.description),
           category: r.file.category,
           content_type: r.file.content_type,
           size_bytes: r.file.size_bytes,
           sha256: r.file.sha256,
-          created_at: r.link.created_at.toISOString(),
+          created_at: r.link_created_at.toISOString(),
         })),
       },
     };

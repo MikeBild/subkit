@@ -1,16 +1,16 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, eq, isNull } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { actorOf } from "../../audit/index.ts";
 import * as connectorSvc from "../../connectors/index.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/index.ts";
 import {
+  credentialExists,
   deleteCredential,
+  findLiveCredential,
   getCredentialForConnector,
   rotateOAuth2Tokens,
   runRefreshTokenGrant,
 } from "../../credentials/index.ts";
-import { credentials } from "../../db/schema/index.ts";
 import { BadRequestError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -78,12 +78,9 @@ export function registerCredentialRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
 
-    const rows = await db
-      .select({ id: credentials.id })
-      .from(credentials)
-      .where(and(eq(credentials.tenant_id, principal.tenant_id), eq(credentials.id, id)))
-      .limit(1);
-    if (!rows[0]) throw new NotFoundError("credential");
+    if (!(await credentialExists(db, principal.tenant_id, id))) {
+      throw new NotFoundError("credential");
+    }
 
     await deleteCredential(principal.tenant_id, id, actorOf(principal), db);
     return c.json({ deleted: true as const }, 200);
@@ -94,18 +91,7 @@ export function registerCredentialRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
 
-    const rows = await db
-      .select()
-      .from(credentials)
-      .where(
-        and(
-          eq(credentials.tenant_id, principal.tenant_id),
-          eq(credentials.id, id),
-          isNull(credentials.deleted_at),
-        ),
-      )
-      .limit(1);
-    const row = rows[0];
+    const row = await findLiveCredential(db, principal.tenant_id, id);
     if (!row) throw new NotFoundError("credential");
 
     if (row.mode !== "oauth2") {
@@ -164,18 +150,7 @@ export function registerCredentialRoutes(app: OpenAPIHono<AppEnv>): void {
       db,
     );
 
-    const updatedRows = await db
-      .select()
-      .from(credentials)
-      .where(
-        and(
-          eq(credentials.tenant_id, principal.tenant_id),
-          eq(credentials.id, id),
-          isNull(credentials.deleted_at),
-        ),
-      )
-      .limit(1);
-    const updated = updatedRows[0];
+    const updated = await findLiveCredential(db, principal.tenant_id, id);
     if (!updated) throw new NotFoundError("credential");
 
     return c.json(

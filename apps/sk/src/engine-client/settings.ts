@@ -51,26 +51,35 @@ export interface EngineRestartAccepted {
 }
 
 export const settingsMethods = {
-  requestEngineRestart(this: EngineClient): Promise<EngineRestartAccepted> {
-    return this.request("POST", "/v1/system/restart");
+  async requestEngineRestart(this: EngineClient): Promise<EngineRestartAccepted> {
+    const { data } = await this.api.POST("/v1/system/restart");
+    return data as EngineRestartAccepted;
   },
 
-  getEngineRestartStatus(this: EngineClient): Promise<EngineRestartStatus> {
-    return this.request("GET", "/v1/system/restart-status");
+  async getEngineRestartStatus(this: EngineClient): Promise<EngineRestartStatus> {
+    const { data } = await this.api.GET("/v1/system/restart-status");
+    return data as EngineRestartStatus;
   },
 
-  listSettings(this: EngineClient, opts: { tenant?: string } = {}): Promise<SettingsListResponse> {
-    const qs = opts.tenant ? `?tenant=${encodeURIComponent(opts.tenant)}` : "";
-    return this.request("GET", `/v1/settings${qs}`);
+  async listSettings(
+    this: EngineClient,
+    opts: { tenant?: string } = {},
+  ): Promise<SettingsListResponse> {
+    const { data } = await this.api.GET("/v1/settings", {
+      params: { query: opts.tenant ? { tenant: opts.tenant } : {} },
+    });
+    return data as SettingsListResponse;
   },
 
-  getSetting(
+  async getSetting(
     this: EngineClient,
     path: string,
     opts: { tenant?: string } = {},
   ): Promise<SettingLeafEntry> {
-    const qs = opts.tenant ? `?tenant=${encodeURIComponent(opts.tenant)}` : "";
-    return this.request("GET", `/v1/settings/${encodeURIComponent(path)}${qs}`);
+    const { data } = await this.api.GET("/v1/settings/{path}", {
+      params: { path: { path }, query: opts.tenant ? { tenant: opts.tenant } : {} },
+    });
+    return data as SettingLeafEntry;
   },
 
   setSetting(

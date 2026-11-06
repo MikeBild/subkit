@@ -20,10 +20,10 @@ import { getUnifiedRegistry } from "../../../tools/index.ts";
 import { SK_CONFIRM_ID_META_KEY, SK_CONFIRM_META_KEY } from "../../../tools/policy.ts";
 import type { ToolEnvelope } from "../../../tools/types.ts";
 import { pendingPrompt } from "../../resume.ts";
+import { freshSignals } from "../../tests/turn-signals.ts";
 import type { TurnEvent } from "../../types.ts";
 import { getTool, type ToolContext } from "../index.ts";
 import { wrapOne } from "../sdk-wrap/invoke.ts";
-import type { TurnSignals } from "../sdk-wrap/state.ts";
 
 const FABRICATED_ID = "00000000-0000-4000-8000-00000000f00d";
 const MODEL_TITLE = "Model supplied title that must never be shown";
@@ -35,24 +35,6 @@ let userId: string;
 let principal: ResolvedPrincipal;
 let seq = 0;
 const originalDatabaseUrl = process.env.DATABASE_URL;
-
-function freshSignals(): TurnSignals {
-  return {
-    step: 0,
-    toolChain: Promise.resolve(),
-    pendingChildToolCallIds: [],
-    pendingChildElicitationIds: [],
-    toolInvocationCount: new Map(),
-    toolLastErrorHash: new Map(),
-    toolArgsRepeat: new Map(),
-    toolValidationFingerprint: new Map(),
-    toolErrorCodeRepeat: new Map(),
-    totalLoopWarnings: 0,
-    consecutiveFailures: 0,
-    lastAssistantText: "",
-    lastExecutionSuccess: null,
-  };
-}
 
 async function newConversation(): Promise<string> {
   const [row] = await tdb.db

@@ -2,12 +2,12 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog, tenants, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { workflowSpecDigest } from "../core/spec.ts";
 import type { WorkflowSpec } from "../draft-schemas.ts";
 import { getWorkflowDraft, type SaveWorkflowDraftResult, saveWorkflowDraft } from "../drafts.ts";
 import { createWorkflow, updateWorkflow } from "../service.ts";
 import { WorkflowDefSchema } from "../types.ts";
 import { rotateWorkflowVersionInternal } from "../version-rotate.ts";
-import { workflowSpecDigest } from "../version-spec.ts";
 import { restoreWorkflowVersion } from "../versions.ts";
 
 let ctx: TestDb;

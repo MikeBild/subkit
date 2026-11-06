@@ -5,14 +5,20 @@ export type TenantBranding = components["schemas"]["TenantBrandingResponse"];
 export type TenantBrandingUpdate = components["schemas"]["TenantBrandingUpdate"];
 
 export const brandingMethods = {
-  getTenantBranding(this: EngineClient): Promise<TenantBranding> {
-    return this.request("GET", "/v1/tenant/branding");
+  async getTenantBranding(this: EngineClient): Promise<TenantBranding> {
+    const { data } = await this.api.GET("/v1/tenant/branding");
+    return data as TenantBranding;
   },
-  updateTenantBranding(this: EngineClient, body: TenantBrandingUpdate): Promise<TenantBranding> {
-    return this.request("PUT", "/v1/tenant/branding", body);
+  async updateTenantBranding(
+    this: EngineClient,
+    body: TenantBrandingUpdate,
+  ): Promise<TenantBranding> {
+    const { data } = await this.api.PUT("/v1/tenant/branding", { body });
+    return data as TenantBranding;
   },
-  resetTenantBranding(this: EngineClient, revision: number): Promise<TenantBranding> {
-    return this.request("DELETE", "/v1/tenant/branding", { revision });
+  async resetTenantBranding(this: EngineClient, revision: number): Promise<TenantBranding> {
+    const { data } = await this.api.DELETE("/v1/tenant/branding", { body: { revision } });
+    return data as TenantBranding;
   },
   getTenantBrandingLogo(
     this: EngineClient,

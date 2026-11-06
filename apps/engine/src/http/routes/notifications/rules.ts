@@ -1,9 +1,13 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { AuditAction, auditAwait } from "../../../audit/index.ts";
-import { type NotificationRuleRow, notificationRules } from "../../../db/schema/notifications.ts";
-import { dispatchEvent } from "../../../notifications/index.ts";
+import {
+  createRule,
+  deleteRule,
+  listRules,
+  type NotificationRuleRow,
+  testRule,
+  updateRule,
+} from "../../../notifications/index.ts";
 import { serviceMetadataFromHono } from "../../../observability/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -211,170 +215,49 @@ export function registerRuleRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.openapi(listRoute, async (c) => {
     const principal = requireAuth(c);
-    const db = c.get("db");
-    const rows = await db
-      .select()
-      .from(notificationRules)
-      .where(eq(notificationRules.tenant_id, principal.tenant_id));
+    const rows = await listRules(c.get("db"), principal.tenant_id);
     return c.json({ items: rows.map(serializeRule) }, 200);
   });
 
   app.openapi(createRouteSpec, async (c) => {
     const principal = requireAuth(c);
-    const db = c.get("db");
-    const body = c.req.valid("json");
-    const [row] = await db
-      .insert(notificationRules)
-      .values({
-        tenant_id: principal.tenant_id,
-        name: body.name,
-        event_pattern: body.event_pattern,
-        workflow_pattern: body.workflow_pattern ?? "*",
-        severity: body.severity ?? "info",
-        request_source_filter: body.request_source_filter ?? null,
-        target_workspace_id: body.target_workspace_id,
-        target_channel_id: body.target_channel_id,
-        active: body.active ?? true,
-      })
-      .returning();
-    if (!row) throw new Error("notifications: rule insert failed");
-    await auditAwait(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: principal.kind,
-        actor_id: principal.id,
-        action: AuditAction.NOTIFICATION_RULE_CREATED,
-        resource_type: "notification_rule",
-        resource_id: row.id,
-        result: "success",
-        metadata: {
-          name: row.name,
-          event_pattern: row.event_pattern,
-          severity: row.severity,
-        },
-      },
-      db,
-    );
+    const row = await createRule(c.get("db"), principal, c.req.valid("json"));
     return c.json(serializeRule(row), 201);
   });
 
   app.openapi(updateRoute, async (c) => {
     const principal = requireAuth(c);
-    const db = c.get("db");
     const { id } = c.req.valid("param");
-    const body = c.req.valid("json");
-    const updates: Partial<NotificationRuleRow> = { updated_at: new Date() };
-    if (body.name !== undefined) updates.name = body.name;
-    if (body.event_pattern !== undefined) updates.event_pattern = body.event_pattern;
-    if (body.workflow_pattern !== undefined) updates.workflow_pattern = body.workflow_pattern;
-    if (body.severity !== undefined) updates.severity = body.severity;
-    if (body.request_source_filter !== undefined)
-      updates.request_source_filter = body.request_source_filter;
-    if (body.target_workspace_id !== undefined)
-      updates.target_workspace_id = body.target_workspace_id;
-    if (body.target_channel_id !== undefined) updates.target_channel_id = body.target_channel_id;
-    if (body.active !== undefined) updates.active = body.active;
-    const [row] = await db
-      .update(notificationRules)
-      .set(updates)
-      .where(
-        and(eq(notificationRules.tenant_id, principal.tenant_id), eq(notificationRules.id, id)),
-      )
-      .returning();
+    const row = await updateRule(c.get("db"), principal, id, c.req.valid("json"));
     if (!row) throw new NotFoundError("notification_rule");
-    await auditAwait(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: principal.kind,
-        actor_id: principal.id,
-        action: AuditAction.NOTIFICATION_RULE_UPDATED,
-        resource_type: "notification_rule",
-        resource_id: row.id,
-        result: "success",
-        metadata: { changed_fields: Object.keys(updates).filter((k) => k !== "updated_at") },
-      },
-      db,
-    );
     return c.json(serializeRule(row), 200);
   });
 
   app.openapi(deleteRoute, async (c) => {
     const principal = requireAuth(c);
-    const db = c.get("db");
     const { id } = c.req.valid("param");
-    const deleted = await db
-      .delete(notificationRules)
-      .where(
-        and(eq(notificationRules.tenant_id, principal.tenant_id), eq(notificationRules.id, id)),
-      )
-      .returning({ id: notificationRules.id });
-    if (deleted.length === 0) throw new NotFoundError("notification_rule");
-    await auditAwait(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: principal.kind,
-        actor_id: principal.id,
-        action: AuditAction.NOTIFICATION_RULE_DELETED,
-        resource_type: "notification_rule",
-        resource_id: id,
-        result: "success",
-        metadata: {},
-      },
-      db,
-    );
+    const deleted = await deleteRule(c.get("db"), principal, id);
+    if (!deleted) throw new NotFoundError("notification_rule");
     return c.json({ deleted: true }, 200);
   });
 
   app.openapi(testRoute, async (c) => {
     const meta = serviceMetadataFromHono(c);
     const principal = requireAuth(c);
-    const db = c.get("db");
     const { id } = c.req.valid("param");
-    const body = c.req.valid("json");
-    const [rule] = await db
-      .select()
-      .from(notificationRules)
-      .where(and(eq(notificationRules.tenant_id, meta.tenant_id), eq(notificationRules.id, id)))
-      .limit(1);
-    if (!rule) throw new NotFoundError("notification_rule");
-    const event = {
-      tenant_id: meta.tenant_id,
-      type: body.event_type,
-      workflow_id: body.workflow_id ?? null,
-      workflow_slug: body.workflow_slug ?? null,
-      severity: (body.severity ?? rule.severity) as
-        | "debug"
-        | "info"
-        | "warn"
-        | "error"
-        | "critical",
-      payload: body.payload ?? null,
-    };
-    const result = await dispatchEvent(
-      {
-        db,
-      },
-      event,
-    );
-    await auditAwait(
+    const result = await testRule(
+      c.get("db"),
       {
         tenant_id: meta.tenant_id,
         actor_type: principal.kind,
         actor_id: meta.actor_id ?? principal.id,
-        action: AuditAction.NOTIFICATION_RULE_TESTED,
-        resource_type: "notification_rule",
-        resource_id: rule.id,
-        result: "success",
-        metadata: {
-          matched: result.matched,
-          delivered: result.delivered,
-          event_type: event.type,
-          trace_id: meta.trace_id,
-          request_source: meta.request_source,
-        },
+        trace_id: meta.trace_id,
+        request_source: meta.request_source,
       },
-      db,
+      id,
+      c.req.valid("json"),
     );
+    if (!result) throw new NotFoundError("notification_rule");
     return c.json(
       {
         matched: result.matched,

@@ -13,7 +13,8 @@ import {
   recordExecutionDryRun,
   recordExecutionWarningsEmitted,
 } from "../../observability/instrumentation.ts";
-import { buildStepDag, detectCycles, renderCycleReport } from "../../workflows/dag.ts";
+import { stepCycles } from "../../workflows/core/definition.ts";
+import { renderCycleReport } from "../../workflows/dag.ts";
 import { validateTenantWorkflowDef } from "../../workflows/index.ts";
 import {
   describeStepReferences,
@@ -159,8 +160,7 @@ export const dryRunWorkflowTool: ConversationTool = {
     }
 
     {
-      const dag = buildStepDag({ name: draft.name ?? "draft", steps });
-      const cycleReport = detectCycles(dag);
+      const cycleReport = stepCycles({ name: draft.name ?? "draft", steps });
       if (cycleReport.has_cycle) {
         recordAuthoringGateBlock({ code: "workflow_cycle_detected", tool: "dry_run_workflow" });
         return {

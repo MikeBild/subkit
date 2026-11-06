@@ -1,4 +1,6 @@
 export { PatchProposalSchema } from "../llm/flows/repair.ts";
+export * from "./admin-scans.ts";
+export * from "./candidate-admin.ts";
 export {
   approvePatchCandidate,
   PatchDecisionError,

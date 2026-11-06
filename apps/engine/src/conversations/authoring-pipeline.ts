@@ -57,6 +57,11 @@ import { logger } from "../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../observability/instrumentation.ts";
 import { renderSandboxGlobalsContract } from "../sandboxes/quickjs/stdlib/sandbox-globals.ts";
 import {
+  AUTHORING_MAX_STEPS,
+  SLUG_MAX_LENGTH,
+  SLUG_PATTERN,
+} from "../workflows/core/definition.ts";
+import {
   type DestinationPlaceholderViolation,
   type ValidationError,
   validateTenantWorkflowDef,
@@ -152,11 +157,7 @@ function callsUnknownJsonataFunction(candidate: GeneratedWorkflow): boolean {
 
 export const GeneratedWorkflowSchema = z.object({
   name: z.string().min(1).max(200),
-  slug: z
-    .string()
-    .min(1)
-    .max(64)
-    .regex(/^[a-z][a-z0-9_-]{0,63}$/u),
+  slug: z.string().min(1).max(SLUG_MAX_LENGTH).regex(SLUG_PATTERN),
   description: z.string().max(2000).optional(),
   product_id: WorkflowDefSchema.shape.product_id,
   required_caller_kind: WorkflowDefSchema.shape.required_caller_kind,
@@ -172,7 +173,7 @@ export const GeneratedWorkflowSchema = z.object({
   max_llm_tokens_per_run: z.number().int().positive().optional(),
   runtime: WorkflowRuntimeSchema.optional(),
   trigger: TriggerSchema.optional(),
-  steps: z.array(z.record(z.string(), z.unknown())).min(1).max(25),
+  steps: z.array(z.record(z.string(), z.unknown())).min(1).max(AUTHORING_MAX_STEPS),
 });
 
 export type GeneratedWorkflow = z.infer<typeof GeneratedWorkflowSchema>;

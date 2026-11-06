@@ -2,30 +2,27 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { actorType } from "../../../audit/index.ts";
-import { executions, workflowVersions } from "../../../db/schema/index.ts";
+import { executions } from "../../../db/schema/index.ts";
 import type { ExecutionMode } from "../../../execution/index.ts";
 import {
-  admitWorkflowRun,
-  assertExecutionAuthorityCurrent,
   auditAdmissionRefusal,
   authorizeSensitiveResume,
-  deriveRerunSafety,
   executionVisibilityFilter,
-  finalizeExecution,
   isSensitivePayload,
+  loadRerunSafety,
   recoverExecutionPayload,
-  runExecution,
+  runWorkflow,
 } from "../../../execution/index.ts";
-import type { ExecutionRunJob } from "../../../queue/index.ts";
-import { EXECUTION_RUN_QUEUE, enqueueHostedWork, getBoss } from "../../../queue/index.ts";
+import { getBoss } from "../../../queue/index.ts";
 import { HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { admissionRefusal, callerBudgetRefusal } from "./admission-errors.ts";
+import { admissionRefusal } from "./admission-errors.ts";
 import {
   enforceAsyncAuthentication,
   enforceSavedWorkflowAllowlist,
+  refusalResponse,
   runRequestSource,
 } from "./run.ts";
 import {
@@ -148,19 +145,7 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
       );
     }
 
-    const version = original.workflow_version_id
-      ? await db
-          .select({ dag: workflowVersions.dag })
-          .from(workflowVersions)
-          .where(
-            and(
-              eq(workflowVersions.tenant_id, principal.tenant_id),
-              eq(workflowVersions.id, original.workflow_version_id),
-            ),
-          )
-          .limit(1)
-      : [];
-    const safety = deriveRerunSafety(original.source_kind, version[0]?.dag ?? null);
+    const safety = await loadRerunSafety(db, principal.tenant_id, original);
     const forcedHoldWrites = safety.mode !== "repeat_safe";
 
     await enforceSavedWorkflowAllowlist(principal, original.workflow_id, db);
@@ -202,115 +187,47 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
       );
       throw new HttpError(409, "workflow_version_unavailable", message);
     }
-    let admitted: Awaited<ReturnType<typeof admitWorkflowRun>>;
-    try {
-      admitted = await admitWorkflowRun(
-        {
-          tenant_id: principal.tenant_id,
-          workflow_id: original.workflow_id,
-          workflow_version_id: original.workflow_version_id,
-          execution_authority_id: body.execution_authority_id,
-          hold_writes: forcedHoldWrites ? true : body.hold_writes,
-          idempotency_key: body.idempotency_key,
-          request_source,
-          parent_execution_id: original.id,
-          execution_environment: execution_mode,
-          input,
+    const outcome = await runWorkflow(
+      {
+        principal,
+        workflow_id: original.workflow_id,
+        workflow_version_id: original.workflow_version_id,
+        execution_authority_id: body.execution_authority_id,
+        hold_writes: forcedHoldWrites ? true : body.hold_writes,
+        idempotency_key: body.idempotency_key,
+        request_source,
+        parent_execution_id: original.id,
+        execution_environment: execution_mode,
+        input,
+        authorization: {
+          kind: "granted",
+          workflow_permission: c.get("workflow_permission") ?? null,
         },
-        db,
-        principal,
-        c.get("workflow_permission"),
-      );
-      if (body.async && admitted.execution_authority_id && admitted.status === "queued") {
-        await assertExecutionAuthorityCurrent(db, principal.tenant_id, admitted.execution_id);
-      }
-    } catch (error) {
-      const budgetRefusal = await callerBudgetRefusal(c, error, {
-        db,
-        principal,
-        workflow_id: original.workflow_id,
-        request_source,
-        extra: { rerun_of: original.id },
-      });
-      if (budgetRefusal) return budgetRefusal as never;
-      return admissionRefusal(error, {
-        db,
-        principal,
-        workflow_id: original.workflow_id,
-        request_source,
-        extra: { rerun_of: original.id },
-      });
-    }
+        audit_extra: { rerun_of: original.id },
+        dispatch: body.async
+          ? {
+              mode: "enqueue",
+              boss: c.get("boss") ?? getBoss(),
+              trace_id: c.get("trace_id") ?? null,
+            }
+          : { mode: "inline", refusal_answered_to_caller: true },
+      },
+      { db },
+    );
+    if (outcome.kind === "rejected") return refusalResponse(c, outcome, principal) as never;
+    if (outcome.kind === "enqueue_failed") throw outcome.error;
+    const admitted = outcome.admitted;
     const execution_id = admitted.execution_id;
-    if (admitted.replayed && admitted.status !== "queued") {
+    if (outcome.kind === "replayed") {
       return c.json(
         { execution_id, status: admitted.status, idempotent_replay: true },
         admitted.status === "running" ? 202 : 200,
       );
     }
-
-    if (body.async) {
-      const trace_id = c.get("trace_id") ?? null;
-      const job: ExecutionRunJob = {
-        tenant_id: principal.tenant_id,
-        workflow_id: original.workflow_id,
-        execution_id,
-        request_source,
-        trace_id,
-        execution_mode,
-      };
-      try {
-        await enqueueHostedWork(
-          db,
-          c.get("boss") ?? getBoss(),
-          "execution",
-          EXECUTION_RUN_QUEUE,
-          job,
-          { id: execution_id },
-        );
-      } catch (error) {
-        if (!body.idempotency_key)
-          await finalizeExecution(db, principal.tenant_id, execution_id, "failed", null, {
-            step_id: null,
-            error_code: "enqueue_failed",
-            error_message: "The rerun could not be enqueued.",
-          });
-        throw error;
-      }
+    if (outcome.kind !== "completed") {
       return c.json({ execution_id, status: "queued", hold_writes: admitted.hold_writes }, 202);
     }
-
-    let result: Awaited<ReturnType<typeof runExecution>>;
-    try {
-      result = await runExecution({
-        db,
-        tenant_id: principal.tenant_id,
-        refusal_answered_to_caller: true,
-        source: {
-          kind: "saved",
-          workflow_id: original.workflow_id,
-          ...(original.workflow_version_id ? { version_id: original.workflow_version_id } : {}),
-        },
-        input: admitted.input,
-        options: {
-          request_source,
-          principal,
-          execution_mode,
-          parent_execution_id: original.id,
-          existing_execution_id: execution_id,
-          hold_writes: admitted.hold_writes,
-        },
-      });
-    } catch (error) {
-      return admissionRefusal(error, {
-        db,
-        principal,
-        workflow_id: original.workflow_id,
-        request_source,
-        execution_id,
-        extra: { rerun_of: original.id },
-      });
-    }
+    const result = outcome.result;
     return c.json(
       {
         execution_id: result.execution_id,

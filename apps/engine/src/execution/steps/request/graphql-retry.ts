@@ -20,6 +20,7 @@ import { logger } from "../../../logging/logger.ts";
 import { recordRequestRetry } from "../../../observability/instrumentation.ts";
 import { graphqlEndpointKey, recordSuccessShape } from "../../../schema-versions/service.ts";
 import type { RequestStep } from "../../../workflows/types.ts";
+import { type Clock, SYSTEM_CLOCK } from "../../clock.ts";
 import { GOVERNANCE_REFUSALS } from "../../state.ts";
 import type { ConnectorResolutionSummary, StepResult, StepWarning } from "../../types.ts";
 import { buildStepErrorDetail } from "../error-detail.ts";
@@ -82,7 +83,7 @@ function retryReason(status: number, body: unknown): "graphql_throttle" | "graph
 
 function rateLimitFailure(
   attempt: number,
-  start: number,
+  duration_ms: number,
   status: number,
   connector: ConnectorResolutionSummary,
   deadlineScope: RateLimitDeadlineScope,
@@ -90,7 +91,7 @@ function rateLimitFailure(
   return {
     status: "failed",
     retry_count: attempt,
-    duration_ms: Date.now() - start,
+    duration_ms,
     request_meta: { driver: "graphql", method: "POST", status, connector },
     error: {
       code: "upstream_rate_limited",
@@ -105,6 +106,7 @@ export interface RunGraphqlWithRetryParams {
   step: Pick<RequestStep, "max_retries" | "retry_backoff_ms" | "error_policy">;
   signal: AbortSignal;
   start: number;
+  clock?: Clock;
   deadline_ms?: number;
   deadline_scope?: RateLimitDeadlineScope;
   connectorResolution: ConnectorResolutionSummary;
@@ -112,6 +114,7 @@ export interface RunGraphqlWithRetryParams {
 
 export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise<StepResult> {
   const { step, signal, start, egressInput } = p;
+  const clock = p.clock ?? SYSTEM_CLOCK;
   const policy = resolveRetryPolicy(step as RequestStep);
   const max_attempts = requestMaxAttempts(step);
   let connRes = p.connectorResolution;
@@ -151,7 +154,7 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
         return {
           status: "failed",
           retry_count: attempt,
-          duration_ms: Date.now() - start,
+          duration_ms: clock.now() - start,
           error: buildStepErrorDetail({
             code: reason && GOVERNANCE_REFUSALS.has(reason) ? reason : "authority_invalid",
             err,
@@ -162,7 +165,7 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
         return {
           status: "failed",
           retry_count: attempt,
-          duration_ms: Date.now() - start,
+          duration_ms: clock.now() - start,
           error: buildStepErrorDetail({ code: "request_invalid", err }),
         };
       }
@@ -170,14 +173,14 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
         return {
           status: "failed",
           retry_count: attempt,
-          duration_ms: Date.now() - start,
+          duration_ms: clock.now() - start,
           error: { code: err.code, message: err.message },
         };
       }
       return {
         status: "failed",
         retry_count: attempt,
-        duration_ms: Date.now() - start,
+        duration_ms: clock.now() - start,
         error: buildStepErrorDetail({ code: "graphql_error", err }),
       };
     }
@@ -215,7 +218,13 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
           wait_ms: Math.round(rateLimit.delay_ms),
           attempt_no: attempt,
         });
-        return rateLimitFailure(attempt, start, raw.status, connRes, p.deadline_scope ?? "step");
+        return rateLimitFailure(
+          attempt,
+          clock.now() - start,
+          raw.status,
+          connRes,
+          p.deadline_scope ?? "step",
+        );
       }
       const wait =
         rateLimit.kind === "wait" ? rateLimit.delay_ms : backoffMs(attempt, policy.backoff_base_ms);
@@ -242,7 +251,7 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
     return {
       status: "failed",
       retry_count: 0,
-      duration_ms: Date.now() - start,
+      duration_ms: clock.now() - start,
       error: { code: "graphql_error", message: "no response received" },
     };
   }
@@ -257,7 +266,7 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
   if (graphqlRateLimited(lastRes.status, lastRes.headers, lastRes.body))
     return rateLimitFailure(
       finalAttempt,
-      start,
+      clock.now() - start,
       lastRes.status,
       connRes,
       p.deadline_scope ?? "step",
@@ -306,7 +315,7 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
         status: "succeeded",
         output: data,
         retry_count: finalAttempt,
-        duration_ms: Date.now() - start,
+        duration_ms: clock.now() - start,
         request_meta: {
           driver: "graphql",
           method: "POST",
@@ -333,7 +342,7 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
     status: graphqlOk ? "succeeded" : "failed",
     output: (lastRes.body as { data?: unknown }).data ?? null,
     retry_count: finalAttempt,
-    duration_ms: Date.now() - start,
+    duration_ms: clock.now() - start,
     request_meta: {
       driver: "graphql",
       method: "POST",

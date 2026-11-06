@@ -34,9 +34,9 @@ import { tryFastPath } from "../fast-path.ts";
 import { getTool, type ToolContext } from "../tools/index.ts";
 import { buildExternalMcpTools } from "../tools/sdk-wrap/external-mcp-tools.ts";
 import { wrapOne } from "../tools/sdk-wrap/invoke.ts";
-import type { TurnSignals } from "../tools/sdk-wrap/state.ts";
 import { buildSyntheticWorkflowTools } from "../tools/sdk-wrap/synthetic-workflow-tools.ts";
 import type { TurnEvent } from "../types.ts";
+import { freshSignals } from "./turn-signals.ts";
 
 let remoteToolCalls = 0;
 
@@ -77,24 +77,6 @@ const originalDatabaseUrl = process.env.DATABASE_URL;
 
 const KNOWLEDGE_ARGS = { mode: "inline", name: "Parity source", content: "# Parity" };
 const EXTERNAL_ARGS = { title: "Parity page" };
-
-function freshSignals(): TurnSignals {
-  return {
-    step: 0,
-    toolChain: Promise.resolve(),
-    pendingChildToolCallIds: [],
-    pendingChildElicitationIds: [],
-    toolInvocationCount: new Map(),
-    toolLastErrorHash: new Map(),
-    toolArgsRepeat: new Map(),
-    toolValidationFingerprint: new Map(),
-    toolErrorCodeRepeat: new Map(),
-    totalLoopWarnings: 0,
-    consecutiveFailures: 0,
-    lastAssistantText: "",
-    lastExecutionSuccess: null,
-  };
-}
 
 function toolCtx(
   conversation_id: string,

@@ -1,3 +1,4 @@
+import { type Clock, SYSTEM_CLOCK } from "../../clock.ts";
 import type { RequestMeta, RequestPaginationSummary, StepResult } from "../../types.ts";
 
 export interface GraphqlCursorPagination {
@@ -58,14 +59,14 @@ function withSummary(result: StepResult, progress: CursorProgress, complete: boo
 function incomplete(
   reason: string,
   last: StepResult | null,
-  started: number,
+  elapsed: () => number,
   progress: CursorProgress,
 ): StepResult {
   return withSummary(
     {
       status: "failed",
       retry_count: last?.retry_count ?? 0,
-      duration_ms: Date.now() - started,
+      duration_ms: elapsed(),
       error: { code: "graphql_pagination_incomplete", message: reason },
       ...(last?.request_meta ? { request_meta: last.request_meta } : {}),
     },
@@ -93,17 +94,20 @@ type CursorReadInput = {
   spec: GraphqlCursorPagination;
   variables: Record<string, unknown>;
   execute: (variables: Record<string, unknown>) => Promise<StepResult>;
+  clock?: Clock;
 };
 
 export async function runGraphqlCursorPages(
   p: CursorReadInput & { wait?: (() => Promise<void>) | undefined },
 ): Promise<StepResult> {
-  const started = Date.now();
+  const clock = p.clock ?? SYSTEM_CLOCK;
+  const started = clock.now();
+  const elapsed = () => clock.now() - started;
   const rereadLimit = p.spec.reread_on_empty ?? 0;
-  let read = await readCursorPages(p, 0, started);
+  let read = await readCursorPages(p, 0, elapsed);
   while (read.complete && read.progress.items === 0 && read.progress.rereads < rereadLimit) {
     await p.wait?.();
-    read = await readCursorPages(p, read.progress.rereads + 1, started);
+    read = await readCursorPages(p, read.progress.rereads + 1, elapsed);
   }
   if (!read.complete) return read.result;
   const { min, max } = p.spec.expected_items ?? {};
@@ -114,13 +118,13 @@ export async function runGraphqlCursorPages(
       : max !== undefined && count > max
         ? `The complete read returned ${count} items, more than the expected maximum ${max}.`
         : null;
-  return outOfRange ? incomplete(outOfRange, read.result, started, read.progress) : read.result;
+  return outOfRange ? incomplete(outOfRange, read.result, elapsed, read.progress) : read.result;
 }
 
 async function readCursorPages(
   p: CursorReadInput,
   rereads: number,
-  started: number,
+  elapsed: () => number,
 ): Promise<CursorRead> {
   const failed = (result: StepResult, progress: CursorProgress): CursorRead => ({
     result,
@@ -134,7 +138,7 @@ async function readCursorPages(
   ) {
     const progress = { pages: 0, items: 0, limit: null, rereads };
     return failed(
-      incomplete("Start the complete read without an initial cursor.", null, started, progress),
+      incomplete("Start the complete read without an initial cursor.", null, elapsed, progress),
       progress,
     );
   }
@@ -153,7 +157,7 @@ async function readCursorPages(
     rereads,
   });
   const stop = (reason: string, limit: CursorProgress["limit"] = null): CursorRead =>
-    failed(incomplete(reason, last, started, progress(limit)), progress(limit));
+    failed(incomplete(reason, last, elapsed, progress(limit)), progress(limit));
   for (let page = 1; page <= spec.max_pages; page++) {
     const variables = { ...p.variables, [spec.cursor_variable]: cursor };
     last = await p.execute(variables);
@@ -239,7 +243,7 @@ async function readCursorPages(
       firstConnection.pageInfo = pageInfo;
       return {
         result: withSummary(
-          { ...last, output: firstOutput, duration_ms: Date.now() - started },
+          { ...last, output: firstOutput, duration_ms: elapsed() },
           progress(),
           true,
         ),

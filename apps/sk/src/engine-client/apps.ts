@@ -8,16 +8,18 @@ export type AppCheck = components["schemas"]["AppCheck"];
 export type ErasedAppUser = components["schemas"]["ErasedAppUser"];
 
 export const appsMethods = {
-  listApps(this: EngineClient): Promise<AppListResponse> {
-    return this.request("GET", "/v1/apps");
+  async listApps(this: EngineClient): Promise<AppListResponse> {
+    const { data } = await this.api.GET("/v1/apps");
+    return data as AppListResponse;
   },
-  getApp(this: EngineClient, id: string): Promise<AppView> {
-    return this.request("GET", `/v1/apps/${encodeURIComponent(id)}`);
+  async getApp(this: EngineClient, id: string): Promise<AppView> {
+    const { data } = await this.api.GET("/v1/apps/{id}", { params: { path: { id } } });
+    return data as AppView;
   },
-  eraseAppUser(this: EngineClient, appId: string, userId: string): Promise<ErasedAppUser> {
-    return this.request(
-      "DELETE",
-      `/v1/apps/${encodeURIComponent(appId)}/users/${encodeURIComponent(userId)}`,
-    );
+  async eraseAppUser(this: EngineClient, appId: string, userId: string): Promise<ErasedAppUser> {
+    const { data } = await this.api.DELETE("/v1/apps/{id}/users/{user_id}", {
+      params: { path: { id: appId, user_id: userId } },
+    });
+    return data as ErasedAppUser;
   },
 };

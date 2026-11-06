@@ -1,10 +1,10 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, eq, gt } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { AuditAction, actorOf, auditAwait, readRequestSource } from "../../../audit/index.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import {
   beginConnectorOAuthDance,
+  claimConnectorOAuthState,
   consumeStartGrant,
   oauthFlowOrigin,
   settleConnectorReauthorization,
@@ -15,7 +15,6 @@ import {
   completeAuthorizationCode,
   isOAuthProviderError,
 } from "../../../credentials/index.ts";
-import { connectorOauthStates } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/index.ts";
 import { redactUpstreamDetail } from "../../../mcp/index.ts";
 import { now } from "../../../utils/clock.ts";
@@ -156,21 +155,7 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
       return resultResponse(c, signInFailedPage(requestLocale(c), "chat", "link_expired"));
     }
 
-    const { tenant_id, connector_id, created_by_actor_id } = claimed;
-
-    await auditAwait(
-      {
-        tenant_id,
-        actor_type: "system",
-        actor_id: null,
-        action: AuditAction.CONNECTOR_OAUTH_GRANT_CONSUMED,
-        resource_type: "connector",
-        resource_id: connector_id,
-        result: "success",
-        metadata: { connector_id, created_by_actor_id },
-      },
-      db,
-    );
+    const { tenant_id, connector_id } = claimed;
 
     const redirect_uri = buildOAuthRedirectUri({ req: c.req.raw });
     if (!redirect_uri) {
@@ -223,25 +208,7 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(oauthCallbackRoute, async (c) => {
     const db = c.get("db");
     const q = c.req.valid("query");
-    // tenant-filter:exempt — this route is unauthenticated (OAuth
-    // provider redirects the user's browser back with no API key).
-    // Authentication is by way of the opaque single-use `state` token,
-    // which has a unique index on connectorOauthStates.state. The
-    // resolved tenant_id comes from the matched row and is used for
-    // every subsequent write.
-    // pattern: state-token-auth-callback — see also the external MCP
-    // server OAuth callback (http/routes/connectors/mcp.ts), which
-    // applies the same claim-then-derive-tenant discipline.
-    const claimed = await db
-      .delete(connectorOauthStates)
-      .where(
-        and(
-          eq(connectorOauthStates.state, q.state),
-          gt(connectorOauthStates.expires_at, new Date(now())),
-        ),
-      )
-      .returning();
-    const stateRow = claimed[0];
+    const stateRow = await claimConnectorOAuthState(db, q.state, new Date(now()));
     if (!stateRow) {
       logger.warn({
         module: "oauth",

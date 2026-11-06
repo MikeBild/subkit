@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
-import { type Executor, getDb } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { connectors } from "../db/schema/index.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
 import type { ConnectorRecipe } from "./templates.ts";
@@ -54,7 +54,7 @@ export function rebindConnectorIds(workflow: unknown, bindings: Record<string, s
 export async function listTemplateConnectors(
   tenant_id: string,
   template_slugs: readonly string[],
-  exec: Executor = getDb(),
+  exec: Executor,
 ): Promise<TemplateConnector[]> {
   if (template_slugs.length === 0) return [];
   const rows = await exec

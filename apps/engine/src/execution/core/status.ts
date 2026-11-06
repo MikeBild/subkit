@@ -98,3 +98,56 @@ export function crashRecoveryOutcome(
     age_ms,
   };
 }
+
+export type ExecutionOutcome =
+  | { type: "completed" }
+  | { type: "failed" }
+  | { type: "aborted" }
+  | { type: "timed_out" }
+  | { type: "enqueue_failed" }
+  | { type: "admission_failed"; refused: boolean }
+  | { type: "cancelled" };
+
+export type ExecutionOutcomeType = ExecutionOutcome["type"];
+
+const OUTCOME_STATUS: Record<ExecutionOutcomeType, TerminalExecutionStatus> = {
+  completed: "succeeded",
+  failed: "failed",
+  aborted: "aborted",
+  timed_out: "timed_out",
+  enqueue_failed: "failed",
+  admission_failed: "failed",
+  cancelled: "aborted",
+};
+
+const BEFORE_START_OUTCOMES: ReadonlySet<ExecutionOutcomeType> = new Set([
+  "enqueue_failed",
+  "admission_failed",
+  "cancelled",
+]);
+
+export interface OutcomeTransition {
+  status: TerminalExecutionStatus;
+  sources: ExecutionStatus[];
+  refused: boolean;
+  event_type: string;
+}
+
+export function outcomeTransition(outcome: ExecutionOutcome): OutcomeTransition {
+  const status = OUTCOME_STATUS[outcome.type];
+  const refused = outcome.type === "admission_failed" && outcome.refused;
+  return {
+    status,
+    sources: transitionSources(
+      status,
+      BEFORE_START_OUTCOMES.has(outcome.type) ? ["queued"] : NON_TERMINAL_EXECUTION_STATUSES,
+    ),
+    refused,
+    event_type: refused ? "execution.refused" : `execution.${status}`,
+  };
+}
+
+export function settledOutcome(status: ExecutionStatus): ExecutionOutcome {
+  if (status === "succeeded") return { type: "completed" };
+  return { type: isTerminalExecutionStatus(status) ? status : "failed" };
+}

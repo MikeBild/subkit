@@ -6,16 +6,11 @@ import { resolveActor } from "../audit/recorders/types.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { EncryptedPayload } from "../crypto/aes-gcm.ts";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
-import { type Db, type Executor, getDb } from "../db/client.ts";
+import type { Db, Executor } from "../db/client.ts";
 import { connectors, credentials, outboundConnections } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { invalidateTenantState } from "../operator/tenant-state.ts";
 import { emitCredentialChange } from "../pubsub/resource-changes.ts";
-import {
-  hasColumn,
-  hasCredentialAuthorityRevisionColumn,
-  hasCredentialConnectionColumn,
-} from "../runtime-config/secret-columns.ts";
 import type { ConnectionAuthorityIdentity } from "./authority-metadata.ts";
 import { authorityScopeSet, sameAuthorityScopes, storedScopes } from "./authority-scopes.ts";
 import { readAccessToken, summarizeConnections } from "./connections/service.ts";
@@ -133,9 +128,6 @@ export async function upsertCredential(
     const slotPredicate = isClientSlot
       ? eq(credentials.mode, "oauth2_client")
       : ne(credentials.mode, "oauth2_client");
-    const withConnectionColumn = await hasCredentialConnectionColumn(tx);
-    const withAuthorityRevision = await hasCredentialAuthorityRevisionColumn(tx);
-    const withIdentity = await hasColumn(tx, "credentials", "credential_generation");
     const existing = await tx
       .select({
         id: credentials.id,
@@ -147,7 +139,7 @@ export async function upsertCredential(
         oauth2_refresh_iv: credentials.oauth2_refresh_iv,
         oauth2_refresh_auth_tag: credentials.oauth2_refresh_auth_tag,
         granted_scopes: credentials.granted_scopes,
-        ...(withConnectionColumn ? { connection_id: credentials.connection_id } : {}),
+        connection_id: credentials.connection_id,
       })
       .from(credentials)
       .where(
@@ -167,7 +159,7 @@ export async function upsertCredential(
     let id: string;
     if (priorId) {
       id = priorId;
-    } else if (withConnectionColumn && withAuthorityRevision && withIdentity) {
+    } else {
       const [row] = await tx
         .insert(credentials)
         .values({
@@ -180,13 +172,6 @@ export async function upsertCredential(
           auth_tag: Buffer.from(placeholder.auth_tag),
         })
         .returning({ id: credentials.id });
-      if (!row) throw new Error("credential insert returned no row");
-      id = row.id;
-    } else {
-      const inserted = await tx.execute(
-        sql`insert into ${credentials} ("tenant_id", "connector_id", "environment", "mode", "ciphertext", "iv", "auth_tag") values (${input.tenant_id}, ${input.connector_id}, ${input.environment}, ${input.mode}, ${Buffer.from(placeholder.ciphertext)}, ${Buffer.from(placeholder.iv)}, ${Buffer.from(placeholder.auth_tag)}) returning "id"`,
-      );
-      const row = (inserted.rows as Array<{ id: string }>)[0];
       if (!row) throw new Error("credential insert returned no row");
       id = row.id;
     }
@@ -246,14 +231,10 @@ export async function upsertCredential(
       .update(credentials)
       .set({
         mode: input.mode,
-        ...(withIdentity
-          ? {
-              credential_generation: priorId ? sql`${credentials.credential_generation} + 1` : 1,
-              verified_identity: input.verified_identity
-                ? VerifiedProviderIdentitySchema.parse(input.verified_identity)
-                : null,
-            }
-          : {}),
+        credential_generation: priorId ? sql`${credentials.credential_generation} + 1` : 1,
+        verified_identity: input.verified_identity
+          ? VerifiedProviderIdentitySchema.parse(input.verified_identity)
+          : null,
         ciphertext: Buffer.from(payload.ciphertext),
         iv: Buffer.from(payload.iv),
         auth_tag: Buffer.from(payload.auth_tag),
@@ -262,10 +243,10 @@ export async function upsertCredential(
         oauth2_refresh_auth_tag: refreshPayload ? Buffer.from(refreshPayload.auth_tag) : null,
         oauth2_expires_at: input.oauth2_expires_at ?? null,
         granted_scopes: grantedScopes,
-        ...(withAuthorityRevision && authorityChanged
+        ...(authorityChanged
           ? { authority_revision: sql`${credentials.authority_revision} + 1` }
           : {}),
-        ...(withConnectionColumn ? { connection_id: input.connection_id ?? null } : {}),
+        connection_id: input.connection_id ?? null,
         updated_at: new Date(),
       })
       .where(eq(credentials.id, id));
@@ -325,11 +306,10 @@ export async function rotateOAuth2Tokens(
   verified_identity: VerifiedProviderIdentity | null;
 }> {
   const identity = await db.transaction(async (tx) => {
-    const withIdentity = await hasColumn(tx, "credentials", "credential_generation");
     const [prior] = await tx
       .select({
         mode: credentials.mode,
-        ...(withIdentity ? { credential_generation: credentials.credential_generation } : {}),
+        credential_generation: credentials.credential_generation,
         granted_scopes: credentials.granted_scopes,
         ciphertext: credentials.ciphertext,
         iv: credentials.iv,
@@ -374,7 +354,6 @@ export async function rotateOAuth2Tokens(
     const authorityChanged =
       !sameAuthorityScopes(previousScope, nextScope) ||
       previousType.toLowerCase() !== nextType.toLowerCase();
-    const withAuthorityRevision = await hasCredentialAuthorityRevisionColumn(tx);
     const payload = encryptSecret(
       JSON.stringify({
         access_token: input.access_token,
@@ -390,14 +369,10 @@ export async function rotateOAuth2Tokens(
     const updated = await tx
       .update(credentials)
       .set({
-        ...(withIdentity
-          ? {
-              credential_generation: sql`${credentials.credential_generation} + 1`,
-              verified_identity: input.verified_identity
-                ? VerifiedProviderIdentitySchema.parse(input.verified_identity)
-                : null,
-            }
-          : {}),
+        credential_generation: sql`${credentials.credential_generation} + 1`,
+        verified_identity: input.verified_identity
+          ? VerifiedProviderIdentitySchema.parse(input.verified_identity)
+          : null,
         ciphertext: Buffer.from(payload.ciphertext),
         iv: Buffer.from(payload.iv),
         auth_tag: Buffer.from(payload.auth_tag),
@@ -409,7 +384,7 @@ export async function rotateOAuth2Tokens(
             }
           : {}),
         granted_scopes: nextScope,
-        ...(withAuthorityRevision && authorityChanged
+        ...(authorityChanged
           ? { authority_revision: sql`${credentials.authority_revision} + 1` }
           : {}),
         oauth2_expires_at: input.expires_at ?? null,
@@ -418,17 +393,10 @@ export async function rotateOAuth2Tokens(
       .where(
         and(eq(credentials.tenant_id, input.tenant_id), eq(credentials.id, input.credential_id)),
       )
-      .returning(
-        withIdentity
-          ? {
-              credential_generation: credentials.credential_generation,
-              verified_identity: credentials.verified_identity,
-            }
-          : {
-              credential_generation: sql<number | null>`NULL`,
-              verified_identity: sql<VerifiedProviderIdentity | null>`NULL`,
-            },
-      );
+      .returning({
+        credential_generation: credentials.credential_generation,
+        verified_identity: credentials.verified_identity,
+      });
     await auditAwait(
       {
         tenant_id: input.tenant_id,
@@ -459,7 +427,7 @@ export async function getCredentialForConnector(
   tenant_id: string,
   connector_id: string,
   environment: "dev" | "prod",
-  exec?: Executor,
+  db: Executor,
 ): Promise<{
   row: typeof credentials.$inferSelect;
   value: DecryptedCredential;
@@ -467,7 +435,6 @@ export async function getCredentialForConnector(
   credential_snapshot?: CredentialUseSnapshot;
 } | null> {
   if (!UUID_RE.test(connector_id)) return null;
-  const db = exec ?? getDb();
   const rows = await db
     .select()
     .from(credentials)
@@ -725,10 +692,9 @@ export async function getOAuth2ClientCredential(
 export async function resolveDefaultEnvironmentForConnector(
   tenant_id: string,
   connector_id: string,
-  exec?: Executor,
+  db: Executor,
 ): Promise<"dev" | "prod" | null> {
   if (!UUID_RE.test(connector_id)) return null;
-  const db = exec ?? getDb();
   const rows = await db
     .select({ environment: credentials.environment })
     .from(credentials)
@@ -750,7 +716,7 @@ export async function resolveDryRunEnvironment(p: {
   tenant_id: string;
   steps: unknown[];
   requested?: "dev" | "prod" | undefined;
-  exec?: Executor;
+  exec: Executor;
   conversation_id?: string | undefined;
   onLog?: ((level: "debug" | "info" | "warn" | "error", message: string) => void) | undefined;
 }): Promise<"dev" | "prod"> {
@@ -763,10 +729,9 @@ export async function resolveDryRunEnvironment(p: {
     ),
   ];
   if (connectorIds.length === 0) return "dev";
-  const db = p.exec ?? getDb();
   const uuidIds = connectorIds.filter((id) => UUID_RE.test(id));
   const authRows = uuidIds.length
-    ? await db
+    ? await p.exec
         .select({ id: connectors.id, auth_type: connectors.auth_type })
         .from(connectors)
         .where(and(eq(connectors.tenant_id, p.tenant_id), inArray(connectors.id, uuidIds)))
@@ -897,6 +862,38 @@ export async function recordCredentialProviderIdentity(
       tx,
     );
   });
+}
+
+export async function credentialExists(
+  db: Executor,
+  tenant_id: string,
+  credential_id: string,
+): Promise<boolean> {
+  const rows = await db
+    .select({ id: credentials.id })
+    .from(credentials)
+    .where(and(eq(credentials.tenant_id, tenant_id), eq(credentials.id, credential_id)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+export async function findLiveCredential(
+  db: Executor,
+  tenant_id: string,
+  credential_id: string,
+): Promise<typeof credentials.$inferSelect | null> {
+  const rows = await db
+    .select()
+    .from(credentials)
+    .where(
+      and(
+        eq(credentials.tenant_id, tenant_id),
+        eq(credentials.id, credential_id),
+        isNull(credentials.deleted_at),
+      ),
+    )
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 export async function deleteCredential(

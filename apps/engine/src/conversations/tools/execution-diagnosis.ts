@@ -1,7 +1,9 @@
-import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
-import { executionSteps, executions } from "../../db/schema/index.ts";
 import { HELD_PREVIEW_WARNING_CODE } from "../../execution/types.ts";
+import {
+  findExecutionSummary,
+  listExecutionStepsForDiagnosis,
+} from "../../execution/visible-reads.ts";
 import { buildScopeAtStep } from "../../workflows/scope-shape.ts";
 import type { LatestDiagnosisSummary } from "../types.ts";
 import { truncateForLlm } from "./truncate.ts";
@@ -98,36 +100,10 @@ export async function buildExecutionDiagnosis(
   tenant_id: string,
   executionId: string,
 ): Promise<ExecutionDiagnosisResult> {
-  const execRows = await db
-    .select({
-      id: executions.id,
-      workflow_id: executions.workflow_id,
-      workflow_version_id: executions.workflow_version_id,
-      status: executions.status,
-      execution_mode: executions.execution_mode,
-    })
-    .from(executions)
-    .where(and(eq(executions.tenant_id, tenant_id), eq(executions.id, executionId)))
-    .limit(1);
-  const execution = execRows[0];
+  const execution = await findExecutionSummary(db, tenant_id, executionId);
   if (!execution) return { found: false };
 
-  const rows = await db
-    .select({
-      step_key: executionSteps.step_key,
-      kind: executionSteps.kind,
-      status: executionSteps.status,
-      duration_ms: executionSteps.duration_ms,
-      output_preview: executionSteps.output_preview,
-      error: executionSteps.error,
-      request_meta: executionSteps.request_meta,
-      credential_snapshots: executionSteps.credential_snapshots,
-    })
-    .from(executionSteps)
-    .where(
-      and(eq(executionSteps.tenant_id, tenant_id), eq(executionSteps.execution_id, executionId)),
-    )
-    .orderBy(asc(executionSteps.step_index), asc(executionSteps.started_at));
+  const rows = await listExecutionStepsForDiagnosis(db, tenant_id, executionId);
 
   const warning_sources = stepWarningSources(rows);
   const steps = rows.map((row) => {

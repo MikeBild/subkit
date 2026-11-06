@@ -1,8 +1,8 @@
 import { toPublicConnector } from "../../connectors/public-view.ts";
 import type { ConnectorView } from "../../connectors/types.ts";
 import { isRecord } from "../../utils/type-guards.ts";
+import { readStoredSpec } from "../../workflows/core/spec.ts";
 import { WORKFLOW_DEF_FIELD_KEYS, type WorkflowTrigger } from "../../workflows/types.ts";
-import { readStoredSpec } from "../../workflows/version-spec.ts";
 import type {
   AuthoringCheckpointKey,
   AuthoringCheckpointRecord,

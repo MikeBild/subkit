@@ -1,4 +1,5 @@
 import type { EngineClient } from "../engine-client.ts";
+import type { ApiBody, ApiQuery } from "./http.ts";
 
 export interface IntakeItem {
   id: string;
@@ -14,22 +15,33 @@ export interface IntakeItem {
 }
 
 export const intakeMethods = {
-  getDefaultIntakeCategory(this: EngineClient): Promise<{ category: string }> {
-    return this.request("GET", "/v1/intake/default-category");
+  async getDefaultIntakeCategory(this: EngineClient): Promise<{ category: string }> {
+    const { data } = await this.api.GET("/v1/intake/default-category");
+    return data as { category: string };
   },
-  setDefaultIntakeCategory(this: EngineClient, category: string): Promise<{ category: string }> {
-    return this.request("PATCH", "/v1/intake/default-category", { category });
+  async setDefaultIntakeCategory(
+    this: EngineClient,
+    category: string,
+  ): Promise<{ category: string }> {
+    const { data } = await this.api.PATCH("/v1/intake/default-category", {
+      body: { category } as ApiBody<"/v1/intake/default-category", "patch">,
+    });
+    return data as { category: string };
   },
-  listIntakeItems(
+  async listIntakeItems(
     this: EngineClient,
     query: { category?: string; state?: IntakeItem["state"] },
   ): Promise<{ items: IntakeItem[]; total?: number }> {
-    return this.request("GET", "/v1/intake/items", undefined, query);
+    const { data } = await this.api.GET("/v1/intake/items", {
+      params: { query: query as ApiQuery<"/v1/intake/items", "get"> },
+    });
+    return data as { items: IntakeItem[]; total?: number };
   },
-  getIntakeItem(this: EngineClient, id: string): Promise<IntakeItem> {
-    return this.request("GET", `/v1/intake/items/${encodeURIComponent(id)}`);
+  async getIntakeItem(this: EngineClient, id: string): Promise<IntakeItem> {
+    const { data } = await this.api.GET("/v1/intake/items/{id}", { params: { path: { id } } });
+    return data as IntakeItem;
   },
-  patchIntakeItem(
+  async patchIntakeItem(
     this: EngineClient,
     id: string,
     input: {
@@ -38,6 +50,10 @@ export const intakeMethods = {
       state?: "collected" | "discarded";
     },
   ): Promise<IntakeItem> {
-    return this.request("PATCH", `/v1/intake/items/${encodeURIComponent(id)}`, input);
+    const { data } = await this.api.PATCH("/v1/intake/items/{id}", {
+      params: { path: { id } },
+      body: input as ApiBody<"/v1/intake/items/{id}", "patch">,
+    });
+    return data as IntakeItem;
   },
 };

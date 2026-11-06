@@ -1,11 +1,11 @@
 import { z } from "@hono/zod-openapi";
 import { listedDescription } from "../../api/catalog-metadata.ts";
+import { type EffectiveTrigger, workflowTriggerView } from "../../scheduler/trigger-bindings.ts";
 import {
-  bindingFor,
-  type EffectiveTrigger,
-  workflowTriggerView,
-} from "../../scheduler/trigger-bindings.ts";
-import type { WorkflowTrigger } from "../../workflows/types.ts";
+  loadWorkflowDetail,
+  loadWorkflowList,
+  type WorkflowDetailEntry,
+} from "../../workflows/read-model.ts";
 import { rankedPage } from "./catalog-rank.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { invalidLookupId, normalizeLookupCategory, normalizeLookupId } from "./lookup-id.ts";
@@ -78,12 +78,8 @@ export function summarize(wf: {
   };
 }
 
-function withTrigger(
-  summary: WorkflowSummary,
-  definitionTrigger: WorkflowTrigger | undefined,
-  bindings: Parameters<typeof bindingFor>[0],
-): WorkflowSummary {
-  const view = workflowTriggerView(definitionTrigger, bindingFor(bindings, summary.id));
+function withTrigger(summary: WorkflowSummary, entry: WorkflowDetailEntry): WorkflowSummary {
+  const view = workflowTriggerView(entry.workflow.definition.trigger, entry.binding);
   return { ...summary, effective_trigger: view.effective_trigger };
 }
 
@@ -120,8 +116,8 @@ export const findWorkflowTool: ConversationTool = {
     const category = normalizeLookupCategory(parsed.category);
     const args = { ...parsed, category };
     if (lookupId.kind === "uuid") {
-      const wf = await ctx.engineClient.workflows.get(lookupId.id);
-      if (!wf) {
+      const entry = await loadWorkflowDetail(ctx.tenant_id, { id: lookupId.id }, ctx.db);
+      if (!entry) {
         return {
           ok: false,
           error_code: "workflow_not_found",
@@ -129,23 +125,22 @@ export const findWorkflowTool: ConversationTool = {
           next_best_actions: ["find_workflow", "list_workflows"],
         };
       }
-      const bindings = await ctx.engineClient.workflows.triggerBindings([wf.id]);
       return {
         ok: true,
-        data: { matches: [withTrigger(summarize(wf), wf.definition.trigger, bindings)], total: 1 },
+        data: { matches: [withTrigger(summarize(entry.workflow), entry)], total: 1 },
       };
     }
-    const { rows: list } = await ctx.engineClient.workflows.list({
-      ...(args.category !== undefined ? { category: args.category } : {}),
-      ...(args.connector !== undefined ? { connector: args.connector } : {}),
-    });
-    const [connectorRefs, bindings] = await Promise.all([
-      ctx.engineClient.workflows.connectorRefs(),
-      ctx.engineClient.workflows.triggerBindings(list.map((wf) => wf.id)),
-    ]);
-    const summaries = list.map((wf) => ({
-      ...withTrigger(summarize(wf), wf.definition.trigger, bindings),
-      connectors: connectorRefs.get(wf.id) ?? [],
+    const { entries } = await loadWorkflowList(
+      ctx.tenant_id,
+      {
+        ...(args.category !== undefined ? { category: args.category } : {}),
+        ...(args.connector !== undefined ? { connector: args.connector } : {}),
+      },
+      ctx.db,
+    );
+    const summaries = entries.map((entry) => ({
+      ...withTrigger(summarize(entry.workflow), entry),
+      connectors: entry.connectors,
     }));
     return {
       ok: true,

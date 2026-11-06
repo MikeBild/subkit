@@ -12,7 +12,7 @@ import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import { storedScopes } from "../credentials/authority-scopes.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
-import { type Executor, getDb } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import {
   catalogGroupOrder,
   type ListResult,
@@ -224,9 +224,8 @@ function connectorActorFields(actor_input: ConnectorActorInput) {
 
 export async function createConnector(
   p: CreateConnectorParams,
-  exec?: Executor,
+  db: Executor,
 ): Promise<ConnectorView> {
-  const db = exec ?? getDb();
   return await db.transaction(async (tx) => {
     await lockCatalogVocabulary(tx, p.tenant_id);
     const resolved = await resolveCreateTemplateBinding(p.tenant_id, p.input, tx);
@@ -387,9 +386,8 @@ export async function listConnectors(
     limit?: number;
     offset?: number;
   } = {},
-  exec?: Executor,
+  db: Executor,
 ): Promise<ListResult<ConnectorView>> {
-  const db = exec ?? getDb();
   const tenantConds = [eq(connectors.tenant_id, tenant_id), isNull(connectors.deleted_at)];
   if (opts.environment) tenantConds.push(eq(connectors.environment, opts.environment));
   if (opts.category) tenantConds.push(eq(connectors.category, opts.category));
@@ -459,9 +457,8 @@ export async function listConnectors(
 
 export async function connectorCategoryCounts(
   tenant_id: string,
-  exec?: Executor,
+  db: Executor,
 ): Promise<Map<string, number>> {
-  const db = exec ?? getDb();
   const rows = await db
     .select({ category: connectors.category, count: sql<number>`count(*)::int` })
     .from(connectors)
@@ -473,9 +470,8 @@ export async function connectorCategoryCounts(
 export async function getConnector(
   tenant_id: string,
   id: string,
-  exec?: Executor,
+  db: Executor,
 ): Promise<ConnectorView | null> {
-  const db = exec ?? getDb();
   const rows = await db
     .select()
     .from(connectors)
@@ -494,9 +490,8 @@ export async function getConnector(
 export async function getConnectorForDefinition(
   tenant_id: string,
   definition: Pick<CreateConnectorInput, "name" | "slug" | "environment">,
-  exec?: Executor,
+  db: Executor,
 ): Promise<ConnectorView | null> {
-  const db = exec ?? getDb();
   const rows = await db
     .select()
     .from(connectors)
@@ -527,9 +522,8 @@ export interface CredentialSummary {
 export async function listConnectorCredentials(
   tenant_id: string,
   connector_id: string,
-  exec?: Executor,
+  db: Executor,
 ): Promise<CredentialSummary[]> {
-  const db = exec ?? getDb();
   const rows = await db
     .select({
       id: credentials.id,
@@ -583,11 +577,10 @@ export function connectorEnvironmentKey(connector_id: string, environment: Envir
 export async function getConnectorsForEnvironments(
   tenant_id: string,
   requests: readonly ConnectorEnvironmentRequest[],
-  exec?: Executor,
+  db: Executor,
 ): Promise<Map<string, ConnectorView | null>> {
   const result = new Map<string, ConnectorView | null>();
   if (requests.length === 0) return result;
-  const db = exec ?? getDb();
   const bases = await db
     .select()
     .from(connectors)
@@ -642,12 +635,12 @@ export async function getConnectorForEnvironment(
   tenant_id: string,
   id: string,
   environment: Environment,
-  exec?: Executor,
+  db: Executor,
 ): Promise<ConnectorView | null> {
   const rows = await getConnectorsForEnvironments(
     tenant_id,
     [{ connector_id: id, environment }],
-    exec,
+    db,
   );
   return rows.get(connectorEnvironmentKey(id, environment)) ?? null;
 }
@@ -665,9 +658,8 @@ export async function updateConnector(
   id: string,
   requested: UpdateConnectorInput,
   actor_input: ConnectorActorInput,
-  exec?: Executor,
+  db: Executor,
 ): Promise<ConnectorView | null> {
-  const db = exec ?? getDb();
   const actorFields = connectorActorFields(actor_input);
   const updated = await db.transaction(async (tx) => {
     await lockCatalogVocabulary(tx, tenant_id);
@@ -820,9 +812,8 @@ export async function setConnectorEnabled(
   id: string,
   enabled: boolean,
   actor_input: ConnectorActorInput,
-  exec?: Executor,
+  db: Executor,
 ): Promise<ConnectorView | null> {
-  const db = exec ?? getDb();
   const actorFields = connectorActorFields(actor_input);
   const [row] = await db
     .update(connectors)
@@ -864,10 +855,9 @@ export async function deleteConnector(
   tenant_id: string,
   id: string,
   actor_input: ConnectorActorInput,
-  exec?: Executor,
+  db: Executor,
   opts?: { orphaned_workflow_ids?: string[] },
 ): Promise<boolean> {
-  const db = exec ?? getDb();
   const actorFields = connectorActorFields(actor_input);
   type EvictRow = {
     id: string;
@@ -939,10 +929,9 @@ export async function attachConnectorSelfDescriptionLinks(
     connector_id: string;
     links: ConnectorSelfDescriptionLink[];
   },
-  exec?: Executor,
+  db: Executor,
 ): Promise<ConnectorSelfDescriptionLink[] | null> {
   if (p.links.length === 0) return null;
-  const db = exec ?? getDb();
   const rows = await db
     .select({ self_description: connectors.self_description })
     .from(connectors)

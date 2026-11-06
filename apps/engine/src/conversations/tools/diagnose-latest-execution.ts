@@ -1,8 +1,6 @@
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
-import { executions } from "../../db/schema/index.ts";
-import { executionVisibilityFilter } from "../../execution/execution-owner.ts";
 import { isSensitivePayload } from "../../execution/sensitive-payload.ts";
+import { findVisibleExecutionPayload } from "../../execution/visible-reads.ts";
 import { withWorkflowDiagnosis } from "../authoring-state.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
 import { buildExecutionDiagnosis } from "./execution-diagnosis.ts";
@@ -38,17 +36,12 @@ export const diagnoseLatestExecutionTool: ConversationTool = {
       };
     }
     if (!ctx.principal) return { ok: false, error_code: "principal_required" };
-    const [visible] = await ctx.db
-      .select({ input: executions.input, result: executions.sensitive_result })
-      .from(executions)
-      .where(
-        and(
-          eq(executions.tenant_id, ctx.tenant_id),
-          eq(executions.id, executionId),
-          executionVisibilityFilter(ctx.principal),
-        ),
-      )
-      .limit(1);
+    const visible = await findVisibleExecutionPayload(
+      ctx.db,
+      ctx.tenant_id,
+      executionId,
+      ctx.principal,
+    );
     if (!visible) return { ok: false, error_code: "execution_not_found" };
     if (isSensitivePayload(visible.input) || isSensitivePayload(visible.result))
       return sensitiveExecutionUnsupported(

@@ -1,12 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { and, eq, sql } from "drizzle-orm";
-import {
-  conversationElicitations,
-  conversationMessages,
-  conversations,
-  conversationToolCalls,
-  fileLinks,
-} from "../../db/schema/index.ts";
+import { countAuthoringContext, readConversationTargets } from "../service/tool-state.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z.object({}).openapi("InspectAuthoringContextToolInput");
@@ -19,56 +12,9 @@ export const inspectAuthoringContextTool: ConversationTool = {
   category: "tenant_read",
   authoring_only: true,
   async execute(ctx): Promise<ToolResult> {
-    const [row] = await ctx.db
-      .select({
-        target_connector_id: conversations.target_connector_id,
-        target_workflow_id: conversations.target_workflow_id,
-      })
-      .from(conversations)
-      .where(
-        and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
-      )
-      .limit(1);
-    const [messageCount, toolCallCount, attachmentCount, pendingCount] = await Promise.all([
-      ctx.db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(conversationMessages)
-        .where(
-          and(
-            eq(conversationMessages.tenant_id, ctx.tenant_id),
-            eq(conversationMessages.conversation_id, ctx.conversation_id),
-          ),
-        ),
-      ctx.db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(conversationToolCalls)
-        .where(
-          and(
-            eq(conversationToolCalls.tenant_id, ctx.tenant_id),
-            eq(conversationToolCalls.conversation_id, ctx.conversation_id),
-          ),
-        ),
-      ctx.db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(fileLinks)
-        .where(
-          and(
-            eq(fileLinks.tenant_id, ctx.tenant_id),
-            eq(fileLinks.resource_type, "conversation"),
-            eq(fileLinks.resource_id, ctx.conversation_id),
-          ),
-        ),
-      ctx.db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(conversationElicitations)
-        .where(
-          and(
-            eq(conversationElicitations.tenant_id, ctx.tenant_id),
-            eq(conversationElicitations.conversation_id, ctx.conversation_id),
-            eq(conversationElicitations.status, "pending"),
-          ),
-        ),
-    ]);
+    const scope = { tenant_id: ctx.tenant_id, conversation_id: ctx.conversation_id };
+    const row = await readConversationTargets(ctx.db, scope);
+    const counts = await countAuthoringContext(ctx.db, scope);
     const draft = ctx.getDraft();
     return {
       ok: true,
@@ -78,12 +24,7 @@ export const inspectAuthoringContextTool: ConversationTool = {
         target_connector_id: row?.target_connector_id ?? null,
         target_workflow_id: row?.target_workflow_id ?? null,
         summary: draft.summary ?? null,
-        counts: {
-          messages: messageCount[0]?.count ?? 0,
-          tool_calls: toolCallCount[0]?.count ?? 0,
-          attachments: attachmentCount[0]?.count ?? 0,
-          pending_elicitations: pendingCount[0]?.count ?? 0,
-        },
+        counts,
       },
     };
   },

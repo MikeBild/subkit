@@ -1,25 +1,25 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { classifyMcpToolSideEffect } from "@shared/index.ts";
-import { and, eq, gt } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import {
-  AuditAction,
-  auditAwait,
   readRequestSource,
   recordConnectorMcpAuthorizationFailed,
   recordConnectorMcpAuthorizationStarted,
   recordConnectorMcpAuthorized,
 } from "../../../audit/index.ts";
 import {
+  claimMcpOAuthState,
   connectorSignIn,
   consumeStartGrant,
+  discardMcpOAuthState,
   getConnector,
+  insertMcpOAuthState,
   type OAuthFlowOrigin,
   oauthFlowOrigin,
+  readMcpAuthorizationUrl,
   settleConnectorReauthorization,
 } from "../../../connectors/index.ts";
 import type { Db } from "../../../db/client.ts";
-import { mcpOauthStates } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/index.ts";
 import {
   buildMcpOAuthRedirectUri,
@@ -274,21 +274,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
       return resultResponse(c, signInFailedPage(requestLocale(c), "chat", "link_expired"));
     }
 
-    const { tenant_id, connector_id, created_by_actor_id } = claimed;
-
-    await auditAwait(
-      {
-        tenant_id,
-        actor_type: "system",
-        actor_id: null,
-        action: AuditAction.CONNECTOR_OAUTH_GRANT_CONSUMED,
-        resource_type: "connector",
-        resource_id: connector_id,
-        result: "success",
-        metadata: { connector_id, created_by_actor_id },
-      },
-      db,
-    );
+    const { tenant_id, connector_id } = claimed;
 
     const started = await startMcpAuthorization({
       db,
@@ -314,18 +300,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const q = c.req.valid("query");
 
-    // tenant-filter:exempt — unauthenticated callback. The opaque single-use
-    // `state` (unique index on mcp_oauth_states.state) IS the auth proof;
-    // tenant_id is read from the matched row and used for every subsequent
-    // write.
-    // pattern: state-token-auth-callback — see also the connector OAuth
-    // callback (http/routes/connectors/oauth.ts), which applies the same
-    // claim-then-derive-tenant discipline.
-    const claimed = await db
-      .delete(mcpOauthStates)
-      .where(and(eq(mcpOauthStates.state, q.state), gt(mcpOauthStates.expires_at, new Date(now()))))
-      .returning();
-    const stateRow = claimed[0];
+    const stateRow = await claimMcpOAuthState(db, q.state, new Date(now()));
     if (!stateRow) {
       logger.warn({
         module: LOG_MODULE,
@@ -589,7 +564,7 @@ async function startMcpAuthorization(p: {
 
   const state = crypto.randomUUID();
 
-  await db.insert(mcpOauthStates).values({
+  await insertMcpOAuthState(db, {
     tenant_id,
     connector_id: id,
     state,
@@ -620,12 +595,7 @@ async function startMcpAuthorization(p: {
       throw new Error(`unexpected auth() result for interactive flow: ${result}`);
     }
 
-    const rows = await db
-      .select({ authorization_url: mcpOauthStates.authorization_url })
-      .from(mcpOauthStates)
-      .where(and(eq(mcpOauthStates.tenant_id, tenant_id), eq(mcpOauthStates.state, state)))
-      .limit(1);
-    const authorizationUrl = rows[0]?.authorization_url;
+    const authorizationUrl = await readMcpAuthorizationUrl(db, tenant_id, state);
     if (!authorizationUrl) {
       throw new Error("authorization URL was not persisted by the OAuth provider");
     }
@@ -654,9 +624,7 @@ async function startMcpAuthorization(p: {
 
     return { ok: true, flow: { authorization_url: authorizationUrl, state } };
   } catch (err) {
-    await db
-      .delete(mcpOauthStates)
-      .where(and(eq(mcpOauthStates.tenant_id, tenant_id), eq(mcpOauthStates.state, state)));
+    await discardMcpOAuthState(db, tenant_id, state);
     await recordConnectorMcpAuthorizationFailed({
       tenant_id,
       actor_id,

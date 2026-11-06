@@ -1,4 +1,18 @@
 export {
+  auditConversationAttachmentStored,
+  type ConversationAttachmentRow,
+  conversationExists,
+  listConversationAttachments,
+  type StoredConversationAttachment,
+  unlinkConversationAttachment,
+} from "./service/conversation-attachments.ts";
+export {
+  findConversationAttachmentBySlug,
+  findConversationReadyFile,
+  findReadyFileByHash,
+  listExecutionDataFileSizes,
+} from "./service/conversation-file-reads.ts";
+export {
   createInlineFile,
   createUploadSlots,
   type FinalizeOutcome,

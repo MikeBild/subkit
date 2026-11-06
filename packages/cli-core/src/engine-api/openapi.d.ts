@@ -9304,7 +9304,9 @@ export interface paths {
         /** Inject a runtime signal into a wait-for-event step */
         post: {
             parameters: {
-                query?: never;
+                query?: {
+                    token?: string;
+                };
                 header?: never;
                 path: {
                     id: string;

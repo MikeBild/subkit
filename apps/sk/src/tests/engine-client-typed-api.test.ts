@@ -70,6 +70,27 @@ describe("EngineClient typed api transport", () => {
     expect(seen[0]?.url).toBe("http://engine.test/v1/subscriptions/s/deliveries/d/replay");
   });
 
+  test("sends query params like the request pipeline and drops undefined values", async () => {
+    const { client: c, seen } = client(() => json({ items: [], total: 0, next_cursor: null }));
+    await c.listExecutions({ limit: 5, status: undefined, workflow_id: "w 1" });
+    expect(seen[0]?.url).toBe("http://engine.test/v1/executions?limit=5&workflow_id=w+1");
+  });
+
+  test("keeps the tenant query on settings reads", async () => {
+    const { client: c, seen } = client(() => json({ path: "a.b" }));
+    await c.getSetting("a.b", { tenant: "t-2" });
+    await c.listSettings();
+    expect(seen.map((s) => s.url)).toEqual([
+      "http://engine.test/v1/settings/a.b?tenant=t-2",
+      "http://engine.test/v1/settings",
+    ]);
+  });
+
+  test("returns null data from a JSON null body unchanged", async () => {
+    const { client: c } = client(() => json(null));
+    expect(await c.getRole("r")).toBeNull();
+  });
+
   test("an empty response resolves without data", async () => {
     const { client: c } = client(() => new Response(null, { status: 204 }));
     expect(await c.deleteSubscription("s")).toBeUndefined();

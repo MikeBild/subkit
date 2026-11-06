@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
-import { sql } from "drizzle-orm";
 import { getConnector } from "../../connectors/service.ts";
 import { ConflictError } from "../../http/errors.ts";
 import { createSkill, getSkill, listSkills, updateSkill } from "../../skills/service.ts";
+import { lockServicePackageSkillOrigin } from "../../skills/tool-lookups.ts";
 import { fetchServicePackage } from "./fetch-connector-self-description.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 
@@ -392,9 +392,7 @@ export const manageServicePackageSkillTool: ConversationTool = {
     if (args.action === "install") {
       const principalId = ctx.principal.id;
       return await ctx.db.transaction(async (tx) => {
-        await tx.execute(
-          sql`select pg_advisory_xact_lock(hashtext(${`service-package-skill:${ctx.tenant_id}:${connector.id}:${originTag}`}))`,
-        );
+        await lockServicePackageSkillOrigin(tx, ctx.tenant_id, connector.id, originTag);
         const existing = (
           await listSkills(
             {

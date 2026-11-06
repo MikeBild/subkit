@@ -12,6 +12,7 @@ import {
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { detectUserIntent } from "../../intent-detector.ts";
+import { freshSignals } from "../../tests/turn-signals.ts";
 import type { TurnEvent } from "../../types.ts";
 import {
   applyExecutionToolGate,
@@ -20,31 +21,13 @@ import {
   resolveNamedWorkflowSlug,
 } from "../authoring-palette.ts";
 import type { ToolContext } from "../index.ts";
-import { type TurnSignals, wrapTools } from "../sdk-wrap.ts";
+import { wrapTools } from "../sdk-wrap.ts";
 
 const LOOKALIKE_SLUG = "notion-essay-to-markdown";
 
 let tdb: TestDb;
 let tenantId: string;
 let conversationId: string;
-
-function freshSignals(): TurnSignals {
-  return {
-    step: 0,
-    toolChain: Promise.resolve(),
-    pendingChildToolCallIds: [],
-    pendingChildElicitationIds: [],
-    toolInvocationCount: new Map(),
-    toolLastErrorHash: new Map(),
-    toolArgsRepeat: new Map(),
-    toolValidationFingerprint: new Map(),
-    toolErrorCodeRepeat: new Map(),
-    totalLoopWarnings: 0,
-    consecutiveFailures: 0,
-    lastAssistantText: "",
-    lastExecutionSuccess: null,
-  };
-}
 
 async function seedTool(slug: string): Promise<void> {
   const [wf] = await tdb.db

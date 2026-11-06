@@ -1,5 +1,4 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, eq, isNull, or } from "drizzle-orm";
 import * as jose from "jose";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
@@ -13,10 +12,10 @@ import {
 import { getConfig } from "../../../config/loader.ts";
 import type { Config } from "../../../config/schema.ts";
 import type { Db } from "../../../db/client.ts";
-import { roles, tenants } from "../../../db/schema/index.ts";
 import * as identity from "../../../identity/index.ts";
-import { type DiscoveryDoc, fetchDiscovery } from "../../../identity/index.ts";
+import { type DiscoveryDoc, fetchDiscovery, findTenantIdBySlug } from "../../../identity/index.ts";
 import { logger } from "../../../logging/index.ts";
+import { roleNameById } from "../../../rbac/index.ts";
 import { BadRequestError, ForbiddenError, HttpError, UnauthorizedError } from "../../errors.ts";
 import type { AppEnv } from "../../openapi.ts";
 
@@ -80,12 +79,7 @@ const route = createRoute({
 });
 
 async function tenantId(db: Db, slug: string): Promise<string> {
-  const rows = await db
-    .select({ id: tenants.id })
-    .from(tenants)
-    .where(eq(tenants.slug, slug))
-    .limit(1);
-  const id = rows[0]?.id;
+  const id = await findTenantIdBySlug(db, slug);
   if (!id) throw new BadRequestError("configured tenant not provisioned");
   return id;
 }
@@ -186,23 +180,14 @@ async function resolveOidcAssertion(
       db,
     );
   }
-  const [assignedRole] = await db
-    .select({ name: roles.name })
-    .from(roles)
-    .where(
-      and(
-        eq(roles.id, user.role_id),
-        or(isNull(roles.tenant_id), eq(roles.tenant_id, resolvedTenantId)),
-      ),
-    )
-    .limit(1);
+  const assignedRole = await roleNameById(db, resolvedTenantId, user.role_id);
   return {
     principal: {
       provider: provider.id,
       kind: "user",
       id: user.id,
       tenant_id: resolvedTenantId,
-      roles: assignedRole ? [assignedRole.name] : [],
+      roles: assignedRole !== null ? [assignedRole] : [],
       ...(user.email ? { email: user.email } : {}),
     },
     subject,

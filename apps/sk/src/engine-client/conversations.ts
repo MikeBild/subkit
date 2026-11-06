@@ -5,6 +5,7 @@ import { z } from "zod";
 import { type DebugCorrelationFields, debugLog } from "../debug.ts";
 import type { EngineClient } from "../engine-client.ts";
 import { isTransientSocketDrop } from "../repl/error-humanize.ts";
+import type { ApiBody, ApiQuery } from "./http.ts";
 
 function sleepMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -272,11 +273,14 @@ export interface ConversationContextSnapshot {
 }
 
 export const conversationsMethods = {
-  listConversations(
+  async listConversations(
     this: EngineClient,
     query: { status?: string; owner?: "me"; limit?: number; offset?: number } = {},
   ): Promise<{ items: ConversationSummary[] }> {
-    return this.request("GET", "/v1/conversations", undefined, query);
+    const { data } = await this.api.GET("/v1/conversations", {
+      params: { query: query as ApiQuery<"/v1/conversations", "get"> },
+    });
+    return data as { items: ConversationSummary[] };
   },
   createConversation(
     this: EngineClient,
@@ -312,8 +316,9 @@ export const conversationsMethods = {
   ): Promise<Response> {
     return this.streamPost("/v1/conversations", body, debugContext);
   },
-  getConversation(this: EngineClient, id: string): Promise<ConversationDetail> {
-    return this.request("GET", `/v1/conversations/${id}`);
+  async getConversation(this: EngineClient, id: string): Promise<ConversationDetail> {
+    const { data } = await this.api.GET("/v1/conversations/{id}", { params: { path: { id } } });
+    return data as ConversationDetail;
   },
   appendConversationMessage(
     this: EngineClient,
@@ -340,7 +345,10 @@ export const conversationsMethods = {
     },
   ): Promise<void> {
     try {
-      await this.request("POST", `/v1/conversations/${conversationId}/suggest-next/feedback`, body);
+      await this.api.POST("/v1/conversations/{id}/suggest-next/feedback", {
+        params: { path: { id: conversationId } },
+        body: body as ApiBody<"/v1/conversations/{id}/suggest-next/feedback", "post">,
+      });
     } catch (error) {
       debugLog(
         "suggest_next.feedback_failed",
@@ -369,14 +377,18 @@ export const conversationsMethods = {
   ): Promise<Response> {
     return this.streamPost(`/v1/conversations/${id}/messages`, body, debugContext);
   },
-  patchConversation(
+  async patchConversation(
     this: EngineClient,
     id: string,
     body: { model?: string | null; title?: string | null },
   ): Promise<ConversationSummary> {
-    return this.request("PATCH", `/v1/conversations/${id}`, body);
+    const { data } = await this.api.PATCH("/v1/conversations/{id}", {
+      params: { path: { id } },
+      body: body as ApiBody<"/v1/conversations/{id}", "patch">,
+    });
+    return data as ConversationSummary;
   },
-  previewConversationDraft(
+  async previewConversationDraft(
     this: EngineClient,
     id: string,
     body: {
@@ -386,9 +398,13 @@ export const conversationsMethods = {
       include_step_results?: boolean;
     } = {},
   ): Promise<components["schemas"]["ConversationDirectToolResult"]> {
-    return this.request("POST", `/v1/conversations/${id}/preview`, body);
+    const { data } = await this.api.POST("/v1/conversations/{id}/preview", {
+      params: { path: { id } },
+      body: body as ApiBody<"/v1/conversations/{id}/preview", "post">,
+    });
+    return data as components["schemas"]["ConversationDirectToolResult"];
   },
-  probeConversationConnector(
+  async probeConversationConnector(
     this: EngineClient,
     id: string,
     body: {
@@ -401,9 +417,13 @@ export const conversationsMethods = {
       timeout_ms?: number;
     } = {},
   ): Promise<components["schemas"]["ConversationDirectToolResult"]> {
-    return this.request("POST", `/v1/conversations/${id}/probe`, body);
+    const { data } = await this.api.POST("/v1/conversations/{id}/probe", {
+      params: { path: { id } },
+      body: body as ApiBody<"/v1/conversations/{id}/probe", "post">,
+    });
+    return data as components["schemas"]["ConversationDirectToolResult"];
   },
-  patchConversationDraft(
+  async patchConversationDraft(
     this: EngineClient,
     id: string,
     patches: Array<{
@@ -413,30 +433,41 @@ export const conversationsMethods = {
       value?: unknown;
     }>,
   ): Promise<components["schemas"]["ConversationDirectToolResult"]> {
-    return this.request("POST", `/v1/conversations/${id}/draft/patch`, { patches });
+    const { data } = await this.api.POST("/v1/conversations/{id}/draft/patch", {
+      params: { path: { id } },
+      body: { patches } as ApiBody<"/v1/conversations/{id}/draft/patch", "post">,
+    });
+    return data as components["schemas"]["ConversationDirectToolResult"];
   },
-  listConversationDraftSnapshots(
+  async listConversationDraftSnapshots(
     this: EngineClient,
     id: string,
     limit?: number,
   ): Promise<components["schemas"]["ConversationDirectToolResult"]> {
-    return this.request(
-      "GET",
-      `/v1/conversations/${id}/draft/snapshots`,
-      undefined,
-      limit !== undefined ? { limit } : undefined,
-    );
+    const { data } = await this.api.GET("/v1/conversations/{id}/draft/snapshots", {
+      params: {
+        path: { id },
+        query: (limit !== undefined ? { limit } : undefined) as ApiQuery<
+          "/v1/conversations/{id}/draft/snapshots",
+          "get"
+        >,
+      },
+    });
+    return data as components["schemas"]["ConversationDirectToolResult"];
   },
-  restoreConversationDraftSnapshot(
+  async restoreConversationDraftSnapshot(
     this: EngineClient,
     id: string,
     snapshotId?: string,
   ): Promise<components["schemas"]["ConversationDirectToolResult"]> {
-    return this.request(
-      "POST",
-      `/v1/conversations/${id}/draft/snapshots/restore`,
-      snapshotId ? { snapshot_id: snapshotId } : {},
-    );
+    const { data } = await this.api.POST("/v1/conversations/{id}/draft/snapshots/restore", {
+      params: { path: { id } },
+      body: (snapshotId ? { snapshot_id: snapshotId } : {}) as ApiBody<
+        "/v1/conversations/{id}/draft/snapshots/restore",
+        "post"
+      >,
+    });
+    return data as components["schemas"]["ConversationDirectToolResult"];
   },
   async forkConversationFromMessage(
     this: EngineClient,
@@ -449,11 +480,9 @@ export const conversationsMethods = {
     copied_message_count: number;
     truncated: boolean;
   }> {
-    const raw = await this.request<unknown>(
-      "POST",
-      `/v1/conversations/${encodeURIComponent(id)}/fork-from-message/${encodeURIComponent(
-        message_id,
-      )}`,
+    const { data: raw } = await this.api.POST(
+      "/v1/conversations/{id}/fork-from-message/{message_id}",
+      { params: { path: { id, message_id } } },
     );
     return ForkResponseSchema.parse(raw) as unknown as {
       conversation: ConversationSummary;
@@ -463,7 +492,7 @@ export const conversationsMethods = {
       truncated: boolean;
     };
   },
-  compactConversation(
+  async compactConversation(
     this: EngineClient,
     id: string,
     body: { keep_last?: number } = {},
@@ -472,7 +501,15 @@ export const conversationsMethods = {
     summary: string;
     messages_collapsed: number;
   }> {
-    return this.request("POST", `/v1/conversations/${id}/compact`, body);
+    const { data } = await this.api.POST("/v1/conversations/{id}/compact", {
+      params: { path: { id } },
+      body: body as ApiBody<"/v1/conversations/{id}/compact", "post">,
+    });
+    return data as {
+      conversation: ConversationSummary;
+      summary: string;
+      messages_collapsed: number;
+    };
   },
   respondElicitationStream(
     this: EngineClient,
@@ -556,14 +593,20 @@ export const conversationsMethods = {
       }
     }
   },
-  cancelConversation(this: EngineClient, id: string): Promise<unknown> {
-    return this.request("POST", `/v1/conversations/${id}/cancel`);
+  async cancelConversation(this: EngineClient, id: string): Promise<unknown> {
+    const { data } = await this.api.POST("/v1/conversations/{id}/cancel", {
+      params: { path: { id } },
+    });
+    return data;
   },
-  getConversationContextSnapshot(
+  async getConversationContextSnapshot(
     this: EngineClient,
     id: string,
   ): Promise<ConversationContextSnapshot> {
-    return this.request("GET", `/v1/conversations/${id}/context-snapshot`);
+    const { data } = await this.api.GET("/v1/conversations/{id}/context-snapshot", {
+      params: { path: { id } },
+    });
+    return data as ConversationContextSnapshot;
   },
   streamConversation(
     this: EngineClient,
@@ -572,15 +615,23 @@ export const conversationsMethods = {
   ): Promise<Response> {
     return this.stream(`/v1/conversations/${id}/stream`, undefined, debugContext);
   },
-  getConversationToolPolicies(
+  async getConversationToolPolicies(
     this: EngineClient,
     id: string,
   ): Promise<{
     policies: Record<string, "no_confirm" | "confirm_before_execution" | "confirm_after_execution">;
   }> {
-    return this.request("GET", `/v1/conversations/${id}/tool-policies`);
+    const { data } = await this.api.GET("/v1/conversations/{id}/tool-policies", {
+      params: { path: { id } },
+    });
+    return data as {
+      policies: Record<
+        string,
+        "no_confirm" | "confirm_before_execution" | "confirm_after_execution"
+      >;
+    };
   },
-  setConversationToolPolicies(
+  async setConversationToolPolicies(
     this: EngineClient,
     id: string,
     policies: Record<
@@ -590,6 +641,15 @@ export const conversationsMethods = {
   ): Promise<{
     policies: Record<string, "no_confirm" | "confirm_before_execution" | "confirm_after_execution">;
   }> {
-    return this.request("PUT", `/v1/conversations/${id}/tool-policies`, { policies });
+    const { data } = await this.api.PUT("/v1/conversations/{id}/tool-policies", {
+      params: { path: { id } },
+      body: { policies } as ApiBody<"/v1/conversations/{id}/tool-policies", "put">,
+    });
+    return data as {
+      policies: Record<
+        string,
+        "no_confirm" | "confirm_before_execution" | "confirm_after_execution"
+      >;
+    };
   },
 };

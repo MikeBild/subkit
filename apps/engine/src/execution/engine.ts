@@ -22,7 +22,6 @@ import { withHostedWork } from "../queue/hosted-work.ts";
 import { runJs } from "../sandboxes/quickjs/runtime.ts";
 import { SANDBOX_TOOL_MANIFEST, STDLIB_VERSION } from "../sandboxes/quickjs/stdlib/index.ts";
 import { recordExecutionOutcome } from "../self-healing/outcome-tracker.ts";
-import { now } from "../utils/clock.ts";
 import { buildStepDag, topoSort } from "../workflows/dag.ts";
 import { WorkflowEffectManifestSchema } from "../workflows/effect-manifest.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
@@ -47,6 +46,7 @@ import {
   callerFromPrincipal,
 } from "./caller-context.ts";
 import { resolveExecutionCallerActor, resolveExecutionCallerOrigin } from "./caller-origin.ts";
+import { type Clock, type IdGen, SYSTEM_CLOCK, SYSTEM_IDS } from "./clock.ts";
 import { connectorStepRefusal, refusedConnectorOf } from "./connector-availability.ts";
 import {
   branchArmStepIds,
@@ -57,6 +57,7 @@ import {
   stopsRunOnFailure,
   untakenArmStepIds,
 } from "./core/run.ts";
+import { settledOutcome } from "./core/status.ts";
 import { rollupConnectorResolutions } from "./engine/connector-rollup.ts";
 import {
   bodyEnvelopeForLoopAccumulator,
@@ -135,13 +136,8 @@ export interface RunExecutionParams {
   options?: RunOptions;
   refusal_answered_to_caller?: boolean;
   clock?: Clock;
+  ids?: IdGen;
 }
-
-export interface Clock {
-  now(): number;
-}
-
-const SYSTEM_CLOCK: Clock = { now };
 
 export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   return withTenantWork(p.tenant_id, () =>
@@ -210,25 +206,23 @@ async function runProtectedExecution(p: RunExecutionParams): Promise<RunResult> 
         p.db,
         p.tenant_id,
         execution_id,
-        "failed",
-        null,
+        { type: "admission_failed", refused },
         {
-          step_id: typeof named.step_id === "string" ? named.step_id : null,
-          error_code: typeof code === "string" ? code : "execution_error",
-          error_message: error instanceof Error ? error.message : String(error),
-          ...(connectorRefusal && typeof named.reason === "string"
-            ? {
-                connector: {
-                  connector_id: typeof named.connector_id === "string" ? named.connector_id : null,
-                  reason: named.reason,
-                },
-              }
-            : {}),
+          failure: {
+            step_id: typeof named.step_id === "string" ? named.step_id : null,
+            error_code: typeof code === "string" ? code : "execution_error",
+            error_message: error instanceof Error ? error.message : String(error),
+            ...(connectorRefusal && typeof named.reason === "string"
+              ? {
+                  connector: {
+                    connector_id:
+                      typeof named.connector_id === "string" ? named.connector_id : null,
+                    reason: named.reason,
+                  },
+                }
+              : {}),
+          },
         },
-        ["queued"],
-        null,
-        "none",
-        refused,
       ).catch(() => undefined);
     }
     if (p.options?.execution_privacy === "sensitive") {
@@ -251,6 +245,7 @@ async function runProtectedExecution(p: RunExecutionParams): Promise<RunResult> 
 async function executeRun(p: RunExecutionParams): Promise<RunResult> {
   const { db, tenant_id } = p;
   const clock = p.clock ?? SYSTEM_CLOCK;
+  const ids = p.ids ?? SYSTEM_IDS;
   const bound = await bindExistingRun(db, tenant_id, p.source, p.input, p.options ?? {});
   const opts = bound.options;
   const depth = opts.depth ?? 0;
@@ -372,6 +367,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
   const execution_id = opts.existing_execution_id
     ? opts.existing_execution_id
     : await createExecution(db, {
+        id: ids.uuid(),
         tenant_id,
         caller_context: caller,
         caller_origin,
@@ -628,6 +624,8 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       step_index: i,
       step_row_id,
       llm_budget: llmBudget,
+      clock,
+      ids,
       persist_workflow_refs: resolved.persist_workflow_refs,
       workflow_deadline_ms: workflowDeadlineMs,
       ...(ownConnectorCredentials ? { own_connector_credentials: true } : {}),
@@ -1106,6 +1104,8 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
               step_index: i,
               step_row_id: bodyStepRowId,
               llm_budget: llmBudget,
+              clock,
+              ids,
               persist_workflow_refs: resolved.persist_workflow_refs,
               workflow_deadline_ms: workflowDeadlineMs,
               ...(ownConnectorCredentials ? { own_connector_credentials: true } : {}),
@@ -1314,6 +1314,8 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
                   step_index: i,
                   step_row_id: branchStepRowId,
                   llm_budget: llmBudget,
+                  clock,
+                  ids,
                   persist_workflow_refs: resolved.persist_workflow_refs,
                   workflow_deadline_ms: workflowDeadlineMs,
                   ...(ownConnectorCredentials ? { own_connector_credentials: true } : {}),
@@ -1710,13 +1712,9 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
   });
   void previewOf;
 
-  await finalizeExecution(
-    db,
-    tenant_id,
-    execution_id,
-    finalStatus,
-    offload.storage_uri,
-    settled.failure
+  await finalizeExecution(db, tenant_id, execution_id, settledOutcome(finalStatus), {
+    result_storage_uri: offload.storage_uri,
+    failure: settled.failure
       ? {
           step_id: failedStepId,
           error_code: settled.failure.code,
@@ -1724,12 +1722,10 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
           ...(refusedConnector ? { connector: refusedConnector } : {}),
         }
       : null,
-    undefined,
-    offload.sha256,
-    settled.output_contract,
-    false,
-    execution_privacy === "sensitive" ? (lastOutput ?? null) : undefined,
-  );
+    result_sha256: offload.sha256,
+    output_contract: settled.output_contract,
+    ...(execution_privacy === "sensitive" ? { sensitive_result: lastOutput ?? null } : {}),
+  });
   if (execution_privacy !== "sensitive" && opts.self_healing?.enabled !== false) {
     await recordExecutionOutcome(
       {
@@ -1889,7 +1885,8 @@ async function runCallStep(
   step: CallStep,
   scope: Record<string, unknown>,
 ): Promise<StepResult> {
-  const start = Date.now();
+  const clock = ctx.clock ?? SYSTEM_CLOCK;
+  const start = clock.now();
   const [parent] = await db
     .select({
       approval: executions.tool_approval_id,
@@ -1920,7 +1917,7 @@ async function runCallStep(
     return {
       status: "failed",
       retry_count: 0,
-      duration_ms: Date.now() - start,
+      duration_ms: clock.now() - start,
       error: {
         code: "prepared_call_unsupported",
         message:
@@ -1932,7 +1929,7 @@ async function runCallStep(
     return {
       status: "failed",
       retry_count: 0,
-      duration_ms: Date.now() - start,
+      duration_ms: clock.now() - start,
       error: {
         code: "call_depth_exceeded",
         message: `max call depth ${MAX_CALL_DEPTH}`,
@@ -1958,7 +1955,7 @@ async function runCallStep(
     return {
       status: "failed",
       retry_count: 0,
-      duration_ms: Date.now() - start,
+      duration_ms: clock.now() - start,
       error: { code: "call_target_missing", message: "workflow not found" },
     };
   }
@@ -1968,7 +1965,7 @@ async function runCallStep(
     return {
       status: "failed",
       retry_count: 0,
-      duration_ms: Date.now() - start,
+      duration_ms: clock.now() - start,
       error: {
         code: "call_outside_approved_boundary",
         message:
@@ -1995,7 +1992,7 @@ async function runCallStep(
       return {
         status: "failed",
         retry_count: 0,
-        duration_ms: Date.now() - start,
+        duration_ms: clock.now() - start,
         error: {
           code: "call_outside_approved_boundary",
           message:
@@ -2018,7 +2015,7 @@ async function runCallStep(
       return {
         status: "failed",
         retry_count: 0,
-        duration_ms: Date.now() - start,
+        duration_ms: clock.now() - start,
         error: {
           code: "call_child_version_changed",
           message:
@@ -2036,7 +2033,7 @@ async function runCallStep(
       return {
         status: "failed",
         retry_count: 0,
-        duration_ms: Date.now() - start,
+        duration_ms: clock.now() - start,
         error: {
           code: "call_input_credential_forbidden",
           message:
@@ -2059,7 +2056,7 @@ async function runCallStep(
       return {
         status: "failed",
         retry_count: 0,
-        duration_ms: Date.now() - start,
+        duration_ms: clock.now() - start,
         error: {
           code: "call_input_unresolved",
           message:
@@ -2084,7 +2081,7 @@ async function runCallStep(
       return {
         status: "failed",
         retry_count: 0,
-        duration_ms: Date.now() - start,
+        duration_ms: clock.now() - start,
         error: {
           code: "sensitive_execution_unsupported",
           message: "A sensitive child workflow requires a sensitive parent execution.",
@@ -2093,6 +2090,8 @@ async function runCallStep(
     }
     const child = await runExecution({
       db,
+      clock,
+      ...(ctx.ids ? { ids: ctx.ids } : {}),
       tenant_id: ctx.tenant_id,
       source: {
         kind: "saved",
@@ -2126,7 +2125,7 @@ async function runCallStep(
         output: child.output,
       },
       retry_count: 0,
-      duration_ms: Date.now() - start,
+      duration_ms: clock.now() - start,
       error:
         child.status === "succeeded"
           ? null
@@ -2139,7 +2138,7 @@ async function runCallStep(
     return {
       status: "failed",
       retry_count: 0,
-      duration_ms: Date.now() - start,
+      duration_ms: clock.now() - start,
       error: {
         code: "call_error",
         message: err instanceof Error ? err.message : String(err),

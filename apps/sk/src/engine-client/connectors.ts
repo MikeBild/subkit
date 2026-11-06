@@ -1,5 +1,6 @@
 import { TransportError } from "@cli-core/errors.ts";
 import type { EngineClient } from "../engine-client.ts";
+import type { ApiBody, ApiQuery } from "./http.ts";
 
 export interface ConnectorPromotionResponse {
   strategy: "copy" | "move";
@@ -110,7 +111,7 @@ export const connectorsMethods = {
     return { cancel };
   },
 
-  listConnectors(
+  async listConnectors(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
   ): Promise<{
@@ -118,48 +119,73 @@ export const connectorsMethods = {
     total: number;
     categories?: { category: string; count: number }[];
   }> {
-    return this.request("GET", "/v1/connectors", undefined, query);
+    const { data } = await this.api.GET("/v1/connectors", {
+      params: { query: query as ApiQuery<"/v1/connectors", "get"> },
+    });
+    return data as {
+      items: Record<string, unknown>[];
+      total: number;
+      categories?: { category: string; count: number }[];
+    };
   },
-  getConnector(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("GET", `/v1/connectors/${encodeURIComponent(id)}`);
+  async getConnector(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+    const { data } = await this.api.GET("/v1/connectors/{id}", { params: { path: { id } } });
+    return data as Record<string, unknown>;
   },
-  createConnector(
+  async createConnector(
     this: EngineClient,
     body: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    return this.request("POST", "/v1/connectors", body);
+    const { data } = await this.api.POST("/v1/connectors", {
+      body: body as ApiBody<"/v1/connectors", "post">,
+    });
+    return data as Record<string, unknown>;
   },
-  patchConnector(
+  async patchConnector(
     this: EngineClient,
     id: string,
     body: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    return this.request("PATCH", `/v1/connectors/${encodeURIComponent(id)}`, body);
+    const { data } = await this.api.PATCH("/v1/connectors/{id}", {
+      params: { path: { id } },
+      body: body as ApiBody<"/v1/connectors/{id}", "patch">,
+    });
+    return data as Record<string, unknown>;
   },
-  deleteConnector(this: EngineClient, id: string): Promise<void> {
-    return this.request("DELETE", `/v1/connectors/${encodeURIComponent(id)}`);
+  async deleteConnector(this: EngineClient, id: string): Promise<void> {
+    await this.api.DELETE("/v1/connectors/{id}", { params: { path: { id } } });
   },
 
-  validateConnectorDraft(
+  async validateConnectorDraft(
     this: EngineClient,
     body: Record<string, unknown>,
   ): Promise<{ ok: boolean; issues: { path: string; message: string }[] }> {
-    return this.request("POST", "/v1/connectors/validate", body);
+    const { data } = await this.api.POST("/v1/connectors/validate", {
+      body: body as ApiBody<"/v1/connectors/validate", "post">,
+    });
+    return data as { ok: boolean; issues: { path: string; message: string }[] };
   },
-  probeConnectorDraft(
+  async probeConnectorDraft(
     this: EngineClient,
     body: { connector: Record<string, unknown>; credential?: Record<string, unknown> },
   ): Promise<Record<string, unknown> & { ok?: boolean }> {
-    return this.request("POST", "/v1/connectors/probe", body);
+    const { data } = await this.api.POST("/v1/connectors/probe", {
+      body: body as ApiBody<"/v1/connectors/probe", "post">,
+    });
+    return data as Record<string, unknown> & { ok?: boolean };
   },
-  importConnectorFromSpec(
+  async importConnectorFromSpec(
     this: EngineClient,
     body: Record<string, unknown>,
   ): Promise<Record<string, unknown> & { draft?: Record<string, unknown> }> {
-    return this.request("POST", "/v1/connectors/import", body);
+    const { data } = await this.api.POST("/v1/connectors/import", {
+      body: body as ApiBody<"/v1/connectors/import", "post">,
+    });
+    return data as Record<string, unknown> & { draft?: Record<string, unknown> };
   },
-  testConnector(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/test`);
+  async testConnector(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+    const { data } = await this.api.POST("/v1/connectors/{id}/test", { params: { path: { id } } });
+    return data as Record<string, unknown>;
   },
   promoteConnector(
     this: EngineClient,
@@ -184,19 +210,26 @@ export const connectorsMethods = {
     const signIn = record.sign_in as { kind?: unknown } | null | undefined;
     if (signIn?.kind === "mcp") return this.authorizeMcpConnector(id);
     if (signIn?.kind === "oauth") {
-      return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/oauth/start`);
+      const { data } = await this.api.POST("/v1/connectors/{id}/oauth/start", {
+        params: { path: { id } },
+      });
+      return data as { authorization_url: string; state: string };
     }
     const name = typeof record.slug === "string" ? record.slug : id;
     throw new Error(
       `connector '${name}' has no browser sign-in — store its credential instead (sk credentials --help)`,
     );
   },
-  ingestConnectorDocs(
+  async ingestConnectorDocs(
     this: EngineClient,
     id: string,
     body: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/docs/ingest`, body);
+    const { data } = await this.api.POST("/v1/connectors/{id}/docs/ingest", {
+      params: { path: { id } },
+      body: body as ApiBody<"/v1/connectors/{id}/docs/ingest", "post">,
+    });
+    return data as Record<string, unknown>;
   },
   listConnectorDocs(
     this: EngineClient,
@@ -205,59 +238,80 @@ export const connectorsMethods = {
   ): Promise<{ items: Record<string, unknown>[] }> {
     return this.request("GET", `/v1/connectors/${encodeURIComponent(id)}/docs`, undefined, query);
   },
-  searchConnectorDocs(
+  async searchConnectorDocs(
     this: EngineClient,
     id: string,
     q: string,
     limit?: number,
   ): Promise<{ items: Record<string, unknown>[] }> {
-    return this.request("GET", `/v1/connectors/${encodeURIComponent(id)}/docs/search`, undefined, {
-      q,
-      limit,
+    const { data } = await this.api.GET("/v1/connectors/{id}/docs/search", {
+      params: {
+        path: { id },
+        query: {
+          q,
+          limit,
+        } as ApiQuery<"/v1/connectors/{id}/docs/search", "get">,
+      },
+    });
+    return data as { items: Record<string, unknown>[] };
+  },
+  async deleteConnectorDoc(this: EngineClient, connectorId: string, docId: string): Promise<void> {
+    await this.api.DELETE("/v1/connectors/{id}/docs/{document_id}", {
+      params: { path: { id: connectorId, document_id: docId } },
     });
   },
-  deleteConnectorDoc(this: EngineClient, connectorId: string, docId: string): Promise<void> {
-    return this.request(
-      "DELETE",
-      `/v1/connectors/${encodeURIComponent(connectorId)}/docs/${encodeURIComponent(docId)}`,
-    );
-  },
-  createCredential(
+  async createCredential(
     this: EngineClient,
     connectorId: string,
     body: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    return this.request(
-      "POST",
-      `/v1/connectors/${encodeURIComponent(connectorId)}/credentials`,
-      body,
-    );
+    const { data } = await this.api.POST("/v1/connectors/{id}/credentials", {
+      params: { path: { id: connectorId } },
+      body: body as ApiBody<"/v1/connectors/{id}/credentials", "post">,
+    });
+    return data as Record<string, unknown>;
   },
-  rotateCredential(
+  async rotateCredential(
     this: EngineClient,
     credentialId: string,
     body: Record<string, unknown> = {},
   ): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/credentials/${encodeURIComponent(credentialId)}/rotate`, body);
+    const { data } = await this.api.POST("/v1/credentials/{id}/rotate", {
+      params: { path: { id: credentialId } },
+      body: body as ApiBody<"/v1/credentials/{id}/rotate", "post">,
+    });
+    return data as Record<string, unknown>;
   },
-  deleteCredential(this: EngineClient, credentialId: string): Promise<void> {
-    return this.request("DELETE", `/v1/credentials/${encodeURIComponent(credentialId)}`);
+  async deleteCredential(this: EngineClient, credentialId: string): Promise<void> {
+    await this.api.DELETE("/v1/credentials/{id}", { params: { path: { id: credentialId } } });
   },
 
-  enableConnector(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/enable`);
+  async enableConnector(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+    const { data } = await this.api.POST("/v1/connectors/{id}/enable", {
+      params: { path: { id } },
+    });
+    return data as Record<string, unknown>;
   },
-  disableConnector(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/disable`);
+  async disableConnector(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+    const { data } = await this.api.POST("/v1/connectors/{id}/disable", {
+      params: { path: { id } },
+    });
+    return data as Record<string, unknown>;
   },
-  inspectMcpConnector(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/mcp/inspect`);
+  async inspectMcpConnector(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+    const { data } = await this.api.POST("/v1/connectors/{id}/mcp/inspect", {
+      params: { path: { id } },
+    });
+    return data as Record<string, unknown>;
   },
-  authorizeMcpConnector(
+  async authorizeMcpConnector(
     this: EngineClient,
     id: string,
   ): Promise<{ authorization_url: string; state: string }> {
-    return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/mcp/authorize`);
+    const { data } = await this.api.POST("/v1/connectors/{id}/mcp/authorize", {
+      params: { path: { id } },
+    });
+    return data as { authorization_url: string; state: string };
   },
 
   listConnectorTemplates(
@@ -266,27 +320,30 @@ export const connectorsMethods = {
   ): Promise<{ items: Record<string, unknown>[] }> {
     return this.request("GET", "/v1/connector-templates", undefined, query);
   },
-  createConnectorTemplate(
+  async createConnectorTemplate(
     this: EngineClient,
     body: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    return this.request("POST", "/v1/connector-templates", body);
+    const { data } = await this.api.POST("/v1/connector-templates", {
+      body: body as ApiBody<"/v1/connector-templates", "post">,
+    });
+    return data as Record<string, unknown>;
   },
-  setConnectorTemplateOAuthCredentials(
+  async setConnectorTemplateOAuthCredentials(
     this: EngineClient,
     slug: string,
     body: { client_id: string; client_secret: string },
   ): Promise<{ id: string }> {
-    return this.request(
-      "POST",
-      `/v1/connector-templates/${encodeURIComponent(slug)}/oauth-credentials`,
-      body,
-    );
+    const { data } = await this.api.POST("/v1/connector-templates/{slug}/oauth-credentials", {
+      params: { path: { slug } },
+      body: body as ApiBody<"/v1/connector-templates/{slug}/oauth-credentials", "post">,
+    });
+    return data as { id: string };
   },
-  deleteConnectorTemplate(this: EngineClient, id: string): Promise<void> {
-    return this.request("DELETE", `/v1/connector-templates/${encodeURIComponent(id)}`);
+  async deleteConnectorTemplate(this: EngineClient, id: string): Promise<void> {
+    await this.api.DELETE("/v1/connector-templates/{id}", { params: { path: { id } } });
   },
-  listConnectorTemplateRecipes(
+  async listConnectorTemplateRecipes(
     this: EngineClient,
     slug: string,
   ): Promise<{
@@ -294,17 +351,24 @@ export const connectorsMethods = {
     template_name: string;
     recipes: Record<string, unknown>[];
   }> {
-    return this.request("GET", `/v1/connector-templates/${encodeURIComponent(slug)}/recipes`);
+    const { data } = await this.api.GET("/v1/connector-templates/{slug}/recipes", {
+      params: { path: { slug } },
+    });
+    return data as {
+      template_slug: string;
+      template_name: string;
+      recipes: Record<string, unknown>[];
+    };
   },
-  getConnectorTemplateRecipe(
+  async getConnectorTemplateRecipe(
     this: EngineClient,
     slug: string,
     recipeSlug: string,
   ): Promise<Record<string, unknown>> {
-    return this.request(
-      "GET",
-      `/v1/connector-templates/${encodeURIComponent(slug)}/recipes/${encodeURIComponent(recipeSlug)}`,
-    );
+    const { data } = await this.api.GET("/v1/connector-templates/{slug}/recipes/{recipe_slug}", {
+      params: { path: { slug, recipe_slug: recipeSlug } },
+    });
+    return data as Record<string, unknown>;
   },
   getRecipePack(
     this: EngineClient,
@@ -316,11 +380,15 @@ export const connectorsMethods = {
   }> {
     return this.request("GET", `/v1/recipe-packs/${encodeURIComponent(vertical)}`);
   },
-  createConnectorFromTemplate(
+  async createConnectorFromTemplate(
     this: EngineClient,
     slug: string,
     body: Record<string, unknown> = {},
   ): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/connectors/from-template/${encodeURIComponent(slug)}`, body);
+    const { data } = await this.api.POST("/v1/connectors/from-template/{slug}", {
+      params: { path: { slug } },
+      body: body as ApiBody<"/v1/connectors/from-template/{slug}", "post">,
+    });
+    return data as Record<string, unknown>;
   },
 };

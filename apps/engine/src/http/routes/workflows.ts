@@ -4,7 +4,6 @@ import {
   AcceptDescriptionSchema,
   CatalogGroupBySchema,
   CategorySchema,
-  compareCategoryCounts,
   DescriptionSchema,
   descriptionAcceptanceValid,
 } from "../../api/catalog-metadata.ts";
@@ -13,22 +12,20 @@ import { AuditAction, auditAwait } from "../../audit/index.ts";
 import { logger } from "../../logging/index.ts";
 import { can } from "../../rbac/index.ts";
 import {
-  bindingFor,
   createSchedule,
   deleteSchedule,
   getSchedule,
   listSchedules,
-  loadTriggerBindings,
   type ScheduleRow,
   updateSchedule,
 } from "../../scheduler/index.ts";
 import * as svc from "../../workflows/index.ts";
 import {
-  listConnectorRefs,
-  loadCategoryVocabulary,
+  loadWorkflowCategoryBlocks,
+  loadWorkflowList,
+  prepareWorkflowSave,
   resolveWorkflowInputSchema,
   TriggerSchema,
-  validateTenantWorkflowDefForSave,
 } from "../../workflows/index.ts";
 import {
   BadRequestError,
@@ -47,7 +44,7 @@ import { registerWorkflowDraftRoutes } from "./workflow-drafts.ts";
 import { registerWorkflowInvocationRoutes } from "./workflow-invocation.ts";
 import {
   serializeOne,
-  serializeWorkflow,
+  toWorkflowListItem,
   WorkflowDetailSchema,
   WorkflowListResponse,
 } from "./workflow-representation.ts";
@@ -464,25 +461,11 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     if (q.category !== undefined) opts.category = q.category;
     if (q.description_source) opts.description_source = q.description_source;
     if (q.connector !== undefined) opts.connector = q.connector;
-    const { rows, total } = await svc.listWorkflows(principal.tenant_id, opts, db);
-    const [vocabulary, connectorRefs, bindings] = await Promise.all([
-      loadCategoryVocabulary(principal.tenant_id, db),
-      listConnectorRefs(principal.tenant_id, db),
-      loadTriggerBindings(
-        principal.tenant_id,
-        rows.map((w) => w.id),
-        db,
-      ),
+    const [{ entries, total }, blocks] = await Promise.all([
+      loadWorkflowList(principal.tenant_id, opts, db),
+      loadWorkflowCategoryBlocks(principal.tenant_id, db),
     ]);
-    const items = rows.map((w) => ({
-      ...serializeWorkflow(w, bindingFor(bindings, w.id)),
-      authority_environments: w.authority_environments ?? { dev: null, prod: null },
-      connectors: connectorRefs.get(w.id) ?? [],
-    }));
-    const blocks = vocabulary
-      .filter((usage) => usage.counts.workflow > 0)
-      .map((usage) => ({ category: usage.category, count: usage.counts.workflow }))
-      .sort(compareCategoryCounts);
+    const items = entries.map(toWorkflowListItem);
     return c.json({ items, total, categories: blocks }, 200);
   });
 
@@ -769,11 +752,11 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(validateRoute, async (c) => {
     const principal = requireAuth(c);
     const body = c.req.valid("json");
-    const res = await validateTenantWorkflowDefForSave(body, principal.tenant_id, c.get("db"), {
+    const res = await prepareWorkflowSave(body, principal.tenant_id, c.get("db"), {
       destinationTier: "tokens",
     });
     if (res.ok) return c.json({ ok: true }, 200);
-    return c.json({ ok: false, errors: res.errors }, 200);
+    return c.json({ ok: false, errors: res.issues }, 200);
   });
 
   app.openapi(getRoute, async (c) => {

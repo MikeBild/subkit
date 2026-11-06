@@ -1,7 +1,9 @@
 import { classifyHttpSideEffect, type SideEffect } from "@shared/index.ts";
 import { resolveGraphqlStepEndpoint } from "../../../connectors/drivers/graphql-endpoint.ts";
 import { scrubString, scrubStringsDeep } from "../../../logging/scrub-secrets.ts";
+import { now } from "../../../utils/clock.ts";
 import type { RequestStep } from "../../../workflows/types.ts";
+import type { Clock } from "../../clock.ts";
 import type { HeldRequest, RequestMeta, StepResult } from "../../types.ts";
 import { SAFE_HEADER_DENYLIST } from "../error-detail.ts";
 
@@ -75,6 +77,7 @@ export function redactHeldRequestHeaders(headers: Record<string, string>): Recor
 
 export interface HeldStepResultParams {
   start: number;
+  clock?: Clock;
   method: string;
   url: string | null;
   headers?: Record<string, string>;
@@ -95,7 +98,7 @@ export function heldStepResult(p: HeldStepResultParams): StepResult {
     held_request,
     output: null,
     retry_count: 0,
-    duration_ms: Date.now() - p.start,
+    duration_ms: (p.clock?.now() ?? now()) - p.start,
     ...(p.request_meta ? { request_meta: p.request_meta } : {}),
   };
 }

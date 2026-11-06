@@ -9,7 +9,6 @@ import {
   renderInvokeSnippet,
   shellQuote,
 } from "@shared/invoke-snippet.ts";
-import { sql } from "drizzle-orm";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import { getConfig } from "../../config/loader.ts";
 import { RUN_WORKFLOW_TOOL, workflowToolName } from "../../mcp/index.ts";
@@ -18,6 +17,7 @@ import { listSchedules, nextScheduleFire, scheduleBindingState } from "../../sch
 import { listWorkflowInboundHooks } from "../../webhooks/index.ts";
 import {
   getWorkflow,
+  readDatabaseNow,
   resolveWorkflowInputSchema,
   WEBHOOK_INPUT_SHAPE,
   workflowRunAuthority,
@@ -236,15 +236,13 @@ export function registerWorkflowInvocationRoutes(app: OpenAPIHono<AppEnv>): void
         ]),
       ) as z.infer<typeof Snippets>;
 
-    const clock = await db.execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
-    const now = clock.rows[0]?.now;
-    if (!now) throw new Error("database clock unavailable");
+    const now = await readDatabaseNow(db);
 
     const [hooks, schedules, authority, startAccess] = await Promise.all([
       mayHooks ? listWorkflowInboundHooks(tenant, workflow.id, db) : null,
       maySchedules ? listSchedules(db, tenant, workflow.id) : null,
       workflowRunAuthority(db, workflow),
-      workflowStartAccess(db, principal, workflow.id, new Date(now)),
+      workflowStartAccess(db, principal, workflow.id, now),
     ]);
 
     return c.json(
@@ -304,8 +302,7 @@ export function registerWorkflowInvocationRoutes(app: OpenAPIHono<AppEnv>): void
                   environment: schedule.execution_mode,
                   input: schedule.input ?? null,
                   state,
-                  next_fire_at:
-                    state === "active" ? nextScheduleFire(schedule, new Date(now)) : null,
+                  next_fire_at: state === "active" ? nextScheduleFire(schedule, now) : null,
                 };
               }),
             }

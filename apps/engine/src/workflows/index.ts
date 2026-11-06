@@ -20,6 +20,12 @@ export {
   referenceApprovedManifest,
 } from "./authority-inheritance.ts";
 export * from "./authority-observation.ts";
+export {
+  listEnabledScheduleBasis,
+  observeAuthorityById,
+  pageWorkflowAuthorityIds,
+  reviewEffectChanges,
+} from "./authority-read.ts";
 export { suggestAuthorityBounds } from "./authority-suggestions.ts";
 export {
   type AutomationReadiness,
@@ -33,6 +39,13 @@ export {
   contentPublicationLabels,
 } from "./content-publication-proposal.ts";
 export { isOpenEnded, remainingRuns } from "./core/authority.ts";
+export {
+  carriedSpecColumns,
+  readStoredSpec,
+  type SpecCarrier,
+  workflowSpecDigest,
+} from "./core/spec.ts";
+export { readDatabaseNow } from "./database-clock.ts";
 export * from "./destination-placeholders.ts";
 export * from "./draft-schemas.ts";
 export * from "./drafts.ts";
@@ -51,8 +64,20 @@ export * from "./gate-diagnosis.ts";
 export * from "./gate-fix.ts";
 export * from "./input-schema-synth.ts";
 export * from "./invocation.ts";
+export {
+  findCurrentVersionScopeIndex,
+  findLiveWorkflowByRef,
+  findWorkflowLabel,
+} from "./lookup.ts";
 export { prepareReportAuthority } from "./prepare-report-authority.ts";
+export { prepareWorkflowSave } from "./prepare-save.ts";
 export * from "./prior-workflows.ts";
+export {
+  loadWorkflowBinding,
+  loadWorkflowCategoryBlocks,
+  loadWorkflowList,
+  type WorkflowListEntry,
+} from "./read-model.ts";
 export {
   ReportDeliveryBoundarySchema,
   ReportDeliveryRefusalSchema,
@@ -67,10 +92,4 @@ export * from "./tenant-validator.ts";
 export * from "./types.ts";
 export * from "./validator.ts";
 export { type VersionActor, versionAuthorColumns } from "./version-author.ts";
-export {
-  carriedSpecColumns,
-  readStoredSpec,
-  type SpecCarrier,
-  workflowSpecDigest,
-} from "./version-spec.ts";
 export * from "./versions.ts";

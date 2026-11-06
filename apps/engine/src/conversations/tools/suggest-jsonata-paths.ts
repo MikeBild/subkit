@@ -1,8 +1,10 @@
 import { z } from "@hono/zod-openapi";
-import { and, desc, eq } from "drizzle-orm";
-import { executionSteps, executions, workflows, workflowVersions } from "../../db/schema/index.ts";
-import { executionVisibilityFilter } from "../../execution/execution-owner.ts";
 import { isSensitivePayload } from "../../execution/sensitive-payload.ts";
+import {
+  findVisibleExecutionPayload,
+  latestSucceededStepPreview,
+} from "../../execution/visible-reads.ts";
+import { findCurrentVersionScopeIndex } from "../../workflows/index.ts";
 import {
   buildScopeAtStep,
   enumerateScopePaths,
@@ -85,17 +87,12 @@ export const suggestJsonataPathsTool: ConversationTool = {
       );
     const recordedExecutionId = draft.summary?.latest_execution?.execution_id;
     if (recordedExecutionId) {
-      const [recorded] = await ctx.db
-        .select({ input: executions.input, result: executions.sensitive_result })
-        .from(executions)
-        .where(
-          and(
-            eq(executions.tenant_id, ctx.tenant_id),
-            eq(executions.id, recordedExecutionId),
-            executionVisibilityFilter(ctx.principal),
-          ),
-        )
-        .limit(1);
+      const recorded = await findVisibleExecutionPayload(
+        ctx.db,
+        ctx.tenant_id,
+        recordedExecutionId,
+        ctx.principal,
+      );
       if (!recorded) return { ok: false, error_code: "execution_not_found" };
       if (isSensitivePayload(recorded.input) || isSensitivePayload(recorded.result))
         return sensitiveExecutionUnsupported(
@@ -130,16 +127,12 @@ export const suggestJsonataPathsTool: ConversationTool = {
 
     if (preview === undefined && resolvedWorkflowId) {
       try {
-        const rows = await ctx.db
-          .select({
-            scope_index: workflowVersions.scope_index,
-            dag: workflowVersions.dag,
-          })
-          .from(workflows)
-          .innerJoin(workflowVersions, eq(workflowVersions.id, workflows.current_version_id))
-          .where(and(eq(workflows.tenant_id, ctx.tenant_id), eq(workflows.id, resolvedWorkflowId)))
-          .limit(1);
-        const definition = rows[0]?.dag as Record<string, unknown> | undefined;
+        const current = await findCurrentVersionScopeIndex(
+          ctx.db,
+          ctx.tenant_id,
+          resolvedWorkflowId,
+        );
+        const definition = current?.dag as Record<string, unknown> | undefined;
         if (definition?.execution_privacy === "sensitive")
           return sensitiveExecutionUnsupported(
             "Recorded step data of a sensitive workflow stays out of chat, so no JSONata paths are suggested.",
@@ -149,7 +142,7 @@ export const suggestJsonataPathsTool: ConversationTool = {
           definition?.product_id !== ctx.principal.product_id
         )
           return { ok: false, error_code: "no_preview_recorded" };
-        const idx = (definition?.product_id ? null : rows[0]?.scope_index) as
+        const idx = (definition?.product_id ? null : current?.scope_index) as
           | Record<
               string,
               {
@@ -186,32 +179,18 @@ export const suggestJsonataPathsTool: ConversationTool = {
 
     if (preview === undefined && resolvedWorkflowId) {
       try {
-        const rows = await ctx.db
-          .select({
-            output_preview: executionSteps.output_preview,
-            status: executionSteps.status,
-            input: executions.input,
-            result: executions.sensitive_result,
-          })
-          .from(executionSteps)
-          .innerJoin(executions, eq(executions.id, executionSteps.execution_id))
-          .where(
-            and(
-              eq(executionSteps.tenant_id, ctx.tenant_id),
-              eq(executions.workflow_id, resolvedWorkflowId),
-              eq(executions.tenant_id, ctx.tenant_id),
-              executionVisibilityFilter(ctx.principal),
-              eq(executionSteps.step_key, args.step_id),
-              eq(executionSteps.status, "succeeded"),
-            ),
-          )
-          .orderBy(desc(executionSteps.finished_at), desc(executions.created_at))
-          .limit(1);
-        if (isSensitivePayload(rows[0]?.input) || isSensitivePayload(rows[0]?.result))
+        const latest = await latestSucceededStepPreview(
+          ctx.db,
+          ctx.tenant_id,
+          resolvedWorkflowId,
+          args.step_id,
+          ctx.principal,
+        );
+        if (isSensitivePayload(latest?.input) || isSensitivePayload(latest?.result))
           return sensitiveExecutionUnsupported(
             "Recorded step data of a sensitive execution stays out of chat, so no JSONata paths are suggested.",
           );
-        const op = rows[0]?.output_preview;
+        const op = latest?.output_preview;
         if (op !== null && op !== undefined) {
           preview = op;
           source = "execution_steps";

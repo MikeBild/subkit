@@ -10,26 +10,25 @@ import { type Executor, getDb } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import type { RequestSource } from "../observability/service-metadata.ts";
 import { canonicalWorkflowJson as canonical, workflowJsonDigest } from "./canonical-json.ts";
-import { applySkillSchemaGate, applyStorageBindingGate } from "./commit-gates.ts";
 import { toStoredDefinition, workflowSlug } from "./core/definition.ts";
-import { decide, describeRejection, evolve } from "./core/workflow.ts";
-import { type WorkflowSpec, WorkflowSpecSchema } from "./draft-schemas.ts";
-import { annotateRuntime } from "./runtime-annotation.ts";
-import type { ServicePackageWorkflowSource } from "./service-package-provenance.ts";
-import { packageWorkflowNote } from "./service-package-provenance.ts";
-import { slugConflictResult } from "./slug-conflict.ts";
-import { validateTenantWorkflowDefForSave } from "./tenant-validator.ts";
-import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
-import { type VersionActor, versionAuthorColumns } from "./version-author.ts";
 import {
   carriedSpecColumns,
-  loadVersionSpec,
   personOriginRefused,
   readStoredSpec,
   type SpecAuthority,
   type SpecCarrier,
   workflowSpecDigest,
-} from "./version-spec.ts";
+} from "./core/spec.ts";
+import { decide, describeRejection, evolve } from "./core/workflow.ts";
+import { type WorkflowSpec, WorkflowSpecSchema } from "./draft-schemas.ts";
+import { prepareWorkflowSave } from "./prepare-save.ts";
+import { annotateRuntime } from "./runtime-annotation.ts";
+import type { ServicePackageWorkflowSource } from "./service-package-provenance.ts";
+import { packageWorkflowNote } from "./service-package-provenance.ts";
+import { slugConflictResult } from "./slug-conflict.ts";
+import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
+import { type VersionActor, versionAuthorColumns } from "./version-author.ts";
+import { loadVersionSpec } from "./version-spec.ts";
 import {
   lockWorkflowForVersionWrite,
   nextVersionNumber,
@@ -185,20 +184,11 @@ export async function saveWorkflowDraft(
   if (!input.workflow_id && personOriginRefused(requestedSpec?.data, null, input.spec_authority)) {
     return PERSON_ORIGIN_REFUSAL;
   }
-  const validation = await validateTenantWorkflowDefForSave(input.def, input.tenant_id, exec, {
+  const prepared = await prepareWorkflowSave(input.def, input.tenant_id, exec, {
     destinationTier: "tokens",
   });
-  if (!validation.ok || !validation.workflow) {
-    return {
-      code: "invalid_definition",
-      errors: validation.errors.map((e) => `${e.path}: ${e.message}`),
-    };
-  }
-  const skillGate = await applySkillSchemaGate(input.tenant_id, validation.workflow, exec);
-  if (!skillGate.ok) return { code: "invalid_definition", errors: skillGate.errors };
-  const storageGate = await applyStorageBindingGate(input.tenant_id, validation.workflow, exec);
-  if (!storageGate.ok) return { code: "invalid_definition", errors: storageGate.errors };
-  const def = annotateRuntime(validation.workflow);
+  if (!prepared.ok) return { code: "invalid_definition", errors: prepared.errors };
+  const def = annotateRuntime(prepared.workflow);
   const defDigest = workflowJsonDigest(def);
   const servicePackageNote =
     input.service_package_source?.definition_hash === defDigest

@@ -1,5 +1,4 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, eq, isNull, or } from "drizzle-orm";
 import {
   ErrorSchema,
   IdParam,
@@ -7,9 +6,13 @@ import {
   paginatedResponse,
 } from "../../../api/common-schemas.ts";
 import { policy } from "../../../auth/index.ts";
-import { roles } from "../../../db/schema/index.ts";
 import * as identity from "../../../identity/index.ts";
-import { can, listTenantGroupMemberships } from "../../../rbac/index.ts";
+import {
+  can,
+  listTenantGroupMemberships,
+  roleNameById,
+  roleNamesById,
+} from "../../../rbac/index.ts";
 import { now } from "../../../utils/clock.ts";
 import { ConflictError, LastAdminConflictError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -224,11 +227,7 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
         q.product_id !== undefined ? { productId: q.product_id } : {},
       ),
     ]);
-    const roleRows = await db
-      .select({ id: roles.id, name: roles.name })
-      .from(roles)
-      .where(or(isNull(roles.tenant_id), eq(roles.tenant_id, principal.tenant_id)));
-    const roleNames = new Map(roleRows.map((role) => [role.id, role.name]));
+    const roleNames = await roleNamesById(db, principal.tenant_id);
     const connections = await identity.countLiveConnectionsByUser(
       db,
       principal.tenant_id,
@@ -294,16 +293,7 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
       principal.tenant_id,
       new Date(now()),
     );
-    const [role] = await db
-      .select({ name: roles.name })
-      .from(roles)
-      .where(
-        and(
-          eq(roles.id, u.role_id),
-          or(isNull(roles.tenant_id), eq(roles.tenant_id, principal.tenant_id)),
-        ),
-      )
-      .limit(1);
+    const roleName = await roleNameById(db, principal.tenant_id, u.role_id);
     const canReadGroups = (
       await can(db, {
         tenant_id: principal.tenant_id,
@@ -318,7 +308,7 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
     const identities = await identitiesByUser(db, principal.tenant_id, [u.id]);
     return c.json(
       {
-        ...serialize(u, role?.name ?? null, connections.get(u.id) ?? 0),
+        ...serialize(u, roleName, connections.get(u.id) ?? 0),
         groups: canReadGroups
           ? memberships.map((membership) => ({
               id: membership.group_id,
@@ -380,17 +370,8 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
       )
       .catch(lastAdminAsConflict);
     if (!u) throw new NotFoundError("user");
-    const [role] = await db
-      .select({ name: roles.name })
-      .from(roles)
-      .where(
-        and(
-          eq(roles.id, u.role_id),
-          or(isNull(roles.tenant_id), eq(roles.tenant_id, principal.tenant_id)),
-        ),
-      )
-      .limit(1);
-    return c.json(serialize(u, role?.name ?? null), 200);
+    const roleName = await roleNameById(db, principal.tenant_id, u.role_id);
+    return c.json(serialize(u, roleName), 200);
   });
 
   app.openapi(deactivateRoute, async (c) => {

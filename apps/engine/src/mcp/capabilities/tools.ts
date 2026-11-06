@@ -10,22 +10,23 @@ import {
   type ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 import { and, eq } from "drizzle-orm";
-import { actorType } from "../../audit/index.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import { registerNativeUrlElicitationCompletion } from "../../conversations/native-url-elicitation.ts";
 import type { Db } from "../../db/client.ts";
 import { executions } from "../../db/schema/index.ts";
 import { cancel } from "../../execution/abort.ts";
-import { auditAdmissionRefusal, resolveDefinition, runExecution } from "../../execution/index.ts";
+import { resolveDefinition } from "../../execution/index.ts";
 import { previewOf } from "../../execution/offload.ts";
-import { admitWorkflowRun } from "../../execution/workflow-run-admission.ts";
+import {
+  createRunWorkflow,
+  principalExecutionEnvironment,
+} from "../../execution/use-cases/run-workflow.ts";
 import { logger } from "../../logging/logger.ts";
 import { globalEmitter } from "../../pubsub/emitter.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
 import { CONVERSATION_TOOL_MCP_UNAVAILABLE_REASON, getUnifiedRegistry } from "../../tools/index.ts";
 import type { ToolInvocation } from "../../tools/types.ts";
-import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
 import { callToolViaDispatcher } from "../adapter.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 import { MCP_CORE_TOOL_NAMES, modeFlags, resolveMcpMode } from "../mode-resolver.ts";
@@ -47,6 +48,7 @@ import {
   resolveWorkflowBySlug,
   startProgressBridge,
 } from "./tools-helpers.ts";
+import { workflowRunRefusalResult, workflowRunReplayResult } from "./workflow-run-refusal.ts";
 
 const WF_INLINE_TIMEOUT_MS = 50_000;
 const TOOLS_CALL_DEADLINE_MS = 30_000;
@@ -183,7 +185,9 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           requestedEnvironment = normalized;
         }
       }
-      const execution_mode: "dev" | "prod" = requestedEnvironment ?? "dev";
+      const execution_mode = principalExecutionEnvironment(principal, requestedEnvironment ?? null);
+      const idempotencyMeta = (request.params._meta as { idempotency_key?: unknown } | undefined)
+        ?.idempotency_key;
       const started = Date.now();
       logger.info({
         module: "mcp",
@@ -410,6 +414,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
         args: args as Record<string, unknown>,
         progressToken,
         execution_mode,
+        ...(typeof idempotencyMeta === "string" ? { idempotency_key: idempotencyMeta } : {}),
         started,
       });
     },
@@ -424,14 +429,27 @@ interface WorkflowToolCallParams {
   readonly args: Record<string, unknown>;
   readonly progressToken: string | number | undefined;
   readonly execution_mode: "dev" | "prod";
+  readonly idempotency_key?: string;
   readonly started: number;
+}
+
+function rbacDeniedError(message: string): Error {
+  return Object.assign(new Error(message), { code: -32001 });
 }
 
 async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolResult> {
   const { db, principal, extra, name, args, progressToken, execution_mode, started } = p;
   const slug = name.slice(TOOL_PREFIX.length);
+  const useCase = createRunWorkflow({ db });
   const wf = await resolveWorkflowBySlug(db, principal.tenant_id, slug);
   if (!wf) {
+    const denied = await useCase.authorizeUnresolved({
+      principal,
+      via: "mcp",
+      tool: name,
+      workflow_slug: slug,
+    });
+    if (denied) throw rbacDeniedError(denied.message);
     logger.info({
       module: "mcp",
       action: "mcp.tool.workflow_not_found",
@@ -458,59 +476,14 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     };
   }
 
-  const rbac = await gateWorkflowRunRbac({
-    db,
+  const grant = await useCase.authorize({
     principal,
     workflow_id: wf.id,
     workflow_slug: slug,
-    request_source: "mcp",
+    via: "mcp",
     tool: name,
   });
-  if (!rbac.allow) {
-    const err = new Error(rbac.error_message) as Error & { code?: number };
-    err.code = -32001;
-    throw err;
-  }
-
-  const resolved = await resolveDefinition(db, principal.tenant_id, {
-    kind: "saved",
-    workflow_id: wf.id,
-  });
-  const definition = resolved.def;
-  const totalSteps = definition.steps.length;
-  const outputSchemaDeclared = definition.output_schema != null;
-  const admitted = await admitWorkflowRun(
-    {
-      tenant_id: principal.tenant_id,
-      workflow_id: wf.id,
-      workflow_version_id: resolved.workflow_version_id,
-      execution_environment: execution_mode,
-      request_source: "mcp",
-      input: args,
-    },
-    db,
-    principal,
-    rbac.workflow_permission,
-  );
-  const executionId = admitted.execution_id;
-  const preparation = admitted.hold_writes;
-  const downgrade = "downgraded_from" in admitted ? admitted.downgraded_from : undefined;
-  if (downgrade) {
-    await auditAdmissionRefusal(
-      {
-        tenant_id: principal.tenant_id,
-        reason: downgrade.code,
-        message: downgrade.message,
-        workflow_id: wf.id,
-        execution_id: executionId,
-        request_source: "mcp",
-        actor_id: principal.id,
-        actor_type: actorType(principal),
-        extra: { downgraded_to_preparation: true, tool: name },
-      },
-      db,
-    );
-  }
+  if (grant.kind === "rejected") throw rbacDeniedError(grant.message);
 
   const abortController = new AbortController();
   const onSignalAbort = (): void => {
@@ -521,9 +494,8 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
 
   const state: {
     bridge: { stop: () => void } | null;
-    executionId: string | null;
     runSettled: boolean;
-  } = { bridge: null, executionId, runSettled: false };
+  } = { bridge: null, runSettled: false };
   const settleProgressBridge = (): void => {
     state.runSettled = true;
     state.bridge?.stop();
@@ -543,65 +515,68 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     },
   };
 
-  const runPromise = runExecution({
-    db,
-    tenant_id: principal.tenant_id,
-    source: { kind: "saved", workflow_id: wf.id, version_id: admitted.workflow_version_id },
-    input: admitted.input,
-    options: {
-      existing_execution_id: executionId,
-      ...(preparation ? { hold_writes: true, self_healing: { enabled: false } } : {}),
-      request_source: "mcp",
-      signal: abortController.signal,
-      trace_id: null,
-      principal,
-      execution_mode,
-    },
+  const outcome = await useCase.runWorkflow({
+    principal,
+    workflow_id: wf.id,
+    execution_environment: execution_mode,
+    request_source: "mcp",
+    input: args,
+    idempotency_key: p.idempotency_key ?? null,
+    authorization: { kind: "granted", workflow_permission: grant.workflow_permission },
+    audit_extra: { tool: name },
+    dispatch: { mode: "background", signal: abortController.signal, trace_id: null },
   });
-
-  if (progressToken !== undefined && progressToken !== null) {
-    state.bridge = startProgressBridge(db, principal.tenant_id, executionId, totalSteps, notifier);
+  if (outcome.kind === "rejected" || outcome.kind === "replayed") {
+    extra.signal.removeEventListener("abort", onSignalAbort);
+    logger.info({
+      module: "mcp",
+      action: "mcp.tool.result",
+      msg:
+        outcome.kind === "rejected"
+          ? "mcp wf run refused at admission — returned terminal cannot_help"
+          : "mcp wf run replayed an idempotent execution",
+      tool: name,
+      duration_ms: Date.now() - started,
+      ...(outcome.kind === "rejected"
+        ? { error_code: outcome.code }
+        : { execution_id: outcome.admitted.execution_id }),
+    });
+    return outcome.kind === "rejected"
+      ? workflowRunRefusalResult(outcome, slug)
+      : workflowRunReplayResult(slug, outcome.admitted);
   }
+  const executionId = outcome.admitted.execution_id;
+  const runPromise = outcome.settled;
 
   try {
-    const outcome = await raceInlineRun(runPromise, WF_INLINE_TIMEOUT_MS);
-    if (outcome.timedOut) {
+    const definition = (
+      await resolveDefinition(db, principal.tenant_id, {
+        kind: "saved",
+        workflow_id: wf.id,
+        version_id: outcome.admitted.workflow_version_id,
+      })
+    ).def;
+    const outputSchemaDeclared = definition.output_schema != null;
+    if (progressToken !== undefined && progressToken !== null) {
+      state.bridge = startProgressBridge(
+        db,
+        principal.tenant_id,
+        executionId,
+        definition.steps.length,
+        notifier,
+      );
+    }
+    const raced = await raceInlineRun(runPromise, WF_INLINE_TIMEOUT_MS);
+    if (raced.timedOut) {
       extra.signal.removeEventListener("abort", onSignalAbort);
       void runPromise.then(settleProgressBridge, settleProgressBridge);
-      const execId = state.executionId;
-      if (!execId) {
-        logger.warn({
-          module: "mcp",
-          action: "mcp.tool.result",
-          msg: "mcp wf run exceeded inline window before its execution id was captured",
-          tool: name,
-          duration_ms: Date.now() - started,
-          execution_id: null,
-        });
-        return {
-          isError: false,
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                status: "running",
-                execution_id: null,
-                message: `Workflow ${slug} is still running after ${Math.round(
-                  WF_INLINE_TIMEOUT_MS / 1000,
-                )}s, but its execution id was not captured in time, so there is no handle to poll. It is ALREADY in progress — do NOT re-run it. Tell the user the run is under way and that its result will land in the workflow's run history.`,
-                poll_with: null,
-              }),
-            },
-          ],
-        };
-      }
       logger.info({
         module: "mcp",
         action: "mcp.tool.result",
         msg: "mcp wf run exceeded inline window — returned polling handle",
         tool: name,
         duration_ms: Date.now() - started,
-        execution_id: execId,
+        execution_id: executionId,
       });
       return {
         isError: false,
@@ -610,7 +585,7 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
             type: "text" as const,
             text: JSON.stringify({
               status: "running",
-              execution_id: execId,
+              execution_id: executionId,
               message: `Workflow ${slug} is still running after ${Math.round(
                 WF_INLINE_TIMEOUT_MS / 1000,
               )}s. Poll get_execution with this execution_id for the result.`,
@@ -618,10 +593,14 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
             }),
           },
         ],
-        _meta: { subkit: { execution: { id: execId, status: "running" } } },
+        _meta: { subkit: { execution: { id: executionId, status: "running" } } },
       };
     }
-    const result = outcome.result;
+    if (raced.result.kind === "rejected") {
+      settleProgressBridge();
+      return workflowRunRefusalResult(raced.result, slug);
+    }
+    const result = raced.result.result;
     settleProgressBridge();
     const hasWarnings = (result.warnings?.length ?? 0) > 0;
     if (progressToken !== undefined && progressToken !== null) {
@@ -713,7 +692,7 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     };
   } catch (err) {
     settleProgressBridge();
-    if (state.executionId) cancel(state.executionId);
+    cancel(executionId);
     const text = toMcpErrorText(err);
     logger.error({
       module: "mcp",

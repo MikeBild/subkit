@@ -1,7 +1,9 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
-import { browserSessionForPrincipal, issueBrowserSession } from "../../auth/index.ts";
-import { sessions } from "../../db/schema/identity.ts";
+import {
+  browserSessionForPrincipal,
+  findOwnedSession,
+  issueBrowserSession,
+} from "../../auth/index.ts";
 import {
   createOrReuseCockpitInstallation,
   getActiveCockpitInstallation,
@@ -125,18 +127,11 @@ export function registerCockpitInstallationRoutes(app: OpenAPIHono<AppEnv>): voi
       principal.tenant_id,
       principal.id,
     );
-    const [rootSession] = await c
-      .get("db")
-      .select({ auth_identity_id: sessions.auth_identity_id })
-      .from(sessions)
-      .where(
-        and(
-          eq(sessions.id, session.session_id),
-          eq(sessions.tenant_id, principal.tenant_id),
-          eq(sessions.user_id, principal.id),
-        ),
-      )
-      .limit(1);
+    const rootSession = await findOwnedSession(c.get("db"), {
+      session_id: session.session_id,
+      tenant_id: principal.tenant_id,
+      user_id: principal.id,
+    });
     const issued = await issueBrowserSession({
       db: c.get("db"),
       tenantId: installation.tenant_id,

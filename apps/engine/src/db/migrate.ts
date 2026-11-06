@@ -3,7 +3,6 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import type pg from "pg";
 import { z } from "zod";
 import { errorFields, logger } from "../logging/logger.ts";
-import { resetSecretColumnDetection } from "../runtime-config/secret-columns.ts";
 import { cutOverLearningCandidates } from "../skill-candidates/learning-cutover.ts";
 import { createMigrationDbFromUrl, type Db } from "./client.ts";
 import { runContextNoteFactsBackfill } from "./migrations/context-note-facts-backfill.ts";
@@ -102,7 +101,6 @@ export async function runMigrations(
   const pool = (db as unknown as { $client?: pg.Pool }).$client;
   if (!pool || typeof pool.connect !== "function") {
     const report = await applyMigrations(db, migrations);
-    resetSecretColumnDetection();
     return report;
   }
   const lockClient = await pool.connect();
@@ -110,7 +108,6 @@ export async function runMigrations(
     await lockClient.query("SELECT pg_advisory_lock($1)", [MIGRATION_LOCK_KEY]);
     const lockedDb = drizzle(lockClient, { schema }) as Db;
     const report = await applyMigrations(lockedDb, migrations);
-    resetSecretColumnDetection();
     return report;
   } finally {
     try {

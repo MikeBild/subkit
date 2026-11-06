@@ -50,7 +50,7 @@ export async function loadConnectorSystem(
   tenant_id: string,
   connector_id: string,
   environment: Environment,
-  exec?: Executor,
+  exec: Executor,
 ): Promise<ConnectorSystem | null> {
   const connector = await getConnectorForEnvironment(tenant_id, connector_id, environment, exec);
   if (!connector) return null;
@@ -60,7 +60,7 @@ export async function loadConnectorSystem(
 function connectorSystem(
   tenant_id: string,
   connector: ConnectorView,
-  exec?: Executor,
+  exec: Executor,
   metadata?: CredentialAuthorityMetadata,
 ): ConnectorSystem {
   const resolvedEnv = connector.environment;
@@ -108,7 +108,7 @@ function connectorSystem(
 export async function loadConnectorSystems(
   tenant_id: string,
   requests: readonly ConnectorEnvironmentRequest[],
-  exec?: Executor,
+  exec: Executor,
 ): Promise<Map<string, ConnectorSystem | null>> {
   const connectors = await getConnectorsForEnvironments(tenant_id, requests, exec);
   const resolved = new Map<string, ConnectorView>();

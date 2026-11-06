@@ -1,4 +1,5 @@
 export * from "./browser-session.ts";
+export * from "./browser-session-store.ts";
 export * from "./hooks.ts";
 export * from "./identity-link.ts";
 export * from "./oauth/cli-session.ts";

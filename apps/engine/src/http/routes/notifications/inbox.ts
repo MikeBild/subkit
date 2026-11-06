@@ -1,12 +1,11 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, asc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { AuditAction, auditAwait } from "../../../audit/index.ts";
-import type { Db } from "../../../db/client.ts";
 import {
-  cliNotificationInbox,
-  cliNotificationInboxReads,
-} from "../../../db/schema/notifications.ts";
+  ackInbox,
+  listInbox,
+  markInboxRead,
+  markInboxUnread,
+} from "../../../notifications/index.ts";
 import { HttpError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
@@ -171,34 +170,6 @@ function requireReader(principal: { kind: string; id: string }): string {
   return uid;
 }
 
-function readJoin(userId: string | null) {
-  return userId
-    ? and(
-        eq(cliNotificationInboxReads.inbox_id, cliNotificationInbox.id),
-        eq(cliNotificationInboxReads.user_id, userId),
-      )
-    : sql`false`;
-}
-
-async function unreadCounts(
-  db: Db,
-  tenantId: string,
-  userId: string | null,
-): Promise<{ unread: number; actionable_unread: number }> {
-  const rows = await db
-    .select({
-      unread: sql<number>`count(*)::int`,
-      actionable_unread: sql<number>`(count(*) filter (where ${cliNotificationInbox.actionable}))::int`,
-    })
-    .from(cliNotificationInbox)
-    .leftJoin(cliNotificationInboxReads, readJoin(userId))
-    .where(
-      and(eq(cliNotificationInbox.tenant_id, tenantId), isNull(cliNotificationInboxReads.inbox_id)),
-    );
-  const row = rows[0];
-  return { unread: row?.unread ?? 0, actionable_unread: row?.actionable_unread ?? 0 };
-}
-
 export function registerInboxRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/notifications/inbox", requirePermission("notification:read"));
   app.use("/v1/notifications/inbox/ack", requirePermission("notification:read"));
@@ -207,38 +178,15 @@ export function registerInboxRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.openapi(listRoute, async (c) => {
     const principal = requireAuth(c);
-    const db = c.get("db");
     const q = c.req.valid("query");
     const since = q.since ?? 0;
-    const limit = Math.min(q.limit ?? 100, INBOX_MAX_LIMIT);
-    const userId = readerId(principal);
-
-    const tenantWhereClauses = [
-      eq(cliNotificationInbox.tenant_id, principal.tenant_id),
-      gt(cliNotificationInbox.id, since),
-    ];
-    if (q.unread_only) tenantWhereClauses.push(isNull(cliNotificationInboxReads.inbox_id));
-    if (q.actionable_only) tenantWhereClauses.push(eq(cliNotificationInbox.actionable, true));
-
-    const rows = await db
-      .select({
-        id: cliNotificationInbox.id,
-        severity: cliNotificationInbox.severity,
-        event_type: cliNotificationInbox.event_type,
-        event_payload: cliNotificationInbox.event_payload,
-        actionable: cliNotificationInbox.actionable,
-        resource_type: cliNotificationInbox.resource_type,
-        resource_id: cliNotificationInbox.resource_id,
-        created_at: cliNotificationInbox.created_at,
-        read_at: cliNotificationInboxReads.read_at,
-      })
-      .from(cliNotificationInbox)
-      .leftJoin(cliNotificationInboxReads, readJoin(userId))
-      .where(and(...tenantWhereClauses))
-      .orderBy(asc(cliNotificationInbox.id))
-      .limit(limit);
-
-    const counts = await unreadCounts(db, principal.tenant_id, userId);
+    const page = await listInbox(c.get("db"), principal.tenant_id, readerId(principal), {
+      since,
+      limit: Math.min(q.limit ?? 100, INBOX_MAX_LIMIT),
+      unread_only: q.unread_only,
+      actionable_only: q.actionable_only,
+    });
+    const rows = page.rows;
     const cursor = rows.length > 0 ? (rows[rows.length - 1]?.id ?? since) : since;
     return c.json(
       {
@@ -255,8 +203,8 @@ export function registerInboxRoutes(app: OpenAPIHono<AppEnv>): void {
           created_at: r.created_at.toISOString(),
         })),
         cursor,
-        unread_count: counts.unread,
-        actionable_unread_count: counts.actionable_unread,
+        unread_count: page.unread,
+        actionable_unread_count: page.actionable_unread,
       },
       200,
     );
@@ -264,71 +212,25 @@ export function registerInboxRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.openapi(ackRoute, async (c) => {
     const principal = requireAuth(c);
-    const db = c.get("db");
     const { up_to_cursor } = c.req.valid("json");
     const userId = requireReader(principal);
-
-    const result = await db.execute(sql`
-      INSERT INTO ${cliNotificationInboxReads} (tenant_id, inbox_id, user_id)
-      SELECT ${cliNotificationInbox.tenant_id}, ${cliNotificationInbox.id}, ${userId}::uuid
-      FROM ${cliNotificationInbox}
-      WHERE ${cliNotificationInbox.tenant_id} = ${principal.tenant_id}
-        AND ${cliNotificationInbox.id} <= ${up_to_cursor}
-      ON CONFLICT (inbox_id, user_id) DO NOTHING
-      RETURNING inbox_id
-    `);
-    const acked = result.rows.length;
-
-    await auditAwait(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: principal.kind,
-        actor_id: principal.id,
-        action: AuditAction.SK_CLI_INBOX_ACKED,
-        resource_type: "cli_notification_inbox",
-        resource_id: String(up_to_cursor),
-        result: "success",
-        metadata: { up_to_cursor, marked: acked },
-      },
-      db,
-    );
+    const acked = await ackInbox(c.get("db"), principal, userId, up_to_cursor);
     return c.json({ acked }, 200);
   });
 
   app.openapi(readRoute, async (c) => {
     const principal = requireAuth(c);
-    const db = c.get("db");
     const { ids } = c.req.valid("json");
     const userId = requireReader(principal);
-
-    const result = await db.execute(sql`
-      INSERT INTO ${cliNotificationInboxReads} (tenant_id, inbox_id, user_id)
-      SELECT ${cliNotificationInbox.tenant_id}, ${cliNotificationInbox.id}, ${userId}::uuid
-      FROM ${cliNotificationInbox}
-      WHERE ${cliNotificationInbox.tenant_id} = ${principal.tenant_id}
-        AND ${cliNotificationInbox.id} IN ${ids}
-      ON CONFLICT (inbox_id, user_id) DO NOTHING
-      RETURNING inbox_id
-    `);
-    return c.json({ marked: result.rows.length }, 200);
+    const marked = await markInboxRead(c.get("db"), principal.tenant_id, userId, ids);
+    return c.json({ marked }, 200);
   });
 
   app.openapi(unreadRoute, async (c) => {
     const principal = requireAuth(c);
-    const db = c.get("db");
     const { ids } = c.req.valid("json");
     const userId = requireReader(principal);
-
-    const removed = await db
-      .delete(cliNotificationInboxReads)
-      .where(
-        and(
-          eq(cliNotificationInboxReads.tenant_id, principal.tenant_id),
-          eq(cliNotificationInboxReads.user_id, userId),
-          inArray(cliNotificationInboxReads.inbox_id, ids),
-        ),
-      )
-      .returning({ inbox_id: cliNotificationInboxReads.inbox_id });
-    return c.json({ unmarked: removed.length }, 200);
+    const unmarked = await markInboxUnread(c.get("db"), principal.tenant_id, userId, ids);
+    return c.json({ unmarked }, 200);
   });
 }

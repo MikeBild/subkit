@@ -1,7 +1,12 @@
-import { and, asc, desc, gt, type SQL } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 import type { Context } from "hono";
 import type { Db } from "../../db/client.ts";
-import { events } from "../../db/schema/index.ts";
+import {
+  readOutboxAfter,
+  readOutboxNewest,
+  readOutboxNewestId,
+  readOutboxOldest,
+} from "../../webhooks/index.ts";
 import type { AppEnv } from "../openapi.ts";
 import { streamTenantSSE as streamSSE } from "../tenant-stream.ts";
 
@@ -62,12 +67,7 @@ export function streamOutboxTail(c: Context<AppEnv>, opts: OutboxTailOptions): R
     let cursor = 0;
     let truncated = false;
     if (Number.isFinite(lastEventId) && lastEventId !== null && lastEventId >= 0) {
-      const replay = await db
-        .select()
-        .from(events) // tenant-filter:exempt — conds() always includes the caller-supplied tenant predicate
-        .where(and(...opts.conds(), gt(events.id, lastEventId)))
-        .orderBy(asc(events.id))
-        .limit(OUTBOX_REPLAY_CAP);
+      const replay = await readOutboxAfter(db, opts.conds(), lastEventId, OUTBOX_REPLAY_CAP);
       truncated = replay.length >= OUTBOX_REPLAY_CAP;
       for (const row of replay) {
         await write(row);
@@ -75,31 +75,15 @@ export function streamOutboxTail(c: Context<AppEnv>, opts: OutboxTailOptions): R
       }
       if (cursor === 0) cursor = lastEventId;
     } else if (opts.replay === "tail") {
-      const [newest] = await db
-        .select({ id: events.id })
-        .from(events) // tenant-filter:exempt — conds() always includes the caller-supplied tenant predicate
-        .where(and(...opts.conds()))
-        .orderBy(desc(events.id))
-        .limit(1);
-      cursor = newest?.id ?? 0;
+      cursor = (await readOutboxNewestId(db, opts.conds())) ?? 0;
     } else if (opts.replay === "all") {
-      const replay = await db
-        .select()
-        .from(events) // tenant-filter:exempt — conds() always includes the caller-supplied tenant predicate
-        .where(and(...opts.conds()))
-        .orderBy(asc(events.id))
-        .limit(OUTBOX_REPLAY_CAP);
+      const replay = await readOutboxOldest(db, opts.conds(), OUTBOX_REPLAY_CAP);
       for (const row of replay) {
         await write(row);
         cursor = row.id;
       }
     } else {
-      const recent = await db
-        .select()
-        .from(events) // tenant-filter:exempt — conds() always includes the caller-supplied tenant predicate
-        .where(and(...opts.conds()))
-        .orderBy(desc(events.id))
-        .limit(replayLimit);
+      const recent = await readOutboxNewest(db, opts.conds(), replayLimit);
       const ordered = recent.slice().reverse();
       for (const row of ordered) {
         await write(row);
@@ -115,12 +99,7 @@ export function streamOutboxTail(c: Context<AppEnv>, opts: OutboxTailOptions): R
 
     const signal = c.req.raw.signal;
     while (!signal.aborted && !done) {
-      const newRows = await db
-        .select()
-        .from(events) // tenant-filter:exempt — conds() always includes the caller-supplied tenant predicate
-        .where(and(...opts.conds(), gt(events.id, cursor)))
-        .orderBy(asc(events.id))
-        .limit(200);
+      const newRows = await readOutboxAfter(db, opts.conds(), cursor, 200);
       for (const row of newRows) {
         await write(row);
         cursor = row.id;

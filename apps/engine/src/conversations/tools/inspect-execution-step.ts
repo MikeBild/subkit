@@ -1,8 +1,11 @@
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
-import { executionSteps, executions } from "../../db/schema/index.ts";
-import { executionVisibilityFilter, isSensitivePayload } from "../../execution/index.ts";
+import { isSensitivePayload } from "../../execution/index.ts";
 import { OffloadResolutionError, resolveOffloaded } from "../../execution/offload.ts";
+import {
+  findExecutionStepByKey,
+  findVisibleExecutionHead,
+  listExecutionStepStatuses,
+} from "../../execution/visible-reads.ts";
 import type { ConversationTool } from "./index.ts";
 import { sensitiveExecutionUnsupported } from "./sensitive-envelope.ts";
 
@@ -69,24 +72,12 @@ export const inspectExecutionStepTool: ConversationTool = {
   async execute(ctx, rawArgs) {
     const args = Input.parse(rawArgs);
     if (!ctx.principal) return { ok: false, data: { error_code: "principal_required" } };
-    const execRows = await ctx.db
-      .select({
-        id: executions.id,
-        tenant_id: executions.tenant_id,
-        status: executions.status,
-        workflow_id: executions.workflow_id,
-        input: executions.input,
-      })
-      .from(executions)
-      .where(
-        and(
-          eq(executions.tenant_id, ctx.tenant_id),
-          eq(executions.id, args.execution_id),
-          executionVisibilityFilter(ctx.principal),
-        ),
-      )
-      .limit(1);
-    const exec = execRows[0];
+    const exec = await findVisibleExecutionHead(
+      ctx.db,
+      ctx.tenant_id,
+      args.execution_id,
+      ctx.principal,
+    );
     if (!exec) {
       return {
         ok: false,
@@ -102,44 +93,14 @@ export const inspectExecutionStepTool: ConversationTool = {
       );
     }
 
-    const stepRows = await ctx.db
-      .select({
-        id: executionSteps.id,
-        step_key: executionSteps.step_key,
-        kind: executionSteps.kind,
-        status: executionSteps.status,
-        output_preview: executionSteps.output_preview,
-        result_storage_uri: executionSteps.result_storage_uri,
-        result_sha256: executionSteps.result_sha256,
-        request_meta: executionSteps.request_meta,
-        credential_snapshots: executionSteps.credential_snapshots,
-        duration_ms: executionSteps.duration_ms,
-        retry_count: executionSteps.retry_count,
-        error: executionSteps.error,
-      })
-      .from(executionSteps)
-      .where(
-        and(
-          eq(executionSteps.tenant_id, ctx.tenant_id),
-          eq(executionSteps.execution_id, args.execution_id),
-          eq(executionSteps.step_key, args.step_key),
-        ),
-      )
-      .limit(1);
-    const step = stepRows[0];
+    const step = await findExecutionStepByKey(
+      ctx.db,
+      ctx.tenant_id,
+      args.execution_id,
+      args.step_key,
+    );
     if (!step) {
-      const allSteps = await ctx.db
-        .select({
-          step_key: executionSteps.step_key,
-          status: executionSteps.status,
-        })
-        .from(executionSteps)
-        .where(
-          and(
-            eq(executionSteps.tenant_id, ctx.tenant_id),
-            eq(executionSteps.execution_id, args.execution_id),
-          ),
-        );
+      const allSteps = await listExecutionStepStatuses(ctx.db, ctx.tenant_id, args.execution_id);
       return {
         ok: false,
         data: {

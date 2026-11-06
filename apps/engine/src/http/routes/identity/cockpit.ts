@@ -1,16 +1,18 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, desc, eq } from "drizzle-orm";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import {
   browserSessionForPrincipal,
   cockpitInstallationIdFromPath,
+  findOwnedSession,
   signBrowserCsrf,
   signLoginState,
 } from "../../../auth/index.ts";
 import { buildOAuthRedirectUri } from "../../../credentials/index.ts";
-import { conversations } from "../../../db/schema/conversations.ts";
-import { roles, sessions, tenants, users } from "../../../db/schema/index.ts";
-import { readTenantBranding } from "../../../identity/index.ts";
+import {
+  findCockpitIdentity,
+  listRecentOwnedConversations,
+  readTenantBranding,
+} from "../../../identity/index.ts";
 import { ALL_PERMISSION_NAMES, can, isOperatorPrincipal } from "../../../rbac/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { type AppEnv, OPENAPI_INFO } from "../../openapi.ts";
@@ -185,34 +187,12 @@ export function registerCockpitIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.json({ code: "browser_session_required", message: "browser session required" }, 401);
     }
     const db = c.get("db");
-    const [sessionRow] = await db
-      .select({
-        auth_identity_id: sessions.auth_identity_id,
-        expires_at: sessions.expires_at,
-        absolute_expires_at: sessions.absolute_expires_at,
-      })
-      .from(sessions)
-      .where(
-        and(
-          eq(sessions.id, payload.session_id),
-          eq(sessions.tenant_id, principal.tenant_id),
-          eq(sessions.user_id, principal.id),
-        ),
-      )
-      .limit(1);
-    const [identityRow] = await db
-      .select({
-        email: users.email,
-        role_name: roles.name,
-        tenant_id: tenants.id,
-        tenant_slug: tenants.slug,
-        tenant_display_name: tenants.display_name,
-      })
-      .from(users)
-      .innerJoin(tenants, eq(tenants.id, users.tenant_id))
-      .leftJoin(roles, eq(roles.id, users.role_id))
-      .where(and(eq(users.id, principal.id), eq(users.tenant_id, principal.tenant_id)))
-      .limit(1);
+    const sessionRow = await findOwnedSession(db, {
+      session_id: payload.session_id,
+      tenant_id: principal.tenant_id,
+      user_id: principal.id,
+    });
+    const identityRow = await findCockpitIdentity(db, principal.tenant_id, principal.id);
     if (!sessionRow || !identityRow) {
       return c.json({ code: "browser_session_required", message: "browser session required" }, 401);
     }
@@ -236,22 +216,7 @@ export function registerCockpitIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
       .sort();
     const mayReadConversations = permissions.includes("conversation:read");
     const recent = mayReadConversations
-      ? await db
-          .select({
-            id: conversations.id,
-            title: conversations.title,
-            status: conversations.status,
-            updated_at: conversations.updated_at,
-          })
-          .from(conversations)
-          .where(
-            and(
-              eq(conversations.tenant_id, principal.tenant_id),
-              eq(conversations.owner_id, principal.id),
-            ),
-          )
-          .orderBy(desc(conversations.updated_at))
-          .limit(10)
+      ? await listRecentOwnedConversations(db, principal.tenant_id, principal.id)
       : [];
     const branding = await readTenantBranding({ tenant_id: principal.tenant_id }, db);
 
@@ -280,7 +245,9 @@ export function registerCockpitIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
         version: OPENAPI_INFO.version,
         oauth_callback_url: buildOAuthRedirectUri({ req: c.req.raw }),
         recent_conversations: recent.map((row) => ({
-          ...row,
+          id: row.id,
+          title: row.title,
+          status: row.status,
           updated_at: row.updated_at.toISOString(),
         })),
         branding,

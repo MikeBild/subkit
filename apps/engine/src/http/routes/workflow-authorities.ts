@@ -3,16 +3,9 @@ import {
   ENVIRONMENT_BLOCK_CODES,
   ENVIRONMENT_RECOMMENDATION_REASONS,
 } from "@shared/approval-choice.ts";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import { continueConversationDevLiveTest } from "../../conversations/index.ts";
-import type { Db } from "../../db/client.ts";
-import {
-  workflowExecutionAuthorities,
-  workflows,
-  workflowsSchedules,
-  workflowVersions,
-} from "../../db/schema/index.ts";
+import type { Executor } from "../../db/client.ts";
 import { getBoss } from "../../queue/index.ts";
 import { can } from "../../rbac/index.ts";
 import {
@@ -31,21 +24,23 @@ import {
   BoundaryGrowthSchema,
   boundaryGrowth,
   contentPublicationLabels,
-  effectChanges,
   GrantWorkflowAuthoritySchema,
   grantWorkflowAuthority,
   JsonValueSchema,
+  listEnabledScheduleBasis,
   MakeWorkflowAuthorityUntilRevokedSchema,
   makeWorkflowAuthorityUntilRevoked,
   nameGrowth,
-  observeWorkflowAuthority,
+  observeAuthorityById,
+  pageWorkflowAuthorityIds,
   prepareReportAuthority,
   previewWorkflowAuthority,
+  readDatabaseNow,
   referenceApprovedManifest,
   reviewAuthorityEnvironments,
+  reviewEffectChanges,
   revokeWorkflowAuthority,
   suggestAuthorityBounds,
-  type WorkflowEffectManifest,
   WorkflowEffectManifestSchema,
 } from "../../workflows/index.ts";
 import { HttpError, NotFoundError } from "../errors.ts";
@@ -487,91 +482,15 @@ function translate(error: unknown): never {
   throw error;
 }
 
-async function reviewEffectChanges(
-  db: Db,
-  reviewed: {
-    tenant_id: string;
-    workflow_id: string;
-    workflow_version_id: string;
-    execution_environment: "dev" | "prod";
-  },
-  reference: WorkflowEffectManifest | null,
-  manifest: WorkflowEffectManifest,
+async function readAuthority(
+  db: Executor,
+  tenant_id: string,
+  workflow_id: string,
+  authority_id: string,
 ) {
-  const fallback = async () => {
-    const [workflow] = await db
-      .select({ current: workflows.current_version_id })
-      .from(workflows)
-      .where(
-        and(eq(workflows.tenant_id, reviewed.tenant_id), eq(workflows.id, reviewed.workflow_id)),
-      )
-      .limit(1);
-    if (!workflow?.current || workflow.current === reviewed.workflow_version_id) return null;
-    try {
-      return (
-        await previewWorkflowAuthority({ ...reviewed, workflow_version_id: workflow.current }, db)
-      ).manifest;
-    } catch {
-      return null;
-    }
-  };
-  const base = reference ?? (await fallback());
-  if (!base || base.workflow_version_id === reviewed.workflow_version_id) return null;
-  const [version] = await db
-    .select({ version: workflowVersions.version })
-    .from(workflowVersions)
-    .where(
-      and(
-        eq(workflowVersions.tenant_id, reviewed.tenant_id),
-        eq(workflowVersions.id, base.workflow_version_id),
-      ),
-    )
-    .limit(1);
-  return {
-    effect_changes: effectChanges(base, manifest),
-    ...(version
-      ? {
-          effect_changes_base: {
-            workflow_version_id: base.workflow_version_id,
-            version: version.version,
-            approved: reference !== null,
-          },
-        }
-      : {}),
-  };
-}
-
-async function readAuthority(db: Db, tenant_id: string, workflow_id: string, authority_id: string) {
-  const [row] = await db
-    .select()
-    .from(workflowExecutionAuthorities)
-    .where(
-      and(
-        eq(workflowExecutionAuthorities.tenant_id, tenant_id),
-        eq(workflowExecutionAuthorities.workflow_id, workflow_id),
-        eq(workflowExecutionAuthorities.id, authority_id),
-      ),
-    )
-    .limit(1);
-  if (!row) throw new NotFoundError("execution authority");
-  const [workflow] = await db
-    .select({
-      lifecycle: workflows.lifecycle,
-      current_version_id: workflows.current_version_id,
-    })
-    .from(workflows)
-    .where(
-      and(
-        eq(workflows.tenant_id, tenant_id),
-        eq(workflows.id, workflow_id),
-        isNull(workflows.deleted_at),
-      ),
-    )
-    .limit(1);
-  const clock = await db.execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
-  const now = clock.rows[0]?.now;
-  if (!now) throw new Error("database clock unavailable");
-  return authoritySchema.parse(await observeWorkflowAuthority(db, row, workflow, new Date(now)));
+  const observed = await observeAuthorityById(db, tenant_id, workflow_id, authority_id);
+  if (!observed) throw new NotFoundError("execution authority");
+  return authoritySchema.parse(observed);
 }
 
 export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void {
@@ -617,9 +536,7 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
   app.use("/v1/workflows/:id/automation-status", readAuthorities);
   app.use("/v1/workflows/:id/automation-status", requirePermission("schedule:read"));
   app.openapi(automationStatus, async (c) => {
-    const clock = await c.get("db").execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
-    const now = clock.rows[0]?.now;
-    if (!now) throw new Error("database clock unavailable");
+    const now = await readDatabaseNow(c.get("db"));
     const principal = requireAuth(c);
     const tenant = principal.tenant_id;
     const workflow = c.req.valid("param").id;
@@ -628,9 +545,9 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
       (await can(db, { tenant_id: tenant, principal, permission, quiet: true })).allow;
     return c.json(
       {
-        schedules: await workflowAutomationView(tenant, workflow, db, new Date(now)),
+        schedules: await workflowAutomationView(tenant, workflow, db, now),
         inbound_hooks: (await probe("inbound_hook:read"))
-          ? await inboundHookAutomationView(tenant, workflow, db, new Date(now), {
+          ? await inboundHookAutomationView(tenant, workflow, db, now, {
               refusal_reasons: await probe("audit:read"),
             })
           : [],
@@ -689,66 +606,18 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
     const { id } = c.req.valid("param");
     const { cursor, environment, limit } = c.req.valid("query");
     const db = c.get("db");
-    const [workflow] = await db
-      .select({ id: workflows.id })
-      .from(workflows)
-      .where(
-        and(eq(workflows.tenant_id, tenant_id), eq(workflows.id, id), isNull(workflows.deleted_at)),
-      )
-      .limit(1);
-    if (!workflow) throw new NotFoundError("workflow");
-    const filter = and(
-      eq(workflowExecutionAuthorities.workflow_id, id),
-      environment ? eq(workflowExecutionAuthorities.execution_environment, environment) : undefined,
-    );
-    if (cursor) {
-      const [found] = await db
-        .select({ id: workflowExecutionAuthorities.id })
-        .from(workflowExecutionAuthorities)
-        .where(
-          and(
-            eq(workflowExecutionAuthorities.tenant_id, tenant_id),
-            filter,
-            eq(workflowExecutionAuthorities.id, cursor),
-          ),
-        )
-        .limit(1);
-      if (!found) throw new NotFoundError("authority cursor");
-    }
-    const anchor = db
-      .select({
-        created_at: workflowExecutionAuthorities.created_at,
-        id: workflowExecutionAuthorities.id,
-      })
-      .from(workflowExecutionAuthorities)
-      .where(
-        and(
-          eq(workflowExecutionAuthorities.tenant_id, tenant_id),
-          filter,
-          eq(workflowExecutionAuthorities.id, cursor ?? "00000000-0000-0000-0000-000000000000"),
-        ),
-      );
-    const rows = await db
-      .select({ id: workflowExecutionAuthorities.id })
-      .from(workflowExecutionAuthorities)
-      .where(
-        and(
-          eq(workflowExecutionAuthorities.tenant_id, tenant_id),
-          filter,
-          cursor
-            ? sql`(${workflowExecutionAuthorities.created_at}, ${workflowExecutionAuthorities.id}) < (${anchor})`
-            : undefined,
-        ),
-      )
-      .orderBy(desc(workflowExecutionAuthorities.created_at), desc(workflowExecutionAuthorities.id))
-      .limit(limit + 1);
-    const page = rows.slice(0, limit);
+    const page = await pageWorkflowAuthorityIds(db, {
+      tenant_id,
+      workflow_id: id,
+      cursor,
+      environment,
+      limit,
+    });
+    if (!page.ok) throw new NotFoundError(page.missing);
     const items = [];
-    for (const row of page) items.push(await readAuthority(db, tenant_id, id, row.id));
-    return c.json(
-      { items, next_cursor: rows.length > limit ? (page.at(-1)?.id ?? null) : null },
-      200,
-    );
+    for (const authorityId of page.ids)
+      items.push(await readAuthority(db, tenant_id, id, authorityId));
+    return c.json({ items, next_cursor: page.next_cursor }, 200);
   });
   app.openapi(preview, async (c) => {
     const principal = requireAuth(c);
@@ -765,32 +634,18 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
         { include_review: true },
       );
       if (!result.execution_shape) throw new Error("authority review unavailable");
-      const clock = await c.get("db").execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
-      const now = clock.rows[0]?.now;
-      if (!now) throw new Error("database clock unavailable");
-      const schedules = await c
-        .get("db")
-        .select({
-          cron: workflowsSchedules.cron,
-          timezone: workflowsSchedules.timezone,
-          input: workflowsSchedules.input,
-          last_enqueued_at: workflowsSchedules.last_enqueued_at,
-          created_at: workflowsSchedules.created_at,
-        })
-        .from(workflowsSchedules)
-        .where(
-          and(
-            eq(workflowsSchedules.tenant_id, principal.tenant_id),
-            eq(workflowsSchedules.workflow_id, id),
-            eq(workflowsSchedules.paused, false),
-            eq(workflowsSchedules.execution_mode, c.req.valid("query").environment),
-          ),
-        );
+      const now = await readDatabaseNow(c.get("db"));
+      const schedules = await listEnabledScheduleBasis(
+        c.get("db"),
+        principal.tenant_id,
+        id,
+        c.req.valid("query").environment,
+      );
       const { basis, ...suggested_bounds } = suggestAuthorityBounds(
-        new Date(now),
+        now,
         schedules,
         c.req.valid("query").environment === "prod"
-          ? await inboundHookDeliveryRate(principal.tenant_id, id, c.get("db"), new Date(now))
+          ? await inboundHookDeliveryRate(principal.tenant_id, id, c.get("db"), now)
           : null,
       );
       const reviewed = {
@@ -817,7 +672,7 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
       const choice = await reviewAuthorityEnvironments(
         c.get("db"),
         { tenant_id: principal.tenant_id, workflow_id: id, workflow_version_id: version_id },
-        new Date(now),
+        now,
       );
       return c.json(
         {
@@ -834,7 +689,7 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
           schedules: schedules.map((schedule) => ({
             cron: schedule.cron,
             timezone: schedule.timezone,
-            next_run_at: nextScheduleFire(schedule, new Date(now)),
+            next_run_at: nextScheduleFire(schedule, now),
           })),
           suggested_bounds,
           suggested_bounds_basis: basis,

@@ -1,14 +1,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, eq, isNull, ne } from "drizzle-orm";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import {
-  AuditAction,
-  auditAwait,
-  DiagnosticsIntegrationsReadMetadataSchema,
-} from "../../../audit/index.ts";
-import { effectiveConnectorHealth } from "../../../connectors/index.ts";
 import { getDb } from "../../../db/client.ts";
-import { connectors, workflows } from "../../../db/schema/index.ts";
+import { readIntegrationsHealth } from "../../../operator/integrations-health.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 
@@ -66,70 +59,10 @@ export function registerIntegrationsRoute(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db") ?? getDb();
 
-    const connectorRows = await db
-      .select({
-        id: connectors.id,
-        slug: connectors.slug,
-        environment: connectors.environment,
-        health_state: connectors.health_state,
-        health_reason: connectors.health_reason,
-        health_error_code: connectors.health_error_code,
-        sunset_at: connectors.sunset_at,
-        successor_uri: connectors.successor_uri,
-        needs_reauth: connectors.needs_reauth,
-        circuit_state: connectors.circuit_state,
-      })
-      .from(connectors)
-      .where(and(eq(connectors.tenant_id, principal.tenant_id), isNull(connectors.deleted_at)));
-
-    const workflowRows = await db
-      .select({
-        id: workflows.id,
-        slug: workflows.slug,
-        health_state: workflows.health_state,
-        health_reason: workflows.health_reason,
-      })
-      .from(workflows)
-      .where(
-        and(
-          eq(workflows.tenant_id, principal.tenant_id),
-          isNull(workflows.deleted_at),
-          ne(workflows.health_state, "ok"),
-        ),
-      );
-
-    const connectorEntries = connectorRows.map((row) => ({
-      id: row.id,
-      slug: row.slug,
-      environment: row.environment,
-      effective_health: effectiveConnectorHealth(row),
-      health_reason: row.health_reason ?? null,
-      health_error_code: row.health_error_code ?? null,
-      sunset_at: row.sunset_at?.toISOString() ?? null,
-      successor_uri: row.successor_uri ?? null,
-      needs_reauth: row.needs_reauth,
-      circuit_state: row.circuit_state,
-    }));
-    const connectorsAttention = connectorEntries.filter((e) => e.effective_health !== "ok").length;
-
-    const metadata = DiagnosticsIntegrationsReadMetadataSchema.parse({
-      connectors_total: connectorEntries.length,
-      connectors_attention: connectorsAttention,
-      workflows_attention: workflowRows.length,
-    });
-    await auditAwait(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: principal.kind,
-        actor_id: principal.id,
-        action: AuditAction.DIAGNOSTICS_INTEGRATIONS_READ,
-        resource_type: "engine",
-        resource_id: null,
-        result: "success",
-        metadata,
-      },
-      db,
-    );
+    const health = await readIntegrationsHealth(db, principal);
+    const connectorEntries = health.connectors;
+    const workflowRows = health.workflows;
+    const connectorsAttention = health.connectors_attention;
 
     return c.json(
       {

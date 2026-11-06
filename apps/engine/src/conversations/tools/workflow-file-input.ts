@@ -1,9 +1,8 @@
 import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
-import { and, eq, isNull } from "drizzle-orm";
 import { FileIdSchema } from "../../api/files-schemas.ts";
-import { fileLinks, files } from "../../db/schema/files.ts";
 import { type ResolvedFile, resolvedFromRow } from "../../files/resolver.ts";
+import { findConversationReadyFile } from "../../files/service.ts";
 import type { ToolContext } from "./index.ts";
 
 export const WorkflowInputFileSchema = z
@@ -42,22 +41,13 @@ export async function loadWorkflowInputFile(
   ctx: Pick<ToolContext, "db" | "tenant_id" | "conversation_id">,
   source: z.infer<typeof WorkflowInputFileSchema>,
 ): Promise<Record<string, unknown>> {
-  const [row] = await ctx.db
-    .select({ file: files })
-    .from(fileLinks)
-    .innerJoin(files, and(eq(files.id, fileLinks.file_id), eq(files.tenant_id, ctx.tenant_id)))
-    .where(
-      and(
-        eq(fileLinks.tenant_id, ctx.tenant_id),
-        eq(fileLinks.resource_type, "conversation"),
-        eq(fileLinks.resource_id, ctx.conversation_id),
-        eq(fileLinks.file_id, source.id.slice(4)),
-        eq(files.status, "ready"),
-        isNull(files.deleted_at),
-        eq(files.sha256, source.sha256),
-      ),
-    )
-    .limit(1);
-  if (!row) throw new Error("Workflow input file is not available in this conversation");
-  return decodeWorkflowInputFile(resolvedFromRow(row.file), source.sha256);
+  const file = await findConversationReadyFile(
+    ctx.db,
+    ctx.tenant_id,
+    ctx.conversation_id,
+    source.id.slice(4),
+    source.sha256,
+  );
+  if (!file) throw new Error("Workflow input file is not available in this conversation");
+  return decodeWorkflowInputFile(resolvedFromRow(file), source.sha256);
 }

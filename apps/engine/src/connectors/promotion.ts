@@ -12,7 +12,7 @@ import {
 import type { CredentialMode, DecryptedCredential } from "../credentials/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
-import { type Executor, getDb } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import {
   connectorPromotions,
   connectors,
@@ -111,10 +111,9 @@ function copyableCredential(value: DecryptedCredential): CredentialPlaintext {
 
 export async function promoteConnector(
   input: PromoteConnectorInput,
-  exec?: Executor,
+  db: Executor,
 ): Promise<ConnectorPromotionResult> {
   const auditActor = resolveActor(input);
-  const db = exec ?? getDb();
   const idempotencyHash = digest(input.idempotency_key);
   const requestFingerprint = digest(
     JSON.stringify({

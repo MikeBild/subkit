@@ -1,27 +1,15 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, desc, eq, gt, inArray } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
-import { AuditAction, auditAwait } from "../../audit/index.ts";
-import { selfHealingScans } from "../../db/schema/index.ts";
-import { logger } from "../../logging/index.ts";
 import {
-  recordProactiveDriftCandidate,
-  recordProactiveDriftScan,
-  recordProactiveDriftSignal,
-  recordProactiveDriftUnanchored,
-} from "../../observability/index.ts";
-import {
-  driftSignalContext,
-  processDriftSignal,
-  type SignalSource,
-  scanForDrift,
+  getScan,
+  listScans,
+  runAdminScan,
+  type SelfHealingScanRow,
 } from "../../self-healing/index.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-
-const IDEMPOTENCY_REPLAY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const ScanRequestBody = z
   .object({
@@ -101,7 +89,7 @@ const ListQuery = z
   })
   .openapi("ListSelfHealingScansQuery");
 
-function serializeScanRow(row: typeof selfHealingScans.$inferSelect) {
+function serializeScanRow(row: SelfHealingScanRow) {
   return {
     id: row.id,
     tenant_id: row.tenant_id,
@@ -184,44 +172,14 @@ export function registerSelfHealingRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.openapi(scanRoute, async (c) => {
     const principal = requireAuth(c);
-    const db = c.get("db");
     const body = c.req.valid("json");
-    const idempotencyKey = c.req.header("idempotency-key") ?? null;
-
-    const filters = {
-      tenant_id: principal.tenant_id,
-      ...(body.workflow_id ? { workflow_id: body.workflow_id } : {}),
-      ...(body.connector_id ? { connector_id: body.connector_id } : {}),
-    };
-
-    async function findIdempotentHit(): Promise<typeof selfHealingScans.$inferSelect | undefined> {
-      if (!idempotencyKey) return undefined;
-      const cutoff = new Date(Date.now() - IDEMPOTENCY_REPLAY_WINDOW_MS);
-      const cached = await db
-        .select()
-        .from(selfHealingScans)
-        .where(
-          and(
-            eq(selfHealingScans.tenant_id, principal.tenant_id),
-            eq(selfHealingScans.idempotency_key, idempotencyKey),
-            gt(selfHealingScans.created_at, cutoff),
-            inArray(selfHealingScans.status, ["succeeded", "failed"]),
-          ),
-        )
-        .orderBy(desc(selfHealingScans.created_at))
-        .limit(1);
-      return cached[0];
-    }
-
-    function replayResponse(hit: typeof selfHealingScans.$inferSelect) {
-      logger.info({
-        module: "self-healing",
-        action: "scan.idempotent_replay",
-        msg: "returning prior scan result from idempotency cache",
-        tenant_id: principal.tenant_id,
-        scan_id: hit.id,
-        idempotency_key: idempotencyKey,
-      });
+    const outcome = await runAdminScan(c.get("db"), principal, {
+      workflow_id: body.workflow_id,
+      connector_id: body.connector_id,
+      idempotency_key: c.req.header("idempotency-key") ?? null,
+    });
+    if (outcome.kind === "replay") {
+      const hit = outcome.scan;
       return c.json(
         {
           scan_id: hit.id,
@@ -236,195 +194,16 @@ export function registerSelfHealingRoutes(app: OpenAPIHono<AppEnv>): void {
         202,
       );
     }
-
-    const hit = await findIdempotentHit();
-    if (hit) return replayResponse(hit);
-
-    const started = new Date();
-    const inserted = await db
-      .insert(selfHealingScans)
-      .values({
-        tenant_id: principal.tenant_id,
-        source: "admin_http",
-        filters,
-        actor_id: principal.id,
-        ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
-        status: "running",
-      })
-      .onConflictDoNothing({
-        target: [selfHealingScans.tenant_id, selfHealingScans.idempotency_key],
-      })
-      .returning();
-    const scanRow = inserted[0];
-    if (!scanRow) {
-      const concurrent = await db
-        .select()
-        .from(selfHealingScans)
-        .where(
-          and(
-            eq(selfHealingScans.tenant_id, principal.tenant_id),
-            eq(selfHealingScans.idempotency_key, idempotencyKey ?? ""),
-          ),
-        )
-        .orderBy(desc(selfHealingScans.created_at))
-        .limit(1);
-      const winner = concurrent[0];
-      if (!winner) {
-        throw new Error("failed to persist self_healing_scans row");
-      }
-      return replayResponse(winner);
-    }
-    const scan_id = scanRow.id;
-
-    let signals_detected = 0;
-    let candidates_created = 0;
-    let errorText: string | null = null;
-    const candidates: Array<{
-      id: string;
-      signal_type: z.infer<typeof SignalTypeEnum>;
-      classification: "safe" | "unsafe";
-      status: "proposed" | "applied" | "rejected" | "superseded" | "inapplicable";
-    }> = [];
-    const unanchored: Array<{
-      signal_type: z.infer<typeof SignalTypeEnum>;
-      reason: "hook_surface_not_supported" | "no_workflow_anchor";
-      resource_id: string;
-    }> = [];
-
-    try {
-      await auditAwait(
-        {
-          tenant_id: principal.tenant_id,
-          actor_type: principal.kind,
-          actor_id: principal.id,
-          action: AuditAction.SELF_HEALING_SCAN_TRIGGERED,
-          resource_type: "self_healing_scan",
-          resource_id: scan_id,
-          result: "success",
-          metadata: { source: "admin_http", filters },
-        },
-        db,
-      );
-      const source: SignalSource = "proactive_admin";
-      const scan = await scanForDrift(filters, db);
-      signals_detected = scan.signals.length + scan.unanchored.length;
-
-      for (const u of scan.unanchored) {
-        unanchored.push({
-          signal_type: u.signal.kind,
-          reason: u.reason,
-          resource_id: u.resource_id,
-        });
-        recordProactiveDriftUnanchored({
-          tenant_id: principal.tenant_id,
-          signal_type: u.signal.kind,
-          reason: u.reason,
-        });
-      }
-
-      for (const { signal, ctx } of scan.signals) {
-        recordProactiveDriftSignal({
-          tenant_id: principal.tenant_id,
-          signal_type: signal.kind,
-        });
-        try {
-          const result = await processDriftSignal(
-            signal,
-            driftSignalContext(ctx, {
-              actor_id: principal.id,
-              actor_type: principal.kind,
-              source,
-              scan_id,
-            }),
-            { allowAutoApply: false },
-            db,
-          );
-          candidates_created += 1;
-          recordProactiveDriftCandidate({
-            tenant_id: principal.tenant_id,
-            classification: result.classification,
-          });
-          candidates.push({
-            id: result.candidate_id,
-            signal_type: signal.kind,
-            classification: result.classification,
-            status: result.status,
-          });
-        } catch (err) {
-          logger.error({
-            module: "self-healing",
-            action: "scan.signal_failed",
-            msg: "failed to process drift signal — continuing",
-            scan_id,
-            tenant_id: principal.tenant_id,
-            drift_kind: signal.kind,
-            err: err instanceof Error ? err.message : String(err),
-          });
-        }
-      }
-    } catch (err) {
-      errorText = err instanceof Error ? err.message : String(err);
-      logger.error({
-        module: "self-healing",
-        action: "scan.failed",
-        msg: "admin-triggered scan failed mid-pass",
-        scan_id,
-        tenant_id: principal.tenant_id,
-        err: errorText,
-      });
-    }
-
-    const duration_ms = Date.now() - started.getTime();
-    await db
-      .update(selfHealingScans)
-      .set({
-        signals_detected,
-        candidates_created,
-        unanchored_detected: unanchored.length,
-        duration_ms,
-        status: errorText === null ? "succeeded" : "failed",
-        error: errorText,
-        updated_at: new Date(),
-      })
-      .where(eq(selfHealingScans.id, scan_id));
-
-    recordProactiveDriftScan({
-      tenant_id: principal.tenant_id,
-      source: "admin_http",
-      status: errorText === null ? "succeeded" : "failed",
-      duration_ms,
-    });
-
-    await auditAwait(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: principal.kind,
-        actor_id: principal.id,
-        action: AuditAction.SELF_HEALING_SCAN_COMPLETED,
-        resource_type: "self_healing_scan",
-        resource_id: scan_id,
-        result: errorText === null ? "success" : "error",
-        metadata: {
-          source: "admin_http",
-          signals_detected,
-          candidates_created,
-          unanchored_detected: unanchored.length,
-          duration_ms,
-          ...(errorText ? { error: errorText } : {}),
-        },
-      },
-      db,
-    );
-
+    const result = outcome.result;
     return c.json(
       {
-        scan_id,
-        signals_detected,
-        candidates_created,
-        unanchored_detected: unanchored.length,
-        duration_ms,
-        candidates,
-        unanchored,
+        scan_id: result.scan_id,
+        signals_detected: result.signals_detected,
+        candidates_created: result.candidates_created,
+        unanchored_detected: result.unanchored_detected,
+        duration_ms: result.duration_ms,
+        candidates: result.candidates,
+        unanchored: result.unanchored,
       },
       200,
     );
@@ -432,31 +211,19 @@ export function registerSelfHealingRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.openapi(listRoute, async (c) => {
     const principal = requireAuth(c);
-    const db = c.get("db");
     const q = c.req.valid("query");
-    const tenantPredicate = eq(selfHealingScans.tenant_id, principal.tenant_id);
-    const extras = [];
-    if (q.status) extras.push(eq(selfHealingScans.status, q.status));
-    if (q.source) extras.push(eq(selfHealingScans.source, q.source));
-    const rows = await db
-      .select()
-      .from(selfHealingScans)
-      .where(extras.length > 0 ? and(tenantPredicate, ...extras) : tenantPredicate)
-      .orderBy(desc(selfHealingScans.created_at))
-      .limit(q.limit ?? 50);
+    const rows = await listScans(c.get("db"), principal.tenant_id, {
+      status: q.status,
+      source: q.source,
+      limit: q.limit ?? 50,
+    });
     return c.json({ items: rows.map(serializeScanRow) }, 200);
   });
 
   app.openapi(getRouteSpec, async (c) => {
     const principal = requireAuth(c);
-    const db = c.get("db");
     const { id } = c.req.valid("param");
-    const rows = await db
-      .select()
-      .from(selfHealingScans)
-      .where(and(eq(selfHealingScans.tenant_id, principal.tenant_id), eq(selfHealingScans.id, id)))
-      .limit(1);
-    const row = rows[0];
+    const row = await getScan(c.get("db"), principal.tenant_id, id);
     if (!row) throw new NotFoundError("self_healing_scan");
     return c.json(serializeScanRow(row), 200);
   });

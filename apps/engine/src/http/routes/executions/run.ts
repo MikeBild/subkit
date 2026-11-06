@@ -1,33 +1,26 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { AuditAction, actorType, auditAwait, readRequestSource } from "../../../audit/index.ts";
+import { AuditAction, auditAwait, readRequestSource } from "../../../audit/index.ts";
 import type { ResolvedPrincipal } from "../../../auth/index.ts";
-import { getConfig, isConfigLoaded } from "../../../config/loader.ts";
-import type { ExecutionMode } from "../../../execution/index.ts";
 import {
-  admitWorkflowRun,
   assertCallerExecutionSource,
-  assertExecutionAuthorityCurrent,
-  auditAdmissionRefusal,
   authorizationContextFromPrincipal,
-  finalizeExecution,
+  isBearerProductPrincipal,
+  principalExecutionEnvironment,
   type RunExecutionSource,
+  type RunRefusal,
   runExecution,
+  runWorkflow,
 } from "../../../execution/index.ts";
 import type { RequestSource } from "../../../observability/index.ts";
-import type { ExecutionRunJob } from "../../../queue/index.ts";
-import { EXECUTION_RUN_QUEUE, enqueueHostedWork, getBoss } from "../../../queue/index.ts";
+import { getBoss } from "../../../queue/index.ts";
 import { normalizeWorkflowRunInput } from "../../../workflows/index.ts";
 import { BadRequestError, HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
-import {
-  admissionRefusal,
-  callerBudgetRefusal,
-  isBearerProductPrincipal,
-} from "./admission-errors.ts";
+import { admissionRefusal } from "./admission-errors.ts";
 import {
   CallerBudgetRefusalSchema,
   type ClientDeclaredRunSource,
@@ -118,9 +111,64 @@ export async function enforceSavedWorkflowAllowlist(
   });
 }
 
-function productEnvironment(principal: ResolvedPrincipal): ExecutionMode | null {
-  if (!principal.product_id || !isConfigLoaded()) return null;
-  return getConfig().products[principal.product_id]?.execution_environment ?? null;
+const callerBudgetStatuses = {
+  rate_limited: { status: 429, error: "rate-limited" },
+  turn_busy: { status: 409, error: "turn-busy" },
+  turn_limit: { status: 429, error: "turn-limit" },
+  invalid: { status: 400, error: "invalid" },
+} as const;
+
+function refusalDetails(refusal: RunRefusal): Record<string, unknown> | undefined {
+  const raw = refusal.details;
+  const execution = refusal.execution_id ? { execution_id: refusal.execution_id } : undefined;
+  return raw && typeof raw === "object" && !Array.isArray(raw)
+    ? { ...(raw as Record<string, unknown>), ...execution }
+    : execution;
+}
+
+export function refusalResponse(
+  c: Context,
+  refusal: RunRefusal,
+  principal: ResolvedPrincipal,
+): Response {
+  switch (refusal.refusal) {
+    case "not_found":
+      throw new NotFoundError("workflow");
+    case "input":
+      throw new HttpError(400, refusal.code, refusal.message);
+    case "bad_request":
+      throw new BadRequestError(refusal.message, { code: "bad_request" });
+    case "preparation_forbidden":
+    case "permission_denied":
+      throw new HttpError(403, refusal.code, refusal.message);
+    case "budget": {
+      const status =
+        callerBudgetStatuses[refusal.code as keyof typeof callerBudgetStatuses] ??
+        callerBudgetStatuses.invalid;
+      const usage = (refusal.details as { usage?: Record<string, unknown> } | undefined)?.usage;
+      return c.json(
+        {
+          error: status.error,
+          code: refusal.code,
+          message: refusal.message,
+          ...(usage ? { usage: { usedToday: usage.usedToday, dailyLimit: usage.dailyLimit } } : {}),
+        },
+        status.status,
+      );
+    }
+    default: {
+      const details = refusalDetails(refusal);
+      const forbidden =
+        refusal.refusal === "caller_forbidden" ||
+        (refusal.refusal === "authority_unready" && isBearerProductPrincipal(principal));
+      throw new HttpError(
+        forbidden ? 403 : 409,
+        refusal.code,
+        refusal.message,
+        details ? { details } : {},
+      );
+    }
+  }
 }
 
 export function runRequestSource(c: Context, declared?: ClientDeclaredRunSource): RequestSource {
@@ -191,91 +239,44 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
     if (body.source === "saved" && body.async) enforceAsyncAuthentication(principal);
     await enforceWorkflowAllowlist(principal, body, db);
 
-    const idempotencyKey =
-      body.source === "saved"
-        ? (body.idempotency_key ?? c.req.header("idempotency-key")?.trim() ?? null)
-        : null;
-    if (idempotencyKey !== null && (idempotencyKey.length < 1 || idempotencyKey.length > 200)) {
-      throw new BadRequestError("idempotency_key must be 1..200 characters", {
-        code: "bad_request",
-      });
-    }
-
-    const envHeader = c.req.header("x-subkit-environment");
-    let execution_mode: ExecutionMode = productEnvironment(principal) ?? "dev";
-    if (!principal.product_id && (envHeader === "dev" || envHeader === "prod"))
-      execution_mode = envHeader;
+    const requestedEnvironment = c.req.header("x-subkit-environment");
+    const execution_mode = principalExecutionEnvironment(
+      principal,
+      requestedEnvironment === "dev" || requestedEnvironment === "prod"
+        ? requestedEnvironment
+        : null,
+    );
 
     if (body.source === "saved") {
-      const bearerProduct = isBearerProductPrincipal(principal);
-      if (bearerProduct && body.hold_writes === true)
-        throw new HttpError(
-          403,
-          "product_preparation_forbidden",
-          "A product caller runs only under a live execution authority; held preparations are for operators.",
-        );
-      const holdWrites = bearerProduct ? false : body.hold_writes;
-      if (body.async && body.execution_authority_id && !idempotencyKey) {
-        throw new BadRequestError(
-          "An authorized async run requires an idempotency_key so queue retries reuse its reservation",
-          {
-            code: "bad_request",
-          },
-        );
-      }
-      let admitted: Awaited<ReturnType<typeof admitWorkflowRun>>;
-      try {
-        admitted = await admitWorkflowRun(
-          {
-            tenant_id: principal.tenant_id,
-            workflow_id: body.workflow_id,
-            workflow_version_id: body.version_id,
-            execution_authority_id: body.execution_authority_id,
-            execution_environment: execution_mode,
-            request_source,
-            input: body.input,
-            idempotency_key: idempotencyKey ?? undefined,
-            hold_writes: holdWrites,
-          },
-          db,
-          principal,
-          c.get("workflow_permission"),
-        );
-        if (body.async && admitted.status === "queued" && admitted.execution_authority_id) {
-          await assertExecutionAuthorityCurrent(db, principal.tenant_id, admitted.execution_id);
-        }
-      } catch (error) {
-        const budgetRefusal = await callerBudgetRefusal(c, error, {
-          db,
+      const outcome = await runWorkflow(
+        {
           principal,
           workflow_id: body.workflow_id,
+          workflow_version_id: body.version_id,
+          execution_authority_id: body.execution_authority_id,
+          execution_environment: execution_mode,
           request_source,
-        });
-        if (budgetRefusal) return budgetRefusal as never;
-        return admissionRefusal(error, {
-          db,
-          principal,
-          workflow_id: body.workflow_id,
-          request_source,
-        });
-      }
-      if ("downgraded_from" in admitted && admitted.downgraded_from) {
-        await auditAdmissionRefusal(
-          {
-            tenant_id: principal.tenant_id,
-            reason: admitted.downgraded_from.code,
-            message: admitted.downgraded_from.message,
-            workflow_id: body.workflow_id,
-            execution_id: admitted.execution_id,
-            request_source,
-            actor_id: principal.id,
-            actor_type: actorType(principal),
-            extra: { downgraded_to_preparation: true },
+          input: body.input,
+          idempotency_key: body.idempotency_key ?? c.req.header("idempotency-key")?.trim() ?? null,
+          hold_writes: body.hold_writes,
+          authorization: {
+            kind: "granted",
+            workflow_permission: c.get("workflow_permission") ?? null,
           },
-          db,
-        );
-      }
-      if (admitted.replayed && admitted.status !== "queued") {
+          dispatch: body.async
+            ? {
+                mode: "enqueue",
+                boss: c.get("boss") ?? getBoss(),
+                trace_id: c.get("trace_id") ?? null,
+              }
+            : { mode: "inline", refusal_answered_to_caller: true },
+        },
+        { db },
+      );
+      if (outcome.kind === "rejected") return refusalResponse(c, outcome, principal) as never;
+      if (outcome.kind === "enqueue_failed") throw outcome.error;
+      const admitted = outcome.admitted;
+      if (outcome.kind === "replayed") {
         return c.json(
           {
             execution_id: admitted.execution_id,
@@ -286,84 +287,24 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
           admitted.status === "running" ? 202 : 200,
         );
       }
-      if (body.async) {
-        try {
-          await enqueueHostedWork(
-            db,
-            c.get("boss") ?? getBoss(),
-            "execution",
-            EXECUTION_RUN_QUEUE,
-            {
-              tenant_id: principal.tenant_id,
-              workflow_id: body.workflow_id,
-              execution_id: admitted.execution_id,
-              request_source,
-              trace_id: c.get("trace_id") ?? null,
-              execution_mode,
-            } satisfies ExecutionRunJob,
-            { id: admitted.execution_id },
-          );
-        } catch (error) {
-          if (!idempotencyKey)
-            await finalizeExecution(
-              db,
-              principal.tenant_id,
-              admitted.execution_id,
-              "failed",
-              null,
-              {
-                step_id: null,
-                error_code: "enqueue_failed",
-                error_message: "The execution could not be enqueued.",
-              },
-            );
-          throw error;
-        }
+      if (outcome.kind === "completed") {
         return c.json(
           {
-            execution_id: admitted.execution_id,
-            status: "queued",
+            ...outcome.result,
             hold_writes: admitted.hold_writes,
             ...(admitted.replayed ? { idempotent_replay: true } : {}),
           },
-          202,
+          200,
         );
-      }
-      let result: Awaited<ReturnType<typeof runExecution>>;
-      try {
-        result = await runExecution({
-          db,
-          tenant_id: principal.tenant_id,
-          refusal_answered_to_caller: true,
-          source: {
-            kind: "saved",
-            workflow_id: body.workflow_id,
-            version_id: admitted.workflow_version_id,
-          },
-          input: admitted.input,
-          options: {
-            existing_execution_id: admitted.execution_id,
-            principal,
-            execution_mode,
-            request_source,
-          },
-        });
-      } catch (error) {
-        return admissionRefusal(error, {
-          db,
-          principal,
-          workflow_id: body.workflow_id,
-          request_source,
-          execution_id: admitted.execution_id,
-        });
       }
       return c.json(
         {
-          ...result,
+          execution_id: admitted.execution_id,
+          status: "queued",
           hold_writes: admitted.hold_writes,
           ...(admitted.replayed ? { idempotent_replay: true } : {}),
         },
-        200,
+        202,
       );
     }
 
@@ -396,7 +337,7 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
           request_source,
           principal,
           execution_mode,
-          idempotency_key: idempotencyKey,
+          idempotency_key: null,
           hold_writes: true,
           self_healing: { enabled: false },
         },

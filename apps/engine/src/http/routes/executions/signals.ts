@@ -1,10 +1,11 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { executions } from "../../../db/schema/index.ts";
-import { executionVisibilityFilter, isSensitivePayload } from "../../../execution/index.ts";
+import {
+  findPrincipalSignalTarget,
+  findTokenSignalTarget,
+  isSensitivePayload,
+} from "../../../execution/index.ts";
 import { appendSignal } from "../../../workflow-signals/service.ts";
-import { verifySignalToken } from "../../../workflow-signals/token.ts";
 import { HttpError, NotFoundError, UnauthorizedError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
@@ -31,6 +32,7 @@ const signalRoute = createRoute({
   security: [{ bearerAuth: [] }],
   request: {
     params: IdParam,
+    query: z.object({ token: z.string().optional() }),
     body: { content: { "application/json": { schema: SignalRequestSchema } } },
   },
   responses: {
@@ -57,47 +59,16 @@ export function registerSignalRoute(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
-    const token = c.req.query("token");
+    const { token } = c.req.valid("query");
 
-    let tenant_id: string;
-    let input: unknown;
-    if (token) {
-      // tenant-filter:exempt — token-mediated lookup by globally-unique execution_id; tenant_id is read out and verified against the signed HMAC token below
-      const rows = await db
-        .select({ id: executions.id, tenant_id: executions.tenant_id, input: executions.input })
-        .from(executions)
-        .where(eq(executions.id, id))
-        .limit(1);
-      if (!rows[0]) throw new NotFoundError("execution");
-      const verdict = verifySignalToken(token, {
-        tenant_id: rows[0].tenant_id,
-        execution_id: id,
-        event_name: body.event,
-      });
-      if (!verdict.ok) {
-        throw new UnauthorizedError(`signal token rejected: ${verdict.reason}`);
-      }
-      tenant_id = rows[0].tenant_id;
-      input = rows[0].input;
-    } else {
-      const principal = requireAuth(c);
-      tenant_id = principal.tenant_id;
-      const rows = await db
-        .select({ id: executions.id, input: executions.input })
-        .from(executions)
-        .where(
-          and(
-            eq(executions.tenant_id, tenant_id),
-            eq(executions.id, id),
-            executionVisibilityFilter(principal),
-          ),
-        )
-        .limit(1);
-      if (!rows[0]) throw new NotFoundError("execution");
-      input = rows[0].input;
-    }
+    const target = token
+      ? await findTokenSignalTarget(db, { execution_id: id, token, event_name: body.event })
+      : await findPrincipalSignalTarget(db, requireAuth(c), id);
+    if (!target.ok && target.reason === "token_rejected")
+      throw new UnauthorizedError(`signal token rejected: ${target.detail}`);
+    if (!target.ok) throw new NotFoundError("execution");
 
-    if (isSensitivePayload(input))
+    if (isSensitivePayload(target.input))
       throw new HttpError(
         409,
         "sensitive_execution_unsupported",
@@ -105,7 +76,7 @@ export function registerSignalRoute(app: OpenAPIHono<AppEnv>): void {
       );
 
     const { id: signal_id } = await appendSignal(db, {
-      tenant_id,
+      tenant_id: target.tenant_id,
       execution_id: id,
       event_name: body.event,
       ...(body.payload ? { payload: body.payload as Record<string, unknown> } : {}),

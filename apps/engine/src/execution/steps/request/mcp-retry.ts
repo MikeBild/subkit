@@ -3,6 +3,7 @@ import { logger } from "../../../logging/logger.ts";
 import { MCP_WIRE_METHOD } from "../../../mcp/client/remote-call.ts";
 import { recordRequestRetry } from "../../../observability/instrumentation.ts";
 import type { RequestStep } from "../../../workflows/types.ts";
+import { type Clock, SYSTEM_CLOCK } from "../../clock.ts";
 import type { ConnectorResolutionSummary, StepResult, StepWarning } from "../../types.ts";
 import { RequestError } from "./errors.ts";
 import { backoffMs, requestMaxAttempts, resolveRetryPolicy } from "./retry.ts";
@@ -35,12 +36,14 @@ export interface RunMcpWithRetryParams {
   step: Pick<RequestStep, "max_retries" | "retry_backoff_ms" | "error_policy">;
   signal: AbortSignal;
   start: number;
+  clock?: Clock;
   connector: ConnectorResolutionSummary;
   operation: string;
   connector_id: string;
 }
 
 export async function runMcpWithRetry(p: RunMcpWithRetryParams): Promise<StepResult> {
+  const clock = p.clock ?? SYSTEM_CLOCK;
   const policy = resolveRetryPolicy(p.step as RequestStep);
   const max_attempts = requestMaxAttempts(p.step);
   let finalAttempt = 0;
@@ -60,7 +63,7 @@ export async function runMcpWithRetry(p: RunMcpWithRetryParams): Promise<StepRes
       attempt_no: attempt,
       total_attempts: max_attempts,
       delay_ms: Math.round(wait),
-      next_attempt_at: new Date(Date.now() + wait).toISOString(),
+      next_attempt_at: new Date(clock.now() + wait).toISOString(),
       connector_id: p.connector_id,
     });
     recordRequestRetry({ connector_id: p.connector_id, reason: `mcp_${last.failure}` });
@@ -71,7 +74,7 @@ export async function runMcpWithRetry(p: RunMcpWithRetryParams): Promise<StepRes
     return {
       status: "failed",
       retry_count: 0,
-      duration_ms: Date.now() - p.start,
+      duration_ms: clock.now() - p.start,
       error: { code: "mcp_error", message: "no attempt was made" },
     };
   }
@@ -94,7 +97,7 @@ export async function runMcpWithRetry(p: RunMcpWithRetryParams): Promise<StepRes
       status: "succeeded",
       output,
       retry_count: finalAttempt,
-      duration_ms: Date.now() - p.start,
+      duration_ms: clock.now() - p.start,
       request_meta,
     };
   }
@@ -118,7 +121,7 @@ export async function runMcpWithRetry(p: RunMcpWithRetryParams): Promise<StepRes
       status: "succeeded",
       output,
       retry_count: finalAttempt,
-      duration_ms: Date.now() - p.start,
+      duration_ms: clock.now() - p.start,
       request_meta,
       warnings,
     };
@@ -128,7 +131,7 @@ export async function runMcpWithRetry(p: RunMcpWithRetryParams): Promise<StepRes
     return {
       status: "aborted",
       retry_count: finalAttempt,
-      duration_ms: Date.now() - p.start,
+      duration_ms: clock.now() - p.start,
       request_meta,
       error: {
         code: "mcp_cancelled",
@@ -141,7 +144,7 @@ export async function runMcpWithRetry(p: RunMcpWithRetryParams): Promise<StepRes
     status: "failed",
     output,
     retry_count: finalAttempt,
-    duration_ms: Date.now() - p.start,
+    duration_ms: clock.now() - p.start,
     request_meta,
     error: {
       code: isMcpAvailabilityFailure(last.failure) ? "mcp_unavailable" : "mcp_remote_error",

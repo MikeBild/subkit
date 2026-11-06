@@ -11,6 +11,7 @@ import { log } from "../logging/logger.ts";
 import { carryApprovalsForward } from "./authority-inheritance.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
 import { toStoredDefinition } from "./core/definition.ts";
+import { readStoredSpec, workflowSpecDigest } from "./core/spec.ts";
 import { decide, describeRejection, evolve } from "./core/workflow.ts";
 import { emitWorkflowLifecycle, getWorkflow, type WorkflowView } from "./service.ts";
 import {
@@ -26,7 +27,7 @@ import {
   type VersionAuthor,
   versionAuthorColumns,
 } from "./version-author.ts";
-import { loadVersionSpec, readStoredSpec, workflowSpecDigest } from "./version-spec.ts";
+import { loadVersionSpec } from "./version-spec.ts";
 import {
   lockWorkflowForVersionWrite,
   nextVersionNumber,

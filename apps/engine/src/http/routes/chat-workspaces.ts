@@ -1,19 +1,19 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
-import { AuditAction, auditAwait } from "../../audit/index.ts";
 import {
   assertChatWorkspaceOwnershipAvailable,
   buildGoogleChatAdapterFromConfig,
   type ChatAdapterRegistry,
   ChatPlatformZodEnum,
-  chatWorkspaceAad,
-  PLATFORM_HAS_GLOBAL_USER_IDS,
+  ChatWorkspaceInstallRefusedError,
+  type ChatWorkspaceRow,
+  findChatWorkspace,
+  installChatWorkspace,
+  listChatWorkspaces,
+  removeChatWorkspace,
   SlackAdapter,
 } from "../../chat/index.ts";
 import { getConfig } from "../../config/loader.ts";
-import { encryptSecret } from "../../crypto/aes-gcm.ts";
-import { chatIdentities, chatWorkspaces } from "../../db/schema/index.ts";
 import {
   BadRequestError,
   ConflictError,
@@ -60,7 +60,16 @@ const InstallChatWorkspaceSchema = z
   })
   .openapi("InstallChatWorkspace");
 
-function rowToOutput(row: typeof chatWorkspaces.$inferSelect): z.infer<typeof ChatWorkspaceSchema> {
+function mapInstallRefusal(err: unknown): never {
+  if (err instanceof ChatWorkspaceInstallRefusedError) {
+    if (err.refusal === "platform_unsupported") throw new BadRequestError(err.message);
+    if (err.refusal === "installer_not_owned") throw new ForbiddenError(err.message);
+    throw new ConflictError(err.message);
+  }
+  throw err;
+}
+
+function rowToOutput(row: ChatWorkspaceRow): z.infer<typeof ChatWorkspaceSchema> {
   return {
     id: row.id,
     tenant_id: row.tenant_id,
@@ -162,241 +171,7 @@ export function registerChatWorkspaceRoutes(
       }
     }
 
-    // tenant-filter:exempt — global uniqueness check spans tenants by
-    // design; we never expose the foreign row, only the conflict.
-    const [foreignRow] = await db
-      .select({ tenant_id: chatWorkspaces.tenant_id })
-      .from(chatWorkspaces)
-      .where(
-        and(
-          eq(chatWorkspaces.platform, body.platform),
-          eq(chatWorkspaces.workspace_id, body.workspace_id),
-        ),
-      )
-      .limit(1);
-    if (foreignRow && foreignRow.tenant_id !== principal.tenant_id) {
-      await auditAwait(
-        {
-          tenant_id: principal.tenant_id,
-          actor_type: principal.kind,
-          actor_id: principal.id,
-          action: AuditAction.CHAT_WORKSPACE_INSTALLED,
-          resource_type: "chat_workspace",
-          resource_id: null,
-          result: "denied",
-          reason: "workspace_already_claimed",
-          metadata: {
-            platform: body.platform,
-            workspace_id: body.workspace_id,
-          },
-        },
-        db,
-      );
-      throw new ConflictError(
-        `${body.platform} workspace ${body.workspace_id} is already installed in another tenant`,
-      );
-    }
-
-    if (body.platform === "teams") {
-      await auditAwait(
-        {
-          tenant_id: principal.tenant_id,
-          actor_type: principal.kind,
-          actor_id: principal.id,
-          action: AuditAction.CHAT_WORKSPACE_INSTALLED,
-          resource_type: "chat_workspace",
-          resource_id: null,
-          result: "denied",
-          reason: "platform_unsupported",
-          metadata: { platform: body.platform, workspace_id: body.workspace_id },
-        },
-        db,
-      );
-      throw new BadRequestError(
-        "teams chat spaces are not supported yet — no adapter is hydrated for the teams platform",
-      );
-    }
-
-    if (PLATFORM_HAS_GLOBAL_USER_IDS[body.platform]) {
-      const [owned] = await db
-        .select({ id: chatIdentities.id })
-        .from(chatIdentities)
-        .where(
-          and(
-            eq(chatIdentities.tenant_id, principal.tenant_id),
-            eq(chatIdentities.user_id, principal.id),
-            eq(chatIdentities.platform, body.platform),
-            eq(chatIdentities.platform_user_id, body.installer_platform_user_id),
-          ),
-        )
-        .limit(1);
-      if (!owned) {
-        await auditAwait(
-          {
-            tenant_id: principal.tenant_id,
-            actor_type: principal.kind,
-            actor_id: principal.id,
-            action: AuditAction.CHAT_WORKSPACE_INSTALLED,
-            resource_type: "chat_workspace",
-            resource_id: null,
-            result: "denied",
-            reason: "installer_not_owned",
-            metadata: {
-              platform: body.platform,
-              workspace_id: body.workspace_id,
-              installer_platform_user_id: body.installer_platform_user_id,
-            },
-          },
-          db,
-        );
-        throw new ForbiddenError(
-          "installer_platform_user_id is not a verified identity you own — " +
-            "DM the app once so your account links, then retry the install",
-        );
-      }
-    }
-
-    const placeholder = encryptSecret("__placeholder__");
-    let row: typeof chatWorkspaces.$inferSelect | undefined;
-    let installerLinked = false;
-    await db.transaction(async (tx) => {
-      const insertResult = await tx
-        .insert(chatWorkspaces)
-        .values({
-          tenant_id: principal.tenant_id,
-          platform: body.platform,
-          workspace_id: body.workspace_id,
-          default_channel: body.default_channel ?? null,
-          bot_ciphertext: placeholder.ciphertext,
-          bot_iv: placeholder.iv,
-          bot_auth_tag: placeholder.auth_tag,
-        })
-        .onConflictDoNothing({
-          target: [chatWorkspaces.tenant_id, chatWorkspaces.platform, chatWorkspaces.workspace_id],
-        })
-        .returning();
-      row = insertResult[0];
-      if (!row) {
-        throw new ConflictError(
-          `${body.platform} workspace ${body.workspace_id} is already installed in this tenant`,
-        );
-      }
-
-      const bound = encryptSecret(
-        body.bot_token ?? "__no_workspace_token__",
-        chatWorkspaceAad(row.tenant_id, row.id),
-      );
-      await tx
-        .update(chatWorkspaces)
-        .set({
-          bot_ciphertext: bound.ciphertext,
-          bot_iv: bound.iv,
-          bot_auth_tag: bound.auth_tag,
-          updated_at: new Date(),
-        })
-        .where(eq(chatWorkspaces.id, row.id));
-
-      const linkResult = await tx
-        .insert(chatIdentities)
-        .values({
-          tenant_id: principal.tenant_id,
-          user_id: principal.id,
-          platform: body.platform,
-          workspace_id: body.workspace_id,
-          platform_user_id: body.installer_platform_user_id,
-        })
-        .onConflictDoNothing({
-          target: [
-            chatIdentities.platform,
-            chatIdentities.workspace_id,
-            chatIdentities.platform_user_id,
-          ],
-        })
-        .returning();
-      if (linkResult[0]) {
-        installerLinked = true;
-      } else {
-        // tenant-filter:exempt — the chat_identities row is keyed by
-        // the platform identity tuple (platform, workspace_id,
-        // platform_user_id) which is globally unique. A different-
-        // tenant binding for the same Slack id is the exact conflict
-        // this branch is designed to surface; adding a tenant_id
-        // predicate here would hide it and silently overwrite the
-        // operator's link state.
-        const [existing] = await tx
-          .select({ user_id: chatIdentities.user_id })
-          .from(chatIdentities)
-          .where(
-            and(
-              eq(chatIdentities.platform, body.platform),
-              eq(chatIdentities.workspace_id, body.workspace_id),
-              eq(chatIdentities.platform_user_id, body.installer_platform_user_id),
-            ),
-          )
-          .limit(1);
-        if (existing && existing.user_id !== principal.id) {
-          await auditAwait(
-            {
-              tenant_id: principal.tenant_id,
-              actor_type: principal.kind,
-              actor_id: principal.id,
-              action: AuditAction.CHAT_IDENTITY_LINKED,
-              resource_type: "chat_identity",
-              resource_id: principal.id,
-              result: "denied",
-              reason: "platform_user_already_linked_to_other_subkit_user",
-              metadata: {
-                kind: "install",
-                platform: body.platform,
-                platform_user_id: body.installer_platform_user_id,
-                workspace_id: body.workspace_id,
-              },
-            },
-            db,
-          );
-          throw new ConflictError(
-            `slack user ${body.installer_platform_user_id} in workspace ` +
-              `${body.workspace_id} is already linked to a different subkit user; ` +
-              "unlink it via DELETE /v1/chat/identities/<id> and retry the install",
-          );
-        }
-      }
-
-      await auditAwait(
-        {
-          tenant_id: principal.tenant_id,
-          actor_type: principal.kind,
-          actor_id: principal.id,
-          action: AuditAction.CHAT_WORKSPACE_INSTALLED,
-          resource_type: "chat_workspace",
-          resource_id: row.id,
-          result: "success",
-          metadata: {
-            platform: body.platform,
-            workspace_id: body.workspace_id,
-          },
-        },
-        tx,
-      );
-      await auditAwait(
-        {
-          tenant_id: principal.tenant_id,
-          actor_type: principal.kind,
-          actor_id: principal.id,
-          action: AuditAction.CHAT_IDENTITY_LINKED,
-          resource_type: "chat_identity",
-          resource_id: principal.id,
-          result: "success",
-          ...(installerLinked ? {} : { reason: "install_noop" }),
-          metadata: {
-            kind: installerLinked ? "install" : "install_noop",
-            platform: body.platform,
-            platform_user_id: body.installer_platform_user_id,
-          },
-        },
-        tx,
-      );
-    });
+    const row = await installChatWorkspace(db, { principal, body }).catch(mapInstallRefusal);
     if (!row) throw new ConflictError("chat_workspace install transaction produced no row");
 
     if (body.platform === "slack" && body.bot_token) {
@@ -430,21 +205,14 @@ export function registerChatWorkspaceRoutes(
       }
     }
 
-    const [fresh] = await db
-      .select()
-      .from(chatWorkspaces)
-      .where(and(eq(chatWorkspaces.tenant_id, principal.tenant_id), eq(chatWorkspaces.id, row.id)))
-      .limit(1);
+    const fresh = await findChatWorkspace(db, principal.tenant_id, row.id);
     return c.json(rowToOutput(fresh ?? row), 201);
   });
 
   app.openapi(listRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
-    const rows = await db
-      .select()
-      .from(chatWorkspaces)
-      .where(eq(chatWorkspaces.tenant_id, principal.tenant_id));
+    const rows = await listChatWorkspaces(db, principal.tenant_id);
     return c.json({ items: rows.map(rowToOutput) }, 200);
   });
 
@@ -452,31 +220,8 @@ export function registerChatWorkspaceRoutes(
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    const [row] = await db
-      .select()
-      .from(chatWorkspaces)
-      .where(and(eq(chatWorkspaces.tenant_id, principal.tenant_id), eq(chatWorkspaces.id, id)))
-      .limit(1);
+    const row = await removeChatWorkspace(db, principal, id);
     if (!row) throw new NotFoundError("chat_workspace");
-
-    await db.transaction(async (tx) => {
-      await tx
-        .delete(chatWorkspaces)
-        .where(and(eq(chatWorkspaces.tenant_id, principal.tenant_id), eq(chatWorkspaces.id, id)));
-      await auditAwait(
-        {
-          tenant_id: principal.tenant_id,
-          actor_type: principal.kind,
-          actor_id: principal.id,
-          action: AuditAction.CHAT_WORKSPACE_REMOVED,
-          resource_type: "chat_workspace",
-          resource_id: row.id,
-          result: "success",
-          metadata: { platform: row.platform, workspace_id: row.workspace_id },
-        },
-        tx,
-      );
-    });
 
     deps.registry.unregister({
       tenant_id: row.tenant_id,

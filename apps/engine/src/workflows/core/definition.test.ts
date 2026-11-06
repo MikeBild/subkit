@@ -4,11 +4,15 @@ import { buildStepDag, topoSort } from "../dag.ts";
 import type { WorkflowDef } from "../types.ts";
 import { validateWorkflowDef } from "../validator.ts";
 import {
+  AUTHORING_MAX_STEPS,
   cycleIssues,
+  gateIssue,
   isValidSlug,
   SLUG_MAX_LENGTH,
   slugify,
+  stepCycles,
   toStoredDefinition,
+  WORKFLOW_MAX_STEPS,
   workflowSlug,
 } from "./definition.ts";
 
@@ -117,6 +121,49 @@ describe("cycle check", () => {
   });
 });
 
+describe("step cycles", () => {
+  test("an acyclic definition reports no cycle", () => {
+    expect(stepCycles(acyclic)).toEqual({ has_cycle: false, cycles: [] });
+  });
+
+  test("a two-step cycle is reported with its nodes", () => {
+    const report = stepCycles(cyclic);
+    expect(report.has_cycle).toBe(true);
+    expect(report.cycles.map((cycle) => cycle.nodes)).toEqual([["a", "b"]]);
+  });
+
+  test("a self reference is reported, though cycleIssues leaves it to the engine", () => {
+    const def = { name: "self", steps: [transform("a", "a")] } as unknown as WorkflowDef;
+    expect(stepCycles(def).cycles.map((cycle) => cycle.nodes)).toEqual([["a"]]);
+    expect(cycleIssues(def)).toEqual([]);
+  });
+
+  test("cycleIssues reports exactly the multi-step cycles of stepCycles", () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.option(fc.nat({ max: 5 }), { nil: null }), { minLength: 1, maxLength: 6 }),
+        (refs) => {
+          const steps = refs.map((ref, i) =>
+            transform(`s${i}`, ref === null || ref >= refs.length ? null : `s${ref}`),
+          );
+          const def = { name: "random", steps } as unknown as WorkflowDef;
+          const multi = stepCycles(def).cycles.filter((cycle) => cycle.nodes.length > 1);
+          expect(cycleIssues(def).length).toBe(multi.length > 0 ? 1 : 0);
+        },
+      ),
+      { seed: 20261106, numRuns: 200 },
+    );
+  });
+});
+
+describe("step limits", () => {
+  test("authoring stays within the stored definition limit", () => {
+    expect(WORKFLOW_MAX_STEPS).toBe(200);
+    expect(AUTHORING_MAX_STEPS).toBe(25);
+    expect(AUTHORING_MAX_STEPS).toBeLessThan(WORKFLOW_MAX_STEPS);
+  });
+});
+
 describe("cycle check matches the engine order", () => {
   test("a definition passes exactly when topoSort can order it", () => {
     fc.assert(
@@ -162,6 +209,34 @@ describe("stored form", () => {
         expect(toStoredDefinition(stored, "version")).toEqual(stored);
       }),
       FC,
+    );
+  });
+});
+
+describe("gate issue", () => {
+  test("splits a gate error at its first separator", () => {
+    expect(gateIssue("steps.put: s3 connector has no bucket: set one")).toEqual({
+      path: "steps.put",
+      message: "s3 connector has no bucket: set one",
+    });
+  });
+
+  test("an error without a path keeps the whole message", () => {
+    expect(gateIssue("no path here")).toEqual({ path: "", message: "no path here" });
+    expect(gateIssue(": leading")).toEqual({ path: "", message: "leading" });
+  });
+
+  test("path and message reassemble the error", () => {
+    fc.assert(
+      fc.property(fc.string(), (error) => {
+        const issue = gateIssue(error);
+        expect(
+          issue.path === "" && !error.includes(": ")
+            ? issue.message
+            : `${issue.path}: ${issue.message}`,
+        ).toBe(error);
+      }),
+      { seed: 20261106, numRuns: 200 },
     );
   });
 });

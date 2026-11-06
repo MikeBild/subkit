@@ -3,11 +3,8 @@ import type { PgBoss } from "pg-boss";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { conversations } from "../db/schema/index.ts";
-import { admitWorkflowRun } from "../execution/workflow-run-admission.ts";
-import { enqueueHostedWork } from "../queue/hosted-work.ts";
-import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queue/queues.ts";
+import { runWorkflow } from "../execution/use-cases/run-workflow.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
-import { gateWorkflowRunRbac } from "../workflows/rbac.ts";
 import { getWorkflow } from "../workflows/service.ts";
 import { loadDraft } from "./draft.ts";
 import { conversationExecutionSuppression } from "./execution-suppression.ts";
@@ -71,67 +68,39 @@ export async function continueConversationDevLiveTest(input: {
   if (!workflow || workflow.current_version_id !== input.workflow_version_id) {
     return { state: "blocked" };
   }
-  const rbac = await gateWorkflowRunRbac({
-    db: input.db,
-    principal: input.principal,
-    workflow_id: input.workflow_id,
-    workflow_slug: workflow.slug,
-    request_source: "chat",
-    tool: "run_workflow",
-  });
-  if (!rbac.allow) {
-    return { state: "blocked" };
-  }
-  try {
-    const admitted = await admitWorkflowRun(
-      {
-        tenant_id: input.principal.tenant_id,
-        workflow_id: input.workflow_id,
-        workflow_version_id: input.workflow_version_id,
-        expected_workflow_version_id: input.workflow_version_id,
-        execution_environment: "dev",
-        request_source: "chat",
-        input: live_test.input,
-        idempotency_key: live_test.idempotency_key,
+  const outcome = await runWorkflow(
+    {
+      principal: input.principal,
+      workflow_id: input.workflow_id,
+      workflow_version_id: input.workflow_version_id,
+      expected_workflow_version_id: input.workflow_version_id,
+      execution_environment: live_test.environment,
+      request_source: "chat",
+      input: live_test.input,
+      idempotency_key: live_test.idempotency_key,
+      authorization: {
+        kind: "gate",
+        via: "chat",
+        workflow_slug: workflow.slug,
+        tool: "run_workflow",
       },
-      input.db,
-      input.principal,
-      rbac.workflow_permission,
-    );
-    if (admitted.status !== "queued") {
-      return {
-        state:
-          admitted.status === "succeeded"
-            ? "succeeded"
-            : admitted.status === "running"
-              ? "running"
-              : "failed",
-        execution_id: admitted.execution_id,
-      };
-    }
-    try {
-      await enqueueHostedWork(
-        input.db,
-        input.boss,
-        "execution",
-        EXECUTION_RUN_QUEUE,
-        {
-          tenant_id: input.principal.tenant_id,
-          workflow_id: input.workflow_id,
-          execution_id: admitted.execution_id,
-          request_source: "chat",
-          execution_mode: "dev",
-        } satisfies ExecutionRunJob,
-        { id: admitted.execution_id },
-      );
-    } catch {
-      return { state: "blocked", execution_id: admitted.execution_id };
-    }
+      dispatch: { mode: "enqueue", boss: input.boss },
+    },
+    { db: input.db },
+  ).catch(() => null);
+  if (!outcome || outcome.kind === "rejected") return { state: "blocked" };
+  const admitted = outcome.admitted;
+  if (outcome.kind === "replayed")
     return {
-      state: "queued",
+      state:
+        admitted.status === "succeeded"
+          ? "succeeded"
+          : admitted.status === "running"
+            ? "running"
+            : "failed",
       execution_id: admitted.execution_id,
     };
-  } catch {
-    return { state: "blocked" };
-  }
+  if (outcome.kind === "enqueue_failed")
+    return { state: "blocked", execution_id: admitted.execution_id };
+  return { state: "queued", execution_id: admitted.execution_id };
 }

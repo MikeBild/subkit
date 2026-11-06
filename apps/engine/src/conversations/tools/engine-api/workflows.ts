@@ -1,8 +1,13 @@
 import { z } from "@hono/zod-openapi";
 import { listedDescription } from "../../../api/catalog-metadata.ts";
 import { listTransactionalMailReceipts } from "../../../execution/index.ts";
-import { bindingFor, workflowTriggerView } from "../../../scheduler/trigger-bindings.ts";
+import { workflowTriggerView } from "../../../scheduler/trigger-bindings.ts";
 import { getWorkflowDraft } from "../../../workflows/drafts.ts";
+import {
+  loadWorkflowDetail,
+  loadWorkflowList,
+  type WorkflowListEntry,
+} from "../../../workflows/read-model.ts";
 import type { ConversationTool } from "../index.ts";
 
 const ListInput = z
@@ -39,6 +44,22 @@ const GetInput = z
   .refine((v) => Boolean(v.id || v.slug), { message: "Either id or slug is required" })
   .openapi("GetWorkflowToolInput");
 
+function toToolListItem(entry: WorkflowListEntry) {
+  const w = entry.workflow;
+  return {
+    id: w.id,
+    name: w.name,
+    slug: w.slug,
+    description: listedDescription(w.description),
+    lifecycle: w.lifecycle,
+    category: w.category,
+    connectors: entry.connectors,
+    ...workflowTriggerView(w.definition.trigger, entry.binding),
+    created_at: w.created_at,
+    updated_at: w.updated_at,
+  };
+}
+
 export const listWorkflowsTool: ConversationTool = {
   name: "list_workflows",
   description:
@@ -47,36 +68,25 @@ export const listWorkflowsTool: ConversationTool = {
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof ListInput>) {
     const offset = args.offset ?? 0;
-    const { rows, total } = await ctx.engineClient.workflows.list({
-      ...(args.status !== undefined ? { status: args.status } : {}),
-      ...(args.limit !== undefined ? { limit: args.limit } : {}),
-      ...(args.offset !== undefined ? { offset: args.offset } : {}),
-      ...(args.category !== undefined ? { category: args.category } : {}),
-      ...(args.connector !== undefined ? { connector: args.connector } : {}),
-    });
-    const [connectorRefs, bindings] = await Promise.all([
-      ctx.engineClient.workflows.connectorRefs(),
-      ctx.engineClient.workflows.triggerBindings(rows.map((w) => w.id)),
-    ]);
+    const { entries, total } = await loadWorkflowList(
+      ctx.tenant_id,
+      {
+        ...(args.status !== undefined ? { status: args.status } : {}),
+        ...(args.limit !== undefined ? { limit: args.limit } : {}),
+        ...(args.offset !== undefined ? { offset: args.offset } : {}),
+        ...(args.category !== undefined ? { category: args.category } : {}),
+        ...(args.connector !== undefined ? { connector: args.connector } : {}),
+      },
+      ctx.db,
+    );
     return {
       ok: true,
       data: {
-        items: rows.map((w) => ({
-          id: w.id,
-          name: w.name,
-          slug: w.slug,
-          description: listedDescription(w.description),
-          lifecycle: w.lifecycle,
-          category: w.category,
-          connectors: connectorRefs.get(w.id) ?? [],
-          ...workflowTriggerView(w.definition.trigger, bindingFor(bindings, w.id)),
-          created_at: w.created_at,
-          updated_at: w.updated_at,
-        })),
+        items: entries.map(toToolListItem),
         total,
-        returned: rows.length,
+        returned: entries.length,
         offset,
-        has_more: offset + rows.length < total,
+        has_more: offset + entries.length < total,
       },
     };
   },
@@ -89,14 +99,13 @@ export const getWorkflowTool: ConversationTool = {
   inputSchema: GetInput,
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof GetInput>) {
-    let wf: Awaited<ReturnType<typeof ctx.engineClient.workflows.get>> | null = null;
-    if (args.id) {
-      wf = await ctx.engineClient.workflows.get(args.id);
-    } else if (args.slug) {
-      wf = await ctx.engineClient.workflows.getBySlug(args.slug);
-    }
-    if (!wf) return { ok: false, data: { error: "workflow_not_found" } };
-    const bindings = await ctx.engineClient.workflows.triggerBindings([wf.id]);
+    const entry = await loadWorkflowDetail(
+      ctx.tenant_id,
+      args.id ? { id: args.id } : { slug: args.slug ?? "" },
+      ctx.db,
+    );
+    if (!entry) return { ok: false, data: { error: "workflow_not_found" } };
+    const wf = entry.workflow;
     const receipts = wf.definition.steps.some(
       (step) => step.kind === "request" && step.transactional_delivery,
     )
@@ -109,7 +118,7 @@ export const getWorkflowTool: ConversationTool = {
         workflow: {
           ...wf,
           ...(receipts ? { transactional_mail_receipts: receipts } : {}),
-          ...workflowTriggerView(wf.definition.trigger, bindingFor(bindings, wf.id)),
+          ...workflowTriggerView(wf.definition.trigger, entry.binding),
         },
         ...(args.include_draft
           ? {

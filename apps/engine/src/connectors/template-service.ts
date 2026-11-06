@@ -2,7 +2,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import { type Executor, getDb } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { connectorTemplates } from "../db/schema/index.ts";
 
 type TemplateRow = typeof connectorTemplates.$inferSelect;
@@ -22,7 +22,7 @@ export interface CreateTenantConnectorTemplateParams {
 
 export async function createTenantConnectorTemplate(
   p: CreateTenantConnectorTemplateParams,
-  exec: Executor = getDb(),
+  exec: Executor,
 ): Promise<TemplateRow> {
   const [row] = await exec
     .insert(connectorTemplates)
@@ -47,7 +47,7 @@ export async function createTenantConnectorTemplate(
 
 export async function listTenantConnectorTemplates(
   tenant_id: string,
-  exec: Executor = getDb(),
+  exec: Executor,
 ): Promise<TemplateRow[]> {
   return exec
     .select()
@@ -59,7 +59,7 @@ export async function listTenantConnectorTemplates(
 export async function getTenantConnectorTemplateBySlug(
   tenant_id: string,
   slug: string,
-  exec: Executor = getDb(),
+  exec: Executor,
 ): Promise<TemplateRow | null> {
   const [row] = await exec
     .select()
@@ -67,4 +67,36 @@ export async function getTenantConnectorTemplateBySlug(
     .where(and(eq(connectorTemplates.tenant_id, tenant_id), eq(connectorTemplates.slug, slug)))
     .limit(1);
   return row ?? null;
+}
+
+export interface DeleteTenantConnectorTemplateParams {
+  tenant_id: string;
+  actor_type: AuditActorType;
+  actor_id: string | null;
+  id: string;
+}
+
+export async function deleteTenantConnectorTemplate(
+  p: DeleteTenantConnectorTemplateParams,
+  exec: Executor,
+): Promise<boolean> {
+  const [row] = await exec
+    .delete(connectorTemplates)
+    .where(and(eq(connectorTemplates.tenant_id, p.tenant_id), eq(connectorTemplates.id, p.id)))
+    .returning({ slug: connectorTemplates.slug });
+  if (!row) return false;
+  await auditAwait(
+    {
+      tenant_id: p.tenant_id,
+      actor_type: p.actor_type,
+      actor_id: p.actor_id,
+      action: AuditAction.CONNECTOR_DELETED,
+      resource_type: "connector_template",
+      resource_id: p.id,
+      result: "success",
+      metadata: { slug: row.slug },
+    },
+    exec,
+  );
+  return true;
 }

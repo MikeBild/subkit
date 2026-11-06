@@ -1,8 +1,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
-import { users as usersTable } from "../../../db/schema/index.ts";
 import * as identity from "../../../identity/index.ts";
 import * as rolesSvc from "../../../rbac/index.ts";
 import { BadRequestError, LastAdminConflictError, NotFoundError } from "../../errors.ts";
@@ -401,44 +399,19 @@ export function registerRolesRoutes(app: OpenAPIHono<AppEnv>): void {
     const body = c.req.valid("json");
     const role = await rolesSvc.getRole(db, principal.tenant_id, body.role_id);
     if (!role) throw new BadRequestError("role_id not found");
-    const rows = await db
-      .transaction(async (tx) => {
-        const [current] = await tx
-          .select({ id: usersTable.id })
-          .from(usersTable)
-          .where(and(eq(usersTable.tenant_id, principal.tenant_id), eq(usersTable.id, user_id)))
-          .limit(1);
-        if (current) {
-          await identity.assertAdminRemains(tx, {
-            tenant_id: principal.tenant_id,
-            user_id,
-            nextEffectiveRole: role.name,
-          });
-        }
-        return tx
-          .update(usersTable)
-          .set({ role_id: body.role_id })
-          .where(and(eq(usersTable.tenant_id, principal.tenant_id), eq(usersTable.id, user_id)))
-          .returning({ id: usersTable.id });
+    const assigned = await identity
+      .assignUserRole(db, {
+        tenant_id: principal.tenant_id,
+        user_id,
+        role_id: body.role_id,
+        role_name: role.name,
+        actor: principal,
       })
       .catch((err: unknown) => {
         if (err instanceof identity.LastAdminError) throw new LastAdminConflictError(err.message);
         throw err;
       });
-    if (rows.length === 0) throw new NotFoundError("user");
-    await auditAwait(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: principal.kind,
-        actor_id: principal.id,
-        action: AuditAction.RBAC_USER_ROLE_ASSIGNED,
-        resource_type: "user",
-        resource_id: user_id,
-        result: "success",
-        metadata: { role_id: body.role_id },
-      },
-      db,
-    );
+    if (!assigned) throw new NotFoundError("user");
     return c.json({ ok: true as const, user_id, role_id: body.role_id }, 200);
   });
 }

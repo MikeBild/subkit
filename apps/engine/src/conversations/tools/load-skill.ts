@@ -1,9 +1,8 @@
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
 import { recordConversationSkillLoaded } from "../../audit/recorders/index.ts";
-import { conversations } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { parseLoadedSkills } from "../loop/skill-recency.ts";
+import { readConversationSkillState, setConversationLoadedSkills } from "../service/tool-state.ts";
 import { auditActorFromToolContext } from "./audit-actor.ts";
 import type { ConversationTool } from "./index.ts";
 
@@ -73,17 +72,9 @@ export const loadSkillTool: ConversationTool = {
       };
     }
 
-    const rows = await ctx.db
-      .select({
-        loaded_skills: conversations.loaded_skills,
-        turn_count: conversations.turn_count,
-      })
-      .from(conversations)
-      .where(
-        and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
-      )
-      .limit(1);
-    const current = parseLoadedSkills(rows[0]?.loaded_skills, ({ dropped, raw }) =>
+    const scope = { tenant_id: ctx.tenant_id, conversation_id: ctx.conversation_id };
+    const state = await readConversationSkillState(ctx.db, scope);
+    const current = parseLoadedSkills(state?.loaded_skills, ({ dropped, raw }) =>
       logger.warn({
         module: "conversation",
         action: "skill_recency.malformed_loaded_skills",
@@ -94,21 +85,13 @@ export const loadSkillTool: ConversationTool = {
         raw,
       }),
     );
-    const currentTurn = rows[0]?.turn_count ?? 0;
+    const currentTurn = state?.turn_count ?? 0;
     const key = match.slug ?? match.id;
     if (current.some((e) => e.slug === key)) {
       const refreshed = current.map((e) =>
         e.slug === key ? { slug: key, last_turn: currentTurn } : e,
       );
-      await ctx.db
-        .update(conversations)
-        .set({ loaded_skills: refreshed })
-        .where(
-          and(
-            eq(conversations.tenant_id, ctx.tenant_id),
-            eq(conversations.id, ctx.conversation_id),
-          ),
-        );
+      await setConversationLoadedSkills(ctx.db, scope, refreshed);
       await recordConversationSkillLoaded({
         tenant_id: ctx.tenant_id,
         ...auditActorFromToolContext(ctx),
@@ -129,12 +112,7 @@ export const loadSkillTool: ConversationTool = {
       };
     }
     const next = [...current, { slug: key, last_turn: currentTurn }];
-    await ctx.db
-      .update(conversations)
-      .set({ loaded_skills: next })
-      .where(
-        and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
-      );
+    await setConversationLoadedSkills(ctx.db, scope, next);
     await recordConversationSkillLoaded({
       tenant_id: ctx.tenant_id,
       ...auditActorFromToolContext(ctx),

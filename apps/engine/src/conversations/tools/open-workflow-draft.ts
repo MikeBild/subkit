@@ -1,17 +1,15 @@
 import { z } from "@hono/zod-openapi";
-import { and, eq, isNull, or } from "drizzle-orm";
-import { conversations, workflows } from "../../db/schema/index.ts";
+import { findLiveWorkflowByRef } from "../../workflows/index.ts";
 import { specQuestions } from "../authoring-spec.ts";
 import { persistedWorkflowResource } from "../authoring-state/summary.ts";
 import { hasInProgressWorkflowDraft, startNewWorkflowDraft } from "../authoring-state.ts";
 import { hydrateBoundWorkflow } from "../draft.ts";
 import { classifyDraftVsPersisted } from "../persistence/draft-diff.ts";
 import { saveApprovalReadiness } from "../persistence/save-workflow-approval.ts";
+import { setConversationWorkflowTarget } from "../service/tool-state.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 import { clearLastPreview } from "./last-preview-store.ts";
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const inputSchema = z
   .object({
@@ -29,25 +27,7 @@ const inputSchema = z
   .openapi("OpenWorkflowDraftToolInput");
 
 export async function resolveSavedWorkflow(ctx: ToolContext, ref: string) {
-  const [row] = await ctx.db
-    .select({
-      id: workflows.id,
-      slug: workflows.slug,
-      name: workflows.name,
-      lifecycle: workflows.lifecycle,
-    })
-    .from(workflows)
-    .where(
-      and(
-        eq(workflows.tenant_id, ctx.tenant_id),
-        isNull(workflows.deleted_at),
-        UUID.test(ref)
-          ? or(eq(workflows.id, ref), eq(workflows.slug, ref))
-          : eq(workflows.slug, ref),
-      ),
-    )
-    .limit(1);
-  return row ?? null;
+  return findLiveWorkflowByRef(ctx.db, ctx.tenant_id, ref);
 }
 
 export function boundWorkflowIdOf(ctx: ToolContext): string | null {
@@ -126,12 +106,11 @@ export const openWorkflowDraftTool: ConversationTool = {
       };
     }
     const reset = startNewWorkflowDraft(ctx.getDraft(), "workflow_opened");
-    await ctx.db
-      .update(conversations)
-      .set({ target_workflow_id: workflow.id, updated_at: new Date() })
-      .where(
-        and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
-      );
+    await setConversationWorkflowTarget(
+      ctx.db,
+      { tenant_id: ctx.tenant_id, conversation_id: ctx.conversation_id },
+      workflow.id,
+    );
     const opened = await hydrateBoundWorkflow(
       ctx.tenant_id,
       workflow.id,

@@ -1,17 +1,22 @@
-import { afterAll, afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, spyOn, test } from "bun:test";
 import { readFile } from "node:fs/promises";
+import { EngineClient } from "../engine-client.ts";
+import { credentialsCommand } from "./credentials.ts";
 
-const realConfig = await import("../config.ts");
-mock.module("../config.ts", () => ({
-  ...realConfig,
-  resolveProfile: () => ({
-    engine_url: "https://engine.example.test",
-    api_key: "fixture",
-    active_tenant_id: "tenant",
-  }),
-}));
-const { EngineClient } = await import("../engine-client.ts");
-const { credentialsCommand } = await import("./credentials.ts");
+const PROFILE_ENV = {
+  SK_PROFILE: undefined,
+  SUBKIT_PROFILE: undefined,
+  SUBKIT_ENGINE_URL: "https://engine.example.test",
+  SUBKIT_API_KEY: "fixture",
+  SUBKIT_TENANT: "tenant",
+} as const;
+const savedEnv = Object.fromEntries(
+  Object.keys(PROFILE_ENV).map((key) => [key, process.env[key]]),
+) as Record<string, string | undefined>;
+for (const [key, value] of Object.entries(PROFILE_ENV)) {
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
+}
 const created: Array<Record<string, unknown>> = [];
 let probeOk = true;
 const attach = spyOn(EngineClient.prototype, "createCredential").mockImplementation(
@@ -35,7 +40,10 @@ afterEach(() => {
 afterAll(() => {
   attach.mockRestore();
   probe.mockRestore();
-  mock.module("../config.ts", () => realConfig);
+  for (const [key, value] of Object.entries(savedEnv)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
 });
 
 async function setCredential(skipChecks = false): Promise<string> {

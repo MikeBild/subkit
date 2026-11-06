@@ -1,4 +1,5 @@
 import type { EngineClient } from "../engine-client.ts";
+import type { ApiBody } from "./http.ts";
 
 export interface CatalogCategoryUsage {
   category: string;
@@ -11,8 +12,9 @@ export interface CatalogCategoryUsage {
 }
 
 export const catalogMethods = {
-  listCategories(this: EngineClient): Promise<{ categories: CatalogCategoryUsage[] }> {
-    return this.request("GET", "/v1/categories");
+  async listCategories(this: EngineClient): Promise<{ categories: CatalogCategoryUsage[] }> {
+    const { data } = await this.api.GET("/v1/categories");
+    return data as { categories: CatalogCategoryUsage[] };
   },
   async renameCategory(
     this: EngineClient,
@@ -24,27 +26,45 @@ export const catalogMethods = {
     if (!source)
       throw new Error("Source category is unavailable; list categories and review the name.");
     const target = categories.find((category) => category.category === to);
-    return this.request("POST", `/v1/categories/${encodeURIComponent(name)}/rename`, {
+    const body = {
       to,
       purpose: source.purpose ?? null,
       aliases: source.aliases ?? [],
       expected_source_revision: source.revision ?? null,
       expected_target_revision: target?.revision ?? null,
       preserve_purpose: true,
+    } as ApiBody<"/v1/categories/{name}/rename", "post">;
+    const { data } = await this.api.POST("/v1/categories/{name}/rename", {
+      params: { path: { name } },
+      body,
     });
+    return data as {
+      from: string;
+      to: string;
+      total: number;
+      moved: CatalogCategoryUsage["counts"];
+    };
   },
-  patchWorkflowMetadata(
+  async patchWorkflowMetadata(
     this: EngineClient,
     id: string,
     body: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    return this.request("PATCH", `/v1/workflows/${encodeURIComponent(id)}/metadata`, body);
+    const { data } = await this.api.PATCH("/v1/workflows/{id}/metadata", {
+      params: { path: { id } },
+      body: body as ApiBody<"/v1/workflows/{id}/metadata", "patch">,
+    });
+    return data as Record<string, unknown>;
   },
-  patchFile(
+  async patchFile(
     this: EngineClient,
     id: string,
     body: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    return this.request("PATCH", `/v1/files/${encodeURIComponent(id)}`, body);
+    const { data } = await this.api.PATCH("/v1/files/{id}", {
+      params: { path: { id } },
+      body: body as ApiBody<"/v1/files/{id}", "patch">,
+    });
+    return data as Record<string, unknown>;
   },
 };

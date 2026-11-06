@@ -16,19 +16,20 @@ import {
 import type { CredentialUseSnapshot } from "../../credentials/provider-identity.ts";
 import type { ExecutionAuthorizationContext } from "../../execution/authorization-context.ts";
 import type { CallerOrigin } from "../../execution/caller-origin.ts";
+import {
+  EXECUTION_STATUSES,
+  NON_TERMINAL_EXECUTION_STATUSES,
+} from "../../execution/core/status.ts";
 import { executionModeEnum, tenantId, timestamps } from "./_common.ts";
 import { connectors } from "./connectors.ts";
 import { tenants } from "./identity.ts";
 import { workflowExecutionAuthorities, workflows, workflowVersions } from "./workflows.ts";
 
-export const executionStatusEnum = pgEnum("execution_status", [
-  "queued",
-  "running",
-  "succeeded",
-  "failed",
-  "aborted",
-  "timed_out",
-]);
+export const executionStatusEnum = pgEnum("execution_status", EXECUTION_STATUSES);
+
+const nonTerminalStatusList = sql.raw(
+  NON_TERMINAL_EXECUTION_STATUSES.map((status) => `'${status}'`).join(", "),
+);
 
 export const patchClassificationEnum = pgEnum("patch_classification", ["safe", "unsafe"]);
 export const patchStatusEnum = pgEnum("patch_status", [
@@ -154,7 +155,7 @@ export const executions = pgTable(
     index("executions_tenant_source_kind_idx").on(t.tenant_id, t.source_kind),
     index("executions_active_guard_unit_idx")
       .on(t.tenant_id, t.guard_unit_key)
-      .where(sql`${t.status} IN ('queued', 'running') AND ${t.guard_unit_key} IS NOT NULL`),
+      .where(sql`${t.status} IN (${nonTerminalStatusList}) AND ${t.guard_unit_key} IS NOT NULL`),
     uniqueIndex("executions_tenant_idempotency_key_uidx")
       .on(t.tenant_id, t.idempotency_key)
       .where(sql`${t.idempotency_key} IS NOT NULL`),

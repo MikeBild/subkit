@@ -1,11 +1,9 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
-import { AuditAction, actorOf, audit } from "../../audit/index.ts";
-import { deliveries, events } from "../../db/schema/index.ts";
+import { actorOf } from "../../audit/index.ts";
 import { getBoss } from "../../queue/index.ts";
 import * as svc from "../../webhooks/index.ts";
-import { WEBHOOK_DELIVER_QUEUE, type WebhookDeliverJob } from "../../webhooks/index.ts";
+import { replayDelivery } from "../../webhooks/index.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -247,95 +245,15 @@ export function registerSubscriptionRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.openapi(replayRoute, async (c) => {
     const principal = requireAuth(c);
-    const db = c.get("db");
     const { id, delivery_id } = c.req.valid("param");
-    const rows = await db
-      .select()
-      .from(deliveries)
-      .where(
-        and(
-          eq(deliveries.tenant_id, principal.tenant_id),
-          eq(deliveries.subscription_id, id),
-          eq(deliveries.id, delivery_id),
-        ),
-      )
-      .limit(1);
-    const existing = rows[0];
-    if (!existing) throw new NotFoundError("delivery");
     const bossOverride = (c as unknown as { get: (k: string) => unknown }).get("boss") as
       | ReturnType<typeof getBoss>
       | undefined;
-    const boss = bossOverride ?? getBoss();
-
-    const timestamp = Math.floor(Date.now() / 1000);
-    let body: string;
-    if (existing.outbox_event_id != null) {
-      const outboxRows = await db
-        .select()
-        .from(events)
-        .where(
-          and(eq(events.tenant_id, principal.tenant_id), eq(events.id, existing.outbox_event_id)),
-        )
-        .limit(1);
-      const outbox = outboxRows[0];
-      if (outbox) {
-        body = JSON.stringify({
-          type: outbox.type,
-          timestamp,
-          data: outbox.payload,
-          replay: true,
-          original_delivery_id: delivery_id,
-        });
-      } else {
-        body = JSON.stringify({
-          type: existing.event_type ?? "replay",
-          timestamp,
-          data: null,
-          replay: true,
-          original_delivery_id: delivery_id,
-          note: "original outbox event unavailable",
-        });
-      }
-    } else {
-      body = JSON.stringify({
-        type: existing.event_type ?? "replay",
-        timestamp,
-        data: null,
-        replay: true,
-        original_delivery_id: delivery_id,
-      });
-    }
-
-    const job: WebhookDeliverJob = {
-      tenant_id: principal.tenant_id,
+    const replayed = await replayDelivery(c.get("db"), () => bossOverride ?? getBoss(), principal, {
       subscription_id: id,
-      event_id: existing.event_id,
-      event_type: existing.event_type ?? "replay",
-      body,
-      webhook_id: crypto.randomUUID(),
-      timestamp,
-      attempt_number: 1,
-      outbox_event_id: existing.outbox_event_id ?? null,
-    };
-    await boss.send(WEBHOOK_DELIVER_QUEUE, job);
-    audit(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: principal.kind,
-        actor_id: principal.id,
-        action: AuditAction.WEBHOOK_OUTBOUND_REPLAYED,
-        resource_type: "subscription",
-        resource_id: id,
-        result: "success",
-        metadata: {
-          delivery_id,
-          outbox_event_id: existing.outbox_event_id ?? null,
-          original_terminal_reason: existing.terminal_reason ?? null,
-          original_classification: existing.classification ?? null,
-        },
-      },
-      db,
-    );
+      delivery_id,
+    });
+    if (!replayed) throw new NotFoundError("delivery");
     return c.json({ replayed: true }, 202);
   });
 }

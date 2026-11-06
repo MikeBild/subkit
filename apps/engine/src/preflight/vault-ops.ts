@@ -19,10 +19,7 @@ import {
 } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { CONFIG_STATE_KEY, REPLICA_LEASE_MS } from "../runtime-config/contracts.ts";
-import {
-  hasPendingSecretColumns,
-  secretVersionProjection,
-} from "../runtime-config/secret-columns.ts";
+import { SECRET_VERSION_COLUMNS } from "../runtime-config/secret-columns.ts";
 import {
   assertVaultProducersStopped,
   completeRegistryRewrapEpoch,
@@ -44,14 +41,12 @@ function keyFingerprint(keyHex: string): string {
 }
 
 export async function probeCurrentVersion(db: Db, name: string): Promise<VersionProbe> {
-  const projection = await secretVersionProjection(db);
   // tenant-filter:exempt — secret names and versions are product-global operator state.
-  const found = await db
-    .select(projection.columns)
+  const rows = await db
+    .select(SECRET_VERSION_COLUMNS)
     .from(runtimeSecretVersions)
     .where(eq(runtimeSecretVersions.name, name))
     .orderBy(desc(runtimeSecretVersions.version));
-  const rows = found.map(projection.complete);
   if (rows.length === 0) return { version: null, readable: false, absent: true };
   const current = rows.find((row) => row.revoked_at === null && row.pending_since === null);
   if (!current) return { version: null, readable: false, absent: false };
@@ -308,11 +303,6 @@ export function createVaultOps(
       return { version: created.version };
     },
     prepareVersion: async (name, value, purpose, bindings) => {
-      if (!(await hasPendingSecretColumns(db))) {
-        throw new Error(
-          "this database does not know prepared versions yet; start the new release once (it migrates), then re-run with --pending — or write the version now without --pending",
-        );
-      }
       const created = await createSecretVersion(db, {
         name,
         value,

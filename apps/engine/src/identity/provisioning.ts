@@ -3,7 +3,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import type { PrincipalKind } from "../auth/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import { type Executor, getDb } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { apiKeys, sessions, tenants, userInvites, users } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { builtinRoleId } from "../rbac/roles.ts";
@@ -49,8 +49,7 @@ export interface CreateUserInput {
   actor_kind?: PrincipalKind | "system";
 }
 
-export async function createUser(input: CreateUserInput, exec?: Executor) {
-  const db = exec ?? getDb();
+export async function createUser(input: CreateUserInput, db: Executor) {
   return db.transaction(async (tx) => {
     const existing = await tx
       .select({ id: users.id })
@@ -106,8 +105,7 @@ export interface DeactivateUserInput {
   actor_kind?: PrincipalKind | "system";
 }
 
-export async function deactivateUser(input: DeactivateUserInput, exec?: Executor) {
-  const db = exec ?? getDb();
+export async function deactivateUser(input: DeactivateUserInput, db: Executor) {
   return db.transaction(async (tx) => {
     const nowTs = new Date(now());
     await assertAdminRemains(tx, {
@@ -316,9 +314,8 @@ export interface CreateInviteResult {
 
 export async function createInvite(
   input: CreateInviteInput,
-  exec?: Executor,
+  db: Executor,
 ): Promise<CreateInviteResult> {
-  const db = exec ?? getDb();
   const ttlMs = (input.ttl_minutes ?? INVITE_DEFAULT_TTL_MINUTES) * 60_000;
   const scopes = await authorizeRequestedScopes(db, input.issuer, input.scopes);
   return db.transaction(async (tx) => {
@@ -381,9 +378,8 @@ export interface ListInvitesOptions {
 export async function listInvites(
   tenantId: string,
   opts: ListInvitesOptions = {},
-  exec?: Executor,
+  db: Executor,
 ): Promise<InviteView[]> {
-  const db = exec ?? getDb();
   const rows = await db
     .select()
     .from(userInvites)
@@ -409,9 +405,8 @@ export interface RevokeInviteInput {
 
 export async function revokeInvite(
   input: RevokeInviteInput,
-  exec?: Executor,
+  db: Executor,
 ): Promise<InviteView | null> {
-  const db = exec ?? getDb();
   return db.transaction(async (tx) => {
     const [row] = await tx
       .update(userInvites)
@@ -465,9 +460,8 @@ export interface RedeemInviteInput {
 
 export async function redeemInvite(
   input: RedeemInviteInput,
-  exec?: Executor,
+  db: Executor,
 ): Promise<RedeemInviteOutcome> {
-  const db = exec ?? getDb();
   const parsed = parseInviteToken(input.token);
   if (!parsed) return { ok: false, code: "invite_invalid" };
 

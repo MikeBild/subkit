@@ -1,5 +1,6 @@
 import { EngineError } from "@cli-core/errors.ts";
 import type { EngineClient } from "../engine-client.ts";
+import type { ApiBody, ApiQuery } from "./http.ts";
 
 export type FailureOrigin = "authoring" | "manual" | "scheduled" | "mixed";
 export interface DigestFailureGroup {
@@ -64,37 +65,39 @@ export interface OperatorHealthDigest {
 }
 
 export const selfHealingMethods = {
-  getOperatorHealthDigest(
+  async getOperatorHealthDigest(
     this: EngineClient,
     query: { window_hours?: number } = {},
   ): Promise<OperatorHealthDigest> {
-    return this.request(
-      "GET",
-      "/v1/operator/health-digest",
-      undefined,
-      query,
-    ) as Promise<OperatorHealthDigest>;
+    const { data } = await this.api.GET("/v1/operator/health-digest", {
+      params: { query: query as ApiQuery<"/v1/operator/health-digest", "get"> },
+    });
+    return data as OperatorHealthDigest;
   },
 
-  listPatchCandidates(
+  async listPatchCandidates(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
   ): Promise<{ items: Record<string, unknown>[] }> {
-    return this.request("GET", "/v1/patch-candidates", undefined, query);
+    const { data } = await this.api.GET("/v1/patch-candidates", {
+      params: { query: query as ApiQuery<"/v1/patch-candidates", "get"> },
+    });
+    return data as { items: Record<string, unknown>[] };
   },
-  getPatchCandidate(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("GET", `/v1/patch-candidates/${encodeURIComponent(id)}`);
+  async getPatchCandidate(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+    const { data } = await this.api.GET("/v1/patch-candidates/{id}", { params: { path: { id } } });
+    return data as Record<string, unknown>;
   },
   async approvePatchCandidate(
     this: EngineClient,
     id: string,
     expected_review_digest: string,
   ): Promise<Record<string, unknown>> {
-    const result = await this.request<Record<string, unknown>>(
-      "POST",
-      `/v1/patch-candidates/${encodeURIComponent(id)}/approve`,
-      { expected_review_digest },
-    );
+    const { data } = await this.api.POST("/v1/patch-candidates/{id}/approve", {
+      params: { path: { id } },
+      body: { expected_review_digest } as ApiBody<"/v1/patch-candidates/{id}/approve", "post">,
+    });
+    const result = data as Record<string, unknown>;
     if (
       result.applied !== true ||
       typeof result.workflow_version_id !== "string" ||
@@ -107,12 +110,16 @@ export const selfHealingMethods = {
     }
     return result;
   },
-  rejectPatchCandidate(
+  async rejectPatchCandidate(
     this: EngineClient,
     id: string,
     body: { reason?: string } = {},
   ): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/patch-candidates/${encodeURIComponent(id)}/reject`, body);
+    const { data } = await this.api.POST("/v1/patch-candidates/{id}/reject", {
+      params: { path: { id } },
+      body: body as ApiBody<"/v1/patch-candidates/{id}/reject", "post">,
+    });
+    return data as Record<string, unknown>;
   },
 
   triggerSelfHealingScan(
@@ -123,13 +130,19 @@ export const selfHealingMethods = {
     const extraHeaders = opts.idempotencyKey ? { "idempotency-key": opts.idempotencyKey } : {};
     return this.request("POST", "/v1/self-healing/scans", body, undefined, undefined, extraHeaders);
   },
-  listSelfHealingScans(
+  async listSelfHealingScans(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
   ): Promise<{ items: Record<string, unknown>[] }> {
-    return this.request("GET", "/v1/self-healing/scans", undefined, query);
+    const { data } = await this.api.GET("/v1/self-healing/scans", {
+      params: { query: query as ApiQuery<"/v1/self-healing/scans", "get"> },
+    });
+    return data as { items: Record<string, unknown>[] };
   },
-  getSelfHealingScan(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("GET", `/v1/self-healing/scans/${encodeURIComponent(id)}`);
+  async getSelfHealingScan(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+    const { data } = await this.api.GET("/v1/self-healing/scans/{id}", {
+      params: { path: { id } },
+    });
+    return data as Record<string, unknown>;
   },
 };

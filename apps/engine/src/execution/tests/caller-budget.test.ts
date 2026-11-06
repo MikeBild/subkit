@@ -16,6 +16,7 @@ import { createDeterministicUuidFactory } from "../../test-helpers/determinism/i
 import { type WorkflowDef, WorkflowDefSchema } from "../../workflows/types.ts";
 import { assertInputByteLimits, callerUsage, reserveCallerBudget } from "../caller-budget.ts";
 import { callerFromPrincipal } from "../caller-context.ts";
+import { settledOutcome } from "../core/status.ts";
 import { runExecution } from "../engine.ts";
 import { recoverExecutionPayload } from "../sensitive-payload.ts";
 import { finalizeExecution } from "../state.ts";
@@ -118,14 +119,8 @@ function keepOpen(execution_id: string) {
     ctx.testDb.db,
     ctx.tenantId,
     execution_id,
-    "succeeded",
-    null,
-    null,
-    undefined,
-    null,
-    "none",
-    false,
-    { output: [{ type: "function_call" }] },
+    { type: "completed" },
+    { sensitive_result: { output: [{ type: "function_call" }] } },
   );
 }
 
@@ -270,14 +265,8 @@ describe("reservation at admission", () => {
       ctx.testDb.db,
       ctx.tenantId,
       admitted.execution_id,
-      "succeeded",
-      null,
-      null,
-      undefined,
-      null,
-      "none",
-      false,
-      { output: [{ type: "message" }] },
+      { type: "completed" },
+      { sensitive_result: { output: [{ type: "message" }] } },
     );
     expect((await unit(principal, "done"))?.state).toBe("committed");
     await keepOpen((await admit(principal, { turn_id: "done", round: 1 })).execution_id);
@@ -339,14 +328,8 @@ describe("reservation at admission", () => {
       ctx.testDb.db,
       ctx.tenantId,
       first.execution_id,
-      "succeeded",
-      null,
-      null,
-      undefined,
-      null,
-      "none",
-      false,
-      { output: [{ type: "message" }] },
+      { type: "completed" },
+      { sensitive_result: { output: [{ type: "message" }] } },
     );
     const again = await admit(principal, { turn_id: "replay", round: 1 }, roundWorkflow, "k-1");
     expect(again.replayed).toBe(true);
@@ -373,10 +356,8 @@ describe("reservation at admission", () => {
 
 describe("settlement when the run ends", () => {
   async function end(execution_id: string, status: "failed" | "aborted" | "timed_out") {
-    await finalizeExecution(ctx.testDb.db, ctx.tenantId, execution_id, status, null, {
-      step_id: null,
-      error_code: status,
-      error_message: status,
+    await finalizeExecution(ctx.testDb.db, ctx.tenantId, execution_id, settledOutcome(status), {
+      failure: { step_id: null, error_code: status, error_message: status },
     });
   }
 

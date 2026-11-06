@@ -1,6 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, desc, eq } from "drizzle-orm";
-import { notificationDeliveries } from "../../../db/schema/notifications.ts";
+import { listRecentDeliveries } from "../../../notifications/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -53,21 +52,12 @@ export function registerDeliveryRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.openapi(listRoute, async (c) => {
     const principal = requireAuth(c);
-    const db = c.get("db");
     const q = c.req.valid("query");
-    const limit = Math.min(q.limit ?? 50, 500);
-    const offset = q.offset ?? 0;
-    const tenantWhereClauses = [eq(notificationDeliveries.tenant_id, principal.tenant_id)];
-    if (q.status) {
-      tenantWhereClauses.push(eq(notificationDeliveries.status, q.status));
-    }
-    const rows = await db
-      .select()
-      .from(notificationDeliveries)
-      .where(tenantWhereClauses.length === 1 ? tenantWhereClauses[0] : and(...tenantWhereClauses))
-      .orderBy(desc(notificationDeliveries.created_at))
-      .limit(limit)
-      .offset(offset);
+    const rows = await listRecentDeliveries(c.get("db"), principal.tenant_id, {
+      limit: Math.min(q.limit ?? 50, 500),
+      offset: q.offset ?? 0,
+      status: q.status,
+    });
     return c.json(
       {
         items: rows.map((r) => ({

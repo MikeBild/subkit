@@ -129,10 +129,24 @@ export async function consumeStartGrant(
     .returning();
   const row = claimed[0];
   if (!row) return null;
+  const created_by_actor_id = row.created_by_actor_id ?? null;
+  await auditAwait(
+    {
+      tenant_id: row.tenant_id,
+      actor_type: "system",
+      actor_id: null,
+      action: AuditAction.CONNECTOR_OAUTH_GRANT_CONSUMED,
+      resource_type: "connector",
+      resource_id: row.connector_id,
+      result: "success",
+      metadata: { connector_id: row.connector_id, created_by_actor_id },
+    },
+    db,
+  );
   return {
     id: row.id,
     tenant_id: row.tenant_id,
     connector_id: row.connector_id,
-    created_by_actor_id: row.created_by_actor_id ?? null,
+    created_by_actor_id,
   };
 }

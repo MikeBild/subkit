@@ -307,3 +307,23 @@ export async function resolveApprovalPortalToken(
     preview: state === "pending" ? decryptPreview(row) : null,
   };
 }
+
+export async function findActiveApproverEmail(
+  db: Db,
+  tenantId: string,
+  userId: string,
+): Promise<string | null> {
+  const [user] = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(
+      and(
+        eq(users.id, userId),
+        eq(users.tenant_id, tenantId),
+        eq(users.status, "active"),
+        isNull(users.deleted_at),
+      ),
+    )
+    .limit(1);
+  return user?.email ?? null;
+}

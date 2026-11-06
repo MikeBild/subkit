@@ -5,10 +5,11 @@ import type { Db } from "../../../db/client.ts";
 import { auditLog, conversations } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../../llm/tests/setup.ts";
+import { freshSignals } from "../../tests/turn-signals.ts";
 import type { TurnEvent } from "../../types.ts";
 import { CHAT_READONLY_TOOLS } from "../authoring-palette.ts";
 import type { ToolContext } from "../index.ts";
-import { type TurnSignals, wrapTools } from "../sdk-wrap.ts";
+import { wrapTools } from "../sdk-wrap.ts";
 
 let ctx: LlmTestCtx;
 let conversation_id: string;
@@ -25,24 +26,6 @@ beforeAll(async () => {
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
 });
-
-function freshSignals(): TurnSignals {
-  return {
-    step: 0,
-    toolChain: Promise.resolve(),
-    pendingChildToolCallIds: [],
-    pendingChildElicitationIds: [],
-    toolInvocationCount: new Map(),
-    toolLastErrorHash: new Map(),
-    toolArgsRepeat: new Map(),
-    toolValidationFingerprint: new Map(),
-    toolErrorCodeRepeat: new Map(),
-    totalLoopWarnings: 0,
-    consecutiveFailures: 0,
-    lastAssistantText: "",
-    lastExecutionSuccess: null,
-  };
-}
 
 function makeCtx(surface?: "chat" | "web"): ToolContext {
   const engineClient = new EngineClient({

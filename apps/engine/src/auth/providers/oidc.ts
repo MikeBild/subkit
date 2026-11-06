@@ -5,7 +5,7 @@ import { ZodError } from "zod";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { getConfig, isConfigLoaded } from "../../config/loader.ts";
-import { type Db, getDb } from "../../db/client.ts";
+import type { Db } from "../../db/client.ts";
 import { oidcLoginStates, sessions, tenants } from "../../db/schema/index.ts";
 import {
   authHtmlResponse,
@@ -70,7 +70,7 @@ export interface OidcProviderOptions {
   tenantSlug?: string;
   productId?: string;
   linkByEmail?: boolean;
-  db?: Db;
+  db: Db;
   sessionSecret?: Uint8Array;
   enableSignup?: boolean;
   signupPolicy?: "existing_tenant" | "invite_only" | "self_service";
@@ -165,7 +165,7 @@ async function resolveTenantId(db: Db, slug: string | null): Promise<string | nu
   return rows[0]?.id ?? null;
 }
 
-export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider {
+export function createOidcProvider(opts: OidcProviderOptions): AuthProvider {
   let configured:
     | {
         id: string;
@@ -198,10 +198,6 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
   const providerId = opts.providerId?.trim() || configured?.id;
   const adapterId = providerId ?? "oidc";
   const db = opts.db;
-
-  function getExec(): Db {
-    return db ?? getDb();
-  }
 
   const signupPolicy = opts.signupPolicy ?? configured?.signup_policy;
   const hostedSignup = signupPolicy === "self_service";
@@ -254,7 +250,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
       )
         return tenantMismatchResponse(req);
       const redirectTo = url.searchParams.get("redirect_to");
-      const exec = getExec();
+      const exec = db;
       let installation = null;
       if (opts.installationId) {
         installation = await findActiveCockpitInstallation(exec, opts.installationId);
@@ -373,7 +369,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           LOGIN_START_PATH,
         );
       }
-      const exec = getExec();
+      const exec = db;
 
       purgeExpiredOidcLoginStates(exec);
 
@@ -930,7 +926,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
     },
 
     async resolve(req: Request) {
-      return await resolveOidcSession(getExec(), sessionSecret, req);
+      return await resolveOidcSession(db, sessionSecret, req);
     },
 
     async revoke(req: Request): Promise<Response> {
@@ -949,7 +945,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           headers: { "set-cookie": clearCookieHeader() },
         });
       }
-      const exec = getExec();
+      const exec = db;
       const [row] = await exec
         .update(sessions)
         .set({ revoked_at: new Date() })

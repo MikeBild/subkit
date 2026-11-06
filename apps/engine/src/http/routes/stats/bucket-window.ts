@@ -1,5 +1,5 @@
-import { sql } from "drizzle-orm";
 import type { Db } from "../../../db/client.ts";
+import { oldestAuditTimestamp } from "../../../stats/retention-horizon.ts";
 import { BadRequestError } from "../../errors.ts";
 
 export const BUCKET_UNITS = ["minute", "hour", "day", "month", "year"] as const;
@@ -87,10 +87,7 @@ export async function clampToRetentionHorizon(
   tenantId: string,
   win: ResolvedWindow,
 ): Promise<ResolvedWindow> {
-  const row = (
-    await db.execute(sql`select min(ts) as oldest from audit_log where tenant_id = ${tenantId}`)
-  ).rows[0] as { oldest: string | null } | undefined;
-  const oldest = row?.oldest ? new Date(row.oldest) : null;
+  const oldest = await oldestAuditTimestamp(db, tenantId);
   if (!oldest) return win;
 
   if (win.from.getTime() >= oldest.getTime()) return win;

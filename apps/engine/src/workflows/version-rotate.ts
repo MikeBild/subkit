@@ -8,13 +8,13 @@ import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
 import { carryApprovalsForward } from "./authority-inheritance.ts";
 import { toStoredDefinition } from "./core/definition.ts";
+import { carriedSpecColumns } from "./core/spec.ts";
 import { decide, describeRejection, evolve } from "./core/workflow.ts";
 import { validateBareIterationIdentifiers } from "./reference-validator.ts";
 import { emitWorkflowLifecycle } from "./service.ts";
 import { validateTenantWorkflowDefForSave } from "./tenant-validator.ts";
 import { triggerOf } from "./trigger-bindings.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
-import { carriedSpecColumns } from "./version-spec.ts";
 import {
   lockWorkflowForVersionWrite,
   nextVersionNumber,

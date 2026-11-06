@@ -10,6 +10,7 @@ import { GENERIC_TOOL_FAILURE_CODE } from "../tools/result-payload.ts";
 import { wrapOne } from "../tools/sdk-wrap/invoke.ts";
 import type { TurnSignals } from "../tools/sdk-wrap/state.ts";
 import type { TurnEvent } from "../types.ts";
+import { freshSignals } from "./turn-signals.ts";
 
 let ctx: LlmTestCtx;
 let conversation_id: string;
@@ -26,24 +27,6 @@ beforeAll(async () => {
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
 });
-
-function freshSignals(): TurnSignals {
-  return {
-    step: 0,
-    toolChain: Promise.resolve(),
-    pendingChildToolCallIds: [],
-    pendingChildElicitationIds: [],
-    toolInvocationCount: new Map(),
-    toolLastErrorHash: new Map(),
-    toolArgsRepeat: new Map(),
-    toolValidationFingerprint: new Map(),
-    toolErrorCodeRepeat: new Map(),
-    totalLoopWarnings: 0,
-    consecutiveFailures: 0,
-    lastAssistantText: "",
-    lastExecutionSuccess: null,
-  };
-}
 
 function makeToolCtx(): ToolContext {
   return {

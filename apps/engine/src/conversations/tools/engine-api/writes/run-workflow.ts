@@ -1,15 +1,14 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { conversations, workflowVersions } from "../../../../db/schema/index.ts";
-import { runExecution } from "../../../../execution/engine.ts";
-import { admitWorkflowRun } from "../../../../execution/workflow-run-admission.ts";
+import { refusalCause } from "../../../../execution/use-cases/core/run-workflow.ts";
+import { createRunWorkflow } from "../../../../execution/use-cases/run-workflow.ts";
 import { logger } from "../../../../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../../../../observability/instrumentation.ts";
 import { workflowExecutionEnvironment } from "../../../../workflows/execution-environment.ts";
 import { resolveWorkflowInputContract } from "../../../../workflows/input-schema-synth.ts";
 import { resolveWorkflowByIdOrSlug } from "../../../../workflows/lookup.ts";
 import { workflowPreparationInput } from "../../../../workflows/preparation-input.ts";
-import { gateWorkflowRunRbac } from "../../../../workflows/rbac.ts";
 import { buildScopeAtStep } from "../../../../workflows/scope-shape.ts";
 import type { WorkflowDef } from "../../../../workflows/types.ts";
 import {
@@ -403,23 +402,23 @@ export const runWorkflowTool: ConversationTool = {
           ),
         };
       }
-      const rbac = await gateWorkflowRunRbac({
-        db: ctx.db,
+      const useCase = createRunWorkflow({ db: ctx.db });
+      const grant = await useCase.authorize({
         principal: ctx.principal,
         workflow_id: workflowId,
         workflow_slug: wf.slug,
-        request_source: requestSource,
+        via: requestSource,
         tool: "run_workflow",
       });
-      if (!rbac.allow) {
+      if (grant.kind === "rejected") {
         return {
           ok: false,
           data: withStatus(
             {
               error_code: "permission_denied",
               permission: "workflow:run",
-              reason: rbac.reason,
-              message: rbac.error_message,
+              reason: grant.reason,
+              message: grant.message,
               workflow_slug: wf.slug,
             },
             "failed",
@@ -430,73 +429,44 @@ export const runWorkflowTool: ConversationTool = {
         "info",
         `running workflow ${wf.slug} (v${wf.current_version}) in env=${environment}`,
       );
-      const admitted = await admitWorkflowRun(
-        {
-          tenant_id: ctx.tenant_id,
-          workflow_id: workflowId,
-          workflow_version_id: args.expected_workflow_version_id ?? wf.current_version_id,
-          ...(args.expected_workflow_version_id
-            ? { expected_workflow_version_id: args.expected_workflow_version_id }
-            : {}),
-          execution_environment: environment,
-          request_source: requestSource,
-          input: suppliedInput,
-          ...(args.idempotency_key ? { idempotency_key: args.idempotency_key } : {}),
-          ...(args.execute_writes === false ? { hold_writes: true } : {}),
-        },
-        ctx.db,
-        ctx.principal,
-        rbac.workflow_permission,
-      );
-      const holdWrites = admitted.hold_writes;
-      if (args.idempotency_key) {
-        const existing = admitted.replayed
-          ? { id: admitted.execution_id, status: admitted.status }
-          : null;
-        if (existing) {
-          const replayRunning = ["queued", "running"].includes(existing.status);
-          return {
-            ok: true,
-            data: withStatus(
-              {
-                execution_id: existing.id,
-                execution_status: existing.status,
-                ...(admitted
-                  ? {
-                      workflow_version_id: admitted.workflow_version_id,
-                      execution_authority_id: admitted.execution_authority_id,
-                      hold_writes: admitted.hold_writes,
-                    }
-                  : {}),
-                idempotent_replay: true,
-                message: replayRunning
-                  ? `nothing new was started — execution ${existing.id} is still running under idempotency key '${args.idempotency_key}' (status: ${existing.status}); inspect it with get_execution`
-                  : `nothing new was started — execution ${existing.id} already ran under idempotency key '${args.idempotency_key}' (status: ${existing.status}); inspect it with get_execution`,
-              },
-              existing.status === "succeeded" ? "succeeded" : replayRunning ? "running" : "failed",
-            ),
-          };
-        }
-      }
-      const result = await runExecution({
-        db: ctx.db,
-        tenant_id: ctx.tenant_id,
-        source: {
-          kind: "saved",
-          workflow_id: workflowId,
-          version_id: admitted?.workflow_version_id ?? wf.current_version_id,
-        },
-        input: admitted ? admitted.input : suppliedInput,
-        options: {
-          request_source: requestSource,
-          trace_id: null,
-          principal: ctx.principal,
-          execution_mode: environment,
-          ...(admitted ? { existing_execution_id: admitted.execution_id } : {}),
-          ...(args.idempotency_key ? { idempotency_key: args.idempotency_key } : {}),
-          ...(holdWrites ? { hold_writes: true } : {}),
-        },
+      const outcome = await useCase.runWorkflow({
+        principal: ctx.principal,
+        workflow_id: workflowId,
+        workflow_version_id: args.expected_workflow_version_id ?? wf.current_version_id,
+        expected_workflow_version_id: args.expected_workflow_version_id,
+        execution_environment: environment,
+        request_source: requestSource,
+        input: suppliedInput,
+        idempotency_key: args.idempotency_key ?? null,
+        ...(args.execute_writes === false ? { hold_writes: true } : {}),
+        authorization: { kind: "granted", workflow_permission: grant.workflow_permission },
+        replayed_queued: "return",
+        dispatch: { mode: "inline", trace_id: null },
       });
+      if (outcome.kind === "rejected") throw refusalCause(outcome);
+      const admitted = outcome.admitted;
+      const holdWrites = admitted.hold_writes;
+      if (outcome.kind === "replayed") {
+        const replayRunning = ["queued", "running"].includes(admitted.status);
+        return {
+          ok: true,
+          data: withStatus(
+            {
+              execution_id: admitted.execution_id,
+              execution_status: admitted.status,
+              workflow_version_id: admitted.workflow_version_id,
+              execution_authority_id: admitted.execution_authority_id,
+              hold_writes: admitted.hold_writes,
+              idempotent_replay: true,
+              message: replayRunning
+                ? `nothing new was started — execution ${admitted.execution_id} is still running under idempotency key '${args.idempotency_key}' (status: ${admitted.status}); inspect it with get_execution`
+                : `nothing new was started — execution ${admitted.execution_id} already ran under idempotency key '${args.idempotency_key}' (status: ${admitted.status}); inspect it with get_execution`,
+            },
+            admitted.status === "succeeded" ? "succeeded" : replayRunning ? "running" : "failed",
+          ),
+        };
+      }
+      const result = outcome.result;
       const heldStepIds = holdWrites
         ? result.steps
             .filter(
@@ -543,7 +513,7 @@ export const runWorkflowTool: ConversationTool = {
           environment,
           final_status: result.status,
           execute_writes: !holdWrites,
-          execution_authority_id: admitted?.execution_authority_id ?? null,
+          execution_authority_id: admitted.execution_authority_id ?? null,
           ...(heldStepIds.length > 0 ? { held_step_ids: heldStepIds } : {}),
         },
       });
@@ -785,7 +755,7 @@ export const runWorkflowTool: ConversationTool = {
             workflow_version_id: wf.current_version_id,
             workflow_version: wf.current_version,
             tool_effect: (wf.definition as WorkflowDef).tool_effect,
-            execution_authority_id: admitted?.execution_authority_id ?? null,
+            execution_authority_id: admitted.execution_authority_id ?? null,
             hold_writes: holdWrites,
             ...(heldStepIds.length > 0
               ? {

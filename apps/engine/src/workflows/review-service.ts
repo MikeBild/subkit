@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { browserSessionForPrincipal, verifyBrowserCsrf } from "../auth/browser-session.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { appendSnapshot, loadDraft } from "../conversations/draft.ts";
@@ -29,6 +29,8 @@ import {
 } from "../workflows/execution-authorities.ts";
 import { suggestAuthorityBounds } from "./authority-suggestions.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
+import { RECEIPT_PURGE_BATCH, receiptsToPurge } from "./core/review-receipt.ts";
+import { readDatabaseNow } from "./database-clock.ts";
 import { resolveWorkflowReviewManifest, workflowReviewBoundaryDigest } from "./review-manifest.ts";
 import {
   FinalizeWorkflowReviewSchema,
@@ -287,6 +289,7 @@ export async function prepareWorkflowReview(
       expected_draft_version_id: saved?.draft_version_id ?? null,
     };
     const snapshot_digest = workflowJsonDigest(snapshot);
+    await purgeSpentReviewReceipts(tx, p.tenant_id, await readDatabaseNow(tx));
     await tx
       .delete(workflowReviewReceipts)
       .where(
@@ -314,6 +317,39 @@ export async function prepareWorkflowReview(
     if (!receipt) throw new Error("review receipt insert failed");
     return receiptView(receipt);
   });
+}
+
+export async function purgeSpentReviewReceipts(
+  tx: Executor,
+  tenant_id: string,
+  now: Date,
+  keepId: string | null = null,
+): Promise<number> {
+  const candidates = await tx
+    .select({
+      id: workflowReviewReceipts.id,
+      status: workflowReviewReceipts.status,
+      expires_at: workflowReviewReceipts.expires_at,
+    })
+    .from(workflowReviewReceipts)
+    .where(
+      and(
+        eq(workflowReviewReceipts.tenant_id, tenant_id),
+        or(
+          eq(workflowReviewReceipts.status, "completed"),
+          lte(workflowReviewReceipts.expires_at, now),
+        ),
+      ),
+    )
+    .limit(RECEIPT_PURGE_BATCH + 1);
+  const ids = receiptsToPurge(candidates, now, keepId);
+  if (ids.length === 0) return 0;
+  await tx
+    .delete(workflowReviewReceipts)
+    .where(
+      and(eq(workflowReviewReceipts.tenant_id, tenant_id), inArray(workflowReviewReceipts.id, ids)),
+    );
+  return ids.length;
 }
 
 export async function getWorkflowReview(
@@ -589,6 +625,7 @@ export async function finalizeWorkflowReview(
       .where(eq(workflowReviewReceipts.id, receipt.id))
       .returning();
     if (!completed) throw new Error("review receipt completion failed");
+    await purgeSpentReviewReceipts(tx, p.tenant_id, now, completed.id);
     const resolved = await resolveElicitation(
       {
         tenant_id: p.tenant_id,

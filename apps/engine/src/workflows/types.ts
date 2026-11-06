@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { FileRefSchema } from "../api/files-schemas.ts";
+import { WORKFLOW_MAX_STEPS } from "./core/definition.ts";
 import { OutboxDeliveryBoundarySchema } from "./outbox-delivery-boundary.ts";
 import { ReportDeliveryBoundarySchema } from "./report-delivery-boundary.ts";
 import { RequestBoundaryScopeSchema } from "./request-boundary.ts";
@@ -948,7 +949,7 @@ const _baseWorkflowDefSchema = z.object({
   output_transform: z.string().min(1).optional(),
   output_transform_function: z.string().min(1).optional(),
   response_filters: z.array(ResponseFilterSchema).optional(),
-  steps: z.array(StepSchema).min(1).max(200),
+  steps: z.array(StepSchema).min(1).max(WORKFLOW_MAX_STEPS),
   timeout_ms: z.number().int().positive().optional(),
   max_llm_tokens_per_run: z.number().int().positive().optional(),
   runtime: WorkflowRuntimeSchema.optional(),

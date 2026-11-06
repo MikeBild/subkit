@@ -1,12 +1,10 @@
 import { createRoute, type OpenAPIHono, type z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import {
   createTenantConnectorTemplate,
+  deleteTenantConnectorTemplate,
   listResolvedConnectorTemplates,
 } from "../../../connectors/index.ts";
-import { connectorTemplates } from "../../../db/schema/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -120,28 +118,11 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     requireAdmin(principal);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    const existing = await db
-      .select()
-      .from(connectorTemplates)
-      .where(
-        and(eq(connectorTemplates.tenant_id, principal.tenant_id), eq(connectorTemplates.id, id)),
-      )
-      .limit(1);
-    if (!existing[0]) throw new NotFoundError("connector_template");
-    await db.delete(connectorTemplates).where(eq(connectorTemplates.id, id));
-    await auditAwait(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: principal.kind,
-        actor_id: principal.id,
-        action: AuditAction.CONNECTOR_DELETED,
-        resource_type: "connector_template",
-        resource_id: id,
-        result: "success",
-        metadata: { slug: existing[0].slug },
-      },
+    const deleted = await deleteTenantConnectorTemplate(
+      { tenant_id: principal.tenant_id, actor_type: principal.kind, actor_id: principal.id, id },
       db,
     );
+    if (!deleted) throw new NotFoundError("connector_template");
     return c.body(null, 204);
   });
 }

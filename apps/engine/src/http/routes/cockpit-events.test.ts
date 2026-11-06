@@ -5,14 +5,11 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { writeEvent } from "../../db/events.ts";
 import { events } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { cockpitStreamConds, projectCockpitPayload } from "../../identity/cockpit-stream.ts";
 import { adminPrincipal } from "../../test-helpers/principals.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
-import {
-  cockpitStreamConds,
-  projectCockpitPayload,
-  registerCockpitEventRoutes,
-} from "./cockpit-events.ts";
+import { registerCockpitEventRoutes } from "./cockpit-events.ts";
 
 let ctx: TestDb;
 let tenantA = "";

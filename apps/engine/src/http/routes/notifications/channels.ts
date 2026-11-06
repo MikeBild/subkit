@@ -1,11 +1,12 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import {
+  createChannel,
+  deleteChannel,
+  listChannels,
   type NotificationChannelRow,
-  notificationChannels,
-} from "../../../db/schema/notifications.ts";
+  updateChannel,
+} from "../../../notifications/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
@@ -146,115 +147,29 @@ export function registerChannelRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.openapi(listRoute, async (c) => {
     const principal = requireAuth(c);
-    const db = c.get("db");
-    const rows = await db
-      .select()
-      .from(notificationChannels)
-      .where(eq(notificationChannels.tenant_id, principal.tenant_id));
+    const rows = await listChannels(c.get("db"), principal.tenant_id);
     return c.json({ items: rows.map(serializeChannel) }, 200);
   });
 
   app.openapi(createRouteSpec, async (c) => {
     const principal = requireAuth(c);
-    const db = c.get("db");
-    const body = c.req.valid("json");
-    const [row] = await db
-      .insert(notificationChannels)
-      .values({
-        tenant_id: principal.tenant_id,
-        workspace_id: body.workspace_id,
-        channel_id: body.channel_id,
-        platform: body.platform,
-        default_severity: body.default_severity ?? "info",
-        rate_limit_per_minute: body.rate_limit_per_minute ?? 60,
-        active: body.active ?? true,
-      })
-      .returning();
-    if (!row) throw new Error("notifications: insert failed");
-    await auditAwait(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: principal.kind,
-        actor_id: principal.id,
-        action: AuditAction.NOTIFICATION_CHANNEL_CREATED,
-        resource_type: "notification_channel",
-        resource_id: row.id,
-        result: "success",
-        metadata: {
-          platform: row.platform,
-          workspace_id: row.workspace_id,
-          channel_id: row.channel_id,
-        },
-      },
-      db,
-    );
+    const row = await createChannel(c.get("db"), principal, c.req.valid("json"));
     return c.json(serializeChannel(row), 201);
   });
 
   app.openapi(updateRoute, async (c) => {
     const principal = requireAuth(c);
-    const db = c.get("db");
     const { id } = c.req.valid("param");
-    const body = c.req.valid("json");
-    const updates: Partial<NotificationChannelRow> = { updated_at: new Date() };
-    if (body.default_severity !== undefined) updates.default_severity = body.default_severity;
-    if (body.rate_limit_per_minute !== undefined)
-      updates.rate_limit_per_minute = body.rate_limit_per_minute;
-    if (body.active !== undefined) updates.active = body.active;
-    const [row] = await db
-      .update(notificationChannels)
-      .set(updates)
-      .where(
-        and(
-          eq(notificationChannels.tenant_id, principal.tenant_id),
-          eq(notificationChannels.id, id),
-        ),
-      )
-      .returning();
+    const row = await updateChannel(c.get("db"), principal, id, c.req.valid("json"));
     if (!row) throw new NotFoundError("notification_channel");
-    await auditAwait(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: principal.kind,
-        actor_id: principal.id,
-        action: AuditAction.NOTIFICATION_CHANNEL_UPDATED,
-        resource_type: "notification_channel",
-        resource_id: row.id,
-        result: "success",
-        metadata: { changed_fields: Object.keys(updates).filter((k) => k !== "updated_at") },
-      },
-      db,
-    );
     return c.json(serializeChannel(row), 200);
   });
 
   app.openapi(deleteRoute, async (c) => {
     const principal = requireAuth(c);
-    const db = c.get("db");
     const { id } = c.req.valid("param");
-    const deleted = await db
-      .delete(notificationChannels)
-      .where(
-        and(
-          eq(notificationChannels.tenant_id, principal.tenant_id),
-          eq(notificationChannels.id, id),
-        ),
-      )
-      .returning({ id: notificationChannels.id });
-    if (deleted.length === 0) throw new NotFoundError("notification_channel");
-    await auditAwait(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: principal.kind,
-        actor_id: principal.id,
-        action: AuditAction.NOTIFICATION_CHANNEL_DELETED,
-        resource_type: "notification_channel",
-        resource_id: id,
-        result: "success",
-        metadata: {},
-      },
-      db,
-    );
+    const deleted = await deleteChannel(c.get("db"), principal, id);
+    if (!deleted) throw new NotFoundError("notification_channel");
     return c.json({ deleted: true }, 200);
   });
 }

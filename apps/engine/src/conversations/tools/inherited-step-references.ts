@@ -1,5 +1,3 @@
-import { and, eq, isNull } from "drizzle-orm";
-import { conversations, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import {
   partitionStepReferences,
@@ -7,6 +5,7 @@ import {
   validateStepReferences,
 } from "../../workflows/reference-validator.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "../../workflows/types.ts";
+import { readTargetWorkflowActiveDag } from "../service/tool-state.ts";
 import type { ToolContext } from "./index.ts";
 
 export const INHERITED_STEP_REFERENCE_CODE = "inherited_step_reference";
@@ -24,29 +23,10 @@ async function activeVersionReferences(
   candidate: WorkflowDef,
 ): Promise<ReferenceValidationError[]> {
   try {
-    const [row] = await ctx.db
-      .select({ dag: workflowVersions.dag, slug: workflows.slug })
-      .from(conversations)
-      .innerJoin(
-        workflows,
-        and(
-          eq(workflows.tenant_id, conversations.tenant_id),
-          eq(workflows.id, conversations.target_workflow_id),
-          isNull(workflows.deleted_at),
-        ),
-      )
-      .innerJoin(
-        workflowVersions,
-        and(
-          eq(workflowVersions.tenant_id, workflows.tenant_id),
-          eq(workflowVersions.workflow_id, workflows.id),
-          eq(workflowVersions.id, workflows.current_version_id),
-        ),
-      )
-      .where(
-        and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
-      )
-      .limit(1);
+    const row = await readTargetWorkflowActiveDag(ctx.db, {
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+    });
     if (!row) return [];
     const slug = (candidate as { slug?: unknown }).slug;
     if (typeof slug === "string" && slug !== row.slug) return [];

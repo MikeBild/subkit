@@ -1,5 +1,4 @@
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
 import {
   recordConnectorCreated,
   recordConnectorSavedOverride,
@@ -8,7 +7,6 @@ import {
 import { getConnector } from "../../connectors/service.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
-import { conversations } from "../../db/schema/index.ts";
 import { safeParseJson } from "../../llm/core/safe-json.ts";
 import { logger } from "../../logging/logger.ts";
 import { translateAutoPersistError } from "../persistence/auto-persist.ts";
@@ -17,6 +15,7 @@ import {
   connectorFieldPatch,
   saveConnectorAtomic,
 } from "../persistence/save-connector.ts";
+import { readConversationTargets } from "../service/tool-state.ts";
 import { auditActorFromToolContext } from "./audit-actor.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { buildConnectorUsage } from "./usage-guidance.ts";
@@ -293,17 +292,11 @@ export const saveConnectorDraftTool: ConversationTool = {
         : null;
     let connector_id = typeof dataConnector?.id === "string" ? dataConnector.id : null;
     if (!connector_id) {
-      const rows = await ctx.db
-        .select({ id: conversations.target_connector_id })
-        .from(conversations)
-        .where(
-          and(
-            eq(conversations.tenant_id, ctx.tenant_id),
-            eq(conversations.id, ctx.conversation_id),
-          ),
-        )
-        .limit(1);
-      connector_id = rows[0]?.id ?? null;
+      const targets = await readConversationTargets(ctx.db, {
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+      });
+      connector_id = targets?.target_connector_id ?? null;
     }
     if (connector_id) {
       if (probeFailed) {

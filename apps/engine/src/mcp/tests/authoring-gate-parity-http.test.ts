@@ -5,9 +5,9 @@ import { and, eq } from "drizzle-orm";
 import { MCP_ADMIN_SCOPE } from "../../auth/scopes.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { createEmptyDraftDocument } from "../../conversations/authoring-state.ts";
+import { freshSignals } from "../../conversations/tests/turn-signals.ts";
 import { getTool, type ToolContext } from "../../conversations/tools/index.ts";
 import { wrapOne } from "../../conversations/tools/sdk-wrap/invoke.ts";
-import type { TurnSignals } from "../../conversations/tools/sdk-wrap/state.ts";
 import type { DraftDocument, TurnEvent } from "../../conversations/types.ts";
 import { conversations, conversationToolCalls, users } from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
@@ -56,24 +56,6 @@ function seedDraft(): DraftDocument {
     ],
   };
   return draft;
-}
-
-function freshSignals(): TurnSignals {
-  return {
-    step: 0,
-    toolChain: Promise.resolve(),
-    pendingChildToolCallIds: [],
-    pendingChildElicitationIds: [],
-    toolInvocationCount: new Map(),
-    toolLastErrorHash: new Map(),
-    toolArgsRepeat: new Map(),
-    toolValidationFingerprint: new Map(),
-    toolErrorCodeRepeat: new Map(),
-    totalLoopWarnings: 0,
-    consecutiveFailures: 0,
-    lastAssistantText: "",
-    lastExecutionSuccess: null,
-  };
 }
 
 async function newConversation(draft: DraftDocument | null): Promise<string> {

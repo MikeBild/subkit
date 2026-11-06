@@ -9,6 +9,7 @@ import { createTestDb, type TestDb } from "../tests/setup.ts";
 import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
 
 const migration = EMBEDDED_MIGRATIONS.find((item) => item.idx === 0);
+const latestIdx = Math.max(...EMBEDDED_MIGRATIONS.map((item) => item.idx));
 const expected: typeof schedulerSweepProducerEnum.enumValues = [
   "catalog",
   "docs",
@@ -36,7 +37,7 @@ test("migration stays embedded and seeds precisely the closed producer set", asy
   expect(schedulerSweepProducerEnum.enumValues).toEqual(expected);
   const snapshot = JSON.parse(
     readFileSync(
-      join(import.meta.dir, `meta/${String(migration.idx).padStart(4, "0")}_snapshot.json`),
+      join(import.meta.dir, `meta/${String(latestIdx).padStart(4, "0")}_snapshot.json`),
       "utf8",
     ),
   ) as { enums: Record<string, { values: string[] }> };

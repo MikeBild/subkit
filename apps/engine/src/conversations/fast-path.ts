@@ -9,9 +9,14 @@ import {
   executions,
   workflows,
 } from "../db/schema/index.ts";
-import { runExecution } from "../execution/engine.ts";
+import type { ExecutionMode } from "../execution/types.ts";
 import { HELD_PREVIEW_WARNING_CODE } from "../execution/types.ts";
-import { admitWorkflowRun } from "../execution/workflow-run-admission.ts";
+import {
+  authorizeWorkflowRun,
+  completedRun,
+  createRunWorkflow,
+  type RunGrant,
+} from "../execution/use-cases/run-workflow.ts";
 import { logger } from "../logging/logger.ts";
 import { recordConversationToolCall } from "../observability/instrumentation.ts";
 import { can } from "../rbac/evaluator.ts";
@@ -24,9 +29,9 @@ import {
 } from "../tools/approval.ts";
 import { confirmEnvelopeFor } from "../tools/policy.ts";
 import type { ToolSurface } from "../tools/types.ts";
+import { workflowExecutionEnvironment } from "../workflows/execution-environment.ts";
 import { resolveWorkflowInputContract } from "../workflows/input-schema-synth.ts";
 import { resolveWorkflowByIdOrSlug } from "../workflows/lookup.ts";
-import { gateWorkflowRunRbac } from "../workflows/rbac.ts";
 import { getWorkflow } from "../workflows/service.ts";
 import type { AnswerActor } from "./answer-actor.ts";
 import { runConfirmGate } from "./confirmation.ts";
@@ -310,6 +315,18 @@ async function auditPolicyDenied(
   );
 }
 
+async function fastPathEnvironment(
+  p: FastPathParams,
+  workflow_id: string,
+): Promise<ExecutionMode | null> {
+  try {
+    return await workflowExecutionEnvironment(p.db, p.tenant_id, workflow_id);
+  } catch (error) {
+    if ((error as { code?: unknown }).code === "workflow_environment_ambiguous") return null;
+    throw error;
+  }
+}
+
 interface RunFastPathResolution {
   workflow: { id: string; slug: string; name: string; current_version_id: string | null };
 }
@@ -318,7 +335,8 @@ async function executeRunWorkflow(
   p: FastPathParams,
   resolution: RunFastPathResolution,
   input: unknown,
-  workflowPermission: import("../execution/index.ts").WorkflowPermission | null,
+  grant: RunGrant,
+  environment: ExecutionMode,
 ): Promise<RenderPayload & { outcome: ToolCallOutcome }> {
   if (p.actor_id === null) {
     logger.warn({
@@ -331,37 +349,19 @@ async function executeRunWorkflow(
   }
   const wf = resolution.workflow;
   try {
-    const admitted = await admitWorkflowRun(
-      {
-        tenant_id: p.tenant_id,
+    const { admitted, result } = completedRun(
+      await createRunWorkflow({ db: p.db }).runWorkflow({
+        principal: p.principal,
         workflow_id: wf.id,
         workflow_version_id: wf.current_version_id ?? undefined,
-        execution_environment: "dev",
+        execution_environment: environment,
         request_source: "chat",
         input: input ?? null,
-      },
-      p.db,
-      p.principal,
-      workflowPermission,
+        authorization: { kind: "granted", workflow_permission: grant.workflow_permission },
+        audit_extra: { via: "fast_path" },
+        dispatch: { mode: "inline", trace_id: null },
+      }),
     );
-    const result = await runExecution({
-      db: p.db,
-      tenant_id: p.tenant_id,
-      source: {
-        kind: "saved",
-        workflow_id: wf.id,
-        version_id: admitted.workflow_version_id,
-      },
-      input: admitted.input,
-      options: {
-        request_source: "chat",
-        trace_id: null,
-        principal: p.principal,
-        execution_mode: "dev",
-        existing_execution_id: admitted.execution_id,
-        hold_writes: admitted.hold_writes,
-      },
-    });
     const heldPreview = result.warnings?.find(
       (warning) => warning.code === HELD_PREVIEW_WARNING_CODE,
     );
@@ -674,26 +674,30 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
         });
         return null;
       }
-      const rbac = await gateWorkflowRunRbac({
-        db: p.db,
-        principal: p.principal,
-        workflow_id: resolved.id,
-        workflow_slug: resolved.slug,
-        request_source: "fast_path",
-        tool: "run_workflow",
-      });
-      if (!rbac.allow) {
-        const reply = `Permission denied: ${rbac.error_message}.`;
+      const environment = await fastPathEnvironment(p, resolved.id);
+      if (!environment) return null;
+      const grant = await authorizeWorkflowRun(
+        {
+          principal: p.principal,
+          workflow_id: resolved.id,
+          workflow_slug: resolved.slug,
+          via: "fast_path",
+          tool: "run_workflow",
+        },
+        { db: p.db },
+      );
+      if (grant.kind === "rejected") {
+        const reply = `Permission denied: ${grant.message}.`;
         const persisted = await persistFastPathTurn(
           p,
           "run_workflow",
-          { workflow: resolved.slug, environment: "dev" },
+          { workflow: resolved.slug, environment },
           {
             ok: false,
             denied: true,
             permission: "workflow:run",
-            reason: rbac.reason,
-            error: rbac.error_message,
+            reason: grant.reason,
+            error: grant.message,
             skipped_llm: true,
           },
           reply,
@@ -712,7 +716,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           assistant_text: reply,
         };
       }
-      const runArgs = { workflow: resolved.slug, environment: "dev" };
+      const runArgs = { workflow: resolved.slug, environment };
       const gate = await runConfirmGate({
         tool: "run_workflow",
         category: "tenant_write",
@@ -726,11 +730,11 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
         record_surface: p.surface ?? "api",
         conversation_id: p.conversation_id,
         actor_id: p.actor_id,
-        execution_mode: "dev",
+        execution_mode: environment,
         precheck: null,
         pause_blocked: false,
         confirmation_kind: null,
-        environment: "dev",
+        environment,
       });
       if (gate.kind === "approval_failed") throw gate.error;
       if (gate.kind === "needs_confirm") {
@@ -764,7 +768,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
             skipped_llm: true,
             suggested_command: `/workflows run ${resolved.slug}`,
           },
-          `Confirm: run ${resolved.slug} in dev?`,
+          `Confirm: run ${resolved.slug} in ${environment}?`,
           "pending",
           { approval_id: confirm_id },
         );
@@ -778,22 +782,17 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           status: "awaiting_input",
           events: persisted.events,
           fast_path_tool: "run_workflow",
-          assistant_text: `Confirm: run ${resolved.slug} in dev?`,
+          assistant_text: `Confirm: run ${resolved.slug} in ${environment}?`,
         };
       }
       if (gate.kind !== "proceed") {
         throw new Error(`fast path cannot shape a ${gate.kind} confirm gate outcome`);
       }
-      const payload = await executeRunWorkflow(
-        p,
-        { workflow: resolved },
-        null,
-        rbac.workflow_permission,
-      );
+      const payload = await executeRunWorkflow(p, { workflow: resolved }, null, grant, environment);
       const persisted = await persistFastPathTurn(
         p,
         "run_workflow",
-        { workflow: resolved.slug, environment: "dev" },
+        { workflow: resolved.slug, environment },
         { ok: payload.ok, ...payload.data, skipped_llm: true },
         payload.reply,
         payload.outcome,
@@ -890,7 +889,6 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
         tool: "run_workflow",
         surface: gateSurface,
         via: "fast_path",
-        execution_mode: "dev",
       });
       if (!claim.ok) {
         const persisted = await persistFastPathTurn(
@@ -919,21 +917,27 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
       const resolved = slug
         ? await resolveWorkflowByIdOrSlug(p.db, p.tenant_id, slug, { require_published: true })
         : null;
-      if (!resolved?.current_version_id) {
+      const replayEnvironment = claim.execution_mode;
+      if (!resolved?.current_version_id || !replayEnvironment) {
+        const unavailable = resolved?.current_version_id
+          ? "approval_environment_missing"
+          : "workflow_not_found";
         await recordApprovalUnfulfilled({
           db: p.db,
           principal: p.principal,
           claim,
           tool: "run_workflow",
           via: "fast_path",
-          reason: "workflow_not_found",
+          reason: unavailable,
         });
-        const reply = `The workflow ${slug ?? "(unknown)"} is no longer available; nothing was run.`;
+        const reply = resolved?.current_version_id
+          ? "The confirmation names no environment; nothing was run. Ask again to obtain a fresh confirmation."
+          : `The workflow ${slug ?? "(unknown)"} is no longer available; nothing was run.`;
         const persisted = await persistFastPathTurn(
           p,
           "run_workflow",
           replayArgs,
-          { ok: false, error: "workflow_not_found", skipped_llm: true },
+          { ok: false, error: unavailable, skipped_llm: true },
           reply,
           "error",
         );
@@ -950,17 +954,19 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           assistant_text: reply,
         };
       }
-      const rbac = await gateWorkflowRunRbac({
-        db: p.db,
-        principal: p.principal,
-        workflow_id: resolved.id,
-        workflow_slug: resolved.slug,
-        request_source: "fast_path",
-        tool: "run_workflow",
-        approval: approvalAuditResource(claim),
-      });
-      if (!rbac.allow) {
-        const reply = `Permission denied: ${rbac.error_message}.`;
+      const grant = await authorizeWorkflowRun(
+        {
+          principal: p.principal,
+          workflow_id: resolved.id,
+          workflow_slug: resolved.slug,
+          via: "fast_path",
+          tool: "run_workflow",
+          approval: approvalAuditResource(claim),
+        },
+        { db: p.db },
+      );
+      if (grant.kind === "rejected") {
+        const reply = `Permission denied: ${grant.message}.`;
         const persisted = await persistFastPathTurn(
           p,
           "run_workflow",
@@ -969,8 +975,8 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
             ok: false,
             denied: true,
             permission: "workflow:run",
-            reason: rbac.reason,
-            error: rbac.error_message,
+            reason: grant.reason,
+            error: grant.message,
             skipped_llm: true,
           },
           reply,
@@ -1023,7 +1029,8 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
         p,
         { workflow: resolved },
         null,
-        rbac.workflow_permission,
+        grant,
+        replayEnvironment,
       );
       const persisted = await persistFastPathTurn(
         p,

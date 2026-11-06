@@ -122,6 +122,19 @@ function parsePathArg(
   return { path: normalizeInterpolated(resolved, constants), end: i + ident.length };
 }
 
+const TYPED_CALL_RE = /\.api\s*\.(GET|POST|PUT|PATCH|DELETE)\(\s*(["'`])([^"'`]+)\2/g;
+
+function extractTypedCalls(src: string): EndpointCall[] {
+  const out: EndpointCall[] = [];
+  for (const m of src.matchAll(TYPED_CALL_RE)) {
+    out.push({
+      method: m[1] as string,
+      path: (m[3] as string).replace(/\{[^}]+\}/g, "{param}"),
+    });
+  }
+  return out;
+}
+
 function extractFromFile(src: string, constants: Record<string, string>): EndpointCall[] {
   const localConstants = loadLocalPathConstants(src);
   const out: EndpointCall[] = [];
@@ -151,6 +164,7 @@ function extractFromFile(src: string, constants: Record<string, string>): Endpoi
     }
     m = callRe.exec(src);
   }
+  out.push(...extractTypedCalls(src));
   return out;
 }
 
@@ -182,14 +196,16 @@ function loadOpenApiPairs(): Set<string> {
   return pairs;
 }
 
+function engineClientSources(): string[] {
+  return readdirSync(ENGINE_CLIENT_DIR)
+    .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
+    .map((file) => readFileSync(join(ENGINE_CLIENT_DIR, file), "utf8"));
+}
+
 function extractCliEndpointPairs(): Set<string> {
   const constants = loadSharedPathConstants();
-  const files = readdirSync(ENGINE_CLIENT_DIR).filter(
-    (f) => f.endsWith(".ts") && !f.endsWith(".test.ts"),
-  );
   const pairs = new Set<string>();
-  for (const file of files) {
-    const src = readFileSync(join(ENGINE_CLIENT_DIR, file), "utf8");
+  for (const src of engineClientSources()) {
     for (const call of extractFromFile(src, constants)) {
       pairs.add(`${call.method.toUpperCase()} ${call.path}`);
     }
@@ -203,9 +219,33 @@ function extractCliEndpointPairs(): Set<string> {
 const KNOWN_UNDOCUMENTED_ENDPOINTS: string[] = [];
 
 describe("sk CLI <-> engine OpenAPI contract", () => {
-  test("the scanner still finds the sk CLI's engine calls", () => {
+  test("the scanner still finds the sk CLI's engine calls in both call forms", () => {
     const pairs = extractCliEndpointPairs();
     expect(pairs.size).toBeGreaterThan(150);
+    const typed = new Set(
+      engineClientSources().flatMap((src) =>
+        extractTypedCalls(src).map((call) => `${call.method} ${call.path}`),
+      ),
+    );
+    expect(typed.size).toBeGreaterThan(0);
+    for (const pair of typed) expect(pairs.has(pair)).toBe(true);
+  });
+
+  test("the scanner reads request calls and typed api calls alike", () => {
+    const src = [
+      `this.request("GET", \`/v1/things/\${encodeURIComponent(id)}\`);`,
+      'this.api.PATCH("/v1/things/{id}/parts/{part_id}", { params: { path: { id, part_id } } });',
+      "this.api.DELETE(\n  '/v1/things/{id}',\n  { params: { path: { id } } },\n);",
+      'this.api.POST("/v1/things", { body });',
+      'this.api\n  .GET("/v1/things/{id}/state")\n  .then(({ data }) => data);',
+    ].join("\n");
+    expect(extractFromFile(src, {})).toEqual([
+      { method: "GET", path: "/v1/things/{param}" },
+      { method: "PATCH", path: "/v1/things/{param}/parts/{param}" },
+      { method: "DELETE", path: "/v1/things/{param}" },
+      { method: "POST", path: "/v1/things" },
+      { method: "GET", path: "/v1/things/{param}/state" },
+    ]);
   });
 
   test("every (method, path) the sk CLI calls exists in the committed openapi.json", () => {

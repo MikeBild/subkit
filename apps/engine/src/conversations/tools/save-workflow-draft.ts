@@ -1,8 +1,7 @@
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
 import { recordWorkflowCommitted } from "../../audit/recorders/index.ts";
-import { skills as skillsTable } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
+import { findSkillSafetyBySlug } from "../../skills/tool-lookups.ts";
 import { getWorkflowDraft } from "../authoring-state.ts";
 import {
   checkWorkflowSaveReadiness,
@@ -84,14 +83,7 @@ export const saveWorkflowDraftTool: ConversationTool = {
     const derivedFromSkillId = (draftSnapshot as { derived_from_skill_id?: string | null })
       .derived_from_skill_id;
     if (derivedFromSkillId && !args.confirmed) {
-      const skillRows = await ctx.db
-        .select({ side_effects: skillsTable.side_effects, title: skillsTable.title })
-        .from(skillsTable)
-        .where(
-          and(eq(skillsTable.tenant_id, ctx.tenant_id), eq(skillsTable.slug, derivedFromSkillId)),
-        )
-        .limit(1);
-      const skillRow = skillRows[0];
+      const skillRow = await findSkillSafetyBySlug(ctx.db, ctx.tenant_id, derivedFromSkillId);
       if (skillRow && skillRow.side_effects === "destructive") {
         return {
           ok: false,

@@ -1,11 +1,13 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, desc, eq, sql } from "drizzle-orm";
 import { ErrorSchema, paginatedResponse } from "../../api/common-schemas.ts";
-import { AuditAction, audit } from "../../audit/index.ts";
-import { writeEvent } from "../../db/events.ts";
-import { events } from "../../db/schema/index.ts";
 import { getBoss } from "../../queue/index.ts";
-import { EVENT_TYPES, fanoutEvent, validateEventPayload } from "../../webhooks/index.ts";
+import {
+  EVENT_TYPES,
+  emitOutboxEvent,
+  listOutboxEvents,
+  outboxTenantConds,
+  validateEventPayload,
+} from "../../webhooks/index.ts";
 import { BadRequestError, ForbiddenError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -83,17 +85,13 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(listRoute, async (c) => {
     const principal = requireAuth(c);
     if (principal.product_id) throw new ForbiddenError("product_caller_forbidden");
-    const db = c.get("db");
     const q = c.req.valid("query");
-    const tenantConds = [eq(events.tenant_id, principal.tenant_id)];
-    if (q.channel) tenantConds.push(eq(events.channel, q.channel));
-    if (q.type) tenantConds.push(eq(events.type, q.type));
-    const rows = await db
-      .select()
-      .from(events)
-      .where(and(...tenantConds))
-      .orderBy(desc(events.id))
-      .limit(q.limit ?? 100);
+    const rows = await listOutboxEvents(
+      c.get("db"),
+      principal.tenant_id,
+      { channel: q.channel, type: q.type },
+      q.limit ?? 100,
+    );
     return c.json(
       {
         items: rows.map((r) => ({
@@ -129,42 +127,14 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
       | "conversation.stream"
       | "event.emitted"
       | "notification.emitted";
-    const event_id = await db.transaction(async (tx) => {
-      return await writeEvent(tx, {
-        tenant_id: principal.tenant_id,
-        channel,
-        type: body.type,
-        payload: body.payload,
-      });
+    const bossOverride = (c as unknown as { get: (k: string) => unknown }).get("boss") as
+      | ReturnType<typeof getBoss>
+      | undefined;
+    const event_id = await emitOutboxEvent(db, () => bossOverride ?? getBoss(), principal, {
+      type: body.type,
+      payload: body.payload,
+      channel,
     });
-    audit(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: principal.kind,
-        actor_id: principal.id,
-        action: AuditAction.EVENT_EMITTED,
-        resource_type: "event",
-        resource_id: String(event_id),
-        result: "success",
-        metadata: { type: body.type, channel },
-      },
-      db,
-    );
-
-    try {
-      const bossOverride = (c as unknown as { get: (k: string) => unknown }).get("boss") as
-        | ReturnType<typeof getBoss>
-        | undefined;
-      const boss = bossOverride ?? getBoss();
-      await fanoutEvent({
-        db,
-        boss,
-        tenant_id: principal.tenant_id,
-        event_row_id: event_id,
-        event_type: body.type,
-        payload: body.payload,
-      });
-    } catch {}
     return c.json({ event_id }, 202);
   });
 
@@ -187,15 +157,12 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
     return streamOutboxTail(c, {
       db,
       replay: "recent",
-      conds: () => {
-        const tenantConds = [eq(events.tenant_id, tenantId)];
-        if (rawExecutionId) {
-          tenantConds.push(sql`${events.payload}->>'execution_id' = ${rawExecutionId}`);
-        }
-        if (channelFilter) tenantConds.push(eq(events.channel, channelFilter));
-        if (typeFilter) tenantConds.push(eq(events.type, typeFilter));
-        return tenantConds;
-      },
+      conds: () =>
+        outboxTenantConds(tenantId, {
+          execution_id: rawExecutionId,
+          channel: channelFilter,
+          type: typeFilter,
+        }),
     });
   });
 }

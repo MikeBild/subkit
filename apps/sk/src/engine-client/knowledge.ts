@@ -1,40 +1,55 @@
 import { EngineError } from "@cli-core/errors.ts";
 import type { EngineClient } from "../engine-client.ts";
-import { parseResponseBody } from "./http.ts";
+import { type ApiBody, type ApiQuery, parseResponseBody } from "./http.ts";
 
 export const knowledgeMethods = {
-  listKnowledgeSources(
+  async listKnowledgeSources(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
   ): Promise<{ items: Record<string, unknown>[] }> {
-    return this.request("GET", "/v1/knowledge-sources", undefined, query);
+    const { data } = await this.api.GET("/v1/knowledge-sources", {
+      params: { query: query as ApiQuery<"/v1/knowledge-sources", "get"> },
+    });
+    return data as { items: Record<string, unknown>[] };
   },
-  searchKnowledge(
+  async searchKnowledge(
     this: EngineClient,
     q: string,
     query: Record<string, string | number | undefined> = {},
   ): Promise<{ hits: Record<string, unknown>[] }> {
-    return this.request("GET", "/v1/knowledge-sources/search", undefined, { q, ...query });
+    const { data } = await this.api.GET("/v1/knowledge-sources/search", {
+      params: { query: { q, ...query } as ApiQuery<"/v1/knowledge-sources/search", "get"> },
+    });
+    return data as { hits: Record<string, unknown>[] };
   },
-  getKnowledgeSource(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("GET", `/v1/knowledge-sources/${encodeURIComponent(id)}`);
+  async getKnowledgeSource(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+    const { data } = await this.api.GET("/v1/knowledge-sources/{id}", { params: { path: { id } } });
+    return data as Record<string, unknown>;
   },
-  patchKnowledgeSource(
+  async patchKnowledgeSource(
     this: EngineClient,
     id: string,
     body: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    return this.request("PATCH", `/v1/knowledge-sources/${encodeURIComponent(id)}`, body);
+    const { data } = await this.api.PATCH("/v1/knowledge-sources/{id}", {
+      params: { path: { id } },
+      body: body as ApiBody<"/v1/knowledge-sources/{id}", "patch">,
+    });
+    return data as Record<string, unknown>;
   },
-  analyzeKnowledgeSource(
+  async analyzeKnowledgeSource(
     this: EngineClient,
     id: string,
     body: { force?: boolean } = {},
   ): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/knowledge-sources/${encodeURIComponent(id)}/analyze`, body);
+    const { data } = await this.api.POST("/v1/knowledge-sources/{id}/analyze", {
+      params: { path: { id } },
+      body: body as ApiBody<"/v1/knowledge-sources/{id}/analyze", "post">,
+    });
+    return data as Record<string, unknown>;
   },
-  deleteKnowledgeSource(this: EngineClient, id: string): Promise<void> {
-    return this.request("DELETE", `/v1/knowledge-sources/${encodeURIComponent(id)}`);
+  async deleteKnowledgeSource(this: EngineClient, id: string): Promise<void> {
+    await this.api.DELETE("/v1/knowledge-sources/{id}", { params: { path: { id } } });
   },
   createKnowledgeSource(
     this: EngineClient,
@@ -51,7 +66,7 @@ export const knowledgeMethods = {
     return this.requestForm("POST", "/v1/knowledge-sources", form);
   },
 
-  importKnowledgeBundle(
+  async importKnowledgeBundle(
     this: EngineClient,
     body: {
       name: string;
@@ -64,73 +79,90 @@ export const knowledgeMethods = {
       files: { path: string; content: string }[];
     },
   ): Promise<Record<string, unknown>> {
-    return this.request("POST", "/v1/knowledge-sources/bundle", body);
+    const { data } = await this.api.POST("/v1/knowledge-sources/bundle", {
+      body: body as ApiBody<"/v1/knowledge-sources/bundle", "post">,
+    });
+    return data as Record<string, unknown>;
   },
-  knowledgeHistory(
+  async knowledgeHistory(
     this: EngineClient,
     id: string,
     query: Record<string, string | number | undefined> = {},
   ): Promise<{ items: Record<string, unknown>[]; total: number }> {
-    return this.request(
-      "GET",
-      `/v1/knowledge-sources/${encodeURIComponent(id)}/history`,
-      undefined,
-      query,
-    );
+    const { data } = await this.api.GET("/v1/knowledge-sources/{id}/history", {
+      params: {
+        path: { id },
+        query: query as ApiQuery<"/v1/knowledge-sources/{id}/history", "get">,
+      },
+    });
+    return data as { items: Record<string, unknown>[]; total: number };
   },
-  restoreKnowledgeVersion(
+  async restoreKnowledgeVersion(
     this: EngineClient,
     id: string,
     version: number,
   ): Promise<{ knowledge_source: Record<string, unknown>; version: number }> {
-    return this.request(
-      "POST",
-      `/v1/knowledge-sources/${encodeURIComponent(id)}/restore/${version}`,
-    );
+    const { data } = await this.api.POST("/v1/knowledge-sources/{id}/restore/{version}", {
+      params: { path: { id, version } },
+    });
+    return data as { knowledge_source: Record<string, unknown>; version: number };
   },
-  listKnowledgeChunks(
+  async listKnowledgeChunks(
     this: EngineClient,
     id: string,
     query: Record<string, string | number | undefined> = {},
   ): Promise<Record<string, unknown>> {
-    return this.request(
-      "GET",
-      `/v1/knowledge-sources/${encodeURIComponent(id)}/chunks`,
-      undefined,
-      query,
-    );
+    const { data } = await this.api.GET("/v1/knowledge-sources/{id}/chunks", {
+      params: {
+        path: { id },
+        query: query as ApiQuery<"/v1/knowledge-sources/{id}/chunks", "get">,
+      },
+    });
+    return data as Record<string, unknown>;
   },
 
-  listDiscoveryRuns(
+  async listDiscoveryRuns(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
   ): Promise<{ items: Record<string, unknown>[] }> {
-    return this.request("GET", "/v1/discovery/runs", undefined, query);
+    const { data } = await this.api.GET("/v1/discovery/runs", {
+      params: { query: query as ApiQuery<"/v1/discovery/runs", "get"> },
+    });
+    return data as { items: Record<string, unknown>[] };
   },
-  getDiscoveryRun(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("GET", `/v1/discovery/runs/${encodeURIComponent(id)}`);
+  async getDiscoveryRun(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+    const { data } = await this.api.GET("/v1/discovery/runs/{id}", { params: { path: { id } } });
+    return data as Record<string, unknown>;
   },
-  listDiscoveryArtifacts(
+  async listDiscoveryArtifacts(
     this: EngineClient,
     runId: string,
     query: Record<string, string | number | undefined> = {},
   ): Promise<{ items: Record<string, unknown>[] }> {
-    return this.request(
-      "GET",
-      `/v1/discovery/runs/${encodeURIComponent(runId)}/artifacts`,
-      undefined,
-      query,
-    );
+    const { data } = await this.api.GET("/v1/discovery/runs/{id}/artifacts", {
+      params: {
+        path: { id: runId },
+        query: query as ApiQuery<"/v1/discovery/runs/{id}/artifacts", "get">,
+      },
+    });
+    return data as { items: Record<string, unknown>[] };
   },
-  approveDiscoveryArtifact(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/discovery/artifacts/${encodeURIComponent(id)}/approve`);
+  async approveDiscoveryArtifact(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+    const { data } = await this.api.POST("/v1/discovery/artifacts/{id}/approve", {
+      params: { path: { id } },
+    });
+    return data as Record<string, unknown>;
   },
-  rejectDiscoveryArtifact(
+  async rejectDiscoveryArtifact(
     this: EngineClient,
     id: string,
     body: { reason?: string } = {},
   ): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/discovery/artifacts/${encodeURIComponent(id)}/reject`, body);
+    const { data } = await this.api.POST("/v1/discovery/artifacts/{id}/reject", {
+      params: { path: { id } },
+      body: body as ApiBody<"/v1/discovery/artifacts/{id}/reject", "post">,
+    });
+    return data as Record<string, unknown>;
   },
   createDiscoveryRun(
     this: EngineClient,
@@ -149,11 +181,14 @@ export const knowledgeMethods = {
     return this.requestForm("POST", "/v1/discovery/runs", form);
   },
 
-  extract(
+  async extract(
     this: EngineClient,
     body: { sample: string; hint?: string },
   ): Promise<Record<string, unknown>> {
-    return this.request("POST", "/v1/ai/extract", body);
+    const { data } = await this.api.POST("/v1/ai/extract", {
+      body: body as ApiBody<"/v1/ai/extract", "post">,
+    });
+    return data as Record<string, unknown>;
   },
 
   async extractFile(

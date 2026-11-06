@@ -1,10 +1,15 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam, paginatedResponse } from "../../api/common-schemas.ts";
-import { lintHookSource, policy } from "../../auth/index.ts";
-import { writeAudit } from "../../db/audit.ts";
-import { requestHooks } from "../../db/schema/request_hooks.ts";
-import { STDLIB_VERSION } from "../../sandboxes/index.ts";
+import {
+  createRequestHook,
+  deleteRequestHook,
+  findRequestHook,
+  lintHookSource,
+  listRequestHooks,
+  policy,
+  type RequestHookRow,
+  updateRequestHook,
+} from "../../auth/index.ts";
 import { BadRequestError, ForbiddenError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -43,7 +48,7 @@ const UpdateBody = z
   })
   .openapi("UpdateRequestHookBody");
 
-function serialize(row: typeof requestHooks.$inferSelect) {
+function serialize(row: RequestHookRow) {
   return {
     id: row.id,
     tenant_id: row.tenant_id,
@@ -138,56 +143,22 @@ export function registerRequestHookRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(listRoute, async (c) => {
     const principal = requireAuth(c);
     requireAdmin(principal);
-    const db = c.get("db");
-    const rows = await db
-      .select()
-      .from(requestHooks)
-      .where(eq(requestHooks.tenant_id, principal.tenant_id));
+    const rows = await listRequestHooks(c.get("db"), principal.tenant_id);
     return c.json({ items: rows.map(serialize) }, 200);
   });
 
   app.openapi(createRouteSpec, async (c) => {
     const principal = requireAuth(c);
     requireAdmin(principal);
-    const db = c.get("db");
     const body = c.req.valid("json");
     const lint = await lintHookSource(body.code);
     if (!lint.ok) {
       throw new BadRequestError("invalid hook source", { reason: lint.error });
     }
-    const [row] = await db
-      .insert(requestHooks)
-      .values({
-        tenant_id: principal.tenant_id,
-        role: body.role,
-        source: body.code,
-        description: body.description ?? null,
-        enabled: body.enabled ?? true,
-        updated_by: principal.id,
-        stdlib_version: STDLIB_VERSION,
-      })
-      .returning();
-    if (!row) throw new Error("insert failed");
-    await writeAudit(
-      {
-        id: crypto.randomUUID(),
-        ts: new Date(),
-        tenant_id: principal.tenant_id,
-        actor_type: principal.kind,
-        actor_id: principal.id,
-        action: "before_request_hook.changed",
-        resource_type: "request_hook",
-        resource_id: row.id,
-        result: "success",
-        trace_id: c.get("trace_id") ?? "",
-        ip: null,
-        user_agent: null,
-        before: null,
-        after: { role: row.role, version: row.version, enabled: row.enabled },
-        reason: "created",
-        metadata: {},
-      },
-      db,
+    const row = await createRequestHook(
+      c.get("db"),
+      { principal, trace_id: c.get("trace_id") ?? "" },
+      body,
     );
     return c.json(serialize(row), 201);
   });
@@ -198,11 +169,7 @@ export function registerRequestHookRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
-    const existing = await db
-      .select()
-      .from(requestHooks)
-      .where(and(eq(requestHooks.tenant_id, principal.tenant_id), eq(requestHooks.id, id)));
-    const cur = existing[0];
+    const cur = await findRequestHook(db, principal.tenant_id, id);
     if (!cur) throw new NotFoundError("request_hook");
     if (body.code !== undefined) {
       const lint = await lintHookSource(body.code);
@@ -210,78 +177,26 @@ export function registerRequestHookRoutes(app: OpenAPIHono<AppEnv>): void {
         throw new BadRequestError("invalid hook source", { reason: lint.error });
       }
     }
-    const updates: Partial<typeof requestHooks.$inferInsert> = {
-      updated_at: new Date(),
-      updated_by: principal.id,
-    };
-    if (body.code !== undefined) {
-      updates.source = body.code;
-      updates.version = cur.version + 1;
-      updates.stdlib_version = STDLIB_VERSION;
-    }
-    if (body.description !== undefined) updates.description = body.description;
-    if (body.enabled !== undefined) updates.enabled = body.enabled;
-    const [row] = await db
-      .update(requestHooks)
-      .set(updates)
-      .where(and(eq(requestHooks.tenant_id, principal.tenant_id), eq(requestHooks.id, id)))
-      .returning();
-    if (!row) throw new NotFoundError("request_hook");
-    await writeAudit(
-      {
-        id: crypto.randomUUID(),
-        ts: new Date(),
-        tenant_id: principal.tenant_id,
-        actor_type: principal.kind,
-        actor_id: principal.id,
-        action: "before_request_hook.changed",
-        resource_type: "request_hook",
-        resource_id: row.id,
-        result: "success",
-        trace_id: c.get("trace_id") ?? "",
-        ip: null,
-        user_agent: null,
-        before: { version: cur.version, enabled: cur.enabled },
-        after: { version: row.version, enabled: row.enabled },
-        reason: "updated",
-        metadata: {},
-      },
+    const row = await updateRequestHook(
       db,
+      { principal, trace_id: c.get("trace_id") ?? "" },
+      cur,
+      body,
     );
+    if (!row) throw new NotFoundError("request_hook");
     return c.json(serialize(row), 200);
   });
 
   app.openapi(deleteRouteSpec, async (c) => {
     const principal = requireAuth(c);
     requireAdmin(principal);
-    const db = c.get("db");
     const { id } = c.req.valid("param");
-    const [row] = await db
-      .delete(requestHooks)
-      .where(and(eq(requestHooks.tenant_id, principal.tenant_id), eq(requestHooks.id, id)))
-      .returning();
-    if (!row) throw new NotFoundError("request_hook");
-    await writeAudit(
-      {
-        id: crypto.randomUUID(),
-        ts: new Date(),
-        tenant_id: principal.tenant_id,
-        actor_type: principal.kind,
-        actor_id: principal.id,
-        action: "before_request_hook.changed",
-        resource_type: "request_hook",
-        resource_id: row.id,
-        result: "success",
-        trace_id: c.get("trace_id") ?? "",
-        ip: null,
-        user_agent: null,
-        before: { role: row.role, version: row.version },
-        after: null,
-        reason: "deleted",
-        metadata: {},
-      },
-      db,
+    const row = await deleteRequestHook(
+      c.get("db"),
+      { principal, trace_id: c.get("trace_id") ?? "" },
+      id,
     );
+    if (!row) throw new NotFoundError("request_hook");
     return c.json({ deleted: true }, 200);
   });
 }

@@ -1,8 +1,6 @@
 import type { z } from "@hono/zod-openapi";
 import { type Tool, tool } from "ai";
-import { and, eq } from "drizzle-orm";
 import type { Db } from "../../../db/client.ts";
-import { conversations } from "../../../db/schema/index.ts";
 import { withContext } from "../../../logging/context.ts";
 import { errorFields, log, logger } from "../../../logging/logger.ts";
 import { stampMcpTaskProgress } from "../../../mcp/tasks/store.ts";
@@ -34,6 +32,10 @@ import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persi
 import { resolveSaveVerification } from "../../persistence/commit-workflow.ts";
 import { findPriorSaveWorkflowApproval } from "../../persistence/save-workflow-approval.ts";
 import { resolveScopeFactsForConversation } from "../../scope-facts.ts";
+import {
+  readConversationSkillState,
+  setConversationLoadedSkills,
+} from "../../service/tool-state.ts";
 import {
   autoloadForDiagnoses,
   autoloadForToolCall,
@@ -131,13 +133,8 @@ async function autoloadForResultDiagnoses(
   const codes = diagnosisCodesFromToolResult(resultPayload);
   if (codes.length === 0) return;
   try {
-    const [row] = await db
-      .select({ loaded_skills: conversations.loaded_skills, turn_count: conversations.turn_count })
-      .from(conversations)
-      .where(
-        and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
-      )
-      .limit(1);
+    const scope = { tenant_id: ctx.tenant_id, conversation_id: ctx.conversation_id };
+    const row = await readConversationSkillState(db, scope);
     const entries = parseLoadedSkills(row?.loaded_skills, () => {});
     const additions = autoloadForDiagnoses(
       codes,
@@ -148,14 +145,10 @@ async function autoloadForResultDiagnoses(
     );
     if (additions.length === 0) return;
     const turn = row?.turn_count ?? 0;
-    await db
-      .update(conversations)
-      .set({
-        loaded_skills: [...entries, ...additions.map((slug) => ({ slug, last_turn: turn }))],
-      })
-      .where(
-        and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
-      );
+    await setConversationLoadedSkills(db, scope, [
+      ...entries,
+      ...additions.map((slug) => ({ slug, last_turn: turn })),
+    ]);
     logger.debug({
       module: "conversations.skill_autoload",
       action: "skill_autoload.diagnosis_applied",
@@ -944,20 +937,9 @@ export function wrapOne(
         }
 
         try {
-          const convRow = await db
-            .select({
-              loaded_skills: conversations.loaded_skills,
-              turn_count: conversations.turn_count,
-            })
-            .from(conversations)
-            .where(
-              and(
-                eq(conversations.tenant_id, ctx.tenant_id),
-                eq(conversations.id, ctx.conversation_id),
-              ),
-            )
-            .limit(1);
-          const currentEntries = parseLoadedSkills(convRow[0]?.loaded_skills, ({ dropped, raw }) =>
+          const skillScope = { tenant_id: ctx.tenant_id, conversation_id: ctx.conversation_id };
+          const convRow = await readConversationSkillState(db, skillScope);
+          const currentEntries = parseLoadedSkills(convRow?.loaded_skills, ({ dropped, raw }) =>
             logger.warn({
               module: "conversation",
               action: "skill_recency.malformed_loaded_skills",
@@ -968,7 +950,7 @@ export function wrapOne(
               raw,
             }),
           );
-          const currentTurn = convRow[0]?.turn_count ?? 0;
+          const currentTurn = convRow?.turn_count ?? 0;
           const membership = currentEntries.map((e) => e.slug);
           const [catalog, scope] = await Promise.all([
             loadActivationCatalog(ctx.tenant_id, db),
@@ -995,15 +977,7 @@ export function wrapOne(
               ...refreshed,
               ...additions.map((slug) => ({ slug, last_turn: currentTurn })),
             ];
-            await db
-              .update(conversations)
-              .set({ loaded_skills: next })
-              .where(
-                and(
-                  eq(conversations.tenant_id, ctx.tenant_id),
-                  eq(conversations.id, ctx.conversation_id),
-                ),
-              );
+            await setConversationLoadedSkills(db, skillScope, next);
             logger.debug({
               module: "conversations.skill_autoload",
               action: "skill_autoload.applied",

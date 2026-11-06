@@ -1,6 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
-import { users } from "../../db/schema/index.ts";
+import { listRoleMembers } from "../../rbac/actor-roles.ts";
 import { getRole, listRolePermissions } from "../../rbac/roles.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
@@ -34,10 +33,7 @@ export const inspectRoleTool: ConversationTool = {
       };
     }
     const permissions = await listRolePermissions(ctx.db, ctx.tenant_id, role.id);
-    const byRoleId = await ctx.db
-      .select({ id: users.id, email: users.email })
-      .from(users)
-      .where(and(eq(users.tenant_id, ctx.tenant_id), eq(users.role_id, role.id)));
+    const byRoleId = await listRoleMembers(ctx.db, ctx.tenant_id, role.id);
     const memberMap = new Map<string, { id: string; email: string }>();
     for (const m of byRoleId) memberMap.set(m.id, m);
     return {

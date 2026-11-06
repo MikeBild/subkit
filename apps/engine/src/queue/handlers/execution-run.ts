@@ -329,11 +329,13 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db, boss: PgBoss): Promi
           ? (err as { code: string }).code
           : "execution_error";
       try {
-        await finalizeExecution(db, data.tenant_id, data.execution_id, "failed", null, {
-          step_id: null,
-          error_code: code,
-          error_message: message,
-        });
+        await finalizeExecution(
+          db,
+          data.tenant_id,
+          data.execution_id,
+          { type: "failed" },
+          { failure: { step_id: null, error_code: code, error_message: message } },
+        );
         return;
       } catch {}
     }
@@ -425,10 +427,14 @@ export async function registerExecutionRunHandler(
                     db,
                     job.data.tenant_id,
                     job.data.execution_id ?? "",
-                    "failed",
-                    null,
-                    { step_id: null, error_code: error.code, error_message: error.message },
-                    ["queued"],
+                    { type: "enqueue_failed" },
+                    {
+                      failure: {
+                        step_id: null,
+                        error_code: error.code,
+                        error_message: error.message,
+                      },
+                    },
                   );
                 },
               ),

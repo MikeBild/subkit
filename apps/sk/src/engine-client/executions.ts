@@ -1,6 +1,7 @@
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import type { InvokeEnvironment } from "@shared/invoke-snippet.ts";
 import type { EngineClient } from "../engine-client.ts";
+import type { ApiBody, ApiQuery } from "./http.ts";
 
 export type ExecutionCost = components["schemas"]["ExecutionCost"];
 
@@ -90,35 +91,48 @@ export const executionsMethods = {
     );
   },
 
-  listExecutions(
+  async listExecutions(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
   ): Promise<{ items: Record<string, unknown>[]; total: number; next_cursor: string | null }> {
-    return this.request("GET", "/v1/executions", undefined, query);
+    const { data } = await this.api.GET("/v1/executions", {
+      params: { query: query as ApiQuery<"/v1/executions", "get"> },
+    });
+    return data as { items: Record<string, unknown>[]; total: number; next_cursor: string | null };
   },
-  getExecution(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("GET", `/v1/executions/${encodeURIComponent(id)}`);
+  async getExecution(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+    const { data } = await this.api.GET("/v1/executions/{id}", { params: { path: { id } } });
+    return data as Record<string, unknown>;
   },
-  executionSteps(this: EngineClient, id: string): Promise<{ items: Record<string, unknown>[] }> {
-    return this.request("GET", `/v1/executions/${encodeURIComponent(id)}/steps`);
+  async executionSteps(
+    this: EngineClient,
+    id: string,
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    const { data } = await this.api.GET("/v1/executions/{id}/steps", { params: { path: { id } } });
+    return data as { items: Record<string, unknown>[] };
   },
-  executionCost(this: EngineClient, id: string): Promise<ExecutionCost> {
-    return this.request("GET", `/v1/executions/${encodeURIComponent(id)}/cost`);
+  async executionCost(this: EngineClient, id: string): Promise<ExecutionCost> {
+    const { data } = await this.api.GET("/v1/executions/{id}/cost", { params: { path: { id } } });
+    return data as ExecutionCost;
   },
-  abortExecution(this: EngineClient, id: string): Promise<void> {
-    return this.request("POST", `/v1/executions/${encodeURIComponent(id)}/cancel`);
+  async abortExecution(this: EngineClient, id: string): Promise<void> {
+    await this.api.POST("/v1/executions/{id}/cancel", { params: { path: { id } } });
   },
   streamExecution(this: EngineClient, id: string): Promise<Response> {
     return this.stream(`/v1/executions/${encodeURIComponent(id)}/stream`);
   },
-  rerunExecution(
+  async rerunExecution(
     this: EngineClient,
     id: string,
     body: { input?: unknown; async?: boolean } = {},
   ): Promise<RunExecutionResponse> {
-    return this.request("POST", `/v1/executions/${encodeURIComponent(id)}/rerun`, {
-      ...body,
-      request_source: "cli",
+    const { data } = await this.api.POST("/v1/executions/{id}/rerun", {
+      params: { path: { id } },
+      body: {
+        ...body,
+        request_source: "cli",
+      } as ApiBody<"/v1/executions/{id}/rerun", "post">,
     });
+    return data as RunExecutionResponse;
   },
 };

@@ -23,7 +23,7 @@ apps/engine/src/connectors/discovery/graphql-introspect.test.ts                 
 apps/engine/src/connectors/drivers/tests/http-driver-core.test.ts                      671
 apps/engine/src/connectors/templates.test.ts                                           651
 apps/engine/src/conversations/conversation-run-admission.integration.test.ts           1450
-apps/engine/src/conversations/fast-path.test.ts                                        889
+apps/engine/src/conversations/fast-path.test.ts                                        824
 apps/engine/src/conversations/intent-detector.test.ts                                  611
 apps/engine/src/conversations/persistence/commit-workflow-gates.integration.test.ts    762
 apps/engine/src/conversations/playbook.integration.test.ts                             962
@@ -32,7 +32,7 @@ apps/engine/src/conversations/tests/authenticate-oauth-elicitation.test.ts      
 apps/engine/src/conversations/tests/authoring-pipeline.test.ts                         1473
 apps/engine/src/conversations/tests/auto-persist.test.ts                               1003
 apps/engine/src/conversations/tests/draft-probe-credential.test.ts                     988
-apps/engine/src/conversations/tests/policy-gate-save-workflow-draft.test.ts            674
+apps/engine/src/conversations/tests/policy-gate-save-workflow-draft.test.ts            657
 apps/engine/src/conversations/tests/preview-auto-repair.test.ts                        738
 apps/engine/src/conversations/tests/preview-judge.test.ts                              1183
 apps/engine/src/conversations/tests/run-workflow-tool.test.ts                          1274
@@ -43,9 +43,9 @@ apps/engine/src/conversations/tools/tests/intake-review-execution.integration.te
 apps/engine/src/conversations/tools/tests/probe-connector.test.ts                      784
 apps/engine/src/conversations/tools/tests/usage-guidance.test.ts                       744
 apps/engine/src/credentials/connections/tests/connections-flow.integration.test.ts     783
-apps/engine/src/db/vault-maintenance.test.ts                                           900
+apps/engine/src/db/vault-maintenance.test.ts                                           847
 apps/engine/src/execution/tests/authority-admission.integration.test.ts                957
-apps/engine/src/execution/tests/caller-budget.test.ts                                  702
+apps/engine/src/execution/tests/caller-budget.test.ts                                  683
 apps/engine/src/execution/tests/hold-writes.test.ts                                    1124
 apps/engine/src/execution/tests/mcp-request-step.test.ts                               770
 apps/engine/src/execution/tests/report-authority.integration.test.ts                   943
@@ -63,13 +63,12 @@ apps/engine/src/http/tests/workflow-authorities.test.ts                         
 apps/engine/src/http/tests/workflow-invocation.test.ts                                 763
 apps/engine/src/identity/cockpit-push.test.ts                                          932
 apps/engine/src/identity/service.test.ts                                               1421
-apps/engine/src/identity/tenant-erasure.test.ts                                        747
+apps/engine/src/identity/tenant-erasure.test.ts                                        741
 apps/engine/src/knowledge/tests/intake.test.ts                                         2080
 apps/engine/src/knowledge/tests/service.test.ts                                        766
 apps/engine/src/llm/core/tests/ai-sdk-model.test.ts                                    839
 apps/engine/src/llm/substitution/tests/resolver.test.ts                                933
 apps/engine/src/llm/tests/step-router.test.ts                                          937
-apps/engine/src/llm/tests/user-budget.test.ts                                          618
 apps/engine/src/mcp/capabilities/conversations.test.ts                                 1604
 apps/engine/src/mcp/capabilities/tools.test.ts                                         735
 apps/engine/src/mcp/client/oauth-provider.test.ts                                      922

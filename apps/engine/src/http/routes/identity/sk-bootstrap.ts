@@ -1,8 +1,12 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, desc, eq } from "drizzle-orm";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { getConfig } from "../../../config/loader.ts";
-import { conversations, roles, systemAccounts, tenants, users } from "../../../db/schema/index.ts";
+import {
+  findSystemAccountRoleName,
+  findTenantSummary,
+  findUserProfile,
+  listRecentOwnedConversations,
+} from "../../../identity/index.ts";
 import { resolveEngineUrl } from "../../../llm/index.ts";
 import { logger } from "../../../logging/index.ts";
 import { can, UX_GATING_PERMISSIONS, type UxGatingPermission } from "../../../rbac/index.ts";
@@ -155,39 +159,16 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
     let email: string | null = principal.email ?? null;
     let roleName: string | null = null;
     if (principalKind === "user") {
-      const [row] = await db
-        .select({
-          email: users.email,
-          role_name: roles.name,
-        })
-        .from(users)
-        .leftJoin(roles, eq(roles.id, users.role_id))
-        .where(and(eq(users.tenant_id, principal.tenant_id), eq(users.id, principal.id)))
-        .limit(1);
+      const row = await findUserProfile(db, principal.tenant_id, principal.id);
       if (row) {
         email = row.email ?? email;
         roleName = row.role_name;
       }
     } else {
-      const [row] = await db
-        .select({ role_name: roles.name })
-        .from(systemAccounts)
-        .leftJoin(roles, eq(roles.id, systemAccounts.role_id))
-        .where(
-          and(
-            eq(systemAccounts.tenant_id, principal.tenant_id),
-            eq(systemAccounts.id, principal.id),
-          ),
-        )
-        .limit(1);
-      roleName = row?.role_name ?? null;
+      roleName = await findSystemAccountRoleName(db, principal.tenant_id, principal.id);
     }
 
-    const [tenantRow] = await db
-      .select({ id: tenants.id, slug: tenants.slug, display_name: tenants.display_name })
-      .from(tenants)
-      .where(eq(tenants.id, principal.tenant_id))
-      .limit(1);
+    const tenantRow = await findTenantSummary(db, principal.tenant_id);
 
     if (tenantRow && tenantRow.id !== principal.tenant_id) {
       logger.warn({
@@ -231,22 +212,7 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
     const canReadConversations = allowedPermissions.includes("conversation:read");
     if (canReadConversations && principalKind === "user") {
       try {
-        const rows = await db
-          .select({
-            tenant_id: conversations.tenant_id,
-            id: conversations.id,
-            title: conversations.title,
-            updated_at: conversations.updated_at,
-          })
-          .from(conversations)
-          .where(
-            and(
-              eq(conversations.tenant_id, principal.tenant_id),
-              eq(conversations.owner_id, principal.id),
-            ),
-          )
-          .orderBy(desc(conversations.updated_at))
-          .limit(10);
+        const rows = await listRecentOwnedConversations(db, principal.tenant_id, principal.id);
         const guard = enforceTenantMatch(rows, principal.tenant_id);
         if (guard.rejected) {
           logger.warn({

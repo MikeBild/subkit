@@ -1,12 +1,11 @@
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
-import { conversations } from "../../db/schema/index.ts";
 import { runAuthoringPipeline } from "../authoring-pipeline.ts";
 import { nextActionsForNeeds } from "../authoring-regrounding.ts";
 import { persistedWorkflowResource } from "../authoring-state/summary.ts";
 import { getWorkflowDraft, startNewWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
 import { saveApprovalReadiness } from "../persistence/save-workflow-approval.ts";
 import { emitRecordedEvalSignals } from "../recorded-eval.ts";
+import { setConversationWorkflowTarget } from "../service/tool-state.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 import { resolveSavedWorkflow } from "./open-workflow-draft.ts";
@@ -195,15 +194,11 @@ export const authorWorkflowTool: ConversationTool = {
         );
         ctx.workflow_id = null;
       }
-      await ctx.db
-        .update(conversations)
-        .set({ target_workflow_id: null, updated_at: new Date() })
-        .where(
-          and(
-            eq(conversations.tenant_id, ctx.tenant_id),
-            eq(conversations.id, ctx.conversation_id),
-          ),
-        );
+      await setConversationWorkflowTarget(
+        ctx.db,
+        { tenant_id: ctx.tenant_id, conversation_id: ctx.conversation_id },
+        null,
+      );
     }
 
     if (

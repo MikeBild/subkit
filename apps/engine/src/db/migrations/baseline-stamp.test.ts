@@ -54,8 +54,11 @@ async function probeSchema(): Promise<string[]> {
 }
 
 describe("baseline over the squashed migration chain", () => {
-  test("the bundle holds only the baseline", () => {
-    expect(EMBEDDED_MIGRATIONS.map((m) => m.tag)).toEqual([baseline.tag]);
+  test("the bundle starts with the baseline followed by the post-squash migrations", () => {
+    expect(EMBEDDED_MIGRATIONS.map((m) => m.tag)).toEqual([
+      baseline.tag,
+      "0001_hosted_meter_workflow_review_receipts",
+    ]);
     expect(baseline.idx).toBe(0);
   });
 
@@ -65,10 +68,15 @@ describe("baseline over the squashed migration chain", () => {
     expect(await baselineRows()).toBe(0);
   });
 
-  test("a database at the chain head is stamped without DDL and reports only history", async () => {
+  test("a database at the chain head is stamped without DDL and applies only the post-squash migrations", async () => {
     await replaceHistory(squashedTags, 51);
     const stamped = await runMigrations(ctx.db);
-    expect(stamped).toEqual({ applied: 0, skipped: 0, hash_drift_backfilled: 1, total: 1 });
+    expect(stamped).toEqual({
+      applied: EMBEDDED_MIGRATIONS.length - 1,
+      skipped: 0,
+      hash_drift_backfilled: 1,
+      total: EMBEDDED_MIGRATIONS.length,
+    });
     expect(await baselineRows()).toBe(1);
     const drift = await detectDrift(ctx.db);
     expect(drift.unknown_in_db).toEqual([]);
@@ -76,9 +84,9 @@ describe("baseline over the squashed migration chain", () => {
     expect(drift.historical_in_db).toHaveLength(squashedTags.length + 51);
     expect(await runMigrations(ctx.db)).toEqual({
       applied: 0,
-      skipped: 1,
+      skipped: EMBEDDED_MIGRATIONS.length,
       hash_drift_backfilled: 0,
-      total: 1,
+      total: EMBEDDED_MIGRATIONS.length,
     });
   });
 

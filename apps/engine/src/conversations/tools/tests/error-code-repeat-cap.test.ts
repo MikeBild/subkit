@@ -3,10 +3,11 @@ import type { Db } from "../../../db/client.ts";
 import { conversations } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../../llm/tests/setup.ts";
+import { freshSignals } from "../../tests/turn-signals.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import { MAX_ERROR_CODE_REPEAT } from "../sdk-wrap/state.ts";
-import { type TurnSignals, wrapTools } from "../sdk-wrap.ts";
+import { wrapTools } from "../sdk-wrap.ts";
 
 let ctx: LlmTestCtx;
 let conversation_id: string;
@@ -35,24 +36,6 @@ const badPlaceholderPatch = (i: number | string) => ({
     { op: "replace", path: "/steps/0/url", value: `https://example.com/\${user.email}?v=${i}` },
   ],
 });
-
-function freshSignals(): TurnSignals {
-  return {
-    step: 0,
-    toolChain: Promise.resolve(),
-    pendingChildToolCallIds: [],
-    pendingChildElicitationIds: [],
-    toolInvocationCount: new Map(),
-    toolLastErrorHash: new Map(),
-    toolArgsRepeat: new Map(),
-    toolValidationFingerprint: new Map(),
-    toolErrorCodeRepeat: new Map(),
-    totalLoopWarnings: 0,
-    consecutiveFailures: 0,
-    lastAssistantText: "",
-    lastExecutionSuccess: null,
-  };
-}
 
 function makeToolCtx(): ToolContext {
   const engineClient = new EngineClient({

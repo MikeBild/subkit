@@ -1,7 +1,6 @@
 import { z } from "@hono/zod-openapi";
-import { eq, inArray } from "drizzle-orm";
-import { roles } from "../../db/schema/index.ts";
 import { getUser, listUsers } from "../../identity/service.ts";
+import { findRoleNameByRoleId, listRoleNamesByRoleIds } from "../../rbac/actor-roles.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { keywordSearch } from "./keyword-search.ts";
 
@@ -49,13 +48,7 @@ export const findUserTool: ConversationTool = {
           next_best_actions: ["find_user", "list_users"],
         };
       }
-      // tenant-filter:exempt — RBAC catalog walk by role_id; handles both global rows (tenant_id IS NULL) and tenant rows
-      const named = await ctx.db
-        .select({ name: roles.name })
-        .from(roles)
-        .where(eq(roles.id, u.role_id))
-        .limit(1);
-      const role_name = named[0]?.name ?? null;
+      const role_name = (await findRoleNameByRoleId(ctx.db, u.role_id)) ?? null;
       return {
         ok: true,
         data: {
@@ -73,14 +66,7 @@ export const findUserTool: ConversationTool = {
     }
     const list = await listUsers(ctx.tenant_id, { limit: 200 }, ctx.db);
     const roleIds = list.map((u) => u.role_id);
-    const roleRows =
-      roleIds.length > 0
-        ? // tenant-filter:exempt — RBAC catalog walk by role_id; handles both global rows (tenant_id IS NULL) and tenant rows
-          await ctx.db
-            .select({ id: roles.id, name: roles.name })
-            .from(roles)
-            .where(inArray(roles.id, roleIds))
-        : [];
+    const roleRows = await listRoleNamesByRoleIds(ctx.db, roleIds);
     const roleNameById = new Map(roleRows.map((r) => [r.id, r.name]));
     const summaries: UserSummary[] = list.map((u) => ({
       id: u.id,

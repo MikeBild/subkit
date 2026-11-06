@@ -11,7 +11,11 @@ import { EngineClient } from "../../engine-client/index.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { approvedDispatchOutcome } from "../../execution/tool-approval-dispatch.ts";
 import { HELD_PREVIEW_WARNING_CODE } from "../../execution/types.ts";
-import { admitWorkflowRun } from "../../execution/workflow-run-admission.ts";
+import {
+  authorizeWorkflowRun,
+  completedRun,
+  createRunWorkflow,
+} from "../../execution/use-cases/run-workflow.ts";
 import { logger } from "../../logging/logger.ts";
 import {
   approvalAuditResource,
@@ -24,7 +28,6 @@ import {
 import { preparedWorkflowMatches } from "../../tools/prepared-workflow-approval.ts";
 import { resolveWorkflowInputContract } from "../../workflows/input-schema-synth.ts";
 import { resolveWorkflowByIdOrSlug } from "../../workflows/lookup.ts";
-import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
 import type { WorkflowDef } from "../../workflows/types.ts";
 import type { AnswerActor } from "../answer-actor.ts";
 import { resolveAttachmentSlugsInArgs, walkAndResolve } from "../attachments.ts";
@@ -561,19 +564,19 @@ export async function maybeAutoPersistFromElicitation(
           };
           break;
         }
-        const rbac = await gateWorkflowRunRbac({
-          db: p.db,
+        const useCase = createRunWorkflow({ db: p.db });
+        const grant = await useCase.authorize({
           principal: p.principal,
           workflow_id: workflowId,
           workflow_slug: workflowSlug,
-          request_source: "auto_persist",
+          via: "auto_persist",
           tool: "run_workflow",
         });
-        if (!rbac.allow) {
+        if (grant.kind === "rejected") {
           result = {
             ok: false,
             error_code: "permission_denied",
-            message: rbac.error_message,
+            message: grant.message,
             data: { workflow_id: workflowId },
           };
           break;
@@ -667,42 +670,21 @@ export async function maybeAutoPersistFromElicitation(
           }
         }
         const environment = readEnvironment(intent);
-        const admitted = await admitWorkflowRun(
-          {
-            tenant_id: p.tenant_id,
+        const { admitted, result: run } = completedRun(
+          await useCase.runWorkflow({
+            principal: p.principal,
             workflow_id: workflowId,
             workflow_version_id:
               expectedWorkflowVersionId ?? resolved.current_version_id ?? undefined,
-            ...(expectedWorkflowVersionId
-              ? { expected_workflow_version_id: expectedWorkflowVersionId }
-              : {}),
+            expected_workflow_version_id: expectedWorkflowVersionId,
             execution_environment: environment,
             request_source: "chat",
             input,
             ...(intent.payload.execute_writes === false ? { hold_writes: true } : {}),
-          },
-          p.db,
-          p.principal,
-          rbac.workflow_permission,
+            authorization: { kind: "granted", workflow_permission: grant.workflow_permission },
+            dispatch: { mode: "inline", trace_id: null },
+          }),
         );
-        const run = await runExecution({
-          db: p.db,
-          tenant_id: p.tenant_id,
-          source: {
-            kind: "saved",
-            workflow_id: workflowId,
-            version_id: admitted.workflow_version_id,
-          },
-          input: admitted.input,
-          options: {
-            request_source: "chat",
-            trace_id: null,
-            principal: p.principal,
-            execution_mode: environment,
-            existing_execution_id: admitted.execution_id,
-            hold_writes: admitted.hold_writes,
-          },
-        });
         const heldPreview = run.warnings?.find(
           (warning) => warning.code === HELD_PREVIEW_WARNING_CODE,
         );
@@ -831,20 +813,22 @@ export async function maybeAutoPersistFromElicitation(
           };
           break;
         }
-        const rbac = await gateWorkflowRunRbac({
-          db: p.db,
-          principal: p.principal,
-          workflow_id: workflowId,
-          workflow_slug: resolved.slug,
-          request_source: "auto_persist",
-          tool: approvedTool,
-          approval: approvalAuditResource(claim),
-        });
-        if (!rbac.allow) {
+        const grant = await authorizeWorkflowRun(
+          {
+            principal: p.principal,
+            workflow_id: workflowId,
+            workflow_slug: resolved.slug,
+            via: "auto_persist",
+            tool: approvedTool,
+            approval: approvalAuditResource(claim),
+          },
+          { db: p.db },
+        );
+        if (grant.kind === "rejected") {
           result = {
             ok: false,
             error_code: "permission_denied",
-            message: rbac.error_message,
+            message: grant.message,
             data: { workflow_id: workflowId },
           };
           break;

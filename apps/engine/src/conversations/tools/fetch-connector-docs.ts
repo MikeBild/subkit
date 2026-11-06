@@ -1,6 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { asc, eq } from "drizzle-orm";
-import { connectors as connectorsTable } from "../../db/schema/index.ts";
+import { listTenantConnectorSlugs } from "../../connectors/tool-lookups.ts";
 import { searchDocs } from "../../docs-ingestion/service.ts";
 import { type GroundedConnector, resolveConnectors } from "../authoring-grounding.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
@@ -25,13 +24,9 @@ const inputSchema = z
   .openapi("FetchConnectorDocsToolInput");
 
 async function resolvableSlugs(ctx: ToolContext): Promise<string[]> {
-  const rows = await ctx.db
-    .select({ slug: connectorsTable.slug })
-    .from(connectorsTable)
-    .where(eq(connectorsTable.tenant_id, ctx.tenant_id))
-    .orderBy(asc(connectorsTable.slug))
-    .limit(RESOLVABLE_SLUGS_LIMIT);
-  return [...new Set(rows.map((r) => r.slug))];
+  return [
+    ...new Set(await listTenantConnectorSlugs(ctx.db, ctx.tenant_id, RESOLVABLE_SLUGS_LIMIT)),
+  ];
 }
 
 function draftConnectorRefs(ctx: ToolContext): string[] {

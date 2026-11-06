@@ -37,7 +37,7 @@ import {
   setDeep,
 } from "./document.ts";
 import { assertNoHostedTenantOverlays } from "./hosted-overlays.ts";
-import { hasPendingSecretColumns, secretVersionProjection } from "./secret-columns.ts";
+import { SECRET_VERSION_COLUMNS } from "./secret-columns.ts";
 import {
   assertSecretName,
   containsSecretReference,
@@ -160,7 +160,6 @@ export async function listSecretVersions(db: Executor): Promise<
     }>;
   }>
 > {
-  const withPending = await hasPendingSecretColumns(db);
   // tenant-filter:exempt — the registry is product-global operator state;
   // routes require settings:read and never return ciphertext.
   const rows = await db
@@ -171,7 +170,7 @@ export async function listSecretVersions(db: Executor): Promise<
       revoked_at: runtimeSecretVersions.revoked_at,
     })
     .from(runtimeSecretVersions)
-    .where(withPending ? isNull(runtimeSecretVersions.pending_since) : undefined)
+    .where(isNull(runtimeSecretVersions.pending_since))
     .orderBy(runtimeSecretVersions.name, desc(runtimeSecretVersions.version));
   const grouped = new Map<
     string,
@@ -197,10 +196,9 @@ export async function listSecretVersions(db: Executor): Promise<
 
 async function readSecret(db: Executor, name: string, version: number): Promise<string> {
   if (name.startsWith("connection.")) await assertTenantRuntimeSecretAllowed(db, name);
-  const projection = await secretVersionProjection(db);
   // tenant-filter:exempt — references address the product-global secret registry.
-  const [found] = await db
-    .select(projection.columns)
+  const [row] = await db
+    .select(SECRET_VERSION_COLUMNS)
     .from(runtimeSecretVersions)
     .where(
       and(
@@ -210,7 +208,6 @@ async function readSecret(db: Executor, name: string, version: number): Promise<
       ),
     )
     .limit(1);
-  const row = found ? projection.complete(found) : null;
   if (!row) {
     throw new RuntimeConfigValidationError(
       `secret version is missing or revoked: ${name}/${version}`,

@@ -6,8 +6,9 @@ import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
 import { findConnectorTool } from "../tools/find-connector.ts";
 import { findWorkflowTool } from "../tools/find-workflow.ts";
 import type { ToolContext } from "../tools/index.ts";
-import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";
+import { wrapTools } from "../tools/sdk-wrap.ts";
 import type { TurnEvent } from "../types.ts";
+import { freshSignals } from "./turn-signals.ts";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 const SQL_MARKERS = ["Failed query", "select ", "tenant_id", "params:"];
@@ -45,24 +46,6 @@ function toolCtx(): ToolContext {
     }),
     getDraft: () => ({ workflow: { name: "", steps: [] } }),
     setDraft: async () => {},
-  };
-}
-
-function freshSignals(): TurnSignals {
-  return {
-    step: 0,
-    toolChain: Promise.resolve(),
-    pendingChildToolCallIds: [],
-    pendingChildElicitationIds: [],
-    toolInvocationCount: new Map(),
-    toolLastErrorHash: new Map(),
-    toolArgsRepeat: new Map(),
-    toolValidationFingerprint: new Map(),
-    toolErrorCodeRepeat: new Map(),
-    totalLoopWarnings: 0,
-    consecutiveFailures: 0,
-    lastAssistantText: "",
-    lastExecutionSuccess: null,
   };
 }
 

@@ -5,9 +5,9 @@ import { AuditAction } from "../../audit/types.ts";
 import { MCP_ADMIN_SCOPE } from "../../auth/scopes.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig, setConfigKey } from "../../config/loader.ts";
+import { freshSignals } from "../../conversations/tests/turn-signals.ts";
 import { getTool, type ToolContext } from "../../conversations/tools/index.ts";
 import { wrapOne } from "../../conversations/tools/sdk-wrap/invoke.ts";
-import type { TurnSignals } from "../../conversations/tools/sdk-wrap/state.ts";
 import type { TurnEvent } from "../../conversations/types.ts";
 import {
   auditLog,
@@ -60,24 +60,6 @@ const phase: {
 function parseEnvelope(result: Awaited<ReturnType<Client["callTool"]>>): Record<string, unknown> {
   const item = (result.content as Array<{ type: string; text?: string }>)[0];
   return JSON.parse(item?.type === "text" ? (item.text ?? "{}") : "{}") as Record<string, unknown>;
-}
-
-function freshSignals(): TurnSignals {
-  return {
-    step: 0,
-    toolChain: Promise.resolve(),
-    pendingChildToolCallIds: [],
-    pendingChildElicitationIds: [],
-    toolInvocationCount: new Map(),
-    toolLastErrorHash: new Map(),
-    toolArgsRepeat: new Map(),
-    toolValidationFingerprint: new Map(),
-    toolErrorCodeRepeat: new Map(),
-    totalLoopWarnings: 0,
-    consecutiveFailures: 0,
-    lastAssistantText: "",
-    lastExecutionSuccess: null,
-  };
 }
 
 function toolCtx(conversation_id: string, surface: "web" | "sk_headless"): ToolContext {

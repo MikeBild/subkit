@@ -1,6 +1,7 @@
 import type { z } from "@hono/zod-openapi";
 import type { Executor } from "../../db/client.ts";
 import type { EngineClient } from "../../engine-client/index.ts";
+import type { ToolCategory } from "../../tools/types.ts";
 import type { ElicitationBridge } from "../elicitation-bridge.ts";
 import type { DraftDocument } from "../types.ts";
 import { analyzeScrapeTargetTool } from "./analyze-scrape-target.ts";
@@ -141,8 +142,6 @@ export type ToolResult =
       pause?: ToolResultPause;
       committed_workflow_id?: string;
     };
-
-export type ToolCategory = "draft_write" | "tenant_read" | "tenant_write";
 
 export interface ToolEffect {
   connector: string;

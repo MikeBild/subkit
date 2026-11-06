@@ -23,8 +23,9 @@ import { commitWorkflowAtomic } from "../persistence/commit-workflow.ts";
 import { findPriorSaveWorkflowApproval } from "../persistence/save-workflow-approval.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { saveWorkflowDraftTool } from "../tools/save-workflow-draft.ts";
-import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";
+import { wrapTools } from "../tools/sdk-wrap.ts";
 import type { DraftDocument, TurnEvent } from "../types.ts";
+import { freshSignals } from "./turn-signals.ts";
 
 let ctx: LlmTestCtx;
 
@@ -35,24 +36,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await ctx.cleanup();
 });
-
-function freshSignals(): TurnSignals {
-  return {
-    step: 0,
-    toolChain: Promise.resolve(),
-    pendingChildToolCallIds: [],
-    pendingChildElicitationIds: [],
-    toolInvocationCount: new Map(),
-    toolLastErrorHash: new Map(),
-    toolArgsRepeat: new Map(),
-    toolValidationFingerprint: new Map(),
-    toolErrorCodeRepeat: new Map(),
-    totalLoopWarnings: 0,
-    consecutiveFailures: 0,
-    lastAssistantText: "",
-    lastExecutionSuccess: null,
-  };
-}
 
 async function freshConversation(): Promise<string> {
   const [row] = await ctx.testDb.db

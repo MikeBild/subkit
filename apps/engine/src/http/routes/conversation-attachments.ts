@@ -1,5 +1,4 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, desc, eq } from "drizzle-orm";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import {
   FileRefSchema,
@@ -8,22 +7,17 @@ import {
   MAX_INLINE_BYTES,
   parseFileIdOrThrow,
 } from "../../api/files-schemas.ts";
-import {
-  AuditAction,
-  actorType,
-  auditAwait,
-  bucketSize,
-  FileCreatedMetadataSchema,
-  FileLinkRemovedMetadataSchema,
-  FileScanCompletedMetadataSchema,
-  readRequestSource,
-} from "../../audit/index.ts";
-import type { Db } from "../../db/client.ts";
-import { conversations, fileLinks, files } from "../../db/schema/index.ts";
+import { actorType, readRequestSource } from "../../audit/index.ts";
 import { recordFilesDedupSeen } from "../../files/dedup-counter.ts";
 import { FileLinkError, linkStoredFile } from "../../files/links.ts";
 import { persistInlineUpload } from "../../files/persist-inline-upload.ts";
-import { requireFileForTenant } from "../../files/resolver.ts";
+import { type FileRow, requireFileForTenant } from "../../files/resolver.ts";
+import {
+  auditConversationAttachmentStored,
+  conversationExists,
+  listConversationAttachments,
+  unlinkConversationAttachment,
+} from "../../files/service.ts";
 import { fileReference, slugifyFilename } from "../../files/slug.ts";
 import {
   isPackageArchive,
@@ -58,21 +52,12 @@ const ListResponse = z
   .object({ attachments: z.array(AttachmentSchema) })
   .openapi("ConversationAttachmentList");
 
-function linkSlug(row: typeof files.$inferSelect): string {
+function linkSlug(row: FileRow): string {
   return row.slug ?? slugifyFilename(row.filename);
 }
 
-function toAttachmentWire(row: typeof files.$inferSelect, slug: string): AttachmentWire {
+function toAttachmentWire(row: FileRow, slug: string): AttachmentWire {
   return { ...toFileWire(row), slug, reference: fileReference(slug) };
-}
-
-async function conversationExists(db: Db, tenant_id: string, id: string): Promise<boolean> {
-  const [row] = await db
-    .select({ id: conversations.id })
-    .from(conversations)
-    .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, id)))
-    .limit(1);
-  return Boolean(row);
 }
 
 export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): void {
@@ -116,7 +101,7 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
 
     if ("$file" in body) {
       const fid_uuid = parseFileIdOrThrow(body.$file);
-      let fileRow: typeof files.$inferSelect;
+      let fileRow: FileRow;
       try {
         fileRow = await requireFileForTenant(db, tenant_id, fid_uuid);
       } catch {
@@ -218,50 +203,11 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
     });
     if (linked instanceof Response) return linked;
 
-    await auditAwait(
-      {
-        tenant_id,
-        actor_type: actorType(principal),
-        actor_id: principal.id,
-        action: AuditAction.FILE_CREATED,
-        resource_type: "file",
-        resource_id: row.id,
-        result: "success",
-        metadata: FileCreatedMetadataSchema.parse({
-          file_id: row.id,
-          filename,
-          content_type: row.content_type,
-          size_bytes_bucket: bucketSize(bytes.byteLength),
-          sha256_prefix: row.sha256 ? row.sha256.slice(0, 16) : undefined,
-          dedup,
-          request_source: readRequestSource(c),
-          source: "conversation_attachments",
-        }),
-      },
+    await auditConversationAttachmentStored(
       db,
+      { principal, request_source: readRequestSource(c) },
+      { row, filename, size_bytes: bytes.byteLength, dedup, scan },
     );
-    if (scan) {
-      await auditAwait(
-        {
-          tenant_id,
-          actor_type: actorType(principal),
-          actor_id: principal.id,
-          action: AuditAction.FILE_SCAN_COMPLETED,
-          resource_type: "file",
-          resource_id: row.id,
-          result:
-            scan.verdict === "clean" ? "success" : scan.verdict === "timeout" ? "error" : "denied",
-          metadata: FileScanCompletedMetadataSchema.parse({
-            file_id: row.id,
-            verdict: scan.verdict,
-            engine: scan.engine,
-            signature: scan.signature,
-            request_source: readRequestSource(c),
-          }),
-        },
-        db,
-      );
-    }
 
     return c.json(toAttachmentWire(row, slug), 201);
   });
@@ -284,21 +230,10 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
     if (!(await conversationExists(db, principal.tenant_id, id))) {
       return c.json({ code: "not_found", message: "conversation not found" }, 404);
     }
-    const rows = await db
-      .select({ link: fileLinks, file: files })
-      .from(fileLinks)
-      .innerJoin(files, eq(files.id, fileLinks.file_id))
-      .where(
-        and(
-          eq(fileLinks.tenant_id, principal.tenant_id),
-          eq(fileLinks.resource_type, "conversation"),
-          eq(fileLinks.resource_id, id),
-        ),
-      )
-      .orderBy(desc(fileLinks.created_at));
+    const rows = await listConversationAttachments(db, principal.tenant_id, id);
     return c.json(
       {
-        attachments: rows.map((r) => toAttachmentWire(r.file, r.link.slug ?? linkSlug(r.file))),
+        attachments: rows.map((r) => toAttachmentWire(r.file, r.link_slug ?? linkSlug(r.file))),
       },
       200,
     );
@@ -319,41 +254,15 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
     const { id, slug } = c.req.valid("param");
     const principal = requireAuth(c);
     const db = c.get("db");
-    const [link] = await db
-      .select()
-      .from(fileLinks)
-      .where(
-        and(
-          eq(fileLinks.tenant_id, principal.tenant_id),
-          eq(fileLinks.resource_type, "conversation"),
-          eq(fileLinks.resource_id, id),
-          eq(fileLinks.slug, slug),
-        ),
-      )
-      .limit(1);
-    if (!link) {
+    const unlinked = await unlinkConversationAttachment(
+      db,
+      { principal, request_source: readRequestSource(c) },
+      id,
+      slug,
+    );
+    if (!unlinked) {
       return c.json({ code: "not_found", message: "attachment not found" }, 404);
     }
-    await db.delete(fileLinks).where(eq(fileLinks.id, link.id));
-    await auditAwait(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: actorType(principal),
-        actor_id: principal.id,
-        action: AuditAction.FILE_LINK_REMOVED,
-        resource_type: "file",
-        resource_id: link.file_id,
-        result: "success",
-        metadata: FileLinkRemovedMetadataSchema.parse({
-          file_id: link.file_id,
-          resource_type: "conversation",
-          resource_id: id,
-          slug,
-          request_source: readRequestSource(c),
-        }),
-      },
-      db,
-    );
     return c.body(null, 204);
   });
 }

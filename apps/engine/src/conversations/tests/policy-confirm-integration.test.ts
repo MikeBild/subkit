@@ -16,8 +16,9 @@ import {
 } from "../tools/ask-user/commit-intent.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { buildPolicyGateCommitIntent } from "../tools/sdk-wrap/policy-helpers.ts";
-import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";
+import { wrapTools } from "../tools/sdk-wrap.ts";
 import type { TurnEvent } from "../types.ts";
+import { freshSignals } from "./turn-signals.ts";
 
 const APPROVAL_ID = "00000000-0000-4000-8000-00000000c0de";
 
@@ -32,24 +33,6 @@ beforeAll(async () => {
     .returning({ id: conversations.id });
   conversation_id = row!.id;
 });
-
-function freshSignals(): TurnSignals {
-  return {
-    step: 0,
-    toolChain: Promise.resolve(),
-    pendingChildToolCallIds: [],
-    pendingChildElicitationIds: [],
-    toolInvocationCount: new Map(),
-    toolLastErrorHash: new Map(),
-    toolArgsRepeat: new Map(),
-    toolValidationFingerprint: new Map(),
-    toolErrorCodeRepeat: new Map(),
-    totalLoopWarnings: 0,
-    consecutiveFailures: 0,
-    lastAssistantText: "",
-    lastExecutionSuccess: null,
-  };
-}
 
 function toolCtxFor(): ToolContext {
   const engineClient = new EngineClient({

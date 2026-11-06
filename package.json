@@ -44,7 +44,7 @@
     "compose:up": "sh scripts/ensure-env.sh && docker compose up -d",
     "start:local": "bun run scripts/start-local.ts",
     "db:gen-embedded": "bun run scripts/gen-embedded-migrations.ts",
-    "db:generate": "drizzle-kit generate && bun run scripts/normalize-migration-schema.ts && bun run db:gen-embedded",
+    "db:generate": "drizzle-kit generate && bun run scripts/normalize-migration-schema.ts && bun run scripts/prune-migration-snapshots.ts && bun run db:gen-embedded",
     "db:issue-admin-key": "bun run apps/engine/src/db/issue-admin-key.ts",
     "dev": "bun run --watch apps/engine/src/index.ts",
     "eval": "bun run apps/engine/eval/runner.ts",
@@ -106,7 +106,9 @@
     "benchmark:runtime:full": "bun scripts/runtime-benchmark.ts capture --profile full --label candidate --source . --output .artifacts/runtime-benchmark/candidate.json --require-helpers",
     "gen:cockpit-icons": "bun run scripts/gen-cockpit-icons.ts",
     "test:core": "bun run apps/engine/scripts/run-core-tests.ts",
-    "test:mutation": "bunx stryker run"
+    "test:mutation": "bunx stryker run --force && bun run apps/engine/scripts/check-mutation-floor.ts",
+    "test:affected": "bun run scripts/affected-tests.ts",
+    "test:journeys": "bun run scripts/test-layer.ts journey"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^5",

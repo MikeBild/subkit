@@ -6,11 +6,10 @@
 # `--accept-new` also admits new offenders; use it only for a reviewed baseline reset.
 
 apps/engine/src/http/routes/connectors/credentials-setup.ts  634
-apps/engine/src/http/routes/connectors/mcp.ts                692
+apps/engine/src/http/routes/connectors/mcp.ts                660
 apps/engine/src/http/routes/discovery.ts                     678
 apps/engine/src/http/routes/intake.ts                        713
 apps/engine/src/http/routes/knowledge-sources.ts             975
-apps/engine/src/http/routes/oauth/consent.ts                 645
 apps/engine/src/http/routes/settings.ts                      619
-apps/engine/src/http/routes/workflow-authorities.ts          911
-apps/engine/src/http/routes/workflows.ts                     887
+apps/engine/src/http/routes/workflow-authorities.ts          766
+apps/engine/src/http/routes/workflows.ts                     870
