@@ -1,8 +1,5 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq, sql } from "drizzle-orm";
-import { auditLog } from "../../db/schema/audit.ts";
-import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { seedTenant } from "../../test-helpers/seed.ts";
+import { describe, expect, test } from "bun:test";
+import { sql } from "drizzle-orm";
 import { _drainAuditWritesForTests } from "../audit.ts";
 import { AuditAction, SYSTEM_TENANT_ID } from "../types.ts";
 import {
@@ -29,25 +26,9 @@ import {
   recordWorkflowDeleted,
   recordWorkflowUpdated,
 } from "./index.ts";
+import { fetchRow, tenantId, testDb, useRecorderDb } from "./recorders-fixtures.ts";
 
-let testDb: TestDb;
-let tenantId = "";
-
-beforeAll(async () => {
-  testDb = await createTestDb("audit-recorders");
-  tenantId = (
-    await seedTenant(testDb.db, { slug: "recorder-tenant", display_name: "Recorder Tenant" })
-  ).id;
-});
-
-afterAll(async () => {
-  await testDb.cleanup();
-});
-
-async function fetchRow(id: string) {
-  const rows = await testDb.db.select().from(auditLog).where(eq(auditLog.id, id));
-  return rows[0];
-}
+useRecorderDb();
 
 describe("recorder actor normalization", () => {
   test("persists an untyped actor ID as unknown without an actor ID", async () => {

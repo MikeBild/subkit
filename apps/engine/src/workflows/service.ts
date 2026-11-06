@@ -13,7 +13,7 @@ import { resolveActor } from "../audit/recorders/types.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
-import { type Executor, getDb } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import {
   catalogGroupOrder,
@@ -203,9 +203,8 @@ interface CreateWorkflowInput extends VersionActor {
 
 export async function createWorkflow(
   input: CreateWorkflowInput,
-  exec?: Executor,
+  db: Executor,
 ): Promise<{ workflow: WorkflowView; errors?: never } | { workflow?: never; errors: string[] }> {
-  const db = exec ?? getDb();
   const prepared = await prepareWorkflowSave(input.def, input.tenant_id, db, {
     destinationTier: "tokens",
   });
@@ -335,9 +334,8 @@ export interface UpdateWorkflowInput extends VersionActor {
 
 export async function updateWorkflow(
   input: UpdateWorkflowInput,
-  exec?: Executor,
+  db: Executor,
 ): Promise<{ workflow: WorkflowView; errors?: never } | { workflow?: never; errors: string[] }> {
-  const db = exec ?? getDb();
   const prepared = await prepareWorkflowSave(input.def, input.tenant_id, db, {
     destinationTier: "tokens",
   });
@@ -504,9 +502,8 @@ type UpdateWorkflowMetadataResult =
 
 export async function updateWorkflowMetadata(
   input: UpdateWorkflowMetadataInput,
-  exec?: Executor,
+  db: Executor,
 ): Promise<UpdateWorkflowMetadataResult> {
-  const db = exec ?? getDb();
   const desiredSlug =
     typeof input.slug === "string" && input.slug.length > 0 ? slugFor(input.slug) : null;
   const desiredName =
@@ -730,9 +727,8 @@ export async function updateWorkflowMetadata(
 export async function listWorkflows(
   tenant_id: string,
   opts: ListWorkflowsOptions = {},
-  exec?: Executor,
+  db: Executor,
 ): Promise<ListResult<WorkflowView>> {
-  const db = exec ?? getDb();
   const limit = Math.min(opts.limit ?? WORKFLOW_LIST_MAX_LIMIT, WORKFLOW_LIST_MAX_LIMIT);
   const offset = opts.offset ?? 0;
   const tenantConds = buildWorkflowListConds(tenant_id, opts);
@@ -823,9 +819,8 @@ export interface WorkflowSummary {
 export async function listWorkflowSummaries(
   tenant_id: string,
   opts: ListWorkflowsOptions = {},
-  exec?: Executor,
+  db: Executor,
 ): Promise<ListResult<WorkflowSummary>> {
-  const db = exec ?? getDb();
   if (opts.operating_status) {
     const listed = await listWorkflows(tenant_id, opts, db);
     return {
@@ -899,18 +894,16 @@ export async function listWorkflowSummaries(
 export async function getWorkflow(
   tenant_id: string,
   id: string,
-  exec?: Executor,
+  db: Executor,
 ): Promise<WorkflowView | null> {
-  const db = exec ?? getDb();
   return loadWorkflowView(tenant_id, id, db);
 }
 
 export async function getWorkflowBySlug(
   tenant_id: string,
   slug: string,
-  exec?: Executor,
+  db: Executor,
 ): Promise<WorkflowView | null> {
-  const db = exec ?? getDb();
   const rows = await db
     .select({ id: workflows.id })
     .from(workflows)
@@ -931,10 +924,9 @@ export async function deleteWorkflow(
   tenant_id: string,
   id: string,
   actor_id: string | null,
-  exec?: Executor,
+  db: Executor,
   actor_type?: AuditActorType,
 ): Promise<boolean> {
-  const db = exec ?? getDb();
   return db.transaction(async (tx) => {
     const [row] = await tx
       .update(workflows)

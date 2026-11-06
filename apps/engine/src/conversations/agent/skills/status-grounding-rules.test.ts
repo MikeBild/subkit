@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { renderTenantSummaryBlock } from "../../../llm/core/tenant-summary.ts";
+import { renderTenantSummaryBlock } from "../../../llm/runtime/tenant-summary.ts";
 import { generateMainAgentSystemPrompt } from "../context.ts";
 import { SK_STATUS_GROUNDING } from "../prompts.ts";
 

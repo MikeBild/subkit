@@ -10,15 +10,16 @@ import {
 } from "../../db/schema/index.ts";
 import { extractFileSentinels, replaceFileSentinels } from "../../files/sentinel.ts";
 import { countModelMessagesTokens } from "../../llm/accounting/index.ts";
-import { getStaticCapabilities } from "../../llm/core/capabilities.ts";
-import { buildFileContentBlocks, type FileContentBlock } from "../../llm/core/file-context.ts";
-import type { ProviderKind } from "../../llm/core/model-init.ts";
+import { getStaticCapabilities } from "../../llm/runtime/capabilities.ts";
+import { buildFileContentBlocks, type FileContentBlock } from "../../llm/runtime/file-context.ts";
+import type { ProviderKind } from "../../llm/runtime/model-init.ts";
 import { logger } from "../../logging/logger.ts";
 import { scrubString } from "../../logging/scrub-secrets.ts";
 import {
   recordFileLlmCapDowngrade,
   recordFileLlmInlineBytes,
 } from "../../observability/instrumentation.ts";
+import { rememberRaw, truncateForLlm } from "../../tools/truncate.ts";
 import { isProseQuestionElicitation, proseQuestionAnswer } from "../prose-question-answer.ts";
 import { scrubReferenceLabels } from "../references.ts";
 import { dropAssistantTail } from "../replay-tail.ts";
@@ -32,7 +33,6 @@ import {
   TOOL_OUTPUT_VERBATIM_TURNS,
 } from "../tool-output-elision.ts";
 import type { ToolCallOutcome } from "../tools/result-payload.ts";
-import { rememberRaw, truncateForLlm } from "../tools/truncate.ts";
 
 const MAX_REPLAY_MESSAGES = 24;
 const MAX_REPLAY_TOKENS = 12_000;

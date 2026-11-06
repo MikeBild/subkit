@@ -11,7 +11,7 @@ import {
 import { EngineClient } from "../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
 import { policyDecide } from "../../tools/policy.ts";
-import type { PermissionMode } from "../tool-policies.ts";
+import type { PermissionMode } from "../../tools/types.ts";
 import { getTool, listTools, type ToolContext } from "../tools/index.ts";
 import { wrapOne } from "../tools/sdk-wrap/invoke.ts";
 import { wrapTools } from "../tools/sdk-wrap.ts";
@@ -77,7 +77,6 @@ async function runGatedTool(
     ctx.testDb.db as unknown as Db,
     {},
     permissionMode,
-    [],
   );
   // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
   const result = await (wrapped.execute as any)(args, { toolCallId: "fake", messages: [] });

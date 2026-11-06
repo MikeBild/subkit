@@ -1,9 +1,10 @@
-import type { GateOutcome } from "../conversations/confirmation.ts";
-import type { ConversationSurface } from "../conversations/lifecycle-view.ts";
-import type { ToolPolicyMode } from "../conversations/tool-policies.ts";
-import type { TimeoutPhase } from "../conversations/turn-failure.ts";
-import type { AuthoringStage } from "../conversations/types.ts";
-import type { ConfirmReason } from "../tools/types.ts";
+import type {
+  AuthoringStage,
+  ConversationSurface,
+  GateOutcome,
+  TimeoutPhase,
+} from "../conversations/types.ts";
+import type { ConfirmReason, ToolPolicyMode } from "../tools/types.ts";
 
 export const DB_TRANSIENT_RETRY_LABELS = new Set<string>([
   "",

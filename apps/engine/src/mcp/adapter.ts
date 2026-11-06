@@ -2,12 +2,12 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { ZodType } from "zod";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { ToolContext } from "../conversations/tools/index.ts";
-import { withRawResultScope } from "../conversations/tools/truncate.ts";
 import type { Db } from "../db/client.ts";
 import { EngineClient } from "../engine-client/index.ts";
 import { logger as mcpStubLogger } from "../logging/logger.ts";
 import { dispatchTool } from "../tools/dispatcher.ts";
 import { getUnifiedRegistry } from "../tools/index.ts";
+import { withRawResultScope } from "../tools/truncate.ts";
 import type { ToolDescriptor, ToolEnvelope, ToolInvocation } from "../tools/types.ts";
 import {
   alwaysLoadTool,

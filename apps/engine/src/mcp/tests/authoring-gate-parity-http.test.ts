@@ -103,7 +103,6 @@ async function runWrappedTool(
     suite.http.db,
     {},
     "auto",
-    [],
   );
   return wrapped.execute!(args, {
     toolCallId: `authoring-gate-${surface}-${tool}`,

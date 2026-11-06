@@ -111,6 +111,18 @@ export function testCandidates(file: string): string[] {
   ];
 }
 
+export function relatedTests(file: string, siblings: readonly string[]): string[] {
+  const dir = dirname(file);
+  const stem = basename(file).replace(/\.tsx?$/, "");
+  const related = new RegExp(
+    `^${stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[.-][^/]+\\.test\\.tsx?$`,
+  );
+  return siblings
+    .filter((name) => related.test(name))
+    .map((name) => join(dir, name))
+    .sort();
+}
+
 export function parseCoverageTable(text: string): CoverageRow[] {
   const rows: CoverageRow[] = [];
   for (const line of text.split("\n")) {

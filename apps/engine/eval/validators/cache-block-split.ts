@@ -1,4 +1,4 @@
-import { splitPromptIntoBlocks } from "../../src/llm/core/cache-blocks.ts";
+import { splitPromptIntoBlocks } from "../../src/llm/runtime/cache-blocks.ts";
 import type { EnhancedPrompt } from "../../src/llm/types.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 

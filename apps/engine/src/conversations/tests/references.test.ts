@@ -10,7 +10,7 @@ import {
 } from "../../db/schema/index.ts";
 import { createIntakeItem, patchIntakeItem } from "../../knowledge/intake.ts";
 import { createKnowledgeSource } from "../../knowledge/service.ts";
-import { getConversationBudgetReport } from "../../llm/core/conversation-budget-report.ts";
+import { getConversationBudgetReport } from "../../llm/runtime/conversation-budget-report.ts";
 import { scrubString } from "../../logging/scrub-secrets.ts";
 import { createSkill } from "../../skills/service.ts";
 import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";

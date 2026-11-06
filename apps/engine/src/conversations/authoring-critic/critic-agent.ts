@@ -1,5 +1,5 @@
 import type { Executor } from "../../db/client.ts";
-import { invoke } from "../../llm/core/invoke.ts";
+import { invoke } from "../../llm/runtime/invoke.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordCriticRubricItems, recordCriticRun } from "../../observability/instrumentation.ts";
 import {

@@ -7,7 +7,7 @@ import {
   type StepRouterParams,
   supportsExtendedThinking,
   withStepNudge,
-} from "../core/step-router.ts";
+} from "../runtime/step-router.ts";
 import type { LlmProviderKind } from "../types.ts";
 
 function fakeTool(

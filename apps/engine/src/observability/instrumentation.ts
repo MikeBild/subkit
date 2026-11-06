@@ -1,6 +1,4 @@
-import type { GateRecord } from "../conversations/confirmation.ts";
-import type { TimeoutPhase } from "../conversations/turn-failure.ts";
-import type { AuthoringStage } from "../conversations/types.ts";
+import type { AuthoringStage, GateRecord, TimeoutPhase } from "../conversations/types.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import {
   boundedConnectorSlug,

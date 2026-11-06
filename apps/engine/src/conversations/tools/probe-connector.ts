@@ -13,13 +13,13 @@ import { resolvePlaceholders } from "../../llm/substitution/resolver.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordSuccessShape } from "../../schema-versions/service.ts";
 import { DirectConnectorBindingError } from "../../tools/direct-connector-binding.ts";
+import { truncateForLlm } from "../../tools/truncate.ts";
 import { endpointKeyPath } from "./call-connector.ts";
 import { directConnectorGuard, preflightDirectConnector } from "./direct-connector-guard.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { resolveConversationPrincipal } from "./permission-gate.ts";
 import { pickProbeRecoveryActions } from "./probe-recovery.ts";
 import { summarizeProbeBody } from "./probe-shape.ts";
-import { truncateForLlm } from "./truncate.ts";
 
 const Method = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]);
 const Environment = z.enum(["dev", "prod"]);

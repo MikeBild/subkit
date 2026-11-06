@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getRawResult, sampleWorkflowOutputForLlm } from "../truncate.ts";
+import { getRawResult, sampleWorkflowOutputForLlm } from "../../../tools/truncate.ts";
 
 describe("sampleWorkflowOutputForLlm", () => {
   test("small outputs pass through untouched", () => {

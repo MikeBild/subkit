@@ -3,15 +3,15 @@ import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages } from "../../db/schema/index.ts";
 import { stripFileSentinelsForDisplay } from "../../files/sentinel.ts";
-import { AiSdkModel } from "../../llm/core/ai-sdk-model.ts";
-import { resolveModelRoute } from "../../llm/core/invoke.ts";
+import { isCatalogModelProvider } from "../../llm/model-catalog-view.ts";
+import { AiSdkModel } from "../../llm/runtime/ai-sdk-model.ts";
+import { resolveModelRoute } from "../../llm/runtime/invoke.ts";
 import {
   detectConfiguredProvider,
   modelForProvider,
   ProviderMisconfiguredError,
-} from "../../llm/core/model-init.ts";
-import type { RecentMessage } from "../../llm/core/suggestion-prompt.ts";
-import { isCatalogModelProvider } from "../../llm/model-catalog-view.ts";
+} from "../../llm/runtime/model-init.ts";
+import type { RecentMessage } from "../../llm/runtime/suggestion-prompt.ts";
 import type { ModelRoute } from "../../llm/types.ts";
 import { logger } from "../../logging/logger.ts";
 import { nextSuggestion } from "../streaming.ts";

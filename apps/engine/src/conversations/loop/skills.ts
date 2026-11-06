@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { conversations, executions, fileLinks, files } from "../../db/schema/index.ts";
-import { detectIntentSkills } from "../../llm/core/context-assembler.ts";
+import { detectIntentSkills } from "../../llm/runtime/context-assembler.ts";
 import { skillAudienceForAuthoringMode } from "../../skills/types.ts";
 import { attachmentMimeTypesOf, isContinuationTurn } from "../core/loop.ts";
 import { resolveScopeFactsForConversation } from "../scope-facts.ts";

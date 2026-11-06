@@ -50,7 +50,7 @@ const ROOT = join(import.meta.dir, "..");
 export const REPOSITORY_PATHS: DocsPaths = {
   referenceDir: join(ROOT, "apps/engine/src/http/reference"),
   llmsDir: join(ROOT, "apps/engine/src/http/llms"),
-  seedDir: join(ROOT, "apps/engine/src/conversations/seed/knowledge"),
+  seedDir: join(ROOT, "apps/engine/src/knowledge/seeds"),
   templates: join(ROOT, "apps/engine/src/connectors/templates.json"),
 };
 

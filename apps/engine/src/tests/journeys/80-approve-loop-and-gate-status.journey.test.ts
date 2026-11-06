@@ -37,12 +37,12 @@ async function createConversationAndRunTurn(
   }
 }
 
+import { renderAuthoringContextBlock } from "../../conversations/loop/authoring-context-block.ts";
 import { runWorkflowTool } from "../../conversations/tools/engine-api/writes/run-workflow.ts";
 import type { ToolContext } from "../../conversations/tools/index.ts";
 import type { DraftDocument } from "../../conversations/types.ts";
 import { conversationElicitations } from "../../db/schema/index.ts";
 import { runExecution } from "../../execution/engine.ts";
-import { renderAuthoringContextBlock } from "../../llm/core/authoring-context-block.ts";
 import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {

@@ -4,7 +4,6 @@ import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { runConfirmGate } from "../conversations/confirmation.ts";
 import { describeToolExecutionFailure } from "../conversations/tool-execution-failure.ts";
-import type { PermissionMode } from "../conversations/tool-policies.ts";
 import type { ToolContext, ToolPrecheck, ToolResult } from "../conversations/tools/index.ts";
 import { toolFailureEnvelope } from "../conversations/tools/result-payload.ts";
 import { prepareGate } from "../conversations/tools/sdk-wrap/gate-subjects.ts";
@@ -41,7 +40,7 @@ import {
 import type { ConversationProviderEntry } from "./providers/conversation.ts";
 import type { StaticProviderEntry } from "./providers/static.ts";
 import type { ToolRegistry } from "./registry.ts";
-import type { ToolEnvelope, ToolInvocation, ToolSurface } from "./types.ts";
+import type { PermissionMode, ToolEnvelope, ToolInvocation, ToolSurface } from "./types.ts";
 
 export interface DispatchDeps {
   readonly registry: ToolRegistry;

@@ -19,13 +19,16 @@ async function main(): Promise<void> {
   const account = a[0];
   if (!account) throw new Error("no system account in 'default' tenant");
 
-  const result = await issueApiKey({
-    issuer: { kind: "system" },
-    tenant_id: tenant.id,
-    owner_kind: "system_account",
-    owner_id: account.id,
-    actor: { kind: "system", id: null },
-  });
+  const result = await issueApiKey(
+    {
+      issuer: { kind: "system" },
+      tenant_id: tenant.id,
+      owner_kind: "system_account",
+      owner_id: account.id,
+      actor: { kind: "system", id: null },
+    },
+    db,
+  );
 
   process.stdout.write(`${result.plaintext}\n`);
 }

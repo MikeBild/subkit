@@ -15,10 +15,15 @@ import {
   requestApproval,
 } from "../tools/approval.ts";
 import { type PolicyDecideInput, type PolicyDecision, policyDecide } from "../tools/policy.ts";
-import type { ConfirmReason, ToolCategory } from "../tools/types.ts";
+import type {
+  ConfirmReason,
+  PermissionMode,
+  ToolCategory,
+  ToolModeRule,
+  ToolPolicyMode,
+} from "../tools/types.ts";
 import { isDangerousTool } from "./dangerous-tools.ts";
 import type { ConversationSurface } from "./lifecycle-view.ts";
-import type { PermissionMode, ToolModeRule, ToolPolicyMode } from "./tool-policies.ts";
 import type { ToolEffect, ToolPrecheck, ToolResult } from "./tools/index.ts";
 
 export type ConfirmationState =

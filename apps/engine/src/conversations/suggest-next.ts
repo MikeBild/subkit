@@ -1,5 +1,5 @@
-import type { SubkitLlmMessage, SubkitLlmUsage } from "../llm/core/base-types.ts";
-import { assembleSuggestionPrompt, type RecentMessage } from "../llm/core/suggestion-prompt.ts";
+import type { SubkitLlmMessage, SubkitLlmUsage } from "../llm/runtime/base-types.ts";
+import { assembleSuggestionPrompt, type RecentMessage } from "../llm/runtime/suggestion-prompt.ts";
 import { logger } from "../logging/logger.ts";
 import { recordLlmTokens, recordSuggestNextOutcome } from "../observability/instrumentation.ts";
 import { filterSuggestion } from "./suggest-next-filter.ts";

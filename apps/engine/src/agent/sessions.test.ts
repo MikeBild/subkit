@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { LearningSchema } from "../api/agent-sessions.ts";
 import type { Db } from "../db/client.ts";
-import * as invokeModule from "../llm/core/invoke.ts";
+import * as invokeModule from "../llm/runtime/invoke.ts";
 import {
   analyzeAgentSession,
   collectSessionLearning,

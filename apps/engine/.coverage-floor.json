@@ -75,8 +75,8 @@
   "core_default": {
     "line_min": 100,
     "branch_min": 100,
-    "exclude": ["apps/engine/src/llm/core/"],
-    "rationale": "Pure cores take time, ids and randomness as parameters, so every line is reachable from a plain example or property test. llm/core is the provider adapter layer, not a pure core."
+    "exclude": [],
+    "rationale": "Pure cores take time, ids and randomness as parameters, so every line is reachable from a plain example or property test."
   },
   "files": {
     "packages/shared/src/approval-choice.ts": {

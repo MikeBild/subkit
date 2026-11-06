@@ -1,4 +1,4 @@
-import type { GenerationAbort, GenerationNeed } from "./core/generation-abort.ts";
+import type { GenerationAbort, GenerationNeed } from "./runtime/generation-abort.ts";
 
 export class LlmError extends Error {
   readonly code:

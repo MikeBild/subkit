@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Db } from "../../db/client.ts";
-import { invoke } from "../core/invoke.ts";
+import { invoke } from "../runtime/invoke.ts";
 import type { EnhancedPrompt } from "../types.ts";
 
 const ExtractEnvelopeSchema = z.object({

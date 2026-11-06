@@ -1,4 +1,4 @@
-import { basePromptFor } from "../../src/llm/core/context-assembler.ts";
+import { basePromptFor } from "../../src/llm/runtime/context-assembler.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 
 export async function validate(fixture: FixtureRecord): Promise<ValidationResult> {

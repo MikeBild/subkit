@@ -1,4 +1,4 @@
-import { normalizeSchema } from "../../src/llm/core/schema-normalizer.ts";
+import { normalizeSchema } from "../../src/llm/runtime/schema-normalizer.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 
 export function validate(fixture: FixtureRecord): ValidationResult {

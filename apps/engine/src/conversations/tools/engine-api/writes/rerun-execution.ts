@@ -6,8 +6,8 @@ import {
   recoverExecutionPayload,
 } from "../../../../execution/sensitive-payload.ts";
 import { completedRun, createRunWorkflow } from "../../../../execution/use-cases/run-workflow.ts";
+import { sampleWorkflowOutputForLlm } from "../../../../tools/truncate.ts";
 import type { ConversationTool } from "../../index.ts";
-import { sampleWorkflowOutputForLlm } from "../../truncate.ts";
 
 const RerunInput = z
   .object({

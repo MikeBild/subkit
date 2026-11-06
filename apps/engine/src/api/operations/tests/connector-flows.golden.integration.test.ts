@@ -238,9 +238,26 @@ describe("connector flow routes keep their HTTP responses byte for byte", () => 
       "http.template-import.upstream-broken",
       await call(w, "POST", path, { source: "openapi", content: `${brokenBaseUrl}/openapi.json` }),
     );
+    const allowPrivateBefore = getConfig().spec.allow_private_fetch;
+    await setConfigKey("spec.allow_private_fetch", true, { force: true });
+    try {
+      golden.record(
+        "http.template-import.upstream-status",
+        await call(w, "POST", path, {
+          source: "openapi",
+          content: `${brokenBaseUrl}/openapi.json`,
+        }),
+      );
+    } finally {
+      await setConfigKey("spec.allow_private_fetch", allowPrivateBefore, { force: true });
+    }
     golden.record(
       "http.template-import.unparseable",
       await call(w, "POST", path, { source: "openapi", content: "{ not json" }),
+    );
+    golden.record(
+      "http.template-import.unparseable-root",
+      await call(w, "POST", path, { source: "openapi", content: "42" }),
     );
     golden.record(
       "http.template-import.invalid",

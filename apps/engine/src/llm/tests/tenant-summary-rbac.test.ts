@@ -18,7 +18,7 @@ import {
   loadTenantSummary,
   renderTenantSummaryBlock,
   snapshotCoverage,
-} from "../core/tenant-summary.ts";
+} from "../runtime/tenant-summary.ts";
 
 let tdb: TestDb;
 let tenant_id: string;

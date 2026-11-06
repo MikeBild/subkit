@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { applyFlowModelElevation } from "../apps/engine/src/llm/core/invoke.ts";
 import { DEFAULT_MODELS } from "../apps/engine/src/llm/model-catalog-view.ts";
+import { applyFlowModelElevation } from "../apps/engine/src/llm/runtime/invoke.ts";
 import type { LlmFlow, ModelRoute } from "../apps/engine/src/llm/types.ts";
 
 export interface LiveArgs {

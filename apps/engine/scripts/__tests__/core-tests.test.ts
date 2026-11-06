@@ -21,11 +21,9 @@ describe("selectCoreTests", () => {
     ]);
   });
 
-  test("drops look-alikes, the llm provider core and other packages", () => {
+  test("drops look-alikes and other packages", () => {
     expect(
       selectCoreTests([
-        "apps/engine/src/llm/core/invoke.test.ts",
-        "apps/engine/src/llm/core/tests/model-init.test.ts",
         "apps/engine/src/scoring/score.test.ts",
         "apps/engine/src/x/hardcore.test.ts",
         "apps/engine/src/x/core.test.tsx",

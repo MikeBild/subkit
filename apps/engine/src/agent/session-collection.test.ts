@@ -13,7 +13,7 @@ import {
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { listIntakeItemEvidence } from "../knowledge/intake-session.ts";
 import { searchKnowledge } from "../knowledge/service.ts";
-import * as invokeModule from "../llm/core/invoke.ts";
+import * as invokeModule from "../llm/runtime/invoke.ts";
 import {
   type AgentSessionAnalyzeJob,
   processAgentSessionAnalyzeJob,

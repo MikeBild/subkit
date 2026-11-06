@@ -8,9 +8,9 @@ import {
 } from "../../db/schema/index.ts";
 import { createWorkflowRow } from "../../execution/tests/setup.ts";
 import { OPENAPI_INFO } from "../../http/openapi.ts";
-import { getStaticCapabilities } from "../../llm/core/capabilities.ts";
-import { buildFileContentBlocks } from "../../llm/core/file-context.ts";
 import { analyzeConversationAttachments } from "../../llm/flows/analyze-conversation-attachments.ts";
+import { getStaticCapabilities } from "../../llm/runtime/capabilities.ts";
+import { buildFileContentBlocks } from "../../llm/runtime/file-context.ts";
 import { logRing } from "../../observability/log-ring.ts";
 import { createEmptyDraftDocument } from "../authoring-state/index.ts";
 import { collectDiagnosticContext, type DiagnosticContext } from "../diagnostic-context.ts";

@@ -1,0 +1,493 @@
+import { describe, expect, test } from "bun:test";
+import { translate } from "@/lib/i18n";
+import {
+  approveBlockedReason,
+  badgeCount,
+  bannerSubset,
+  changeFacts,
+  changeRows,
+  countOpenDecisions,
+  decisionActions,
+  hasOverdue,
+  humanStep,
+  openDecisionQueue,
+  partitionByUrgency,
+  queueChips,
+  queueDisplayState,
+  resetView,
+  searchWithoutBucket,
+  sortDecisions,
+  suggestionTargets,
+} from "./decisions-model";
+import { item, NOW, PATCH_EVIDENCE } from "./decisions-model-fixtures.ts";
+
+describe("urgency", () => {
+  test("a stopped conversation outranks an older proposal nothing waits on", () => {
+    const rubrics = partitionByUrgency(
+      [item("patch", 9, "old-patch"), item("conversation", 0, "fresh-talk")],
+      NOW,
+    );
+    expect(rubrics.blocking.map((entry) => entry.id)).toEqual(["fresh-talk"]);
+    expect(rubrics.deferred.aged.map((entry) => entry.id)).toEqual(["old-patch"]);
+  });
+
+  test("a lapsed deadline moves a position out of the working queue entirely", () => {
+    const expired = item("conversation", 1, "gone", {
+      expiresAt: new Date(NOW - 60_000).toISOString(),
+    });
+    const rubrics = partitionByUrgency([expired], NOW);
+    expect(rubrics.expired.map((entry) => entry.id)).toEqual(["gone"]);
+    expect(rubrics.blocking).toEqual([]);
+  });
+
+  test("the nearest deadline sorts first, ahead of the oldest position", () => {
+    const soon = item("conversation", 0, "soon", {
+      expiresAt: new Date(NOW + 60 * 60_000).toISOString(),
+    });
+    const later = item("conversation", 5, "later", {
+      expiresAt: new Date(NOW + 20 * 60 * 60_000).toISOString(),
+    });
+    expect(sortDecisions([later, soon]).map((entry) => entry.id)).toEqual(["soon", "later"]);
+  });
+
+  test("a deadline inside a day counts as urgent even though nothing lapsed yet", () => {
+    const soon = item("conversation", 0, "soon", {
+      expiresAt: new Date(NOW + 60 * 60_000).toISOString(),
+    });
+    expect(hasOverdue([soon], NOW)).toBe(true);
+  });
+
+  test("an unreadable deadline is treated as no deadline, not as expired", () => {
+    const broken = item("conversation", 0, "broken", { expiresAt: "not a date" });
+    const rubrics = partitionByUrgency([broken], NOW);
+    expect(rubrics.expired).toEqual([]);
+    expect(rubrics.blocking.map((entry) => entry.id)).toEqual(["broken"]);
+  });
+});
+
+describe("countOpenDecisions", () => {
+  const totals = { patch: 3, skill: 1, conversation: 2 };
+
+  test("the total is the sum of the engine's own counts, not the rows in hand", () => {
+    const open = countOpenDecisions({
+      items: [item("patch", 1)],
+      totals: { patch: 118, skill: 0, conversation: 1 },
+      nowMs: NOW,
+    });
+    expect(open.total).toBe(118);
+    expect(open.byKind).toEqual({ patch: 118, skill: 0, conversation: 1 });
+    expect(open.capped).toBe(true);
+  });
+
+  test("a position delivered twice is one decision", () => {
+    const twice = item("patch", 4, "same-row");
+    const open = countOpenDecisions({
+      items: [twice, { ...twice, title: "another rendering of the same row" }, item("skill", 1)],
+      totals: { patch: 1, skill: 1, conversation: 0 },
+      nowMs: NOW,
+    });
+    expect(open.total).toBe(2);
+    expect(open.capped).toBe(false);
+    expect(open.subsets.aging).toBe(1);
+  });
+
+  test("splits the queue into what stops you, what lapsed and what merely sat", () => {
+    const open = countOpenDecisions({
+      items: [
+        item("conversation", 0, "stopped"),
+        item("conversation", 1, "lapsed", {
+          expiresAt: new Date(NOW - 3_600_000).toISOString(),
+        }),
+        item("patch", 19, "old"),
+        item("patch", 1, "fresh"),
+        item("skill", 4, "older"),
+      ],
+      totals: { patch: 2, skill: 1, conversation: 2 },
+      nowMs: NOW,
+    });
+    expect(open.subsets).toEqual({ blocking: 1, overdue: 1, aging: 2 });
+    expect(open.oldestAgeDays).toBe(19);
+  });
+
+  test("without engine totals it counts approvals separately from questions", () => {
+    const open = countOpenDecisions({
+      items: [item("patch", 1), item("conversation", 2)],
+      totals: null,
+      nowMs: NOW,
+    });
+    expect(open.total).toBe(1);
+    expect(open.byKind).toEqual({ patch: 1, skill: 0, conversation: 1 });
+    expect(open.capped).toBe(false);
+  });
+
+  test("an empty queue counts to zero across every field", () => {
+    const open = countOpenDecisions({ items: [], totals: null, nowMs: NOW });
+    expect(open.total).toBe(0);
+    expect(open.subsets).toEqual({ blocking: 0, overdue: 0, aging: 0 });
+    expect(open.oldestAgeDays).toBe(0);
+    expect(bannerSubset(open).shown).toBe(false);
+  });
+
+  test("byKind always carries all three sources, including the silent ones", () => {
+    const open = countOpenDecisions({ items: [], totals, nowMs: NOW });
+    expect(Object.keys(open.byKind).sort()).toEqual(["conversation", "patch", "skill"]);
+  });
+});
+
+describe("bannerSubset", () => {
+  function open(overrides: {
+    total: number;
+    blocking?: number;
+    overdue?: number;
+    aging?: number;
+    capped?: boolean;
+  }) {
+    return {
+      total: overrides.total,
+      decidable: 0,
+      byKind: { patch: 0, skill: 0, conversation: overrides.total },
+      subsets: {
+        blocking: overrides.blocking ?? 0,
+        overdue: overrides.overdue ?? 0,
+        aging: overrides.aging ?? 0,
+      },
+      oldestAgeDays: 0,
+      capped: overrides.capped ?? false,
+    };
+  }
+
+  test("names each share of the whole rather than one number standing alone", () => {
+    expect(bannerSubset(open({ total: 30, blocking: 25, overdue: 2 }))).toEqual({
+      blocking: 25,
+      overdue: 2,
+      count: 27,
+      total: 30,
+      atLeast: false,
+      shown: true,
+    });
+  });
+
+  test("never claims a position the queue files as blocking nothing", () => {
+    const banner = bannerSubset(open({ total: 8, blocking: 1, overdue: 1, aging: 3 }));
+    expect(banner.count).toBe(2);
+    expect(banner.blocking + banner.overdue).toBe(banner.count);
+  });
+
+  test("aging alone raises no banner at all", () => {
+    expect(bannerSubset(open({ total: 12, aging: 9 })).shown).toBe(false);
+  });
+
+  test("keeps the two apart, because no one verb is true of both", () => {
+    const lapsed = bannerSubset(open({ total: 4, overdue: 4 }));
+    expect(lapsed.blocking).toBe(0);
+    expect(lapsed.overdue).toBe(4);
+    expect(lapsed.shown).toBe(true);
+  });
+
+  test("a capped page can only claim a floor", () => {
+    const banner = bannerSubset(open({ total: 119, blocking: 5, capped: true }));
+    expect(banner.atLeast).toBe(true);
+    expect(banner.count).toBe(5);
+    expect(banner.total).toBe(119);
+  });
+
+  test("a capped page with nothing urgent claims nothing at all", () => {
+    const banner = bannerSubset(open({ total: 119, aging: 40, capped: true }));
+    expect(banner.shown).toBe(false);
+    expect(banner.atLeast).toBe(false);
+  });
+
+  test("an empty queue shows no banner", () => {
+    expect(bannerSubset(open({ total: 0 })).shown).toBe(false);
+  });
+});
+
+describe("queueDisplayState", () => {
+  const base = { shown: 0, held: 0, failing: 0, total: 0, narrowed: false };
+
+  test("anything on screen means rows — whichever section it is in", () => {
+    expect(queueDisplayState({ ...base, failing: 1, total: 1 })).toBe("rows");
+    expect(queueDisplayState({ ...base, held: 1, total: 1 })).toBe("rows");
+    expect(queueDisplayState({ ...base, shown: 1, total: 1 })).toBe("rows");
+  });
+
+  test("nothing at all is the only empty queue", () => {
+    expect(queueDisplayState(base)).toBe("empty");
+  });
+
+  test("narrowed away is not the same as nothing waiting", () => {
+    expect(queueDisplayState({ ...base, narrowed: true, total: 4 })).toBe("filtered-empty");
+    expect(queueDisplayState({ ...base, narrowed: true, total: 0 })).toBe("empty");
+  });
+});
+
+describe("the badge counts what the chips count", () => {
+  const items = [
+    item("patch", 1, "p1", { reviewable: true }),
+    item("patch", 5, "p2", { reviewable: true }),
+    item("patch", 2, "p3", { reviewable: false }),
+    item("skill", 1, "s1", { reviewable: true }),
+    item("conversation", 0, "c1"),
+    item("conversation", 0, "c2"),
+  ];
+  const totals = { patch: 2, skill: 1, conversation: 2 };
+
+  const everything = { patches: true, skills: true, failing: true };
+  const shown = (chips: ReturnType<typeof queueChips>) =>
+    (chips ?? []).map((chip) => [chip.kind, chip.count, chip.partial]);
+  const sum = (chips: ReturnType<typeof queueChips>) =>
+    (chips ?? []).reduce((total, chip) => total + (chip.count ?? 0), 0);
+
+  test("badge equals the sum of the chips", () => {
+    const open = openDecisionQueue({ items, totals, held: 1, failing: 2, nowMs: NOW });
+    const chips = queueChips({
+      open,
+      readable: everything,
+      held: 1,
+      failing: { state: "answered", count: 2 },
+    });
+    expect(shown(chips)).toEqual([
+      ["patch", 2, false],
+      ["skill", 1, false],
+      ["schedule", 3, false],
+    ]);
+    expect(badgeCount(chips)).toBe(sum(chips));
+    expect(open.total).toBe(sum(chips));
+    expect(open.total).toBe(6);
+  });
+
+  test("a source this person cannot read has no chip, never a chip at 0", () => {
+    const open = openDecisionQueue({
+      items: items.filter((entry) => entry.kind !== "skill"),
+      totals: { patch: 2, skill: 0, conversation: 2 },
+      held: 1,
+      failing: 0,
+      nowMs: NOW,
+    });
+    const chips = queueChips({
+      open,
+      readable: { patches: true, skills: false, failing: false },
+      held: 1,
+      failing: { state: "not_permitted", count: 0 },
+    });
+    expect(chips?.map((chip) => chip.kind)).toEqual(["patch", "schedule"]);
+    expect(chips?.map((chip) => chip.index)).toEqual([0, 2]);
+    expect(badgeCount(chips)).toBe(sum(chips));
+    const noWorkflows = queueChips({
+      open,
+      readable: { patches: false, skills: true, failing: true },
+      held: 0,
+      failing: { state: "answered", count: 2 },
+    });
+    expect(noWorkflows?.map((chip) => chip.kind)).toEqual(["skill", "schedule"]);
+  });
+
+  test("a source that failed is never counted as 0", () => {
+    const open = openDecisionQueue({ items, totals, held: 1, failing: 0, nowMs: NOW });
+    const partial = queueChips({
+      open,
+      readable: everything,
+      held: 1,
+      failing: { state: "failed", count: 0 },
+    });
+    const schedule = partial?.find((chip) => chip.kind === "schedule");
+    expect(schedule).toMatchObject({ count: 1, partial: true });
+    expect(badgeCount(partial)).toBe(sum(partial));
+
+    const alone = queueChips({
+      open: openDecisionQueue({ items: [], totals: null, held: 0, failing: 0, nowMs: NOW }),
+      readable: { patches: false, skills: false, failing: true },
+      held: 0,
+      failing: { state: "failed", count: 0 },
+    });
+    expect(shown(alone)).toEqual([["schedule", null, false]]);
+    expect(badgeCount(alone)).toBeNull();
+  });
+
+  test("the waiting conversations are counted on their own, never in the badge", () => {
+    const open = openDecisionQueue({ items, totals, held: 0, failing: 0, nowMs: NOW });
+    expect(open.byKind.conversation).toBe(2);
+    expect(open.total).toBe(3);
+  });
+
+  test("no count read, no chip numbers — an omitted number beats a guessed one", () => {
+    const chips = queueChips({
+      open: null,
+      readable: everything,
+      held: 4,
+      failing: { state: "answered", count: 0 },
+    });
+    expect(chips).toBeNull();
+    expect(badgeCount(chips)).toBeNull();
+  });
+});
+
+describe("one way back to the whole queue", () => {
+  test("reset clears the tile's focus AND the chips", () => {
+    expect(resetView()).toEqual({ focus: null, kinds: [] });
+  });
+
+  test("after a reset, a queue with anything in it is never 'nothing matches'", () => {
+    const view = resetView();
+    const narrowed = view.focus !== null || view.kinds.length > 0;
+    expect(queueDisplayState({ shown: 3, held: 0, failing: 0, total: 3, narrowed })).toBe("rows");
+    expect(narrowed).toBe(false);
+  });
+
+  test("the address loses the tile's bucket and keeps everything else", () => {
+    expect(searchWithoutBucket("?bucket=blocked")).toBe("");
+    expect(searchWithoutBucket("?bucket=failing&workflow_id=w1")).toBe("?workflow_id=w1");
+    expect(searchWithoutBucket("")).toBe("");
+  });
+});
+
+describe("why Freigeben cannot be pressed", () => {
+  const base = {
+    canDecide: true,
+    expanded: true,
+    kind: "patch" as const,
+    reviewDigest: null,
+    preview: { reviewable: true, review_digest: "d" },
+  };
+
+  test("a role that may not decide is told so first", () => {
+    expect(approveBlockedReason({ ...base, canDecide: false, expanded: false })).toBe(
+      "decisions.approveNeedsRole",
+    );
+  });
+
+  test("an unopened change asks to be looked at first", () => {
+    expect(approveBlockedReason({ ...base, expanded: false })).toBe("decisions.approveNeedsReview");
+  });
+
+  test("a change the engine will not take says so", () => {
+    expect(approveBlockedReason({ ...base, preview: { reviewable: false } })).toBe(
+      "decisions.approveNotReviewable",
+    );
+    expect(
+      approveBlockedReason({ ...base, kind: "skill", preview: undefined, reviewDigest: null }),
+    ).toBe("decisions.approveNotReviewable");
+  });
+
+  test("nothing blocking, or a preview still loading, gives no reason", () => {
+    expect(approveBlockedReason(base)).toBeNull();
+    expect(approveBlockedReason({ ...base, preview: undefined })).toBeNull();
+    expect(approveBlockedReason({ ...base, kind: "skill", reviewDigest: "d" })).toBeNull();
+  });
+});
+
+describe("suggestions lead somewhere or are not shown", () => {
+  test("an undecidable proposal with a workflow links to it; one without is left out", () => {
+    const withWorkflow = item("patch", 1, "p1", {
+      reviewable: false,
+      detail: { kind: "patch", evidence: { ...PATCH_EVIDENCE, workflowId: "w1" } },
+    });
+    const without = item("patch", 1, "p2", { reviewable: false });
+    const decidable = item("patch", 1, "p3", {
+      reviewable: true,
+      detail: { kind: "patch", evidence: { ...PATCH_EVIDENCE, workflowId: "w2" } },
+    });
+    const conversation = item("conversation", 0, "c1");
+    expect(
+      suggestionTargets([withWorkflow, without, decidable, conversation]).map((entry) => [
+        entry.item.id,
+        entry.workflowId,
+      ]),
+    ).toEqual([["p1", "w1"]]);
+  });
+});
+
+describe("a step key as a person reads it", () => {
+  test("underscores and hyphens become spaces", () => {
+    expect(humanStep("fetch_orders")).toBe("fetch orders");
+    expect(humanStep("send--report_mail")).toBe("send report mail");
+  });
+});
+
+describe("the before and after a repair names", () => {
+  test("reads each changed path from both steps", () => {
+    expect(
+      changeFacts(
+        { config: { path: "/spaces/growth/pages/weekly" } },
+        { config: { path: "/spaces/growth/concepts/weekly" } },
+        ["config.path"],
+      ),
+    ).toEqual([
+      {
+        path: "config.path",
+        inline: {
+          before: "/spaces/growth/pages/weekly",
+          after: "/spaces/growth/concepts/weekly",
+        },
+        rows: [],
+      },
+    ]);
+  });
+
+  test("a value only one side has reads as a dash on the other", () => {
+    expect(changeFacts({}, { data_selector: "items" }, ["data_selector"])).toEqual([
+      { path: "data_selector", inline: { before: "—", after: "items" }, rows: [] },
+    ]);
+  });
+
+  test("code whose first lines agree shows the line that changed, not the shared start", () => {
+    const head = Array.from({ length: 12 }, (_, line) => `const part${line} = ${line};`);
+    const [fact] = changeFacts(
+      { expression: [...head, "return { raw: sk.base64UrlEncode(msg) };"].join("\n") },
+      { expression: [...head, "return { raw: sk.base64UrlEncodeUtf8(msg) };"].join("\n") },
+      ["expression"],
+    );
+    expect(fact?.inline).toBeNull();
+    expect(fact?.rows[0]).toEqual({ type: "gap", count: 10 });
+    expect(fact?.rows.filter((row) => row.type === "removed")).toEqual([
+      { type: "removed", text: "return { raw: sk.base64UrlEncode(msg) };" },
+    ]);
+    expect(fact?.rows.filter((row) => row.type === "added")).toEqual([
+      { type: "added", text: "return { raw: sk.base64UrlEncodeUtf8(msg) };" },
+    ]);
+  });
+
+  test("a long value is diffed by line instead of clipped", () => {
+    const [fact] = changeFacts({ body: { a: 1 } }, { body: "x".repeat(200) }, ["body"]);
+    expect(fact?.inline).toBeNull();
+    expect(fact?.rows.some((row) => row.type === "added" && row.text === "x".repeat(200))).toBe(
+      true,
+    );
+  });
+
+  test("without named paths the whole step is diffed, focused on its change", () => {
+    const [fact] = changeFacts({ id: "a", path: "/x" }, { id: "a", path: "/y" }, null);
+    expect(fact?.path).toBe("");
+    expect(fact?.rows.some((row) => row.type === "added" && row.text.includes("/y"))).toBe(true);
+  });
+
+  test("the rows of a change put inline values as one removed and one added line", () => {
+    const facts = changeFacts({ a: "x" }, { a: "y" }, ["a"]);
+    expect(changeRows(facts)).toEqual([
+      { type: "removed", text: "x" },
+      { type: "added", text: "y" },
+    ]);
+  });
+
+  test("names at most three paths and nothing when nothing changed", () => {
+    expect(changeFacts({}, {}, ["a", "b", "c", "d"])).toHaveLength(3);
+    expect(changeFacts({}, {}, null)).toEqual([]);
+  });
+});
+
+describe("decision actions", () => {
+  test("a fix offers exactly apply and reject, never a grant on the side", () => {
+    const actions = decisionActions("patch");
+    expect(actions.map((action) => action.kind)).toEqual(["apply", "reject"]);
+    expect(translate("de", actions[0]!.labelKey)).toBe("Korrektur übernehmen");
+    expect(translate("de", actions[1]!.labelKey)).toBe("Ablehnen");
+    expect(translate("en", actions[0]!.labelKey)).toBe("Apply fix");
+  });
+
+  test("a skill proposal is decided in its own sheet", () => {
+    const actions = decisionActions("skill");
+    expect(actions.map((action) => action.kind)).toEqual(["open"]);
+    expect(translate("de", actions[0]!.labelKey)).toBe("Prüfen");
+    expect(translate("en", actions[0]!.labelKey)).toBe("Review");
+  });
+});

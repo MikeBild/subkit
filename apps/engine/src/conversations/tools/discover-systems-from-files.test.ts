@@ -10,7 +10,7 @@ import {
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { knowledgeContentHash } from "../../knowledge/version-record.ts";
-import * as invokeModule from "../../llm/core/invoke.ts";
+import * as invokeModule from "../../llm/runtime/invoke.ts";
 import {
   discoverSystemsFromFilesTool,
   KNOWLEDGE_SOURCE_MAX_CHARS,

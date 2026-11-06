@@ -24,6 +24,8 @@ describe("path classification", () => {
     expect(isTestPath("apps/engine/src/a.test.ts")).toBe(true);
     expect(isTestPath("apps/sk/src/a.test.tsx")).toBe(true);
     expect(isTestPath("apps/engine/src/x/tests/setup.ts")).toBe(true);
+    expect(isTestPath("apps/engine/src/db/vault-maintenance-fixtures.ts")).toBe(true);
+    expect(isTestPath("apps/engine/src/db/vault-fixtures-loader.ts")).toBe(false);
     expect(isTestPath("apps/engine/src/x/__tests__/h.ts")).toBe(true);
     expect(isTestPath("apps/engine/src/test-helpers/seed.ts")).toBe(true);
     expect(isTestPath("apps/engine/src/x/service.ts")).toBe(false);

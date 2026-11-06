@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { connectorDocumentChunks } from "../db/schema/connector_docs.ts";
 import { knowledgeChunks } from "../db/schema/knowledge_sources.ts";
-import { invoke } from "../llm/core/invoke.ts";
+import { invoke } from "../llm/runtime/invoke.ts";
 import { logger } from "../logging/logger.ts";
 import type { Citation } from "./citations.ts";
 import { isProductDocId } from "./tools/product-docs.ts";

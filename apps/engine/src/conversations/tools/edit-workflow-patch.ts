@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { JsonPatchError } from "fast-json-patch";
-import { LLM_CALL_TIMEOUT_MS } from "../../llm/core/ai-sdk-model.ts";
+import { LLM_CALL_TIMEOUT_MS } from "../../llm/runtime/ai-sdk-model.ts";
 import { log } from "../../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../../observability/instrumentation.ts";
 import { stepCycles } from "../../workflows/core/definition.ts";

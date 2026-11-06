@@ -65,7 +65,7 @@ export function parseJudgeResponse(text: string): JudgeResult {
 async function defaultProvider(): Promise<
   (prompt: { system: string; user: string }) => Promise<string>
 > {
-  const { invoke } = await import("../src/llm/core/invoke.ts");
+  const { invoke } = await import("../src/llm/runtime/invoke.ts");
   return async ({ system, user }) => {
     const result = await invoke({
       flow: "summarize",

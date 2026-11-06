@@ -154,7 +154,7 @@ function scorePriorWorkflow(
 
 export async function listActiveWorkflowRefs(
   tenant_id: string,
-  exec?: Executor,
+  db: Executor,
 ): Promise<PriorWorkflowRef[]> {
   const refs: PriorWorkflowRef[] = [];
   for (let offset = 0; ; offset += WORKFLOW_LIST_MAX_LIMIT) {
@@ -165,7 +165,7 @@ export async function listActiveWorkflowRefs(
       limit: WORKFLOW_LIST_MAX_LIMIT,
       offset,
     };
-    const { rows, total } = await listWorkflows(tenant_id, opts, exec);
+    const { rows, total } = await listWorkflows(tenant_id, opts, db);
     for (const row of rows) refs.push(projectPriorWorkflowRef(row));
     if (rows.length < WORKFLOW_LIST_MAX_LIMIT || refs.length >= total) return refs;
   }
@@ -175,10 +175,10 @@ export async function findSimilarActive(
   tenant_id: string,
   intent: FindSimilarActiveIntent,
   k = 3,
-  exec?: Executor,
+  db: Executor,
 ): Promise<PriorWorkflowRef[]> {
   const opts: ListWorkflowsOptions = { status: "active", limit: PRIOR_WORKFLOWS_CANDIDATE_POOL };
-  const { rows: candidates } = await listWorkflows(tenant_id, opts, exec);
+  const { rows: candidates } = await listWorkflows(tenant_id, opts, db);
   if (candidates.length === 0) return [];
 
   const queryTokens = new Set(tokenisePriorWorkflowText(intent.query));

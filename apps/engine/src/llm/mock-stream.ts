@@ -4,9 +4,9 @@ import type {
   LanguageModelV4StreamResult,
 } from "@ai-sdk/provider";
 import { MockLanguageModelV4, simulateReadableStream } from "ai/test";
-import { PROVIDER_RESPONSE_TIMEOUT_MS, responseTimeoutError } from "./core/response-timeout.ts";
 import { LlmProviderError } from "./errors.ts";
 import { getMockProvider } from "./mock-provider.ts";
+import { PROVIDER_RESPONSE_TIMEOUT_MS, responseTimeoutError } from "./runtime/response-timeout.ts";
 
 function findConversationId(prompt: LanguageModelV4CallOptions["prompt"]): string | null {
   for (let i = prompt.length - 1; i >= 0; i--) {

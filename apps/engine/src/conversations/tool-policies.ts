@@ -8,6 +8,7 @@ import {
 } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { conversations } from "../db/schema/index.ts";
+import type { PermissionMode, ToolModeRule, ToolPolicies, ToolPolicyMode } from "../tools/types.ts";
 import { workflowInputObjectKeys } from "../workflows/run-input.ts";
 import { isDangerousTool } from "./dangerous-tools.ts";
 
@@ -15,12 +16,6 @@ export interface ToolPolicyAuditCtx {
   actor_type: AuditActorType;
   actor_id: string | null;
   request_source: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui";
-}
-
-export type ToolPolicyMode = "no_confirm" | "confirm_before_execution" | "confirm_after_execution";
-
-export interface ToolPolicies {
-  [toolName: string]: ToolPolicyMode;
 }
 
 type PolicyCategory = "draft_write" | "tenant_read" | "tenant_write";
@@ -54,8 +49,6 @@ const AUTO_PREPARATION_WRITES: ReadonlyMap<string, PolicyCategory> = new Map([
   ["export_diagnostic_context", "tenant_write"],
   ["export_tenant_package", "tenant_write"],
 ]);
-
-export type PermissionMode = "auto" | "ask" | "plan" | "yolo";
 
 export async function getToolPolicies(
   db: Db,
@@ -496,16 +489,6 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
         : "no_confirm",
   },
 };
-
-export type ToolModeRule =
-  | "inline_credential"
-  | "connector_trust"
-  | "never_gate"
-  | "permission_mode"
-  | "conversation_override"
-  | "computed_from_input"
-  | "tool_default"
-  | "category_default";
 
 interface ToolModeDecision {
   mode: ToolPolicyMode;

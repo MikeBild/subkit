@@ -6,6 +6,7 @@ import {
   recordExecutionDryRun,
   recordExecutionWarningsEmitted,
 } from "../../observability/instrumentation.ts";
+import { truncateStepPreviewForLlm } from "../../tools/truncate.ts";
 import { validateTenantWorkflowDef } from "../../workflows/index.ts";
 import { buildScopeAtStep } from "../../workflows/scope-shape.ts";
 import type { StepDef } from "../../workflows/types.ts";
@@ -16,7 +17,6 @@ import { buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { resolveConversationPrincipal } from "./permission-gate.ts";
 import { pickProbeRecoveryActions } from "./probe-recovery.ts";
-import { truncateStepPreviewForLlm } from "./truncate.ts";
 
 const inputSchema = z
   .object({

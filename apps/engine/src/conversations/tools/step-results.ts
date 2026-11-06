@@ -1,4 +1,4 @@
-import { truncateStepPreviewForLlm } from "./truncate.ts";
+import { truncateStepPreviewForLlm } from "../../tools/truncate.ts";
 
 export interface RawStepResultSource {
   step_key: string;

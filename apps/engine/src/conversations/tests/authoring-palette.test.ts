@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { REVIEW_DECISIONS } from "../../llm/runtime/step-router.ts";
 import {
   createEmptyDraftDocument,
   withConnectorDraft,
@@ -14,7 +15,6 @@ import {
   CONNECTOR_AUTHORING_SKILL,
   filterByAuthoringPalette,
   filterByChatReadOnlyPalette,
-  REVIEW_DECISIONS,
   WORKFLOW_AUTHORING_SKILL,
 } from "../tools/authoring-palette.ts";
 import { listTools } from "../tools/index.ts";

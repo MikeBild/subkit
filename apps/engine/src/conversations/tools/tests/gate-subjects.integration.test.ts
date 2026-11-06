@@ -125,7 +125,6 @@ async function chatCall(
     db,
     {},
     null,
-    [],
   );
   seq += 1;
   const result = await wrapped.execute!(args, {

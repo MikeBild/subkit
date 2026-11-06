@@ -1,7 +1,4 @@
 export * from "./accounting/index.ts";
-export * from "./core/context-assembler.ts";
-export * from "./core/invoke.ts";
-export * from "./core/model-init.ts";
 export * from "./errors.ts";
 export { runConverseFlow } from "./flows/converse.ts";
 export type { DiscoverArtifact, DiscoverEnvelope } from "./flows/discover.ts";
@@ -41,5 +38,8 @@ export {
   type SourcedModelPrice,
 } from "./pricing.ts";
 export * from "./provider-errors.ts";
+export * from "./runtime/context-assembler.ts";
+export * from "./runtime/invoke.ts";
+export * from "./runtime/model-init.ts";
 export * from "./runtime-context.ts";
 export * from "./types.ts";

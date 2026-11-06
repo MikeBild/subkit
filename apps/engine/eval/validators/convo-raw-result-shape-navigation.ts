@@ -1,9 +1,5 @@
 import { getRawResultTool } from "../../src/conversations/tools/get-raw-result.ts";
-import {
-  clearRawStore,
-  rememberRaw,
-  withRawResultScope,
-} from "../../src/conversations/tools/truncate.ts";
+import { clearRawStore, rememberRaw, withRawResultScope } from "../../src/tools/truncate.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 import { Checks } from "./shared/authoring-env.ts";
 import { makeOfflineToolCtx } from "./shared/offline-tool-ctx.ts";

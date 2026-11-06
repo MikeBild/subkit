@@ -9,7 +9,7 @@ import {
 import type { Actor } from "../audit/actor.ts";
 import type { Db } from "../db/client.ts";
 import { createSessionIntakeItem, DOMAIN_TAG_PREFIX } from "../knowledge/index.ts";
-import { invoke } from "../llm/core/invoke.ts";
+import { invoke } from "../llm/runtime/invoke.ts";
 import { referencesKeyMaterialPath, scrubString } from "../logging/scrub-secrets.ts";
 
 const SAMPLE_HEAD_CHARS = 4_000;

@@ -25,11 +25,11 @@ import {
   directConnectorUrl,
   type LoadedConnectorCredential,
 } from "../../tools/direct-connector-binding.ts";
+import { truncateForLlm } from "../../tools/truncate.ts";
 import { auditActorFromToolContext } from "./audit-actor.ts";
 import { directConnectorGuard, preflightDirectConnector } from "./direct-connector-guard.ts";
 import type { ConversationTool, ToolContext, ToolEffect, ToolResult } from "./index.ts";
 import { summarizeProbeBody } from "./probe-shape.ts";
-import { truncateForLlm } from "./truncate.ts";
 
 const Method = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]);
 

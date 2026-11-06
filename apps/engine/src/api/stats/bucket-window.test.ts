@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { HttpError } from "../../http/errors.ts";
+import { WINDOW_CAP_MS } from "../../stats/bucket-units.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
-import { resolveWindow, WINDOW_CAP_MS } from "./bucket-window.ts";
+import { resolveWindow } from "./bucket-window.ts";
 
 function detailsReason(e: unknown): string | undefined {
   if (!(e instanceof HttpError)) return undefined;

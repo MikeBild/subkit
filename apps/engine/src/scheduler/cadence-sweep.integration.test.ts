@@ -4,7 +4,7 @@ import type { PgBoss } from "pg-boss";
 import { auditLog, schedulerSweepCursors, tenants } from "../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../db/tests/setup.ts";
 import { tenantWorkBootId, tenantWorkSnapshot } from "../execution/tenant-work.ts";
-import { initializeModel } from "../llm/core/model-init.ts";
+import { initializeModel } from "../llm/runtime/model-init.ts";
 import { getContext, withContext } from "../logging/context.ts";
 import { createBoss, disposeBoss } from "../queue/boss.ts";
 import { SKILL_CANDIDATE_ANALYZE_QUEUE } from "../queue/handlers/skill-candidate-analyze.ts";

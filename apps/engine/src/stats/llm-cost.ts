@@ -1,5 +1,4 @@
 import { type SQL, sql } from "drizzle-orm";
-import { type BucketUnit, WINDOW_CAP_MS } from "../api/stats/bucket-window.ts";
 import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import {
@@ -23,6 +22,7 @@ import {
   llmFromClause,
   llmGroupKey,
 } from "./aggregate-llm.ts";
+import { type BucketUnit, WINDOW_CAP_MS } from "./bucket-units.ts";
 
 export function statsBucketFor(from: Date, to: Date): BucketUnit {
   const span = to.getTime() - from.getTime();

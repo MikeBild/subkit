@@ -2,9 +2,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages, llmUsage, tenants, userLlmSettings } from "../../db/schema/index.ts";
-import { invoke } from "../../llm/core/invoke.ts";
 import type { LlmProviderError } from "../../llm/errors.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
+import { invoke } from "../../llm/runtime/invoke.ts";
 
 import type { ConversationTool, ToolContext, ToolResult } from "../tools/index.ts";
 import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";

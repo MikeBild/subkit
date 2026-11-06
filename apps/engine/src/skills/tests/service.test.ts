@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { autoloadForUserTurn, loadActivationCatalog } from "../../conversations/skill-autoload.ts";
 import { auditLog, skills } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { resolveLoadedSkills } from "../../llm/core/context-assembler/loaded-skills.ts";
+import { resolveLoadedSkills } from "../../llm/runtime/context-assembler/loaded-skills.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   activateSkill,

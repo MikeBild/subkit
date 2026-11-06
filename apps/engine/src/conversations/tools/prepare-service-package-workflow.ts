@@ -1,8 +1,7 @@
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
 import { getConnector } from "../../connectors/service.ts";
-import { workflows, workflowVersions } from "../../db/schema/index.ts";
 import { workflowJsonDigest } from "../../workflows/canonical-json.ts";
+import { loadWorkflowHead } from "../../workflows/lookup.ts";
 import { prepareWorkflowSave } from "../../workflows/prepare-save.ts";
 import { annotateRuntime } from "../../workflows/runtime-annotation.ts";
 import { findPackageWorkflowProvenance } from "../../workflows/service-package-provenance.ts";
@@ -256,28 +255,7 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
       };
     }
     if (existing) {
-      const [workflowHead] = await ctx.db
-        .select({
-          draft_version_id: workflows.draft_version_id,
-          current_version_id: workflows.current_version_id,
-        })
-        .from(workflows)
-        .where(and(eq(workflows.tenant_id, ctx.tenant_id), eq(workflows.id, existing.id)))
-        .limit(1);
-      const savedVersionId = workflowHead?.draft_version_id ?? workflowHead?.current_version_id;
-      const [saved] = savedVersionId
-        ? await ctx.db
-            .select({ dag: workflowVersions.dag, version: workflowVersions.version })
-            .from(workflowVersions)
-            .where(
-              and(
-                eq(workflowVersions.tenant_id, ctx.tenant_id),
-                eq(workflowVersions.workflow_id, existing.id),
-                eq(workflowVersions.id, savedVersionId),
-              ),
-            )
-            .limit(1)
-        : [];
+      const saved = (await loadWorkflowHead(ctx.db, ctx.tenant_id, existing.id))?.head;
       if (args.action === "update") {
         const provenance = await findPackageWorkflowProvenance(
           ctx.db,

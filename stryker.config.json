@@ -8,7 +8,6 @@
   "mutate": [
     "apps/engine/src/**/core.ts",
     "apps/engine/src/**/core/**/*.ts",
-    "!apps/engine/src/llm/core/**",
     "!**/*.test.ts",
     "!**/tests/**",
     "!**/__tests__/**",

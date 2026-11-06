@@ -4,8 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { _resetConfigForTests, getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { ConfigSchema, ModelPriceSchema } from "../../config/schema.ts";
-import { knownContextModelIds } from "../core/ai-sdk-model.ts";
-import { ladderModelIds, routeTop, routeUp } from "../core/step-router.ts";
 import { catalogDefaultModelIds, DEFAULT_MODELS } from "../model-catalog-view.ts";
 import {
   effectiveModelPrices,
@@ -13,6 +11,8 @@ import {
   MODEL_PRICE_CATALOG_CURRENCY,
 } from "../model-price-catalog.ts";
 import { bareModelId, priceCalls } from "../pricing.ts";
+import { knownContextModelIds } from "../runtime/ai-sdk-model.ts";
+import { ladderModelIds, routeTop, routeUp } from "../runtime/step-router.ts";
 import type { LlmProviderKind } from "../types.ts";
 
 const catalogIds = (): Set<string> => new Set(MODEL_PRICE_CATALOG.map((p) => p.model));

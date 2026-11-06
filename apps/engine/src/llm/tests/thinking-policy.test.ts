@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { resolveThinking, resolveTurnReasoning } from "../core/thinking-policy.ts";
+import { resolveThinking, resolveTurnReasoning } from "../runtime/thinking-policy.ts";
 
 describe("resolveTurnReasoning", () => {
   const base = {

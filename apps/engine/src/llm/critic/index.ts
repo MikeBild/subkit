@@ -1,5 +1,5 @@
-import type { SubkitLlm } from "../core/base-types.ts";
-import { pendingPermittedRemedy } from "../core/permitted-remedy.ts";
+import type { SubkitLlm } from "../runtime/base-types.ts";
+import { pendingPermittedRemedy } from "../runtime/permitted-remedy.ts";
 import { type CountIssue, detectCountInconsistencies } from "./count-consistency.ts";
 import { chatRubric } from "./rubrics/chat.ts";
 import type { SaveWorkflowDraftArtifact } from "./rubrics/save-workflow-draft.ts";

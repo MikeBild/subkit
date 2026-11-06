@@ -578,4 +578,7 @@ export interface UIMessage {
   created_at: string;
 }
 
+export type { GateOutcome, GateRecord } from "./confirmation.ts";
+export type { ConversationSurface } from "./lifecycle-view.ts";
+export type { TimeoutPhase } from "./turn-failure.ts";
 export type { WorkflowDef };

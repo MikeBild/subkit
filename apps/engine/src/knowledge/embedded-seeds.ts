@@ -1,19 +1,11 @@
-import codingAgents from "../conversations/seed/knowledge/coding-agents.md" with { type: "text" };
-import externalChat from "../conversations/seed/knowledge/external-chat.md" with { type: "text" };
-import knowledgeAndSkills from "../conversations/seed/knowledge/knowledge-and-skills.md" with {
-  type: "text",
-};
-import mcpToolCatalog from "../conversations/seed/knowledge/mcp-tool-catalog.md" with {
-  type: "text",
-};
-import restApi from "../conversations/seed/knowledge/rest-api.md" with { type: "text" };
-import skCli from "../conversations/seed/knowledge/sk-cli.md" with { type: "text" };
-import statusAndCapabilities from "../conversations/seed/knowledge/status-and-capabilities.md" with {
-  type: "text",
-};
-import webhooksAndTriggers from "../conversations/seed/knowledge/webhooks-and-triggers.md" with {
-  type: "text",
-};
+import codingAgents from "./seeds/coding-agents.md" with { type: "text" };
+import externalChat from "./seeds/external-chat.md" with { type: "text" };
+import knowledgeAndSkills from "./seeds/knowledge-and-skills.md" with { type: "text" };
+import mcpToolCatalog from "./seeds/mcp-tool-catalog.md" with { type: "text" };
+import restApi from "./seeds/rest-api.md" with { type: "text" };
+import skCli from "./seeds/sk-cli.md" with { type: "text" };
+import statusAndCapabilities from "./seeds/status-and-capabilities.md" with { type: "text" };
+import webhooksAndTriggers from "./seeds/webhooks-and-triggers.md" with { type: "text" };
 
 export interface EmbeddedKnowledgeSeedFile {
   file: string;

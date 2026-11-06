@@ -9,6 +9,7 @@ import { COMMENT_EXEMPT, COMMENT_SCOPE, findComments } from "./audit/comments.ts
 import { parseFloorFile } from "./audit/coverage-floor.ts";
 import { listFiles } from "./audit/files.ts";
 import { createCache, evaluateRatchet, RATCHETS, writeRatchetBaseline } from "./audit/ratchets.ts";
+import { isTestPath } from "./audit/rules.ts";
 import { auditTenantFilter } from "./audit/tenant-filter-ast.ts";
 import { loadTestLayers } from "./audit/test-layer-source.ts";
 
@@ -41,7 +42,7 @@ function checkAiSdkLocality(): Result {
   const violations: string[] = [];
   for (const f of listFiles(ENGINE_SRC, (p) => p.endsWith(".ts") && !p.endsWith(".test.ts"))) {
     const rel = relative(REPO, f);
-    if (rel.startsWith("apps/engine/src/llm/core/")) continue;
+    if (rel.startsWith("apps/engine/src/llm/runtime/")) continue;
     const text = readFileSync(f, "utf8");
     if (PROVIDER_VALUE_IMPORT.test(text)) {
       violations.push(rel);
@@ -52,13 +53,13 @@ function checkAiSdkLocality(): Result {
       id: "ai_sdk_locality",
       status: "PASS",
       message:
-        "no @ai-sdk/<provider> or @anthropic-ai/sdk runtime imports outside apps/engine/src/llm/core/",
+        "no @ai-sdk/<provider> or @anthropic-ai/sdk runtime imports outside apps/engine/src/llm/runtime/",
     };
   }
   return {
     id: "ai_sdk_locality",
     status: "FAIL",
-    message: `runtime provider imports outside llm/core/:\n  ${violations.join("\n  ")}`,
+    message: `runtime provider imports outside llm/runtime/:\n  ${violations.join("\n  ")}`,
   };
 }
 
@@ -472,6 +473,32 @@ function checkTestSeamsGated(): Result {
   };
 }
 
+function checkTestFixturesGated(): Result {
+  const offenders: string[] = [];
+  for (const root of ["apps/engine/src", "apps/sk/src", "apps/cockpit/src", "packages"]) {
+    const files = listFiles(
+      root,
+      (p) => (p.endsWith(".ts") || p.endsWith(".tsx")) && !isTestPath(relative(REPO, p)),
+    );
+    for (const f of files) {
+      const raw = readFileSync(f, "utf8");
+      if (/from\s+["'][^"']*-fixtures(\.tsx?)?["']/.test(raw)) offenders.push(relative(REPO, f));
+    }
+  }
+  if (offenders.length === 0) {
+    return {
+      id: "test_fixtures_gated",
+      status: "PASS",
+      message: "no production file imports a *-fixtures.ts test helper",
+    };
+  }
+  return {
+    id: "test_fixtures_gated",
+    status: "FAIL",
+    message: `${offenders.length} production file(s) import *-fixtures.ts test helpers:\n  ${offenders.join("\n  ")}`,
+  };
+}
+
 function checkEngineHomedirAbsence(): Result {
   // Allow-list a use via `// homedir-allowed: <reason>` on the same line.
   const violations: string[] = [];
@@ -745,6 +772,7 @@ const CHECKS: Array<() => Result> = [
   checkAuditLogSingleWriter,
   checkRegressionIsolation,
   checkTestSeamsGated,
+  checkTestFixturesGated,
   checkEngineHomedirAbsence,
   checkNoGlobalFetchStubInTests,
   checkCompileBuildsKeepNodeEnvDynamic,

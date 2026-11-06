@@ -1,6 +1,6 @@
 import { type SQL, sql } from "drizzle-orm";
-import type { BucketUnit } from "../api/stats/bucket-window.ts";
 import type { Db } from "../db/client.ts";
+import type { BucketUnit } from "./bucket-units.ts";
 
 export type AuditOutcome = "success" | "denied" | "error";
 

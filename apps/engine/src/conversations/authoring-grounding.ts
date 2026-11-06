@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { domainsOfItem } from "../agent/domains.ts";
 import { connectors as connectorsTable } from "../db/schema/index.ts";
-import { loadChunks } from "../llm/core/context-assembler/loaders.ts";
+import { loadChunks } from "../llm/runtime/context-assembler/loaders.ts";
 import type { ToolContext } from "./tools/index.ts";
 
 const DOCS_EXCERPT_CAP_CHARS = 1_500;

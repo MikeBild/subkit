@@ -4,7 +4,7 @@ import { type Actor, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import { type Db, type Executor, getDb } from "../db/client.ts";
+import type { Db, Executor } from "../db/client.ts";
 import { discoveryArtifacts, discoveryFiles, discoveryRuns } from "../db/schema/discovery.ts";
 import { linkStoredFile } from "../files/links.ts";
 import { detectFormat, parseFileToChunks } from "../knowledge/parsers.ts";
@@ -73,10 +73,8 @@ function toArtifactView(row: typeof discoveryArtifacts.$inferSelect): DiscoveryA
 
 export async function createDiscoveryRun(
   p: CreateDiscoveryRunParams,
-  exec?: Executor,
+  db: Executor,
 ): Promise<DiscoveryRunView> {
-  const db = exec ?? getDb();
-
   interface ParsedFile {
     filename: string;
     mime_type: string | null;
@@ -210,9 +208,8 @@ export async function createDiscoveryRun(
 export async function getDiscoveryRun(
   tenant_id: string,
   run_id: string,
-  exec?: Executor,
+  db: Executor,
 ): Promise<DiscoveryRunView | null> {
-  const db = exec ?? getDb();
   const rows = await db
     .select()
     .from(discoveryRuns)
@@ -223,9 +220,8 @@ export async function getDiscoveryRun(
 
 export async function listDiscoveryRuns(
   p: ListDiscoveryRunsParams,
-  exec?: Executor,
+  db: Executor,
 ): Promise<DiscoveryRunView[]> {
-  const db = exec ?? getDb();
   const limit = Math.min(Math.max(1, p.limit ?? 50), 200);
   const offset = Math.max(0, p.offset ?? 0);
 
@@ -245,9 +241,8 @@ export async function listDiscoveryRuns(
 
 export async function listDiscoveryArtifacts(
   p: ListDiscoveryArtifactsParams,
-  exec?: Executor,
+  db: Executor,
 ): Promise<DiscoveryArtifactView[]> {
-  const db = exec ?? getDb();
   const limit = Math.min(Math.max(1, p.limit ?? 50), 200);
   const offset = Math.max(0, p.offset ?? 0);
 
@@ -272,9 +267,8 @@ export async function listDiscoveryArtifacts(
 export async function getDiscoveryArtifact(
   tenant_id: string,
   artifact_id: string,
-  exec?: Executor,
+  db: Executor,
 ): Promise<DiscoveryArtifactView | null> {
-  const db = exec ?? getDb();
   const rows = await db
     .select()
     .from(discoveryArtifacts)
@@ -290,10 +284,8 @@ export async function approveDiscoveryArtifact(
     actor_id?: string | null;
     actor?: Actor | null;
   },
-  exec?: Executor,
+  db: Executor,
 ): Promise<{ materialized_id: string | null; materialized_type: string | null } | null> {
-  const db = exec ?? getDb();
-
   return await (db as Db).transaction(async (tx) => {
     const rows = await tx
       .select()
@@ -343,10 +335,8 @@ export async function rejectDiscoveryArtifact(
     actor?: Actor | null;
     reason?: string;
   },
-  exec?: Executor,
+  db: Executor,
 ): Promise<boolean> {
-  const db = exec ?? getDb();
-
   return await (db as Db).transaction(async (tx) => {
     const rows = await tx
       .select()
@@ -477,9 +467,8 @@ export async function resolveCapabilityGap(
     actor_id?: string | null;
     actor?: Actor | null;
   },
-  exec?: Executor,
+  db: Executor,
 ): Promise<DiscoveryArtifactView | null> {
-  const db = exec ?? getDb();
   return await (db as Db).transaction(async (tx) => {
     const rows = await tx
       .select()
@@ -528,7 +517,7 @@ export async function resolveCapabilityGap(
 
 export async function recordGapCandidate(
   p: RecordGapCandidateParams,
-  exec?: Executor,
+  db: Executor,
 ): Promise<DiscoveryArtifactView | null> {
   const dedupKey =
     p.missing_capability && p.missing_capability.trim().length > 0
@@ -542,7 +531,6 @@ export async function recordGapCandidate(
   const suggested_kind: SuggestedGapKind = p.suggested_kind ?? "unknown";
 
   try {
-    const db = exec ?? getDb();
     return await (db as Db).transaction(async (tx) => {
       const [existing] = await tx
         .select()
@@ -664,9 +652,8 @@ interface ListCapabilityGapsParams {
 
 export async function listCapabilityGaps(
   p: ListCapabilityGapsParams,
-  exec?: Executor,
+  db: Executor,
 ): Promise<DiscoveryArtifactView[]> {
-  const db = exec ?? getDb();
   const limit = Math.min(Math.max(1, p.limit ?? 50), 200);
   const rows = await db
     .select()

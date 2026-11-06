@@ -6,8 +6,8 @@ import {
   contextCapFor,
   countModelMessagesTokens,
 } from "../../llm/accounting/index.ts";
-import { recordConversationBudgetReport } from "../../llm/core/conversation-budget-report.ts";
 import { LlmContextTooLarge, LlmQuotaExhausted } from "../../llm/errors.ts";
+import { recordConversationBudgetReport } from "../../llm/runtime/conversation-budget-report.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordLlmQuotaExhausted } from "../../observability/instrumentation.ts";
 import { timePhase, timePhaseAsync } from "../../observability/runtime-telemetry.ts";

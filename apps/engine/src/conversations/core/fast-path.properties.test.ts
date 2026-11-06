@@ -37,14 +37,22 @@ describe("fast path core properties", () => {
     );
   });
 
-  test("the default source always runs in dev, any other source keeps its environment", () => {
+  test("a trigger or binding environment is always kept", () => {
+    fc.assert(
+      fc.property(fc.constantFrom<"dev" | "prod">("dev", "prod"), (environment) => {
+        expect(decideRunEnvironment({ kind: "resolved", environment })).toBe(environment);
+      }),
+      settings,
+    );
+  });
+
+  test("the default runs in dev exactly when every connector binds in dev", () => {
     fc.assert(
       fc.property(
-        fc.constantFrom<"dev" | "prod">("dev", "prod"),
-        fc.constantFrom("default", "schedule", "hook", "bindings"),
-        (environment, source) => {
-          const decided = decideRunEnvironment({ kind: "resolved", environment, source });
-          expect(decided).toBe(source === "default" ? "dev" : environment);
+        fc.array(fc.constantFrom<"dev" | "prod" | null>("dev", "prod", null), { maxLength: 6 }),
+        (dev_bindings) => {
+          const decided = decideRunEnvironment({ kind: "default", dev_bindings });
+          expect(decided).toBe(dev_bindings.every((bound) => bound === "dev") ? "dev" : null);
         },
       ),
       settings,

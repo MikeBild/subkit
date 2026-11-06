@@ -1,7 +1,7 @@
 import {
   formatOperatorQuirks,
   selectOperatorQuirkCategories,
-} from "../../src/llm/core/context-assembler.ts";
+} from "../../src/llm/runtime/context-assembler.ts";
 import type { AuthoringPromptHint } from "../../src/llm/types.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 

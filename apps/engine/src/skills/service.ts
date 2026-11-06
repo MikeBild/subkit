@@ -10,7 +10,7 @@ import type { AuditActorType } from "../audit/types.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
-import { type Executor, getDb } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { catalogGroupOrder } from "../db/list-result.ts";
 import { auditLog, skillCandidates, skills } from "../db/schema/index.ts";
@@ -833,9 +833,8 @@ export async function retrieveApplicableSkills(
 export async function listAutoLoadSkills(
   tenant_id: string,
   keywords: string[],
-  exec?: Executor,
+  db: Executor,
 ): Promise<Skill[]> {
-  const db = exec ?? getDb();
   const rows = await db
     .select()
     .from(skills)

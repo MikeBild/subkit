@@ -1,3 +1,4 @@
+import { connectorEnvironmentKey, getConnectorsForEnvironments } from "../../connectors/service.ts";
 import type { ExecutionMode } from "../../execution/types.ts";
 import { HELD_PREVIEW_WARNING_CODE } from "../../execution/types.ts";
 import {
@@ -34,18 +35,37 @@ export interface RunTarget {
   current_version_id: string | null;
 }
 
+async function devBindings(
+  p: FastPathParams,
+  references: readonly { connector_id: string | null }[],
+): Promise<(ExecutionMode | null)[]> {
+  const connector_ids = [
+    ...new Set(references.flatMap((reference) => reference.connector_id ?? [])),
+  ];
+  const rows = await getConnectorsForEnvironments(
+    p.tenant_id,
+    connector_ids.map((connector_id) => ({ connector_id, environment: "dev" as const })),
+    p.db,
+  );
+  return connector_ids.map(
+    (connector_id) => rows.get(connectorEnvironmentKey(connector_id, "dev"))?.environment ?? null,
+  );
+}
+
 async function fastPathEnvironment(
   p: FastPathParams,
   workflow: RunTarget,
+  references: readonly { connector_id: string | null }[],
 ): Promise<ExecutionMode | null> {
   let resolution: EnvironmentResolution;
   try {
-    resolution = {
-      kind: "resolved",
-      ...(await resolveWorkflowReviewEnvironment(p.db, p.tenant_id, workflow.id, {
-        version_id: workflow.current_version_id,
-      })),
-    };
+    const review = await resolveWorkflowReviewEnvironment(p.db, p.tenant_id, workflow.id, {
+      version_id: workflow.current_version_id,
+    });
+    resolution =
+      review.source === "default"
+        ? { kind: "default", dev_bindings: await devBindings(p, references) }
+        : { kind: "resolved", environment: review.environment };
   } catch (error) {
     if ((error as { code?: unknown }).code !== "workflow_environment_ambiguous") throw error;
     resolution = { kind: "ambiguous" };
@@ -175,7 +195,7 @@ export async function runPhase(p: FastPathParams, slugOrId: string): Promise<Fas
     });
     return null;
   }
-  const environment = await fastPathEnvironment(p, resolved);
+  const environment = await fastPathEnvironment(p, resolved, wfView?.connector_references ?? []);
   if (!environment) return null;
   const grant = await authorizeWorkflowRun(
     {

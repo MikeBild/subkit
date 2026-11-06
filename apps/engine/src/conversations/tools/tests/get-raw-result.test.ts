@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
+import { clearRawStore, rememberRaw, withRawResultScope } from "../../../tools/truncate.ts";
 import { getRawResultTool } from "../get-raw-result.ts";
-import { clearRawStore, rememberRaw, withRawResultScope } from "../truncate.ts";
 
 afterEach(() => {
   clearRawStore();

@@ -5,7 +5,7 @@ import {
   CONVENTIONS_SECTION_CAP,
   conventionsTrimReference,
   formatAppliedConventions,
-} from "../../llm/core/context-assembler/formatters.ts";
+} from "../../llm/runtime/context-assembler/formatters.ts";
 import {
   type AppliedConvention,
   type ConventionLevel,

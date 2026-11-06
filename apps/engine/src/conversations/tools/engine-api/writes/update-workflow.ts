@@ -1,9 +1,8 @@
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
-import { conversations } from "../../../../db/schema/index.ts";
 import { bindPersistedWorkflow } from "../../../authoring-state/index.ts";
 import { translateAutoPersistError } from "../../../persistence/auto-persist/error-translation.ts";
 import { classifyDraftVsPersisted } from "../../../persistence/draft-diff.ts";
+import { setConversationWorkflowTarget } from "../../../service/tool-state.ts";
 import type { ConversationTool } from "../../index.ts";
 
 export const UpdateWorkflowInput = z
@@ -132,15 +131,7 @@ export const updateWorkflowTool: ConversationTool = {
         lifecycle: args.lifecycle,
       },
     });
-    await ctx.db
-      .update(conversations)
-      .set({
-        target_workflow_id: result.workflow.id,
-        updated_at: new Date(),
-      })
-      .where(
-        and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
-      );
+    await setConversationWorkflowTarget(ctx.db, ctx, result.workflow.id);
     await ctx.setDraft(
       bindPersistedWorkflow(
         ctx.getDraft(),

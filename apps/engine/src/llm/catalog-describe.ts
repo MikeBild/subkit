@@ -9,7 +9,7 @@ import {
 import type { Executor } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
 import { scrubString } from "../logging/scrub-secrets.ts";
-import { invoke } from "./core/invoke.ts";
+import { invoke } from "./runtime/invoke.ts";
 
 export const GENERATED_DESCRIPTION_MAX_LENGTH = 300;
 

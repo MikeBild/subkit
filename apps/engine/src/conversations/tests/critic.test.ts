@@ -225,7 +225,7 @@ describe("critic advisory ↔ prior_failures — post-pipeline contract", () => 
 
 describe("Critic system prompt — invariant snapshot", () => {
   test("BASE_SYSTEM_PROMPTS.critic_authoring carries the no-patch / structured-verdict invariants", async () => {
-    const mod = await import("../../llm/core/context-assembler.ts");
+    const mod = await import("../../llm/runtime/context-assembler.ts");
     const text = (await mod.basePromptFor("critic_authoring")).content;
     expect(text).toMatch(/SEMANTIC drift/i);
     expect(text).toMatch(/passed:true/i);

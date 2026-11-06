@@ -1,4 +1,4 @@
-import { AiSdkModel } from "../../src/llm/core/ai-sdk-model.ts";
+import { AiSdkModel } from "../../src/llm/runtime/ai-sdk-model.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 
 export async function validate(fixture: FixtureRecord): Promise<ValidationResult> {

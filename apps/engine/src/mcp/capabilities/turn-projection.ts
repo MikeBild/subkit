@@ -1,4 +1,4 @@
-import { truncateForLlm } from "../../conversations/tools/truncate.ts";
+import { truncateForLlm } from "../../tools/truncate.ts";
 import type { ConversationTurnEnvelope } from "../tasks/store.ts";
 
 const REPLAY_ONLY_FRAME_TYPES: ReadonlySet<string> = new Set([

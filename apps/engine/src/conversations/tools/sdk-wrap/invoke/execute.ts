@@ -2,6 +2,12 @@ import { withContext } from "../../../../logging/context.ts";
 import { errorFields, log, logger } from "../../../../logging/logger.ts";
 import { startToolSpan } from "../../../../observability/langfuse-spans.ts";
 import {
+  boundForPersistence,
+  type TruncatedOutput,
+  truncateForLlm,
+  withTruncationMarkers,
+} from "../../../../tools/truncate.ts";
+import {
   FileNotFoundError,
   type ResolvedFile,
   resolveAttachmentSlugsInArgs,
@@ -15,12 +21,6 @@ import { hideCapabilityLinks } from "../../capability-link.ts";
 import type { ToolResult } from "../../index.ts";
 import { checkToolPermission, type ToolPermissionResult } from "../../permission-gate.ts";
 import { normalizeToolResultPayload, toolCallOutcome } from "../../result-payload.ts";
-import {
-  boundForPersistence,
-  type TruncatedOutput,
-  truncateForLlm,
-  withTruncationMarkers,
-} from "../../truncate.ts";
 import { permissionRefusal } from "../pregate.ts";
 import type { WrappedToolOutput } from "../state.ts";
 import {

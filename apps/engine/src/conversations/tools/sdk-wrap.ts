@@ -5,10 +5,10 @@ import {
 } from "../../audit/recorders/index.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
-import { compatibleToolPalette } from "../../llm/core/tool-schema-compatibility.ts";
+import { compatibleToolPalette } from "../../llm/runtime/tool-schema-compatibility.ts";
 import { logger } from "../../logging/logger.ts";
 import { redactUpstreamDetail } from "../../mcp/client/registry.ts";
-import type { PermissionMode, ToolPolicies } from "../tool-policies.ts";
+import type { PermissionMode, ToolPolicies } from "../../tools/types.ts";
 import type { TurnEvent } from "../types.ts";
 import { filterByAuthoringPalette, filterByChatReadOnlyPalette } from "./authoring-palette.ts";
 import { filterBySkillGate } from "./gated.ts";
@@ -80,7 +80,7 @@ export async function wrapTools(
     )
       continue;
     if (!intakeItemRead && INTAKE_ITEM_DEPENDENT_TOOLS.has(t.name)) continue;
-    out[t.name] = wrapOne(t, ctx, signals, events, db, toolPolicies, permissionMode, loadedSkills);
+    out[t.name] = wrapOne(t, ctx, signals, events, db, toolPolicies, permissionMode);
   }
   if (principal) {
     const synthetic = await buildSyntheticWorkflowTools({

@@ -1,5 +1,5 @@
 import { getBuiltinTemplate } from "../../src/connectors/templates.ts";
-import { formatConnectorRecipes } from "../../src/llm/core/context-assembler.ts";
+import { formatConnectorRecipes } from "../../src/llm/runtime/context-assembler.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 
 export function validate(fixture: FixtureRecord): ValidationResult {

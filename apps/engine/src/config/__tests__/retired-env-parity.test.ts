@@ -18,7 +18,7 @@ function loadRetiredEnvKeys(): string[] {
 
 const ALLOWED_FILES = new Set<string>([
   "env.ts",
-  "llm/core/model-init.ts",
+  "llm/runtime/model-init.ts",
   "llm/accounting/count.ts",
   "llm/accounting/enforce.ts",
   "llm/runtime-context.ts",
@@ -38,7 +38,7 @@ async function scanProductionFiles(): Promise<Map<string, string[]>> {
   const glob = new Glob("**/*.ts");
   for await (const file of glob.scan(SRC_ROOT)) {
     if (inDirectory(file, "__tests__") || inDirectory(file, "tests")) continue;
-    if (file.endsWith(".test.ts")) continue;
+    if (file.endsWith(".test.ts") || file.endsWith("-fixtures.ts")) continue;
     if (file.endsWith(".d.ts")) continue;
     if (inDirectory(file, "test-helpers")) continue;
     if (ALLOWED_FILES.has(file)) continue;

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { loadTenantSummary, renderTenantSummaryBlock } from "../../llm/core/tenant-summary.ts";
+import { loadTenantSummary, renderTenantSummaryBlock } from "../../llm/runtime/tenant-summary.ts";
 import { seedMcpConnector } from "../../mcp/client/test-fixtures.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import { listConnectors } from "../service.ts";

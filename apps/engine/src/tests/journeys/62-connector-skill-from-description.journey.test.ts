@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { assembleEnhancedPrompt } from "../../llm/core/context-assembler.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
+import { assembleEnhancedPrompt } from "../../llm/runtime/context-assembler.ts";
 import {
   __resetMcpClientPoolForTests,
   __setMcpPoolFactoriesForTests,

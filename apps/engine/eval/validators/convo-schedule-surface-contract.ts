@@ -1,5 +1,5 @@
 import { planTurnRouting } from "../../src/conversations/turn-routing.ts";
-import { basePromptFor } from "../../src/llm/core/context-assembler.ts";
+import { basePromptFor } from "../../src/llm/runtime/context-assembler.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 
 interface Input {

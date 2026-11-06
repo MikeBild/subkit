@@ -166,7 +166,6 @@ describe("one gated call through every entry point", () => {
         db,
         {},
         null,
-        [],
       );
       const result = await wrapped.execute!(ARGS, {
         toolCallId: `entry-${surface}`,

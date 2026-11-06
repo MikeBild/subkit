@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { createKnowledgeSource } from "../../knowledge/service.ts";
 import { createWorkflow } from "../../workflows/service.ts";
-import { assembleEnhancedPrompt } from "../core/context-assembler.ts";
+import { assembleEnhancedPrompt } from "../runtime/context-assembler.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "./setup.ts";
 
 const skip = process.env.REQUIRES_PG === "0";

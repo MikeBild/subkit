@@ -6,8 +6,8 @@ import { EngineClient } from "../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
 import { buildToolAnnotations } from "../../mcp/capabilities/tool-meta.ts";
 import { confirmEnvelopeFor, policyDecide } from "../../tools/policy.ts";
+import type { ToolPolicies } from "../../tools/types.ts";
 import { getElicitation } from "../elicitations.ts";
-import type { ToolPolicies } from "../tool-policies.ts";
 import {
   APPROVAL_HANDLE_KEY as _APPROVAL_HANDLE_KEY,
   approvalHandleFromElicitationInput,

@@ -1,4 +1,7 @@
-import { isBusinessDecisionTool, pendingPermittedRemedy } from "../../llm/core/permitted-remedy.ts";
+import {
+  isBusinessDecisionTool,
+  pendingPermittedRemedy,
+} from "../../llm/runtime/permitted-remedy.ts";
 import { logger } from "../../logging/logger.ts";
 import { hasBoundSavedWorkflowTarget } from "../core/loop.ts";
 import { turnExecutionSuppression } from "../execution-suppression.ts";

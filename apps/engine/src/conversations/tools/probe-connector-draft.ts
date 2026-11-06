@@ -12,6 +12,7 @@ import { probeS3Connector } from "../../connectors/drivers/s3.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import { logger } from "../../logging/logger.ts";
+import { truncateForLlm } from "../../tools/truncate.ts";
 import { withConnectorProbe, withConnectorValidation } from "../authoring-state/index.ts";
 import { toCreateConnectorInput, validateConnectorDraft } from "../connector-draft.ts";
 import { proposeConnectorCapabilityCandidate } from "../persistence/connector-skill-candidate.ts";
@@ -32,7 +33,6 @@ import type { ConversationTool, ToolResult } from "./index.ts";
 import { resolveDraftProbeSecrets } from "./probe-draft-secrets.ts";
 import { pickProbeRecoveryActions as pickFromShared, probeStatusHint } from "./probe-recovery.ts";
 import { summarizeProbeBody } from "./probe-shape.ts";
-import { truncateForLlm } from "./truncate.ts";
 
 const inputSchema = z
   .object({

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Db } from "../../db/client.ts";
-import { invoke } from "../core/invoke.ts";
+import { invoke } from "../runtime/invoke.ts";
 
 export const DiscoverArtifactSchema = z.object({
   kind: z.enum(["connector", "skill", "knowledge_source"]),

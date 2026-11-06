@@ -1,5 +1,5 @@
 import type { Db } from "../../db/client.ts";
-import { invoke } from "../core/invoke.ts";
+import { invoke } from "../runtime/invoke.ts";
 import type { EnhancedPrompt } from "../types.ts";
 
 interface ConverseParams {

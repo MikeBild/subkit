@@ -8,8 +8,8 @@ import {
   normalizeDescribeResult,
   renderCatalogInput,
 } from "./catalog-describe.ts";
-import { basePromptFor } from "./core/context-assembler/base-prompts.ts";
-import * as invokeModule from "./core/invoke.ts";
+import { basePromptFor } from "./runtime/context-assembler/base-prompts.ts";
+import * as invokeModule from "./runtime/invoke.ts";
 
 const token = ["ghp", "_", "A".repeat(36)].join("");
 

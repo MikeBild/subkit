@@ -1,6 +1,6 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import { type Executor, getDb } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { schemaVersions } from "../db/schema/index.ts";
 import type { SchemaShape } from "../self-healing/types.ts";
 
@@ -97,8 +97,7 @@ interface RecordShapeParams {
   value: unknown;
 }
 
-export async function recordSuccessShape(p: RecordShapeParams, exec?: Executor): Promise<string> {
-  const db: Executor = exec ?? getDb();
+export async function recordSuccessShape(p: RecordShapeParams, db: Executor): Promise<string> {
   const observed = deriveShape(p.value);
   const workflowCondition = p.workflow_id
     ? eq(schemaVersions.workflow_id, p.workflow_id)
@@ -159,9 +158,8 @@ interface LatestEndpointShape {
 
 export async function listLatestShapes(
   p: { tenant_id: string; connector_id: string; max_endpoints?: number },
-  exec?: Executor,
+  db: Executor,
 ): Promise<LatestEndpointShape[]> {
-  const db: Executor = exec ?? getDb();
   const maxEndpoints = p.max_endpoints ?? 4;
   const rows = await db
     .select({
@@ -195,9 +193,8 @@ export async function listLatestShapes(
 
 export async function getLatestShape(
   p: GetLatestShapeParams,
-  exec?: Executor,
+  db: Executor,
 ): Promise<SchemaShape | null> {
-  const db: Executor = exec ?? getDb();
   const conditions = [
     eq(schemaVersions.connector_id, p.connector_id),
     eq(schemaVersions.endpoint_key, p.endpoint_key),
@@ -290,9 +287,8 @@ interface ShapeHistoryEntry {
 
 export async function listShapeHistory(
   p: GetLatestShapeParams & { limit?: number },
-  exec?: Executor,
+  db: Executor,
 ): Promise<ShapeHistoryEntry[]> {
-  const db: Executor = exec ?? getDb();
   const conditions = [
     eq(schemaVersions.connector_id, p.connector_id),
     eq(schemaVersions.endpoint_key, p.endpoint_key),
@@ -367,9 +363,9 @@ function renameScore(
 
 export async function proposeSchemaMigration(
   p: GetLatestShapeParams,
-  exec?: Executor,
+  db: Executor,
 ): Promise<MigrationPlan | null> {
-  const history = await listShapeHistory(p, exec);
+  const history = await listShapeHistory(p, db);
   const newest = history[0];
   const oldest = history[history.length - 1];
   if (!newest || !oldest) return null;

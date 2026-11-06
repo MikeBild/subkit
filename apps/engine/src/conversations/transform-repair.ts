@@ -10,8 +10,9 @@ import {
   formatError as formatJsonataError,
 } from "../execution/jsonata-engine.ts";
 import { checkOutputContract, summarizeViolations } from "../execution/output-contract.ts";
-import { invoke } from "../llm/core/invoke.ts";
+import { invoke } from "../llm/runtime/invoke.ts";
 import { logger } from "../logging/logger.ts";
+import { truncateForLlm } from "../tools/truncate.ts";
 import { lintJsBody } from "../workflows/js-body-lint.ts";
 import {
   checkJsBodySyntax,
@@ -19,7 +20,6 @@ import {
   evaluateJsOutputFunction,
   type JsBodyEvalOutcome,
 } from "./js-transform-eval.ts";
-import { truncateForLlm } from "./tools/truncate.ts";
 
 export const MAX_REPAIR_ATTEMPTS = 2;
 const SCOPE_SAMPLE_CAP_CHARS = 2_000;

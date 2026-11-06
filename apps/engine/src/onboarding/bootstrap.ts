@@ -8,7 +8,7 @@ import { getConfig, setConfigKey } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import { engineSettings, tenants } from "../db/schema/identity.ts";
 import { seedTenantBootstrap, type TenantBootstrapPayload } from "../db/seed.ts";
-import { type LlmAccessProbe, probeLlmAccess } from "../llm/core/access-probe.ts";
+import { type LlmAccessProbe, probeLlmAccess } from "../llm/runtime/access-probe.ts";
 import { logger } from "../logging/logger.ts";
 import type { SeededRoleIds } from "../rbac/seed.ts";
 import { settingSecretName } from "../runtime-config/secret-reference.ts";

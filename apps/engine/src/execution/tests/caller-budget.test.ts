@@ -1,18 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import {
-  auditLog,
-  callerBudgetUnits,
-  executions,
-  productIdentityTombstones,
-  userIdentities,
-  users,
-} from "../../db/schema/index.ts";
-import { builtinRoleId } from "../../rbac/roles.ts";
+import { callerBudgetUnits, executions } from "../../db/schema/index.ts";
 import { retryCatalogConflict } from "../../test-helpers/catalog-retry.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
-import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "../../workflows/types.ts";
 import { assertInputByteLimits, callerUsage, reserveCallerBudget } from "../caller-budget.ts";
 import { callerFromPrincipal } from "../caller-context.ts";
@@ -20,99 +11,25 @@ import { settledOutcome } from "../core/status.ts";
 import { runExecution } from "../engine.ts";
 import { recoverExecutionPayload } from "../sensitive-payload.ts";
 import { finalizeExecution } from "../state.ts";
-import { admitWorkflowRun } from "../workflow-run-admission.ts";
+import { callerBudgetFixtures, guardedDefinition } from "./caller-budget-fixtures.ts";
 import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./setup.ts";
 
 let ctx: EngineTestCtx;
+
 let roundWorkflow: string;
+
 let roundDef: WorkflowDef;
+
 let limitedWorkflow: string;
-const nextUuid = createDeterministicUuidFactory(211);
 
-const roundSteps = [
-  { id: "gate", kind: "transform", expression: "return { ok: true };" },
-  {
-    id: "round",
-    kind: "transform",
-    expression:
-      "return input.input.final ? { output: [{ type: 'message' }] } : { output: [{ type: 'function_call' }] };",
+const { admit, productUser, unit } = callerBudgetFixtures({
+  get ctx() {
+    return ctx;
   },
-];
-
-function guardedDefinition(limit: number, extra: Record<string, unknown> = {}) {
-  return {
-    name: `guarded ${limit}`,
-    product_id: "testapp",
-    required_caller_kind: "user",
-    execution_privacy: "sensitive",
-    steps: roundSteps,
-    execution_guards: {
-      caller_daily_limit: {
-        bucket: "brain",
-        limit,
-        tz: "Europe/Berlin",
-        unit: "turn_id",
-        billable_steps: ["round"],
-        max_metered: 3,
-        commit_when: "$count(output[type = 'function_call']) = 0",
-        ...extra,
-      },
-      input_bytes: { request: 64 },
-    },
-  };
-}
-
-async function productUser(): Promise<ResolvedPrincipal> {
-  const subject = nextUuid();
-  const [user] = await ctx.testDb.db
-    .insert(users)
-    .values({
-      tenant_id: ctx.tenantId,
-      email: `testapp-supabase:${subject}@invalid`,
-      role_id: await builtinRoleId(ctx.testDb.db, "member"),
-    })
-    .returning({ id: users.id });
-  if (!user) throw new Error("user fixture missing");
-  await ctx.testDb.db.insert(userIdentities).values({
-    tenant_id: ctx.tenantId,
-    user_id: user.id,
-    provider_id: "testapp-supabase",
-    issuer_url: "https://auth.example.test/auth/v1",
-    product_id: "testapp",
-    subject,
-    email: `testapp-supabase:${subject}@invalid`,
-  });
-  return {
-    provider: "testapp-supabase",
-    kind: "user",
-    id: user.id,
-    tenant_id: ctx.tenantId,
-    roles: ["member"],
-    product_id: "testapp",
-    subject,
-  };
-}
-
-function admit(
-  principal: ResolvedPrincipal,
-  input: Record<string, unknown>,
-  workflow_id = roundWorkflow,
-  idempotency_key?: string,
-) {
-  return admitWorkflowRun(
-    {
-      tenant_id: ctx.tenantId,
-      workflow_id,
-      execution_environment: "dev",
-      request_source: "api",
-      hold_writes: true,
-      input,
-      ...(idempotency_key ? { idempotency_key } : {}),
-    },
-    ctx.testDb.db,
-    principal,
-  );
-}
+  get roundWorkflow() {
+    return roundWorkflow;
+  },
+});
 
 function keepOpen(execution_id: string) {
   return finalizeExecution(
@@ -122,20 +39,6 @@ function keepOpen(execution_id: string) {
     { type: "completed" },
     { sensitive_result: { output: [{ type: "function_call" }] } },
   );
-}
-
-async function unit(principal: ResolvedPrincipal, turn: string) {
-  const [row] = await ctx.testDb.db
-    .select()
-    .from(callerBudgetUnits)
-    .where(
-      and(
-        eq(callerBudgetUnits.tenant_id, ctx.tenantId),
-        eq(callerBudgetUnits.principal_id, principal.id),
-        eq(callerBudgetUnits.unit_key, turn),
-      ),
-    );
-  return row;
 }
 
 function usage(principal: ResolvedPrincipal, limit = 50, now = new Date(getTestNow())) {
@@ -519,86 +422,6 @@ describe("local day in the configured time zone", () => {
   });
 });
 
-describe("caller erasure", () => {
-  test("a successful erasure run removes the caller's product data and leaves a tombstone", async () => {
-    const principal = await productUser();
-    const { workflow_id } = await createWorkflowRow(ctx, {
-      name: "delete account",
-      product_id: "testapp",
-      required_caller_kind: "user",
-      execution_privacy: "sensitive",
-      caller_erasure: "on_success",
-      steps: [{ id: "noop", kind: "transform", expression: "return { deleted: true };" }],
-    });
-    await admit(principal, { turn_id: "before", round: 1 });
-    const admitted = await admit(principal, {}, workflow_id);
-    const result = await runExecution({
-      db: ctx.testDb.db,
-      tenant_id: ctx.tenantId,
-      source: { kind: "saved", workflow_id },
-      input: admitted.input,
-      options: { existing_execution_id: admitted.execution_id, principal, hold_writes: true },
-    });
-    expect(result.status).toBe("succeeded");
-    expect(await unit(principal, "before")).toBeUndefined();
-    const identities = await ctx.testDb.db
-      .select()
-      .from(userIdentities)
-      .where(
-        and(eq(userIdentities.tenant_id, ctx.tenantId), eq(userIdentities.user_id, principal.id)),
-      );
-    expect(identities).toHaveLength(0);
-    const [user] = await ctx.testDb.db
-      .select()
-      .from(users)
-      .where(and(eq(users.tenant_id, ctx.tenantId), eq(users.id, principal.id)));
-    expect(user).toMatchObject({ status: "disabled", email: `erased:${principal.id}@invalid` });
-    expect(user?.deleted_at).not.toBeNull();
-    const tombstones = await ctx.testDb.db
-      .select()
-      .from(productIdentityTombstones)
-      .where(eq(productIdentityTombstones.tenant_id, ctx.tenantId));
-    expect(tombstones.some((row) => row.subject_sha256.length === 64)).toBe(true);
-    expect(JSON.stringify(tombstones)).not.toContain(principal.subject ?? "-");
-    const [execution] = await ctx.testDb.db
-      .select({ caller_context: executions.caller_context })
-      .from(executions)
-      .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.id, admitted.execution_id)));
-    expect(execution?.caller_context?.subject).toBeNull();
-    const audits = await ctx.testDb.db
-      .select()
-      .from(auditLog)
-      .where(and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.resource_id, principal.id)));
-    expect(audits.some((row) => row.action === "user.deleted")).toBe(true);
-  });
-
-  test("a failed erasure run changes nothing", async () => {
-    const principal = await productUser();
-    const { workflow_id } = await createWorkflowRow(ctx, {
-      name: "delete account failing",
-      product_id: "testapp",
-      required_caller_kind: "user",
-      execution_privacy: "sensitive",
-      caller_erasure: "on_success",
-      steps: [{ id: "boom", kind: "transform", expression: "throw new Error('apple refused');" }],
-    });
-    const admitted = await admit(principal, {}, workflow_id);
-    const result = await runExecution({
-      db: ctx.testDb.db,
-      tenant_id: ctx.tenantId,
-      source: { kind: "saved", workflow_id },
-      input: admitted.input,
-      options: { existing_execution_id: admitted.execution_id, principal, hold_writes: true },
-    });
-    expect(result.status).toBe("failed");
-    const [user] = await ctx.testDb.db
-      .select()
-      .from(users)
-      .where(and(eq(users.tenant_id, ctx.tenantId), eq(users.id, principal.id)));
-    expect(user?.status).toBe("active");
-  });
-});
-
 describe("input byte limits", () => {
   const def = WorkflowDefSchema.parse({
     ...guardedDefinition(5),
@@ -624,59 +447,5 @@ describe("input byte limits", () => {
     expect(() =>
       assertInputByteLimits(def, { request: { input: [...items, { text: "y" }] } }),
     ).toThrow();
-  });
-});
-
-describe("caller erasure robustness", () => {
-  async function erasureWorkflow(slug: string) {
-    return (
-      await createWorkflowRow(ctx, {
-        name: slug,
-        slug,
-        product_id: "testapp",
-        required_caller_kind: "user",
-        execution_privacy: "sensitive",
-        caller_erasure: "on_success",
-        steps: [{ id: "noop", kind: "transform", expression: "return { deleted: true };" }],
-      })
-    ).workflow_id;
-  }
-
-  test("an erasure run without a verified subject is refused at admission", async () => {
-    const principal = await productUser();
-    const workflow_id = await erasureWorkflow("erasure-needs-subject");
-    const { subject: _subject, ...withoutSubject } = principal;
-    await expect(admit(withoutSubject, {}, workflow_id)).rejects.toMatchObject({
-      code: "caller_required",
-    });
-  });
-
-  test("an erasure still finishes when the identity binding is already gone", async () => {
-    const principal = await productUser();
-    const workflow_id = await erasureWorkflow("erasure-without-binding");
-    const admitted = await admit(principal, {}, workflow_id);
-    await ctx.testDb.db
-      .delete(userIdentities)
-      .where(
-        and(eq(userIdentities.tenant_id, ctx.tenantId), eq(userIdentities.user_id, principal.id)),
-      );
-    const result = await runExecution({
-      db: ctx.testDb.db,
-      tenant_id: ctx.tenantId,
-      source: { kind: "saved", workflow_id },
-      input: admitted.input,
-      options: { existing_execution_id: admitted.execution_id, principal, hold_writes: true },
-    });
-    expect(result.status).toBe("succeeded");
-    const [row] = await ctx.testDb.db
-      .select({ status: executions.status })
-      .from(executions)
-      .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.id, admitted.execution_id)));
-    expect(row?.status).toBe("succeeded");
-    const [user] = await ctx.testDb.db
-      .select({ status: users.status })
-      .from(users)
-      .where(and(eq(users.tenant_id, ctx.tenantId), eq(users.id, principal.id)));
-    expect(user?.status).toBe("disabled");
   });
 });

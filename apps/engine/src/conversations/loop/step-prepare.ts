@@ -1,7 +1,7 @@
 import type { LanguageModel, ModelMessage, StepResult, ToolSet } from "ai";
 import { and, eq } from "drizzle-orm";
 import { conversations } from "../../db/schema/index.ts";
-import { prepareStep as routerPrepareStep, withStepNudge } from "../../llm/core/step-router.ts";
+import { prepareStep as routerPrepareStep, withStepNudge } from "../../llm/runtime/step-router.ts";
 import { logger } from "../../logging/logger.ts";
 import { readMemoryUsage, timePhaseAsync } from "../../observability/runtime-telemetry.ts";
 import { hasPersistedWorkflow, toMegabytes } from "../core/loop.ts";

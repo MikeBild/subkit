@@ -83,6 +83,7 @@ function listSourceFiles(root: string): string[] {
       } else if (
         p.endsWith(".ts") &&
         !p.endsWith(".test.ts") &&
+        !p.endsWith("-fixtures.ts") &&
         !p.endsWith(".d.ts") &&
         !p.split("/").includes("scripts")
       ) {

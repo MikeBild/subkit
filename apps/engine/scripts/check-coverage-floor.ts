@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { localDatabaseUrl } from "../../../scripts/lib/local-database-url.ts";
@@ -12,6 +12,7 @@ import {
   judgeFile,
   parseCoverageTable,
   parseFloorFile,
+  relatedTests,
   resolveFileFloors,
   testCandidates,
 } from "./audit/coverage-floor.ts";
@@ -50,7 +51,9 @@ function runCoverage(targets: readonly string[]): CoverageRow[] {
 
 function testsFor(file: string, floor: FloorEntry): string[] {
   if (floor.tests && floor.tests.length > 0) return floor.tests;
-  return testCandidates(file).filter((candidate) => existsSync(join(REPO, candidate)));
+  const direct = testCandidates(file).filter((candidate) => existsSync(join(REPO, candidate)));
+  const siblings = readdirSync(join(REPO, dirname(file)));
+  return [...new Set([...direct, ...relatedTests(file, siblings)])];
 }
 
 const parsed = parseFloorFile(

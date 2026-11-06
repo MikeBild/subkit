@@ -1,7 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { connectorEndpointSchemas, conversationToolCalls } from "../../db/schema/index.ts";
-import { renderAuthoringContextBlock } from "../../llm/core/authoring-context-block.ts";
-import { assembleEnhancedPrompt } from "../../llm/core/context-assembler.ts";
+import { assembleEnhancedPrompt } from "../../llm/runtime/context-assembler.ts";
 import { timePhaseAsync } from "../../observability/runtime-telemetry.ts";
 import { validateTenantWorkflowDef } from "../../workflows/tenant-validator.ts";
 import { expandPriorFailuresFromToolCalls } from "../authoring-critic/prior-failures.ts";
@@ -18,6 +17,7 @@ import { RUN_VERB_RE } from "../intent-patterns.ts";
 import { buildUserContentParts } from "../persistence/index.ts";
 import { PLAYBOOK_GUIDANCE, readPlaybook } from "../playbook.ts";
 import { lockedToolsBySkill } from "../tools/authoring-palette.ts";
+import { renderAuthoringContextBlock } from "./authoring-context-block.ts";
 import { appendVolatileSystemContext } from "./shared.ts";
 import type { AssembledPrompt, TurnBase, TurnPrompt, TurnSkills, TurnState } from "./types.ts";
 

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { skills } from "../../db/schema/index.ts";
-import { assembleEnhancedPrompt } from "../core/context-assembler.ts";
+import { assembleEnhancedPrompt } from "../runtime/context-assembler.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "./setup.ts";
 
 const skip = process.env.REQUIRES_PG === "0";

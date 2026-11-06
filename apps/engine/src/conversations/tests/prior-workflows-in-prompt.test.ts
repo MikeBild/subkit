@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { assembleEnhancedPrompt } from "../../llm/core/context-assembler.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
+import { assembleEnhancedPrompt } from "../../llm/runtime/context-assembler.ts";
 import { createSeededRandom } from "../../test-helpers/determinism/random.ts";
 import { createWorkflow } from "../../workflows/service.ts";
 

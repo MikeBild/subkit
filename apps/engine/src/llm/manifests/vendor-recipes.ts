@@ -1,11 +1,9 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
-import claudeDesktop from "../../conversations/seed/vendor-recipes/claude-desktop.json" with {
-  type: "json",
-};
-import codex from "../../conversations/seed/vendor-recipes/codex.json" with { type: "json" };
 import type { Db } from "../../db/client.ts";
 import { vendorRecipeOverrides } from "../../db/schema/index.ts";
+import claudeDesktop from "./vendor-recipes/claude-desktop.json" with { type: "json" };
+import codex from "./vendor-recipes/codex.json" with { type: "json" };
 
 const VendorRecipeSchema = z
   .object({

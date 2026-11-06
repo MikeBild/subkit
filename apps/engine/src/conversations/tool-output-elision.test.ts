@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ModelMessage } from "ai";
+import { clearRawStore, getRawResult } from "../tools/truncate.ts";
 import {
   buildElidedToolOutputStub,
   elideWithinTurnToolOutputs,
@@ -7,7 +8,6 @@ import {
   TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS,
   WITHIN_TURN_VERBATIM_ITERATIONS,
 } from "./tool-output-elision.ts";
-import { clearRawStore, getRawResult } from "./tools/truncate.ts";
 
 afterEach(() => {
   clearRawStore();

@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { getConfig } from "../config/loader.ts";
-import type { Executor } from "../db/client.ts";
+import { type Executor, getDb } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
 import { getRobotsVerification } from "./robots-cache.ts";
 
@@ -32,8 +32,11 @@ export async function resolveTenantEgressContext(
     const readOrigin = tenantOriginOverrides.getStore();
     const origin = readOrigin
       ? await readOrigin(context.tenant_id)
-      : (await (await import("../identity/service.ts")).getTenant(context.tenant_id, context.exec))
-          ?.origin;
+      : (
+          await (
+            await import("../identity/service.ts")
+          ).getTenant(context.tenant_id, context.exec ?? getDb())
+        )?.origin;
     if (!origin) throw new EgressBlockedError("tenant_context_unavailable", "");
     return origin === "self_service" ? { ...context, mode: "strict" } : context;
   } catch (error) {

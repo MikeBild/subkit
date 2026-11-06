@@ -1,11 +1,11 @@
 import type { PreviewStepSummary } from "../../../execution/classify.ts";
 import type { RunResult } from "../../../execution/types.ts";
+import { truncateStepPreviewForLlm } from "../../../tools/truncate.ts";
 import { buildScopeAtStep } from "../../../workflows/scope-shape.ts";
 import type { StepDef } from "../../../workflows/types.ts";
 import { fieldOf, stepLogLevel, stepLogLine } from "../../core/dry-run.ts";
 import { stampStepTraceFingerprints } from "../../step-fingerprint.ts";
 import type { ToolContext } from "../index.ts";
-import { truncateStepPreviewForLlm } from "../truncate.ts";
 
 type RunStep = RunResult["steps"][number];
 

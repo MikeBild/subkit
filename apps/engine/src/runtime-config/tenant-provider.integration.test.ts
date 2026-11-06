@@ -10,7 +10,7 @@ import {
   loadConfig,
 } from "../config/loader.ts";
 import { createTestDb } from "../db/tests/setup.ts";
-import { initializeModel } from "../llm/core/model-init.ts";
+import { initializeModel } from "../llm/runtime/model-init.ts";
 import { runWithTestEnv } from "../test-helpers/determinism/env.ts";
 import {
   createSecretVersion,

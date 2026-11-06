@@ -4,7 +4,7 @@ import { getConfig, installRuntimeConfig, loadConfig } from "../src/config/loade
 import { judgePreview } from "../src/conversations/preview-judge.ts";
 import { tenants } from "../src/db/schema/index.ts";
 import { createTestDb } from "../src/db/tests/setup.ts";
-import { validateProviderSetup } from "../src/llm/core/model-init.ts";
+import { validateProviderSetup } from "../src/llm/runtime/model-init.ts";
 
 const AGREEMENT_THRESHOLD = 0.8;
 

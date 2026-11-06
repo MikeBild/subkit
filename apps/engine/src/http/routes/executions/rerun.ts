@@ -1,13 +1,12 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { actorType } from "../../../audit/index.ts";
-import { executions } from "../../../db/schema/index.ts";
 import type { ExecutionMode } from "../../../execution/index.ts";
 import {
   auditAdmissionRefusal,
   authorizeSensitiveResume,
-  executionVisibilityFilter,
+  findVisibleExecutionRow,
+  findVisibleExecutionWorkflowId,
   isSensitivePayload,
   loadRerunSafety,
   recoverExecutionPayload,
@@ -92,18 +91,7 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
     const principal = c.get("principal");
     const db = c.get("db");
     if (principal && db) {
-      const rows = await db
-        .select({ workflow_id: executions.workflow_id })
-        .from(executions)
-        .where(
-          and(
-            eq(executions.tenant_id, principal.tenant_id),
-            eq(executions.id, id),
-            executionVisibilityFilter(principal),
-          ),
-        )
-        .limit(1);
-      const workflowId = rows[0]?.workflow_id;
+      const workflowId = await findVisibleExecutionWorkflowId(db, principal, id);
       if (workflowId) {
         return requirePermission("workflow:run", () => ({ type: "workflow", id: workflowId }))(
           c,
@@ -121,18 +109,7 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
     const body = c.req.valid("json");
     if (body.async) enforceAsyncAuthentication(principal);
 
-    const rows = await db
-      .select()
-      .from(executions)
-      .where(
-        and(
-          eq(executions.tenant_id, principal.tenant_id),
-          eq(executions.id, id),
-          executionVisibilityFilter(principal),
-        ),
-      )
-      .limit(1);
-    const original = rows[0];
+    const original = await findVisibleExecutionRow(db, principal, id);
     if (!original) throw new NotFoundError("execution");
     if (original.source_kind !== "saved" || !original.workflow_id) {
       throw new HttpError(

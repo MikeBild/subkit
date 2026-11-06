@@ -3,7 +3,7 @@ import { connectors, skills } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
-import { assembleEnhancedPrompt } from "../core/context-assembler.ts";
+import { assembleEnhancedPrompt } from "../runtime/context-assembler.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
 
@@ -205,13 +205,13 @@ describe.skipIf(skip)(
   "assembler — static contract: skill-summary-trim (source text assertions)",
   () => {
     test("formatSkillIndex helper is exported from the assembler barrel", async () => {
-      const { formatSkillIndex } = await import("../core/context-assembler.ts");
+      const { formatSkillIndex } = await import("../runtime/context-assembler.ts");
       expect(typeof formatSkillIndex).toBe("function");
     });
 
     test("formatSkillIndex renders a one-liner per skill with load_skill hint", () => {
       // biome-ignore lint/suspicious/noExplicitAny: test helper
-      const mod = require("../core/context-assembler.ts") as any;
+      const mod = require("../runtime/context-assembler.ts") as any;
       const { formatSkillIndex } = mod;
       const fakeSkills = [
         {
@@ -254,7 +254,7 @@ describe.skipIf(skip)(
     test("loadedSkills route through formatSkill (full body) in the assembler source", () => {
       const { readFileSync } = require("node:fs");
       const { join } = require("node:path");
-      const src = join(import.meta.dir, "..", "core", "context-assembler.ts");
+      const src = join(import.meta.dir, "..", "runtime", "context-assembler.ts");
       const body = readFileSync(src, "utf-8") as string;
       expect(body).toMatch(/for \(const s of loadedSkills\) sections\.push\(formatSkill\(/);
       expect(body).toMatch(/formatSkillIndex\(\s*"Loaded",\s*loadedIndexSkills/);

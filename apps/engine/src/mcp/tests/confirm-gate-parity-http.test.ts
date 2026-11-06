@@ -92,7 +92,6 @@ async function runLoopTool(
     suite.http.db,
     {},
     "auto",
-    [],
   );
   const result = await wrapped.execute!(args, {
     toolCallId: `parity-${surface}-${tool}`,

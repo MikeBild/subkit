@@ -1,7 +1,24 @@
-import type { ToolModeRule } from "../conversations/tool-policies.ts";
 import type { ToolResultPause } from "../conversations/tools/index.ts";
 
 export type ToolSurface = "chat" | "mcp";
+
+export type ToolPolicyMode = "no_confirm" | "confirm_before_execution" | "confirm_after_execution";
+
+export interface ToolPolicies {
+  [toolName: string]: ToolPolicyMode;
+}
+
+export type PermissionMode = "auto" | "ask" | "plan" | "yolo";
+
+export type ToolModeRule =
+  | "inline_credential"
+  | "connector_trust"
+  | "never_gate"
+  | "permission_mode"
+  | "conversation_override"
+  | "computed_from_input"
+  | "tool_default"
+  | "category_default";
 
 export type ToolCategory = "draft_write" | "tenant_read" | "tenant_write";
 

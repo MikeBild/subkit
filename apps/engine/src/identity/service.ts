@@ -4,7 +4,7 @@ import { resolveActor } from "../audit/recorders/types.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import type { CredentialOrigin, PrincipalKind } from "../auth/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import { type Executor, getDb } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import {
   apiKeys,
   portalTokens,
@@ -53,8 +53,7 @@ function clampLimit(limit?: number): number {
   return Math.min(limit, MAX_LIMIT);
 }
 
-export async function getTenant(tenantId: string, exec?: Executor) {
-  const db = exec ?? getDb();
+export async function getTenant(tenantId: string, db: Executor) {
   const rows = await db
     .select()
     .from(tenants)
@@ -63,8 +62,8 @@ export async function getTenant(tenantId: string, exec?: Executor) {
   return rows[0] ?? null;
 }
 
-export async function listTenantsForPrincipal(tenantId: string, exec?: Executor) {
-  const t = await getTenant(tenantId, exec);
+export async function listTenantsForPrincipal(tenantId: string, db: Executor) {
+  const t = await getTenant(tenantId, db);
   return t ? [t] : [];
 }
 
@@ -459,24 +458,23 @@ export interface IssueApiKeyResult {
 
 export async function issueApiKey(
   input: IssueApiKeyInput,
-  exec?: Executor,
+  db: Executor,
 ): Promise<IssueApiKeyResult> {
-  return issueApiKeyInternal(input, null, exec);
+  return issueApiKeyInternal(input, null, db);
 }
 
 export async function issueCliOAuthSessionApiKey(
   input: IssueApiKeyInput,
-  exec?: Executor,
+  db: Executor,
 ): Promise<IssueApiKeyResult> {
-  return issueApiKeyInternal(input, "cli_oauth_session", exec);
+  return issueApiKeyInternal(input, "cli_oauth_session", db);
 }
 
 async function issueApiKeyInternal(
   input: IssueApiKeyInput,
   credentialOrigin: CredentialOrigin | null,
-  exec?: Executor,
+  db: Executor,
 ): Promise<IssueApiKeyResult> {
-  const db = exec ?? getDb();
   const actor = resolveApiKeyCreator(input.actor, input.actor_id);
   const actorId = apiKeyActorId(input.actor);
   const scopes = await authorizeRequestedScopes(db, input.issuer, input.scopes);

@@ -1,7 +1,7 @@
 import type { Db } from "../../../../db/client.ts";
 import { recordConversationToolCall } from "../../../../observability/instrumentation.ts";
+import type { PermissionMode, ToolPolicies } from "../../../../tools/types.ts";
 import { updateToolCallOutput } from "../../../persistence/index.ts";
-import type { PermissionMode, ToolPolicies } from "../../../tool-policies.ts";
 import type { TurnEvent } from "../../../types.ts";
 import type { ConversationTool, ToolContext } from "../../index.ts";
 import type { ToolCallOutcome } from "../../result-payload.ts";

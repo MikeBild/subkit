@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { renderTenantSummaryBlock, snapshotCoverage } from "../core/tenant-summary.ts";
+import { renderTenantSummaryBlock, snapshotCoverage } from "../runtime/tenant-summary.ts";
 
 const NO_TOOLS: ReadonlySet<string> = new Set();
 

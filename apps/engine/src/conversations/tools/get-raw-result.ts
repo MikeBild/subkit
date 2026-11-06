@@ -1,8 +1,8 @@
 import { z } from "@hono/zod-openapi";
+import type { RawResultScope } from "../../tools/truncate.ts";
+import { getRawResult, rememberRaw, withRawResultScope } from "../../tools/truncate.ts";
 import { summarizeScopeShape } from "../../workflows/scope-shape.ts";
 import type { ConversationTool } from "./index.ts";
-import type { RawResultScope } from "./truncate.ts";
-import { getRawResult, rememberRaw, withRawResultScope } from "./truncate.ts";
 
 const MAX_INLINE_CHARS = 12_000;
 const DEFAULT_CHUNK_LIMIT = 24_000;

@@ -1,18 +1,7 @@
 import type { Db } from "../../db/client.ts";
 import { BadRequestError } from "../../http/errors.ts";
+import { BUCKET_UNITS, type BucketUnit, WINDOW_CAP_MS } from "../../stats/bucket-units.ts";
 import { oldestAuditTimestamp } from "../../stats/retention-horizon.ts";
-
-export const BUCKET_UNITS = ["minute", "hour", "day", "month", "year"] as const;
-export type BucketUnit = (typeof BUCKET_UNITS)[number];
-
-const MS = { hour: 3_600_000, day: 86_400_000 };
-export const WINDOW_CAP_MS: Record<BucketUnit, number> = {
-  minute: 24 * MS.hour,
-  hour: 31 * MS.day,
-  day: 366 * MS.day,
-  month: 60 * 31 * MS.day,
-  year: 10 * 366 * MS.day,
-};
 
 function isValidTimezone(tz: string): boolean {
   try {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Db } from "../../db/client.ts";
+import type { ToolPolicies } from "../../tools/types.ts";
 import { runConfirmGate } from "../confirmation.ts";
 import {
   canSetConversationToolPolicy,
@@ -8,7 +9,6 @@ import {
   effectiveMode,
   eligibleNoConfirmTools,
   resolveToolMode,
-  type ToolPolicies,
 } from "../tool-policies.ts";
 
 const untouchableDb = new Proxy({} as Record<string, unknown>, {

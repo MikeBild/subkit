@@ -3,8 +3,8 @@ import type { Db, Executor } from "../db/client.ts";
 import { conversationMessages, conversations } from "../db/schema/index.ts";
 import { withTenantWork } from "../execution/tenant-work.ts";
 import { assertTenantActive, lockActiveTenant } from "../identity/index.ts";
-import { resolveModelRoute } from "../llm/core/invoke.ts";
 import { runSummarizeFlow } from "../llm/flows/summarize.ts";
+import { resolveModelRoute } from "../llm/runtime/invoke.ts";
 import { logger } from "../logging/logger.ts";
 import { stringifyConversationExcerpt } from "./excerpt.ts";
 import {

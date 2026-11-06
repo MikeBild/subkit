@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { previewOffloadRefs } from "../../../execution/offload-rehydrate.ts";
+import { clearRawStore, truncateStepPreviewForLlm } from "../../../tools/truncate.ts";
 import { summarizeScopeShape } from "../../../workflows/scope-shape.ts";
-import { clearRawStore, truncateStepPreviewForLlm } from "../truncate.ts";
 
 function fatLoopPreview(): unknown[] {
   return Array.from({ length: 4 }, (_, i) => ({

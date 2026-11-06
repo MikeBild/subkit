@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
+import type { Db } from "../../db/client.ts";
+import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
 import type {
   ConnectorEndpointCandidate,
   ConnectorEndpointCandidateEnvelope,
   PotentialConnection,
-} from "../../conversations/tools/discover-systems-from-files.ts";
-import type { Db } from "../../db/client.ts";
-import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
+} from "../../knowledge/connector-endpoint-candidates.ts";
 import { logger } from "../../logging/logger.ts";
 import { computeConfidence, type PatternSignal } from "../types.ts";
 

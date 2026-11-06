@@ -2,8 +2,7 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { dispatchTool } from "../../tools/dispatcher.ts";
 import { getUnifiedRegistry } from "../../tools/index.ts";
-import type { ToolEnvelope, ToolInvocation } from "../../tools/types.ts";
-import type { PermissionMode } from "../tool-policies.ts";
+import type { PermissionMode, ToolEnvelope, ToolInvocation } from "../../tools/types.ts";
 import type { ToolContext, ToolResult } from "./index.ts";
 
 function envelopeToToolResult(envelope: ToolEnvelope): ToolResult {

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { listCapabilityGaps } from "../../discovery/service.ts";
-import { loadTenantSummary, renderTenantSummaryBlock } from "../../llm/core/tenant-summary.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
+import { loadTenantSummary, renderTenantSummaryBlock } from "../../llm/runtime/tenant-summary.ts";
 import {
   appendMessageWithTurn,
   type ConversationTestCtx,

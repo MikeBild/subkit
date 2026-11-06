@@ -37,7 +37,7 @@ const OUT_DIR = "apps/engine/src/http/llms";
 
 const REFERENCE_DIR = "apps/engine/src/http/reference";
 
-const SEED_DIR = "apps/engine/src/conversations/seed/knowledge";
+const SEED_DIR = "apps/engine/src/knowledge/seeds";
 
 const EMBEDDED_SEEDS = "apps/engine/src/knowledge/embedded-seeds.ts";
 
@@ -239,7 +239,7 @@ function seedIdentifier(file: string): string {
 }
 
 function seedImport(file: string): string {
-  const head = `import ${seedIdentifier(file)} from "../conversations/seed/knowledge/${file}" with `;
+  const head = `import ${seedIdentifier(file)} from "./seeds/${file}" with `;
   const single = `${head}{ type: "text" };`;
   return single.length <= 100 ? single : `${head}{\n  type: "text",\n};`;
 }

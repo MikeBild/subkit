@@ -1,3 +1,4 @@
+import { REVIEW_DECISIONS } from "../../llm/runtime/step-router.ts";
 import {
   detectAuthoringIntent,
   detectConnectorAuthoringIntent,
@@ -121,11 +122,6 @@ const HELD_PREVIEW_TOOLS: ReadonlySet<string> = new Set(["dry_run_workflow", "dr
 const WORKFLOW_EXECUTION_TOOLS: ReadonlySet<string> = new Set([
   ...LIVE_EXECUTION_TOOLS,
   ...HELD_PREVIEW_TOOLS,
-]);
-
-export const REVIEW_DECISIONS: ReadonlySet<string> = new Set([
-  "approve_skill_candidate",
-  "reject_skill_candidate",
 ]);
 
 const SKILL_UNLOCKS: ReadonlyArray<{ skill: string; tools: ReadonlyArray<ReadonlySet<string>> }> = [

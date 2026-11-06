@@ -9,6 +9,8 @@ import { logger } from "../../../logging/logger.ts";
 import { recordConversationToolCall } from "../../../observability/instrumentation.ts";
 import { stripConfirmMarkers } from "../../../tools/approval.ts";
 import { policyDecide } from "../../../tools/policy.ts";
+import { sampleWorkflowOutputForLlm } from "../../../tools/truncate.ts";
+import type { PermissionMode, ToolPolicies } from "../../../tools/types.ts";
 import {
   listWorkflowToolsForTenant,
   type WorkflowToolDescriptor,
@@ -23,13 +25,11 @@ import {
 import { createElicitation } from "../../elicitations.ts";
 import { executionSuppressionRefusal } from "../../execution-suppression.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persistence/index.ts";
-import type { PermissionMode, ToolPolicies } from "../../tool-policies.ts";
 import type { TurnEvent } from "../../types.ts";
 import { withoutApprovalHandle } from "../ask-user/commit-intent.ts";
 import { WORKFLOW_TOOL_PREFIX as TOOL_PREFIX } from "../authoring-palette.ts";
 import { hideCapabilityLinks } from "../capability-link.ts";
 import type { ToolContext } from "../index.ts";
-import { sampleWorkflowOutputForLlm } from "../truncate.ts";
 import { executionDataTransfer } from "./gate-subjects.ts";
 import { jsonSafeModelOutput } from "./json-safe-output.ts";
 import type { TurnSignals, WrappedToolOutput } from "./state.ts";

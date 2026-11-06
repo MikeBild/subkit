@@ -8,7 +8,7 @@ import type {
   AuthoringSurfaceMode,
 } from "../conversations/types.ts";
 import type { Skill } from "../skills/types.ts";
-import type { ProviderKind } from "./core/model-init.ts";
+import type { ProviderKind } from "./runtime/model-init.ts";
 
 export type LlmFlow =
   | "generate"

@@ -11,7 +11,7 @@ import { resolveActor } from "../../audit/recorders/types.ts";
 import { AuditAction, type AuditActorType } from "../../audit/types.ts";
 import { decryptSecret, encryptSecret } from "../../crypto/aes-gcm.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
-import { type Db, type Executor, getDb } from "../../db/client.ts";
+import type { Db, Executor } from "../../db/client.ts";
 import { webhooksInbound, workflows } from "../../db/schema/index.ts";
 import { assertExecutionAuthorityCurrent } from "../../execution/authority-admission.ts";
 import { assertTenantActive, SelfServiceIdentityError } from "../../identity/self-service.ts";
@@ -94,20 +94,16 @@ function isInboundSlugTaken(err: unknown): boolean {
   return false;
 }
 
-export async function createInbound(
-  input: CreateInboundInput,
-  exec?: Executor,
-): Promise<InboundRow> {
+export async function createInbound(input: CreateInboundInput, db: Executor): Promise<InboundRow> {
   try {
-    return await insertInbound(input, exec);
+    return await insertInbound(input, db);
   } catch (err) {
     if (isInboundSlugTaken(err)) throw new InboundSlugTakenError(input.slug);
     throw err;
   }
 }
 
-async function insertInbound(input: CreateInboundInput, exec?: Executor): Promise<InboundRow> {
-  const db = exec ?? getDb();
+async function insertInbound(input: CreateInboundInput, db: Executor): Promise<InboundRow> {
   return await db.transaction(async (tx) => {
     const placeholder = encryptSecret("__placeholder__");
     const inserted = await tx
@@ -159,8 +155,7 @@ async function insertInbound(input: CreateInboundInput, exec?: Executor): Promis
   });
 }
 
-export async function listInbound(tenant_id: string, exec?: Executor): Promise<InboundRow[]> {
-  const db = exec ?? getDb();
+export async function listInbound(tenant_id: string, db: Executor): Promise<InboundRow[]> {
   const rows = await db
     .select()
     .from(webhooksInbound)
@@ -172,9 +167,8 @@ export async function listInbound(tenant_id: string, exec?: Executor): Promise<I
 export async function getInbound(
   tenant_id: string,
   id: string,
-  exec?: Executor,
+  db: Executor,
 ): Promise<InboundRow | null> {
-  const db = exec ?? getDb();
   const rows = await db
     .select()
     .from(webhooksInbound)
@@ -188,9 +182,8 @@ export async function deleteInbound(
   tenant_id: string,
   id: string,
   actor_input: string | Actor | null,
-  exec?: Executor,
+  db: Executor,
 ): Promise<boolean> {
-  const db = exec ?? getDb();
   const result = await db
     .delete(webhooksInbound)
     .where(and(eq(webhooksInbound.tenant_id, tenant_id), eq(webhooksInbound.id, id)));
@@ -300,9 +293,8 @@ type BindFromWorkflowOutcome =
 
 export async function bindFromWorkflow(
   input: BindFromWorkflowInput,
-  exec?: Executor,
+  db: Executor,
 ): Promise<BindFromWorkflowOutcome> {
-  const db = exec ?? getDb();
   const verifier = VERIFY_TO_VERIFIER[input.trigger.verify];
   const desiredSlug = slugFromWorkflow(input.workflow_slug);
   const nativeConfig: Record<string, unknown> = {
@@ -446,9 +438,8 @@ export async function rotateInboundSecret(
   tenant_id: string,
   inbound_id: string,
   secret: string,
-  exec?: Executor,
+  db: Executor,
 ): Promise<boolean> {
-  const db = exec ?? getDb();
   const payload = encryptSecret(secret, aadFor(tenant_id, inbound_id));
   const result = await db
     .update(webhooksInbound)
@@ -467,10 +458,9 @@ export async function unbindFromWorkflow(
   tenant_id: string,
   workflow_id: string,
   actor_input: string | Actor | { actor_id: string | null; actor_type?: AuditActorType } | null,
-  exec?: Executor,
+  db: Executor,
   origin?: InboundOrigin,
 ): Promise<number> {
-  const db = exec ?? getDb();
   return await db.transaction(async (tx) => {
     const rows = await tx
       .delete(webhooksInbound)

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { workflows } from "../../db/schema/index.ts";
-import { MAX_WORKFLOWS_IN_SUMMARY } from "../../llm/core/tenant-summary.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
+import { MAX_WORKFLOWS_IN_SUMMARY } from "../../llm/runtime/tenant-summary.ts";
 import {
   appendMessageWithTurn,
   type ConversationTestCtx,

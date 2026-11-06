@@ -13,7 +13,7 @@ import type { ConversationTool, ToolContext } from "../../../conversations/tools
 import { auditLog, users } from "../../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../../http/tests/setup.ts";
 import { createKnowledgeSource } from "../../../knowledge/service.ts";
-import * as invokeModule from "../../../llm/core/invoke.ts";
+import * as invokeModule from "../../../llm/runtime/invoke.ts";
 import { createDeterministicHexFactory } from "../../../test-helpers/determinism/ids.ts";
 import { adminPrincipal } from "../../../test-helpers/principals.ts";
 import { emptyRoleId } from "../../../test-helpers/roles.ts";

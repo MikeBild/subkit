@@ -46,13 +46,13 @@ import {
   JSONATA_BUILTIN_FUNCTIONS,
   JSONATA_FUNCTION_SUGGESTIONS,
 } from "../execution/jsonata-engine.ts";
-import { LLM_CALL_TIMEOUT_MS } from "../llm/core/ai-sdk-model.ts";
-import { formatProbeShapeExamples } from "../llm/core/context-assembler/formatters.ts";
-import { loadProbeShapeExamples } from "../llm/core/context-assembler/loaders.ts";
-import type { GenerationNeed } from "../llm/core/generation-abort.ts";
-import { invoke } from "../llm/core/invoke.ts";
 import { LlmError, LlmGenerationAborted, LlmProviderError } from "../llm/errors.ts";
 import { buildProviderErrorDetails, classifyProviderError } from "../llm/provider-errors.ts";
+import { LLM_CALL_TIMEOUT_MS } from "../llm/runtime/ai-sdk-model.ts";
+import { formatProbeShapeExamples } from "../llm/runtime/context-assembler/formatters.ts";
+import { loadProbeShapeExamples } from "../llm/runtime/context-assembler/loaders.ts";
+import type { GenerationNeed } from "../llm/runtime/generation-abort.ts";
+import { invoke } from "../llm/runtime/invoke.ts";
 import { logger } from "../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../observability/instrumentation.ts";
 import { renderSandboxGlobalsContract } from "../sandboxes/quickjs/stdlib/sandbox-globals.ts";

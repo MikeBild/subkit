@@ -1,12 +1,11 @@
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { deriveConversationTitle } from "../../conversations/title.ts";
+import { deriveConversationTitle, isStillOpeningLine } from "../../conversations/title.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages, conversations, dataMigrations } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import {
   CONVERSATION_TITLE_SWEEP_NAME,
-  isStillOpeningLine,
   resetConversationTitleSweep,
   runConversationTitleSweep,
 } from "../conversation-title-runner.ts";

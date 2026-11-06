@@ -1,8 +1,7 @@
-import { and, desc, eq } from "drizzle-orm";
-import { conversationToolCalls } from "../../db/schema/index.ts";
 import { getWorkflowDraft } from "../authoring-state/index.ts";
 import { dryRunStartLine } from "../core/dry-run.ts";
 import { previewAutoRepairCondition } from "../preview-auto-repair.ts";
+import { listRecentToolCallOutputs } from "../service/tool-state.ts";
 import { authorConnectorWriteWarnings } from "./author-build-warnings.ts";
 import { type DryRunEnv, inputSchema } from "./dry-run-workflow/env.ts";
 import { gateDraft } from "./dry-run-workflow/gates.ts";
@@ -14,18 +13,7 @@ import { resolveConversationPrincipal } from "./permission-gate.ts";
 import { runSensitiveDryRun } from "./sensitive-dry-run.ts";
 import { runSensitiveSchemaPreview } from "./sensitive-schema-preview.ts";
 
-const recentToolCalls: RecentToolCalls = (ctx) =>
-  ctx.db
-    .select({ tool: conversationToolCalls.tool, output: conversationToolCalls.output })
-    .from(conversationToolCalls)
-    .where(
-      and(
-        eq(conversationToolCalls.tenant_id, ctx.tenant_id),
-        eq(conversationToolCalls.conversation_id, ctx.conversation_id),
-      ),
-    )
-    .orderBy(desc(conversationToolCalls.created_at))
-    .limit(8);
+const recentToolCalls: RecentToolCalls = (ctx) => listRecentToolCallOutputs(ctx.db, ctx, 8);
 
 export const dryRunWorkflowTool: ConversationTool = {
   name: "dry_run_workflow",

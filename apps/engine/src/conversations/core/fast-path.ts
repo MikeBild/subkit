@@ -60,14 +60,18 @@ export function gateSurfaceFor(surface: string | undefined): GateSurface {
 export type RunEnvironment = "dev" | "prod";
 
 export type EnvironmentResolution =
-  | { kind: "resolved"; environment: RunEnvironment; source: string }
+  | { kind: "resolved"; environment: RunEnvironment }
+  | { kind: "default"; dev_bindings: readonly (RunEnvironment | null)[] }
   | { kind: "ambiguous" };
 
 export const FAST_PATH_DEFAULT_ENVIRONMENT: RunEnvironment = "dev";
 
 export function decideRunEnvironment(resolution: EnvironmentResolution): RunEnvironment | null {
   if (resolution.kind === "ambiguous") return null;
-  return resolution.source === "default" ? FAST_PATH_DEFAULT_ENVIRONMENT : resolution.environment;
+  if (resolution.kind === "resolved") return resolution.environment;
+  return resolution.dev_bindings.every((bound) => bound === FAST_PATH_DEFAULT_ENVIRONMENT)
+    ? FAST_PATH_DEFAULT_ENVIRONMENT
+    : null;
 }
 
 export const AFFIRM_RESUME_WINDOW_MS = 5 * 60 * 1000;

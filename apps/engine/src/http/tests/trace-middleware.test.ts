@@ -6,7 +6,7 @@ import { ConfigSchema } from "../../config/schema.ts";
 import {
   hostedBudgetMiddleware,
   modelTenantContext,
-} from "../../llm/core/hosted-budget-middleware.ts";
+} from "../../llm/runtime/hosted-budget-middleware.ts";
 import { getContext, withContext } from "../../logging/context.ts";
 import { parseTraceparent, traceMiddleware } from "../middleware/trace.ts";
 import type { AppEnv } from "../openapi.ts";

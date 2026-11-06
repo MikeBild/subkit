@@ -1,6 +1,6 @@
 import type { Executor } from "../../db/client.ts";
-import { resolveLanguageModel as resolveSdkModel } from "../../llm/core/invoke.ts";
 import { createMockLanguageModel } from "../../llm/mock-stream.ts";
+import { resolveLanguageModel as resolveSdkModel } from "../../llm/runtime/invoke.ts";
 import type { LlmProviderKind } from "../../llm/types.ts";
 
 export const DEFAULT_BUDGET = 24;

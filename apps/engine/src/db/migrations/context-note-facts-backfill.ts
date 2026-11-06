@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import { authoringCapabilitySignal } from "../../conversations/persistence/commit-workflow-skill-candidate.ts";
 import { logger } from "../../logging/logger.ts";
+import { authoringCapabilitySignal } from "../../skill-candidates/authoring-capability.ts";
 import { detectFailurePatterns } from "../../skill-candidates/detectors/index.ts";
 import { upsertFromSignal } from "../../skill-candidates/service.ts";
 import type { Db } from "../client.ts";

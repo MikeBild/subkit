@@ -17,7 +17,7 @@ const BOOT_ONLY_LEAVES = new Set<string>([
 ]);
 
 function loadEnvToConfigPath(): Set<string> {
-  const text = readFileSync(join(SRC_ROOT, "llm", "core", "model-init.ts"), "utf8");
+  const text = readFileSync(join(SRC_ROOT, "llm", "runtime", "model-init.ts"), "utf8");
   const out = new Set<string>();
   const pattern = /^\s*[A-Z_]+:\s*\[(.+?)\],\s*$/gm;
   let m: RegExpExecArray | null;

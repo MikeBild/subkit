@@ -64,7 +64,7 @@ describe("consumer read-back per subsystem", () => {
     await setConfigKey("llm.providers.anthropic.api_key", "ant-config-key", {
       force: true,
     });
-    const { detectConfiguredProvider } = await import("../../llm/core/model-init.ts");
+    const { detectConfiguredProvider } = await import("../../llm/runtime/model-init.ts");
     expect(detectConfiguredProvider()).toBe("mock");
 
     await setConfigKey("llm.provider", "anthropic", { force: true });
@@ -72,7 +72,7 @@ describe("consumer read-back per subsystem", () => {
   });
 
   test("generic llm.api_key is mirrored into the active provider's leaf", async () => {
-    const { globalLlmStatus } = await import("../../llm/core/invoke.ts");
+    const { globalLlmStatus } = await import("../../llm/runtime/invoke.ts");
     await setConfigKey("llm.provider", "anthropic", { force: true });
     await setConfigKey("llm.api_key", "generic-ant-key", { force: true });
 
@@ -120,7 +120,7 @@ describe("consumer read-back per subsystem", () => {
   });
 
   test("installed tenant runtime credentials reach only their selected provider", async () => {
-    const { initializeModel } = await import("../../llm/core/model-init.ts");
+    const { initializeModel } = await import("../../llm/runtime/model-init.ts");
     installRuntimeConfig({
       ...getConfig(),
       tenants: {
@@ -243,7 +243,7 @@ describe("consumer read-back per subsystem", () => {
   });
 
   test("globalLlmStatus reflects every provider config flip", async () => {
-    const { globalLlmStatus } = await import("../../llm/core/invoke.ts");
+    const { globalLlmStatus } = await import("../../llm/runtime/invoke.ts");
     let st = globalLlmStatus();
     expect(st.anthropic_key_set).toBe(false);
     expect(st.openai_key_set).toBe(false);
@@ -259,7 +259,7 @@ describe("consumer read-back per subsystem", () => {
   });
 
   test("bedrock_key_set requires region + access_key_id + secret_access_key", async () => {
-    const { globalLlmStatus } = await import("../../llm/core/invoke.ts");
+    const { globalLlmStatus } = await import("../../llm/runtime/invoke.ts");
     expect(globalLlmStatus().bedrock_key_set).toBe(false);
 
     await setConfigKey("llm.providers.bedrock.access_key_id", "AKIA...", {

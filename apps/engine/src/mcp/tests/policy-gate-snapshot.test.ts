@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { resolveToolMode, type ToolPolicies } from "../../conversations/tool-policies.ts";
+import { resolveToolMode } from "../../conversations/tool-policies.ts";
+import type { ToolPolicies } from "../../tools/types.ts";
 
 const EMPTY_OVERRIDES: ToolPolicies = {};
 

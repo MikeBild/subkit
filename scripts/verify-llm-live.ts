@@ -5,8 +5,11 @@ import type { ZodIssue } from "zod";
 import { GeneratedWorkflowSchema } from "../apps/engine/src/conversations/authoring-pipeline.ts";
 import { JudgeVerdictSchema } from "../apps/engine/src/conversations/preview-judge.ts";
 import { toInputExamples } from "../apps/engine/src/conversations/tools/sdk-wrap/invoke.ts";
-import { AiSdkModel } from "../apps/engine/src/llm/core/ai-sdk-model.ts";
-import { initializeModel, withToolInputExamples } from "../apps/engine/src/llm/core/model-init.ts";
+import { AiSdkModel } from "../apps/engine/src/llm/runtime/ai-sdk-model.ts";
+import {
+  initializeModel,
+  withToolInputExamples,
+} from "../apps/engine/src/llm/runtime/model-init.ts";
 import { zodToJsonSchema7 } from "../apps/engine/src/mcp/json-schema.ts";
 import {
   assertLiveInputBound,

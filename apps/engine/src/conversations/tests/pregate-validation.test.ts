@@ -70,7 +70,6 @@ async function callTool(name: string, conversation_id: string, args: Record<stri
     ctx.testDb.db as unknown as Db,
     {},
     null,
-    [],
   );
   // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
   const result = await (wrapped.execute as any)(args, { toolCallId: "fake", messages: [] });

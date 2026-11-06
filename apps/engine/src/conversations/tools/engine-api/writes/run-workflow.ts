@@ -1,16 +1,19 @@
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
-import { conversations, workflowVersions } from "../../../../db/schema/index.ts";
 import { refusalCause } from "../../../../execution/use-cases/core/run-workflow.ts";
 import { createRunWorkflow } from "../../../../execution/use-cases/run-workflow.ts";
 import { logger } from "../../../../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../../../../observability/instrumentation.ts";
+import {
+  sampleWorkflowOutputForLlm,
+  truncateStepPreviewForLlm,
+} from "../../../../tools/truncate.ts";
 import { workflowExecutionEnvironment } from "../../../../workflows/execution-environment.ts";
 import { resolveWorkflowInputContract } from "../../../../workflows/input-schema-synth.ts";
 import { resolveWorkflowByIdOrSlug } from "../../../../workflows/lookup.ts";
 import { workflowPreparationInput } from "../../../../workflows/preparation-input.ts";
 import { buildScopeAtStep } from "../../../../workflows/scope-shape.ts";
 import type { WorkflowDef } from "../../../../workflows/types.ts";
+import { setWorkflowVersionScopeIndex } from "../../../../workflows/versions.ts";
 import {
   bindPersistedWorkflow,
   getWorkflowDraft,
@@ -20,13 +23,13 @@ import {
 } from "../../../authoring-state/index.ts";
 import { hydrateBoundWorkflow } from "../../../draft.ts";
 import { detectUserIntent } from "../../../intent-detector.ts";
+import { setConversationWorkflowTarget } from "../../../service/tool-state.ts";
 import { stampStepTraceFingerprints } from "../../../step-fingerprint.ts";
 import type { DraftDocument } from "../../../types.ts";
 import { pauseForUserInput } from "../../ask-user/common.ts";
 import { buildGateError, buildLifecyclePayload } from "../../authoring-contract.ts";
 import type { ConversationTool } from "../../index.ts";
 import { buildRawStepResults } from "../../step-results.ts";
-import { sampleWorkflowOutputForLlm, truncateStepPreviewForLlm } from "../../truncate.ts";
 import { loadWorkflowInputFile, WorkflowInputFileSchema } from "../../workflow-file-input.ts";
 import { structuredInputFields, workflowInputSlot } from "../../workflow-input-normalize.ts";
 import { activationRequiredRefusal } from "./activation-required.ts";
@@ -658,15 +661,12 @@ export const runWorkflowTool: ConversationTool = {
         }
         if (Object.keys(persistedScopeIndex).length > 0) {
           try {
-            await ctx.db
-              .update(workflowVersions)
-              .set({ scope_index: persistedScopeIndex })
-              .where(
-                and(
-                  eq(workflowVersions.tenant_id, ctx.tenant_id),
-                  eq(workflowVersions.id, wf.current_version_id),
-                ),
-              );
+            await setWorkflowVersionScopeIndex(
+              ctx.db,
+              ctx.tenant_id,
+              wf.current_version_id,
+              persistedScopeIndex,
+            );
           } catch (err) {
             logger.warn({
               module: "conversation_tool",
@@ -685,15 +685,7 @@ export const runWorkflowTool: ConversationTool = {
         getWorkflowDraft(currentDraft).steps.length === 0 &&
         !currentDraft.state?.persisted_resources.some((resource) => resource.kind === "workflow");
       if (!args.preserve_draft && !runsAuthoringTarget && authorsNothing)
-        await ctx.db
-          .update(conversations)
-          .set({ target_workflow_id: workflowId, updated_at: new Date() })
-          .where(
-            and(
-              eq(conversations.tenant_id, ctx.tenant_id),
-              eq(conversations.id, ctx.conversation_id),
-            ),
-          );
+        await setConversationWorkflowTarget(ctx.db, ctx, workflowId);
       const boundDraft = args.preserve_draft
         ? currentDraft
         : runsAuthoringTarget

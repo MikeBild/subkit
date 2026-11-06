@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { anthropicWebSearchApplies } from "../../llm/core/model-init.ts";
+import { anthropicWebSearchApplies } from "../../llm/runtime/model-init.ts";
 
 function webSearchGate(opts: {
   provider: string;

@@ -1,4 +1,4 @@
-import { truncateForLlm } from "./tools/truncate.ts";
+import { truncateForLlm } from "../tools/truncate.ts";
 import type { TurnEvent } from "./types.ts";
 
 function stripSnippetMarkup(snippet: string): string {

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { _resetConfigForTests } from "../../config/loader.ts";
-import { validateProviderSetup } from "../core/model-init.ts";
+import { validateProviderSetup } from "../runtime/model-init.ts";
 
 const ENV_KEYS = [
   "LLM_PROVIDER",

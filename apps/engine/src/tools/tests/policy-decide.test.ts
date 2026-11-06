@@ -1,15 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import {
-  buildPendingOutputForTool,
-  resolveToolMode,
-  type ToolPolicies,
-} from "../../conversations/tool-policies.ts";
+import { buildPendingOutputForTool, resolveToolMode } from "../../conversations/tool-policies.ts";
 import {
   confirmEnvelopeFor,
   DRAFT_WRITE_MCP_UNAVAILABLE_REASON,
   MCP_ELICITATION_BLURB,
   policyDecide,
 } from "../policy.ts";
+import type { ToolPolicies } from "../types.ts";
 
 const EMPTY_OVERRIDES: ToolPolicies = {};
 const APPROVAL_ID = "00000000-0000-4000-8000-00000000a11d";

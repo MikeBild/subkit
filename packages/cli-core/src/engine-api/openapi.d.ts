@@ -9715,7 +9715,7 @@ export interface paths {
                         "application/json": components["schemas"]["ConnectorSpecImportResponse"];
                     };
                 };
-                /** @description Bad request */
+                /** @description Bad request, or the specification URL could not be fetched */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -9724,8 +9724,8 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Upstream spec fetch failed */
-                502: {
+                /** @description The inline OpenAPI document could not be parsed */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };

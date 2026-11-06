@@ -274,7 +274,6 @@ describe("confirm gate parity — one gate behind every entry point", () => {
       db,
       {},
       null,
-      [],
     );
     const { value: result, logs } = await gateDecisionLogs(async () =>
       wrapped.execute!(KNOWLEDGE_ARGS, { toolCallId: "parity-invoke", messages: [], context: {} }),

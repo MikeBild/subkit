@@ -1,178 +1,33 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import {
-  browserSessionCookie,
-  signBrowserCsrf,
-  signBrowserSession,
-} from "../../../auth/browser-session.ts";
-import { getConfig, setConfigKey } from "../../../config/loader.ts";
-import {
-  type MockOAuthServer,
-  startMockOAuthServer,
-} from "../../../credentials/oauth2/tests/mock-server.ts";
 import {
   auditLog,
   connectorOauthStates,
   connectors,
   conversationElicitations,
   conversations,
-  credentials,
   events,
-  sessions,
 } from "../../../db/schema/index.ts";
-import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { now } from "../../../utils/clock.ts";
-import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
+import {
+  auditActions,
+  breakConnector,
+  callback,
+  cockpitSession,
+  connectorId,
+  connectorPage,
+  getConnectorApi,
+  getConnectorRow,
+  getCredentialRow,
+  getStateRow,
+  mock,
+  seedStateRow,
+  server,
+  setupConnectorOauth,
+  uuid,
+} from "../../tests/connector-oauth-fixtures.ts";
 
-let server: HttpTestServer;
-let mock: MockOAuthServer;
-let connectorId: string;
-let publicBaseUrlBefore = "";
-const uuid = createDeterministicUuidFactory(0x0a17);
-
-beforeAll(async () => {
-  server = await createHttpTestServer("oauth-callback");
-  publicBaseUrlBefore = getConfig().server.public_base_url;
-  await setConfigKey("server.public_base_url", server.baseUrl, { force: true });
-  mock = await startMockOAuthServer();
-  const [row] = await server.db
-    .insert(connectors)
-    .values({
-      tenant_id: server.tenantId,
-      slug: "mock-oauth-svc",
-      display_name: "Mock OAuth service",
-      driver: "http",
-      environment: "dev",
-      auth_type: "oauth2",
-      base_url: "https://mock-oauth.test",
-      config: {
-        oauth: {
-          issuer_url: mock.baseUrl,
-          authorization_endpoint: `${mock.baseUrl}/authorize`,
-          token_endpoint: `${mock.baseUrl}/token`,
-          client_id: "test-client",
-          client_secret: "test-secret",
-          scope: "read",
-          use_pkce: false,
-        },
-      },
-    })
-    .returning();
-  if (!row) throw new Error("seed connector failed");
-  connectorId = row.id;
-});
-
-afterAll(async () => {
-  await setConfigKey("server.public_base_url", publicBaseUrlBefore, { force: true });
-  await mock.close();
-  await server.cleanup();
-});
-
-async function seedStateRow(
-  state: string,
-  opts: { origin?: string | null; requested_scopes?: string } = {},
-): Promise<void> {
-  await server.db.insert(connectorOauthStates).values({
-    tenant_id: server.tenantId,
-    connector_id: connectorId,
-    state,
-    code_verifier: "",
-    redirect_uri: `${server.baseUrl}/v1/oauth/callback`,
-    origin: opts.origin ?? null,
-    requested_scopes: opts.requested_scopes ?? null,
-    expires_at: new Date(now() + 5 * 60_000),
-  });
-}
-
-async function getCredentialRow() {
-  const rows = await server.db
-    .select()
-    .from(credentials)
-    .where(
-      and(
-        eq(credentials.tenant_id, server.tenantId),
-        eq(credentials.connector_id, connectorId),
-        eq(credentials.environment, "dev"),
-      ),
-    )
-    .limit(1);
-  return rows[0] ?? null;
-}
-
-async function getStateRow(state: string) {
-  const rows = await server.db
-    .select()
-    .from(connectorOauthStates)
-    .where(eq(connectorOauthStates.state, state))
-    .limit(1);
-  return rows[0] ?? null;
-}
-
-async function breakConnector(opts: { enabled?: boolean } = {}): Promise<void> {
-  await server.db
-    .update(connectors)
-    .set({
-      enabled: opts.enabled ?? true,
-      needs_reauth: true,
-      auth_failed_at: new Date(now() - 90 * 86_400_000),
-      auth_failed_reason: "credential rejected",
-      circuit_state: "open",
-      circuit_failure_count: 44,
-      circuit_opened_at: new Date(now() - 90 * 86_400_000),
-    })
-    .where(eq(connectors.id, connectorId));
-}
-
-async function getConnectorRow() {
-  const [row] = await server.db.select().from(connectors).where(eq(connectors.id, connectorId));
-  if (!row) throw new Error("connector row missing");
-  return row;
-}
-
-async function getConnectorApi(): Promise<Record<string, unknown>> {
-  const res = await fetch(`${server.baseUrl}/v1/connectors/${connectorId}`, {
-    headers: { authorization: `Bearer ${server.apiKey}` },
-  });
-  expect(res.status).toBe(200);
-  return (await res.json()) as Record<string, unknown>;
-}
-
-async function auditActions(): Promise<string[]> {
-  const rows = await server.db
-    .select({ action: auditLog.action })
-    .from(auditLog)
-    .where(and(eq(auditLog.tenant_id, server.tenantId), eq(auditLog.resource_id, connectorId)));
-  return rows.map((row) => row.action);
-}
-
-async function cockpitSession(): Promise<{ cookie: string; headers: Record<string, string> }> {
-  const [session] = await server.db
-    .insert(sessions)
-    .values({
-      tenant_id: server.tenantId,
-      user_id: server.userId,
-      expires_at: new Date(now() + 60 * 60_000),
-      absolute_expires_at: new Date(now() + 60 * 60_000),
-      last_seen_at: new Date(now()),
-    })
-    .returning();
-  if (!session) throw new Error("browser session seed failed");
-  const payload = { tenant_id: server.tenantId, user_id: server.userId, session_id: session.id };
-  const cookie = browserSessionCookie(await signBrowserSession(payload));
-  return {
-    cookie,
-    headers: {
-      cookie,
-      "x-subkit-csrf": await signBrowserCsrf(payload),
-      "x-subkit-client": "cockpit",
-    },
-  };
-}
-
-const callback = (query: string, init?: RequestInit) =>
-  fetch(`${server.baseUrl}/v1/oauth/callback?${query}`, { redirect: "manual", ...init });
-
-const connectorPage = () => `${server.baseUrl}/cockpit/connectors/${connectorId}`;
+setupConnectorOauth();
 
 describe("GET /v1/oauth/callback", () => {
   test("happy path persists the credential and deletes the state row", async () => {
@@ -575,42 +430,5 @@ describe("GET /v1/oauth/callback", () => {
     const body = await res.text();
     expect(body).toContain("Link expired");
     expect(body).not.toContain("auth-result-link");
-  });
-});
-
-describe("POST /v1/connectors/{id}/oauth/start records where the flow began", () => {
-  async function originOf(state: string): Promise<string | null | undefined> {
-    return (await getStateRow(state))?.origin;
-  }
-
-  test("an API key is a terminal flow", async () => {
-    const res = await fetch(`${server.baseUrl}/v1/connectors/${connectorId}/oauth/start`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${server.apiKey}` },
-    });
-    expect(res.status).toBe(200);
-    const { state } = (await res.json()) as { state: string };
-    expect(await originOf(state)).toBe("cli");
-  });
-
-  test("the Cockpit's own request under a live session is a Cockpit flow", async () => {
-    const { headers } = await cockpitSession();
-    const res = await fetch(`${server.baseUrl}/v1/connectors/${connectorId}/oauth/start`, {
-      method: "POST",
-      headers,
-    });
-    expect(res.status).toBe(200);
-    const { state } = (await res.json()) as { state: string };
-    expect(await originOf(state)).toBe("cockpit");
-  });
-
-  test("claiming to be the Cockpit with an API key is still a terminal flow", async () => {
-    const res = await fetch(`${server.baseUrl}/v1/connectors/${connectorId}/oauth/start`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${server.apiKey}`, "x-subkit-client": "cockpit" },
-    });
-    expect(res.status).toBe(200);
-    const { state } = (await res.json()) as { state: string };
-    expect(await originOf(state)).toBe("cli");
   });
 });

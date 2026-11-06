@@ -1,10 +1,10 @@
 import { recordConnectorInvoked } from "../../audit/recorders/index.ts";
 import type { KnownAuditActorType } from "../../audit/types.ts";
-import { truncateForLlm } from "../../conversations/tools/truncate.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordConnectorCall } from "../../observability/instrumentation.ts";
+import { truncateForLlm } from "../../tools/truncate.ts";
 import { query as graphqlQuery } from "../drivers/graphql.ts";
 import { executeConnectorHttpRequest } from "../drivers/http.ts";
 import { extractCreatedResourceId } from "../egress.ts";

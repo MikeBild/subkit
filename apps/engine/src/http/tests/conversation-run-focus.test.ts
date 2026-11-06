@@ -3,12 +3,12 @@ import { createHash } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { createApiKeyProvider } from "../../auth/providers/api-key.ts";
 import { loadDraft } from "../../conversations/draft.ts";
+import { renderAuthoringContextBlock } from "../../conversations/loop/authoring-context-block.ts";
 import type { ToolContext } from "../../conversations/tools/index.ts";
 import { inspectExecutionTool } from "../../conversations/tools/inspect-execution.ts";
 import type { DraftDocument } from "../../conversations/types.ts";
 import { apiKeys, executionSteps, executions, roles, users } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
-import { renderAuthoringContextBlock } from "../../llm/core/authoring-context-block.ts";
 import { seedWorkflow } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 

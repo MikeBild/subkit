@@ -4,9 +4,9 @@ import {
   findExecutionSummary,
   listExecutionStepsForDiagnosis,
 } from "../../execution/visible-reads.ts";
+import { truncateForLlm } from "../../tools/truncate.ts";
 import { buildScopeAtStep } from "../../workflows/scope-shape.ts";
 import type { LatestDiagnosisSummary } from "../types.ts";
-import { truncateForLlm } from "./truncate.ts";
 
 interface ExecutionSummary {
   execution_id: string;

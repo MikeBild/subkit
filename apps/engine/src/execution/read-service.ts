@@ -136,6 +136,25 @@ export async function visibleExecutionExists(
   return rows[0] !== undefined;
 }
 
+export async function findVisibleExecutionWorkflowId(
+  db: Executor,
+  principal: ResolvedPrincipal,
+  execution_id: string,
+): Promise<string | null> {
+  const rows = await db
+    .select({ workflow_id: executions.workflow_id })
+    .from(executions)
+    .where(
+      and(
+        eq(executions.tenant_id, principal.tenant_id),
+        eq(executions.id, execution_id),
+        executionVisibilityFilter(principal),
+      ),
+    )
+    .limit(1);
+  return rows[0]?.workflow_id ?? null;
+}
+
 export async function findVisibleExecutionRow(
   db: Executor,
   principal: ResolvedPrincipal,

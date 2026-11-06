@@ -1,6 +1,6 @@
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
-import { loadVisibleCatalog, visibleCatalogCoverage } from "../../llm/core/tenant-summary.ts";
+import { loadVisibleCatalog, visibleCatalogCoverage } from "../../llm/runtime/tenant-summary.ts";
 import type { EnumerationCoverage } from "../intent-detector.ts";
 import { resolveNamedWorkflowSlug } from "../tools/authoring-palette.ts";
 

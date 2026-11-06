@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const SRC = join(import.meta.dir, "..", "core", "context-assembler.ts");
-const FORMATTERS = join(import.meta.dir, "..", "core", "context-assembler", "formatters.ts");
+const SRC = join(import.meta.dir, "..", "runtime", "context-assembler.ts");
+const FORMATTERS = join(import.meta.dir, "..", "runtime", "context-assembler", "formatters.ts");
 
 describe("context-assembler · skill index rendering", () => {
   const body = readFileSync(SRC, "utf-8");

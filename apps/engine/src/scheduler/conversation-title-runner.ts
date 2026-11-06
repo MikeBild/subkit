@@ -16,8 +16,6 @@ interface ConversationTitleSweepDependencies {
   refreshTitle?: typeof refreshConversationTitle;
 }
 
-export { isStillOpeningLine } from "../conversations/title.ts";
-
 interface ConversationTitleSweepReport {
   done: boolean;
   scanned: number;

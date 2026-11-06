@@ -1,11 +1,14 @@
-import {
-  decideToolMode,
-  type PermissionMode,
-  type ToolModeRule,
-  type ToolPolicies,
-  type ToolPolicyMode,
-} from "../conversations/tool-policies.ts";
-import type { ConfirmEnvelope, ConfirmReason, ToolCategory, ToolSurface } from "./types.ts";
+import { decideToolMode } from "../conversations/tool-policies.ts";
+import type {
+  ConfirmEnvelope,
+  ConfirmReason,
+  PermissionMode,
+  ToolCategory,
+  ToolModeRule,
+  ToolPolicies,
+  ToolPolicyMode,
+  ToolSurface,
+} from "./types.ts";
 
 export type PolicySkipReason =
   | "mode_not_confirm_before_execution"

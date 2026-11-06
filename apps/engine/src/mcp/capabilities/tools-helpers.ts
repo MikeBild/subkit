@@ -8,7 +8,7 @@ import {
 } from "../../conversations/tools/workflow-input-normalize.ts";
 import type { Db } from "../../db/client.ts";
 import { executionSteps, workflows } from "../../db/schema/index.ts";
-import { supportsToolSchema } from "../../llm/core/tool-schema-compatibility.ts";
+import { supportsToolSchema } from "../../llm/runtime/tool-schema-compatibility.ts";
 import { logger } from "../../logging/logger.ts";
 import { listWorkflowToolsForTenant } from "../../workflows/catalog.ts";
 import { resolveWorkflowInputContract } from "../../workflows/input-schema-synth.ts";

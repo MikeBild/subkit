@@ -1,8 +1,8 @@
 import type { z } from "@hono/zod-openapi";
 import { type Tool, tool } from "ai";
 import type { Db } from "../../../db/client.ts";
+import type { PermissionMode, ToolPolicies } from "../../../tools/types.ts";
 import { pinAttachmentFileId } from "../../attachments.ts";
-import type { PermissionMode, ToolPolicies } from "../../tool-policies.ts";
 import type { TurnEvent } from "../../types.ts";
 import { decodeAskUserPromptEscapes } from "../ask-user/decode-prompt-escapes.ts";
 import { compileDescription } from "../describe.ts";
@@ -29,7 +29,6 @@ export function wrapOne(
   db: Db,
   toolPolicies: ToolPolicies,
   permissionMode: PermissionMode | null,
-  _loadedSkills: ReadonlyArray<string>,
 ): Tool<Record<string, unknown>, WrappedToolOutput> {
   const inputSchema = inner.inputSchema as unknown as z.ZodType<Record<string, unknown>>;
   return tool<Record<string, unknown>, WrappedToolOutput, Record<string, unknown>>({

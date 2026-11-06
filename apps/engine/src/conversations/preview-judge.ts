@@ -2,8 +2,9 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { Executor } from "../db/client.ts";
 import { checkJsonSchemaContract } from "../execution/json-schema-contract.ts";
-import { invoke } from "../llm/core/invoke.ts";
+import { invoke } from "../llm/runtime/invoke.ts";
 import { logger } from "../logging/logger.ts";
+import { truncateForLlm, truncateStepPreviewForLlm } from "../tools/truncate.ts";
 import {
   detectNamedOutputFormat,
   findFilterViolations,
@@ -11,7 +12,6 @@ import {
   outputMatchesFormat,
 } from "./output-format.ts";
 import { canonicalJson } from "./text-line-diff.ts";
-import { truncateForLlm, truncateStepPreviewForLlm } from "./tools/truncate.ts";
 
 export const JUDGE_BREAKER_MAX_BLOCKS = 2;
 

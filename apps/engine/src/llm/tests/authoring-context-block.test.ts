@@ -7,8 +7,8 @@ import {
   withWorkflowExecution,
   withWorkflowPersisted,
 } from "../../conversations/authoring-state/index.ts";
+import { renderAuthoringContextBlock } from "../../conversations/loop/authoring-context-block.ts";
 import type { DraftDocument } from "../../conversations/types.ts";
-import { renderAuthoringContextBlock } from "../core/authoring-context-block.ts";
 
 function draft(overrides: Partial<DraftDocument> = {}): DraftDocument {
   return {

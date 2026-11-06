@@ -3,7 +3,7 @@ import {
   formatConnectorRecipes,
   formatOperatorQuirks,
   selectOperatorQuirkCategories,
-} from "../llm/core/context-assembler.ts";
+} from "../llm/runtime/context-assembler.ts";
 import type { AuthoringPromptHint } from "../llm/types.ts";
 
 function hint(stage: AuthoringPromptHint["stage"]): AuthoringPromptHint {

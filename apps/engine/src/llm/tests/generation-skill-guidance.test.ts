@@ -2,7 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { skills } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
-import { assembleEnhancedPrompt } from "../core/context-assembler.ts";
+import { assembleEnhancedPrompt } from "../runtime/context-assembler.ts";
 
 let fixture: TestDb;
 let tenantId: string;

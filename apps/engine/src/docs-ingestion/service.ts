@@ -15,7 +15,7 @@ import {
 import type { ConnectorTemplate } from "../connectors/templates.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { CatalogVocabularyBusyError, lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
-import { type Executor, getDb } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { hostedQuotaError } from "../db/hosted-quota-errors.ts";
 import { connectorDocumentChunks, connectorDocuments, connectors } from "../db/schema/index.ts";
 import { isTransientDbError } from "../db/transient.ts";
@@ -110,8 +110,7 @@ function parseInlineGraphQlChunks(content: string): RawChunk[] {
   return chunkGraphQLSchema(schema);
 }
 
-export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<IngestResult> {
-  const db = exec ?? getDb();
+export async function ingestDocs(p: IngestParams, db: Executor): Promise<IngestResult> {
   return withTenantWork(p.tenant_id, async () => {
     const tenant = await getTenant(p.tenant_id, db);
     if (tenant?.status !== "active") throw new SelfServiceIdentityError("tenant_unavailable");
@@ -502,7 +501,7 @@ export async function ingestTemplateDocsForConnector(
     actor?: Actor | null;
     fetchImpl?: typeof fetch;
   },
-  exec?: Executor,
+  db: Executor,
 ): Promise<IngestResult | null> {
   const template = p.template;
   if (template.inline_schema) {
@@ -518,7 +517,7 @@ export async function ingestTemplateDocsForConnector(
       },
     };
     if (p.fetchImpl) input.fetchImpl = p.fetchImpl;
-    return await ingestDocs(input, exec);
+    return await ingestDocs(input, db);
   }
   if (!template.ingestion_url) return null;
   if (
@@ -544,7 +543,7 @@ export async function ingestTemplateDocsForConnector(
     },
   };
   if (p.fetchImpl) input.fetchImpl = p.fetchImpl;
-  return await ingestDocs(input, exec);
+  return await ingestDocs(input, db);
 }
 
 interface ListDocsParams {
@@ -552,8 +551,7 @@ interface ListDocsParams {
   connector_id: string;
 }
 
-export async function listDocs(p: ListDocsParams, exec?: Executor) {
-  const db = exec ?? getDb();
+export async function listDocs(p: ListDocsParams, db: Executor) {
   const rows = await db
     .select()
     .from(connectorDocuments)
@@ -585,8 +583,7 @@ interface DeleteDocParams {
   actor?: Actor | null;
 }
 
-export async function deleteDoc(p: DeleteDocParams, exec?: Executor): Promise<boolean> {
-  const db = exec ?? getDb();
+export async function deleteDoc(p: DeleteDocParams, db: Executor): Promise<boolean> {
   return await db.transaction(async (tx) => {
     const existing = await tx
       .select()
@@ -652,8 +649,7 @@ export interface SearchHit {
   fetched_at: string | null;
 }
 
-export async function searchDocs(p: SearchParams, exec?: Executor): Promise<SearchHit[]> {
-  const db = exec ?? getDb();
+export async function searchDocs(p: SearchParams, db: Executor): Promise<SearchHit[]> {
   const limit = Math.min(Math.max(1, p.limit ?? 10), 50);
   const candidateLimit = Math.min(Math.max(limit * 5, limit), 250);
 

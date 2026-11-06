@@ -55,6 +55,18 @@ const ImportResponseSchema = z
 
 type ImportRequest = z.infer<typeof ImportRequestSchema>;
 
+async function inlineOpenApiParseFailure(body: ImportRequest): Promise<string | null> {
+  const text = body.content.trim();
+  if (body.source !== "openapi" || /^https?:\/\//i.test(text)) return null;
+  const parser = await import("../../../llm/flows/document-parsers/openapi.ts");
+  try {
+    parser.parseOpenApiWithMetadata(text);
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
 const importConnectorSpecOperation = defineOperation<
   ImportRequest,
   z.infer<typeof ImportResponseSchema>
@@ -82,6 +94,14 @@ const importConnectorSpecOperation = defineOperation<
       if (err instanceof mod.SpecFetchError) {
         return reject.badRequest(`spec fetch failed: ${err.message}`);
       }
+      const unparseable = await inlineOpenApiParseFailure(body);
+      if (unparseable !== null) {
+        return reject.unprocessable(
+          `OpenAPI document could not be parsed: ${unparseable}`,
+          undefined,
+          "spec_unparseable",
+        );
+      }
       throw err;
     }
   },
@@ -93,7 +113,10 @@ const importConnectorSpecOperation = defineOperation<
       "URL-fetched OpenAPI and Google Discovery documents are streamed with a 50 MiB limit. Specification server and authentication metadata seed the draft.",
     body: ImportRequestSchema,
     response: ImportResponseSchema,
-    errors: { 400: "Bad request", 502: "Upstream spec fetch failed" },
+    errors: {
+      400: "Bad request, or the specification URL could not be fetched",
+      422: "The inline OpenAPI document could not be parsed",
+    },
     toInput: ({ json }) => json as ImportRequest,
     toBody: (result) => result,
   },

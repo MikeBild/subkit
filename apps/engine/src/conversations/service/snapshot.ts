@@ -1,7 +1,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
-import { getConversationBudgetReport } from "../../llm/core/conversation-budget-report.ts";
+import { getConversationBudgetReport } from "../../llm/runtime/conversation-budget-report.ts";
 import { computeGroundingStatus } from "../grounding-staleness.ts";
 import type { PlaybookView } from "../playbook-contract.ts";
 import { getConversation } from "./get.ts";

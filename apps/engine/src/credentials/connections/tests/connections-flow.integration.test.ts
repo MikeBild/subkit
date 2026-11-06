@@ -1,6 +1,5 @@
-import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
-import { setConfigKey } from "../../../config/loader.ts";
 import { loadConnectorSystem } from "../../../connectors/system.ts";
 import {
   auditLog,
@@ -9,74 +8,27 @@ import {
   outboundConnections,
   runtimeSecretVersions,
 } from "../../../db/schema/index.ts";
-import { createHttpTestServer, type HttpTestServer } from "../../../http/tests/setup.ts";
-import { logger } from "../../../logging/logger.ts";
 import { listSecretVersions } from "../../../runtime-config/service.ts";
 import { createWorkflow } from "../../../workflows/service.ts";
 import { getCredentialForConnector } from "../../service.ts";
 import { readAccessToken, refreshDueConnections, secretNames } from "../service.ts";
 import type { ConnectionView } from "../types.ts";
-import { type FakeOAuthServer, startFakeOAuthServer } from "./fake-oauth-server.ts";
+import {
+  accessTokenOf,
+  api,
+  approveInBrowser,
+  authorityRevision,
+  fake,
+  listConnections,
+  server,
+  useConnectionsServer,
+} from "./connections-flow-fixtures.ts";
 
-let server: HttpTestServer;
-let fake: FakeOAuthServer;
-
-beforeAll(async () => {
-  server = await createHttpTestServer("connections");
-  fake = await startFakeOAuthServer({ name: "Probe Service" });
-  await setConfigKey("server.public_base_url", server.baseUrl, { force: true });
-});
-
-afterAll(async () => {
-  await fake.close();
-  await server.cleanup();
-});
-
-function api(path: string, init: RequestInit = {}): Promise<Response> {
-  const headers = new Headers(init.headers);
-  headers.set("authorization", `Bearer ${server.apiKey}`);
-  if (init.body) headers.set("content-type", "application/json");
-  return fetch(`${server.baseUrl}${path}`, { ...init, headers });
-}
-
-async function approveInBrowser(authorizationUrl: string): Promise<Response> {
-  const consent = await fetch(authorizationUrl, { redirect: "manual" });
-  expect(consent.status).toBe(302);
-  const callback = consent.headers.get("location") ?? "";
-  expect(callback.startsWith(`${server.baseUrl}/v1/connections/callback?`)).toBe(true);
-  const landed = await fetch(callback, { redirect: "manual" });
-  expect([200, 303]).toContain(landed.status);
-  return landed;
-}
-
-function accessTokenOf(resolved: Awaited<ReturnType<typeof getCredentialForConnector>>): string {
-  const value = resolved?.value;
-  return value && "access_token" in value ? value.access_token : "";
-}
-
-async function listConnections(): Promise<ConnectionView[]> {
-  const res = await api("/v1/connections");
-  expect(res.status).toBe(200);
-  return ((await res.json()) as { items: ConnectionView[] }).items;
-}
+useConnectionsServer();
 
 describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", () => {
   let connectionId = "";
   let connectorId = "";
-
-  async function authorityRevision(): Promise<number> {
-    const [row] = await server.db
-      .select({ revision: outboundConnections.authority_revision })
-      .from(outboundConnections)
-      .where(
-        and(
-          eq(outboundConnections.tenant_id, server.tenantId),
-          eq(outboundConnections.id, connectionId),
-        ),
-      );
-    if (!row) throw new Error("missing connection fixture");
-    return row.revision;
-  }
 
   test("discover says what is there, in words the page can show", async () => {
     const res = await api("/v1/connections/discover", {
@@ -286,7 +238,7 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
   });
 
   test("the sweep refreshes a grant before it expires and retires the old version", async () => {
-    const beforeAuthority = await authorityRevision();
+    const beforeAuthority = await authorityRevision(connectionId);
     const before = fake.accessTokens.length;
     await server.db
       .update(outboundConnections)
@@ -341,7 +293,7 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
     const [item] = await listConnections();
     expect(item?.state).toBe("valid");
     expect(item?.last_refreshed_at).not.toBeNull();
-    expect(await authorityRevision()).toBe(beforeAuthority);
+    expect(await authorityRevision(connectionId)).toBe(beforeAuthority);
     expect((await system.getAuthorityMetadata()).binding).toEqual(metadata.binding);
   });
 
@@ -391,7 +343,7 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
   });
 
   test("Erneuern repeats the flow for the same row and clears the failure", async () => {
-    const beforeAuthority = await authorityRevision();
+    const beforeAuthority = await authorityRevision(connectionId);
     const res = await api(`/v1/connections/${connectionId}/renew`, { method: "POST" });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { authorization_url: string; name: string };
@@ -418,11 +370,11 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
       server.db,
     );
     expect(accessTokenOf(resolved)).toBe(fake.accessTokens.at(-1) ?? "");
-    expect(await authorityRevision()).toBe(beforeAuthority + 1);
+    expect(await authorityRevision(connectionId)).toBe(beforeAuthority + 1);
   });
 
   test("a refresh response with broader permissions changes the authority binding", async () => {
-    const beforeAuthority = await authorityRevision();
+    const beforeAuthority = await authorityRevision(connectionId);
     await server.db
       .update(outboundConnections)
       .set({
@@ -436,7 +388,7 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
         ),
       );
     expect(await refreshDueConnections(server.db)).toEqual({ refreshed: 1, failed: 0 });
-    expect(await authorityRevision()).toBe(beforeAuthority + 1);
+    expect(await authorityRevision(connectionId)).toBe(beforeAuthority + 1);
     const [item] = await listConnections();
     expect(item?.granted_scopes).toEqual(["read", "write"]);
   });
@@ -461,7 +413,7 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
     const refreshing = refreshDueConnections(server.db);
     try {
       await waiting;
-      const beforeAuthority = await authorityRevision();
+      const beforeAuthority = await authorityRevision(connectionId);
       const res = await api(`/v1/connections/${connectionId}/renew`, { method: "POST" });
       expect(res.status).toBe(200);
       await approveInBrowser(
@@ -471,7 +423,7 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
       const secretSnapshot = await listSecretVersions(server.db);
       release();
       expect(await refreshing).toEqual({ refreshed: 0, failed: 1 });
-      expect(await authorityRevision()).toBe(beforeAuthority + 1);
+      expect(await authorityRevision(connectionId)).toBe(beforeAuthority + 1);
       expect(await listSecretVersions(server.db)).toEqual(secretSnapshot);
       expect(await readAccessToken(server.db, server.tenantId, connectionId)).toMatchObject({
         access_token: renewedToken,
@@ -493,7 +445,7 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
       .update(outboundConnections)
       .set({ granted_scopes: ["read"], expires_at: new Date(Date.now() + 60_000) }) // allow-wall-clock: inside refresh buffer
       .where(eq(outboundConnections.id, connectionId));
-    const beforeAuthority = await authorityRevision();
+    const beforeAuthority = await authorityRevision(connectionId);
     const secretSnapshot = await listSecretVersions(server.db);
     await server.db.execute(
       sql.raw(`CREATE FUNCTION subkit.reject_connection_refresh_audit() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -502,7 +454,7 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
     );
     try {
       expect(await refreshDueConnections(server.db)).toEqual({ refreshed: 0, failed: 1 });
-      expect(await authorityRevision()).toBe(beforeAuthority);
+      expect(await authorityRevision(connectionId)).toBe(beforeAuthority);
       expect(await listSecretVersions(server.db)).toEqual(secretSnapshot);
       expect((await listConnections())[0]?.granted_scopes).toEqual(["read"]);
     } finally {
@@ -634,149 +586,5 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
     const summary = await api(`/v1/connectors/${connectorId}/credential`);
     expect(await summary.json()).toMatchObject({ mode: "oauth2", connection: null });
     expect(await api(`/v1/connections/${connectionId}`).then((r) => r.status)).toBe(404);
-  });
-});
-
-describe("a server that issues refresh tokens only for offline_access", () => {
-  let oidc: FakeOAuthServer;
-
-  beforeAll(async () => {
-    oidc = await startFakeOAuthServer({
-      name: "OIDC Probe",
-      scopes: ["openid", "read", "offline_access"],
-      refreshRequiresOfflineAccess: true,
-    });
-  });
-
-  afterAll(async () => {
-    await oidc.close();
-  });
-
-  async function view(name: string): Promise<ConnectionView> {
-    const item = (await listConnections()).find((c) => c.name === name);
-    if (!item) throw new Error(`connection ${name} not listed`);
-    return item;
-  }
-
-  test("discover offers the permissions, not the protocol scope", async () => {
-    const res = await api("/v1/connections/discover", {
-      method: "POST",
-      body: JSON.stringify({ base_url: oidc.baseUrl }),
-    });
-    expect(((await res.json()) as { scopes_supported: string[] }).scopes_supported).toEqual([
-      "openid",
-      "read",
-    ]);
-  });
-
-  test("start asks for offline_access itself, and the grant renews itself", async () => {
-    oidc.clients.clear();
-    const res = await api("/v1/connections/start", {
-      method: "POST",
-      body: JSON.stringify({ name: "oidc", base_url: oidc.baseUrl, scopes: ["read"] }),
-    });
-    expect(res.status).toBe(200);
-    const url = new URL(((await res.json()) as { authorization_url: string }).authorization_url);
-    expect(url.searchParams.get("scope")).toBe("read offline_access");
-    expect([...oidc.clients.values()].map((c) => c.scope)).toEqual(["read offline_access"]);
-    await approveInBrowser(url.toString());
-
-    const item = await view("oidc");
-    expect(item).toMatchObject({
-      state: "valid",
-      auto_renew: true,
-      scopes: ["read"],
-      granted_scopes: ["read"],
-    });
-  });
-
-  test("Erneuern asks for offline_access again, even for a row that never had it", async () => {
-    const item = await view("oidc");
-    await server.db
-      .update(outboundConnections)
-      .set({ refresh_token_version: null })
-      .where(eq(outboundConnections.id, item.id));
-    expect((await view("oidc")).auto_renew).toBe(false);
-
-    oidc.clients.clear();
-    const res = await api(`/v1/connections/${item.id}/renew`, { method: "POST" });
-    expect(res.status).toBe(200);
-    const url = new URL(((await res.json()) as { authorization_url: string }).authorization_url);
-    expect(url.searchParams.get("scope")).toBe("read offline_access");
-    expect([...oidc.clients.values()].map((c) => c.scope)).toEqual(["read offline_access"]);
-    await approveInBrowser(url.toString());
-    expect(await view("oidc")).toMatchObject({ state: "valid", auto_renew: true });
-  });
-
-  test("a server that does not advertise offline_access is not asked for it", async () => {
-    fake.clients.clear();
-    const res = await api("/v1/connections/start", {
-      method: "POST",
-      body: JSON.stringify({
-        name: "plain",
-        base_url: fake.baseUrl,
-        scopes: ["read", "offline_access"],
-      }),
-    });
-    expect(res.status).toBe(200);
-    const url = new URL(((await res.json()) as { authorization_url: string }).authorization_url);
-    expect(url.searchParams.get("scope")).toBe("read");
-    expect([...fake.clients.values()].map((c) => c.scope)).toEqual(["read"]);
-    await approveInBrowser(url.toString());
-    expect(await view("plain")).toMatchObject({ scopes: ["read"], auto_renew: true });
-  });
-
-  test("a grant without a refresh token says so: a warning, auto_renew false, the old one retired", async () => {
-    const before = await view("oidc");
-    const [row] = await server.db
-      .select({ refresh: outboundConnections.refresh_token_version })
-      .from(outboundConnections)
-      .where(eq(outboundConnections.id, before.id));
-    expect(row?.refresh).not.toBeNull();
-
-    const warnings: Record<string, unknown>[] = [];
-    const spy = spyOn(logger, "warn").mockImplementation(((entry: unknown) => {
-      if (entry && typeof entry === "object") warnings.push(entry as Record<string, unknown>);
-    }) as typeof logger.warn);
-    oidc.issueRefreshToken = false;
-    try {
-      const res = await api(`/v1/connections/${before.id}/renew`, { method: "POST" });
-      const url = ((await res.json()) as { authorization_url: string }).authorization_url;
-      await approveInBrowser(url);
-    } finally {
-      oidc.issueRefreshToken = true;
-      spy.mockRestore();
-    }
-
-    const warning = warnings.find((w) => w.action === "connection.no_refresh_token");
-    expect(warning).toMatchObject({ module: "connections", name: "oidc" });
-    expect(warning?.expires_at).toEqual(expect.any(String));
-    expect(JSON.stringify(warning)).not.toContain(oidc.accessTokens.at(-1) ?? "never");
-
-    const after = await view("oidc");
-    expect(after).toMatchObject({ state: "expiring", auto_renew: false, state_reason: null });
-    const names = secretNames(server.tenantId, "oidc");
-    const registry = await listSecretVersions(server.db);
-    const previous = registry
-      .find((s) => s.name === names.refresh)
-      ?.versions.find((v) => v.version === row?.refresh);
-    expect(previous?.revoked_at ?? null).not.toBeNull();
-  });
-
-  test("disconnect attributes the authenticated HTTP principal", async () => {
-    const item = await view("plain");
-    const response = await api(`/v1/connections/${item.id}`, { method: "DELETE" });
-    expect(response.status).toBe(204);
-    const [audit] = await server.db
-      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
-      .from(auditLog)
-      .where(
-        and(
-          eq(auditLog.tenant_id, server.tenantId),
-          eq(auditLog.action, "connection.disconnected"),
-          eq(auditLog.resource_id, item.id),
-        ),
-      );
-    expect(audit).toEqual({ actor_type: "user", actor_id: server.userId });
   });
 });

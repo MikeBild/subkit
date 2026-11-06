@@ -1,5 +1,5 @@
-import type { SubkitProviderErrorKind } from "./core/base-types.ts";
 import { LlmGenerationAborted, LlmProviderError } from "./errors.ts";
+import type { SubkitProviderErrorKind } from "./runtime/base-types.ts";
 
 const QUOTA_PATTERNS = [
   "usage limit",

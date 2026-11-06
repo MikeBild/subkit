@@ -1,23 +1,23 @@
 import { type ModelMessage, streamText, type ToolSet } from "ai";
 import { actorFields } from "../../llm/accounting/index.ts";
-import { isReasoningModel } from "../../llm/core/ai-sdk-model.ts";
+import { isReasoningModel } from "../../llm/runtime/ai-sdk-model.ts";
 import {
   promptCacheSupported,
   splitPromptIntoBlocks,
   toSystemMessages,
-} from "../../llm/core/cache-blocks.ts";
+} from "../../llm/runtime/cache-blocks.ts";
 import {
   anthropicWebSearchApplies,
   buildAnthropicWebSearchTool,
   nativeWebSearchSetting,
-} from "../../llm/core/model-init.ts";
-import { repairToolCall as repairToolCallHandler } from "../../llm/core/repair-tool-call.ts";
-import { PROVIDER_RESPONSE_TIMEOUT_MS } from "../../llm/core/response-timeout.ts";
-import { supportsExtendedThinking } from "../../llm/core/step-router.ts";
+} from "../../llm/runtime/model-init.ts";
+import { repairToolCall as repairToolCallHandler } from "../../llm/runtime/repair-tool-call.ts";
+import { PROVIDER_RESPONSE_TIMEOUT_MS } from "../../llm/runtime/response-timeout.ts";
+import { supportsExtendedThinking } from "../../llm/runtime/step-router.ts";
 import {
   readReasoningEffortSetting,
   resolveTurnReasoning,
-} from "../../llm/core/thinking-policy.ts";
+} from "../../llm/runtime/thinking-policy.ts";
 import { logger } from "../../logging/logger.ts";
 import {
   recordConversationRepair,

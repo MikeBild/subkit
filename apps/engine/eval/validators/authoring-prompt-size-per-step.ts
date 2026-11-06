@@ -13,7 +13,7 @@ import { TOOL_OUTPUT_VERBATIM_TURNS } from "../../src/conversations/tool-output-
 import type { Db } from "../../src/db/client.ts";
 import { tenants } from "../../src/db/schema/index.ts";
 import { countTokens } from "../../src/llm/accounting/index.ts";
-import { assembleEnhancedPrompt } from "../../src/llm/core/context-assembler.ts";
+import { assembleEnhancedPrompt } from "../../src/llm/runtime/context-assembler.ts";
 import {
   applySkillSeeds,
   loadEmbeddedSkillSeeds,

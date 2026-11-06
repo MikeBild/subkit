@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { PROMPT_CACHE_TTL } from "../core/cache-blocks.ts";
-import { routeTop, routeUp } from "../core/step-router.ts";
 import {
   ANTHROPIC_ONE_HOUR_CACHE_WRITE_MULTIPLIER,
   cacheWeightsFor,
@@ -17,6 +15,8 @@ import {
   vendorModelId,
   weightedTotalTokens,
 } from "../pricing.ts";
+import { PROMPT_CACHE_TTL } from "../runtime/cache-blocks.ts";
+import { routeTop, routeUp } from "../runtime/step-router.ts";
 
 const catalog = () => effectiveModelPrices({ currency: "USD", prices: [] });
 

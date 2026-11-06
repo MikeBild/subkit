@@ -5,10 +5,10 @@ import type { Db } from "../../db/client.ts";
 import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
+import { getRawResult, TRUNCATE_INTERNALS } from "../../tools/truncate.ts";
 import { getRawResultTool } from "../tools/get-raw-result.ts";
 import type { ConversationTool, ToolContext } from "../tools/index.ts";
 import { wrapOne } from "../tools/sdk-wrap/invoke.ts";
-import { getRawResult, TRUNCATE_INTERNALS } from "../tools/truncate.ts";
 import type { TurnEvent } from "../types.ts";
 import { freshSignals } from "./turn-signals.ts";
 
@@ -70,7 +70,6 @@ async function invokeWrapped(payload: unknown): Promise<Record<string, unknown>>
     ctx.testDb.db as unknown as Db,
     {},
     null,
-    [],
   );
   toolCallSeq += 1;
   // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic

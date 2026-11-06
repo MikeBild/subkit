@@ -1,5 +1,5 @@
-import { splitPromptIntoBlocks } from "../../src/llm/core/cache-blocks.ts";
-import { formatOperatorQuirks } from "../../src/llm/core/context-assembler.ts";
+import { splitPromptIntoBlocks } from "../../src/llm/runtime/cache-blocks.ts";
+import { formatOperatorQuirks } from "../../src/llm/runtime/context-assembler.ts";
 import type { EnhancedPrompt } from "../../src/llm/types.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 

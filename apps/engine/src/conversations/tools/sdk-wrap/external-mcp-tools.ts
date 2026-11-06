@@ -26,13 +26,13 @@ import {
   isConfirmedRequest,
   withConfirmMarkerProperties,
 } from "../../../tools/policy.ts";
+import { truncateForLlm } from "../../../tools/truncate.ts";
 import { runConfirmGate } from "../../confirmation.ts";
 import { createElicitation } from "../../elicitations.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persistence/index.ts";
 import type { TurnEvent } from "../../types.ts";
 import { withoutApprovalHandle } from "../ask-user/commit-intent.ts";
 import type { ToolContext } from "../index.ts";
-import { truncateForLlm } from "../truncate.ts";
 import { readOnlyPaletteSpecs } from "./external-mcp-readonly.ts";
 import { jsonSafeModelOutput } from "./json-safe-output.ts";
 import type { TurnSignals, WrappedToolOutput } from "./state.ts";

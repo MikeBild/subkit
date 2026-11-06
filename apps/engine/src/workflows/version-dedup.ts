@@ -53,7 +53,12 @@ export async function isUnchangedFromCurrentVersion(p: {
     await p.tx
       .update(workflowVersions)
       .set({ scope_index: p.scope_index })
-      .where(eq(workflowVersions.id, p.current_version_id));
+      .where(
+        and(
+          eq(workflowVersions.tenant_id, p.tenant_id),
+          eq(workflowVersions.id, p.current_version_id),
+        ),
+      );
   }
   logger.info({
     module: "workflow",

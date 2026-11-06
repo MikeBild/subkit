@@ -2,7 +2,7 @@ import type { KnownAuditActorType } from "../../audit/types.ts";
 import type { Executor } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
-import type { SubkitLlmTelemetryMetadata, SubkitLlmUsage } from "../core/base-types.ts";
+import type { SubkitLlmTelemetryMetadata, SubkitLlmUsage } from "../runtime/base-types.ts";
 import { recordUsage } from "./budget.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

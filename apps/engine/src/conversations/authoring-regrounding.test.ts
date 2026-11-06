@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { DiscoveredEndpoint, DiscoveryResult } from "../connectors/discovery/types.ts";
-import type { GenerationNeed } from "../llm/core/generation-abort.ts";
+import type { GenerationNeed } from "../llm/runtime/generation-abort.ts";
 import { selectDiscoveredEndpoints } from "./authoring-endpoint-selection.ts";
 import {
   buildUserPrompt,

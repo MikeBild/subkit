@@ -1,5 +1,5 @@
 import type { ModelMessage } from "ai";
-import { rememberRaw } from "./tools/truncate.ts";
+import { rememberRaw } from "../tools/truncate.ts";
 
 export const TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS = 4000;
 

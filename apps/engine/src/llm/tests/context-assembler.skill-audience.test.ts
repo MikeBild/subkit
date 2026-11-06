@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createSkill } from "../../skills/service.ts";
-import { assembleEnhancedPrompt, promptSkillAudience } from "../core/context-assembler.ts";
+import { assembleEnhancedPrompt, promptSkillAudience } from "../runtime/context-assembler.ts";
 import type { AuthoringPromptHint } from "../types.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "./setup.ts";
 

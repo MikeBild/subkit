@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { _resetConfigForTests, loadConfig } from "../../config/loader.ts";
 import { executions, llmUsage, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import type { SubkitLlmTelemetryMetadata, SubkitLlmUsage } from "../core/base-types.ts";
+import type { SubkitLlmTelemetryMetadata, SubkitLlmUsage } from "../runtime/base-types.ts";
 import { type AccountParams, account, usageAttribution } from "./accountant.ts";
 
 let ctx: TestDb;

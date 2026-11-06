@@ -1,10 +1,10 @@
 import type { streamText, ToolSet } from "ai";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
-import type { toSystemMessages } from "../../llm/core/cache-blocks.ts";
-import type { assembleEnhancedPrompt } from "../../llm/core/context-assembler.ts";
-import type { resolveModelRoute } from "../../llm/core/invoke.ts";
-import type { StepRouterSignals } from "../../llm/core/step-router.ts";
+import type { toSystemMessages } from "../../llm/runtime/cache-blocks.ts";
+import type { assembleEnhancedPrompt } from "../../llm/runtime/context-assembler.ts";
+import type { resolveModelRoute } from "../../llm/runtime/invoke.ts";
+import type { StepRouterSignals } from "../../llm/runtime/step-router.ts";
 import type { ElicitationBridge } from "../elicitation-bridge.ts";
 import type { detectUserIntent } from "../intent-detector.ts";
 import type { ConversationReference, resolveReferences } from "../references.ts";

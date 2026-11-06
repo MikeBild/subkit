@@ -17,7 +17,7 @@ import { embeddingsAvailable } from "../embeddings/local-provider.ts";
 import { withTenantWork } from "../execution/index.ts";
 import type { PersistInlineUploadResult } from "../files/persist-inline-upload.ts";
 import { assertTenantActive, lockActiveTenant } from "../identity/index.ts";
-import { invoke } from "../llm/core/invoke.ts";
+import { invoke } from "../llm/runtime/invoke.ts";
 import { errorFields, log, logger } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";

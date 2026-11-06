@@ -23,7 +23,9 @@ let env: E2EEnv;
 beforeAll(async () => {
   if (!SHOULD_RUN) return;
   env = await boot("tier1-real");
-  const { detectConfiguredProvider } = await import("../../apps/engine/src/llm/core/model-init.ts");
+  const { detectConfiguredProvider } = await import(
+    "../../apps/engine/src/llm/runtime/model-init.ts"
+  );
   const resolved = detectConfiguredProvider();
   if (resolved === "mock" || resolved === "unconfigured") {
     throw new Error(

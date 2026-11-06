@@ -4,6 +4,7 @@ import {
   judgeFile,
   parseCoverageTable,
   parseFloorFile,
+  relatedTests,
   resolveFileFloors,
   testCandidates,
 } from "../audit/coverage-floor.ts";
@@ -161,5 +162,24 @@ describe("judgeFile", () => {
       status: "FAIL",
       message: "file missing from the coverage table; no test loads it",
     });
+  });
+});
+
+describe("relatedTests", () => {
+  test("finds topic and dash-suffixed test files of the same core", () => {
+    expect(
+      relatedTests("apps/engine/src/execution/core/run.ts", [
+        "run.ts",
+        "run.test.ts",
+        "run-entry.test.ts",
+        "run.properties.test.ts",
+        "runner.test.ts",
+        "status.test.ts",
+        "run-fixtures.ts",
+      ]),
+    ).toEqual([
+      "apps/engine/src/execution/core/run-entry.test.ts",
+      "apps/engine/src/execution/core/run.properties.test.ts",
+    ]);
   });
 });

@@ -1,21 +1,15 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import {
-  connectors,
-  executionSteps,
-  executions,
-  tenants,
-  workflows,
-} from "../../db/schema/index.ts";
+import { executionSteps, executions, tenants, workflows } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { proposeBoundaries } from "../boundary-proposal.ts";
-import type { WorkflowDef } from "../types.ts";
+import { boundaryProposalFixtures, CONNECTOR, definition } from "./boundary-proposal-fixtures.ts";
 
 let ctx: TestDb;
-let tenant_id = "";
-let workflow_id = "";
 
-const CONNECTOR = "00000000-0000-4000-8000-000000000001";
+let tenant_id = "";
+
+let workflow_id = "";
 
 beforeAll(async () => {
   ctx = await createTestDb("boundary_proposal");
@@ -30,53 +24,22 @@ beforeAll(async () => {
     .returning();
   workflow_id = wf?.id ?? "";
 });
+
 afterAll(async () => {
   await ctx.cleanup();
 });
 
-async function record(
-  rows: Array<{
-    step: string;
-    url?: string;
-    key?: string;
-    prefix?: string;
-    bytes?: number;
-    refused?: true;
-  }>,
-) {
-  await ctx.db.delete(executions).where(eq(executions.workflow_id, workflow_id));
-  const [execution] = await ctx.db
-    .insert(executions)
-    .values({
-      tenant_id,
-      workflow_id,
-      status: "succeeded",
-      request_source: "api",
-      execution_mode: "prod",
-    })
-    .returning();
-  await ctx.db.insert(executionSteps).values(
-    rows.map((row, index) => ({
-      tenant_id,
-      execution_id: execution?.id as string,
-      step_key: row.step,
-      step_index: index,
-      kind: "request" as const,
-      status: row.refused ? ("failed" as const) : ("succeeded" as const),
-      request_meta: {
-        driver: row.key || row.prefix ? "s3" : "http",
-        ...(row.url ? { url: row.url } : {}),
-        ...(row.key ? { key: row.key } : {}),
-        ...(row.prefix ? { prefix: row.prefix } : {}),
-        ...(row.bytes ? { bytes_out: row.bytes } : {}),
-        ...(row.refused ? { refused: true } : {}),
-      },
-    })),
-  );
-}
-
-const definition = (steps: unknown[]): WorkflowDef =>
-  ({ name: "Proposal", steps }) as unknown as WorkflowDef;
+const { record } = boundaryProposalFixtures({
+  get ctx() {
+    return ctx;
+  },
+  get workflow_id() {
+    return workflow_id;
+  },
+  get tenant_id() {
+    return tenant_id;
+  },
+});
 
 const read = {
   id: "read_page",
@@ -455,294 +418,4 @@ test("a folder the step's own writes contradict is corrected, one it fits is not
   });
   expect(right.proposals).toEqual([]);
   expect(right.unproposable).toEqual([{ step_id: "store", reason: "not_supported" }]);
-});
-
-test("a query inside the path is rewritten, but only when a real request proves it", async () => {
-  await record([
-    { step: "list", url: "https://api.example.test/startups?page=1&limit=10" },
-    { step: "list", url: "https://api.example.test/startups?page=2&limit=10" },
-  ]);
-  const listing = (path: string) => [
-    { id: "list", kind: "request", connector_id: CONNECTOR, method: "GET", path },
-  ];
-  const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
-    tenant_id,
-    workflow_id,
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
-    definition: definition(listing("/startups?page=${item.n}&limit=10")),
-  });
-  expect(unproposable).toEqual([]);
-  expect(proposals[0]?.path_rewrite).toEqual({
-    path: "/startups",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
-    query: { page: "${item.n}", limit: "10" },
-  });
-  expect(proposals[0]?.boundary?.variables).toEqual({ "item.n": { class: "integer" } });
-
-  const unproven = await proposeBoundaries(ctx.db, {
-    tenant_id,
-    workflow_id,
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
-    definition: definition(listing("/startups?page=${item.n}&limit=10&sort=revenue")),
-  });
-  expect(unproven.proposals).toEqual([]);
-  expect(unproven.unproposable).toEqual([{ step_id: "list", reason: "path_not_comparable" }]);
-});
-
-test("a write whose size was never measured gets no ceiling at all", async () => {
-  await record([{ step: "store", key: "v1/facts/year=2026/a.json" }]);
-  const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
-    tenant_id,
-    workflow_id,
-    definition: definition([
-      { id: "store", kind: "request", connector_id: CONNECTOR, method: "PUT", s3: { key: "x" } },
-    ]),
-  });
-  expect(proposals).toEqual([]);
-  expect(unproposable).toEqual([{ step_id: "store", reason: "body_size_unknown" }]);
-});
-
-test("a ceiling the step's own writes exceed is the same contradiction as a wrong folder", async () => {
-  await record([
-    { step: "store", key: "v1/radar/products/a.json", bytes: 337_858 },
-    { step: "store", key: "v1/radar/products/b.json", bytes: 12_000 },
-  ]);
-  const scoped = (max_bytes: number) => [
-    {
-      id: "store",
-      kind: "request",
-      connector_id: CONNECTOR,
-      method: "PUT",
-      s3: { key: "x", scope: { key_prefix: "v1/radar/", max_bytes } },
-    },
-  ];
-  const tooSmall = await proposeBoundaries(ctx.db, {
-    tenant_id,
-    workflow_id,
-    definition: definition(scoped(65_536)),
-  });
-  expect(tooSmall.proposals[0]?.s3_scope?.max_bytes).toBeGreaterThan(337_858);
-  expect(tooSmall.proposals[0]?.s3_scope?.key_prefix).toBe("v1/radar/");
-
-  const roomy = await proposeBoundaries(ctx.db, {
-    tenant_id,
-    workflow_id,
-    definition: definition(scoped(1_000_000)),
-  });
-  expect(roomy.proposals).toEqual([]);
-});
-
-test("the row that proves the contradiction is the refused one", async () => {
-  await record([{ step: "store", key: "v1/radar/products/a.json", bytes: 337_858, refused: true }]);
-  const { proposals } = await proposeBoundaries(ctx.db, {
-    tenant_id,
-    workflow_id,
-    definition: definition([
-      {
-        id: "store",
-        kind: "request",
-        connector_id: CONNECTOR,
-        method: "PUT",
-        s3: { key: "x", scope: { key_prefix: "v1/radar/", max_bytes: 65_536 } },
-      },
-    ]),
-  });
-  expect(proposals[0]?.s3_scope?.max_bytes).toBeGreaterThan(337_858);
-  expect(proposals[0]?.s3_scope?.key_prefix).toBe("v1/radar/");
-});
-
-test("a listing records the folder it read, and that is evidence", async () => {
-  await record([
-    { step: "list_raw", prefix: "opportunity-radar/raw/trustmrr/" },
-    { step: "list_raw", prefix: "opportunity-radar/raw/trustmrr/" },
-  ]);
-  const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
-    tenant_id,
-    workflow_id,
-    definition: definition([
-      {
-        id: "list_raw",
-        kind: "request",
-        connector_id: CONNECTOR,
-        method: "LIST",
-        s3: { key: "x" },
-      },
-    ]),
-  });
-  expect(unproposable).toEqual([]);
-  expect(proposals[0]?.s3_scope?.key_prefix).toBe("opportunity-radar/raw/trustmrr/");
-  expect(proposals[0]?.evidence.observations).toBe(2);
-});
-
-test("what a request sent is measured, and that is the ceiling", async () => {
-  await record([
-    { step: "send", url: "https://api.example.test/v1/content", bytes: 40_000 },
-    { step: "send", url: "https://api.example.test/v1/content", bytes: 9_000 },
-  ]);
-  const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
-    tenant_id,
-    workflow_id,
-    definition: definition([
-      {
-        id: "send",
-        kind: "request",
-        connector_id: CONNECTOR,
-        method: "POST",
-        path: "/v1/content",
-        body: { title: "x" },
-      },
-    ]),
-  });
-  expect(unproposable).toEqual([]);
-  expect(proposals[0]?.boundary?.max_body_bytes).toBeGreaterThan(40_000);
-});
-
-test("an omitted body still reports its size", async () => {
-  await record([{ step: "send", url: "https://api.example.test/v1/content" }]);
-  await ctx.db
-    .update(executionSteps)
-    .set({
-      request_meta: {
-        driver: "http",
-        method: "POST",
-        extras: {
-          held: true,
-          prepared_request_review: {
-            url: "https://api.example.test/v1/content",
-            method: "POST",
-            redacted_request_json: JSON.stringify({ body: null }),
-            opaque_payload_omitted: true,
-            body_bytes: 51_200,
-          },
-        },
-      },
-    })
-    .where(eq(executionSteps.step_key, "send"));
-  const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
-    tenant_id,
-    workflow_id,
-    definition: definition([
-      {
-        id: "send",
-        kind: "request",
-        connector_id: CONNECTOR,
-        method: "POST",
-        path: "/v1/content",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
-        body: "${item.markdown}",
-      },
-    ]),
-  });
-  expect(unproposable).toEqual([]);
-  expect(proposals[0]?.boundary?.max_body_bytes).toBeGreaterThan(51_200);
-});
-
-// biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
-const ROUTE_TEMPLATE = "${item.path}";
-const fetchRoute = {
-  id: "fetch_route",
-  kind: "request",
-  connector_id: CONNECTOR,
-  method: "GET",
-  path: ROUTE_TEMPLATE,
-};
-
-test("a step that varies its whole address is described, not reported as indescribable", async () => {
-  await ctx.db.delete(executions).where(eq(executions.workflow_id, workflow_id));
-  const [execution] = await ctx.db
-    .insert(executions)
-    .values({
-      tenant_id,
-      workflow_id,
-      status: "succeeded",
-      request_source: "api",
-      execution_mode: "prod",
-    })
-    .returning();
-  const routes = ["/de/", "/de/datenstand/", "/robots.txt", "/"];
-  await ctx.db.insert(executionSteps).values(
-    routes.map((route, index) => ({
-      tenant_id,
-      execution_id: execution?.id as string,
-      step_key: `fetch_route[${index}]`,
-      step_index: index,
-      kind: "request" as const,
-      status: "succeeded" as const,
-      request_meta: { driver: "http", url: `https://www.example.test${route}` },
-    })),
-  );
-  const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
-    tenant_id,
-    workflow_id,
-    definition: definition([fetchRoute]),
-  });
-  expect(unproposable).toEqual([]);
-  expect(proposals[0]?.boundary?.variables).toEqual({ "item.path": { class: "path" } });
-  expect(proposals[0]?.evidence.observations).toBe(4);
-  expect(proposals[0]?.boundary?.max_calls).toBe(8);
-});
-
-test("a deeper address than the template does not get a rule fitted to its last segment", async () => {
-  await record([
-    { step: "edit_page", url: "https://api.example.test/blog/a/edit" },
-    { step: "edit_page", url: "https://api.example.test/blog/b/edit" },
-  ]);
-  const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
-    tenant_id,
-    workflow_id,
-    definition: definition([
-      {
-        id: "edit_page",
-        kind: "request",
-        connector_id: CONNECTOR,
-        method: "GET",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
-        path: "/${input.slug}/edit",
-      },
-    ]),
-  });
-  expect(proposals).toEqual([]);
-  expect(unproposable).toEqual([{ step_id: "edit_page", reason: "path_not_comparable" }]);
-});
-
-test("a whole-path rule is not proposed under a connector whose base carries a path", async () => {
-  const [deep] = await ctx.db
-    .insert(connectors)
-    .values({
-      tenant_id,
-      slug: "deep-base",
-      display_name: "Deep base",
-      driver: "http",
-      auth_type: "none",
-      environment: "prod",
-      base_url: "https://api.example.test/v2",
-    })
-    .returning();
-  await ctx.db.delete(executions).where(eq(executions.workflow_id, workflow_id));
-  const [execution] = await ctx.db
-    .insert(executions)
-    .values({
-      tenant_id,
-      workflow_id,
-      status: "succeeded",
-      request_source: "api",
-      execution_mode: "prod",
-    })
-    .returning();
-  await ctx.db.insert(executionSteps).values({
-    tenant_id,
-    execution_id: execution?.id as string,
-    step_key: "fetch_route",
-    step_index: 0,
-    kind: "request" as const,
-    status: "succeeded" as const,
-    request_meta: { driver: "http", url: "https://api.example.test/v2/de/" },
-  });
-  const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
-    tenant_id,
-    workflow_id,
-    definition: definition([{ ...fetchRoute, connector_id: deep?.id }]),
-  });
-  expect(proposals).toEqual([]);
-  expect(unproposable).toEqual([{ step_id: "fetch_route", reason: "not_supported" }]);
 });

@@ -333,7 +333,7 @@ describe("docs bundle", () => {
     const chapter = loadChapters(referenceDir).find((c) => c.seed === "sk-ref-coding-agents");
     expect(chapter?.seedVersion).toBeGreaterThanOrEqual(2);
     const seed = readFileSync(
-      join(import.meta.dir, "../../apps/engine/src/conversations/seed/knowledge/coding-agents.md"),
+      join(import.meta.dir, "../../apps/engine/src/knowledge/seeds/coding-agents.md"),
       "utf8",
     );
     expect(seed).toMatch(new RegExp(`^---\\n[\\s\\S]*^version: ${chapter?.seedVersion}$`, "m"));

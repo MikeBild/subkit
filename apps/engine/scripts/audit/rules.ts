@@ -15,6 +15,7 @@ export interface RuleHit {
 export function isTestPath(path: string): boolean {
   return (
     /\.test\.tsx?$/.test(path) ||
+    /-fixtures\.tsx?$/.test(path) ||
     path.includes("/tests/") ||
     path.includes("/__tests__/") ||
     path.includes("/test-helpers/")

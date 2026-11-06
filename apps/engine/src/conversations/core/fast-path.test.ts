@@ -96,18 +96,19 @@ describe("catalog lookups", () => {
 describe("decideRunEnvironment", () => {
   test("a workflow without trigger or bindings runs in the default dev environment", () => {
     expect(FAST_PATH_DEFAULT_ENVIRONMENT).toBe("dev");
-    expect(decideRunEnvironment({ kind: "resolved", environment: "prod", source: "default" })).toBe(
-      "dev",
-    );
+    expect(decideRunEnvironment({ kind: "default", dev_bindings: [] })).toBe("dev");
+    expect(decideRunEnvironment({ kind: "default", dev_bindings: ["dev", "dev"] })).toBe("dev");
+  });
+
+  test("a default workflow whose connectors do not bind in dev leaves the turn to the model", () => {
+    expect(decideRunEnvironment({ kind: "default", dev_bindings: ["dev", "prod"] })).toBeNull();
+    expect(decideRunEnvironment({ kind: "default", dev_bindings: [null] })).toBeNull();
+    expect(decideRunEnvironment({ kind: "default", dev_bindings: ["prod", "dev"] })).toBeNull();
   });
 
   test("a trigger or binding environment is kept", () => {
-    expect(
-      decideRunEnvironment({ kind: "resolved", environment: "prod", source: "schedule" }),
-    ).toBe("prod");
-    expect(decideRunEnvironment({ kind: "resolved", environment: "dev", source: "bindings" })).toBe(
-      "dev",
-    );
+    expect(decideRunEnvironment({ kind: "resolved", environment: "prod" })).toBe("prod");
+    expect(decideRunEnvironment({ kind: "resolved", environment: "dev" })).toBe("dev");
   });
 
   test("an ambiguous environment leaves the turn to the model", () => {

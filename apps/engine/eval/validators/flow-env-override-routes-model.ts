@@ -1,4 +1,4 @@
-import { applyFlowEnvOverrides } from "../../src/llm/core/invoke.ts";
+import { applyFlowEnvOverrides } from "../../src/llm/runtime/invoke.ts";
 import type { LlmFlow, ModelRoute } from "../../src/llm/types.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 

@@ -51,6 +51,18 @@ interface ListWorkflowVersionsOptions {
   offset?: number;
 }
 
+export async function setWorkflowVersionScopeIndex(
+  db: Executor,
+  tenant_id: string,
+  version_id: string,
+  scope_index: NonNullable<typeof workflowVersions.$inferInsert.scope_index>,
+): Promise<void> {
+  await db
+    .update(workflowVersions)
+    .set({ scope_index })
+    .where(and(eq(workflowVersions.tenant_id, tenant_id), eq(workflowVersions.id, version_id)));
+}
+
 export const WORKFLOW_VERSION_LIST_MAX_LIMIT = 200;
 export const WORKFLOW_VERSION_LIST_DEFAULT_LIMIT = 50;
 

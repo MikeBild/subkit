@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { PRICE_SOURCES } from "../../llm/index.ts";
-import { BUCKET_UNITS } from "./bucket-window.ts";
+import { BUCKET_UNITS } from "../../stats/bucket-units.ts";
 
 const CsvOrArray = z
   .union([z.string(), z.array(z.string())])
