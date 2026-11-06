@@ -13,7 +13,7 @@ import {
 import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { saveWorkflowDraft } from "../../workflows/drafts.ts";
-import { bindPersistedWorkflow } from "../authoring-state.ts";
+import { bindPersistedWorkflow } from "../authoring-state/index.ts";
 import { loadDraft } from "../draft.ts";
 import { runWorkflowTool } from "../tools/engine-api/writes/run-workflow.ts";
 import type { ToolContext } from "../tools/index.ts";

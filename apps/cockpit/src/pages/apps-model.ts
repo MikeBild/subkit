@@ -60,7 +60,7 @@ export function withProduct(
   return { ...current, [id]: entry };
 }
 
-export function providersFrom(value: unknown): SettingsEntry[] {
+function providersFrom(value: unknown): SettingsEntry[] {
   return Array.isArray(value) ? value.filter(isEntry) : [];
 }
 
@@ -120,7 +120,7 @@ export function appGoneFromList(
   return list !== undefined && !list.items.some((item) => item.id === appId);
 }
 
-export type AppReadiness = "ready" | "needs_attention" | "not_configured";
+type AppReadiness = "ready" | "needs_attention" | "not_configured";
 
 export function appReadiness(app: Pick<AppSummary, "configured" | "ready">): AppReadiness {
   if (!app.configured) return "not_configured";
@@ -133,7 +133,7 @@ export const APP_READINESS_LABEL: Readonly<Record<AppReadiness, TranslationKey>>
   not_configured: "apps.readiness.notConfigured",
 };
 
-export const APP_CHECK_LABEL: Readonly<Record<AppCheckKey, TranslationKey>> = {
+const APP_CHECK_LABEL: Readonly<Record<AppCheckKey, TranslationKey>> = {
   product_configured: "apps.check.productConfigured",
   sign_in_provider: "apps.check.signInProvider",
   assistant_workflow: "apps.check.assistantWorkflow",
@@ -142,7 +142,7 @@ export const APP_CHECK_LABEL: Readonly<Record<AppCheckKey, TranslationKey>> = {
   budget_guard: "apps.check.budgetGuard",
 };
 
-export interface AppCheckLine {
+interface AppCheckLine {
   key: AppCheckKey;
   label: string;
   state: "ok" | "needs_attention";
@@ -239,12 +239,12 @@ export function definitionGuardBucket(dag: unknown): string | null {
   return typeof bucket === "string" && bucket ? bucket : null;
 }
 
-export interface VersionPage {
+interface VersionPage {
   items: readonly { id: string; version: number; dag?: unknown }[];
   total: number;
 }
 
-export type FetchVersionPage = (limit: number, offset: number) => Promise<VersionPage>;
+type FetchVersionPage = (limit: number, offset: number) => Promise<VersionPage>;
 
 const SCAN_PAGE = 50;
 

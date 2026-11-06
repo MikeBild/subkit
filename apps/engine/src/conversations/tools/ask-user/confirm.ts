@@ -1,7 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { scrubStringsDeep } from "../../../logging/scrub-secrets.ts";
 import { requestApproval } from "../../../tools/approval.ts";
-import { getWorkflowDraft } from "../../authoring-state.ts";
+import { getWorkflowDraft } from "../../authoring-state/index.ts";
 import {
   authoringIntentFingerprint,
   type ConfirmIntent,

@@ -8,7 +8,7 @@ import {
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
-import { maybeAutoPersistFromElicitation } from "../persistence/auto-persist.ts";
+import { maybeAutoPersistFromElicitation } from "../persistence/auto-persist/index.ts";
 
 let ctx: TestDb;
 let tenant_id: string;

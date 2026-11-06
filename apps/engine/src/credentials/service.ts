@@ -49,7 +49,7 @@ function refreshAadFor(tenant_id: string, credential_id: string): string {
   return `credential-refresh:${tenant_id}:${credential_id}`;
 }
 
-export interface UpsertCredentialInput {
+interface UpsertCredentialInput {
   verified_identity?: VerifiedProviderIdentity | null;
   tenant_id: string;
   connector_id: string;
@@ -66,7 +66,7 @@ export interface UpsertCredentialInput {
   source?: CredentialWriteSource;
 }
 
-export type CredentialWriteSource =
+type CredentialWriteSource =
   | "oauth_callback"
   | "conversation_tool"
   | "refresh_worker"

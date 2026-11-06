@@ -5,7 +5,7 @@ import {
   conversationToolCalls,
 } from "../../db/schema/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
-import { buildModelMessages } from "../persist.ts";
+import { buildModelMessages } from "../persistence/index.ts";
 
 let ctx: LlmTestCtx;
 let conversation_id: string;

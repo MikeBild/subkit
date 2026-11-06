@@ -1,11 +1,9 @@
-import { Readable } from "node:stream";
-
 const CSI = "\x1b[";
 export const PASTE_START = `${CSI}200~`;
 export const PASTE_END = `${CSI}201~`;
 
-export const ENABLE_BRACKETED_PASTE = `${CSI}?2004h`;
-export const DISABLE_BRACKETED_PASTE = `${CSI}?2004l`;
+const ENABLE_BRACKETED_PASTE = `${CSI}?2004h`;
+const DISABLE_BRACKETED_PASTE = `${CSI}?2004l`;
 
 export function enableBracketedPaste(stream: NodeJS.WriteStream = process.stdout): () => void {
   try {
@@ -18,73 +16,12 @@ export function enableBracketedPaste(stream: NodeJS.WriteStream = process.stdout
   };
 }
 
-export interface PasteEvent {
-  text: string;
-  id: number;
-}
-
-let pasteSeq = 0;
-let lastPaste: PasteEvent | null = null;
-
-function emit(text: string): void {
-  pasteSeq = (pasteSeq + 1) % Number.MAX_SAFE_INTEGER;
-  lastPaste = { text, id: pasteSeq };
-}
-
-export function readLastPaste(): PasteEvent | null {
-  const p = lastPaste;
-  lastPaste = null;
-  return p;
-}
-
-let wrapped = false;
-
-export function wrapStdinForBracketedPaste(): {
-  stream: NodeJS.ReadableStream;
-  dispose: () => void;
-} {
-  if (wrapped) {
-    throw new Error("wrapStdinForBracketedPaste called twice in the same process");
-  }
-  wrapped = true;
-  const src = process.stdin;
-  const out = new Readable({ read() {} });
-  let buf = Buffer.alloc(0);
-  let inPaste = false;
-  let pasteBuf = "";
-
-  const onData = (chunk: Buffer | string): void => {
-    buf = Buffer.concat([buf, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
-    const { keep, events } = applyBracketedPaste(buf.toString("utf8"), { inPaste, pasteBuf });
-    inPaste = events.inPaste;
-    pasteBuf = events.pasteBuf;
-    for (const e of events.emit) emit(e);
-    if (keep.forward.length > 0) out.push(Buffer.from(keep.forward, "utf8"));
-    buf = Buffer.from(keep.pending, "utf8");
-  };
-  const onEnd = (): void => {
-    if (pasteBuf.length > 0) emit(pasteBuf);
-    out.push(null);
-  };
-
-  src.on("data", onData);
-  src.once("end", onEnd);
-
-  const dispose = () => {
-    src.off("data", onData);
-    src.off("end", onEnd);
-    wrapped = false;
-  };
-
-  return { stream: out, dispose };
-}
-
 interface ApplyState {
   inPaste: boolean;
   pasteBuf: string;
 }
 
-export interface ApplyResult {
+interface ApplyResult {
   keep: {
     forward: string;
     pending: string;

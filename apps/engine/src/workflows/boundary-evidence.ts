@@ -7,7 +7,7 @@ import {
   type WorkflowHistoryFacts,
 } from "./history-read-facts.ts";
 
-export interface BoundaryContradiction {
+interface BoundaryContradiction {
   step_id: string;
   declared_prefix: string;
   observed_key: string;

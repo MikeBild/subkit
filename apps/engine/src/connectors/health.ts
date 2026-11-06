@@ -29,7 +29,7 @@ export function parseDeprecation(headers?: Record<string, string>): DeprecationS
   };
 }
 
-export interface LinkRelation {
+interface LinkRelation {
   url: string;
   rels: string[];
 }
@@ -84,7 +84,7 @@ export function isConnectorUnusable(health: ConnectorHealth): boolean {
   return health === "auth_failed" || health === "endpoint_gone";
 }
 
-export interface ConnectorHealthHint {
+interface ConnectorHealthHint {
   error_code:
     | "auth_rejected"
     | "endpoint_removed"
@@ -96,7 +96,7 @@ export interface ConnectorHealthHint {
   next_best_actions: string[];
 }
 
-export interface ConnectorHealthHintContext {
+interface ConnectorHealthHintContext {
   path?: string | null;
   deprecation?: DeprecationSignal | null;
   retry_after_s?: number | null;

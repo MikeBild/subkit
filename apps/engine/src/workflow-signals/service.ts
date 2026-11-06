@@ -2,7 +2,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { workflowSignals } from "../db/schema/workflow_signals.ts";
 
-export interface SignalRow {
+interface SignalRow {
   id: string;
   payload: Record<string, unknown>;
   received_at: Date;

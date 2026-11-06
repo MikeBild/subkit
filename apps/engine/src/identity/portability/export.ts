@@ -20,12 +20,12 @@ import {
   sortPayloads,
 } from "./format.ts";
 
-export interface PackageSource {
+interface PackageSource {
   instance: string | null;
   engine_version: string | null;
 }
 
-export interface BuiltPackage {
+interface BuiltPackage {
   manifest: PackageManifest;
   archive: Buffer;
 }
@@ -92,7 +92,7 @@ function requirementKey(requirement: PackageRequirement): string {
   }
 }
 
-export function sortRequirements(requires: readonly PackageRequirement[]): PackageRequirement[] {
+function sortRequirements(requires: readonly PackageRequirement[]): PackageRequirement[] {
   return [...requires]
     .map((requirement) =>
       requirement.kind === "credential"
@@ -106,7 +106,7 @@ export function sortRequirements(requires: readonly PackageRequirement[]): Packa
     });
 }
 
-export interface ExportTenantPackageParams {
+interface ExportTenantPackageParams {
   tenant_id: string;
   actor_type: AuditActorType;
   actor_id: string;
@@ -126,7 +126,7 @@ export interface ExportTenantPackageResult {
   requires: PackageManifest["requires"];
 }
 
-export function summarizeItems(
+function summarizeItems(
   items: readonly { kind: PackageItemKind }[],
 ): Record<PackageItemKind, number> {
   const out: Record<PackageItemKind, number> = {

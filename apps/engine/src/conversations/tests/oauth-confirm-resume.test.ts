@@ -10,7 +10,7 @@ import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setu
 import { requestApproval } from "../../tools/approval.ts";
 import { humanChatAnswer } from "../answer-actor.ts";
 import { createElicitation, getElicitation, resolveElicitation } from "../elicitations.ts";
-import { maybeAutoPersistFromElicitation } from "../persistence/auto-persist.ts";
+import { maybeAutoPersistFromElicitation } from "../persistence/auto-persist/index.ts";
 import { getConversation } from "../service/get.ts";
 
 let server: HttpTestServer;

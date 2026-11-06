@@ -41,7 +41,7 @@ const RemoteToolWireSchema = z.object({
   annotations: AnnotationsSchema,
 });
 
-export interface ParsedRemoteManifest {
+interface ParsedRemoteManifest {
   tools: RemoteToolDescriptor[];
   rejected: Array<{ name: string; reason: "malformed" | "duplicate_name" }>;
 }
@@ -76,14 +76,14 @@ export function parseRemoteManifest(raw: readonly unknown[]): ParsedRemoteManife
   return { tools, rejected };
 }
 
-export interface ManifestListingClient {
+interface ManifestListingClient {
   listTools(params?: { cursor?: string }): Promise<{
     tools: unknown[];
     nextCursor?: string | undefined;
   }>;
 }
 
-export const TOOLS_LIST_MAX_PAGES = 5;
+const TOOLS_LIST_MAX_PAGES = 5;
 
 function toolsListMaxPages(tenant_id: string): number {
   try {
@@ -135,7 +135,7 @@ export function manifestHashVersion(hash: string): string | null {
   return at <= 0 ? null : hash.slice(0, at);
 }
 
-export function manifestByteCap(tenant_id: string): number {
+function manifestByteCap(tenant_id: string): number {
   try {
     return getConfig(tenant_id).connectors.mcp.per_server_manifest_byte_cap;
   } catch {

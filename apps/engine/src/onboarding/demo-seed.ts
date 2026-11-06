@@ -9,7 +9,7 @@ import { logger } from "../logging/logger.ts";
 import { carriedSpecColumns, type VersionActor, versionAuthorColumns } from "../workflows/index.ts";
 import { WorkflowDefSchema } from "../workflows/types.ts";
 
-export interface DemoWorkflowSpec {
+interface DemoWorkflowSpec {
   slug: string;
   name: string;
   description: string;
@@ -92,12 +92,12 @@ export const DEMO_WORKFLOWS: ReadonlyArray<DemoWorkflowSpec> = [
   },
 ];
 
-export interface SeedOnboardingDemoParams extends VersionActor {
+interface SeedOnboardingDemoParams extends VersionActor {
   tenant_id: string;
   actor_id?: string | null;
 }
 
-export interface SeedOnboardingDemoResult {
+interface SeedOnboardingDemoResult {
   created: string[];
   skipped: string[];
 }

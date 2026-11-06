@@ -7,7 +7,7 @@ import { logger } from "../../logging/logger.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
 import { MANIFEST_HASH_VERSION, manifestHashVersion } from "./manifest.ts";
 
-export interface ReconcileManifestHashInput {
+interface ReconcileManifestHashInput {
   db: Executor;
   tenant_id: string;
   connector_id: string;
@@ -22,7 +22,7 @@ export interface ReconcileManifestHashInput {
   };
 }
 
-export interface ReconcileManifestHashResult {
+interface ReconcileManifestHashResult {
   drifted: boolean;
   previous_hash: string | null;
 }

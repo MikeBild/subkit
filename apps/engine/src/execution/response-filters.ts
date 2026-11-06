@@ -3,9 +3,9 @@ import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { tenantDlpRules } from "../db/schema/index.ts";
 
-export type DlpAction = "mask" | "drop" | "hash";
+type DlpAction = "mask" | "drop" | "hash";
 
-export interface DlpRule {
+interface DlpRule {
   id?: string;
   path_match: string;
   pattern_regex?: string | null;
@@ -14,13 +14,13 @@ export interface DlpRule {
   enabled?: boolean;
 }
 
-export interface RedactedField {
+interface RedactedField {
   path: string;
   action: DlpAction;
   reason: string | null;
 }
 
-export interface DlpResult<T> {
+interface DlpResult<T> {
   value: T;
   redacted: RedactedField[];
 }

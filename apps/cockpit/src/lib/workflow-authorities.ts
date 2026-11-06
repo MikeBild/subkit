@@ -6,7 +6,7 @@ export type WorkflowAuthority = components["schemas"]["WorkflowExecutionAuthorit
 export type WorkflowAuthorityList = components["schemas"]["WorkflowExecutionAuthorityList"];
 export type WorkflowAuthorityPreview = components["schemas"]["WorkflowAuthorityPreview"];
 
-export type AuthorityReviewIdentity = {
+type AuthorityReviewIdentity = {
   workflowId: string;
   versionId: string;
   environment: "dev" | "prod";

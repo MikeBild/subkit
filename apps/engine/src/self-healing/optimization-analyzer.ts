@@ -4,7 +4,7 @@ export type OptimizationKind =
   | "increase_wait_ms"
   | "prefer_llms_txt";
 
-export interface OptimizationCandidate {
+interface OptimizationCandidate {
   kind: OptimizationKind;
   rationale: string;
   estimated_savings_pct: number | null;

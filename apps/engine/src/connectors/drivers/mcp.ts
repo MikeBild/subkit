@@ -18,8 +18,8 @@ import type { EgressInput } from "../egress.ts";
 import { CONNECTOR_SLUG_RE, type ConnectorView } from "../types.ts";
 import type { DriverProbeResult, ProbeErrorCode } from "./index.ts";
 
-export const MCP_TOOL_PREFIX = "mcp_";
-export const MCP_NAMESPACE_SEP = "__";
+const MCP_TOOL_PREFIX = "mcp_";
+const MCP_NAMESPACE_SEP = "__";
 
 export const MCP_TOOL_NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 export const MCP_TOOL_NAME_MAX = 64;
@@ -69,12 +69,12 @@ export function parseMcpToolName(name: string): { slug: string; remote_tool: str
   return { slug, remote_tool };
 }
 
-export interface McpDriverConfig {
+interface McpDriverConfig {
   transport: "http" | "sse";
   remote_tool_call_timeout_ms?: number;
 }
 
-export function parseMcpConnectorConfig(connector: ConnectorView): McpDriverConfig {
+function parseMcpConnectorConfig(connector: ConnectorView): McpDriverConfig {
   const parsed = McpConnectorConfigSchema.safeParse(connector.config ?? {});
   if (!parsed.success) {
     throw Object.assign(new Error(`invalid mcp connector config for ${connector.slug}`), {
@@ -112,7 +112,7 @@ export interface McpProbeManifest {
   instructions: string | null;
 }
 
-export type McpProbeResult = DriverProbeResult & { manifest?: McpProbeManifest };
+type McpProbeResult = DriverProbeResult & { manifest?: McpProbeManifest };
 
 export async function probeMcpConnector(p: {
   db: Db;

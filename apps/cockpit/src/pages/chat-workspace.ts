@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 
 const CONTEXT_PREFERENCE = "sk-cockpit-chat-context";
-export const CHAT_CONTEXT_MIN_TRANSCRIPT_WIDTH = 680;
-export const CHAT_CONTEXT_MIN_DOCK_WIDTH = 320;
-export const CHAT_CONTEXT_MAX_DOCK_WIDTH = 640;
-export const CHAT_CONVERSATION_LIST_WIDTH = 264;
-export const CHAT_CONVERSATION_LIST_MIN_WORKSPACE_WIDTH =
+const CHAT_CONTEXT_MIN_TRANSCRIPT_WIDTH = 680;
+const CHAT_CONTEXT_MIN_DOCK_WIDTH = 320;
+const CHAT_CONTEXT_MAX_DOCK_WIDTH = 640;
+const CHAT_CONVERSATION_LIST_WIDTH = 264;
+const CHAT_CONVERSATION_LIST_MIN_WORKSPACE_WIDTH =
   CHAT_CONVERSATION_LIST_WIDTH + CHAT_CONTEXT_MIN_TRANSCRIPT_WIDTH;
 type ScopedChatContextPreference = "narrow-open" | "narrow-closed" | "wide-open" | "wide-closed";
-export type ChatContextPreference = ScopedChatContextPreference | "legacy-open" | null;
+type ChatContextPreference = ScopedChatContextPreference | "legacy-open" | null;
 
 export function chatContextDockWidth(availableWidth: number): number {
   return Math.min(

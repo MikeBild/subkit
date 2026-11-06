@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
-import { withConnectorInspection } from "../authoring-state.ts";
+import { withConnectorInspection } from "../authoring-state/index.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import { buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";

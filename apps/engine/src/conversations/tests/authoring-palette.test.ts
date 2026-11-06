@@ -6,7 +6,7 @@ import {
   withWorkflowDraft,
   withWorkflowExecution,
   withWorkflowPersisted,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import { DANGEROUS_TOOLS_SET } from "../dangerous-tools.ts";
 import { TOOL_POLICIES } from "../tool-policies.ts";
 import {

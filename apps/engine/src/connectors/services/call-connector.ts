@@ -18,8 +18,6 @@ import { clearReauthIfProved } from "../reauth.ts";
 import { getConnector } from "../service.ts";
 import type { ConnectorView } from "../types.ts";
 
-const RESPONSE_BODY_BUDGET_BYTES = 8 * 1024;
-
 export type CallConnectorMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
 
 export interface CallConnectorRequest {
@@ -38,7 +36,7 @@ export interface CallConnectorRequest {
   conversation_id?: string;
 }
 
-export interface CallConnectorOk {
+interface CallConnectorOk {
   kind: "ok";
   status: number;
   headers: Record<string, string>;
@@ -61,7 +59,7 @@ export interface CallConnectorOk {
   };
 }
 
-export type CallConnectorErrorCode =
+type CallConnectorErrorCode =
   | "connector_not_found"
   | "connector_disabled"
   | "credential_required"
@@ -69,7 +67,7 @@ export type CallConnectorErrorCode =
   | "invalid_input"
   | "call_failed";
 
-export interface CallConnectorErr {
+interface CallConnectorErr {
   kind: "error";
   error_code: CallConnectorErrorCode;
   message: string;
@@ -79,7 +77,7 @@ export interface CallConnectorErr {
   metadata?: Record<string, unknown>;
 }
 
-export type CallConnectorResult = CallConnectorOk | CallConnectorErr;
+type CallConnectorResult = CallConnectorOk | CallConnectorErr;
 
 export function callConnectorDriverRefusal(driver: string): {
   message: string;
@@ -468,5 +466,3 @@ export async function callConnector(req: CallConnectorRequest): Promise<CallConn
   }
   return ok;
 }
-
-export const CALL_CONNECTOR_BODY_BUDGET_BYTES = RESPONSE_BODY_BUDGET_BYTES;

@@ -1,18 +1,18 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { backoffMs, parseRetryAfter } from "./retry.ts";
 
-export const RATE_LIMIT_MAX_WAIT_MS = 60 * 60_000;
+const RATE_LIMIT_MAX_WAIT_MS = 60 * 60_000;
 const SECONDARY_MIN_WAIT_MS = 60_000;
 const RESET_MARGIN_MS = 1000;
 
-export type RateLimitReason = "retry_after" | "primary_reset" | "secondary_backoff" | "backoff";
+type RateLimitReason = "retry_after" | "primary_reset" | "secondary_backoff" | "backoff";
 
-export type RateLimitVerdict =
+type RateLimitVerdict =
   | { kind: "none" }
   | { kind: "wait"; delay_ms: number; reason: RateLimitReason }
   | { kind: "fail"; delay_ms: number; reason: RateLimitReason };
 
-export interface RateLimitInput {
+interface RateLimitInput {
   status: number;
   headers: Record<string, string>;
   body: unknown;
@@ -65,7 +65,7 @@ export function rateLimitDelayMs(input: RateLimitInput): RateLimitVerdict {
 
 export type RateLimitDeadlineScope = "step" | "workflow";
 
-export interface RateLimitDeadline {
+interface RateLimitDeadline {
   deadline_ms: number;
   deadline_scope: RateLimitDeadlineScope;
 }
@@ -80,7 +80,7 @@ export function rateLimitDeadline(
     : { deadline_ms: stepDeadlineMs, deadline_scope: "step" };
 }
 
-export interface RateLimitClock {
+interface RateLimitClock {
   now: () => number;
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
 }

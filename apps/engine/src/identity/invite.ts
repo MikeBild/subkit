@@ -4,7 +4,7 @@ import { sha256Hex } from "./api-key.ts";
 export const INVITE_TOKEN_PREFIX_LITERAL = "wf_invite_";
 export const INVITE_TOKEN_PREFIX_LENGTH = 14;
 
-export interface IssuedInviteToken {
+interface IssuedInviteToken {
   plaintext: string;
   prefix: string;
   hash: string;

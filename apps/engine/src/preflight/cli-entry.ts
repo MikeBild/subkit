@@ -2,7 +2,7 @@ import { SYSTEM_TENANT_ID } from "../audit/index.ts";
 import { closeDb, getDb } from "../db/client.ts";
 import { newTraceId, withContext } from "../logging/context.ts";
 
-export const PREFLIGHT_FLAGS = [
+const PREFLIGHT_FLAGS = [
   "--preflight",
   "--vault-check",
   "--vault-set",

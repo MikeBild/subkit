@@ -27,7 +27,7 @@ export function beginHttpShutdown(server: ShutdownHttpServer): HttpShutdown {
   };
 }
 
-export type HttpDrainOutcome = "closed" | "closed_after_force" | "abandoned";
+type HttpDrainOutcome = "closed" | "closed_after_force" | "abandoned";
 
 export async function drainHttpBounded(
   shutdown: HttpShutdown,

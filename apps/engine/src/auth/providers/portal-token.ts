@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
-import { type Db, getDb } from "../../db/client.ts";
+import type { Db } from "../../db/client.ts";
 import { portalTokens, users } from "../../db/schema/index.ts";
 import { constantTimeHexEquals } from "../../identity/api-key.ts";
 import { parsePortalToken } from "../../identity/portal-token.ts";
@@ -30,10 +30,10 @@ function normalizeAllowList(value: unknown): AllowList {
 }
 
 export interface PortalTokenProviderOptions {
-  db?: Db;
+  db: Db;
 }
 
-export function createPortalTokenProvider(opts: PortalTokenProviderOptions = {}): AuthProvider {
+export function createPortalTokenProvider(opts: PortalTokenProviderOptions): AuthProvider {
   return {
     name: "portal_token",
     capabilities: {
@@ -52,7 +52,7 @@ export function createPortalTokenProvider(opts: PortalTokenProviderOptions = {})
         return null;
       }
 
-      const db = opts.db ?? getDb();
+      const db = opts.db;
       // tenant-filter:exempt — portal-token JTI lookup pre-tenant
       const rows = await db
         .select()

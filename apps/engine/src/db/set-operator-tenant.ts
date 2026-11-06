@@ -5,7 +5,7 @@ import { OperatorTenantMissingError } from "../rbac/operator.ts";
 import { createDbFromUrl, type Db } from "./client.ts";
 import { tenants } from "./schema/index.ts";
 
-export interface OperatorAssignment {
+interface OperatorAssignment {
   tenant_id: string;
   tenant_slug: string;
   previous_tenant_id: string | null;

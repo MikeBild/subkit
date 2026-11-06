@@ -1,6 +1,6 @@
 import type { DraftDocument } from "./types.ts";
 
-export type TurnIntent =
+type TurnIntent =
   | "author_connector"
   | "author_workflow"
   | "tenant_read"
@@ -9,7 +9,7 @@ export type TurnIntent =
   | "surface_help"
   | "unsupported_or_unavailable";
 
-export interface TurnRoutingPlan {
+interface TurnRoutingPlan {
   intent: TurnIntent;
   confidence: "high" | "medium";
   action: string;

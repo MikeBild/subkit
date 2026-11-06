@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
-import { createEmptyDraftDocument } from "../conversations/authoring-state.ts";
+import { createEmptyDraftDocument } from "../conversations/authoring-state/index.ts";
 import type { ToolContext } from "../conversations/tools/index.ts";
 import type { DraftDocument } from "../conversations/types.ts";
 import type { Db, Executor } from "../db/client.ts";

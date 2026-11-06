@@ -58,12 +58,12 @@ import {
 const PREPARATION_REUSE_MS = 10 * 60_000;
 const recentPreparations = new Map<string, number>();
 
-export function preparationRecentlyRan(key: string, now: number): boolean {
+function preparationRecentlyRan(key: string, now: number): boolean {
   const at = recentPreparations.get(key);
   return at !== undefined && now - at < PREPARATION_REUSE_MS;
 }
 
-export function notePreparation(key: string, now: number): void {
+function notePreparation(key: string, now: number): void {
   recentPreparations.set(key, now);
 }
 
@@ -1234,7 +1234,7 @@ export function OutboxDeliveryReview({
   );
 }
 
-export function TransactionalDeliveryReview({
+function TransactionalDeliveryReview({
   deliveries,
 }: {
   deliveries: Array<

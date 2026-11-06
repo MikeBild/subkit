@@ -212,7 +212,7 @@ export function flattenBindings(bindings: EvalBindings): Record<string, unknown>
   return flat;
 }
 
-export interface ExprDeps {
+interface ExprDeps {
   inputs: ReadonlyArray<string>;
   steps: ReadonlyArray<string>;
   creds: ReadonlyArray<string>;
@@ -220,7 +220,7 @@ export interface ExprDeps {
   env: ReadonlyArray<string>;
 }
 
-export interface JSONataCallableFinding {
+interface JSONataCallableFinding {
   name: string;
   position: number | undefined;
   suggestion: string;
@@ -340,7 +340,7 @@ export const JSONATA_FUNCTION_SUGGESTIONS: Readonly<Record<string, string>> = {
   push: "`$append($arr, value)`",
 };
 
-export interface JSONataUnknownFunctionFinding {
+interface JSONataUnknownFunctionFinding {
   name: string;
   position?: number;
   suggestion: string | null;

@@ -21,7 +21,7 @@ import type { SlashCommand } from "../slash.ts";
 import type { TranscriptMode } from "./types.ts";
 import type { TranscriptNotice } from "./use-notices.ts";
 
-export interface ComposerKeyDeps {
+interface ComposerKeyDeps {
   input: InputBuffer;
   setInput: React.Dispatch<React.SetStateAction<InputBuffer>>;
   insertPasteChunk: (pasted: string) => void;

@@ -52,7 +52,7 @@ export const listSkillCandidatesTool: ConversationTool = {
   },
 };
 
-export const getSkillCandidateTool: ConversationTool = {
+const getSkillCandidateTool: ConversationTool = {
   name: "get_skill_candidate",
   description: "Fetch one skill candidate with evidence and proposed body.",
   inputSchema: GetInput,

@@ -52,7 +52,7 @@ export function automationActionKey(action: AutomationAction): TranslationKey {
   }
 }
 
-export interface CarryOverPreview {
+interface CarryOverPreview {
   approval_carries_over: boolean;
   eligible_for_repeated_runs: boolean;
   execution_shape: {
@@ -76,7 +76,7 @@ export function carryOverChoice(
     : "review";
 }
 
-export interface AutomationCard {
+interface AutomationCard {
   titleKey: TranslationKey;
   hintKey: TranslationKey;
   act: "review" | "resume" | "recheck" | "none";

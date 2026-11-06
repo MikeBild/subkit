@@ -5,7 +5,7 @@ import type { Db } from "../db/client.ts";
 import type { RunLlmBudget } from "../llm/accounting/index.ts";
 import type { ResolvedAuthorityReference } from "../llm/substitution/resolver.ts";
 import type { RequestSource } from "../observability/service-metadata.ts";
-import type { StepDef, WorkflowDef } from "../workflows/types.ts";
+import type { StepDef } from "../workflows/types.ts";
 import type { CallerContext } from "./caller-context.ts";
 import type { CallerOrigin } from "./caller-origin.ts";
 import type { Clock, IdGen } from "./clock.ts";
@@ -37,7 +37,7 @@ export interface RequestAuthoritySnapshot {
   connection_authority: ConnectionAuthorityIdentity | null;
 }
 
-export interface ExecutionContext {
+interface ExecutionContext {
   execution_privacy?: "sensitive" | undefined;
   prepared_workflow_references?: ResolvedAuthorityReference[];
   before_external_request?: (
@@ -343,16 +343,4 @@ export interface RunResult {
   connector_resolutions?: ConnectorResolutionSummary[];
   warnings?: Array<StepWarning & { step_key: string }>;
   sensitive_checks?: SensitivePreviewChecks;
-}
-
-export interface RunInput {
-  workflow: {
-    id: string;
-    tenant_id: string;
-    slug: string;
-    version_id: string;
-    def: WorkflowDef;
-  };
-  input: unknown;
-  options: RunOptions;
 }

@@ -1,6 +1,5 @@
 import {
   BookOpen,
-  Boxes,
   Cable,
   FileText,
   Gauge,
@@ -26,7 +25,7 @@ export interface NavigationItem {
   api: readonly string[];
 }
 
-export interface NavigationGroup {
+interface NavigationGroup {
   id: "home" | "build" | "knowledge" | "admin";
   labelKey?: TranslationKey;
   items: readonly NavigationItem[];
@@ -174,8 +173,6 @@ export const NAVIGATION: readonly NavigationGroup[] = [
     ],
   },
 ] as const;
-
-export const ALL_PRODUCTS_ICON = Boxes;
 
 export function visibleNavigation(permissions: readonly string[]): NavigationGroup[] {
   const allowed = new Set(permissions);

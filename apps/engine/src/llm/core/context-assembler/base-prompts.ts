@@ -76,7 +76,7 @@ const BASE_SYSTEM_PROMPTS: Record<
   ].join(" "),
 };
 
-export interface BasePrompt {
+interface BasePrompt {
   content: string;
   volatile?: string;
 }

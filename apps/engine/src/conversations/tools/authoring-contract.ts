@@ -1,4 +1,4 @@
-import { normalizeDraftDocument } from "../authoring-state.ts";
+import { normalizeDraftDocument } from "../authoring-state/index.ts";
 import type { AuthoringCheckpointKey, AuthoringCheckpointView, DraftDocument } from "../types.ts";
 
 type ResourceKind = "connector" | "workflow";

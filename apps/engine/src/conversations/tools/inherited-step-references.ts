@@ -8,9 +8,9 @@ import { type WorkflowDef, WorkflowDefSchema } from "../../workflows/types.ts";
 import { readTargetWorkflowActiveDag } from "../service/tool-state.ts";
 import type { ToolContext } from "./index.ts";
 
-export const INHERITED_STEP_REFERENCE_CODE = "inherited_step_reference";
+const INHERITED_STEP_REFERENCE_CODE = "inherited_step_reference";
 
-export interface InheritedStepReferenceNotice {
+interface InheritedStepReferenceNotice {
   code: typeof INHERITED_STEP_REFERENCE_CODE;
   message: string;
   references: Array<{ step_id: string; field: string; absent_step: string }>;

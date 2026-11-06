@@ -1,10 +1,10 @@
-export interface ConnectorOverlapInput {
+interface ConnectorOverlapInput {
   driver: string;
   base_url: string | null;
   auth_type: string;
 }
 
-export interface ConnectorOverlapMatch<Existing extends { id: string }> {
+interface ConnectorOverlapMatch<Existing extends { id: string }> {
   connector: Existing;
   score: 0 | 1 | 2 | 3;
   dimensions: ReadonlyArray<"driver" | "base_url_host" | "auth_type">;

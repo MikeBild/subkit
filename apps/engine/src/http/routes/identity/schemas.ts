@@ -24,7 +24,7 @@ export const UserSchema = z
   })
   .openapi("User");
 
-export const UserIdentitySchema = z
+const UserIdentitySchema = z
   .object({
     provider_id: z.string(),
     product_id: z.string().nullable(),

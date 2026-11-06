@@ -6,7 +6,7 @@ import {
   withWorkflowDraft,
   withWorkflowExecution,
   withWorkflowPersisted,
-} from "../../conversations/authoring-state.ts";
+} from "../../conversations/authoring-state/index.ts";
 import type { DraftDocument } from "../../conversations/types.ts";
 import { renderAuthoringContextBlock } from "../core/authoring-context-block.ts";
 

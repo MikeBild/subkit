@@ -158,7 +158,7 @@ export function latestDryRunCallId(
   return null;
 }
 
-export interface ChatToolCallRecord {
+interface ChatToolCallRecord {
   id: string;
   tool: string;
   output?: unknown;

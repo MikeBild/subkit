@@ -2,7 +2,7 @@ import { Box, Text } from "ink";
 import type React from "react";
 import { memo, useEffect, useState } from "react";
 
-export const SPINNER_VERBS: readonly string[] = [
+const SPINNER_VERBS: readonly string[] = [
   "thinking",
   "planning",
   "drafting",
@@ -26,7 +26,7 @@ function formatElapsed(ms: number): string {
   return `${minutes}m${rem.toString().padStart(2, "0")}s`;
 }
 
-export interface SpinnerProps {
+interface SpinnerProps {
   active: boolean;
   turnTokens?: number | null;
   currentTool?: string | null;

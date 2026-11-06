@@ -42,11 +42,11 @@ export function mintSignalToken(claims: SignalTokenClaims): string {
   return `v1,${payload},${sig}`;
 }
 
-export interface VerifySignalTokenOk {
+interface VerifySignalTokenOk {
   ok: true;
   claims: SignalTokenClaims;
 }
-export interface VerifySignalTokenErr {
+interface VerifySignalTokenErr {
   ok: false;
   reason: "malformed" | "signature_mismatch" | "expired" | "claim_mismatch";
 }

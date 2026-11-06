@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
 import type {
   BenchmarkCounts,
   BenchmarkLoad,
@@ -63,7 +63,7 @@ function groups(manifest: BenchmarkManifest): Map<string, Group> {
   return result;
 }
 
-export type Comparison = {
+type Comparison = {
   baseline: string;
   candidate: string;
   manifest_paths?: { baseline: string; candidate: string };
@@ -378,8 +378,4 @@ export async function writeComparison(options: {
   await writeFile(join(output, "runtime-benchmark.svg"), chart);
   await writeFile(join(output, "runtime-benchmark.html"), html(comparison));
   return comparison;
-}
-
-export function suggestedComparisonName(path: string): string {
-  return `${basename(path, ".json")}-comparison`;
 }

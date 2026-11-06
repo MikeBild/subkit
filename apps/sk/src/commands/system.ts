@@ -5,7 +5,7 @@ import pc from "picocolors";
 import type { EngineClient, EngineRestartStatus } from "../engine-client.ts";
 import { makeClientFromArgs, withCommandErrors } from "./command-runtime.ts";
 
-export const RESTART_WAIT_TIMEOUT_MS = 240_000;
+const RESTART_WAIT_TIMEOUT_MS = 240_000;
 const POLL_INTERVAL_MS = 2_000;
 
 const MANUAL_RESTART =
@@ -20,7 +20,7 @@ export const REFUSAL_GUIDANCE: Record<string, string> = {
   not_ready: "The engine is still starting and cannot restart yet. Try again in a moment.",
 };
 
-export type RestartWaitOutcome =
+type RestartWaitOutcome =
   | { kind: "restarted"; status: EngineRestartStatus }
   | { kind: "not_activated"; status: EngineRestartStatus }
   | { kind: "timeout" };

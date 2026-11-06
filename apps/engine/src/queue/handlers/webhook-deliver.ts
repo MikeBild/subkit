@@ -3,7 +3,7 @@ import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { registerDeliveryWorker } from "../../webhooks/outbound/delivery-worker.ts";
 
-export interface RegisterWebhookDeliverOptions {
+interface RegisterWebhookDeliverOptions {
   boss: PgBoss;
   db: Db;
 }

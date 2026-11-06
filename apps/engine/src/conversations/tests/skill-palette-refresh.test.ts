@@ -2,7 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { conversations, skills } from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
-import { runLoop } from "../loop.ts";
+import { runLoop } from "../loop/index.ts";
 
 let ctx: LlmTestCtx;
 beforeAll(async () => {

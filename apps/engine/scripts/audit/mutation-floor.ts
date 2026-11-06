@@ -1,23 +1,13 @@
 import { isAbsolute, relative } from "node:path/posix";
 
-export type MutantStatus =
-  | "Killed"
-  | "Timeout"
-  | "Survived"
-  | "NoCoverage"
-  | "Ignored"
-  | "CompileError"
-  | "RuntimeError"
-  | "Pending";
-
-export interface FileScore {
+interface FileScore {
   file: string;
   detected: number;
   undetected: number;
   score: number;
 }
 
-export interface MutationVerdict {
+interface MutationVerdict {
   passed: FileScore[];
   failed: FileScore[];
 }

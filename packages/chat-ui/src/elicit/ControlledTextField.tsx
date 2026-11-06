@@ -2,7 +2,7 @@ import { Text } from "ink";
 import type React from "react";
 import { useTheme } from "../theme/Provider.tsx";
 
-export interface ControlledTextFieldProps {
+interface ControlledTextFieldProps {
   value: string;
   focused: boolean;
   placeholder?: string | undefined;

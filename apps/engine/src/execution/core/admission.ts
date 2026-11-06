@@ -14,7 +14,7 @@ export interface ExecutionBoundary {
   input: unknown;
 }
 
-export interface PersistedExecutionBoundary {
+interface PersistedExecutionBoundary {
   hold_writes: boolean;
   execution_authority_id: string | null;
   workflow_id: string | null;

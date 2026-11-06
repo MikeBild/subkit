@@ -18,12 +18,11 @@ import { automationActionPermitted, automationRepairAction } from "@/lib/automat
 import {
   type GrantScopeWarning,
   OPENING_NOTICE_KEYS,
-  suggestionNote,
   triggerEnvironments,
 } from "@/lib/grant-context";
 import { useI18n } from "@/lib/i18n-context";
 import type { ReviewEnvironment } from "@/lib/review-environment";
-import type { WorkflowAuthorityList, WorkflowAuthorityPreview } from "@/lib/workflow-authorities";
+import type { WorkflowAuthorityList } from "@/lib/workflow-authorities";
 
 type ScheduleList = components["schemas"]["ScheduleListResponse"];
 
@@ -109,17 +108,6 @@ export function GrantScopeWarnings({ warnings }: { warnings: readonly GrantScope
         ),
       )}
     </>
-  );
-}
-
-export function GrantSuggestionNote({ review }: { review: WorkflowAuthorityPreview }) {
-  const { t } = useI18n();
-  const note = suggestionNote(review.suggested_bounds_basis);
-  if (!note) return null;
-  return (
-    <p className="text-sm text-muted-foreground" data-testid="authority-suggestion">
-      {t(note.key, note.values)}
-    </p>
   );
 }
 

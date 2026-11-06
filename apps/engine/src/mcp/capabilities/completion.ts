@@ -7,7 +7,7 @@ import { skills, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { can } from "../../rbac/evaluator.ts";
 
-export const SubkitCompleteRequestSchema = z
+const SubkitCompleteRequestSchema = z
   .object({
     method: z.literal("completion/complete"),
     params: z
@@ -53,7 +53,7 @@ function filterByPrefix(names: string[], prefix: string): string[] {
   return names.filter((n) => n.toLowerCase().startsWith(lower)).slice(0, COMPLETION_LIMIT);
 }
 
-export interface RegisterCompletionParams {
+interface RegisterCompletionParams {
   server: Server;
   db: Db;
   principal: ResolvedPrincipal;

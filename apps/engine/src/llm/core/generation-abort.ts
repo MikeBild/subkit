@@ -1,13 +1,11 @@
 import { z } from "zod";
 
-export const GENERATION_NEED_KINDS = [
+const GENERATION_NEED_KINDS = [
   "endpoint_contract",
   "response_shape",
   "connector_choice",
   "user_fact",
 ] as const;
-
-export type GenerationNeedKind = (typeof GENERATION_NEED_KINDS)[number];
 
 const nullableText = z
   .string()
@@ -32,7 +30,7 @@ export interface GenerationAbort {
   needs: GenerationNeed[];
 }
 
-export const MAX_GENERATION_NEEDS = 8;
+const MAX_GENERATION_NEEDS = 8;
 
 const NULLABLE_STRING = { type: ["string", "null"] } as const;
 

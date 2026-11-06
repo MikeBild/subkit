@@ -1,6 +1,6 @@
 export const CLI_LOGIN_SCOPE = "sk:login" as const;
 
-export type OAuthResourceKind = "mcp" | "cli_login";
+type OAuthResourceKind = "mcp" | "cli_login";
 
 export function oauthResource(
   publicBaseUrl: string,

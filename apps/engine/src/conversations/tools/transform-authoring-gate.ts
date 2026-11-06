@@ -29,16 +29,16 @@ export interface TransformGateBlock {
   codec_kind?: HandRolledCodecKind;
 }
 
-export const HAND_ROLLED_B64_ALPHABET_RE: RegExp =
+const HAND_ROLLED_B64_ALPHABET_RE: RegExp =
   /["'`](?=[^"'`]*ABCDEFGHIJKLMNOPQRSTUVWXYZ)(?=[^"'`]*abcdefghijklmnopqrstuvwxyz)(?=[^"'`]*0123456789)[A-Za-z0-9+/=_-]{40,}["'`]/;
 
-export const HAND_ROLLED_B32_ALPHABET_RE: RegExp = /ABCDEFGHIJKLMNOPQRSTUVWXYZ234567/;
+const HAND_ROLLED_B32_ALPHABET_RE: RegExp = /ABCDEFGHIJKLMNOPQRSTUVWXYZ234567/;
 
 const HAND_ROLLED_HEX_ALPHABET_RE: RegExp = /["'`]0123456789[aA][bB][cC][dD][eE][fF]["'`]/;
 
 const REVERSE_LOOKUP_TABLE_RE: RegExp = /(?:["']?[A-Za-z0-9+/]["']?\s*:\s*\d+\s*,\s*){8,}/;
 
-export function normalizeAdjacentStringLiterals(src: string): string {
+function normalizeAdjacentStringLiterals(src: string): string {
   const STR_CONCAT = /(['"`])((?:\\.|[^\\])*?)\1\s*\+\s*(['"`])((?:\\.|[^\\])*?)\3/g;
   let out = src;
   let prev: string;
@@ -96,7 +96,7 @@ export function describeTransformGateBlock(b: TransformGateBlock): string {
   return `transform \`${b.transform_step_id}\` reads \`$scope.${b.referenced_step_id}\` but ${why}`;
 }
 
-export interface TransformGateResult {
+interface TransformGateResult {
   ok: boolean;
   blocks: TransformGateBlock[];
 }
@@ -116,7 +116,7 @@ function isTransformStep(step: unknown): step is TransformLikeStep {
   );
 }
 
-export interface TransformAuthoringGateOptions {
+interface TransformAuthoringGateOptions {
   probedConnectorSlugs?: ReadonlySet<string>;
 }
 

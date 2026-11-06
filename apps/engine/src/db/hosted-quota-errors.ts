@@ -37,7 +37,7 @@ const protectedWriteCodes = new Set([
   "hosted_quota_terminal_receipt_required",
 ]);
 
-export class HostedQuotaWriteError extends Error {
+class HostedQuotaWriteError extends Error {
   readonly status = 409;
   readonly code = "hosted_resource_write_rejected";
   constructor() {
@@ -48,7 +48,7 @@ export class HostedQuotaWriteError extends Error {
   }
 }
 
-export class HostedQuotaRetryError extends Error {
+class HostedQuotaRetryError extends Error {
   readonly status = 409;
   readonly code = "40001";
   constructor() {

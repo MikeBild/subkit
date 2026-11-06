@@ -7,7 +7,7 @@ import type { Clock } from "../../clock.ts";
 import type { HeldRequest, RequestMeta, StepResult } from "../../types.ts";
 import { SAFE_HEADER_DENYLIST } from "../error-detail.ts";
 
-export type StepSideEffects = SideEffect;
+type StepSideEffects = SideEffect;
 
 export function requestRequiresPreparationHold(
   step: RequestStep,

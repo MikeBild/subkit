@@ -28,8 +28,8 @@ import { executionSuppressionRefusal } from "../../execution-suppression.ts";
 import { saveEvidenceLabel } from "../../handoff-summary.ts";
 import { detectUserIntent } from "../../intent-detector.ts";
 import { parseLoadedSkills } from "../../loop/skill-recency.ts";
-import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
 import { resolveSaveVerification } from "../../persistence/commit-workflow.ts";
+import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persistence/index.ts";
 import { findPriorSaveWorkflowApproval } from "../../persistence/save-workflow-approval.ts";
 import { resolveScopeFactsForConversation } from "../../scope-facts.ts";
 import {

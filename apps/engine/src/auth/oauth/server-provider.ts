@@ -34,7 +34,8 @@ import {
 } from "./tokens.ts";
 
 export type { RegisterClientInput, RegisterClientResult } from "./client-registration.ts";
-export interface IssueAuthCodeInput {
+
+interface IssueAuthCodeInput {
   clientId: string;
   tenantId: string;
   userId: string;
@@ -46,7 +47,7 @@ export interface IssueAuthCodeInput {
   requestSource?: string | undefined;
 }
 
-export interface ExchangeAuthCodeInput {
+interface ExchangeAuthCodeInput {
   code: string;
   codeVerifier: string;
   redirectUri: string;
@@ -62,14 +63,14 @@ export interface TokenPair {
   scope: string;
 }
 
-export interface ExchangeRefreshInput {
+interface ExchangeRefreshInput {
   refreshToken: string;
   clientId: string;
   scope?: string | undefined;
   requestSource?: string | undefined;
 }
 
-export interface McpOAuthServerOptions {
+interface McpOAuthServerOptions {
   db: Db;
   config: Config;
 }

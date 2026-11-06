@@ -5,7 +5,7 @@ import type { DraftDocument } from "./types.ts";
 
 const MAX_SNAPSHOTS_PER_CONVERSATION = 10;
 
-export interface DraftSnapshot {
+interface DraftSnapshot {
   id: string;
   conversation_id: string;
   tenant_id: string;
@@ -15,7 +15,7 @@ export interface DraftSnapshot {
   snapshot_at: string;
 }
 
-export interface SnapshotCreateParams {
+interface SnapshotCreateParams {
   tenant_id: string;
   conversation_id: string;
   turn_index: number;

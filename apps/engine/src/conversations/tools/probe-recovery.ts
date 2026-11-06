@@ -1,4 +1,4 @@
-export interface ProbeFailureSignal {
+interface ProbeFailureSignal {
   status?: number | null | undefined;
   failure_code?: string | null | undefined;
 }

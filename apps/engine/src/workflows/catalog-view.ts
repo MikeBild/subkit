@@ -31,7 +31,7 @@ import { getContext } from "../logging/context.ts";
 import { workflowIdsUsingConnector } from "./connector-refs.ts";
 import type { OperatingStatusAccess } from "./operating-status.ts";
 
-export interface CatalogFilterOptions {
+interface CatalogFilterOptions {
   description_source?: "llm" | "human";
   category?: string;
   connector?: string;
@@ -88,7 +88,7 @@ export async function countWorkflows(
   return Number(row?.c ?? 0);
 }
 
-export interface CatalogFilter {
+interface CatalogFilter {
   keep(row: { id: string }): boolean;
 }
 
@@ -281,7 +281,7 @@ export async function categoryRenameAffectsIntake(
 export class CategoryRenameRefused extends Error {}
 export class CategoryRevisionConflict extends Error {}
 
-export interface RenameCategoryInput {
+interface RenameCategoryInput {
   tenant_id: string;
   from: string;
   to: string;

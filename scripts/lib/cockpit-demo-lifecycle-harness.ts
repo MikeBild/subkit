@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { CockpitDemoInstance } from "./cockpit-demo-instance.ts";
 
-export type LifecycleOperation = "start" | "stop" | "restart" | "reset" | "reseed";
-export type LifecycleCommand = { operation: LifecycleOperation; args: string[] };
+type LifecycleOperation = "start" | "stop" | "restart" | "reset" | "reseed";
+type LifecycleCommand = { operation: LifecycleOperation; args: string[] };
 export type DockerIdentity = { containers: string[]; volumes: string[] };
 export type InstanceEvidence = {
   builtImageDigest: string | null;
@@ -29,9 +29,9 @@ export type InstanceEvidence = {
   fixtureIdsStableAcrossReseed?: boolean | null;
   seedDefinitionStableAcrossReseed?: boolean | null;
 };
-export type LifecycleRunResult = { status: number; spawnFailed?: boolean };
-export type LifecycleRunner = (args: string[], env: Record<string, string>) => LifecycleRunResult;
-export type LifecycleExit = { operation: LifecycleOperation; status: number; spawn_failed?: true };
+type LifecycleRunResult = { status: number; spawnFailed?: boolean };
+type LifecycleRunner = (args: string[], env: Record<string, string>) => LifecycleRunResult;
+type LifecycleExit = { operation: LifecycleOperation; status: number; spawn_failed?: true };
 
 export const lifecycleCommands: LifecycleCommand[] = [
   { operation: "start", args: [] },

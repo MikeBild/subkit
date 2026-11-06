@@ -37,7 +37,7 @@ export type { RefusalClass, RunRefusal } from "./core/run-workflow.ts";
 
 export type AdmittedWorkflowRun = Awaited<ReturnType<typeof admitWorkflowRun>>;
 
-export interface RunAuthorizationRequest {
+interface RunAuthorizationRequest {
   principal: ResolvedPrincipal;
   workflow_id: string;
   via: WorkflowRunRequestSource;
@@ -56,13 +56,13 @@ export type RunAuthorization =
   | ({ kind: "gate" } & Omit<RunAuthorizationRequest, "principal" | "workflow_id">)
   | { kind: "granted"; workflow_permission: WorkflowPermission | null };
 
-export interface EnqueueDispatch {
+interface EnqueueDispatch {
   mode: "enqueue";
   boss: PgBoss;
   trace_id?: string | null;
 }
 
-export interface ExecuteDispatch {
+interface ExecuteDispatch {
   mode: "inline" | "background";
   signal?: AbortSignal;
   trace_id?: string | null;
@@ -89,17 +89,17 @@ export interface RunWorkflowRequest {
   dispatch: RunDispatch;
 }
 
-export type CompletedWorkflowRun = {
+type CompletedWorkflowRun = {
   kind: "completed";
   admitted: AdmittedWorkflowRun;
   result: RunResult;
 };
 
-export type ReplayedWorkflowRun = { kind: "replayed"; admitted: AdmittedWorkflowRun };
+type ReplayedWorkflowRun = { kind: "replayed"; admitted: AdmittedWorkflowRun };
 
 export type InlineRunOutcome = RunRefusal | ReplayedWorkflowRun | CompletedWorkflowRun;
 
-export type BackgroundRunOutcome =
+type BackgroundRunOutcome =
   | RunRefusal
   | ReplayedWorkflowRun
   | {
@@ -108,13 +108,13 @@ export type BackgroundRunOutcome =
       settled: Promise<CompletedWorkflowRun | RunRefusal>;
     };
 
-export type EnqueuedRunOutcome =
+type EnqueuedRunOutcome =
   | RunRefusal
   | ReplayedWorkflowRun
   | { kind: "queued"; admitted: AdmittedWorkflowRun }
   | { kind: "enqueue_failed"; admitted: AdmittedWorkflowRun; error: unknown };
 
-export type RunWorkflowOutcome = InlineRunOutcome | BackgroundRunOutcome | EnqueuedRunOutcome;
+type RunWorkflowOutcome = InlineRunOutcome | BackgroundRunOutcome | EnqueuedRunOutcome;
 
 export interface RunWorkflowDeps {
   db: Db;

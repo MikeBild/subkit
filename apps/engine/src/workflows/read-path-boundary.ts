@@ -10,7 +10,7 @@ export const ReadPathBoundarySchema = z
     search: z.string(),
   })
   .strict();
-export type ReadPathBoundary = z.infer<typeof ReadPathBoundarySchema>;
+type ReadPathBoundary = z.infer<typeof ReadPathBoundarySchema>;
 
 export function readPathBoundary(
   step: RequestStep,

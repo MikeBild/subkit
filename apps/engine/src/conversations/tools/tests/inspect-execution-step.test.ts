@@ -11,7 +11,7 @@ import { EngineClient } from "../../../engine-client/index.ts";
 import { MemoryObjectStore, setObjectStoreForTesting } from "../../../storage/object-store.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/index.ts";
 import { adminPrincipal } from "../../../test-helpers/principals.ts";
-import { createEmptyDraftDocument } from "../../authoring-state.ts";
+import { createEmptyDraftDocument } from "../../authoring-state/index.ts";
 import type { DraftDocument } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import { inspectExecutionStepTool } from "../inspect-execution-step.ts";

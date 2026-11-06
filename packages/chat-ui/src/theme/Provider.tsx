@@ -19,7 +19,7 @@ const ThemeContext = createContext<ThemeContextValue>({
   setTheme: () => undefined,
 });
 
-export interface ThemeProviderProps {
+interface ThemeProviderProps {
   value?: ThemeTokens;
   name?: ThemeName;
   forceNoColor?: boolean;

@@ -1,4 +1,4 @@
-export interface ScoredMatch<T> {
+interface ScoredMatch<T> {
   item: T;
   score: number;
 }

@@ -13,7 +13,7 @@ import type { BudgetState, RawChunk } from "../types.ts";
 
 type Json = Record<string, unknown>;
 
-export interface OpenAPIIngestResult {
+interface OpenAPIIngestResult {
   uri: string;
   raw_bytes: number;
   chunks: RawChunk[];

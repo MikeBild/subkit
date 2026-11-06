@@ -2,14 +2,14 @@ import type { components, paths } from "@cli-core/engine-api/openapi";
 import { ApiError, apiRequest } from "./client";
 
 export type PatchCandidate = components["schemas"]["PatchCandidate"];
-export type PatchCandidateList = components["schemas"]["PatchCandidateListResponse"];
+type PatchCandidateList = components["schemas"]["PatchCandidateListResponse"];
 export type PatchCandidatePreview = components["schemas"]["PatchCandidatePreview"];
 export type PatchCandidateDryRun = components["schemas"]["PatchCandidateDryRunResponse"];
 export type SkillCandidate = components["schemas"]["SkillCandidate"];
-export type SkillCandidateList = components["schemas"]["SkillCandidateListResponse"];
+type SkillCandidateList = components["schemas"]["SkillCandidateListResponse"];
 export type SkillCandidateEvidence = components["schemas"]["SkillCandidateEvidence"];
 export type SkillCandidateApproval = components["schemas"]["SkillCandidateApprovalResult"];
-export type SkillCandidateApprovals = components["schemas"]["ApproveSkillCandidatesResponse"];
+type SkillCandidateApprovals = components["schemas"]["ApproveSkillCandidatesResponse"];
 
 const QUEUE_LIMIT = 200;
 
@@ -35,12 +35,6 @@ export function listProposedPatchCandidates(workflowId?: string): Promise<PatchC
   return allDecisionPages<PatchCandidate>(`/v1/patch-candidates?status=proposed&order=asc${scope}`);
 }
 
-export function listPatchCandidatesByStatus(
-  status: "applied" | "rejected",
-): Promise<PatchCandidateList> {
-  return apiRequest(`/v1/patch-candidates?status=${status}&order=desc&limit=25`);
-}
-
 export function listProposedSkillCandidates(): Promise<SkillCandidateList> {
   return allDecisionPages<SkillCandidate>("/v1/skill-candidates?status=proposed");
 }
@@ -49,12 +43,6 @@ export function listWorkflowContextNotes(workflowId: string): Promise<SkillCandi
   return apiRequest(
     `/v1/skill-candidates?status=context&workflow_id=${encodeURIComponent(workflowId)}&limit=50`,
   );
-}
-
-export function listSkillCandidatesByStatus(
-  status: "approved" | "rejected",
-): Promise<SkillCandidateList> {
-  return apiRequest(`/v1/skill-candidates?status=${status}&limit=25`);
 }
 
 export function getPatchCandidatePreview(id: string): Promise<PatchCandidatePreview> {

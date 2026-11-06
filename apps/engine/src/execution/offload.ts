@@ -14,7 +14,7 @@ import {
 import { getObjectStore } from "../storage/object-store.ts";
 import { STEP_RESULT_DB_BYTES, STEP_RESULT_PREVIEW_BYTES } from "./timeouts.ts";
 
-export interface OffloadResult {
+interface OffloadResult {
   storage_uri: string | null;
   preview: string | null;
   size_bytes: number;
@@ -29,7 +29,7 @@ export interface OffloadRef {
   sha256?: string;
 }
 
-export const OffloadRefSchema = z.object({
+const OffloadRefSchema = z.object({
   $offloaded: z.literal(true),
   storage_uri: z.string(),
   preview: z.string(),
@@ -208,7 +208,7 @@ export function previewOf(value: unknown): string {
   return s.length > STEP_RESULT_PREVIEW_BYTES ? s.slice(0, STEP_RESULT_PREVIEW_BYTES) : s;
 }
 
-export interface MaybeOffloadParams {
+interface MaybeOffloadParams {
   tenant_id: string;
   execution_id: string;
   step_id?: string | null;

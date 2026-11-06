@@ -174,7 +174,7 @@ export function repairRequiredCount(envelope: unknown): number | null {
 
 export const STATUS_ENDPOINT = "/v1/status";
 
-export interface WindowSpend {
+interface WindowSpend {
   calls: number | null;
   cost: WindowCost | null;
 }
@@ -467,7 +467,7 @@ function costFigure(
   };
 }
 
-export function budgetHint(budget: Read<BudgetSummary>, canSet: boolean): BudgetHint {
+function budgetHint(budget: Read<BudgetSummary>, canSet: boolean): BudgetHint {
   if (budget.state === "failed") return { kind: "unreadable" };
   const summary = budget.value;
   if (summary.budgetTokens === null)

@@ -27,7 +27,7 @@ export interface TenantSummary {
   connectors_total: number;
 }
 
-export interface VisibleCatalog {
+interface VisibleCatalog {
   workflows: ReadonlyArray<{
     id: string;
     slug: string;
@@ -95,9 +95,9 @@ export async function loadVisibleCatalog(
 }
 
 export const MAX_WORKFLOWS_IN_SUMMARY = 40;
-export const MAX_CONNECTORS_IN_SUMMARY = 40;
+const MAX_CONNECTORS_IN_SUMMARY = 40;
 
-export interface SnapshotCoverage {
+interface SnapshotCoverage {
   workflows_complete: boolean;
   connectors_complete: boolean;
 }

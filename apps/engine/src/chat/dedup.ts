@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { recordUsageEvent } from "../stats/usage-events.ts";
 
-export interface MarkChatEventSeenInput {
+interface MarkChatEventSeenInput {
   tenant_id: string;
   workspace_id: string;
   platform_event_id: string;

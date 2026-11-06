@@ -4,7 +4,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 const MEANS_ALL = new Set(["", "*", NIL_UUID]);
 
-export type LookupId = { kind: "omitted" } | { kind: "uuid"; id: string } | { kind: "invalid" };
+type LookupId = { kind: "omitted" } | { kind: "uuid"; id: string } | { kind: "invalid" };
 
 export function normalizeLookupId(id: string | undefined): LookupId {
   if (id === undefined) return { kind: "omitted" };

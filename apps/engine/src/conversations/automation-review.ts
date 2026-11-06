@@ -14,7 +14,7 @@ export function savedChangeReviewPath(workflow_id: string): string {
   return `/cockpit/workflows/${encodeURIComponent(workflow_id)}`;
 }
 
-export function pendingSavedChange(workflow: {
+function pendingSavedChange(workflow: {
   current_version_id?: string | null;
   draft_version_id?: string | null;
 }): string | null {

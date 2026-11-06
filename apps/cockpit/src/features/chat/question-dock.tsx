@@ -13,7 +13,7 @@ import { HeldScheduleAction, heldScheduleCopy } from "@/pages/chat-held-schedule
 import { liveTestState } from "@/pages/chat-resume";
 import type { ChatTurn } from "@/pages/chat-turn";
 
-export type ReadySchedule = { ready: boolean; next_run_at: string | null; timezone: string };
+type ReadySchedule = { ready: boolean; next_run_at: string | null; timezone: string };
 
 export function QuestionDock({
   turn,

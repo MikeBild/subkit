@@ -1,4 +1,4 @@
-export type SecretShape =
+type SecretShape =
   | {
       matched: true;
       kind: string;

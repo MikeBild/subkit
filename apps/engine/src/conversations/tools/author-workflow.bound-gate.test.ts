@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { bindPersistedWorkflow, createEmptyDraftDocument } from "../authoring-state.ts";
+import { bindPersistedWorkflow, createEmptyDraftDocument } from "../authoring-state/index.ts";
 import type { DraftDocument } from "../types.ts";
 import { authorWorkflowTool } from "./author-workflow.ts";
 import type { ToolContext } from "./index.ts";

@@ -23,11 +23,11 @@ export const listRecipesMcpTool: Tool = {
   },
 };
 
-export interface ListRecipesArgs {
+interface ListRecipesArgs {
   template_slug: string;
 }
 
-export interface ListRecipesEntry {
+interface ListRecipesEntry {
   slug: string;
   title: string;
   category: string;
@@ -39,7 +39,7 @@ export interface ListRecipesEntry {
   deprecated: { since: string; replacement_slug: string } | null;
 }
 
-export interface ListRecipesResult {
+interface ListRecipesResult {
   template_slug: string;
   template_name: string;
   recipes: ListRecipesEntry[];

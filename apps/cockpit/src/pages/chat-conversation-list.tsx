@@ -9,7 +9,7 @@ import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
 import { type ConversationRowLabels, conversationRow } from "./chat-list-model";
 
-export interface ConversationListProps {
+interface ConversationListProps {
   conversations: readonly Conversation[];
   activeId: string | null;
   onSelect(id: string): void;

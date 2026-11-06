@@ -26,8 +26,8 @@ export interface ListExecutionsOptions {
   principal?: ResolvedPrincipal;
 }
 
-export const EXECUTION_LIST_MAX_LIMIT = 200;
-export const EXECUTION_LIST_DEFAULT_LIMIT = 50;
+const EXECUTION_LIST_MAX_LIMIT = 200;
+const EXECUTION_LIST_DEFAULT_LIMIT = 50;
 
 function buildExecutionListFilters(tenant_id: string, opts: ListExecutionsOptions, db: Executor) {
   const conds = [];

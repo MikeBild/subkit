@@ -3,9 +3,9 @@ import type { Executor } from "../../db/client.ts";
 import { conversationToolCalls } from "../../db/schema/index.ts";
 import type { RecentToolCallRow } from "./prior-failures.ts";
 
-export const CRITIC_REVIEWED_TOOLS = ["author_workflow", "edit_workflow_patch"] as const;
+const CRITIC_REVIEWED_TOOLS = ["author_workflow", "edit_workflow_patch"] as const;
 
-export const CRITIC_STREAK_WINDOW = 32;
+const CRITIC_STREAK_WINDOW = 32;
 
 const REVIEWED_TOOL_SET = new Set<string>(CRITIC_REVIEWED_TOOLS);
 
@@ -29,7 +29,7 @@ export function consecutiveCriticRejectionsFromRows(
   return streak;
 }
 
-export interface CriticStreakScope {
+interface CriticStreakScope {
   db: Executor;
   tenant_id: string;
   conversation_id: string;

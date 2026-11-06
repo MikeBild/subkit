@@ -13,7 +13,7 @@ export interface RawStepResultSource {
   error?: unknown;
 }
 
-export interface RawStepResult {
+interface RawStepResult {
   step_id: string;
   kind: string;
   status: string;

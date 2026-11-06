@@ -53,20 +53,20 @@ export function failureStatusOf(status: StepStatus): TerminalExecutionStatus {
   return "failed";
 }
 
-export interface CrashRecoveryCandidate {
+interface CrashRecoveryCandidate {
   abort_requested: boolean;
   started_at_ms: number | null;
   workflow_timeout_ms: number | null;
 }
 
-export interface CrashRecoveryPolicy {
+interface CrashRecoveryPolicy {
   now_ms: number;
   default_timeout_ms: number;
   grace_multiplier: number;
   override_threshold_ms?: number | undefined;
 }
 
-export interface CrashRecoveryOutcome {
+interface CrashRecoveryOutcome {
   status: "aborted" | "timed_out";
   reason: "engine_crash_recovery_abort_requested" | "engine_crash_recovery";
   message: string;
@@ -108,7 +108,7 @@ export type ExecutionOutcome =
   | { type: "admission_failed"; refused: boolean }
   | { type: "cancelled" };
 
-export type ExecutionOutcomeType = ExecutionOutcome["type"];
+type ExecutionOutcomeType = ExecutionOutcome["type"];
 
 const OUTCOME_STATUS: Record<ExecutionOutcomeType, TerminalExecutionStatus> = {
   completed: "succeeded",

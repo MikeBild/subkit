@@ -37,17 +37,9 @@ const STORED_AUTH_TYPES = new Set([
   "aws_sigv4",
 ]);
 
-export function credentialIsStored(connector: ConnectorAuthInput): boolean {
+function credentialIsStored(connector: ConnectorAuthInput): boolean {
   return STORED_AUTH_TYPES.has(connector.auth_type ?? "") && connector.driver !== "postgres";
 }
-
-const LABELS: Record<ConnectorAuthState, TranslationKey> = {
-  connected: "connectors.auth.connected",
-  expired: "connectors.auth.expired",
-  credentials_missing: "connectors.auth.credentialsMissing",
-  not_required: "connectors.auth.notRequired",
-  unproven: "connectors.auth.unproven",
-};
 
 export function connectorAuthState(
   connector: ConnectorAuthInput,
@@ -69,10 +61,6 @@ export function connectorAuthState(
   if (credential === null && credentialIsStored(connector)) return "credentials_missing";
   if (connector.health_state === "ok" && !connector.auth_failed_at) return "connected";
   return "unproven";
-}
-
-export function authStateLabel(state: ConnectorAuthState): TranslationKey {
-  return LABELS[state];
 }
 
 export function needsRenewal(state: ConnectorAuthState): boolean {

@@ -69,7 +69,7 @@ function stopDepthPoller(): void {
   }
 }
 
-export interface StartBossOptions {
+interface StartBossOptions {
   connectionString: string;
   schema?: string;
 }

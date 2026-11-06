@@ -5,9 +5,9 @@ import { validateTenantWorkflowDefForSave } from "./tenant-validator.ts";
 import type { WorkflowDef } from "./types.ts";
 import type { ValidateOptions, ValidationError } from "./validator.ts";
 
-export type WorkflowSaveStage = "definition" | "skill_schema" | "storage_binding";
+type WorkflowSaveStage = "definition" | "skill_schema" | "storage_binding";
 
-export type PreparedWorkflowSave =
+type PreparedWorkflowSave =
   | { ok: true; workflow: WorkflowDef }
   | { ok: false; stage: WorkflowSaveStage; errors: string[]; issues: ValidationError[] };
 

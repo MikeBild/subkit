@@ -18,9 +18,7 @@ export function totalFailureCount(digest: OperatorHealthDigest): number {
   return digest.failure_groups.reduce((acc, g) => acc + g.count, 0);
 }
 
-export async function readOperatorDigest(
-  client: EngineClient,
-): Promise<OperatorHealthDigest | null> {
+async function readOperatorDigest(client: EngineClient): Promise<OperatorHealthDigest | null> {
   try {
     const digest = await client.getOperatorHealthDigest();
     return { ...digest, risk: digest.risk ?? [] };

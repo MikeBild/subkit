@@ -4,7 +4,6 @@ import { apiRequest } from "./client";
 export type TenantBranding = components["schemas"]["TenantBrandingResponse"];
 export type TenantBrandingUpdate = components["schemas"]["TenantBrandingUpdate"];
 export type BrandingPalette = NonNullable<TenantBranding["palette"]>;
-export type BrandingLogoChange = TenantBrandingUpdate["logos"]["light"];
 
 export function readTenantBranding(): Promise<TenantBranding> {
   return apiRequest("/v1/tenant/branding");

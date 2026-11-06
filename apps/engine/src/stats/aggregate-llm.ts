@@ -64,7 +64,7 @@ export interface LlmGroup {
   };
 }
 
-export interface LlmStatsResult {
+interface LlmStatsResult {
   groups: LlmGroup[];
   totals: {
     calls: { total: number; by_result: Record<string, number> };
@@ -128,7 +128,7 @@ function readLatency(row: Record<string, unknown>): LatencyAgg {
   };
 }
 
-export type LlmFilter = Pick<
+type LlmFilter = Pick<
   LlmStatsParams,
   "tenantId" | "from" | "to" | "model" | "flow" | "userId" | "result" | "workflowId"
 > & {

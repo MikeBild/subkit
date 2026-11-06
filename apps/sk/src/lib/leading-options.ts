@@ -1,6 +1,6 @@
 type ArgDef = { type?: string };
 
-export interface LeadingSplit {
+interface LeadingSplit {
   leading: string[];
   command: string | undefined;
   rest: string[];

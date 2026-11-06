@@ -7,8 +7,7 @@ export const TOTAL_BUDGET_BYTES = envIntOr(
 );
 export const PER_PAGE_BYTES = envIntOr("DOCS_INGESTION_MAX_BYTES_PER_DOC", 3 * 1024 * 1024);
 export const MAX_LINKS = envIntOr("DOCS_INGESTION_MAX_LINKS", 20);
-export const MAX_CONCURRENT_OPENAPI = envIntOr("DOCS_INGESTION_MAX_CONCURRENT", 25);
-export const MAX_SPECS = envIntOr("DOCS_INGESTION_MAX_SPECS", 100);
+const MAX_SPECS = envIntOr("DOCS_INGESTION_MAX_SPECS", 100);
 export const DEDUP_THRESHOLD = 0.9;
 
 export function createBudgetState(): BudgetState {
@@ -69,25 +68,4 @@ export function canFetchSpec(state: BudgetState): boolean {
 
 export function recordSpecFetched(state: BudgetState): void {
   state.specs_fetched += 1;
-}
-
-export class Semaphore {
-  private remaining: number;
-  private waiters: Array<() => void> = [];
-  constructor(limit: number) {
-    this.remaining = limit;
-  }
-  async acquire(): Promise<void> {
-    if (this.remaining > 0) {
-      this.remaining -= 1;
-      return;
-    }
-    await new Promise<void>((resolve) => this.waiters.push(resolve));
-    this.remaining -= 1;
-  }
-  release(): void {
-    this.remaining += 1;
-    const next = this.waiters.shift();
-    if (next) next();
-  }
 }

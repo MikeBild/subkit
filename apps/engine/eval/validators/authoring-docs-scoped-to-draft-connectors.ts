@@ -1,7 +1,7 @@
 import {
   createEmptyDraftDocument,
   withWorkflowDraft,
-} from "../../src/conversations/authoring-state.ts";
+} from "../../src/conversations/authoring-state/index.ts";
 import { fetchConnectorDocsTool } from "../../src/conversations/tools/fetch-connector-docs.ts";
 import { connectors } from "../../src/db/schema/index.ts";
 import { ingestDocs } from "../../src/docs-ingestion/service.ts";

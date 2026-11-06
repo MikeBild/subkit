@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { createEmptyDraftDocument } from "../../authoring-state.ts";
+import { createEmptyDraftDocument } from "../../authoring-state/index.ts";
 import { createConversation } from "../../service.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import type { DraftDocument } from "../../types.ts";

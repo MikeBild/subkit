@@ -14,13 +14,13 @@ function clipToBytes(s: string, max: number): string {
   return out;
 }
 
-export interface LoadMemoryOptions {
+interface LoadMemoryOptions {
   cwd?: string;
   include?: boolean;
   max_bytes?: number;
 }
 
-export interface LoadMemoryResult {
+interface LoadMemoryResult {
   content: string | null;
   sources: string[];
   truncated: boolean;

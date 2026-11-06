@@ -17,9 +17,9 @@ export interface CapturedLog {
   fields: Record<string, unknown>;
 }
 
-export const SYSTEM_TENANT_TOKENS = new Set<string>([SYSTEM_TENANT_ID, "", "system"]);
+const SYSTEM_TENANT_TOKENS = new Set<string>([SYSTEM_TENANT_ID, "", "system"]);
 
-export function entryTenantId(entry: CapturedLog): string | null {
+function entryTenantId(entry: CapturedLog): string | null {
   const v = entry.fields?.tenant_id;
   if (typeof v !== "string") return null;
   return v;
@@ -35,7 +35,7 @@ export function isEntryVisibleToTenant(
   return includeEngine || t === principal_tenant_id;
 }
 
-export interface LogRing {
+interface LogRing {
   record(entry: CapturedLog): void;
   tail(opts?: {
     since_ms?: number;

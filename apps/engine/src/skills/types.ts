@@ -101,8 +101,8 @@ export const SkillActivationSchema = z
 const JsonSchemaRecord = z.record(z.string(), z.unknown());
 
 export const MAX_SKILL_RULES = 50;
-export const MAX_SKILL_DOMAINS = 20;
-export const RULE_STATEMENT_MAX_LENGTH = 300;
+const MAX_SKILL_DOMAINS = 20;
+const RULE_STATEMENT_MAX_LENGTH = 300;
 
 function isLocaleTag(value: string): boolean {
   try {
@@ -264,7 +264,6 @@ export const SkillDomainsSchema = z
   .refine((domains) => new Set(domains).size === domains.length, "domains must be unique");
 
 export type SkillRule = z.infer<typeof SkillRuleSchema>;
-export type SkillRuleType = SkillRule["type"];
 
 export const SkillSchema = z
   .object({

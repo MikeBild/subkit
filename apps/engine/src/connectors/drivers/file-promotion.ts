@@ -2,7 +2,7 @@ import { isTextLike } from "../../files/content-type.ts";
 
 export const PROMOTE_SIZE_THRESHOLD_BYTES = 25 * 1024 * 1024;
 
-export const BINARY_SNIFF_BYTES = 8192;
+const BINARY_SNIFF_BYTES = 8192;
 
 function hasNulByte(bytes: Uint8Array): boolean {
   const limit = Math.min(bytes.byteLength, BINARY_SNIFF_BYTES);

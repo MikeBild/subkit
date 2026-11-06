@@ -11,7 +11,7 @@ const DEFAULT_MAX = 100;
 const DEFAULT_WINDOW_MS = 60_000;
 const PRUNE_INTERVAL_MS = 60_000;
 
-export interface RateLimitOptions {
+interface RateLimitOptions {
   max?: number;
   windowMs?: number;
 }

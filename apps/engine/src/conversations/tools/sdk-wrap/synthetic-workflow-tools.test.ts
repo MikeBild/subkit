@@ -20,7 +20,7 @@ import { resetMockProvider } from "../../../llm/mock-provider.ts";
 import { logger } from "../../../logging/logger.ts";
 import { workflowExecutionEnvironment } from "../../../workflows/execution-environment.ts";
 import { humanChatAnswer } from "../../answer-actor.ts";
-import { maybeAutoPersistFromElicitation } from "../../persistence/auto-persist.ts";
+import { maybeAutoPersistFromElicitation } from "../../persistence/auto-persist/index.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import { wrapTools } from "../sdk-wrap.ts";

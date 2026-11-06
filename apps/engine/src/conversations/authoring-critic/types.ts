@@ -1,14 +1,14 @@
 import { z } from "zod";
 
 export const REPAIRS_CAP = 5;
-export const REPAIR_LENGTH_CAP = 400;
-export const RATIONALE_LENGTH_CAP = 800;
+const REPAIR_LENGTH_CAP = 400;
+const RATIONALE_LENGTH_CAP = 800;
 export const RUBRIC_CAP = 50;
-export const RUBRIC_NOTE_CAP = 300;
+const RUBRIC_NOTE_CAP = 300;
 
-export const CriticRubricStatusSchema = z.enum(["pass", "fail", "n_a"]);
+const CriticRubricStatusSchema = z.enum(["pass", "fail", "n_a"]);
 
-export const CriticRubricVerdictItemSchema = z.object({
+const CriticRubricVerdictItemSchema = z.object({
   rule_id: z.string().min(1).max(80),
   status: CriticRubricStatusSchema,
   note: z.string().max(RUBRIC_NOTE_CAP).default(""),

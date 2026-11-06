@@ -5,13 +5,9 @@ import { type NotificationChannelRow, notificationChannels } from "../db/schema/
 export const FAILURE_THRESHOLD = 10;
 export const OPEN_DURATION_MS = 5 * 60_000;
 
-export type CircuitPhase = "closed" | "open" | "half_open";
+type CircuitPhase = "closed" | "open" | "half_open";
 
 const phaseByChannel: Map<string, CircuitPhase> = new Map();
-
-export function getPhase(channelId: string): CircuitPhase {
-  return phaseByChannel.get(channelId) ?? "closed";
-}
 
 function setPhase(channelId: string, phase: CircuitPhase): void {
   if (phase === "closed") {

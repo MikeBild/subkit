@@ -1,11 +1,11 @@
-export const OWN_CREDENTIAL_REDACTION = "***redacted***";
+const OWN_CREDENTIAL_REDACTION = "***redacted***";
 
 function encodedForms(secret: string): string[] {
   const form = new URLSearchParams({ v: secret }).toString().slice(2);
   return [secret, encodeURIComponent(secret), form, JSON.stringify(secret).slice(1, -1)];
 }
 
-export function ownCredentialForms(secrets: readonly string[]): string[] {
+function ownCredentialForms(secrets: readonly string[]): string[] {
   const forms = new Set<string>();
   for (const secret of secrets) {
     if (secret.length === 0) continue;
@@ -14,7 +14,7 @@ export function ownCredentialForms(secrets: readonly string[]): string[] {
   return [...forms].sort((a, b) => b.length - a.length);
 }
 
-export function redactOwnCredentialText(text: string, forms: readonly string[]): string {
+function redactOwnCredentialText(text: string, forms: readonly string[]): string {
   let out = text;
   for (const form of forms) out = out.split(form).join(OWN_CREDENTIAL_REDACTION);
   return out;

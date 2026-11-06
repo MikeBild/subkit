@@ -41,7 +41,7 @@ export function makeTestPrincipal(overrides: Partial<ResolvedPrincipal> = {}): R
   } as any;
 }
 
-export interface StubDbCapture {
+interface StubDbCapture {
   inserts: Array<{
     action?: string;
     resource_type?: string;

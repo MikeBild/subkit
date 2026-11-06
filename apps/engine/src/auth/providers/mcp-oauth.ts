@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { getConfig } from "../../config/loader.ts";
-import { type Db, getDb } from "../../db/client.ts";
+import type { Db } from "../../db/client.ts";
 import {
   mcpOauthAccessTokens,
   mcpOauthClients,
@@ -94,11 +94,11 @@ async function maybeFlushLastUsed(
 }
 
 export interface McpOAuthProviderOptions {
-  db?: Db;
+  db: Db;
   resetThrottle?: boolean;
 }
 
-export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): AuthProvider {
+export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions): AuthProvider {
   if (opts.resetThrottle) lastFlush.clear();
   return {
     name: "mcp_oauth",
@@ -121,7 +121,7 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
       const prefix = token.slice(0, TOKEN_PREFIX_LENGTH);
       const tokenHash = sha256Hex(token);
 
-      const db = opts.db ?? getDb();
+      const db = opts.db;
       // tenant-filter:exempt — prefix-based credential lookup pre-tenant
       const rows = await db
         .select()

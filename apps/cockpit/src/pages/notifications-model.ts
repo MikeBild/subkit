@@ -3,7 +3,7 @@ import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
-export interface NotificationRuleLike {
+interface NotificationRuleLike {
   name: string;
   event_pattern: string;
   workflow_pattern: string;
@@ -11,7 +11,7 @@ export interface NotificationRuleLike {
   target_channel_id: string;
 }
 
-export interface NotificationChannelLike {
+interface NotificationChannelLike {
   id: string;
   platform: string;
   workspace_id?: string;
@@ -23,7 +23,7 @@ export interface NotificationChannelLike {
 }
 
 const INBOX_WORKSPACE = "_cli";
-export const INBOX_TARGET = { workspace: INBOX_WORKSPACE, channel: "_inbox" } as const;
+const INBOX_TARGET = { workspace: INBOX_WORKSPACE, channel: "_inbox" } as const;
 
 export const CHANNEL_PLATFORMS = ["slack", "google_chat", "webhook"] as const;
 
@@ -106,7 +106,7 @@ export function ruleNameLabel(rule: NotificationRuleLike, t: Translate): string 
     : rule.name;
 }
 
-export type RuleTarget =
+type RuleTarget =
   | { kind: "inbox" }
   | { kind: "channel"; channel: NotificationChannelLike }
   | { kind: "pending" };

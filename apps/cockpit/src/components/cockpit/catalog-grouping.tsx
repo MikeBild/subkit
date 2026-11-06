@@ -8,7 +8,7 @@ import { useI18n } from "@/lib/i18n-context";
 import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
 import type { CategoryCount } from "./catalog-metadata";
 
-export const CATEGORY_GROUP = "category";
+const CATEGORY_GROUP = "category";
 
 export function compareCategoryKeys(left: string, right: string): number {
   return (

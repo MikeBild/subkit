@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { createElicitation } from "../../conversations/elicitations.ts";
-import { appendMessage, buildModelMessages } from "../../conversations/persist.ts";
+import { appendMessage, buildModelMessages } from "../../conversations/persistence/index.ts";
 import { conversationElicitations, conversations } from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";

@@ -14,7 +14,7 @@ export interface UsageAccessEntry {
   detail?: string;
 }
 
-export interface UsageInputEntry {
+interface UsageInputEntry {
   name: string;
   type: string;
   required: boolean;
@@ -38,7 +38,7 @@ export interface ResourceUsage {
   follow_up_options?: FollowUpOption[];
 }
 
-export interface WorkflowDefinitionLike {
+interface WorkflowDefinitionLike {
   description?: string | undefined;
   input_schema?: Record<string, unknown> | undefined;
   output_schema?: Record<string, unknown> | undefined;
@@ -46,7 +46,7 @@ export interface WorkflowDefinitionLike {
   steps: ReadonlyArray<unknown>;
 }
 
-export interface WorkflowUsageParts {
+interface WorkflowUsageParts {
   workflow: {
     id: string;
     slug: string;

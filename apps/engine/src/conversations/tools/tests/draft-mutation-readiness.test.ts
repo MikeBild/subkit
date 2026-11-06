@@ -6,7 +6,7 @@ import {
   withWorkflowDraft,
   withWorkflowInspection,
   withWorkflowValidation,
-} from "../../authoring-state.ts";
+} from "../../authoring-state/index.ts";
 import { saveApprovalReadiness } from "../../persistence/save-workflow-approval.ts";
 import type { DraftDocument } from "../../types.ts";
 import { buildDraftMutationPayload, workflowSaveReadiness } from "../authoring-contract.ts";

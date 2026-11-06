@@ -4,7 +4,7 @@ import type { PolicyDecision, ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { ForbiddenError } from "../errors.ts";
 
-export interface EnforceContext {
+interface EnforceContext {
   resource_type: string;
   resource_id?: string | null;
   action?: string;

@@ -8,7 +8,7 @@ import {
   normalizeDraftDocument,
   startNewWorkflowDraft,
   withWorkflowDraft,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import {
   buildJudgeDefinitionSummary,
   buildJudgeStepArtifacts,

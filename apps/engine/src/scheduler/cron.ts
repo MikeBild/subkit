@@ -1,6 +1,6 @@
 import { CronExpressionParser } from "cron-parser";
 
-export interface CronValidationResult {
+interface CronValidationResult {
   ok: boolean;
   reason?: string;
   mode: "cron" | "every";

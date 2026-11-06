@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { Executor } from "../../db/client.ts";
 
-export interface MarkSeenInput {
+interface MarkSeenInput {
   tenant_id: string;
   webhook_id: string;
   standard_webhook_id: string;

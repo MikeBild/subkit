@@ -7,7 +7,7 @@ import {
   workflowExecutionAuthorities,
 } from "../db/schema/index.ts";
 
-export interface WorkflowHistoryScope {
+interface WorkflowHistoryScope {
   tenant_id: string;
   workflow_id: string;
   workflow_version_id: string;

@@ -3,7 +3,7 @@ import { type AnyColumn, type SQL, sql } from "drizzle-orm";
 export const KEYSET_CURSOR_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z\|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
-export interface KeysetCursor {
+interface KeysetCursor {
   ts: string;
   id: string;
 }

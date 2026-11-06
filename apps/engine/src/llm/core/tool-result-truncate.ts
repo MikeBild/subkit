@@ -6,21 +6,21 @@ import {
 } from "../../execution/timeouts.ts";
 import { sampleObject } from "../../utils/sample-object.ts";
 
-export type ToolResultKind = "success" | "error";
+type ToolResultKind = "success" | "error";
 
-export interface TruncationMeta {
+interface TruncationMeta {
   original_bytes: number;
   sample_depth: number;
   array_cap: number;
   reason: string;
 }
 
-export interface TruncatedToolResult {
+interface TruncatedToolResult {
   value: unknown;
   truncated: TruncationMeta | null;
 }
 
-export interface TruncateOptions {
+interface TruncateOptions {
   success_bytes?: number;
   error_bytes?: number;
   depth?: number;

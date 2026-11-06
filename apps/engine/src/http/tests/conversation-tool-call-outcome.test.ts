@@ -4,7 +4,7 @@ import {
   appendMessage,
   insertToolCall,
   updateToolCallOutput,
-} from "../../conversations/persist.ts";
+} from "../../conversations/persistence/index.ts";
 import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 

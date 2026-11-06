@@ -1,4 +1,4 @@
-export const PREFLIGHT_REFUSAL_CODES = [
+const PREFLIGHT_REFUSAL_CODES = [
   "master_key_missing",
   "master_key_malformed",
   "database_url_missing",
@@ -52,5 +52,4 @@ export function refusalLine(result: PreflightCheckResult): string {
 }
 
 export const PREFLIGHT_EXIT_OK = 0;
-export const PREFLIGHT_EXIT_ERROR = 1;
 export const PREFLIGHT_EXIT_REFUSED = 3;

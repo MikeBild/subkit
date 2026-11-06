@@ -2,9 +2,9 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-export const cockpitDemoBrandName = "Brennwerk";
-export const cockpitDemoBrandSubtitle = "Logistik";
-export const cockpitDemoBrandPalette = "teal" as const;
+const cockpitDemoBrandName = "Brennwerk";
+const cockpitDemoBrandSubtitle = "Logistik";
+const cockpitDemoBrandPalette = "teal" as const;
 
 const directory = fileURLToPath(new URL("./demo-brand/", import.meta.url));
 
@@ -14,7 +14,7 @@ type ImageChange = {
   content_base64: string;
 };
 
-export type CockpitDemoBrandingUpdate = {
+type CockpitDemoBrandingUpdate = {
   revision: number;
   display_name: string;
   subtitle: string;

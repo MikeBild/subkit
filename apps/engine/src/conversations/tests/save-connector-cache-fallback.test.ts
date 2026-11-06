@@ -12,7 +12,7 @@ import {
   withConnectorInspection,
   withConnectorProbe,
   withConnectorValidation,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import { appendSnapshot, loadDraft } from "../draft.ts";
 import {

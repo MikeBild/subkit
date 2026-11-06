@@ -53,7 +53,7 @@ export function renderSkillMd(skill: SyncSkill): string {
   return `${lines.join("\n")}\n`;
 }
 
-export interface SyncPlan {
+interface SyncPlan {
   writes: Map<string, string>;
   unchanged: string[];
   prunes: string[];

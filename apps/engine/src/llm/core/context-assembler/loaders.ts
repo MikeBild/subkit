@@ -263,7 +263,7 @@ export interface ConnectorSchemaSummary {
   self_description_line?: string;
 }
 
-export function buildSelfDescriptionLine(
+function buildSelfDescriptionLine(
   self_description: ConnectorSelfDescription | null | undefined,
 ): string | null {
   const links = self_description?.links ?? [];
@@ -427,17 +427,6 @@ function tokenizeForRanking(text: string): string[] {
     .split(/\s+/)
     .map(normalizeToken)
     .filter((t) => t.length > 0);
-}
-
-export function buildRecipeRankingQuery(
-  hint: AuthoringPromptHint | undefined,
-  turns: UserTurn[],
-): string {
-  const parts: string[] = [];
-  if (hint?.next_required_action) parts.push(hint.next_required_action);
-  if (hint?.active_target?.kind) parts.push(hint.active_target.kind);
-  for (const turn of turns.slice(-3)) parts.push(turn.content);
-  return parts.join(" ").slice(0, 512);
 }
 
 export function loadTopRecipeBodies(

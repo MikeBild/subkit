@@ -11,7 +11,7 @@ export interface PriorFailure {
   error: string;
 }
 
-export interface ExpandResult {
+interface ExpandResult {
   entries: PriorFailure[];
   hadCriticReject: boolean;
 }

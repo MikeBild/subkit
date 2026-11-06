@@ -1,12 +1,12 @@
 import type { CredentialPlaintext, DecryptedCredential } from "../../../credentials/index.ts";
 import { BadRequestError } from "../../errors.ts";
 
-export type StaticCredentialValue = Extract<
+type StaticCredentialValue = Extract<
   CredentialPlaintext & DecryptedCredential,
   { mode: "none" | "header" | "query" | "bearer" | "basic" | "aws_sigv4" | "signed_jwt" }
 >;
 
-export interface CredentialBodyInput {
+interface CredentialBodyInput {
   mode:
     | "none"
     | "header"

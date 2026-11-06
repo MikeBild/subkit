@@ -9,7 +9,7 @@ import { CategorySchema } from "./catalog-metadata.ts";
 
 const IntakeTagsSchema = z.array(z.string().min(1).max(40)).max(20);
 
-export const IntakeNewSkillSchema = z
+const IntakeNewSkillSchema = z
   .object({
     title: z.string().trim().min(1).max(200),
     scope: SkillScopeSchema,
@@ -25,7 +25,7 @@ export const IntakeNewSkillSchema = z
   })
   .openapi("IntakeNewSkill");
 
-export const IntakeSkillTargetSchema = z
+const IntakeSkillTargetSchema = z
   .object({
     skill: z
       .object({

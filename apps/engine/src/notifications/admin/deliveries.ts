@@ -7,7 +7,7 @@ import {
 
 export type { NotificationDeliveryRow };
 
-export interface ListDeliveriesInput {
+interface ListDeliveriesInput {
   limit: number;
   offset: number;
   status?: string | undefined;

@@ -24,13 +24,13 @@ import { registerTenantStateCache } from "./tenant-state.ts";
 export const OPERATIONAL_SCHEMA_VERSION = "operational-overview.v1" as const;
 export const OPERATIONAL_OVERVIEW_CONTRACT_VERSION = "2.3" as const;
 
-export type ValueState = "observed" | "zero" | "missing" | "stale" | "forbidden";
+type ValueState = "observed" | "zero" | "missing" | "stale" | "forbidden";
 export type Freshness = "fresh" | "stale" | "missing" | "forbidden";
 export interface Drilldown {
   path: string;
   label_id: string;
 }
-export type HealthCauseReason =
+type HealthCauseReason =
   | "held_for_review"
   | "failing"
   | "needs_reauth"
@@ -38,7 +38,7 @@ export type HealthCauseReason =
   | "degraded"
   | "unhealthy";
 
-export interface HealthCauseSubject {
+interface HealthCauseSubject {
   kind: "workflow" | "connector";
   id: string | null;
   name: string | null;
@@ -142,7 +142,7 @@ export interface FreshnessSource {
 
 export const MAX_HEALTH_CAUSES = 5;
 
-export const FRESHNESS_EXPECTED_INTERVAL_SECONDS = 60 * 60;
+const FRESHNESS_EXPECTED_INTERVAL_SECONDS = 60 * 60;
 export const FRESHNESS_STALE_AFTER_SECONDS = 3 * FRESHNESS_EXPECTED_INTERVAL_SECONDS;
 
 interface SnapshotRow extends Record<string, unknown> {
@@ -637,15 +637,15 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
   };
 }
 
-export const NOT_OK_CONNECTORS_PATH = "/cockpit/connectors?health=not_ok";
+const NOT_OK_CONNECTORS_PATH = "/cockpit/connectors?health=not_ok";
 
-export const ATTENTION_PATH = "/cockpit";
+const ATTENTION_PATH = "/cockpit";
 
 function workflowReviewPath(workflowId: string): string {
   return `/cockpit?review=workflow:${workflowId}`;
 }
 
-export const DECIDED_REPAIRS_PATH =
+const DECIDED_REPAIRS_PATH =
   "/cockpit/audit?scope=all&action=patch_candidate.approved,patch_candidate.auto_applied,patch_candidate.rejected";
 
 function worstComponentLink(

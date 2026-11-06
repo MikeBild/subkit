@@ -21,7 +21,7 @@ export interface CallerUsage {
   resetsAt: string;
 }
 
-export interface CallerBudgetLedger {
+interface CallerBudgetLedger {
   tenant_id: string;
   bucket: string;
   principal_id: string;
@@ -29,7 +29,7 @@ export interface CallerBudgetLedger {
   tz: string;
 }
 
-export interface CallerBudgetReservation {
+interface CallerBudgetReservation {
   bucket: string;
   unit_key: string;
   execution_guard_key: string;
@@ -43,7 +43,7 @@ function refuse(code: CallerBudgetRefusalCode, message: string, details?: unknow
   throw Object.assign(new Error(message), { code, ...(details ? { details } : {}) });
 }
 
-export function executionGuardKey(principalId: string, unitKey: string): string {
+function executionGuardKey(principalId: string, unitKey: string): string {
   return `${principalId}/${unitKey}`;
 }
 
@@ -87,13 +87,13 @@ async function localDay(
   return { day: row.day, resetsAt: row.resets_at };
 }
 
-export interface LocalDayWindow {
+interface LocalDayWindow {
   day: string;
   startsAt: string;
   resetsAt: string;
 }
 
-export async function localDayWindow(
+async function localDayWindow(
   tx: Executor,
   tz: string,
   now: Date = new Date(),
@@ -108,7 +108,7 @@ export async function localDayWindow(
   return { day, startsAt: row.starts_at, resetsAt };
 }
 
-export const BUDGET_REFUSAL_REASONS = ["rate_limited", "turn_limit", "turn_busy"] as const;
+const BUDGET_REFUSAL_REASONS = ["rate_limited", "turn_limit", "turn_busy"] as const;
 
 export async function bucketUsageToday(
   tx: Executor,
@@ -515,7 +515,7 @@ export async function markBillableStep(
     .where(unitWhere(params.tenant_id, guarded.unit));
 }
 
-export interface GuardSettlement {
+interface GuardSettlement {
   attach?: { key: string; usage: { usedToday: number; dailyLimit: number } };
 }
 

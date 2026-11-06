@@ -6,9 +6,9 @@ import type { NotificationAdapter } from "../service.ts";
 
 export const WEBHOOK_MAX_ATTEMPTS = 3;
 
-export const WEBHOOK_BACKOFF_CAP_MS = 30_000;
+const WEBHOOK_BACKOFF_CAP_MS = 30_000;
 
-export interface WebhookAdapterOptions {
+interface WebhookAdapterOptions {
   exec: Executor;
   url: string;
   secret?: string;

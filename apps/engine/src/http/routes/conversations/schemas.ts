@@ -1,6 +1,5 @@
 import { z } from "@hono/zod-openapi";
 import { CONVERSATION_REFERENCE_TYPES } from "@shared/conversation-reference.ts";
-import { SUGGEST_NEXT_KINDS, SUGGEST_NEXT_REASONS } from "@shared/suggest-next-reasons.ts";
 import type * as svc from "../../../conversations/index.ts";
 import { PlaybookViewSchema, ResumeFormFieldSchema } from "../../../conversations/index.ts";
 import { resolveEngineUrl } from "../../../llm/index.ts";
@@ -27,7 +26,7 @@ export const ToolCallRespondParam = z.object({
   tool_call_id: z.string().uuid(),
 });
 
-export const PermissionModeSchema = z.enum(["auto", "ask", "plan", "yolo"]);
+const PermissionModeSchema = z.enum(["auto", "ask", "plan", "yolo"]);
 
 export const RespondElicitationBody = z
   .object({
@@ -37,7 +36,7 @@ export const RespondElicitationBody = z
   })
   .openapi("RespondElicitationBody");
 
-export const ConversationOwnerSchema = z
+const ConversationOwnerSchema = z
   .object({
     id: z.string(),
     kind: z.enum(["user", "system_account"]),
@@ -45,11 +44,11 @@ export const ConversationOwnerSchema = z
   })
   .openapi("ConversationOwner");
 
-export const ConversationTargetRefSchema = z
+const ConversationTargetRefSchema = z
   .object({ id: z.string(), slug: z.string().nullable(), name: z.string().nullable() })
   .openapi("ConversationTargetRef");
 
-export const ConversationCreatedResourceSchema = z
+const ConversationCreatedResourceSchema = z
   .object({
     kind: z.enum(["workflow", "connector", "execution"]),
     id: z.string(),
@@ -103,7 +102,7 @@ export const ConversationListResponse = z
   .object({ items: z.array(ConversationSchema), total: z.number().int().nonnegative() })
   .openapi("ConversationListResponse");
 
-export const UIMessageSchema = z
+const UIMessageSchema = z
   .object({
     id: z.string(),
     role: z.string(),
@@ -113,7 +112,7 @@ export const UIMessageSchema = z
   })
   .openapi("UIMessage");
 
-export const ConversationToolCallSchema = z
+const ConversationToolCallSchema = z
   .object({
     id: z.string(),
     conversation_id: z.string(),
@@ -129,7 +128,7 @@ export const ConversationToolCallSchema = z
   })
   .openapi("ConversationToolCall");
 
-export const ConversationUsageSchema = z
+const ConversationUsageSchema = z
   .object({
     tokens: z.number().int().nonnegative(),
     by_model: z.array(z.object({ model: z.string(), tokens: z.number().int().nonnegative() })),
@@ -222,7 +221,7 @@ export const ConversationDetailSchema = z
 
 const REFERENCE_LABEL = /^[\p{L}\p{N} _./-]{1,200}$/u;
 
-export const ConversationReferenceSchema = z
+const ConversationReferenceSchema = z
   .object({
     type: z.enum(CONVERSATION_REFERENCE_TYPES),
     id: z.string().uuid(),
@@ -276,15 +275,6 @@ export const AppendMessageBody = z
       .optional(),
   })
   .openapi("AppendConversationMessageBody");
-
-export const NextSuggestionEventSchema = z
-  .object({
-    type: z.literal("next_suggestion"),
-    suggestion: z.string().nullable(),
-    reason: z.enum(SUGGEST_NEXT_REASONS),
-    kind: z.enum(SUGGEST_NEXT_KINDS).nullable(),
-  })
-  .openapi("NextSuggestionEvent");
 
 export const CitationSchema = z
   .object({
@@ -342,7 +332,7 @@ export const RunOutcomeSchema = z
   })
   .openapi("ConversationRunOutcome");
 
-export type RunOutcomeJson = {
+type RunOutcomeJson = {
   turn_id?: string;
   conversation: {
     id: string;
@@ -517,7 +507,7 @@ export const ContextSnapshotSchema = z
   })
   .openapi("ContextSnapshot");
 
-export const ToolPolicyModeSchema = z.enum([
+const ToolPolicyModeSchema = z.enum([
   "no_confirm",
   "confirm_before_execution",
   "confirm_after_execution",

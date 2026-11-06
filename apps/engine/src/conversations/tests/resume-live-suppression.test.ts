@@ -8,7 +8,7 @@ import {
 } from "../../db/schema/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
-import { runLoop } from "../loop.ts";
+import { runLoop } from "../loop/index.ts";
 
 const PREPARE_WITHOUT_LIVE_EFFECTS =
   "Bereite diesen Ablauf für den automatischen Betrieb vor. Nicht aktivieren, keine Live-Wirkungen freigeben oder ausführen. Erlaubte Prüfungen selbst übernehmen.";

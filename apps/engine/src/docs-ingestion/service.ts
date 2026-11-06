@@ -547,7 +547,7 @@ export async function ingestTemplateDocsForConnector(
   return await ingestDocs(input, exec);
 }
 
-export interface ListDocsParams {
+interface ListDocsParams {
   tenant_id: string;
   connector_id: string;
 }
@@ -577,7 +577,7 @@ export async function listDocs(p: ListDocsParams, exec?: Executor) {
   }));
 }
 
-export interface DeleteDocParams {
+interface DeleteDocParams {
   tenant_id: string;
   connector_id: string;
   document_id: string;

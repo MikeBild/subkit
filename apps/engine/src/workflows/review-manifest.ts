@@ -14,7 +14,7 @@ const candidateVersionId = "00000000-0000-4000-8000-000000000002";
 type FactWorkflow = NonNullable<ReturnType<WorkflowReadFacts["workflows"]["get"]>>;
 type FactVersion = NonNullable<ReturnType<WorkflowReadFacts["versions"]["get"]>>;
 
-export interface WorkflowReviewEffect {
+interface WorkflowReviewEffect {
   step_id: string;
   connector_name: string | null;
   connector_slug: string | null;
@@ -23,7 +23,7 @@ export interface WorkflowReviewEffect {
   details?: string[];
 }
 
-export interface WorkflowReviewManifest {
+interface WorkflowReviewManifest {
   digest: string;
   manifest: WorkflowEffectManifest;
   effects: WorkflowReviewEffect[];

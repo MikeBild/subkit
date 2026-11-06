@@ -1,5 +1,5 @@
 export const BRIEFING_CONNECTOR_ID = "11d24801-726b-4733-8d29-72bd922f08b0";
-export const RADAR_CONNECTOR_ID = "d7738a6f-0000-4000-8000-000000000001";
+const RADAR_CONNECTOR_ID = "d7738a6f-0000-4000-8000-000000000001";
 
 export const HARMONIQS_ITEMS_QUERY =
   "query HarmoniqsProjectItems($login: String!, $number: Int!, $after: String) { user(login: $login) { projectV2(number: $number) { url items(first: 100, after: $after) { totalCount nodes { id fieldValues(first: 100) { totalCount nodes { ... on ProjectV2ItemFieldSingleSelectValue { name field { ... on ProjectV2SingleSelectField { name } } } ... on ProjectV2ItemFieldTextValue { text field { ... on ProjectV2FieldCommon { name } } } ... on ProjectV2ItemFieldNumberValue { number field { ... on ProjectV2FieldCommon { name } } } ... on ProjectV2ItemFieldDateValue { date field { ... on ProjectV2FieldCommon { name } } } } pageInfo { hasNextPage endCursor } } content { ... on Issue { id number title state stateReason url createdAt updatedAt closedAt labels(first: 100) { totalCount nodes { name } pageInfo { hasNextPage endCursor } } milestone { number title } } } } pageInfo { hasNextPage endCursor } } } }";

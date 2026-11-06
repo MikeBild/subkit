@@ -1,6 +1,6 @@
 import type { TranslationKey } from "./i18n";
 
-export type DetailFieldFormat =
+type DetailFieldFormat =
   | "text"
   | "date"
   | "boolean"
@@ -10,7 +10,7 @@ export type DetailFieldFormat =
   | "sideEffects"
   | "maturity";
 
-export interface DetailField {
+interface DetailField {
   key: string;
   labelKey: TranslationKey;
   format: DetailFieldFormat;
@@ -45,20 +45,7 @@ export const DETAIL_FIELDS: readonly DetailField[] = [
   { key: "updated_at", labelKey: "catalog.updated", format: "date" },
 ];
 
-export const SCOPE_KEYS: Record<string, TranslationKey> = {
-  global: "scope.global",
-  connector: "scope.connector",
-  workflow: "scope.workflow",
-};
-
-export const SIDE_EFFECT_KEYS: Record<string, TranslationKey> = {
-  none: "sideEffects.none",
-  read: "sideEffects.read",
-  write: "sideEffects.write",
-  destructive: "sideEffects.destructive",
-};
-
-export interface DetailEntry extends DetailField {
+interface DetailEntry extends DetailField {
   value: unknown;
 }
 

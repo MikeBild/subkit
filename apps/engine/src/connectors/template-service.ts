@@ -7,12 +7,12 @@ import { connectorTemplates } from "../db/schema/index.ts";
 
 type TemplateRow = typeof connectorTemplates.$inferSelect;
 
-export type TenantConnectorTemplateInput = Omit<
+type TenantConnectorTemplateInput = Omit<
   typeof connectorTemplates.$inferInsert,
   "id" | "tenant_id" | "version" | "created_at" | "updated_at"
 >;
 
-export interface CreateTenantConnectorTemplateParams {
+interface CreateTenantConnectorTemplateParams {
   tenant_id: string;
   actor_type: AuditActorType;
   actor_id: string | null;
@@ -56,20 +56,7 @@ export async function listTenantConnectorTemplates(
     .orderBy(asc(connectorTemplates.slug));
 }
 
-export async function getTenantConnectorTemplateBySlug(
-  tenant_id: string,
-  slug: string,
-  exec: Executor,
-): Promise<TemplateRow | null> {
-  const [row] = await exec
-    .select()
-    .from(connectorTemplates)
-    .where(and(eq(connectorTemplates.tenant_id, tenant_id), eq(connectorTemplates.slug, slug)))
-    .limit(1);
-  return row ?? null;
-}
-
-export interface DeleteTenantConnectorTemplateParams {
+interface DeleteTenantConnectorTemplateParams {
   tenant_id: string;
   actor_type: AuditActorType;
   actor_id: string | null;

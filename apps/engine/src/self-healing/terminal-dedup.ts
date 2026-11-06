@@ -17,9 +17,7 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(value);
 }
 
-export function candidateDriftFingerprint(
-  candidate: typeof patchCandidates.$inferSelect,
-): string | null {
+function candidateDriftFingerprint(candidate: typeof patchCandidates.$inferSelect): string | null {
   const diff = candidate.diff as { drift_signal?: unknown } | null;
   return diff?.drift_signal == null ? null : signalFingerprint(diff.drift_signal as DriftSignal);
 }

@@ -5,7 +5,7 @@ import { buildGroundingIndex } from "./endpoint-grounding.ts";
 import { groundingFingerprint } from "./intent-fingerprint.ts";
 import type { DraftDocument } from "./types.ts";
 
-export interface GroundingStatus {
+interface GroundingStatus {
   state: "fresh" | "stale" | "unknown";
   advisory: string | null;
 }

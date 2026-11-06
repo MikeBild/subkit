@@ -39,7 +39,7 @@ export function normalizeForExactMatch(value: string): string {
     .trim();
 }
 
-export function scoreConnectorTemplate(
+function scoreConnectorTemplate(
   template: ConnectorTemplate,
   query: string,
   explicitDriver?: DriverName,

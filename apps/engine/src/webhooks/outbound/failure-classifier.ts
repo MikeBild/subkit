@@ -1,4 +1,4 @@
-export type FailureClass =
+type FailureClass =
   | "transient_network"
   | "transient_5xx"
   | "rate_limited"
@@ -6,7 +6,7 @@ export type FailureClass =
   | "permanent_4xx"
   | "unknown";
 
-export interface ClassifyFailureInput {
+interface ClassifyFailureInput {
   status: number;
   error: string | null;
 }

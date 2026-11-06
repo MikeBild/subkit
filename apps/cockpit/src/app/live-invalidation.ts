@@ -95,7 +95,7 @@ const AUDIT: QueryKey = ["audit"];
 
 const STEP_PREFIX = "execution.step.";
 
-export interface LiveRule {
+interface LiveRule {
   prefix: string;
   keys: readonly QueryKey[];
 }

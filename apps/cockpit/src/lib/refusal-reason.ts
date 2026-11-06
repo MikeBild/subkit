@@ -2,9 +2,7 @@ import type { components } from "@cli-core/engine-api/openapi";
 import type { TranslationKey } from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
 
-export type RefusalReason = NonNullable<
-  components["schemas"]["ExecutionOutcome"]["refusal_reason"]
->;
+type RefusalReason = NonNullable<components["schemas"]["ExecutionOutcome"]["refusal_reason"]>;
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 

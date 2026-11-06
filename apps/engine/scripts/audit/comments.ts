@@ -1,6 +1,6 @@
 import ts from "typescript";
 
-export const DIRECTIVE =
+const DIRECTIVE =
   /biome-ignore|@ts-expect-error|@ts-ignore|@ts-nocheck|@ts-check|eslint-disable|tenant-filter:exempt|-allowed:|allow-wall-clock|allow-random|@__PURE__|#__PURE__|@jsxImportSource|^\/\/\/\s*<reference|@vite-ignore|prettier-ignore/;
 
 export const COMMENT_SCOPE = /^(apps|packages|scripts|tests)\/.*\.(ts|tsx|mjs|js)$/;
@@ -8,7 +8,7 @@ export const COMMENT_SCOPE = /^(apps|packages|scripts|tests)\/.*\.(ts|tsx|mjs|js
 export const COMMENT_EXEMPT =
   /(^|\/)(node_modules|dist)\/|apps\/engine\/src\/db\/migrations\/embedded\.ts$|cockpit-embedded\.ts$|apps\/cockpit\/src\/api\/schema\.d\.ts$|packages\/cli-core\/src\/engine-api\/openapi\.d\.ts$/;
 
-export interface CommentHit {
+interface CommentHit {
   line: number;
   text: string;
   pos: number;

@@ -10,7 +10,7 @@ import {
   TokenExchangeError,
 } from "./token-exchange.ts";
 
-export interface TokenExchangeCliArgs {
+interface TokenExchangeCliArgs {
   keyFile: string;
   scope?: string;
   ttl?: number;

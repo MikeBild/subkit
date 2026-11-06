@@ -22,12 +22,12 @@ import {
   revokeClientAccessForTenant,
 } from "./oauth-connections.ts";
 
-export interface OAuthClientAdminInput {
+interface OAuthClientAdminInput {
   principal: ResolvedPrincipal;
   request_source: RequestSource | undefined;
 }
 
-export type OAuthClientRow = Pick<
+type OAuthClientRow = Pick<
   typeof mcpOauthClients.$inferSelect,
   | "id"
   | "client_id"
@@ -39,14 +39,14 @@ export type OAuthClientRow = Pick<
   | "created_at"
 >;
 
-export interface OAuthClientListing {
+interface OAuthClientListing {
   rows: OAuthClientRow[];
   approvals: Map<string, ClientApproval>;
   connectedBy: Map<string, ClientConnectedBy>;
   lastUsage: Map<string, string>;
 }
 
-export type OAuthClientRevokeEffect = "client_disabled" | "tenant_access_revoked";
+type OAuthClientRevokeEffect = "client_disabled" | "tenant_access_revoked";
 
 function disablesEngineWide(db: Db, principal: ResolvedPrincipal): Promise<boolean> {
   return principalHolds(db, principal, "mcp_oauth_client:disable");

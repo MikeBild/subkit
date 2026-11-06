@@ -5,7 +5,7 @@ import { trimJsonlFile } from "@shared/jsonl-ring.ts";
 import { debugLog, serializeDebugError } from "../../debug.ts";
 import { detectSecretShape } from "../../lib/secret-shape.ts";
 
-export const MAX_EVENTS_PER_SESSION = 5_000;
+const MAX_EVENTS_PER_SESSION = 5_000;
 
 export type TurnEventKind =
   | "user_message"
@@ -41,7 +41,7 @@ export function scrubSecrets(data: unknown): unknown {
   return data;
 }
 
-export interface AppendOptions {
+interface AppendOptions {
   dir?: string;
   tenant: string;
   now?: () => Date;

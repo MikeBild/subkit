@@ -6,7 +6,7 @@ import {
   withWorkflowExecution,
   withWorkflowInspection,
   withWorkflowValidation,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { saveWorkflowDraftTool } from "../tools/save-workflow-draft.ts";
 import type { DraftDocument } from "../types.ts";

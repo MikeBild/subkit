@@ -57,12 +57,12 @@ function section(title: string, rows: Array<[string, string]>): string[] {
   return [title, ...rows.map(([key, value]) => `  ${key.padEnd(width)}  ${value}`)];
 }
 
-export const APP_USER_PLACEHOLDER_DOMAIN = "@invalid";
+const APP_USER_PLACEHOLDER_DOMAIN = "@invalid";
 
 export const ERASE_CONSEQUENCES =
   "This erases SubKit's own data about this person for this app: sign-in links, budget counters, sessions and API keys, and the identity in past runs. Their account at the sign-in provider stays untouched. This cannot be undone.";
 
-export interface AppUserRow {
+interface AppUserRow {
   id: string;
   email: string;
   display_name?: string | null;
@@ -78,7 +78,7 @@ export function appUserLabel(user: AppUserRow): string {
   return provider ? `App user · ${provider}` : "App user";
 }
 
-export function appUserRows(users: AppUserRow[]): Array<[string, string]> {
+function appUserRows(users: AppUserRow[]): Array<[string, string]> {
   return users.map((user) => [user.id, appUserLabel(user)]);
 }
 

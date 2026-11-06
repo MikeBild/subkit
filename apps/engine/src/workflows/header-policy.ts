@@ -1,14 +1,14 @@
 import { type ConnectorHeaderPolicy, requestHeaderViolations } from "../connectors/index.ts";
 import type { StepDef } from "./types.ts";
 
-export interface ReservedAuthHeaderViolation {
+interface ReservedAuthHeaderViolation {
   step_id: string;
   header_name: string;
   path: string;
   message: string;
 }
 
-export interface DetectReservedAuthHeadersOptions {
+interface DetectReservedAuthHeadersOptions {
   connectorHeaderPolicies?: ReadonlyMap<string, ConnectorHeaderPolicy>;
 }
 

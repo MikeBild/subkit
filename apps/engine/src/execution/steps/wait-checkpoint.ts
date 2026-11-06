@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { workflowWaits } from "../../db/schema/workflow_waits.ts";
 import type { StepRunContext } from "../types.ts";
 
-export function isCheckpointable(ctx: StepRunContext): boolean {
+function isCheckpointable(ctx: StepRunContext): boolean {
   return ctx.persist_workflow_refs;
 }
 

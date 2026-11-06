@@ -92,7 +92,7 @@ export async function workflowIdsUsingConnector(
   return out;
 }
 
-export interface WorkflowConnectorDependent {
+interface WorkflowConnectorDependent {
   id: string;
   slug: string;
   name: string;
@@ -126,7 +126,7 @@ export interface WorkflowConnectorReference {
   reason: "available" | "deleted" | "missing";
 }
 
-export interface ConnectorReferenceRecord {
+interface ConnectorReferenceRecord {
   id: string;
   slug: string;
   name: string;

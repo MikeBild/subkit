@@ -1,5 +1,9 @@
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import type { EngineClient } from "../engine-client.ts";
 import type { ApiBody, ApiQuery } from "./http.ts";
+
+export type PermissionCatalogEntry = components["schemas"]["PermissionCatalogEntry"];
+export type PermissionListResponse = components["schemas"]["RbacPermissionListResponse"];
 
 export const rbacMethods = {
   async rbacCan(
@@ -16,8 +20,9 @@ export const rbacMethods = {
     return data as { allow: boolean; source: string | null; reason: string | null };
   },
 
-  listPermissions(this: EngineClient): Promise<{ items: string[] }> {
-    return this.request("GET", "/v1/rbac/permissions");
+  async listPermissions(this: EngineClient): Promise<PermissionListResponse> {
+    const { data } = await this.api.GET("/v1/rbac/permissions");
+    return data as PermissionListResponse;
   },
   async getEffectivePermissions(
     this: EngineClient,

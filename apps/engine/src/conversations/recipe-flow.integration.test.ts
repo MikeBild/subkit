@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { conversations, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
-import { createEmptyDraftDocument } from "./authoring-state.ts";
+import { createEmptyDraftDocument } from "./authoring-state/index.ts";
 import { startWorkflowFromRecipeTool } from "./tools/start-workflow-from-recipe.ts";
 import type { DraftDocument } from "./types.ts";
 

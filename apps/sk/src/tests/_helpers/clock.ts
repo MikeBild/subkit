@@ -1,4 +1,4 @@
-export interface FakeClock {
+interface FakeClock {
   now: () => number;
   date: () => Date;
   advance: (ms: number) => void;

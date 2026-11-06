@@ -21,11 +21,11 @@ import { chooseFileStrategy, type ModelCapabilities } from "./capabilities.ts";
 
 export const FILE_PART_PER_TURN_CAP_BYTES = 250 * 1024;
 
-export const TEXT_EXTRACT_PER_FILE_MAX_BYTES = 1024 * 1024;
+const TEXT_EXTRACT_PER_FILE_MAX_BYTES = 1024 * 1024;
 
-export const TEXT_EXTRACT_BINARY_PER_FILE_MAX_BYTES = 25 * 1024 * 1024;
+const TEXT_EXTRACT_BINARY_PER_FILE_MAX_BYTES = 25 * 1024 * 1024;
 
-export const TEXT_EXTRACT_PER_TURN_CAP_BYTES = 4 * 1024 * 1024;
+const TEXT_EXTRACT_PER_TURN_CAP_BYTES = 4 * 1024 * 1024;
 
 export type FileContentBlock =
   | {
@@ -43,14 +43,14 @@ export type FileContentBlock =
       placeholder: boolean;
     };
 
-export interface BuildFileContentBlocksParams {
+interface BuildFileContentBlocksParams {
   db: Db;
   tenant_id: string;
   capabilities: ModelCapabilities;
   fids: string[];
 }
 
-export interface BuildFileContentBlocksResult {
+interface BuildFileContentBlocksResult {
   blocks: FileContentBlock[];
   inline_bytes: number;
   inline_cap_downgrades: number;

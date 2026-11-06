@@ -13,7 +13,7 @@ export interface PriorWorkflowRef {
   output_keys: string[];
 }
 
-export interface FindSimilarActiveIntent {
+interface FindSimilarActiveIntent {
   query: string;
   connector_ids: string[];
   target_step_count?: number;

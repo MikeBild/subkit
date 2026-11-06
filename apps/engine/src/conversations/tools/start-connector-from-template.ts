@@ -4,7 +4,7 @@ import { runDiscoveryCached } from "../../connectors/discovery/service.ts";
 import { enrichConnectorFromTemplate } from "../../connectors/template-enrichment.ts";
 import { resolveConnectorTemplate } from "../../connectors/template-resolver.ts";
 import { logger } from "../../logging/logger.ts";
-import { withConnectorDraft } from "../authoring-state.ts";
+import { withConnectorDraft } from "../authoring-state/index.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import {
   allowedTemplateAuthTypes,

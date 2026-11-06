@@ -20,7 +20,7 @@ export function resolveMcpMode(principal: ResolvedPrincipal): McpMode {
   return "product";
 }
 
-export interface McpModeFlags {
+interface McpModeFlags {
   showProductTools: true;
   showConversationTools: boolean;
   showTenantReads: boolean;

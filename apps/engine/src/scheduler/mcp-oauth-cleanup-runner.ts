@@ -4,7 +4,7 @@ import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../audit/index.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 
-export const MCP_OAUTH_CLEANUP_BATCH_SIZE = 256;
+const MCP_OAUTH_CLEANUP_BATCH_SIZE = 256;
 
 const returnedKeys = z
   .array(z.object({ id: z.string().uuid() }).strict())

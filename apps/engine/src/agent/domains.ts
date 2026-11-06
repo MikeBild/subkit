@@ -11,7 +11,7 @@ import { listWorkflowSummaries } from "../workflows/service.ts";
 export const DOMAIN_PROMPT_MAX_CHARS = 2_000;
 export const DOMAIN_REPO_MAX_CHARS = 200;
 
-export interface ResolvedDomains {
+interface ResolvedDomains {
   domains: string[];
   from_prompt: string[];
   from_repo: string[];

@@ -1,6 +1,6 @@
 import type { CommitIntent } from "../../tools/ask-user/commit-intent.ts";
 
-export type ErrorTranslationContext = CommitIntent["kind"] | "update_connector" | "update_workflow";
+type ErrorTranslationContext = CommitIntent["kind"] | "update_connector" | "update_workflow";
 
 export function translateAutoPersistError(
   err: unknown,

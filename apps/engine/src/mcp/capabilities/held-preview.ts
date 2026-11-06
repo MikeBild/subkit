@@ -1,6 +1,6 @@
 import { HELD_PREVIEW_WARNING_CODE, type RunResult } from "../../execution/index.ts";
 
-export interface ResultEnvelope {
+interface ResultEnvelope {
   rawBody: unknown;
   held: boolean;
 }

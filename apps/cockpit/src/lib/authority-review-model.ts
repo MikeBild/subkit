@@ -78,7 +78,7 @@ export interface AuthorityReviewModel {
   messages: { activated: TranslationKey; activateOnlyHelp: TranslationKey };
 }
 
-export const COLLAPSE_GROUPS_ABOVE = 12;
+const COLLAPSE_GROUPS_ABOVE = 12;
 
 const RISK_ORDER: Record<ReviewRisk, number> = { risky: 0, write: 1, read: 2 };
 const CHANGE_ORDER = { added: 0, widened: 1, unchanged: 2, removed: 3 } as const;

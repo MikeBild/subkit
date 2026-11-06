@@ -26,11 +26,11 @@ export function chatWorkspaceAad(tenant_id: string, workspace_row_id: string): s
   return `chat-workspace:${tenant_id}:${workspace_row_id}`;
 }
 
-export const ConfirmOutputSchema = z.object({ confirmed: z.boolean() });
-export const ChoiceOutputSchema = z.object({ value: z.string().min(1) });
-export const MultiOutputSchema = z.object({ values: z.array(z.string()) });
-export const TextOutputSchema = z.object({ text: z.string() });
-export const FormOutputSchema = z.record(
+const ConfirmOutputSchema = z.object({ confirmed: z.boolean() });
+const ChoiceOutputSchema = z.object({ value: z.string().min(1) });
+const MultiOutputSchema = z.object({ values: z.array(z.string()) });
+const TextOutputSchema = z.object({ text: z.string() });
+const FormOutputSchema = z.record(
   z.string(),
   z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.string())]),
 );

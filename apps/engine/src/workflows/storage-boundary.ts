@@ -218,7 +218,7 @@ function principalStoragePrefix(
   return `${boundary.key_prefix}${caller.principalKind}/${caller.principalId}/`;
 }
 
-export type StorageKeyViolation =
+type StorageKeyViolation =
   | { kind: "outside_folder"; key_prefix: string; key: string }
   | { kind: "key_invalid" }
   | { kind: "body_size"; bytes: number; max_bytes: number }

@@ -96,7 +96,7 @@ export function toolsWithoutConfirmation(record: Record<string, unknown>): strin
     : [];
 }
 
-export interface DocLink {
+interface DocLink {
   kind: string;
   url: string;
 }
@@ -130,7 +130,7 @@ export function connectorStatsEndpoint(connectorId: string, bounds: TimeSpan): s
   return `/v1/stats/connectors?bucket=day&from=${encodeURIComponent(bounds.from)}&to=${encodeURIComponent(bounds.to)}&connector_id=${encodeURIComponent(connectorId)}`;
 }
 
-export interface ConnectorFigures {
+interface ConnectorFigures {
   calls: number;
   succeeded: number;
   failed: number;
@@ -223,7 +223,7 @@ export function presentAddress(address: string): { shown: string; keepsSecret: b
 
 export const SIGNED_IN_PARAM = "signed_in";
 export const SIGNIN_FAILED_PARAM = "signin_failed";
-export const SIGNIN_CODE_PARAM = "signin_code";
+const SIGNIN_CODE_PARAM = "signin_code";
 const PROVIDER_CODE = /^[a-z0-9_.-]{1,64}$/i;
 
 export type SignInReturn =
@@ -282,7 +282,7 @@ export function signInFailureLine(
     : reason;
 }
 
-export type ConnectorNotice = "signed_in" | "signed_in_off" | "off" | null;
+type ConnectorNotice = "signed_in" | "signed_in_off" | "off" | null;
 
 export function connectorNotice(p: {
   enabled: boolean;

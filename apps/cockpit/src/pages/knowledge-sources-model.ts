@@ -2,7 +2,7 @@ import type { TranslationKey } from "@/lib/i18n";
 
 export type SourceKind = "url" | "discovered" | "file" | "text" | "bundle";
 
-export interface KnowledgeWorkflowTarget {
+interface KnowledgeWorkflowTarget {
   id: string;
   name: string;
 }
@@ -32,7 +32,7 @@ export function sourceKind(sourceType: string): SourceKind {
   return "file";
 }
 
-export type SourcePrimaryAction = "refresh" | "edit";
+type SourcePrimaryAction = "refresh" | "edit";
 
 export function sourcePrimaryAction(kind: SourceKind): SourcePrimaryAction | null {
   if (kind === "url") return "refresh";

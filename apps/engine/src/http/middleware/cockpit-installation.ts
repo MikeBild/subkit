@@ -29,7 +29,7 @@ const sessionValiditySelection = {
   last_seen_at: sessions.last_seen_at,
 };
 
-export interface CockpitInstallationContext {
+interface CockpitInstallationContext {
   installation_id: string;
   tenant_id: string;
   user_id: string;
@@ -89,7 +89,7 @@ export async function resolveCockpitInstallationContext(
   };
 }
 
-export async function resolveCockpitBrowserPushContext(
+async function resolveCockpitBrowserPushContext(
   db: Db,
   request: Request,
   principal: ResolvedPrincipal | undefined,

@@ -11,7 +11,7 @@ import {
 } from "./report-delivery-boundary.ts";
 import type { RequestStep, StepDef } from "./types.ts";
 
-export interface ReportDeliveryLintError {
+interface ReportDeliveryLintError {
   path: string;
   message: string;
 }

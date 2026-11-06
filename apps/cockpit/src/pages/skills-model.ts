@@ -66,7 +66,7 @@ export function skillStateLabelKey(status: string): TranslationKey {
   return "skills.state.disabled";
 }
 
-export interface SkillsListView<S> {
+interface SkillsListView<S> {
   rows: S[];
   proposals: number;
   onboarding: boolean;
@@ -175,7 +175,7 @@ export function skillChangedAt(
 
 export type SkillHistoryDetail = components["schemas"]["SkillHistoryDetail"];
 
-export interface SkillVersionChange {
+interface SkillVersionChange {
   rows: FocusedRow[];
   renamedFrom: string | null;
 }

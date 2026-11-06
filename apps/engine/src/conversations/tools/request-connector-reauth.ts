@@ -8,8 +8,8 @@ import { getConnector } from "../../connectors/service.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
 import { buildOAuthRedirectUri } from "../../credentials/oauth2/redirect-uri.ts";
 import { logger } from "../../logging/logger.ts";
+import { withConnectorDraft } from "../authoring-state/index.ts";
 import { hydrateDraftFromSavedConnector } from "../authoring-state/normalize.ts";
-import { withConnectorDraft } from "../authoring-state.ts";
 import { pauseForUserInput } from "./ask-user/common.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 

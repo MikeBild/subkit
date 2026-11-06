@@ -3,7 +3,7 @@ import {
   createEmptyDraftDocument,
   withConnectorDraft,
   withWorkflowDraft,
-} from "../../authoring-state.ts";
+} from "../../authoring-state/index.ts";
 import type { AuthoringSummary, DraftDocument } from "../../types.ts";
 import {
   authoringSkillsForTurn,

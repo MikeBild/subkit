@@ -1,4 +1,4 @@
-export interface AvailabilityFailureInput {
+interface AvailabilityFailureInput {
   status?: number | undefined;
   code?: string | undefined;
   message?: string | undefined;

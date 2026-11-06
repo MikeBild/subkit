@@ -19,14 +19,14 @@ export function workflowVersionAuthor(
   );
 }
 
-export type WorkflowVersionState = "current" | "draft" | "invalid" | "superseded";
+type WorkflowVersionState = "current" | "draft" | "invalid" | "superseded";
 
 export interface WorkflowVersionIds {
   current: string | null;
   draft: string | null;
 }
 
-export interface WorkflowVersionView {
+interface WorkflowVersionView {
   state: WorkflowVersionState;
   newest: boolean;
   invalid: boolean;
@@ -42,7 +42,7 @@ export interface WorkflowVersionAccess {
   archived: boolean;
 }
 
-export interface WorkflowVersionSheetCopy {
+interface WorkflowVersionSheetCopy {
   restore: boolean;
   hint: TranslationKey;
   values: Record<string, string>;

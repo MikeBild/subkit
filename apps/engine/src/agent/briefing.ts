@@ -25,7 +25,7 @@ export interface CatalogEntry {
   category: string;
 }
 
-export interface BriefingParams {
+interface BriefingParams {
   tenant_id: string;
   domains: string[];
   budget_tokens: number;
@@ -38,7 +38,7 @@ export interface BriefingParams {
   db: Db;
 }
 
-export interface BriefingResult {
+interface BriefingResult {
   markdown: string;
   domains: string[];
   budget_tokens: number;
@@ -126,7 +126,7 @@ export interface AssembleInput {
   intake?: IntakeSummary | null;
 }
 
-export interface AssembleState {
+interface AssembleState {
   fullBodyCount: number;
   knowledgeCount: number;
   workflowCount: number;

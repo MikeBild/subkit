@@ -350,7 +350,7 @@ export function IntakeEditDialog({
   );
 }
 
-export function IntakeNoteDialog({
+function IntakeNoteDialog({
   categories,
   initialCategory,
   open,

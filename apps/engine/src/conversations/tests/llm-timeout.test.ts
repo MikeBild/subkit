@@ -7,7 +7,7 @@ import {
   METRIC_NAMES,
   resetMetricsRegistryForTests,
 } from "../../observability/metrics.ts";
-import { _setConverseFirstChunkTimeoutMsForTests } from "../loop.ts";
+import { _setConverseFirstChunkTimeoutMsForTests } from "../loop/index.ts";
 import { describeTurnFailure, LlmTimeoutError, turnFailureFramePayload } from "../turn-failure.ts";
 import {
   type ConversationTestCtx,

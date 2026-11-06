@@ -1,6 +1,6 @@
 import { failureStatusOf, type StepStatus, type TerminalExecutionStatus } from "./status.ts";
 
-export interface DependencyEdges {
+interface DependencyEdges {
   edges: ReadonlyArray<{ from: string; to: string }>;
 }
 
@@ -17,7 +17,7 @@ export function findHeldDependency(
   return null;
 }
 
-export interface BranchArms {
+interface BranchArms {
   then_steps?: readonly string[] | undefined;
   else_steps?: readonly string[] | undefined;
 }
@@ -31,19 +31,19 @@ export function branchArmStepIds(branch: BranchArms): string[] {
   return [...(branch.then_steps ?? []), ...(branch.else_steps ?? [])];
 }
 
-export interface StepError {
+interface StepError {
   code: string;
   message: string;
 }
 
-export interface ContinuedStepWarning {
+interface ContinuedStepWarning {
   code: "step_failed_continued";
   step_key: string;
   message: string;
   details: { step_status: StepStatus; error_code: string };
 }
 
-export type StepFailureDecision =
+type StepFailureDecision =
   | { kind: "fail"; status: TerminalExecutionStatus; error: StepError }
   | { kind: "continue"; warning: ContinuedStepWarning };
 
@@ -81,7 +81,7 @@ export function decideStepFailure(
   return { kind: "continue", warning: continuedStepWarning(step.id, status, error) };
 }
 
-export interface SkippedStepSummary {
+interface SkippedStepSummary {
   step_key: string;
   step_index: number;
   kind: string;

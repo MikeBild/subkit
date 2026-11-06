@@ -7,7 +7,7 @@ import { logger } from "../logging/logger.ts";
 import type { Citation } from "./citations.ts";
 import { isProductDocId } from "./tools/product-docs.ts";
 
-export interface SourceFaithfulParams {
+interface SourceFaithfulParams {
   text: string;
   citations: ReadonlyArray<Citation>;
   tenant_id: string;
@@ -15,7 +15,7 @@ export interface SourceFaithfulParams {
   signal?: AbortSignal;
 }
 
-export interface SourceFaithfulVerdict {
+interface SourceFaithfulVerdict {
   verdict: "pass" | "fail";
   confidence: number;
   reason: string;

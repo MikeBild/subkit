@@ -3,7 +3,7 @@ import type { WorkflowDef } from "../../workflows/types.ts";
 import { invoke } from "../core/invoke.ts";
 import type { EnhancedPrompt } from "../types.ts";
 
-export interface GenerateParams {
+interface GenerateParams {
   tenant_id: string;
   description: string;
   connector_id?: string | undefined;

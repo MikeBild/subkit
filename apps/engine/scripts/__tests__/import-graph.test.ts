@@ -8,8 +8,10 @@ import {
   parseAffectedArgs,
   parseTsconfigPaths,
   pathVariants,
+  referencesSource,
   runPool,
   selectAffected,
+  sourceReferenceKey,
   summarize,
 } from "../audit/import-graph.ts";
 
@@ -263,5 +265,42 @@ describe("diffArgs and summarize", () => {
         { file: "b.test.ts", exitCode: 1, output: "boom" },
       ]),
     ).toEqual({ text: "1 passed, 1 failed\n  FAIL b.test.ts (exit 1)", failed: 1 });
+  });
+});
+
+describe("source-text references", () => {
+  test("a test that reads a changed module as text is selected", () => {
+    const selection = selectAffected({
+      changed: ["apps/engine/src/execution/steps/request/dispatch.ts"],
+      testFiles: [
+        "apps/engine/src/execution/tests/telemetry.test.ts",
+        "apps/engine/src/other.test.ts",
+      ],
+      reverse: new Map(),
+      depth: 1,
+      testText: (test) =>
+        test.endsWith("telemetry.test.ts")
+          ? 'const SRC = join(import.meta.dir, "..", "steps", "request", "dispatch.ts");'
+          : 'import { x } from "./other.ts";',
+    });
+    expect(selection.tests).toEqual(["apps/engine/src/execution/tests/telemetry.test.ts"]);
+  });
+
+  test("an index module is matched by its folder, not by every index.ts", () => {
+    expect(sourceReferenceKey("apps/engine/src/conversations/loop/index.ts")).toBe("loop/index.ts");
+    expect(
+      referencesSource('read("../loop/index.ts")', "apps/engine/src/conversations/loop/index.ts"),
+    ).toBe(true);
+    expect(
+      referencesSource(
+        'read("../persistence/index.ts")',
+        "apps/engine/src/conversations/loop/index.ts",
+      ),
+    ).toBe(false);
+  });
+
+  test("a bare word without a path delimiter does not match", () => {
+    expect(referencesSource("dispatch.ts handles retries", "apps/x/dispatch.ts")).toBe(false);
+    expect(referencesSource("'dispatch.ts'", "apps/x/dispatch.ts")).toBe(true);
   });
 });

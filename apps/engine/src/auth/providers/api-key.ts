@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
-import { type Db, getDb } from "../../db/client.ts";
+import type { Db } from "../../db/client.ts";
 import { apiKeys } from "../../db/schema/index.ts";
 import { constantTimeHexEquals, KEY_PREFIX_LITERAL, parseKey } from "../../identity/api-key.ts";
 import { log } from "../../logging/logger.ts";
@@ -84,11 +84,11 @@ export async function matchApiKeyRow(
 }
 
 export interface ApiKeyProviderOptions {
-  db?: Db;
+  db: Db;
   resetThrottle?: boolean;
 }
 
-export function createApiKeyProvider(opts: ApiKeyProviderOptions = {}): AuthProvider {
+export function createApiKeyProvider(opts: ApiKeyProviderOptions): AuthProvider {
   if (opts.resetThrottle) resetApiKeyUsageThrottle();
   return {
     name: "api_key",
@@ -102,7 +102,7 @@ export function createApiKeyProvider(opts: ApiKeyProviderOptions = {}): AuthProv
     async resolve(req: Request): Promise<ResolvedPrincipal | null> {
       const token = extractBearerToken(req);
       if (!token) return null;
-      const db = opts.db ?? getDb();
+      const db = opts.db;
       const row = await matchApiKeyRow(db, token, req);
       if (!row) return null;
       return resolvePrincipalFromApiKeyRow(db, row, { provider: "api_key" });

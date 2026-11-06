@@ -2,7 +2,7 @@ import { type AtlassianCloudResource, parseAtlassianCloudResourceUrl } from "./a
 import { type NotionResource, parseNotionResourceUrl } from "./notion-page-id.ts";
 import type { ConnectorTemplate, ResourceUrlParser } from "./templates.ts";
 
-export type TemplateResourceUrl = AtlassianCloudResource | NotionResource;
+type TemplateResourceUrl = AtlassianCloudResource | NotionResource;
 
 const PARSERS: Record<ResourceUrlParser, (url: string) => TemplateResourceUrl | null> = {
   atlassian_cloud: parseAtlassianCloudResourceUrl,

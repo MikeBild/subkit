@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-export interface RowChange<T> {
+interface RowChange<T> {
   arrived: ReadonlySet<string>;
   left: readonly { id: string; index: number; row: T }[];
 }
@@ -39,8 +39,8 @@ export function withLeaving<T>(
   return out;
 }
 
-export const LEAVE_MS = 180;
-export const ARRIVAL_MS = 1_200;
+const LEAVE_MS = 180;
+const ARRIVAL_MS = 1_200;
 
 export function useRowMotion<T>(
   rows: readonly T[],

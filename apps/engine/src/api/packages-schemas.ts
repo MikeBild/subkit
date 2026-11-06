@@ -1,14 +1,6 @@
 import { z } from "@hono/zod-openapi";
-import {
-  type ApplyPackageResult,
-  type ExportTenantPackageResult,
-  PackageItemKindSchema,
-  type PackagePlan,
-  PackageRequirementSchema,
-} from "../identity/index.ts";
+import { PackageItemKindSchema, PackageRequirementSchema } from "../identity/index.ts";
 import { FileIdSchema } from "./files-schemas.ts";
-
-type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 
 const Sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
 
@@ -42,9 +34,9 @@ export const PackageExportResultSchema = z
   })
   .openapi("PackageExportResult");
 
-export const PackagePlanActionSchema = z.enum(["create", "update", "unchanged", "conflict"]);
+const PackagePlanActionSchema = z.enum(["create", "update", "unchanged", "conflict"]);
 
-export const PackageConflictReasonSchema = z.enum([
+const PackageConflictReasonSchema = z.enum([
   "exists_unmanaged",
   "local_changes",
   "reserved",
@@ -53,7 +45,7 @@ export const PackageConflictReasonSchema = z.enum([
   "knowledge_changed",
 ]);
 
-export const PackagePlanItemSchema = z
+const PackagePlanItemSchema = z
   .object({
     kind: PackageItemKindSchema,
     key: z.string(),
@@ -64,7 +56,7 @@ export const PackagePlanItemSchema = z
   })
   .openapi("PackagePlanItem");
 
-export const PackagePlanSchema = z
+const PackagePlanSchema = z
   .object({
     package_id: z.string(),
     package_version: z.string(),
@@ -95,7 +87,7 @@ export const PackageApplyRequestSchema = z
   .strict()
   .openapi("PackageApplyRequest");
 
-export const PackageAppliedItemSchema = z
+const PackageAppliedItemSchema = z
   .object({
     kind: PackageItemKindSchema,
     key: z.string(),
@@ -124,7 +116,7 @@ export const PackageApplyResultSchema = z
   })
   .openapi("PackageApplyResult");
 
-export const PackageInstallSchema = z
+const PackageInstallSchema = z
   .object({
     id: z.string().uuid(),
     package_id: z.string(),
@@ -141,7 +133,7 @@ export const PackageInstallSchema = z
   })
   .openapi("PackageInstall");
 
-export const PackageInstallItemSchema = z
+const PackageInstallItemSchema = z
   .object({
     id: z.string().uuid(),
     kind: z.string(),
@@ -163,11 +155,3 @@ export const PackageInstallListSchema = z
 export const PackageInstallDetailSchema = PackageInstallSchema.extend({
   items: z.array(PackageInstallItemSchema),
 }).openapi("PackageInstallDetail");
-
-export const packageSchemaParity: [
-  Exact<keyof z.infer<typeof PackagePlanSchema>, keyof PackagePlan>,
-  Exact<keyof z.infer<typeof PackagePlanItemSchema>, keyof PackagePlan["items"][number]>,
-  Exact<keyof z.infer<typeof PackageApplyResultSchema>, keyof ApplyPackageResult>,
-  Exact<keyof z.infer<typeof PackageAppliedItemSchema>, keyof ApplyPackageResult["items"][number]>,
-  Exact<keyof z.infer<typeof PackageExportResultSchema>, keyof ExportTenantPackageResult>,
-] = [true, true, true, true, true];

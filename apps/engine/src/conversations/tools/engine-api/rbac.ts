@@ -4,7 +4,7 @@ import type { ConversationTool } from "../index.ts";
 const EmptyInput = z.object({}).openapi("RbacEmptyInput");
 const IdInput = z.object({ id: z.string().uuid() }).openapi("RbacIdInput");
 
-export const listRolesTool: ConversationTool = {
+const listRolesTool: ConversationTool = {
   name: "list_roles",
   description: "List RBAC roles for the tenant.",
   inputSchema: EmptyInput,
@@ -15,7 +15,7 @@ export const listRolesTool: ConversationTool = {
   },
 };
 
-export const getRoleTool: ConversationTool = {
+const getRoleTool: ConversationTool = {
   name: "get_role",
   description: "Fetch a single role by id including its permissions.",
   inputSchema: IdInput,

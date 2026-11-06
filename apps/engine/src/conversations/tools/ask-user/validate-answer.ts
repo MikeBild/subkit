@@ -1,14 +1,12 @@
 import { type FormFieldDefinition, validateFormFieldValue } from "./form.ts";
 import { interpretConfirmDecision } from "./interpret-confirm.ts";
 
-export interface ElicitationFieldError {
+interface ElicitationFieldError {
   name: string;
   message: string;
 }
 
-export type ValidateAnswerResult =
-  | { ok: true }
-  | { ok: false; field_errors: ElicitationFieldError[] };
+type ValidateAnswerResult = { ok: true } | { ok: false; field_errors: ElicitationFieldError[] };
 
 function asRecord(v: unknown): Record<string, unknown> | null {
   return v !== null && typeof v === "object" && !Array.isArray(v)

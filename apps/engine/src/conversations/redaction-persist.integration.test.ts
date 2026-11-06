@@ -10,7 +10,7 @@ import {
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { createElicitation, resolveElicitation } from "./elicitations.ts";
-import { appendMessage, buildModelMessages } from "./persist.ts";
+import { appendMessage, buildModelMessages } from "./persistence/index.ts";
 import { ELICITATION_REDACTED_MARKER } from "./tools/ask-user/redact-answer.ts";
 
 const skip = process.env.REQUIRES_PG === "0";

@@ -1,4 +1,4 @@
-export interface HeightCacheOptions {
+interface HeightCacheOptions {
   maxEntries?: number;
 }
 

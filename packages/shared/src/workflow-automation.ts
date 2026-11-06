@@ -167,7 +167,7 @@ export interface AutomationState<A extends WorkflowAuthority = WorkflowAuthority
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const EXTEND_WITHIN_DAYS = 3;
-export const EXTEND_WITHIN_MS = EXTEND_WITHIN_DAYS * DAY_MS;
+const EXTEND_WITHIN_MS = EXTEND_WITHIN_DAYS * DAY_MS;
 export const EXTEND_BELOW_RUN_SHARE = 0.1;
 
 export function authorityIsLive(authority: WorkflowAuthority, now: number): boolean {
@@ -192,7 +192,7 @@ export function grantNeedsExtension(
   );
 }
 
-export function automationTriggers(
+function automationTriggers(
   status: AutomationStatusLike | null,
   schedules: readonly ScheduleLike[] | null,
 ): AutomationTrigger[] {

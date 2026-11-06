@@ -11,7 +11,7 @@ import { type ConversationTestCtx, createConversationTestCtx } from "../tests/se
 import { askUserFormTool } from "../tools/ask-user/form.ts";
 import { requestConnectorReauthTool } from "../tools/request-connector-reauth.ts";
 import type { DraftDocument } from "../types.ts";
-import { maybeAutoPersistFromElicitation } from "./auto-persist.ts";
+import { maybeAutoPersistFromElicitation } from "./auto-persist/index.ts";
 
 let ctx: ConversationTestCtx;
 

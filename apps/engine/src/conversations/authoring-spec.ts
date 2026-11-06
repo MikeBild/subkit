@@ -6,15 +6,15 @@ const SPEC_TEXT_MAX = 2000;
 const SPEC_NAME_MAX = 200;
 const SPEC_LIST_MAX = 50;
 
-export type DraftGoalSource = "conversation" | "spec";
+type DraftGoalSource = "conversation" | "spec";
 
-export interface DraftGoal {
+interface DraftGoal {
   goal: string | null;
   source: DraftGoalSource | null;
   confirmed: boolean;
 }
 
-export function emptyWorkflowSpec(): WorkflowSpec {
+function emptyWorkflowSpec(): WorkflowSpec {
   return {
     goal: null,
     inputs: [],
@@ -123,7 +123,7 @@ export const SPEC_GOAL_QUESTION = "What should this workflow achieve?";
 export const SPEC_GOAL_GUIDANCE =
   'Ask the user what this workflow should achieve, then record the answer with edit_workflow_patch { op: "add", path: "/goal", value: "<answer>" }. Open spec questions are a warning only; they never block saving.';
 
-export interface SpecQuestions {
+interface SpecQuestions {
   questions: string[];
   user_prompt: { tool: "ask_user_form"; args: Record<string, unknown> };
   next_action: string;

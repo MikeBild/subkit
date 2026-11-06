@@ -387,10 +387,6 @@ export async function getWorkflowReview(
   return receiptView(receipt);
 }
 
-export async function assertFinalizeDigest(raw: unknown) {
-  return FinalizeWorkflowReviewSchema.parse(raw);
-}
-
 export async function finalizeWorkflowReview(
   p: {
     tenant_id: string;

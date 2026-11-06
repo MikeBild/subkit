@@ -9,17 +9,17 @@ import { configDigest } from "./document.ts";
 
 type Entry = Record<string, unknown>;
 
-export type ProviderChangeAction =
+type ProviderChangeAction =
   | typeof AuditAction.AUTH_PROVIDER_ADDED
   | typeof AuditAction.AUTH_PROVIDER_REMOVED
   | typeof AuditAction.AUTH_PROVIDER_CHANGED;
 
-export type ProductChangeAction =
+type ProductChangeAction =
   | typeof AuditAction.PRODUCT_ADDED
   | typeof AuditAction.PRODUCT_REMOVED
   | typeof AuditAction.PRODUCT_CHANGED;
 
-export type AppBoundaryChange =
+type AppBoundaryChange =
   | {
       action: ProviderChangeAction;
       provider_id: string;
@@ -161,7 +161,7 @@ async function tenantForSlug(
   return row?.id ?? null;
 }
 
-export async function auditAppBoundaryChanges(
+async function auditAppBoundaryChanges(
   db: Executor,
   input: {
     changes: AppBoundaryChange[];

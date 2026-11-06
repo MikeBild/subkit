@@ -15,13 +15,13 @@ import { readStoredSpec, workflowSpecDigest } from "../workflows/core/spec.ts";
 import { workflowUsesSandboxedJs } from "../workflows/runtime-annotation.ts";
 import { buildScopeAtStep } from "../workflows/scope-shape.ts";
 import { WorkflowDefSchema } from "../workflows/types.ts";
-import { normalizeWorkflowDraft } from "./authoring-state/normalize.ts";
 import {
   bindPersistedWorkflow,
   createEmptyDraftDocument,
   normalizeDraftDocument,
   refreshDraftSummary,
-} from "./authoring-state.ts";
+} from "./authoring-state/index.ts";
+import { normalizeWorkflowDraft } from "./authoring-state/normalize.ts";
 import { canonicalJson } from "./text-line-diff.ts";
 import { stepWarningSources } from "./tools/execution-diagnosis.ts";
 import type {

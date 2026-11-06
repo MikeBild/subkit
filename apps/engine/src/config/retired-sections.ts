@@ -1,6 +1,6 @@
 import { ConnectorsMcpSection } from "./schema.ts";
 
-export interface RetiredSectionReport {
+interface RetiredSectionReport {
   offenders: string[];
   dropped: string[];
 }

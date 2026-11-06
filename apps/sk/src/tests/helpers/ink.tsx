@@ -34,13 +34,13 @@ export const KEYS = {
   ctrlW: "\x17",
 } as const;
 
-export type KeyName = keyof typeof KEYS;
+type KeyName = keyof typeof KEYS;
 
 export function flush(): Promise<void> {
   return new Promise<void>((resolve) => setImmediate(resolve));
 }
 
-export interface RenderInkInstance {
+interface RenderInkInstance {
   raw: ReturnType<typeof inkRender>;
   text(): string;
   frames(): string[];
@@ -107,12 +107,4 @@ export function renderInk(ui: React.ReactElement): RenderInkInstance {
     flush,
     unmount: () => instance.unmount(),
   };
-}
-
-export function pinInkEnv(): void {
-  process.env.FORCE_COLOR = "0";
-  process.env.NO_COLOR = "1";
-  process.env.CI = "1";
-  const s = process.stdout as unknown as { columns?: number };
-  if (typeof s.columns === "number") s.columns = 80;
 }

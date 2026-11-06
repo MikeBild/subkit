@@ -17,7 +17,7 @@ export function localDateInTz(now: Date, tz: string): string {
   }
 }
 
-export function localWeekdayInTz(now: Date, tz: string): number {
+function localWeekdayInTz(now: Date, tz: string): number {
   try {
     const fmt = new Intl.DateTimeFormat("en-US", {
       timeZone: tz,

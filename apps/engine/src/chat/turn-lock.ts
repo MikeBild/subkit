@@ -17,7 +17,3 @@ export async function withConversationTurnLock<T>(
     if (tails.get(key) === marker) tails.delete(key);
   }
 }
-
-export function _turnLockSizeForTests(): number {
-  return tails.size;
-}

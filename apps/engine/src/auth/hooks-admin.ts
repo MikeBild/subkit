@@ -7,19 +7,19 @@ import type { ResolvedPrincipal } from "./types.ts";
 
 export type RequestHookRow = typeof requestHooks.$inferSelect;
 
-export interface RequestHookActor {
+interface RequestHookActor {
   principal: Pick<ResolvedPrincipal, "tenant_id" | "kind" | "id">;
   trace_id: string;
 }
 
-export interface CreateRequestHookInput {
+interface CreateRequestHookInput {
   role: string;
   code: string;
   description?: string | undefined;
   enabled?: boolean | undefined;
 }
 
-export interface UpdateRequestHookInput {
+interface UpdateRequestHookInput {
   code?: string | undefined;
   description?: string | undefined;
   enabled?: boolean | undefined;

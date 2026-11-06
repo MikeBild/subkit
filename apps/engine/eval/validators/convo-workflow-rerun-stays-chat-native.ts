@@ -1,7 +1,7 @@
 import {
   bindPersistedWorkflow,
   withWorkflowExecution,
-} from "../../src/conversations/authoring-state.ts";
+} from "../../src/conversations/authoring-state/index.ts";
 import { filterByAuthoringPalette } from "../../src/conversations/tools/authoring-palette.ts";
 import { cannotHelpTool } from "../../src/conversations/tools/cannot-help.ts";
 import { listTools } from "../../src/conversations/tools/index.ts";

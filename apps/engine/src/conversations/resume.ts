@@ -1,4 +1,4 @@
-import { refreshDraftSummary, WORKFLOW_BINDING_TOOL } from "./authoring-state.ts";
+import { refreshDraftSummary, WORKFLOW_BINDING_TOOL } from "./authoring-state/index.ts";
 import type { ResumeFormField } from "./resume-form.ts";
 import { resumeFormFields } from "./resume-form.ts";
 import type { ConversationRecord, DraftDocument, WorkflowDraftPreviewSummary } from "./types.ts";

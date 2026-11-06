@@ -13,21 +13,21 @@ import { runLoopToForEachBackfill } from "./migrations/loop-to-for-each-backfill
 import { runMetricsScopeBackfill } from "./migrations/metrics-scope-backfill.ts";
 import * as schema from "./schema/index.ts";
 
-export interface MigrationReport {
+interface MigrationReport {
   applied: number;
   skipped: number;
   hash_drift_backfilled: number;
   total: number;
 }
 
-export const MigrationJournalRowSchema = z.object({
+const MigrationJournalRowSchema = z.object({
   row_id: z.number().int(),
   hash: z.string(),
   created_at: z.number().int().nullable(),
   tag: z.string().nullable(),
 });
 
-export const MissingInDbRowSchema = z.object({
+const MissingInDbRowSchema = z.object({
   idx: z.number().int(),
   tag: z.string(),
   hash: z.string(),

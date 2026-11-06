@@ -17,7 +17,7 @@ export class PackageArchiveNotFoundError extends Error {
   }
 }
 
-export interface StoredPackageArchive {
+interface StoredPackageArchive {
   file_id: string;
   filename: string;
   sha256: string | null;

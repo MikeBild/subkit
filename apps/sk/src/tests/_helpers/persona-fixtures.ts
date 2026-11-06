@@ -1,6 +1,6 @@
 import type { SkBootstrapSnapshot } from "../../lib/bootstrap.ts";
 
-export type PersonaFixture = "admin" | "operator" | "member" | "enduser" | "portal";
+type PersonaFixture = "admin" | "operator" | "member" | "enduser" | "portal";
 
 const ADMIN_PERMS = [
   "conversation:read",

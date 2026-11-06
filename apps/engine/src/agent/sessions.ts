@@ -14,14 +14,14 @@ import { referencesKeyMaterialPath, scrubString } from "../logging/scrub-secrets
 
 const SAMPLE_HEAD_CHARS = 4_000;
 const SAMPLE_TAIL_CHARS = 24_000;
-export interface AgentSessionMeta {
+interface AgentSessionMeta {
   agent: string;
   session_id?: string;
   repo?: string;
   domains: string[];
 }
 
-export interface CollectSessionLearningParams {
+interface CollectSessionLearningParams {
   tenant_id: string;
   title: string;
   body: string;
@@ -40,7 +40,7 @@ export interface CollectSessionLearningParams {
   db: Db;
 }
 
-export type LearningTarget =
+type LearningTarget =
   | { scope: "global" }
   | { scope: "connector"; connector_id: string }
   | { scope: "workflow"; workflow_id: string };
@@ -54,13 +54,13 @@ export function learningTargetOf(context: {
   return { scope: "global" };
 }
 
-export interface LearningText {
+interface LearningText {
   title: string;
   body: string;
   pitfalls: string[];
 }
 
-export type RedactedLearning = { kind: "dropped" } | ({ kind: "kept" } & LearningText);
+type RedactedLearning = { kind: "dropped" } | ({ kind: "kept" } & LearningText);
 
 export function redactLearning(learning: LearningText): RedactedLearning {
   const texts = [learning.title, learning.body, ...learning.pitfalls];
@@ -80,13 +80,9 @@ export function learningBody(learning: Pick<LearningText, "body" | "pitfalls">):
   );
 }
 
-export type CollectSessionLearningOutcome =
-  | "collected"
-  | "evidence_appended"
-  | "replayed"
-  | "dropped";
+type CollectSessionLearningOutcome = "collected" | "evidence_appended" | "replayed" | "dropped";
 
-export interface CollectSessionLearningResult {
+interface CollectSessionLearningResult {
   outcome: CollectSessionLearningOutcome;
   intake_item_id: string | null;
 }
@@ -174,7 +170,7 @@ export function sampleTranscript(transcript: string): string {
   )}`;
 }
 
-export interface AnalyzeAgentSessionParams {
+interface AnalyzeAgentSessionParams {
   tenant_id: string;
   transcript: string;
   meta: AgentSessionMeta;
@@ -182,7 +178,7 @@ export interface AnalyzeAgentSessionParams {
   db: Db;
 }
 
-export interface AnalyzeAgentSessionResult {
+interface AnalyzeAgentSessionResult {
   learnings_found: number;
   collected: number;
   evidence_appended: number;

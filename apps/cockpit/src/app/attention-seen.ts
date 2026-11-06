@@ -12,14 +12,14 @@ import { useAttention } from "./use-attention";
 export const SEEN_MAX = 200;
 const STORAGE_PREFIX = "subkit.attention.seen:";
 
-export type SeenKeys = ReadonlySet<string>;
+type SeenKeys = ReadonlySet<string>;
 type SeenStorage = Pick<Storage, "getItem" | "setItem">;
 
 export interface AttentionFresh {
   stopped: boolean;
 }
 
-export interface AttentionIdentity {
+interface AttentionIdentity {
   tenant: { id: string };
   principal: { id: string };
   permissions: readonly string[];

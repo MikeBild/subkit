@@ -27,14 +27,14 @@ export type { BinaryFormat, FileParsingStrategy } from "./strategy.ts";
 export { BinaryParseError } from "./strategy.ts";
 export type { XlsxFormat, XlsxParseOutput } from "./xlsx.ts";
 
-export type BinaryParseResult =
+type BinaryParseResult =
   | PdfParseOutput
   | DocxParseOutput
   | XlsxParseOutput
   | PptxParseOutput
   | ArchiveParseOutput;
 
-export type BinaryParseResultFor<F extends BinaryFormat> = F extends "pdf"
+type BinaryParseResultFor<F extends BinaryFormat> = F extends "pdf"
   ? PdfParseOutput
   : F extends "docx"
     ? DocxParseOutput

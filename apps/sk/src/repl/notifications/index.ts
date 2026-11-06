@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 
-export interface NotifyOptions {
+interface NotifyOptions {
   enabled: boolean;
   thresholdMs: number;
   quietHours?: () => boolean;

@@ -5,7 +5,7 @@ import templateSkillsJson from "./template-skills.json" with { type: "json" };
 import builtinJson from "./templates.json" with { type: "json" };
 import { DriverEnum, OperatorQuirksSchema } from "./types.ts";
 
-export const TemplateAuthTypeEnum = z.enum([
+const TemplateAuthTypeEnum = z.enum([
   "none",
   "header",
   "query",
@@ -16,7 +16,7 @@ export const TemplateAuthTypeEnum = z.enum([
   "aws_sigv4",
 ]);
 
-export const TemplateIngestionSourceEnum = z.enum([
+const TemplateIngestionSourceEnum = z.enum([
   "openapi",
   "google_discovery",
   "markdown",
@@ -31,31 +31,26 @@ export const TemplateIngestionSourceEnum = z.enum([
   "unsupported",
 ]);
 
-export const TokenAuthMethodEnum = z.enum(["body", "basic_auth"]);
-export type TokenAuthMethod = z.infer<typeof TokenAuthMethodEnum>;
+const TokenAuthMethodEnum = z.enum(["body", "basic_auth"]);
 
-export const TokenContentTypeEnum = z.enum(["form", "json"]);
-export type TokenContentType = z.infer<typeof TokenContentTypeEnum>;
+const TokenContentTypeEnum = z.enum(["form", "json"]);
 
-export const OAuth2GrantTypeEnum = z.enum([
+const OAuth2GrantTypeEnum = z.enum([
   "authorization_code",
   "client_credentials",
   "password",
   "cognito_user_password",
   "client_credentials_json",
 ]);
-export type OAuth2GrantType = z.infer<typeof OAuth2GrantTypeEnum>;
 
-export const PaginationStrategyEnum = z.enum(["offset", "page", "cursor", "none"]);
-export type PaginationStrategy = z.infer<typeof PaginationStrategyEnum>;
+const PaginationStrategyEnum = z.enum(["offset", "page", "cursor", "none"]);
 
-export const InlineSchemaSchema = z
+const InlineSchemaSchema = z
   .object({
     format: z.enum(["openapi", "graphql"]),
     content: z.string().min(1),
   })
   .openapi("ConnectorTemplateInlineSchema");
-export type InlineSchema = z.infer<typeof InlineSchemaSchema>;
 
 const PROBE_HEADER_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const PROBE_RESERVED_HEADER_NAMES = new Set([
@@ -71,7 +66,7 @@ const PROBE_RESERVED_HEADER_NAMES = new Set([
 ]);
 const PROBE_AUTH_HEADER_PART_RE = /(?:^|[-_])(api[-_]?key|token|secret|credential|auth)(?:$|[-_])/i;
 
-export const ProbeHeadersSchema = z
+const ProbeHeadersSchema = z
   .record(
     z.string().max(128).regex(PROBE_HEADER_NAME_RE),
     z
@@ -157,12 +152,12 @@ export const ReadOperationSchema = z
       ),
   })
   .openapi("ConnectorTemplateReadOperation");
-export type ReadOperation = z.infer<typeof ReadOperationSchema>;
+type ReadOperation = z.infer<typeof ReadOperationSchema>;
 
 export const ResourceUrlParserEnum = z.enum(["atlassian_cloud", "notion"]);
 export type ResourceUrlParser = z.infer<typeof ResourceUrlParserEnum>;
 
-export const CredentialHintSchema = z
+const CredentialHintSchema = z
   .object({
     field: z.string().min(1),
     label: z.string().min(1),
@@ -172,18 +167,16 @@ export const CredentialHintSchema = z
     header_name: z.string().regex(PROBE_HEADER_NAME_RE).optional(),
   })
   .openapi("ConnectorTemplateCredentialHint");
-export type CredentialHint = z.infer<typeof CredentialHintSchema>;
 
-export const BaseUrlOptionSchema = z
+const BaseUrlOptionSchema = z
   .object({
     environment: z.string().min(1),
     base_url: z.string().min(1),
     label: z.string().min(1),
   })
   .openapi("ConnectorTemplateBaseUrlOption");
-export type BaseUrlOption = z.infer<typeof BaseUrlOptionSchema>;
 
-export const PaginationDefaultsSchema = z
+const PaginationDefaultsSchema = z
   .object({
     strategy: PaginationStrategyEnum,
     offset_param: z.string().optional(),
@@ -194,16 +187,14 @@ export const PaginationDefaultsSchema = z
     stop_condition: z.string().optional(),
   })
   .openapi("ConnectorTemplatePaginationDefaults");
-export type PaginationDefaults = z.infer<typeof PaginationDefaultsSchema>;
 
-export const RateLimitHintsSchema = z
+const RateLimitHintsSchema = z
   .object({
     requests_per_second: z.number().positive(),
     burst_size: z.number().int().positive(),
     recommended_backoff_ms: z.number().int().positive(),
   })
   .openapi("ConnectorTemplateRateLimits");
-export type RateLimitHints = z.infer<typeof RateLimitHintsSchema>;
 
 export const CapabilitiesSchema = z
   .object({
@@ -239,7 +230,7 @@ const JwtClaimValueSchema = z.union([
   z.array(z.union([z.string(), z.number().finite(), z.boolean()])),
 ]);
 
-export const TemplateSignedJwtSchema = z
+const TemplateSignedJwtSchema = z
   .object({
     algorithm: z.enum(["ES256", "RS256"]),
     audience: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]),
@@ -262,7 +253,7 @@ export const TemplateSignedJwtSchema = z
   })
   .openapi("ConnectorTemplateSignedJwt");
 
-export const TemplateAuthOptionSchema = z
+const TemplateAuthOptionSchema = z
   .object({
     auth_type: TemplateAuthTypeEnum,
     label: z.string(),
@@ -294,10 +285,10 @@ export const RecipeCategoryEnum = z.enum([
   "other",
 ]);
 
-export const RecipeDifficultyEnum = z.enum(["beginner", "intermediate", "advanced"]);
-export const RecipeAuthorEnum = z.enum(["subkit-builtin", "tenant"]);
+const RecipeDifficultyEnum = z.enum(["beginner", "intermediate", "advanced"]);
+const RecipeAuthorEnum = z.enum(["subkit-builtin", "tenant"]);
 
-export const RecipeRequiredConnectorSchema = z
+const RecipeRequiredConnectorSchema = z
   .object({
     placeholder: z.string().uuid(),
     template: z.string().min(1),
@@ -479,7 +470,7 @@ export const ConnectorTemplateSchema = z
 
 export type ConnectorTemplate = z.infer<typeof ConnectorTemplateSchema>;
 
-export interface CompiledTemplate {
+interface CompiledTemplate {
   template: ConnectorTemplate;
   urlRe: RegExp | null;
   specificity: number;

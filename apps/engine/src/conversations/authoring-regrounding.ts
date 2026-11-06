@@ -16,13 +16,13 @@ const REGROUND_SHAPE_SCAN = 100;
 const CHOICE_OPTIONS_MAX = 7;
 const AUTHORITY_SCAN = 500;
 
-export interface RegroundConnector {
+interface RegroundConnector {
   id: string;
   slug: string;
   base_url: string | null;
 }
 
-export interface RegroundPlan {
+interface RegroundPlan {
   pins: Map<string, DiscoveredEndpoint[]>;
   caps: Map<string, number>;
   targets: Array<{ connector: RegroundConnector; need: GenerationNeed }>;
@@ -30,7 +30,7 @@ export interface RegroundPlan {
   unresolved: GenerationNeed[];
 }
 
-export interface RecordedShapeEvidence {
+interface RecordedShapeEvidence {
   connector_slug: string;
   endpoint_key: string;
   shape: SchemaShape;
@@ -132,7 +132,7 @@ export function planRegrounding(args: {
   return plan;
 }
 
-export async function loadRecordedShapesForNeeds(
+async function loadRecordedShapesForNeeds(
   db: Executor,
   tenant_id: string,
   targets: RegroundPlan["targets"],
@@ -233,7 +233,7 @@ export function formatRegroundedEvidence(args: {
   ].join("\n");
 }
 
-export interface ConnectorChoiceCandidate {
+interface ConnectorChoiceCandidate {
   id: string;
   slug: string;
   display_name: string;
@@ -326,7 +326,7 @@ function hostOf(baseUrl: string | null): string | null {
   }
 }
 
-export async function loadConnectorChoiceCandidates(
+async function loadConnectorChoiceCandidates(
   db: Executor,
   tenant_id: string,
   args: { needs: ReadonlyArray<GenerationNeed>; inScope: ReadonlyArray<RegroundConnector> },
@@ -422,7 +422,7 @@ export function nextActionsForNeeds(
   return actions;
 }
 
-export type GenerationAbortOutcome =
+type GenerationAbortOutcome =
   | { kind: "needs_user"; needs: GenerationNeed[]; userPrompt: UserPromptPayload }
   | { kind: "unresolved" }
   | { kind: "regrounded"; evidence: string; plan: RegroundPlan };

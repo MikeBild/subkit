@@ -5,7 +5,7 @@ import type { Db } from "../db/client.ts";
 import { users } from "../db/schema/index.ts";
 import { assertAdminRemains } from "./last-admin.ts";
 
-export interface AssignUserRoleInput {
+interface AssignUserRoleInput {
   tenant_id: string;
   user_id: string;
   role_id: string;

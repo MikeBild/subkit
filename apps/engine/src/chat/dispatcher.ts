@@ -4,7 +4,7 @@ import { AuditAction } from "../audit/types.ts";
 import { principalOrigin } from "../auth/origin.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { humanChatAnswer } from "../conversations/answer-actor.ts";
-import type { RunLoopResult } from "../conversations/loop.ts";
+import type { RunLoopResult } from "../conversations/loop/index.ts";
 import {
   appendUserMessage,
   createConversation,

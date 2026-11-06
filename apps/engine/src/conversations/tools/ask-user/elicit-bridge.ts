@@ -9,7 +9,7 @@ export type FormBridgeToolName =
   | "ask_user_multi"
   | "ask_user_form";
 
-export type MapToPrimitiveResult =
+type MapToPrimitiveResult =
   | { degrade: true }
   | { degrade: false; requestedSchema: ElicitRequestedSchema; message: string }
   | { degrade: true; sensitive: true; message: string };

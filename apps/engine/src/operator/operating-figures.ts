@@ -97,7 +97,7 @@ export const COCKPIT_RUNS_FILTER_PARAMS = {
   startedTo: "runs_to",
 } as const;
 
-export type CockpitRunsFilter = Partial<Record<keyof typeof COCKPIT_RUNS_FILTER_PARAMS, string>>;
+type CockpitRunsFilter = Partial<Record<keyof typeof COCKPIT_RUNS_FILTER_PARAMS, string>>;
 
 export function cockpitRunsHref(filter: CockpitRunsFilter = {}): string {
   const query: Record<string, string> = { runs: "all" };
@@ -108,7 +108,7 @@ export function cockpitRunsHref(filter: CockpitRunsFilter = {}): string {
   return cockpitHref("", query);
 }
 
-export const OPERATING_WINDOW_MAX_MS = 366 * 86_400_000;
+const OPERATING_WINDOW_MAX_MS = 366 * 86_400_000;
 
 export function resolveOperatingBounds(
   input: {

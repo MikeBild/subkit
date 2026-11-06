@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { type Db, getDb } from "../../db/client.ts";
+import type { Db } from "../../db/client.ts";
 import { cockpitInstallations } from "../../db/schema/cockpit-installations.ts";
 import { roles, sessions, users } from "../../db/schema/index.ts";
 import { log, logger } from "../../logging/logger.ts";
@@ -11,12 +11,10 @@ import {
 import type { AuthProvider, ResolvedPrincipal } from "../types.ts";
 
 export interface BrowserSessionProviderOptions {
-  db?: Db;
+  db: Db;
 }
 
-export function createBrowserSessionProvider(
-  opts: BrowserSessionProviderOptions = {},
-): AuthProvider {
+export function createBrowserSessionProvider(opts: BrowserSessionProviderOptions): AuthProvider {
   return {
     name: "browser_session",
     capabilities: {
@@ -30,7 +28,7 @@ export function createBrowserSessionProvider(
       const payload = await browserSessionFromRequest(req);
       if (!payload) return null;
 
-      const db = opts.db ?? getDb();
+      const db = opts.db;
       // tenant-filter:exempt — session lookup by id resolves the tenant.
       const [row] = await db
         .select()

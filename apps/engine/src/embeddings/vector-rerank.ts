@@ -2,7 +2,7 @@ import { cosineSimilarity, embeddingsAvailable, embedText } from "./local-provid
 
 export const VECTOR_MIN_COSINE = 0.3;
 
-export interface ScoredCandidate<T> {
+interface ScoredCandidate<T> {
   item: T;
   cosine: number;
 }

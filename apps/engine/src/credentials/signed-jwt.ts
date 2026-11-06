@@ -46,7 +46,7 @@ export const SignedJwtConfigSchema = z
     }
   });
 
-export type SignedJwtConfig = z.infer<typeof SignedJwtConfigSchema>;
+type SignedJwtConfig = z.infer<typeof SignedJwtConfigSchema>;
 
 export function parseSignedJwtConfig(config: Record<string, unknown>): SignedJwtConfig {
   const parsed = SignedJwtConfigSchema.safeParse(config.signed_jwt);

@@ -37,14 +37,14 @@ const REFUSAL_KEYS = [
   "content_type_invalid",
   "base_unresolved",
 ] as const;
-export type RefusalKey = (typeof REFUSAL_KEYS)[number];
+type RefusalKey = (typeof REFUSAL_KEYS)[number];
 const KNOWN_REFUSALS = new Set<string>(REFUSAL_KEYS);
 
 export function refusalSentenceKey(code: string): `authority.refusal.${RefusalKey}` | undefined {
   return KNOWN_REFUSALS.has(code) ? `authority.refusal.${code as RefusalKey}` : undefined;
 }
 
-export interface AuthorityIssue {
+interface AuthorityIssue {
   key: string;
   step_id: string;
   code: IssueCode;
@@ -87,8 +87,4 @@ export function authorityIssues(preview: Preview | null | undefined): AuthorityI
         : {}),
     };
   });
-}
-
-export function unavailableSteps(preview: Preview | null | undefined): string[] {
-  return preview?.unavailable_steps ?? [];
 }

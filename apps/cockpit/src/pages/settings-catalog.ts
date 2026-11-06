@@ -3,7 +3,7 @@ import type { components } from "@cli-core/engine-api/openapi";
 export type ModelCatalog = components["schemas"]["SettingsModelCatalog"];
 export type ModelCatalogEntry = components["schemas"]["SettingsModelCatalogEntry"];
 
-export const MODEL_CATALOG_ENDPOINT = "/v1/settings/catalog/models";
+const MODEL_CATALOG_ENDPOINT = "/v1/settings/catalog/models";
 
 export function modelCatalogQueryKey(tenantId: string | null) {
   return ["admin", "settings", "catalog", tenantId] as const;

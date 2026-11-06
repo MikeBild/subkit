@@ -1,4 +1,4 @@
-export interface LocalDatabaseEnvironment {
+interface LocalDatabaseEnvironment {
   [key: string]: string | undefined;
   DATABASE_URL?: string;
   SUBKIT_DB_PASSWORD?: string;

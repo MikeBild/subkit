@@ -5,7 +5,7 @@ import type { Db } from "../../db/client.ts";
 import { sessions } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 
-export function deriveTestSessionSecret(): Uint8Array {
+function deriveTestSessionSecret(): Uint8Array {
   try {
     const fromConfig = (getConfig().auth.session.secret ?? "").trim();
     if (fromConfig.length > 0) return new TextEncoder().encode(fromConfig);

@@ -3,7 +3,7 @@ import { categoryMentionToken } from "@/lib/mentions";
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
-export interface StarterGates {
+interface StarterGates {
   workflows: boolean;
   solutions: boolean;
   knowledge: boolean;

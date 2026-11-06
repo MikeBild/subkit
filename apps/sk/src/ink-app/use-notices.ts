@@ -11,7 +11,7 @@ export interface TranscriptNotice extends NoticeItem {
   expires_at?: number | undefined;
 }
 
-export interface NoticesApi {
+interface NoticesApi {
   notices: TranscriptNotice[];
   setNotices: React.Dispatch<React.SetStateAction<TranscriptNotice[]>>;
   pushNotice: (tone: NoticeTone, message: string, persistent?: boolean) => void;

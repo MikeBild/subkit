@@ -1,4 +1,4 @@
-export type NamedOutputFormat = "markdown_table" | "csv" | "html" | "bulleted_list" | "json";
+type NamedOutputFormat = "markdown_table" | "csv" | "html" | "bulleted_list" | "json";
 
 export function detectNamedOutputFormat(goal: string): NamedOutputFormat | null {
   const g = goal.toLowerCase();

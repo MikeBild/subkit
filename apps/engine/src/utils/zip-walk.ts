@@ -1,18 +1,18 @@
 import yauzl from "yauzl";
 
-export interface ZipWalkEntry {
+interface ZipWalkEntry {
   path: string;
   buffer: Buffer;
 }
 
-export interface ZipWalkOptions {
+interface ZipWalkOptions {
   maxEntries: number;
   maxPerEntryBytes: number;
   maxTotalBytes: number;
   shouldSkip?: (path: string) => string | null;
 }
 
-export interface ZipWalkResult {
+interface ZipWalkResult {
   entries: ZipWalkEntry[];
   skipped_count: number;
   skipped_reasons: Record<string, number>;

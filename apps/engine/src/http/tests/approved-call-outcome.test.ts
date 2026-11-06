@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, ne } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { maybeAutoPersistFromElicitation } from "../../conversations/persistence/auto-persist/index.ts";
 import {
   appendMessage,
   insertToolCall,
   updateToolCallOutput,
-} from "../../conversations/persist.ts";
-import { maybeAutoPersistFromElicitation } from "../../conversations/persistence/auto-persist.ts";
+} from "../../conversations/persistence/index.ts";
 import { getConversation } from "../../conversations/service/get.ts";
 import {
   conversationElicitations,

@@ -8,7 +8,7 @@ import {
   signBrowserCsrf,
   signBrowserSession,
 } from "../../auth/browser-session.ts";
-import { bindPersistedWorkflow } from "../../conversations/authoring-state.ts";
+import { bindPersistedWorkflow } from "../../conversations/authoring-state/index.ts";
 import { ERROR_CODE_ALTERNATIVES } from "../../conversations/tools/sdk-wrap/error-recovery-hints.ts";
 import {
   connectors,

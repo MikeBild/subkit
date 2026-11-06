@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 
-export const ErrorRingEntrySchema = z
+const ErrorRingEntrySchema = z
   .object({
     trace_id: z.string().nullable(),
     ts: z.string(),
@@ -111,7 +111,7 @@ export const SetupSectionSchema = z
   })
   .openapi("DiagnosticsSetupSection");
 
-export const SetupSummaryCountsSchema = z
+const SetupSummaryCountsSchema = z
   .object({
     blockers: z.number().int(),
     warnings: z.number().int(),
@@ -120,7 +120,7 @@ export const SetupSummaryCountsSchema = z
   })
   .openapi("DiagnosticsSetupSummaryCounts");
 
-export const SetupSectionsSchema = z
+const SetupSectionsSchema = z
   .object({
     auth: SetupSectionSchema,
     llm: SetupSectionSchema,

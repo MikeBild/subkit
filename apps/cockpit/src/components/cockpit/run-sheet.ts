@@ -6,10 +6,6 @@ function here(next: { list: boolean; runId: string | null }): string {
   return `${window.location.pathname}${search}${window.location.hash}`;
 }
 
-export function runHereHref(runId: string): string {
-  return typeof window === "undefined" ? "" : here({ list: false, runId });
-}
-
 export function useOpenRunSheet(): {
   run(runId: string): void;
   all(): void;

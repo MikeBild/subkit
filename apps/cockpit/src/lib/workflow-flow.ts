@@ -87,7 +87,7 @@ export function resultPhrase(outputSchema: unknown): Phrase {
   return { key: "workflowFlow.result.declared" };
 }
 
-export interface DatedRun {
+interface DatedRun {
   id: string;
   started_at?: string | null;
   created_at: string;
@@ -96,7 +96,7 @@ export interface DatedRun {
 
 export type DayLabel = { kind: "today" } | { kind: "yesterday" } | { kind: "date"; date: Date };
 
-export interface DayGroup<T> {
+interface DayGroup<T> {
   key: string;
   label: DayLabel;
   items: T[];

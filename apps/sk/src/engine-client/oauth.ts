@@ -2,13 +2,13 @@ import { EngineError, TransportError } from "@cli-core/errors.ts";
 import type { EngineClient } from "../engine-client.ts";
 import { parseResponseBody } from "./http.ts";
 
-export interface OAuthProtectedResourceMetadata {
+interface OAuthProtectedResourceMetadata {
   resource: string;
   authorization_servers: string[];
   scopes_supported: string[];
 }
 
-export interface OAuthAuthorizationServerMetadata {
+interface OAuthAuthorizationServerMetadata {
   issuer: string;
   authorization_endpoint: string;
   token_endpoint: string;
@@ -21,7 +21,7 @@ export interface OAuthAuthorizationServerMetadata {
   scopes_supported: string[];
 }
 
-export interface OAuthClientRegistration {
+interface OAuthClientRegistration {
   client_id: string;
   redirect_uris: string[];
   grant_types: string[];
@@ -29,7 +29,7 @@ export interface OAuthClientRegistration {
   scope: string;
 }
 
-export interface OAuthTokenPair {
+interface OAuthTokenPair {
   access_token: string;
   refresh_token: string;
   token_type: string;
@@ -37,7 +37,7 @@ export interface OAuthTokenPair {
   scope: string;
 }
 
-export interface CliSessionCredential {
+interface CliSessionCredential {
   api_key: string;
   principal_id: string;
   context_id: string;

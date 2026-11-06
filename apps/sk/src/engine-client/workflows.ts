@@ -1,4 +1,5 @@
 import type { EngineClient } from "../engine-client.ts";
+import type { ApiQuery } from "./http.ts";
 
 export interface ScheduleEntry {
   id: string;
@@ -71,7 +72,7 @@ export const workflowsMethods = {
     );
   },
 
-  listWorkflows(
+  async listWorkflows(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
   ): Promise<{
@@ -79,10 +80,14 @@ export const workflowsMethods = {
     total: number;
     categories?: { category: string; count: number }[];
   }> {
-    return this.request("GET", "/v1/workflows", undefined, query);
+    const { data } = await this.api.GET("/v1/workflows", {
+      params: { query: query as ApiQuery<"/v1/workflows", "get"> },
+    });
+    return data as { items: Record<string, unknown>[]; total: number };
   },
-  getWorkflow(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("GET", `/v1/workflows/${encodeURIComponent(id)}`);
+  async getWorkflow(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+    const { data } = await this.api.GET("/v1/workflows/{id}", { params: { path: { id } } });
+    return data as Record<string, unknown>;
   },
   createWorkflow(
     this: EngineClient,

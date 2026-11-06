@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getConfig, loadConfig } from "../../../src/config/loader.ts";
 import { _withConnectorPreflightForTests } from "../../../src/conversations/authoring-preflight.ts";
-import { createEmptyDraftDocument } from "../../../src/conversations/authoring-state.ts";
+import { createEmptyDraftDocument } from "../../../src/conversations/authoring-state/index.ts";
 import type { ToolContext } from "../../../src/conversations/tools/index.ts";
 import type { DraftDocument } from "../../../src/conversations/types.ts";
 import type { Db } from "../../../src/db/client.ts";

@@ -7,7 +7,7 @@ import { cockpitBasePath } from "./installation-context";
 
 export const ATTENTION_TOAST_ID = "cockpit-attention";
 
-export interface AttentionMessageDeps {
+interface AttentionMessageDeps {
   origin: string;
   basePath: string;
   overview(): boolean;

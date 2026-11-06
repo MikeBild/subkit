@@ -17,7 +17,7 @@ import {
 export const KNOWLEDGE_HISTORY_DEFAULT_LIMIT = 50;
 export const KNOWLEDGE_HISTORY_MAX_LIMIT = 200;
 
-export interface KnowledgeVersionView {
+interface KnowledgeVersionView {
   version: number;
   content_hash: string;
   author: Actor | null;

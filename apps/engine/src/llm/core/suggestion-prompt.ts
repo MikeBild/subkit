@@ -38,13 +38,13 @@ export interface RecentMessage {
   text: string;
 }
 
-export interface AssembleSuggestionPromptInput {
+interface AssembleSuggestionPromptInput {
   recent_messages: ReadonlyArray<RecentMessage>;
   max_history?: number;
   max_chars_per_message?: number;
 }
 
-export interface SuggestionPrompt {
+interface SuggestionPrompt {
   system: string;
   messages: SubkitLlmMessage[];
 }

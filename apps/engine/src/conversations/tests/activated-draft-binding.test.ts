@@ -7,7 +7,7 @@ import {
   createEmptyDraftDocument,
   withWorkflowDraft,
   withWorkflowPersisted,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import { hydrateBoundWorkflow } from "../draft.ts";
 import { workflowDefFromDraft } from "../persistence/commit-workflow.ts";
 import { persistAuthoringWorkflowDraft } from "../persistence/persist-authoring-workflow-draft.ts";

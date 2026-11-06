@@ -1,4 +1,4 @@
-import type { RunLoopResult } from "../conversations/loop.ts";
+import type { RunLoopResult } from "../conversations/loop/index.ts";
 import { resolvePublicBaseUrl } from "../conversations/tools/usage-guidance.ts";
 
 const INTAKE_REVIEW_TOOLS = new Set(["list_intake_items", "get_intake_item"]);

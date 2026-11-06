@@ -1,10 +1,6 @@
 import type { McpOperation } from "@shared/index.ts";
 
-export type RemoteOperation =
-  | McpOperation
-  | "list_resources"
-  | "list_resource_templates"
-  | "list_prompts";
+type RemoteOperation = McpOperation | "list_resources" | "list_resource_templates" | "list_prompts";
 
 export type RemoteCall =
   | { operation: "call_tool"; tool: string; arguments: Record<string, unknown> }
@@ -14,7 +10,7 @@ export type RemoteCall =
   | { operation: "list_resource_templates"; cursor?: string }
   | { operation: "list_prompts"; cursor?: string };
 
-export interface RemoteCallOptions {
+interface RemoteCallOptions {
   timeout_ms: number;
   signal?: AbortSignal;
   onProgress?: (p: { progress: number; total?: number; message?: string }) => void;
@@ -65,7 +61,7 @@ export interface SdkRequestOptions {
   onprogress?: (p: { progress: number; total?: number; message?: string }) => void;
 }
 
-export interface RemoteCallOutcome {
+interface RemoteCallOutcome {
   content: unknown;
   structured_content?: unknown;
   remote_error: boolean;

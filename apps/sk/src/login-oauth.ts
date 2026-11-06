@@ -7,14 +7,14 @@ export const CLI_LOGIN_SCOPE = "sk:login";
 const CALLBACK_PATH = "/callback";
 const DEFAULT_TIMEOUT_MS = 5 * 60_000;
 
-export interface CliOAuthLoginResult {
+interface CliOAuthLoginResult {
   api_key: string;
   principal_id: string;
   context_id: string;
   email: string;
 }
 
-export interface CliOAuthLoginOptions {
+interface CliOAuthLoginOptions {
   engineUrl: string;
   tenantId?: string | undefined;
   client?: EngineClient | undefined;

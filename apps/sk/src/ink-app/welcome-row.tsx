@@ -65,7 +65,7 @@ const SetupBanner: React.FC<SetupBannerProps> = memo(({ status, warnings, blocke
 });
 SetupBanner.displayName = "SetupBanner";
 
-export interface WelcomeRowProps {
+interface WelcomeRowProps {
   persona: PersonaInfo;
   conversationId: string | null;
   activeMode: PermissionMode;

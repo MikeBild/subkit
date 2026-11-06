@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createEmptyDraftDocument } from "../authoring-state.ts";
+import { createEmptyDraftDocument } from "../authoring-state/index.ts";
 import type { DraftDocument } from "../types.ts";
 import { applyWorkflowPatchToDraft, editWorkflowPatchTool } from "./edit-workflow-patch.ts";
 import type { ToolContext } from "./index.ts";

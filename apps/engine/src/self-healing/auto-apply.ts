@@ -21,7 +21,7 @@ import {
 } from "./patch-apply.ts";
 import { resolveCandidateStepKey } from "./step-snapshot.ts";
 
-export type AutoApplyResult =
+type AutoApplyResult =
   | { applied: true; version_id: string; changed_paths: string[] }
   | { applied: false; reason: PatchApplyFailure | "workflow_missing" | "version_missing" };
 

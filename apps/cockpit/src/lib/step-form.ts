@@ -23,7 +23,7 @@ export interface StepForm {
   elseSteps: string[];
 }
 
-export const DEFAULT_TRANSFORM = "return {\n  ...input,\n  checked: true,\n};";
+const DEFAULT_TRANSFORM = "return {\n  ...input,\n  checked: true,\n};";
 
 type RecordValue = Record<string, unknown>;
 
@@ -40,7 +40,7 @@ const pretty = (value: unknown): string =>
 
 const REQUEST_DRIVER_FIELDS = ["url", "sql", "graphql", "mcp", "s3"] as const;
 
-export function isFormKind(kind: unknown): kind is StepFormKind {
+function isFormKind(kind: unknown): kind is StepFormKind {
   return kind === "request" || kind === "transform" || kind === "wait" || kind === "branch";
 }
 
@@ -91,7 +91,7 @@ export function formatDuration(ms: number): string {
   return `${Math.round(ms / 1_000)} s`;
 }
 
-export function formatHeaders(value: unknown): string {
+function formatHeaders(value: unknown): string {
   const headers = record(value);
   if (!headers) return "";
   return Object.entries(headers)

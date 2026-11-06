@@ -20,7 +20,7 @@ export const turnLoopBudgetStopCondition = ({
   });
 };
 
-export type FallbackSynthesisReason =
+type FallbackSynthesisReason =
   | "next_prompt_from_tool"
   | "loop_warnings_no_signal"
   | "tool_results_summary";

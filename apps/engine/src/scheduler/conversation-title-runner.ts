@@ -12,13 +12,13 @@ const SCAN = 100;
 
 const RETITLE = 10;
 
-export interface ConversationTitleSweepDependencies {
+interface ConversationTitleSweepDependencies {
   refreshTitle?: typeof refreshConversationTitle;
 }
 
 export { isStillOpeningLine } from "../conversations/title.ts";
 
-export interface ConversationTitleSweepReport {
+interface ConversationTitleSweepReport {
   done: boolean;
   scanned: number;
   retitled: number;

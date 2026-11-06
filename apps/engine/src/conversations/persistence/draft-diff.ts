@@ -4,7 +4,7 @@ import { workflows, workflowVersions } from "../../db/schema/index.ts";
 import { validateTenantWorkflowDef } from "../../workflows/index.ts";
 import { annotateRuntime } from "../../workflows/runtime-annotation.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
-import { getWorkflowDraft } from "../authoring-state.ts";
+import { getWorkflowDraft } from "../authoring-state/index.ts";
 import type { DraftDocument } from "../types.ts";
 import { workflowDefFromDraft } from "./commit-workflow.ts";
 

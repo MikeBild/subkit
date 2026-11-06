@@ -65,7 +65,7 @@ import { withActiveTenantJobContext } from "../job-context.ts";
 import { CONVERSATION_RUN_TURN_QUEUE, type ConversationRunTurnJob } from "../queues.ts";
 import { planProviderLimitPark } from "./provider-limit-park.ts";
 
-export interface RegisterConversationRunTurnOptions {
+interface RegisterConversationRunTurnOptions {
   boss: PgBoss;
   db: Db;
 }

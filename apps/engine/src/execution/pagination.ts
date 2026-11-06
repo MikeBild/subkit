@@ -15,18 +15,18 @@ export const PAGINATION_CHECKPOINT_INTERVAL: number = (() => {
   return Number.isFinite(n) && n > 0 ? n : 50;
 })();
 
-export interface PageContext {
+interface PageContext {
   baseUrl: URL;
   baseQuery: Record<string, string>;
 }
 
-export interface NextPage {
+interface NextPage {
   url: string;
   done: boolean;
   body_parameters?: Record<string, string | number>;
 }
 
-export type PaginationErrorCode =
+type PaginationErrorCode =
   | "pagination_link_foreign"
   | "pagination_link_unsupported"
   | "pagination_link_loop"
@@ -42,7 +42,7 @@ export class PaginationError extends Error {
   }
 }
 
-export interface PaginationStrategyState {
+interface PaginationStrategyState {
   next(prevResponse: unknown, pageIdx: number, prevHeaders?: Record<string, string>): NextPage;
   merge(acc: unknown[], pageBody: unknown): unknown[];
   snapshot(lastBody: unknown): PaginationCheckpointState;

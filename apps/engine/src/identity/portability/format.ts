@@ -30,7 +30,7 @@ export const PACKAGE_KIND_ORDER: readonly PackageItemKind[] = [
   "knowledge",
 ];
 
-export const PACKAGE_KIND_DIRECTORY: Record<PackageItemKind, string> = {
+const PACKAGE_KIND_DIRECTORY: Record<PackageItemKind, string> = {
   connector_template: "connector-templates",
   connector: "connectors",
   file: "files",
@@ -138,7 +138,7 @@ export const ConnectorPayloadSchema = z.object({
 });
 export type ConnectorPayload = z.infer<typeof ConnectorPayloadSchema>;
 
-export const FileLinkPayloadSchema = z.object({
+const FileLinkPayloadSchema = z.object({
   resource_kind: z.enum(["skill", "connector"]),
   key: z.string(),
   slug: z.string().nullable(),

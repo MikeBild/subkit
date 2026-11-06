@@ -5,7 +5,7 @@ const HOUR_MS = 60 * 60 * 1000;
 const MINUTE_MS = 60 * 1000;
 export const GATE_SEARCH_DAYS = 60;
 
-export interface NextFireSchedule {
+interface NextFireSchedule {
   cron: string;
   timezone: string;
   input: unknown;

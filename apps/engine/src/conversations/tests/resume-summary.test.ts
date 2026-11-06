@@ -8,7 +8,7 @@ import {
   withWorkflowDraft,
   withWorkflowPersisted,
   withWorkflowSaveError,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import { buildResumeSummary, shouldShowResumeSummary } from "../resume.ts";
 import type { ConversationRecord, DraftDocument } from "../types.ts";
 

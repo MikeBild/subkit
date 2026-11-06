@@ -2,15 +2,14 @@ import type { components } from "@cli-core/engine-api/openapi";
 import { apiRequest } from "./client";
 
 export type IntakeClip = components["schemas"]["IntakeItem"];
-export type IntakeClipDetail = components["schemas"]["IntakeItemDetail"];
-export type IntakeEvidence = components["schemas"]["IntakeItemEvidence"];
+type IntakeClipDetail = components["schemas"]["IntakeItemDetail"];
 export type IntakeSnapshot = components["schemas"]["IntakeItemSnapshot"];
 export type IntakeState = IntakeClip["state"];
 export type IntakeProposal = components["schemas"]["IntakeProposal"];
 export type IntakeProposalTarget = components["schemas"]["IntakeProposalTarget"];
 export type IntakeSkillTarget = components["schemas"]["IntakeSkillTarget"];
 
-export interface IntakeCategory {
+interface IntakeCategory {
   category: string;
   counts?: { intake?: number };
 }

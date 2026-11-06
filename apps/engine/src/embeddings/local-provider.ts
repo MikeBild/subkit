@@ -1,7 +1,7 @@
 import { logger } from "../logging/logger.ts";
 
 export const EMBEDDING_MODEL = "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
-export const EMBEDDING_DIM = 384;
+const EMBEDDING_DIM = 384;
 const EMBEDDING_DTYPE = "q8";
 const MAX_EMBEDDING_INPUT_CHARS = 8192;
 
@@ -117,7 +117,7 @@ export async function embedText(text: string): Promise<number[] | null> {
   return vec ?? null;
 }
 
-export async function embedChunkTexts(texts: string[]): Promise<(number[] | null)[]> {
+async function embedChunkTexts(texts: string[]): Promise<(number[] | null)[]> {
   if (texts.length === 0) return [];
   try {
     const vecs = await embedTexts(texts);
@@ -126,7 +126,7 @@ export async function embedChunkTexts(texts: string[]): Promise<(number[] | null
   return texts.map(() => null);
 }
 
-export const EMBED_SUBBATCH = 1;
+const EMBED_SUBBATCH = 1;
 
 function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));

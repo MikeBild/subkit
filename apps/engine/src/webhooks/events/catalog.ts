@@ -259,7 +259,7 @@ export const EVENT_CATALOG = {
   },
 } as const satisfies Record<string, EventCatalogEntry>;
 
-export type EventType = keyof typeof EVENT_CATALOG;
+type EventType = keyof typeof EVENT_CATALOG;
 export const EVENT_TYPES = Object.keys(EVENT_CATALOG) as EventType[];
 
 export function isKnownEventType(type: string): type is EventType {
@@ -284,7 +284,7 @@ export function validateEventPayload(
   return { ok: true, value: result.data };
 }
 
-export interface EventClassification {
+interface EventClassification {
   actionable: boolean;
   resource_type: string | null;
   resource_id: string | null;

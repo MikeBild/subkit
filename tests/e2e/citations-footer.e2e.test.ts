@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createEmptyDraftDocument } from "../../apps/engine/src/conversations/authoring-state.ts";
+import { createEmptyDraftDocument } from "../../apps/engine/src/conversations/authoring-state/index.ts";
 import { conversations } from "../../apps/engine/src/db/schema/index.ts";
 import {
   knowledgeChunks,

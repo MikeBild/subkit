@@ -1,4 +1,4 @@
-export interface CurlExtract {
+interface CurlExtract {
   url: string;
   method: string;
   headers: Record<string, string>;

@@ -9,7 +9,7 @@ import { type InboundChatPlatform, PLATFORM_HAS_GLOBAL_USER_IDS } from "./types.
 
 export type ChatWorkspaceRow = typeof chatWorkspaces.$inferSelect;
 
-export type ChatWorkspaceInstallRefusal =
+type ChatWorkspaceInstallRefusal =
   | "claimed_elsewhere"
   | "platform_unsupported"
   | "installer_not_owned"
@@ -26,7 +26,7 @@ export class ChatWorkspaceInstallRefusedError extends Error {
   }
 }
 
-export interface ChatWorkspaceInstallInput {
+interface ChatWorkspaceInstallInput {
   principal: ResolvedPrincipal;
   body: {
     platform: InboundChatPlatform;

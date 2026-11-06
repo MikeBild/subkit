@@ -62,8 +62,6 @@ export function isLogSensitiveKey(key: string): boolean {
 
 export const SENSITIVE_KEY_PATTERN: RegExp =
   /token|secret|password|api[_-]?key|credential|authorization/i;
-
-export const PROMPT_KEY_PATTERN: RegExp = /prompt|messages|instructions|(?:^|_)body$/i;
 const PROSE_KEY_PATTERN: RegExp = /prompt|messages|instructions/i;
 const BODY_KEY_PATTERN: RegExp = /(?:^|_)body$/i;
 
@@ -216,7 +214,7 @@ export function scrubString(value: string): string {
   return out;
 }
 
-export interface SecretShapeRedaction {
+interface SecretShapeRedaction {
   text: string;
   count: number;
 }

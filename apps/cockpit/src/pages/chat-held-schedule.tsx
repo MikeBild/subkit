@@ -4,7 +4,7 @@ import { Button } from "@/components/cockpit/patterns";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 
-export function heldNeedsRepair(schedule: Pick<HeldSchedule, "admission_hold">): boolean {
+function heldNeedsRepair(schedule: Pick<HeldSchedule, "admission_hold">): boolean {
   return schedule.admission_hold?.reason_code === "execution_authority_required";
 }
 

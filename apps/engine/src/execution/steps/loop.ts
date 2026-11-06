@@ -9,7 +9,7 @@ import { applySelector } from "../selectors.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
 import { buildStepErrorDetail } from "./error-detail.ts";
 
-export const LOOP_ITERATION_CAP = 10_000;
+const LOOP_ITERATION_CAP = 10_000;
 
 export async function runLoopStep(p: {
   ctx: StepRunContext;

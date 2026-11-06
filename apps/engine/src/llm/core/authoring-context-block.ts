@@ -1,4 +1,4 @@
-import { normalizeDraftDocument } from "../../conversations/authoring-state.ts";
+import { normalizeDraftDocument } from "../../conversations/authoring-state/index.ts";
 import {
   nextQuestion as computeNextQuestion,
   type ExpertiseHint,

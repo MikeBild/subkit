@@ -30,32 +30,32 @@ export interface TaskAction {
   invoke: TaskActionInvocation;
 }
 
-export const WORKFLOW_STARTER_PROMPT = [
+const WORKFLOW_STARTER_PROMPT = [
   "I want to build a workflow.",
   "Guide me one question at a time.",
   "Ask first which connectors are involved, what should trigger it, and what success looks like.",
   "Preview before commit.",
 ].join("\n");
 
-export const CONNECTOR_STARTER_PROMPT = [
+const CONNECTOR_STARTER_PROMPT = [
   "I want to create a connector.",
   "Suggest a template only if it clearly helps, but do not require one.",
   "Ask me one high-signal question at a time and probe before saving.",
 ].join("\n");
 
-export const MANAGE_STARTER_PROMPT = [
+const MANAGE_STARTER_PROMPT = [
   "I want to inspect or manage existing tenant resources.",
   "Ground me in the workflows, connectors, runs, or credentials that actually exist first.",
   "If a matching write action exists, use it with confirmation instead of inventing off-surface fallbacks.",
 ].join("\n");
 
-export const SURFACE_HELP_STARTER_PROMPT = [
+const SURFACE_HELP_STARTER_PROMPT = [
   "I want help using sk surfaces - the CLI, MCP, the HTTP API, schedules, or Google Chat.",
   "Answer from actual engine behavior and exposed routes only.",
   "If something is not exposed in this conversation surface, say that plainly.",
 ].join("\n");
 
-export const TRIAGE_STARTER_PROMPT = [
+const TRIAGE_STARTER_PROMPT = [
   "Walk through each failure in the engine health digest you were just given.",
   "For each one, triage the root cause and propose the smallest fix.",
   "Validate before committing any draft change.",
@@ -331,7 +331,7 @@ export function starterTaskActionsForPersona(
     : actions;
 }
 
-export function normalizeActionText(value: string): string {
+function normalizeActionText(value: string): string {
   return value.trim().toLowerCase().replace(/^\/+/, "").replace(/[_-]+/g, " ").replace(/\s+/g, " ");
 }
 

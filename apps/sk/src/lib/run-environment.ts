@@ -1,9 +1,9 @@
 import { INVOKE_ENVIRONMENTS, isInvokeEnvironment } from "@shared/invoke-snippet.ts";
 import type { RunEnvironment } from "../engine-client.ts";
 
-export const RUN_ENVIRONMENTS = INVOKE_ENVIRONMENTS;
-export const DEFAULT_RUN_ENVIRONMENT: RunEnvironment = "dev";
-export const ENVIRONMENT_MISMATCH_CODE = "connector_environment_mismatch";
+const RUN_ENVIRONMENTS = INVOKE_ENVIRONMENTS;
+const DEFAULT_RUN_ENVIRONMENT: RunEnvironment = "dev";
+const ENVIRONMENT_MISMATCH_CODE = "connector_environment_mismatch";
 
 export const RUN_ENVIRONMENT_ARG = {
   type: "string",

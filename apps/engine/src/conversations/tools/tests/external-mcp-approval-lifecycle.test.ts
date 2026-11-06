@@ -20,7 +20,7 @@ import { builtinRoleId } from "../../../rbac/roles.ts";
 import { seedTenant } from "../../../test-helpers/seed.ts";
 import { resolveElicitationAndReactivate } from "../../elicitations.ts";
 import { buildMessages } from "../../parts.ts";
-import { maybeAutoPersistFromElicitation } from "../../persistence/auto-persist.ts";
+import { maybeAutoPersistFromElicitation } from "../../persistence/auto-persist/index.ts";
 import { pendingPrompt } from "../../resume.ts";
 import { getConversation } from "../../service/get.ts";
 import { freshSignals } from "../../tests/turn-signals.ts";

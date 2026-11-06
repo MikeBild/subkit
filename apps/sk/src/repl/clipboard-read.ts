@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 
-export type ClipboardRead =
+type ClipboardRead =
   | { kind: "none" }
   | { kind: "text"; text: string }
   | { kind: "image"; path: string; mediaType: string; bytes: number };

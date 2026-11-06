@@ -17,10 +17,6 @@ export function registerAbort(executionId: string, tenantId: string): AbortContr
   return ctrl;
 }
 
-export function getAbort(executionId: string): AbortController | undefined {
-  return REGISTRY.get(executionId)?.controller;
-}
-
 export function unregisterAbort(executionId: string): void {
   REGISTRY.delete(executionId);
 }
@@ -32,7 +28,7 @@ export function cancel(executionId: string, reason = "cancelled"): boolean {
   return true;
 }
 
-export interface AbortMonitor {
+interface AbortMonitor {
   stop(): Promise<void>;
   checkNow(): Promise<number>;
 }

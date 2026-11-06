@@ -8,7 +8,7 @@ import { _internal as install } from "./install.ts";
 import { resolveOrigin } from "./llms-txt.ts";
 
 export const SKILL_MD = skillMd;
-export const SKILL_NAME = "build-or-adopt";
+const SKILL_NAME = "build-or-adopt";
 
 export const SKILL_REFERENCES: ReadonlyArray<{ servedPath: string; file: string }> =
   LLMS_PAGE_PATHS.map((servedPath) => ({ servedPath, file: servedPath }));

@@ -4,7 +4,7 @@ import {
   createEmptyDraftDocument,
   withLatestPreview,
   withWorkflowInspection,
-} from "../../conversations/authoring-state.ts";
+} from "../../conversations/authoring-state/index.ts";
 import { appendSnapshot } from "../../conversations/draft.ts";
 import {
   conversationElicitations,

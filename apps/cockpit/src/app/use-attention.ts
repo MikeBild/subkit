@@ -38,7 +38,7 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-export function useHiddenAttention(): HiddenEntries {
+function useHiddenAttention(): HiddenEntries {
   return useSyncExternalStore(
     subscribe,
     () => hidden,
@@ -46,7 +46,7 @@ export function useHiddenAttention(): HiddenEntries {
   );
 }
 
-export function canReadAttention(permissions: readonly string[]): boolean {
+function canReadAttention(permissions: readonly string[]): boolean {
   return ATTENTION_READ_PERMISSIONS.some((permission) => permissions.includes(permission));
 }
 

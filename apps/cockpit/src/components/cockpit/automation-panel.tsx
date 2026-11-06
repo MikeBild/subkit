@@ -31,7 +31,6 @@ import {
 import {
   type AutomationState,
   type AutomationStatusLike,
-  type AutomationTrigger,
   type AutomationWorkflow,
   automationEnvironment,
   automationEnvironmentUndecided,
@@ -41,9 +40,7 @@ import {
 } from "@/lib/automation-state";
 import { causeClassLabel } from "@/lib/cause-class";
 import { connectorAuthState } from "@/lib/connector-auth-state";
-import { cronWords } from "@/lib/cron-words";
 import { grantOpeningNotice, hookStartedOnly, OPENING_NOTICE_KEYS } from "@/lib/grant-context";
-import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { reviewTarget } from "@/lib/review-target";
 import { liveRunEnvironment, type RunEnvironment } from "@/lib/run-availability";
@@ -350,27 +347,6 @@ function useHeadline(state: AutomationState | null): string | null {
         ? t("automation.headline.inactive")
         : [versionFact, t("automation.headline.manual")].filter(Boolean).join(" · ");
   }
-}
-
-export function useTriggerWords(): (
-  triggers: readonly AutomationTrigger[],
-  hiddenHooks: number,
-) => string[] {
-  const { t, locale } = useI18n();
-  return (triggers, hiddenHooks) => {
-    const parts = triggers.map((trigger) => {
-      const text =
-        trigger.kind === "schedule"
-          ? t("automation.trigger.schedule", {
-              when: cronWords(trigger.cron ?? "", t, LOCALE_TAGS[locale]),
-              timezone: trigger.timezone ?? "UTC",
-            })
-          : t("automation.trigger.hook", { slug: trigger.slug ?? "" });
-      return trigger.paused ? t("automation.trigger.paused", { trigger: text }) : text;
-    });
-    if (hiddenHooks > 0) parts.push(t("automation.trigger.hooks", { count: hiddenHooks }));
-    return parts;
-  };
 }
 
 function useRunHealth(workflowId: string, health: string | null, permissions: readonly string[]) {

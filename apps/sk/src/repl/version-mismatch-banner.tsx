@@ -2,9 +2,9 @@ import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
 
-export type VersionSkewSeverity = "engine_older" | "cli_older" | "dev_build" | "match";
+type VersionSkewSeverity = "engine_older" | "cli_older" | "dev_build" | "match";
 
-export interface VersionSkewSnapshot {
+interface VersionSkewSnapshot {
   cliVersion: string;
   engineVersion: string;
   severity: VersionSkewSeverity;

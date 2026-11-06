@@ -9,7 +9,7 @@ export type ConversationOutcome =
 
 export const STALE_AFTER_DAYS = 7;
 
-export interface OutcomeInput {
+interface OutcomeInput {
   status: string;
   last_message_role: string | null;
   last_activity_at: string | null;

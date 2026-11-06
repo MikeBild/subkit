@@ -6,7 +6,7 @@ import { recordUsageEvent, type TrafficClass } from "../../stats/usage-events.ts
 import { now } from "../../utils/clock.ts";
 
 export const SESSION_IDLE_TTL_MS = 30 * 60_000;
-export const SESSION_SWEEP_INTERVAL_MS = 60_000;
+const SESSION_SWEEP_INTERVAL_MS = 60_000;
 export const MAX_LIVE_SESSIONS = 100;
 export const MAX_LIVE_SESSIONS_HARD = 120;
 export const MAX_LIVE_SESSIONS_PER_OWNER = Math.floor(MAX_LIVE_SESSIONS_HARD / 4);
@@ -38,7 +38,7 @@ export function ownerKey(p: ResolvedPrincipal): string {
   return `${p.tenant_id}:${p.id}:${p.api_key_id ?? p.session_id ?? p.oauth_client_id ?? p.provider}`;
 }
 
-export interface SessionLeaseManager {
+interface SessionLeaseManager {
   sessions: Map<string, Session>;
   evict(sessionId: string, reason: "idle_ttl" | "capacity" | "stuck"): void;
   tick(): void;

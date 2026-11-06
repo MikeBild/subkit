@@ -91,7 +91,7 @@ export interface TenantBootstrapPayload {
   create_metrics_key?: boolean;
 }
 
-export interface TenantBootstrapResult {
+interface TenantBootstrapResult {
   tenant_id: string;
   user_id: string;
   api_key: { plaintext: string; prefix: string } | null;

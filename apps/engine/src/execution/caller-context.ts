@@ -78,7 +78,7 @@ export type WorkflowDispatchRefusal =
   | "caller_product_mismatch"
   | "sensitive_execution_unsupported";
 
-export interface WorkflowDispatchBoundary {
+interface WorkflowDispatchBoundary {
   product_id?: string | null;
   required_caller_kind?: string | null;
   execution_privacy?: string | null;

@@ -102,7 +102,7 @@ function pickUnresolvedPlaceholders(
   return undefined;
 }
 
-export interface BuildStepErrorOptions {
+interface BuildStepErrorOptions {
   code: string;
   err: unknown;
   request_meta?: RequestMeta | null;

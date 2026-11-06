@@ -50,8 +50,8 @@ export const ContentReleaseBoundarySchema = z
       new Set(sources.flatMap((source) => source.item_ids)).size ===
         sources.reduce((count, source) => count + source.item_ids.length, 0),
   );
-export type ContentRevisionBoundary = z.infer<typeof ContentRevisionBoundarySchema>;
-export type ContentReleaseBoundary = z.infer<typeof ContentReleaseBoundarySchema>;
+type ContentRevisionBoundary = z.infer<typeof ContentRevisionBoundarySchema>;
+type ContentReleaseBoundary = z.infer<typeof ContentReleaseBoundarySchema>;
 export const ContentPublicationBoundarySchema = z.union([
   ContentRevisionBoundarySchema,
   ContentReleaseBoundarySchema,

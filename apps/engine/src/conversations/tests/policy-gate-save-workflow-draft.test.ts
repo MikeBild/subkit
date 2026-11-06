@@ -15,10 +15,10 @@ import {
   withLatestPreview,
   withWorkflowInspection,
   withWorkflowValidation,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import { appendSnapshot } from "../draft.ts";
 import { getElicitation } from "../elicitations.ts";
-import { maybeAutoPersistFromElicitation } from "../persistence/auto-persist.ts";
+import { maybeAutoPersistFromElicitation } from "../persistence/auto-persist/index.ts";
 import { commitWorkflowAtomic } from "../persistence/commit-workflow.ts";
 import { findPriorSaveWorkflowApproval } from "../persistence/save-workflow-approval.ts";
 import type { ToolContext } from "../tools/index.ts";

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { workflows, workflowsSchedules, workflowVersions } from "../../db/schema/index.ts";
-import { bindPersistedWorkflow, createEmptyDraftDocument } from "../authoring-state.ts";
+import { bindPersistedWorkflow, createEmptyDraftDocument } from "../authoring-state/index.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { inspectWorkflowDraftTool } from "../tools/inspect-workflow-draft.ts";
 import { savedDraftReadiness } from "../tools/saved-draft-readiness.ts";

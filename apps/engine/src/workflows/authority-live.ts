@@ -13,7 +13,7 @@ export function authorityNotExpired(moment?: Date | SQL): SQL {
   return sql`(${table.valid_until} IS NULL OR ${table.valid_until} > ${at(moment)})`;
 }
 
-export function authorityHasRunsLeft(): SQL {
+function authorityHasRunsLeft(): SQL {
   return sql`(${table.max_runs} IS NULL OR ${table.reserved_runs} < ${table.max_runs})`;
 }
 

@@ -26,7 +26,7 @@ export const CONVERSATION_TASK_TTL_MS = 600_000;
 
 export const CONVERSATION_TASK_POLL_INTERVAL_MS = 2_000;
 
-export interface ConversationTaskStoreParams {
+interface ConversationTaskStoreParams {
   db: Db;
   tenant_id: string;
 }

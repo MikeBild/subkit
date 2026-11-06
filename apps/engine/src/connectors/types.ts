@@ -66,89 +66,6 @@ export const OPERATOR_QUIRK_CATEGORIES = [
 ] as const;
 export type OperatorQuirkCategory = (typeof OPERATOR_QUIRK_CATEGORIES)[number];
 
-export const HeaderAuthConfigSchema = z
-  .object({
-    auth_type: z.literal("header"),
-    static_headers: z.record(z.string(), z.string()).optional(),
-  })
-  .openapi("HeaderAuthConfig");
-
-export const QueryAuthConfigSchema = z
-  .object({
-    auth_type: z.literal("query"),
-    static_query: z.record(z.string(), z.string()).optional(),
-  })
-  .openapi("QueryAuthConfig");
-
-export const BearerAuthConfigSchema = z
-  .object({ auth_type: z.literal("bearer") })
-  .openapi("BearerAuthConfig");
-
-export const BasicAuthConfigSchema = z
-  .object({ auth_type: z.literal("basic") })
-  .openapi("BasicAuthConfig");
-
-export const OAuth2AuthConfigSchema = z
-  .object({
-    auth_type: z.literal("oauth2"),
-    issuer_url: z.string().url(),
-    authorization_endpoint: z.string().url().optional(),
-    token_endpoint: z.string().url().optional(),
-    client_id: z.string().nullable(),
-    client_secret: z.string().optional(),
-    grant_type: z.enum([
-      "authorization_code",
-      "client_credentials",
-      "password",
-      "cognito_user_password",
-      "client_credentials_json",
-    ]),
-    token_auth_method: z.enum(["body", "basic_auth"]).default("body"),
-    token_content_type: z.enum(["form", "json"]).default("form"),
-    use_pkce: z.boolean().default(true),
-    extra_token_headers: z.record(z.string(), z.string()).default({}),
-    scope: z.string().optional(),
-    audience: z.string().optional(),
-    aws_region: z.string().optional(),
-    cognito_username: z.string().optional(),
-    cognito_use_access_token: z.boolean().optional(),
-  })
-  .openapi("OAuth2AuthConfig");
-
-export const AwsSigV4AuthConfigSchema = z
-  .object({
-    auth_type: z.literal("aws_sigv4"),
-    aws_region: z.string().optional(),
-    aws_service: z.string().min(1),
-  })
-  .openapi("AwsSigV4AuthConfig");
-
-export const SignedJwtAuthConfigSchema = z
-  .object({
-    auth_type: z.literal("signed_jwt"),
-    signed_jwt: SignedJwtConfigSchema,
-  })
-  .openapi("SignedJwtAuthConfig");
-
-export const NoneAuthConfigSchema = z
-  .object({ auth_type: z.literal("none") })
-  .openapi("NoneAuthConfig");
-
-export const AuthConfigSchema = z
-  .discriminatedUnion("auth_type", [
-    NoneAuthConfigSchema,
-    HeaderAuthConfigSchema,
-    QueryAuthConfigSchema,
-    BearerAuthConfigSchema,
-    BasicAuthConfigSchema,
-    OAuth2AuthConfigSchema,
-    AwsSigV4AuthConfigSchema,
-    SignedJwtAuthConfigSchema,
-  ])
-  .openapi("AuthConfig");
-
-export type AuthConfig = z.infer<typeof AuthConfigSchema>;
-
 const OAuthEnrichmentSchema = z
   .object({
     issuer_url: z.string().optional(),
@@ -197,8 +114,6 @@ export const HttpConnectorConfig = z
     signed_jwt: SignedJwtConfigSchema.optional(),
   })
   .strict();
-
-export type HttpConnectorConfigType = z.infer<typeof HttpConnectorConfig>;
 
 export const CreateConnectorSchema = z
   .object({

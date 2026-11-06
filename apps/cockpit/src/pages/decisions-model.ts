@@ -25,7 +25,7 @@ export type DecisionOrigin =
   | "recurringPattern"
   | "conversation";
 
-export type DecisionUrgency = "expired" | "expiring" | "blocking" | "deferred";
+type DecisionUrgency = "expired" | "expiring" | "blocking" | "deferred";
 
 export interface DecisionItem {
   reviewable?: boolean;
@@ -77,7 +77,7 @@ export const ORIGIN_LABEL: Record<DecisionOrigin, TranslationKey> = {
   conversation: "decisions.origin.conversation",
 };
 
-export interface DecisionAction {
+interface DecisionAction {
   kind: "apply" | "reject" | "open";
   labelKey: TranslationKey;
 }
@@ -102,7 +102,7 @@ export function isDecidable(item: DecisionItem): item is DecidableItem {
   );
 }
 
-export interface SkillSections {
+interface SkillSections {
   examples: string[];
   bestPractices: string[];
   pitfalls: string[];
@@ -110,7 +110,7 @@ export interface SkillSections {
   tags: string[];
 }
 
-export const AGED_AFTER_DAYS = 3;
+const AGED_AFTER_DAYS = 3;
 
 export function ageInDays(waitingSince: string, now: number): number {
   const started = Date.parse(waitingSince);
@@ -131,7 +131,7 @@ export function patchChangeKind(candidate: PatchCandidate): {
   };
 }
 
-export interface PatchTitle {
+interface PatchTitle {
   key: TranslationKey;
   params: Record<string, string>;
 }
@@ -254,7 +254,7 @@ export function skillDecision(
 
 export const QUESTION_LINE_MAX = 180;
 
-export interface ConversationLabels {
+interface ConversationLabels {
   fallbackTitle: string;
   toolActivity: string;
   hiddenReference: string;
@@ -399,9 +399,9 @@ function readDiffEnvelope(diff: unknown): {
   };
 }
 
-export const EXPIRING_WITHIN_MS = 24 * 60 * 60 * 1000;
+const EXPIRING_WITHIN_MS = 24 * 60 * 60 * 1000;
 
-export function decisionUrgency(item: DecisionItem, now: number): DecisionUrgency {
+function decisionUrgency(item: DecisionItem, now: number): DecisionUrgency {
   if (item.expiresAt) {
     const expires = Date.parse(item.expiresAt);
     if (!Number.isNaN(expires)) {
@@ -425,7 +425,7 @@ export function sortDecisions(items: readonly DecisionItem[]): DecisionItem[] {
   });
 }
 
-export interface DecisionRubrics {
+interface DecisionRubrics {
   current: DecisionItem[];
   aged: DecisionItem[];
 }
@@ -438,7 +438,7 @@ export function splitByAge(items: readonly DecisionItem[], now: number): Decisio
   };
 }
 
-export interface UrgencyRubrics {
+interface UrgencyRubrics {
   expired: DecisionItem[];
   blocking: DecisionItem[];
   deferred: DecisionRubrics;
@@ -466,19 +466,19 @@ export function hasOverdue(items: readonly DecisionItem[], now: number): boolean
   });
 }
 
-export interface DecisionTotals {
+interface DecisionTotals {
   patch: number;
   skill: number;
   conversation: number;
 }
 
-export interface OpenDecisionSubsets {
+interface OpenDecisionSubsets {
   blocking: number;
   overdue: number;
   aging: number;
 }
 
-export interface OpenDecisions {
+interface OpenDecisions {
   total: number;
   decidable: number;
   byKind: Record<DecisionKind, number>;
@@ -533,7 +533,7 @@ export function countOpenDecisions(input: {
   };
 }
 
-export interface BannerSubset {
+interface BannerSubset {
   blocking: number;
   overdue: number;
   count: number;
@@ -565,7 +565,7 @@ export function filterByKinds(
   return items.filter((item) => kinds.includes(item.kind));
 }
 
-export type QueueDisplayState = "rows" | "filtered-empty" | "empty";
+type QueueDisplayState = "rows" | "filtered-empty" | "empty";
 
 export function queueDisplayState(input: {
   shown: number;
@@ -578,8 +578,8 @@ export function queueDisplayState(input: {
   return input.narrowed && input.total > 0 ? "filtered-empty" : "empty";
 }
 
-export type QueueKind = DecidableKind | "schedule";
-export const QUEUE_KINDS: readonly QueueKind[] = ["patch", "skill", "schedule"];
+type QueueKind = DecidableKind | "schedule";
+const QUEUE_KINDS: readonly QueueKind[] = ["patch", "skill", "schedule"];
 
 export function openDecisionQueue(input: {
   items: readonly DecisionItem[];
@@ -602,7 +602,7 @@ export function openDecisionQueue(input: {
 
 export type SourceState = "answered" | "failed" | "not_permitted";
 
-export interface QueueChip {
+interface QueueChip {
   kind: QueueKind;
   index: number;
   count: number | null;
@@ -632,13 +632,13 @@ export function queueChips(input: {
   });
 }
 
-export interface ReadableSources {
+interface ReadableSources {
   patches: boolean;
   skills: boolean;
   failing: boolean;
 }
 
-export function readableQueueKinds(readable: ReadableSources): QueueKind[] {
+function readableQueueKinds(readable: ReadableSources): QueueKind[] {
   return QUEUE_KINDS.filter((kind) =>
     kind === "patch"
       ? readable.patches
@@ -654,7 +654,7 @@ export function badgeCount(chips: readonly QueueChip[] | null): number | null {
   return total > 0 ? total : null;
 }
 
-export interface DecisionView {
+interface DecisionView {
   focus: "blocked" | "failing" | "overdue" | "other" | null;
   kinds: QueueKind[];
 }

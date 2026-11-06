@@ -5,7 +5,7 @@ import { auditLog, connectorMcpSessions } from "../db/schema/index.ts";
 
 const RECORDED_DRIVERS: ReadonlySet<string> = new Set(["http", "graphql", "s3", "postgres", "mcp"]);
 
-export type ConnectorFailureClass = "auth_failed" | "timeout" | "aborted" | "driver_error";
+type ConnectorFailureClass = "auth_failed" | "timeout" | "aborted" | "driver_error";
 
 export interface ConnectorRuntime {
   last_success_at: string | null;
@@ -41,7 +41,7 @@ function failureCode(status: number | null, mcp: boolean): string {
   return "no_status";
 }
 
-export function classifyConnectorFailure(
+function classifyConnectorFailure(
   status: number | null,
   reason: string | null,
 ): ConnectorFailureClass {

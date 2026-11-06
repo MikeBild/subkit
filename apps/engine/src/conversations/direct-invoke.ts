@@ -9,7 +9,7 @@ import { startToolSpan } from "../observability/langfuse-spans.ts";
 import { appendSnapshot, loadDraft } from "./draft.ts";
 import { createDraftSnapshot } from "./draft-checkpoints.ts";
 import { listElicitationsForConversation } from "./elicitations.ts";
-import { appendMessage, insertToolCall, updateToolCallOutput } from "./persist.ts";
+import { appendMessage, insertToolCall, updateToolCallOutput } from "./persistence/index.ts";
 import { PendingElicitationBlockedError } from "./service/shared.ts";
 import { computeLineDiff } from "./text-line-diff.ts";
 import { describeToolExecutionFailure } from "./tool-execution-failure.ts";

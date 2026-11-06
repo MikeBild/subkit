@@ -4,11 +4,11 @@ import {
   ReportDeliveryBoundarySchema,
 } from "./report-delivery-boundary.ts";
 
-export const GATE_FIXERS = ["use_utf8_encoder", "declare_report_delivery"] as const;
+const GATE_FIXERS = ["use_utf8_encoder", "declare_report_delivery"] as const;
 export const GateFixerSchema = z.enum(GATE_FIXERS);
 export type GateFixer = z.infer<typeof GateFixerSchema>;
 
-export const GateFixOpSchema = z
+const GateFixOpSchema = z
   .object({
     op: z.enum(["replace", "add"]),
     path: z.enum(["/expression", "/report_delivery"]),

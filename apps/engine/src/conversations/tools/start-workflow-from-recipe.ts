@@ -1,7 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { rebindConnectorIds } from "../../connectors/recipe-binding.ts";
 import { getBuiltinTemplate } from "../../connectors/templates.ts";
-import { withWorkflowDraft } from "../authoring-state.ts";
+import { withWorkflowDraft } from "../authoring-state/index.ts";
 import { saveApprovalReadiness } from "../persistence/save-workflow-approval.ts";
 import { setConversationWorkflowTarget } from "../service/tool-state.ts";
 import type { WorkflowDraftDocument } from "../types.ts";

@@ -6,7 +6,7 @@ import {
   withWorkflowDraft,
   withWorkflowInspection,
   withWorkflowValidation,
-} from "../../apps/engine/src/conversations/authoring-state.ts";
+} from "../../apps/engine/src/conversations/authoring-state/index.ts";
 import {
   conversationDrafts,
   conversations,

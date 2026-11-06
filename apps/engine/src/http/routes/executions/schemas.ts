@@ -16,7 +16,7 @@ import {
   WorkflowDefSchema,
 } from "../../../workflows/index.ts";
 
-export const ExecSchema = z
+const ExecSchema = z
   .object({
     id: z.string(),
     execution_id: z.string(),
@@ -52,7 +52,7 @@ const RefusedConnectorSchema = z
   })
   .nullable();
 
-export const ExecutionOutcomeSchema = z
+const ExecutionOutcomeSchema = z
   .object({
     kind: z.enum(["succeeded", "failed", "held", "partial", "running"]),
     failed_step: z.object({ step_key: z.string(), kind: z.string() }).nullable(),
@@ -94,7 +94,7 @@ export const ExecDetailSchema = ExecSchema.extend({
   outcome: ExecutionOutcomeSchema,
 }).openapi("ExecutionDetail");
 
-export const ExecListItemSchema = ExecSchema.extend({
+const ExecListItemSchema = ExecSchema.extend({
   held_effects: z.boolean(),
   failure: z
     .object({
@@ -114,7 +114,7 @@ export const ExecListResponse = z
   })
   .openapi("ExecutionListResponse");
 
-export const StepRowSchema = z
+const StepRowSchema = z
   .object({
     id: z.string(),
     step_key: z.string(),
@@ -141,7 +141,7 @@ export const StepRowSchema = z
 
 export const StepListResponse = paginatedResponse(StepRowSchema, "ExecutionStepListResponse");
 
-export const IdempotencyKeySchema = z.string().min(1).max(200).openapi({
+const IdempotencyKeySchema = z.string().min(1).max(200).openapi({
   description:
     "Caller-chosen key that makes this trigger safe to repeat: a second run with the same key in this tenant is not started; the response carries the first run's id and idempotent_replay: true. Choose a request id, an event id or a time slot.",
   example: "orders-sync:2026-09-03T07",

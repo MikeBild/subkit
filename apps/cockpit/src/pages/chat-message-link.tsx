@@ -3,7 +3,7 @@ import { contextualHref } from "@/app/installation-context";
 import { useI18n } from "@/lib/i18n-context";
 import { SIGN_IN_LINK_PATH } from "./chat-reauth";
 
-export function ChatMessageLink({ href, children, ...props }: ComponentProps<"a">) {
+function ChatMessageLink({ href, children, ...props }: ComponentProps<"a">) {
   const { t } = useI18n();
   let signIn = false;
   try {

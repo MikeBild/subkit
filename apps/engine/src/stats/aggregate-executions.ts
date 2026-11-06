@@ -4,7 +4,7 @@ import type { BucketUnit } from "../http/routes/stats/bucket-window.ts";
 
 export type ExecutionGroupDim = "workflow_id" | "status" | "request_source";
 
-export interface ExecutionsStatsParams {
+interface ExecutionsStatsParams {
   tenantId: string;
   bucket: BucketUnit;
   from: Date;
@@ -17,7 +17,7 @@ export interface ExecutionsStatsParams {
   groupBy: ExecutionGroupDim[];
 }
 
-export interface DurationAgg {
+interface DurationAgg {
   total: number;
   avg: number;
   p50: number;
@@ -26,19 +26,19 @@ export interface DurationAgg {
   max: number;
 }
 
-export interface ExecutionsBucketRow {
+interface ExecutionsBucketRow {
   ts: string;
   executions: number;
   duration_ms: DurationAgg;
 }
 
-export interface ExecutionsGroup {
+interface ExecutionsGroup {
   key: Record<string, string>;
   buckets: ExecutionsBucketRow[];
   totals: { executions: number; duration_ms: DurationAgg };
 }
 
-export interface ExecutionsStatsResult {
+interface ExecutionsStatsResult {
   groups: ExecutionsGroup[];
   totals: {
     executions: { count: number; by_status: Record<string, number> };

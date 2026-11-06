@@ -37,14 +37,14 @@ const PatchProposalRuntimeSchema = z.object({
 });
 
 export type PatchProposal = z.infer<typeof PatchProposalSchema>;
-export type ModelPatchProposal = z.infer<typeof PatchProposalRuntimeSchema>;
+type ModelPatchProposal = z.infer<typeof PatchProposalRuntimeSchema>;
 
 export interface PreviousRepairAttempt {
   proposal: PatchProposal;
   rejection: string;
 }
 
-export interface RepairParams {
+interface RepairParams {
   tenant_id: string;
   execution_id: string | null;
   scan_id?: string | undefined;
@@ -58,7 +58,7 @@ export interface RepairParams {
   previous_attempts?: PreviousRepairAttempt[];
 }
 
-export interface RepairResult {
+interface RepairResult {
   patch_proposal: ModelPatchProposal;
   raw_text: string;
   included_skill_ids: string[];

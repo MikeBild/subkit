@@ -6,7 +6,7 @@ const GENERIC_TOOL_FAILURE_MESSAGE = "the tool reported a failure without detail
 
 const CODE_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/;
 
-export interface ToolFailureEnvelope {
+interface ToolFailureEnvelope {
   error_code: string;
   message: string;
   next_best_actions: string[];

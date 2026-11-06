@@ -33,7 +33,7 @@ function readConfig(tenantId?: string): CriticConfig {
   }
 }
 
-export interface GatingInput {
+interface GatingInput {
   stepCount: number;
   recentDriftCount: number;
   consecutiveRejections: number;
@@ -63,7 +63,7 @@ export function shouldRunCritic(input: GatingInput): GatingDecision {
   return threshold;
 }
 
-export interface ResolveCriticGateInput {
+interface ResolveCriticGateInput {
   stepCount: number;
   recentDriftCount: number;
   tenantId?: string;

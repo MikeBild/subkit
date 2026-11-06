@@ -3,7 +3,7 @@ import type { TranslationKey } from "@/lib/i18n";
 import { presentAddress } from "@/pages/connector-detail-model";
 import type { ConnectorTemplate } from "./create-template-model";
 
-export const POPULAR_TEMPLATES = 8;
+const POPULAR_TEMPLATES = 8;
 
 export function popularTemplates<T extends { name: string; recipes: readonly unknown[] }>(
   templates: readonly T[],

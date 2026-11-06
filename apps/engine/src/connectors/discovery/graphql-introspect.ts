@@ -84,7 +84,7 @@ function isIntrospectionDisabled(message: string): boolean {
   return INTROSPECTION_DISABLED_PATTERNS.some((re) => re.test(message));
 }
 
-export function formatTypeRef(t: TypeRef | null | undefined): string | null {
+function formatTypeRef(t: TypeRef | null | undefined): string | null {
   if (!t) return null;
   if (t.kind === "NON_NULL" && t.ofType) {
     const inner = formatTypeRef(t.ofType);

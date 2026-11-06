@@ -1,7 +1,7 @@
 import { SUPPORTED_PROTOCOL_VERSIONS } from "@modelcontextprotocol/sdk/types.js";
 import { getConfig } from "../../config/loader.ts";
 
-export type McpTransportGuardResult =
+type McpTransportGuardResult =
   | { ok: true }
   | { ok: false; response: Response; reason: "invalid_origin" | "unsupported_protocol_version" };
 

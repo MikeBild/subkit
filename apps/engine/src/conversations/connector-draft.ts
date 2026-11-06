@@ -13,7 +13,7 @@ import {
 } from "./connector-template-intelligence.ts";
 import type { ConnectorDraftDocument } from "./types.ts";
 
-export interface ConnectorDraftValidation {
+interface ConnectorDraftValidation {
   ok: boolean;
   missing_fields: string[];
   errors: Array<{ path: string; message: string }>;

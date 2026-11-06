@@ -9,7 +9,7 @@ import {
   withWorkflowExecution,
   withWorkflowInspection,
   withWorkflowValidation,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import { commitWorkflowAtomic } from "../persistence/commit-workflow.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";

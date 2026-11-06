@@ -1,7 +1,7 @@
 import {
   bindPersistedWorkflow,
   startNewWorkflowDraft,
-} from "../../src/conversations/authoring-state.ts";
+} from "../../src/conversations/authoring-state/index.ts";
 import { detectUserIntent } from "../../src/conversations/intent-detector.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 

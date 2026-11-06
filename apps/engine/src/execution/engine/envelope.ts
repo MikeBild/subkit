@@ -29,7 +29,7 @@ export interface ScopeEnvelope {
   pagination?: EnvelopePagination;
 }
 
-export interface EnvelopePagination {
+interface EnvelopePagination {
   pages: number;
   items: number;
   duplicates_dropped: number;
@@ -100,7 +100,7 @@ export function wrapEnvelope(params: {
   return env;
 }
 
-export type BodyEnvelopeVerdict = "productive" | "offloaded" | "empty";
+type BodyEnvelopeVerdict = "productive" | "offloaded" | "empty";
 
 export function classifyBodyEnvelope(value: unknown): BodyEnvelopeVerdict {
   const env = value as ScopeEnvelope | null | undefined;

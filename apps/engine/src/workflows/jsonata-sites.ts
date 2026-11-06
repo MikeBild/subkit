@@ -7,7 +7,7 @@ import {
 import type { WorkflowDef } from "./types.ts";
 import type { ValidationError } from "./validator.ts";
 
-export interface JsonataSite {
+interface JsonataSite {
   path: string;
   expression: string;
 }

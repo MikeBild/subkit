@@ -16,7 +16,7 @@ function safe(fn: () => void): void {
   } catch {}
 }
 
-export interface MemorySnapshot {
+interface MemorySnapshot {
   rss_mb: number;
   heap_used_mb: number;
   heap_total_mb: number;
@@ -43,7 +43,7 @@ export function sampleMemory(): MemorySnapshot {
   };
 }
 
-export interface InstrumentOptions {
+interface InstrumentOptions {
   module: string;
   action: string;
   fields?: Record<string, unknown>;
@@ -184,7 +184,7 @@ export function startBootHeartbeat(opts?: {
   return () => clearInterval(timer);
 }
 
-export type PoolStatsProvider = () => { total: number; idle: number; waiting: number };
+type PoolStatsProvider = () => { total: number; idle: number; waiting: number };
 
 const POOL_SAMPLE_INTERVAL_MS = 5_000;
 

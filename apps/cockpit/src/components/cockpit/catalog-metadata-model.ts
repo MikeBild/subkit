@@ -13,7 +13,7 @@ export interface CatalogMetadataRecord {
   category_source?: unknown;
 }
 
-export interface CatalogMetadataDraft {
+interface CatalogMetadataDraft {
   description: string;
   category: string;
 }

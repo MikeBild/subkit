@@ -7,11 +7,11 @@ import { queuedSendTransaction } from "../transaction-adapter.ts";
 
 export const CATALOG_DESCRIBE_QUEUE = "catalog.describe" as const;
 
-export interface CatalogDescribeJob {
+interface CatalogDescribeJob {
   tenant_id: string;
 }
 
-export interface RegisterCatalogDescribeOptions {
+interface RegisterCatalogDescribeOptions {
   boss: PgBoss;
   db: Db;
 }

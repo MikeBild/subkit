@@ -228,7 +228,7 @@ function everyHeaderBody(
   return { mode: "header", headers: Object.fromEntries(entries) };
 }
 
-export interface ConnectorEditPlan {
+interface ConnectorEditPlan {
   patch: UpdateConnectorBody;
   credential: Record<string, unknown> | null;
   startSignIn: boolean;

@@ -2,14 +2,14 @@ import { PendingElicitationBlockedError } from "../conversations/service/shared.
 import { ConversationTurnInProgressError } from "../conversations/turns.ts";
 import { HttpError } from "../http/errors.ts";
 
-export const CONVERSATION_TURN_ABORT_REASONS = [
+const CONVERSATION_TURN_ABORT_REASONS = [
   "conversation_turn_superseded",
   "conversation_cancelled",
 ] as const;
 
-export type ConversationTurnAbortReason = (typeof CONVERSATION_TURN_ABORT_REASONS)[number];
+type ConversationTurnAbortReason = (typeof CONVERSATION_TURN_ABORT_REASONS)[number];
 
-export function conversationTurnAbortReasonOf(err: unknown): ConversationTurnAbortReason | null {
+function conversationTurnAbortReasonOf(err: unknown): ConversationTurnAbortReason | null {
   return CONVERSATION_TURN_ABORT_REASONS.find((reason) => reason === err) ?? null;
 }
 

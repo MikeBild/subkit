@@ -12,7 +12,7 @@ import { requireAuth } from "../middleware/auth.ts";
 import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
 import { streamOutboxTail } from "./sse-outbox-tail.ts";
 
-export async function cockpitStreamPermissions(
+async function cockpitStreamPermissions(
   db: Db,
   principal: ResolvedPrincipal,
 ): Promise<Set<string>> {

@@ -44,7 +44,7 @@ export function settleHidden(
   return next.size === hidden.size ? hidden : next;
 }
 
-export function subjectKey(item: AttentionItem): string {
+function subjectKey(item: AttentionItem): string {
   return item.subject ? `${item.subject.kind}:${item.subject.id}` : item.id;
 }
 
@@ -64,7 +64,7 @@ export function attentionEntries(
   return entries;
 }
 
-export type OverviewView =
+type OverviewView =
   | { kind: "items"; items: AttentionItem[]; unread: AttentionSource[] }
   | { kind: "calm"; status: Attention["status"] }
   | { kind: "unread"; unread: AttentionSource[] }
@@ -89,7 +89,7 @@ export function overviewView(
   return { kind: "calm", status: attention.status };
 }
 
-export type OverviewSection = "operations" | "attention" | "calm" | "unread" | "history";
+type OverviewSection = "operations" | "attention" | "calm" | "unread" | "history";
 
 export function overviewSections(
   view: OverviewView,
@@ -165,7 +165,7 @@ const SIGNAL_KEYS: Record<string, TranslationKey> = {
   llm_provider_unavailable: "overview.signal.llm_provider_unavailable",
 };
 
-export interface AttentionSentence {
+interface AttentionSentence {
   lead: string;
   machine: string | null;
   since: string | null;
@@ -598,7 +598,7 @@ const STATE_OF_REASON: Record<AttentionItem["reason"], { state: string; label: T
   risk_critical: { state: "critical", label: "overview.state.risk" },
 };
 
-export interface AttentionRow {
+interface AttentionRow {
   name: string;
   reason: string;
   machine: string | null;

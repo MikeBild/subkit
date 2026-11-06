@@ -21,7 +21,7 @@ import {
   workflowStateOf,
 } from "./version-write-lock.ts";
 
-export interface RotateWorkflowVersionInternalInput {
+interface RotateWorkflowVersionInternalInput {
   tenant_id: string;
   workflow_id: string;
   def: WorkflowDef;

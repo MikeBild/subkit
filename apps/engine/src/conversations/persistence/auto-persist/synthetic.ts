@@ -1,11 +1,11 @@
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../../db/client.ts";
 import { conversationToolCalls } from "../../../db/schema/index.ts";
-import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
 import { COMMIT_INTENT_KINDS, type CommitIntent } from "../../tools/ask-user/commit-intent.ts";
 import { interpretConfirmDecision } from "../../tools/ask-user/interpret-confirm.ts";
 import { hideCapabilityLinks } from "../../tools/capability-link.ts";
 import type { ToolResult } from "../../tools/index.ts";
+import { appendMessage, insertToolCall, updateToolCallOutput } from "../index.ts";
 
 export interface SyntheticToolResult {
   tool: string;

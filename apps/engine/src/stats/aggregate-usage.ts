@@ -13,7 +13,7 @@ export const USAGE_GROUP_DIMS = [
 ] as const;
 export type UsageGroupDim = (typeof USAGE_GROUP_DIMS)[number];
 
-export interface UsageStatsParams {
+interface UsageStatsParams {
   tenantId: string;
   surface: UsageSurface;
   bucket: BucketUnit;
@@ -29,7 +29,7 @@ export interface UsageStatsParams {
   groupBy: UsageGroupDim[];
 }
 
-export interface UsageDuration {
+interface UsageDuration {
   measured: number;
   avg: number;
   p50: number;
@@ -38,7 +38,7 @@ export interface UsageDuration {
   max: number;
 }
 
-export interface UsageRollup {
+interface UsageRollup {
   calls: number;
   unique_actors: number;
   unique_sessions: number;
@@ -48,11 +48,11 @@ export interface UsageRollup {
   streams: { completed: number; cancelled: number; errored: number };
 }
 
-export interface UsageBucket extends UsageRollup {
+interface UsageBucket extends UsageRollup {
   ts: string;
 }
 
-export interface UsageStatsResult {
+interface UsageStatsResult {
   groups: Array<{ key: Record<string, string>; buckets: UsageBucket[]; totals: UsageRollup }>;
   totals: UsageRollup & {
     by_outcome: Record<string, number>;

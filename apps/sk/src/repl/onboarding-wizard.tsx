@@ -33,7 +33,7 @@ export interface OnboardingSaveResult {
   reason?: string | null;
 }
 
-export interface OnboardingWizardProps {
+interface OnboardingWizardProps {
   templates: readonly OnboardingTemplate[];
   onProbe: (template: OnboardingTemplate, credential: string) => Promise<OnboardingProbeResult>;
   onSave: (template: OnboardingTemplate, credential: string) => Promise<OnboardingSaveResult>;

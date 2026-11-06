@@ -1,11 +1,11 @@
 import { homedir } from "node:os";
 
-export interface IngestGuardResult {
+interface IngestGuardResult {
   rejected: boolean;
   reason?: string;
 }
 
-export interface IngestGuardInput {
+interface IngestGuardInput {
   absolutePath: string;
   sizeBytes: number;
   home?: string;

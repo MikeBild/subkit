@@ -2,7 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { PRICE_SOURCES } from "../../../llm/index.ts";
 import { BUCKET_UNITS } from "./bucket-window.ts";
 
-export const CsvOrArray = z
+const CsvOrArray = z
   .union([z.string(), z.array(z.string())])
   .optional()
   .transform((v) => {
@@ -16,7 +16,7 @@ const BoolParam = z
   .optional()
   .transform((v) => v === true || v === "true");
 
-export const BucketWindowQuery = z.object({
+const BucketWindowQuery = z.object({
   bucket: z.enum(BUCKET_UNITS),
   from: z.string().min(1),
   to: z.string().optional(),

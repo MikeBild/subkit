@@ -14,7 +14,7 @@ import { checkToolPermission } from "./tools/permission-gate.ts";
 import { probeConnectorTool } from "./tools/probe-connector.ts";
 
 export const PREFLIGHT_BUDGET_MS = 20_000;
-export const PREFLIGHT_PROBES_PER_CONNECTOR = 2;
+const PREFLIGHT_PROBES_PER_CONNECTOR = 2;
 const PREFLIGHT_PROBE_TIMEOUT_MS = 8_000;
 const RECORDED_SHAPE_LOOKUP_LIMIT = 50;
 
@@ -25,7 +25,7 @@ export interface ConnectorPreflightArgs {
   signal: AbortSignal;
 }
 
-export type ConnectorPreflight = (args: ConnectorPreflightArgs) => Promise<DiscoveryResult | null>;
+type ConnectorPreflight = (args: ConnectorPreflightArgs) => Promise<DiscoveryResult | null>;
 
 const preflightOverride = new AsyncLocalStorage<ConnectorPreflight>();
 

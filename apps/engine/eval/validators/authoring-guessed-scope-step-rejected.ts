@@ -1,7 +1,7 @@
 import {
   createEmptyDraftDocument,
   withWorkflowDraft,
-} from "../../src/conversations/authoring-state.ts";
+} from "../../src/conversations/authoring-state/index.ts";
 import { editWorkflowPatchTool } from "../../src/conversations/tools/edit-workflow-patch.ts";
 import { validateDraftTool } from "../../src/conversations/tools/validate-draft.ts";
 import type { DraftDocument } from "../../src/conversations/types.ts";

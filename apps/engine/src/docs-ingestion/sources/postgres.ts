@@ -7,14 +7,14 @@ import type { BudgetState, RawChunk } from "../types.ts";
 
 const { Pool } = pg;
 
-export interface PostgresIngestParams {
+interface PostgresIngestParams {
   exec?: Executor;
   tenant_id?: string;
   dsn: string;
   schemas?: string[];
 }
 
-export interface PostgresIngestResult {
+interface PostgresIngestResult {
   uri: string;
   raw_bytes: number;
   chunks: RawChunk[];
@@ -40,10 +40,7 @@ interface FkRow {
   foreign_column_name: string;
 }
 
-export function chunkPostgresInformationSchema(
-  columns: ColumnRow[],
-  foreignKeys: FkRow[],
-): RawChunk[] {
+function chunkPostgresInformationSchema(columns: ColumnRow[], foreignKeys: FkRow[]): RawChunk[] {
   const tables = new Map<string, ColumnRow[]>();
   for (const c of columns) {
     const key = `${c.table_schema}.${c.table_name}`;

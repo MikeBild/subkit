@@ -17,12 +17,12 @@ export const SETTINGS_ACTIONS = [
 ] as const;
 export type SettingsAction = (typeof SETTINGS_ACTIONS)[number];
 
-export const KeyPatternSchema = z.string().min(1);
+const KeyPatternSchema = z.string().min(1);
 
 const ContextEnumSchema = z.enum(SETTINGS_CONTEXTS);
 const ActionEnumSchema = z.enum(SETTINGS_ACTIONS).nullable();
 
-export const KeybindingMapSchema = z
+const KeybindingMapSchema = z
   .record(KeyPatternSchema, ActionEnumSchema)
   .describe("Keystroke pattern → action id (or null to unbind a default)");
 

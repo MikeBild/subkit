@@ -164,7 +164,7 @@ export const importConnectorFromSpecTool: ConversationTool = {
   },
 };
 
-export type ImportConnectorDraftResult = ReusedConnectorEnvelope | Record<string, unknown>;
+type ImportConnectorDraftResult = ReusedConnectorEnvelope | Record<string, unknown>;
 
 export async function importConnectorDraftFromSpec(p: {
   args: z.infer<typeof inputSchema>;

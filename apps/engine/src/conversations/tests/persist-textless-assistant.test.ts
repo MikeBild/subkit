@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { conversations } from "../../db/schema/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
-import { appendMessage, buildModelMessages } from "../persist.ts";
+import { appendMessage, buildModelMessages } from "../persistence/index.ts";
 
 let ctx: LlmTestCtx;
 

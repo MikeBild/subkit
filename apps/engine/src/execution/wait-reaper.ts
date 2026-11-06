@@ -5,10 +5,9 @@ import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { workflowWaits } from "../db/schema/workflow_waits.ts";
 import { logger } from "../logging/logger.ts";
-import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queue/queues.ts";
 import { now } from "../utils/clock.ts";
 
-export interface ReapOrphanedWaitsResult {
+interface ReapOrphanedWaitsResult {
   reaped: number;
 }
 

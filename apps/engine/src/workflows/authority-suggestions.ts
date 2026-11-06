@@ -6,12 +6,12 @@ const MAX_RUNS = 10_000;
 export const HOOK_RUN_HEADROOM = 2;
 export const HOOK_MINIMUM_RUNS = 100;
 
-export interface HookDeliveryRate {
+interface HookDeliveryRate {
   deliveries: number;
   window_days: number;
 }
 
-export type AuthoritySuggestionBasis =
+type AuthoritySuggestionBasis =
   | { kind: "manual" }
   | { kind: "schedule"; scheduled_runs: number }
   | {

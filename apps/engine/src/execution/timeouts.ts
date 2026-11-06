@@ -1,16 +1,10 @@
 export const WORKFLOW_TIMEOUT_DEFAULT_MS = 6 * 60 * 60_000;
 
-export const STEP_TIMEOUT_DEFAULT_MS = 60 * 60_000;
-
 export const TRANSFORM_TIMEOUT_DEFAULT_MS = 60_000;
 
 export const TRANSFORM_WALL_CEILING_DEFAULT_MS = 300_000;
 
 export const MAX_CALL_DEPTH = 5;
-
-export const MAX_CALL_RETRIES = 5;
-
-export const MAX_PAGINATION_REQUESTS = 1_000;
 
 export const MAX_REPAIR_ATTEMPTS = 2;
 
@@ -25,7 +19,3 @@ export const LLM_TOOL_RESULT_ERROR_BYTES = 50_000;
 export const LLM_TOOL_RESULT_ARRAY_CAP = 100;
 
 export const LLM_TOOL_RESULT_SAMPLE_DEPTH = 3;
-
-export const SANDBOX_MEMORY_LIMIT_BYTES = 128 * 1024 * 1024;
-
-export const SANDBOX_WALL_MS_DEFAULT = 30_000;

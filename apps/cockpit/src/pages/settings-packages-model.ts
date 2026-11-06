@@ -13,7 +13,7 @@ import type { CatalogKind } from "@/components/cockpit/catalog-metadata-model";
 import type { ActionMenuItem, BadgeTone } from "@/components/cockpit/patterns";
 import type { PluralKey, TranslationKey } from "@/lib/i18n";
 
-export type PackagePermissions = { canExport: boolean; canImport: boolean };
+type PackagePermissions = { canExport: boolean; canImport: boolean };
 
 export function packagePermissions(permissions: readonly string[]): PackagePermissions {
   return {
@@ -27,7 +27,7 @@ export interface PackageExportPrefill {
   categories: string[];
 }
 
-export const EXCLUDED_PACKAGE_CATEGORIES: ReadonlySet<string> = new Set(["other", "platform"]);
+const EXCLUDED_PACKAGE_CATEGORIES: ReadonlySet<string> = new Set(["other", "platform"]);
 
 export function packageCategories(categories: readonly string[] | undefined): string[] {
   return [
@@ -49,7 +49,7 @@ const COUNT_KIND: Partial<Record<PackageKind, CatalogKind>> = {
 
 export const CATEGORY_SEARCH_THRESHOLD = 12;
 
-export interface ExportCategoryOption {
+interface ExportCategoryOption {
   category: string;
   count: number;
 }
@@ -140,7 +140,7 @@ export const KINDS_LABEL: Record<PackageKind, TranslationKey> = {
   knowledge: "settings.packages.kinds.knowledge",
 };
 
-export const ACTION_ORDER: readonly PackageAppliedAction[] = [
+const ACTION_ORDER: readonly PackageAppliedAction[] = [
   "create",
   "update",
   "unchanged",
@@ -176,7 +176,7 @@ const LANDING: Partial<Record<PackageKind, TranslationKey>> = {
   connector: "settings.packages.landing.connector",
 };
 
-export interface PlanHint {
+interface PlanHint {
   key: TranslationKey;
   values?: Record<string, string>;
 }
@@ -235,9 +235,9 @@ export function sortedPlanItems(plan: PackagePlan): PackagePlanItem[] {
   return [...plan.items].sort((a, b) => rank[a.action] - rank[b.action]);
 }
 
-export type RequirementKind = PackageRequirement["kind"];
+type RequirementKind = PackageRequirement["kind"];
 
-export const REQUIREMENT_ORDER: readonly RequirementKind[] = [
+const REQUIREMENT_ORDER: readonly RequirementKind[] = [
   "credential",
   "approval",
   "schedule_resume",
@@ -267,7 +267,7 @@ export function requirementCounts(
   }));
 }
 
-export interface NextStep {
+interface NextStep {
   id: "credentials" | "knowledge" | "skills" | "workflows" | "schedules";
   label: PluralKey;
   count: number;

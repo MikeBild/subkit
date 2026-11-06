@@ -7,7 +7,7 @@ export const PlaybookResourceSchema = z.object({
   type: z.enum(["connector", "workflow", "execution", "knowledge", "file", "intake"]),
   id: z.string().uuid(),
 });
-export const PlaybookCriterionSchema = z.discriminatedUnion("kind", [
+const PlaybookCriterionSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("assessment"),
     description: Text,
@@ -22,7 +22,7 @@ export const PlaybookCriterionSchema = z.discriminatedUnion("kind", [
   }),
   z.object({ kind: z.literal("human_confirmation"), question: Text }),
 ]);
-export const PlaybookNextActionSchema = z.object({
+const PlaybookNextActionSchema = z.object({
   label: Text,
   owner: Text.nullable(),
   elicitation_id: z.string().uuid().nullable(),
@@ -107,7 +107,7 @@ export const PlaybookEvidenceSchema = z.object({
   freshness: z.enum(["fresh", "stale", "unavailable"]),
   href: z.string().nullable(),
 });
-export const PlaybookStepViewSchema = z.object({
+const PlaybookStepViewSchema = z.object({
   id: z.string(),
   label: z.string(),
   criterion: z.string(),

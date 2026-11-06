@@ -4,7 +4,7 @@ import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { and, eq } from "drizzle-orm";
 import { MCP_ADMIN_SCOPE } from "../../auth/scopes.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { createEmptyDraftDocument } from "../../conversations/authoring-state.ts";
+import { createEmptyDraftDocument } from "../../conversations/authoring-state/index.ts";
 import { freshSignals } from "../../conversations/tests/turn-signals.ts";
 import { getTool, type ToolContext } from "../../conversations/tools/index.ts";
 import { wrapOne } from "../../conversations/tools/sdk-wrap/invoke.ts";

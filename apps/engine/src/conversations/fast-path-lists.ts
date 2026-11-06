@@ -78,7 +78,7 @@ const LIFECYCLE_DE: Record<string, string> = {
   archived: "archiviert",
 };
 
-export function categoryListLine(
+function categoryListLine(
   row: { slug: string; name: string; lifecycle: string; description: string | null },
   language: ReplyLanguage,
 ): string {

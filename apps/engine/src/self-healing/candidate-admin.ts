@@ -13,18 +13,18 @@ import { preparePatchCandidate } from "./prepare-candidate.ts";
 
 export type PatchCandidateRow = typeof patchCandidates.$inferSelect;
 
-export interface PatchCandidateWithWorkflow {
+interface PatchCandidateWithWorkflow {
   candidate: PatchCandidateRow;
   workflow_name: string | null;
 }
 
-export interface ListPatchCandidatesInput {
+interface ListPatchCandidatesInput {
   status?: PatchCandidateRow["status"] | undefined;
   workflow_id?: string | undefined;
   order?: "asc" | "desc" | undefined;
 }
 
-export interface ApproveReviewedInput {
+interface ApproveReviewedInput {
   principal: ResolvedPrincipal;
   request: Request;
   candidate: PatchCandidateRow;

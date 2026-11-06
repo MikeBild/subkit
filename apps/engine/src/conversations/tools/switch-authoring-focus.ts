@@ -1,5 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { getWorkflowDraft, withAuthoringFocus } from "../authoring-state.ts";
+import { getWorkflowDraft, withAuthoringFocus } from "../authoring-state/index.ts";
 import { CONNECTOR_AUTHORING_SKILL, WORKFLOW_AUTHORING_SKILL } from "./authoring-palette.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { loadSkillTool } from "./load-skill.ts";

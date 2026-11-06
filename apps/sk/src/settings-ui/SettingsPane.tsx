@@ -5,7 +5,7 @@ import type { EngineClient, SettingLeafEntry } from "../engine-client.ts";
 import { leafToFormField } from "./lib/zod-to-form-fields.ts";
 import { SettingsModal } from "./SettingsModal.tsx";
 
-export interface SettingsPaneProps {
+interface SettingsPaneProps {
   client: EngineClient;
   tenant?: string;
   initialTab?: string;

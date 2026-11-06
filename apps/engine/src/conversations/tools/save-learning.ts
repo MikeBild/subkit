@@ -5,7 +5,7 @@ import { DOMAIN_SLUG_RE } from "../../api/domain-slug.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 import { toolActor } from "./tool-actor.ts";
 
-export const SAVE_LEARNING_AGENT = "save_learning";
+const SAVE_LEARNING_AGENT = "save_learning";
 
 const CLIENT_NAME_MAX = 80;
 

@@ -4,7 +4,7 @@ import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../audit/index.ts";
 import type { Executor } from "../db/client.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 
-export const TOOL_APPROVAL_CLEANUP_BATCH_SIZE = 256;
+const TOOL_APPROVAL_CLEANUP_BATCH_SIZE = 256;
 const APPROVAL_RETENTION = sql`interval '1 day'`;
 const deletedCountSchema = z.tuple([
   z.object({ deleted: z.number().int().min(0).max(TOOL_APPROVAL_CLEANUP_BATCH_SIZE) }).strict(),

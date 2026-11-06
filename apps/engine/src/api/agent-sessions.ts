@@ -1,7 +1,7 @@
 import { z } from "@hono/zod-openapi";
 
 export const TRANSCRIPT_MAX_CHARS = 1_000_000;
-export const MAX_LEARNINGS_PER_SESSION = 8;
+const MAX_LEARNINGS_PER_SESSION = 8;
 export const LEARNING_EVIDENCE_MAX_CHARS = 500;
 
 export const LearningKindSchema = z
@@ -11,12 +11,11 @@ export const LearningKindSchema = z
   );
 export type LearningKind = z.infer<typeof LearningKindSchema>;
 
-export const ExtractedLearningKindSchema = z
+const ExtractedLearningKindSchema = z
   .enum(["practice", "fact", "event", "secret"])
   .describe(
     "practice = how to work; fact = what is true in the domain; event = a status or something that happened (a release, a run, a removal); secret = names credentials, keys or where they are stored. Events and secrets are never collected.",
   );
-export type ExtractedLearningKind = z.infer<typeof ExtractedLearningKindSchema>;
 
 export const LearningSchema = z.object({
   kind: ExtractedLearningKindSchema,

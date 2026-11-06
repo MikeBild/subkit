@@ -7,14 +7,14 @@ import {
   resolveUserMonthlyBudget,
 } from "../llm/index.ts";
 
-export interface StatusUserUsage {
+interface StatusUserUsage {
   tokens_today: number;
   tokens_month: number;
   budget_tokens: number | null;
   remaining_tokens: number | null;
 }
 
-export interface StatusSnapshot {
+interface StatusSnapshot {
   tenant_slug: string | null;
   connectors_count: number;
   skills_count: number;

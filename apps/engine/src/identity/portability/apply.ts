@@ -68,7 +68,7 @@ export interface ApplyPackageResult {
   summary: Record<AppliedItem["action"], number>;
 }
 
-export function intakeReviewPath(itemId: string, proposalId: string): string {
+function intakeReviewPath(itemId: string, proposalId: string): string {
   return `/cockpit/intake/${itemId}?tab=review&proposal=${proposalId}`;
 }
 

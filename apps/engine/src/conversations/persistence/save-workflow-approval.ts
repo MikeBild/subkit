@@ -2,7 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { conversationElicitations } from "../../db/schema/index.ts";
 
-export interface PriorSaveWorkflowApproval {
+interface PriorSaveWorkflowApproval {
   id: string;
   status: string;
   created_at: Date | null;

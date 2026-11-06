@@ -1,12 +1,12 @@
 import * as prompts from "@clack/prompts";
 
-export interface PickRow {
+interface PickRow {
   id: string;
   name?: string | null;
   detail?: string | null;
 }
 
-export interface PickIdOptions {
+interface PickIdOptions {
   label: string;
   argValue?: string | undefined;
   fetch: () => Promise<PickRow[]>;

@@ -86,7 +86,7 @@ function providerOptions(ctx: GuidedContext): string[] {
   return PROVIDER_ORDER.filter((provider) => values.includes(provider));
 }
 
-export function ModelBadges({ entry }: { entry: ModelCatalogEntry }) {
+function ModelBadges({ entry }: { entry: ModelCatalogEntry }) {
   const { t } = useI18n();
   return (
     <>

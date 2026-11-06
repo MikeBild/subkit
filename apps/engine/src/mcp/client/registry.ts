@@ -171,7 +171,7 @@ export type McpPreflightErrorCode =
   | "config_incomplete"
   | "mcp_transport_unsupported";
 
-export type McpHandshakeErrorCode =
+type McpHandshakeErrorCode =
   | McpPreflightErrorCode
   | "egress_blocked"
   | "auth_rejected"
@@ -180,7 +180,7 @@ export type McpHandshakeErrorCode =
   | "vendor_degraded"
   | "mcp_handshake_failed";
 
-export interface McpHandshakeFault {
+interface McpHandshakeFault {
   error_code: McpHandshakeErrorCode;
   reason: string;
 }

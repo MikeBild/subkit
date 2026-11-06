@@ -70,7 +70,7 @@ interface PlaywrightBrowser {
   close(): Promise<void>;
 }
 
-export interface PlaywrightChromiumLauncher {
+interface PlaywrightChromiumLauncher {
   launch(opts?: Record<string, unknown>): Promise<PlaywrightBrowser>;
 }
 

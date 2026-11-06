@@ -2,7 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { recordWorkflowCommitted } from "../../audit/recorders/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { findSkillSafetyBySlug } from "../../skills/tool-lookups.ts";
-import { getWorkflowDraft } from "../authoring-state.ts";
+import { getWorkflowDraft } from "../authoring-state/index.ts";
 import {
   checkWorkflowSaveReadiness,
   commitGateBypassedByAutoMode,

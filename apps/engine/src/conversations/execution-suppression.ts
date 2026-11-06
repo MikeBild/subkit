@@ -12,7 +12,7 @@ function messageText(content: unknown): string | null {
   return null;
 }
 
-export interface ExecutionSuppression {
+interface ExecutionSuppression {
   live: boolean;
   all: boolean;
 }

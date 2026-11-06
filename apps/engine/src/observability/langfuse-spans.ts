@@ -243,7 +243,7 @@ const TOOL_META_BUILDERS: Array<{
   },
 ];
 
-export function enrichSpanMetadata(
+function enrichSpanMetadata(
   toolName: string,
   redactedArgs: unknown,
   base: Record<string, unknown>,
@@ -260,7 +260,7 @@ export function enrichSpanMetadata(
   return base;
 }
 
-export interface ToolSpanHandle {
+interface ToolSpanHandle {
   readonly active: boolean;
   readonly finish: (p: {
     output?: unknown;
@@ -269,7 +269,7 @@ export interface ToolSpanHandle {
   }) => Promise<void>;
 }
 
-export interface StartToolSpanParams {
+interface StartToolSpanParams {
   name: string;
   input?: unknown;
   metadata?: {

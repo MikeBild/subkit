@@ -36,7 +36,7 @@ import { runRepl } from "./repl.ts";
 import { saveSessionMetadata } from "./sessions.ts";
 import { loadSettings } from "./settings.ts";
 
-export interface InkReplOptions {
+interface InkReplOptions {
   profile: ResolvedProfile;
   initialPrompt?: string;
   resumeConversationId?: string;

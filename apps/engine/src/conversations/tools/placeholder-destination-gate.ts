@@ -4,7 +4,7 @@ import type { DraftDocument } from "../types.ts";
 import { buildGateError } from "./authoring-contract.ts";
 import type { ToolResult } from "./index.ts";
 
-export const PLACEHOLDER_DESTINATION_ERROR_CODE = "workflow_placeholder_destination";
+const PLACEHOLDER_DESTINATION_ERROR_CODE = "workflow_placeholder_destination";
 
 export const PLACEHOLDER_DESTINATION_NEXT_ACTIONS: readonly string[] = [
   "ask_user_text",
@@ -12,7 +12,7 @@ export const PLACEHOLDER_DESTINATION_NEXT_ACTIONS: readonly string[] = [
   "author_workflow",
 ];
 
-export type PlaceholderDestinationGateTool =
+type PlaceholderDestinationGateTool =
   | "author_workflow"
   | "edit_workflow_patch"
   | "dry_run_workflow"

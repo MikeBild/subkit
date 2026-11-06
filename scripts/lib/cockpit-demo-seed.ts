@@ -7,7 +7,7 @@ export const cockpitDemoOwnerName = "Lena Hoffmann";
 export const cockpitDemoOwnerEmail = "lena@brennwerk.test";
 export const cockpitDemoOwnerSql = `JOIN roles r ON r.id=u.role_id AND r.tenant_id IS NULL AND r.name='admin' WHERE t.slug='${cockpitDemoTenantSlug}' AND u.deleted_at IS NULL ORDER BY (u.email='${cockpitDemoOwnerEmail}') DESC, u.created_at, u.id`;
 
-export const demoCategories = [
+const demoCategories = [
   {
     name: "demo",
     purpose: "Safe examples for trying out the workspace.",
@@ -146,7 +146,7 @@ export const demoTemplateConnectors = [
   },
 ] as const;
 
-export const workflowDescriptions = [
+const workflowDescriptions = [
   "Copies new and changed contacts from the CRM into the customer list every hour.",
   "Collects revenue, carriers and key accounts per region into the weekly sales report.",
   "Checks open orders for missing prices and totals of zero.",
@@ -161,7 +161,7 @@ export const workflowDescriptions = [
   "Builds the monthly revenue report. The report structure changed recently.",
 ];
 
-export const demoAiWorkflow = {
+const demoAiWorkflow = {
   slug: "demo-delivery-notice-summary",
   name: "Lieferavise zusammenfassen",
   description:
@@ -186,7 +186,7 @@ export function demoAiRuns(now: Date): { key: string; startedAt: Date; tokens: n
   ]);
 }
 
-export interface DemoUsage {
+interface DemoUsage {
   flow: string;
   model: string;
   prompt: number;
@@ -196,9 +196,9 @@ export interface DemoUsage {
   run: string | null;
 }
 
-export const demoUnpricedModel = "mistral-medium-3";
+const demoUnpricedModel = "mistral-medium-3";
 
-export function demoExtraUsage(now: Date): DemoUsage[] {
+function demoExtraUsage(now: Date): DemoUsage[] {
   const ago = (hours: number) => new Date(now.getTime() - hours * HOUR_MS);
   return [
     ...demoAiRuns(now).map((run) => ({
@@ -243,7 +243,7 @@ export function demoMonthlyBudgetTokens(input: {
   return Math.ceil(input.usedTokens + Math.max(perDay * remainingDays * 0.6, perDay * 0.25));
 }
 
-export interface DemoIntakeItem {
+interface DemoIntakeItem {
   key: string;
   origin: "capture" | "note" | "session";
   title: string;
@@ -260,9 +260,9 @@ export interface DemoIntakeItem {
   client?: string;
 }
 
-export const demoChatLearningAgent = "save_learning";
+const demoChatLearningAgent = "save_learning";
 
-export function demoIntakeItems(now: Date): DemoIntakeItem[] {
+function demoIntakeItems(now: Date): DemoIntakeItem[] {
   const at = (hours: number) => new Date(now.getTime() - hours * HOUR_MS).toISOString();
   return [
     {
@@ -366,7 +366,7 @@ export const demoHistory = {
   },
 } as const;
 
-export const demoStarterWorkflows: Record<string, string> = {
+const demoStarterWorkflows: Record<string, string> = {
   "demo-httpbin-echo": "Sends a sample request to an echo service and shows the answer.",
   "demo-github-public-repos": "Lists public repositories of an organisation on GitHub.",
   "demo-open-meteo-weather": "Reads the weather forecast for the warehouse location.",

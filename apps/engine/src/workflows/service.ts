@@ -188,7 +188,7 @@ function isPrimaryKeyConflict(err: unknown): boolean {
   return false;
 }
 
-export interface CreateWorkflowInput extends VersionActor {
+interface CreateWorkflowInput extends VersionActor {
   tenant_id: string;
   def: unknown;
   workflow_id?: string;
@@ -493,7 +493,7 @@ export interface UpdateWorkflowMetadataInput {
   actor_type?: AuditActorType;
 }
 
-export type UpdateWorkflowMetadataResult =
+type UpdateWorkflowMetadataResult =
   | { workflow: WorkflowView; errors?: never }
   | {
       workflow?: never;

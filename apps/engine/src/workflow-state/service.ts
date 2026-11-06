@@ -3,7 +3,7 @@ import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
 import type { Db } from "../db/client.ts";
 import { workflowRunState } from "../db/schema/workflow_run_state.ts";
 
-export interface WorkflowStateRow {
+interface WorkflowStateRow {
   key: string;
   value: unknown;
   value_kind: string | null;

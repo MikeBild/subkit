@@ -59,7 +59,7 @@ export function isStillRestarting(error: unknown): boolean {
   return error instanceof TypeError;
 }
 
-export type RestartVerdict = "waiting" | "restarted" | "not_activated";
+type RestartVerdict = "waiting" | "restarted" | "not_activated";
 
 export function restartVerdict(fromBootId: string, status: RestartStatus | null): RestartVerdict {
   if (!status || status.boot_id === fromBootId) return "waiting";

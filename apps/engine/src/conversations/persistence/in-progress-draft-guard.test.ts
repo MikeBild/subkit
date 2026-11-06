@@ -5,7 +5,7 @@ import {
   startNewWorkflowDraft,
   withWorkflowDraft,
   withWorkflowPersisted,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import type { DraftDocument } from "../types.ts";
 
 function withSomeSteps(draft: DraftDocument, slug = "my-wf"): DraftDocument {

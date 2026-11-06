@@ -7,7 +7,7 @@ export const SENSITIVE_LIVE_VERIFICATION_HANDOFF =
 
 export const SCHEMA_ONLY_NOTE = "Structure checked, content not checked.";
 
-export const SENSITIVE_UNSUPPORTED_NEXT_ACTIONS = ["inspect_workflow_draft", "validate_draft"];
+const SENSITIVE_UNSUPPORTED_NEXT_ACTIONS = ["inspect_workflow_draft", "validate_draft"];
 
 export function sensitiveExecutionUnsupported(message?: string): ToolResult {
   const text = message

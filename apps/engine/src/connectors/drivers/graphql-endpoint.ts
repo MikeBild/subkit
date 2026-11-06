@@ -1,12 +1,12 @@
 import { looksLikeGraphQLUrl } from "@shared/index.ts";
 import { resolveUrl } from "./resolve-url.ts";
 
-export type GraphqlEndpointCode =
+type GraphqlEndpointCode =
   | "connector_driver_mismatch"
   | "graphql_path_required"
   | "graphql_endpoint_invalid";
 
-export type GraphqlEndpoint =
+type GraphqlEndpoint =
   | { ok: true; url: string | null; via_path: boolean }
   | { ok: false; code: GraphqlEndpointCode; message: string };
 
@@ -16,14 +16,14 @@ export interface GraphqlConnectorTarget {
   auth_type?: string | null | undefined;
 }
 
-export interface GraphqlStepAddress extends GraphqlConnectorTarget {
+interface GraphqlStepAddress extends GraphqlConnectorTarget {
   path?: string | null | undefined;
   url?: string | null | undefined;
 }
 
 const FIXED_PATH = /^\/(?:[A-Za-z0-9_~-][A-Za-z0-9._~-]*)(?:\/[A-Za-z0-9_~-][A-Za-z0-9._~-]*)*$/;
 
-export const GRAPHQL_PATH_REQUIRED_MESSAGE =
+const GRAPHQL_PATH_REQUIRED_MESSAGE =
   'A graphql block on an http connector needs path "/graphql" (the GraphQL endpoint path on the connector host). Keep the graphql block with its cursor_pagination and set path "/graphql"; method is ignored, the request is always sent as POST.';
 
 export const GRAPHQL_PATH_INVALID_MESSAGE =

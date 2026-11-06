@@ -22,12 +22,12 @@ const SECTIONS = [
 type CandidateRow = typeof skillCandidates.$inferSelect;
 type EvidenceRow = typeof skillCandidateEvidence.$inferSelect;
 
-export interface LearningCutoverReport {
+interface LearningCutoverReport {
   collected: number;
   dropped: number;
 }
 
-export interface CutoverSession {
+interface CutoverSession {
   agent: string;
   session_id: string;
   repo: string | null;
@@ -43,7 +43,7 @@ function sectionEntries(examples: unknown, key: string): string[] {
     : [];
 }
 
-export function learningCandidateBody(candidate: Pick<CandidateRow, "body" | "examples">): string {
+function learningCandidateBody(candidate: Pick<CandidateRow, "body" | "examples">): string {
   return SECTIONS.reduce((body, [key, label]) => {
     const entries = sectionEntries(candidate.examples, key);
     if (entries.length === 0) return body;
@@ -55,7 +55,7 @@ function matchOf(summary: string, pattern: RegExp): string | null {
   return pattern.exec(summary)?.[1] ?? null;
 }
 
-export function cutoverSessionOf(
+function cutoverSessionOf(
   candidate: Pick<CandidateRow, "id" | "title" | "created_at">,
   evidence: Pick<EvidenceRow, "id" | "evidence_type" | "summary" | "captured_at"> | null,
 ): CutoverSession {

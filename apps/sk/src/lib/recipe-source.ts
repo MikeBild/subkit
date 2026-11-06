@@ -10,7 +10,7 @@ export interface WorkflowSource {
   recipe: { vertical: string; slug: string } | null;
 }
 
-export interface KnownConnector {
+interface KnownConnector {
   id: string;
   slug: string;
   template_slug: string | null;

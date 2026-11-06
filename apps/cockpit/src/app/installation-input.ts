@@ -1,7 +1,7 @@
 export const INSTALLATION_FILE_LIMIT = 5 * 1024 * 1024;
-export const INSTALLATION_INPUT_LIMIT = 25 * 1024 * 1024;
+const INSTALLATION_INPUT_LIMIT = 25 * 1024 * 1024;
 export const INSTALLATION_FILE_COUNT = 10;
-export const INSTALLATION_TEXT_LIMIT = 2_000_000;
+const INSTALLATION_TEXT_LIMIT = 2_000_000;
 
 const FILE_TYPES = new Map([
   ["txt", "text/plain"],

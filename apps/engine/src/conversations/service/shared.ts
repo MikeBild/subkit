@@ -1,9 +1,9 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db, Executor } from "../../db/client.ts";
 import { type conversations, systemAccounts, users } from "../../db/schema/index.ts";
-import { createEmptyDraftDocument } from "../authoring-state.ts";
+import { createEmptyDraftDocument } from "../authoring-state/index.ts";
 import { appendSnapshot } from "../draft.ts";
-import type { RunLoopResult } from "../loop.ts";
+import type { RunLoopResult } from "../loop/index.ts";
 import { elicitationInputForClient } from "../tools/ask-user/commit-intent.ts";
 import type {
   ConversationOwner,

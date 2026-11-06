@@ -11,7 +11,7 @@ import { applySelector } from "../../execution/selectors.ts";
 import { parsePlaceholders } from "../../llm/substitution/parser.ts";
 import { resolveStringPlaceholders } from "../../llm/substitution/resolver.ts";
 import { recordExecutionDryRun } from "../../observability/instrumentation.ts";
-import { getWorkflowDraft } from "../authoring-state.ts";
+import { getWorkflowDraft } from "../authoring-state/index.ts";
 import { evaluateJsBody, JS_EVAL_WALL_MS } from "../js-transform-eval.ts";
 import {
   repairTransformExpression,

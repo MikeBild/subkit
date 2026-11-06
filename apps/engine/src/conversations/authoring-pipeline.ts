@@ -101,7 +101,7 @@ import {
 } from "./authoring-preflight.ts";
 import { resolveGenerationAbort, type UserPromptPayload } from "./authoring-regrounding.ts";
 import { authoredWorkflowSpec } from "./authoring-spec.ts";
-import { withWorkflowDraft } from "./authoring-state.ts";
+import { withWorkflowDraft } from "./authoring-state/index.ts";
 import {
   buildGroundingIndex,
   describeEndpointGroundingBlock,

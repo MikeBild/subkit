@@ -19,7 +19,7 @@ function safeErrorMessage(e: unknown): string {
   return typeof scrubbed === "string" ? scrubbed : raw;
 }
 
-export interface RunWebScraperParams {
+interface RunWebScraperParams {
   ctx: StepRunContext;
   step: TransformStep;
   input: unknown;

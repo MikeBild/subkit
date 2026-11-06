@@ -10,7 +10,7 @@ import { hostedWorkAdmissions, tenants } from "../db/schema/index.ts";
 import { tenantWorkSnapshot } from "../execution/tenant-work.ts";
 import { queuedSendTransaction } from "./transaction-adapter.ts";
 
-export type HostedWorkKind = "execution" | "chat";
+type HostedWorkKind = "execution" | "chat";
 interface WorkScope {
   id: string;
   pending: Set<Promise<unknown>>;

@@ -10,7 +10,7 @@ import {
   runDocumentAnalysisFlow,
 } from "./document-analysis.ts";
 
-export interface AnalyzeConversationAttachmentsParams {
+interface AnalyzeConversationAttachmentsParams {
   tenant_id: string;
   conversation_id: string;
   db: Db;

@@ -68,7 +68,7 @@ export const MatchUrlQuery = z.object({
   limit: z.coerce.number().int().min(1).max(5).default(3),
 });
 
-export const MatchUrlMatchSchema = z
+const MatchUrlMatchSchema = z
   .object({
     slug: z.string(),
     name: z.string(),
@@ -138,7 +138,7 @@ export const RecipeSlugParam = z.object({
   recipe_slug: z.string().min(1),
 });
 
-export const RECIPE_PACK_VERTICALS = [
+const RECIPE_PACK_VERTICALS = [
   "revops",
   "customer-success",
   "finance",
@@ -152,7 +152,7 @@ export const RECIPE_PACK_VERTICALS = [
 export type RecipePackVertical = (typeof RECIPE_PACK_VERTICALS)[number];
 export type PredicateRecipePackVertical = Exclude<RecipePackVertical, "solutions">;
 
-export interface PackPredicate {
+interface PackPredicate {
   outcome: string;
   match_categories: string[];
   match_tags: string[];
@@ -260,7 +260,7 @@ export const ImportRequestSchema = z
   })
   .openapi("ConnectorSpecImportRequest");
 
-export const ImportDraftSchema = z
+const ImportDraftSchema = z
   .object({
     name: z.string().optional(),
     slug: z.string().optional(),

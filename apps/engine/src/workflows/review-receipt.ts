@@ -2,7 +2,7 @@ import { z } from "@hono/zod-openapi";
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 
-export const WorkflowReviewScheduleSchema = z
+const WorkflowReviewScheduleSchema = z
   .object({
     cron: z.string().min(1),
     timezone: z.string().min(1),
@@ -10,7 +10,7 @@ export const WorkflowReviewScheduleSchema = z
     paused: z.boolean().optional(),
   })
   .strict();
-export const WorkflowReviewGrantSchema = z
+const WorkflowReviewGrantSchema = z
   .object({
     environment: z.enum(["dev", "prod"]),
     valid_from: z.string().datetime({ offset: true }),

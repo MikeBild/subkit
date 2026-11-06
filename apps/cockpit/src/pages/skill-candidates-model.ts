@@ -15,7 +15,7 @@ export interface CandidateRow {
   status: CandidateRowStatus;
 }
 
-export const EXCERPT_LENGTH = 180;
+const EXCERPT_LENGTH = 180;
 
 export function candidateExcerpt(
   candidate: Pick<SkillCandidate, "title" | "body">,

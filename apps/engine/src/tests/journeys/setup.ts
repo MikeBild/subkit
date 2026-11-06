@@ -51,7 +51,7 @@ export interface JourneyCtx {
   cleanup: () => Promise<void>;
 }
 
-export interface CreateJourneyOpts {
+interface CreateJourneyOpts {
   envOverrides?: Record<string, string | undefined>;
 }
 

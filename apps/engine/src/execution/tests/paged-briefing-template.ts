@@ -1,10 +1,10 @@
-export interface PagedBriefingTarget {
+interface PagedBriefingTarget {
   owner: string;
   repository: string;
   projectUrl: string;
 }
 
-export const PAGED_BRIEFING_TEMPLATE = `const s = input.scope;
+const PAGED_BRIEFING_TEMPLATE = `const s = input.scope;
 const w = s.windows.data;
 const owner = __OWNER__;
 const repositoryName = __REPOSITORY__;

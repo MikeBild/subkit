@@ -6,7 +6,7 @@ import {
   type ResourceChangeType,
 } from "../pubsub/index.ts";
 
-export interface StreamFamily {
+interface StreamFamily {
   permission: string;
   channel: OutboxChannel;
   types?: readonly string[];
@@ -65,7 +65,7 @@ export const COCKPIT_STREAM_FAMILIES: readonly StreamFamily[] = [
   { permission: "audit:read", channel: "resource.lifecycle" },
 ];
 
-export const COCKPIT_STREAM_ID_KEYS = [
+const COCKPIT_STREAM_ID_KEYS = [
   "execution_id",
   "workflow_id",
   "workflow_version_id",

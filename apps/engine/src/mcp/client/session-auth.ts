@@ -89,16 +89,6 @@ export async function fetchWithMcpOAuth(
   return response;
 }
 
-export async function resolveAuthHeaders(
-  db: Db,
-  tenant_id: string,
-  connector_id: string,
-  auth: McpAuthConfig,
-  environment: "dev" | "prod",
-): Promise<Record<string, string>> {
-  return (await resolveAuthMaterial(db, tenant_id, connector_id, auth, environment)).headers;
-}
-
 export async function resolveAuthMaterial(
   db: Db,
   tenant_id: string,
@@ -237,7 +227,7 @@ const TRANSPORT_OWNED_HEADERS = new Set([
   "last-event-id",
 ]);
 
-export function oauthRedirectUriFor(): string {
+function oauthRedirectUriFor(): string {
   const canonical = buildMcpOAuthRedirectUri();
   if (canonical) return canonical;
   throw new McpPreflightError(

@@ -173,7 +173,7 @@ const RESTARTABLE: ReadonlySet<SignInFailure> = new Set([
 
 const PROVIDER_CODE = /^[a-z][a-z0-9_]{0,63}$/;
 
-export interface SignedInFacts {
+interface SignedInFacts {
   stored: "signed_in" | "credential_saved" | "credential_received";
   name: string;
   enabled: boolean;

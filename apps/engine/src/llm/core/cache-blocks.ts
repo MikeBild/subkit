@@ -2,7 +2,7 @@ import { countTokens } from "../accounting/index.ts";
 import type { EnhancedPrompt, LlmFlow } from "../types.ts";
 
 export const PROMPT_CACHE_TTL = "1h" as const;
-export type PromptCacheTtl = typeof PROMPT_CACHE_TTL;
+type PromptCacheTtl = typeof PROMPT_CACHE_TTL;
 
 export interface CacheBlocks {
   stable: string;
@@ -50,7 +50,7 @@ export function splitPromptIntoBlocks(prompt: EnhancedPrompt, flow: LlmFlow): Ca
   };
 }
 
-export interface CacheHintOptions {
+interface CacheHintOptions {
   enabled: boolean;
   ttl?: PromptCacheTtl;
 }

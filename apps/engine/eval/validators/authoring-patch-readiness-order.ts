@@ -4,7 +4,7 @@ import {
   withWorkflowDraft,
   withWorkflowInspection,
   withWorkflowValidation,
-} from "../../src/conversations/authoring-state.ts";
+} from "../../src/conversations/authoring-state/index.ts";
 import { editWorkflowPatchTool } from "../../src/conversations/tools/edit-workflow-patch.ts";
 import { saveWorkflowDraftTool } from "../../src/conversations/tools/save-workflow-draft.ts";
 import type { DraftDocument } from "../../src/conversations/types.ts";

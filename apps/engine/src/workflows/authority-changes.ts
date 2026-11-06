@@ -42,7 +42,7 @@ const keyOf = (effect: Effect) => JSON.stringify([effect.step_id, effect.call_pa
 const lastStatic = (parts: Array<string | null | { var: string }>) =>
   parts.findLast((part): part is string => typeof part === "string" && part !== "") ?? null;
 
-export function effectSubject(effect: Effect): string | null {
+function effectSubject(effect: Effect): string | null {
   if (effect.driver === "graphql" || GRAPHQL_OPERATIONS.has(effect.operation)) return null;
   if (effect.boundary) return lastStatic(effect.boundary.segments);
   if (effect.read_path) return lastStatic(effect.read_path.segments);

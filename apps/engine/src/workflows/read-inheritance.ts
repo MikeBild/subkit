@@ -13,18 +13,18 @@ export interface ReadInheritanceEvidence {
   next: ReadRequestSteps;
 }
 
-export interface ReadComparison {
+interface ReadComparison {
   relaxed: string[];
 }
 
-export const READ_RELAXED_STEP_KEYS = [
+const READ_RELAXED_STEP_KEYS = [
   "timeout_ms",
   "max_retries",
   "retry_backoff_ms",
   "retry_on_status",
 ] as const;
 
-export const READ_RELAXED_HEADERS: ReadonlySet<string> = new Set([
+const READ_RELAXED_HEADERS: ReadonlySet<string> = new Set([
   "accept",
   "accept-language",
   "user-agent",

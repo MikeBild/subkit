@@ -214,7 +214,7 @@ export async function listClientApprovals(
   return out;
 }
 
-export interface RevokedConnections {
+interface RevokedConnections {
   access_tokens: number;
   refresh_tokens: number;
   connections: number;

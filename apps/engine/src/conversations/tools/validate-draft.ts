@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { validateTenantWorkflowDef } from "../../workflows/index.ts";
-import { getWorkflowDraft, withWorkflowValidation } from "../authoring-state.ts";
+import { getWorkflowDraft, withWorkflowValidation } from "../authoring-state/index.ts";
 import { buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 

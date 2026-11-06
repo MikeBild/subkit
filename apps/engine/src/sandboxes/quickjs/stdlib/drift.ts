@@ -1,6 +1,6 @@
 import { STDLIB_VERSION } from "./index.ts";
 
-export interface StdlibDrift {
+interface StdlibDrift {
   recorded_version: string;
   current_version: string;
   recorded_major: number;

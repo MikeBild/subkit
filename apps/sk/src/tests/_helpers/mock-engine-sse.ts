@@ -1,6 +1,6 @@
 import { TextEncoder } from "node:util";
 
-export interface MockSseHandle {
+interface MockSseHandle {
   pushDelta: (text: string) => void;
   pushTool: (call: { name: string; arguments: unknown }) => void;
   pushDone: (usage?: { input_tokens?: number; output_tokens?: number }) => void;

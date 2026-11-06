@@ -1,12 +1,12 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join, relative } from "node:path";
 
-export interface CollectedBundle {
+interface CollectedBundle {
   files: { path: string; content: string }[];
   skipped_non_markdown: number;
 }
 
-export const BUNDLE_MAX_FILES = 500;
+const BUNDLE_MAX_FILES = 500;
 
 const SKIPPED_DIRS = new Set(["node_modules", ".git"]);
 

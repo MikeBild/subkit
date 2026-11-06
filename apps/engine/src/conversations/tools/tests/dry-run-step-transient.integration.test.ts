@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../../execution/tests/setup.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
-import { createEmptyDraftDocument, withWorkflowDraft } from "../../authoring-state.ts";
+import { createEmptyDraftDocument, withWorkflowDraft } from "../../authoring-state/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import { dryRunStepTool } from "../dry-run-step.ts";
 import type { ToolContext } from "../index.ts";

@@ -14,7 +14,7 @@ import {
   withWorkflowInspection,
   withWorkflowSaveError,
   withWorkflowValidation,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import { getConversation } from "../service.ts";
 import type { DraftDocument } from "../types.ts";
 import {

@@ -51,7 +51,7 @@ export const OutboxDeliveryBoundarySchema = z
   })
   .strict();
 
-export type OutboxDeliveryBoundary = z.infer<typeof OutboxDeliveryBoundarySchema>;
+type OutboxDeliveryBoundary = z.infer<typeof OutboxDeliveryBoundarySchema>;
 
 export function supportsOutboxDelivery(step: RequestStep, target: string | null): boolean {
   return (
@@ -107,7 +107,7 @@ function field(value: unknown, path: string): unknown {
     );
 }
 
-export interface OutboxSourceFacts {
+interface OutboxSourceFacts {
   ok: boolean;
   recipient: unknown;
   item_id: unknown;

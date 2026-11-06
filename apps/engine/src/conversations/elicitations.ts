@@ -40,7 +40,7 @@ export interface ElicitationRecord {
   parent_message_id?: string | null;
 }
 
-export interface NativeDeliveryClaim {
+interface NativeDeliveryClaim {
   elicitation: ElicitationRecord;
   lease_id: string;
 }
@@ -146,7 +146,7 @@ function rowToRecord(row: Row): ElicitationRecord {
   };
 }
 
-export interface CreateElicitationParams {
+interface CreateElicitationParams {
   tenant_id: string;
   conversation_id: string;
   tool_call_id: string | null;
@@ -161,7 +161,7 @@ export interface CreateElicitationParams {
 
 export const ELICITATION_HUMAN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-export function elicitationExpiry(input: unknown, now: Date): Date {
+function elicitationExpiry(input: unknown, now: Date): Date {
   if (approvalHandleFromElicitationInput(input)) {
     return new Date(now.getTime() + APPROVAL_TTL_MS);
   }
@@ -422,7 +422,7 @@ export async function setElicitationParentMessage(
     .where(inArray(conversationElicitations.id, ids));
 }
 
-export type StageElicitationAnswerResult =
+type StageElicitationAnswerResult =
   | { kind: "not_found" }
   | { kind: "already_resolved"; existing: ElicitationRecord }
   | { kind: "staged" };
@@ -449,16 +449,16 @@ export async function stageElicitationAnswer(
   return { kind: "already_resolved", existing };
 }
 
-export type ResolveElicitationResult =
+type ResolveElicitationResult =
   | { kind: "not_found" }
   | { kind: "already_resolved"; existing: ElicitationRecord }
   | { kind: "resolved"; record: ElicitationRecord };
 
-export type ElicitationTransportOutcome = "succeeded" | "failed";
+type ElicitationTransportOutcome = "succeeded" | "failed";
 
-export type ElicitationSurface = "mcp_elicitation" | "portal";
+type ElicitationSurface = "mcp_elicitation" | "portal";
 
-export interface ElicitationResolveAuditMetadata {
+interface ElicitationResolveAuditMetadata {
   conversation_id: string;
   tool_name: string;
   surface: ElicitationSurface;

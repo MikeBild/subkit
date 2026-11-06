@@ -8,11 +8,11 @@ import { withJobContext } from "../job-context.ts";
 
 export const EVENT_FANOUT_QUEUE = "event.fanout" as const;
 
-export interface EventFanoutJob {
+interface EventFanoutJob {
   event_row_id: number;
 }
 
-export interface RegisterEventFanoutOptions {
+interface RegisterEventFanoutOptions {
   boss: PgBoss;
   db: Db;
   chatRegistry?: ChatAdapterRegistry;

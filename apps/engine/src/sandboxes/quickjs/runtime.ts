@@ -349,7 +349,7 @@ async function runJsInWorker<T>(opts: RunJsOptions): Promise<SandboxRunResult<T>
   );
 }
 
-export type SandboxWorkerJob =
+type SandboxWorkerJob =
   | {
       op: "evaluate_jsonata";
       source: string;

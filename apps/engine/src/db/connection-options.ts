@@ -2,10 +2,10 @@ import type pg from "pg";
 import { getConfig, isConfigLoaded } from "../config/loader.ts";
 import { type Config, DatabaseConfigSchema } from "../config/schema.ts";
 
-export type DatabaseConnectionSettings = Omit<Config["database"], "url">;
+type DatabaseConnectionSettings = Omit<Config["database"], "url">;
 
-export const APPLICATION_SEARCH_PATH = "subkit,pg_catalog,public";
-export const MIGRATION_SEARCH_PATH = "public,pg_catalog";
+const APPLICATION_SEARCH_PATH = "subkit,pg_catalog,public";
+const MIGRATION_SEARCH_PATH = "public,pg_catalog";
 
 export function databaseConnectionSettings(): DatabaseConnectionSettings {
   return isConfigLoaded() ? getConfig().database : DatabaseConfigSchema.parse({ url: "bootstrap" });

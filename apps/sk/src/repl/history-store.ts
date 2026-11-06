@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { trimJsonlFile } from "@shared/jsonl-ring.ts";
 
-export interface HistoryEntry {
+interface HistoryEntry {
   t: number;
   p: string;
   tenant?: string | null;
@@ -17,7 +17,7 @@ export function defaultHistoryPath(): string {
   return join(homedir(), ".sk", "history.jsonl");
 }
 
-export function defaultSlashHistoryPath(): string {
+function defaultSlashHistoryPath(): string {
   return join(homedir(), ".sk", "slash-history.jsonl");
 }
 
@@ -99,7 +99,7 @@ export function loadPromptRing(
   return filtered.slice(Math.max(0, filtered.length - limit)).map((e) => e.p);
 }
 
-export interface SlashHistoryEntry {
+interface SlashHistoryEntry {
   t: number;
   s: string;
   tenant?: string | null;

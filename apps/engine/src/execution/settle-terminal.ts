@@ -1,7 +1,7 @@
 import type { OutputContractVerdict } from "./state.ts";
 import type { ExecutionStatus } from "./types.ts";
 
-export interface TerminalFailure {
+interface TerminalFailure {
   code: string;
   message: string;
 }

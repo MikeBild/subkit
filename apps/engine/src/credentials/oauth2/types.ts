@@ -21,9 +21,6 @@ export const RFC7591ClientRegistrationResponseSchema = z.object({
   registration_access_token: z.string().optional(),
   registration_client_uri: z.string().optional(),
 });
-export type RFC7591ClientRegistrationResponse = z.infer<
-  typeof RFC7591ClientRegistrationResponseSchema
->;
 
 export type OAuth2GrantKind =
   | "authorization_code"

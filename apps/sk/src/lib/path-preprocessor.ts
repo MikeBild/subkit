@@ -5,23 +5,23 @@ import type { EngineClient } from "../engine-client.ts";
 import { detectMime } from "../utils/mime.ts";
 import { sanitizePathInput } from "./path-input.ts";
 
-export const MAX_INLINE_LOCAL_PATH_BYTES = 262144;
+const MAX_INLINE_LOCAL_PATH_BYTES = 262144;
 
-export interface PathCandidate {
+interface PathCandidate {
   raw: string;
   cleaned: string;
   start: number;
   end: number;
 }
 
-export interface UploadedPath {
+interface UploadedPath {
   raw: string;
   fid: string;
   filename: string;
   bytes: number;
 }
 
-export interface InlinedPath {
+interface InlinedPath {
   raw: string;
   path: string;
   filename: string;
@@ -29,22 +29,22 @@ export interface InlinedPath {
   truncated: boolean;
 }
 
-export interface SkippedPath {
+interface SkippedPath {
   raw: string;
   reason: "not_found" | "not_file" | "upload_failed" | "read_failed";
   detail?: string;
 }
 
-export interface AutoUploadResult {
+interface AutoUploadResult {
   rewritten: string;
   inlined: InlinedPath[];
   uploaded: UploadedPath[];
   skipped: SkippedPath[];
 }
 
-export type LocalPathMode = "workflow_input" | "knowledge_source";
+type LocalPathMode = "workflow_input" | "knowledge_source";
 
-export interface AutoUploadOptions {
+interface AutoUploadOptions {
   mode?: LocalPathMode;
 }
 

@@ -12,7 +12,7 @@ import {
 import type { DeprecationSignal } from "./health.ts";
 
 export type ConnectorHealthState = "ok" | "degraded" | "needs_update" | "needs_reauth";
-export type WorkflowHealthState = "ok" | "needs_attention" | "degraded";
+type WorkflowHealthState = "ok" | "needs_attention" | "degraded";
 
 const PRECEDENCE: Record<ConnectorHealthState, number> = {
   ok: 0,
@@ -37,7 +37,7 @@ export function effectiveConnectorHealth(row: {
   return effective;
 }
 
-export interface ConnectorHealthTransition {
+interface ConnectorHealthTransition {
   state: ConnectorHealthState;
   reason: string;
   error_code?: string | null;

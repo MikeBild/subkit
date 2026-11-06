@@ -18,9 +18,9 @@ const XML_ENTITY_MAP: Record<string, string> = {
   "&apos;": "'",
 };
 
-export const PPTX_SLIDE_CAP = 2_000;
+const PPTX_SLIDE_CAP = 2_000;
 
-export const PPTX_SLIDE_XML_MAX_BYTES = 2 * 1024 * 1024;
+const PPTX_SLIDE_XML_MAX_BYTES = 2 * 1024 * 1024;
 
 export interface PptxSlide {
   index: number;

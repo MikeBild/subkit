@@ -60,14 +60,14 @@ function awaitsConfirmation(output: unknown): boolean {
   return typeof code === "string" && code.endsWith("confirmation_required");
 }
 
-export function isSideEffectFreeRemedy(
+function isSideEffectFreeRemedy(
   tool: string,
   readOnly: (name: string) => boolean = () => false,
 ): boolean {
   return HELD_PREVIEW_TOOLS.has(tool) || HANDOVER_TOOLS.has(tool) || readOnly(tool);
 }
 
-export function latestRefusalIndex(results: readonly RemedyToolResult[]): number {
+function latestRefusalIndex(results: readonly RemedyToolResult[]): number {
   for (let index = results.length - 1; index >= 0; index--) {
     if (refusalRemedies(results[index]?.output)) return index;
   }

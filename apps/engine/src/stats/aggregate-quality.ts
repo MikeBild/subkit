@@ -1,21 +1,21 @@
 import { type SQL, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 
-export interface QualityStatsParams {
+interface QualityStatsParams {
   tenantId: string;
   from: Date;
   to: Date;
   workflowId?: string | undefined;
 }
 
-export interface QualityOneShot {
+interface QualityOneShot {
   succeeded: number;
   failed: number;
   total: number;
   success_rate: number;
 }
 
-export interface QualityPostRepair {
+interface QualityPostRepair {
   successes: number;
   failures: number;
   success_rate: number;
@@ -26,7 +26,7 @@ export interface QualityFailureReason {
   count: number;
 }
 
-export interface QualityStatsResult {
+interface QualityStatsResult {
   one_shot: QualityOneShot;
   post_repair: QualityPostRepair;
   failure_reasons: QualityFailureReason[];

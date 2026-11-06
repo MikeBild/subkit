@@ -1,15 +1,14 @@
 import { z } from "@hono/zod-openapi";
 import type { Actor } from "../audit/actor.ts";
-import type { DriverName } from "../connectors/types.ts";
 
-export const DiscoveryRunStatusSchema = z.enum([
+const DiscoveryRunStatusSchema = z.enum([
   "pending",
   "analyzing",
   "synthesizing",
   "completed",
   "failed",
 ]);
-export const DiscoveryArtifactKindSchema = z.enum([
+const DiscoveryArtifactKindSchema = z.enum([
   "connector",
   "skill",
   "knowledge_source",
@@ -81,38 +80,9 @@ export const DiscoveryArtifactSchema = z
 
 export type DiscoveryArtifactView = z.infer<typeof DiscoveryArtifactSchema>;
 
-export interface ConnectorDraft {
-  name: string;
-  slug?: string;
-  driver: DriverName;
-  base_url?: string;
-  dsn?: string;
-  auth_type: string;
-  detection_signal: string;
-}
-
-export interface SkillDraft {
-  scope: "global" | "connector" | "workflow";
-  title: string;
-  body: string;
-  examples: string[];
-  best_practices: string[];
-  pitfalls: string[];
-  related_connector_slug?: string;
-}
-
 export interface KnowledgeDraft {
   category: "runbook" | "architecture" | "glossary" | "reference" | "other";
   summary: string;
-}
-
-export interface DiscoveredArtifact {
-  kind: DiscoveryArtifactKind;
-  title: string;
-  description: string;
-  draft: ConnectorDraft | SkillDraft | KnowledgeDraft;
-  evidence: Array<{ text: string }>;
-  confidence: number;
 }
 
 export interface CreateDiscoveryRunParams {

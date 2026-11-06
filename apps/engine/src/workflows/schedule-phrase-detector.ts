@@ -29,7 +29,7 @@ const CADENCE_PATTERNS: ReadonlyArray<{ name: string; re: RegExp }> = [
   { name: "alle-N-minuten", re: /\balle\s+\d+\s+(?:minuten|stunden|sekunden)\b/i },
 ];
 
-export interface SchedulePhraseDetection {
+interface SchedulePhraseDetection {
   matched: boolean;
   matched_phrases: string[];
 }

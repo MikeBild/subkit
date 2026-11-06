@@ -3,13 +3,13 @@ import type { EndpointSpec, HttpMethod } from "../document-analysis.ts";
 
 type LooseObject = Record<string, unknown>;
 
-export interface OpenApiAuthHint {
+interface OpenApiAuthHint {
   type: "header" | "query" | "bearer" | "basic" | "oauth2";
   header_name?: string;
   query_param?: string;
 }
 
-export interface ParsedOpenApi {
+interface ParsedOpenApi {
   endpoints: EndpointSpec[];
   servers: string[];
   auth_hint: OpenApiAuthHint | null;

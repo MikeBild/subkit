@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { UNCATEGORIZED } from "../../api/catalog-metadata.ts";
+import { serializeOne } from "../../api/operations/workflow-representation.ts";
 import { _drainAuditWritesForTests } from "../../audit/audit.ts";
 import { lockCatalogVocabulary } from "../../db/catalog-vocabulary.ts";
 import {
@@ -12,7 +13,6 @@ import {
   workflowVersions,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { serializeOne } from "../../http/routes/workflow-representation.ts";
 import { provisionSelfServiceTenant } from "../../identity/self-service.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";

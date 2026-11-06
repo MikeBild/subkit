@@ -6,7 +6,7 @@ export interface UploadProgressEvent {
   elapsed_ms: number;
 }
 
-export type UploadProgressSink = (event: UploadProgressEvent) => void;
+type UploadProgressSink = (event: UploadProgressEvent) => void;
 
 export function readableFromBytes(
   bytes: Uint8Array,

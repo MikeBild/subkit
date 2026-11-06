@@ -9,7 +9,7 @@ import {
   type TransformRepairLanguage,
 } from "./transform-repair.ts";
 
-export interface DryRunRepairProposal {
+interface DryRunRepairProposal {
   step_id: string | null;
   site: string;
   repair: Awaited<ReturnType<typeof repairTransformExpression>>;

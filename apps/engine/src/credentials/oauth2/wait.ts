@@ -11,7 +11,7 @@ import {
 
 export type OAuthWaitStatus = "succeeded" | "failed" | "timeout";
 
-export interface WaitForOAuthCredentialInput {
+interface WaitForOAuthCredentialInput {
   tenant_id: string;
   connector_id: string;
   environment: "dev" | "prod";
@@ -32,7 +32,7 @@ export interface WaitForOAuthCredentialInput {
 export const OAUTH_WAIT_CEILING_MS = 45_000;
 export const OAUTH_WAIT_MIN_FLOOR_MS = 5_000;
 export const POLL_INTERVAL_MS = 1_500;
-export const OAUTH_CREDENTIAL_READ_TIMEOUT_MS = 1_000;
+const OAUTH_CREDENTIAL_READ_TIMEOUT_MS = 1_000;
 
 type BoundedPoolClient = {
   query: (config: {

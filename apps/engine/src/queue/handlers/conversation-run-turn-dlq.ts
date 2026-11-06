@@ -16,9 +16,9 @@ import { recordUsageEvent } from "../../stats/usage-events.ts";
 import { withActiveTenantJobContext } from "../job-context.ts";
 import { CONVERSATION_RUN_TURN_DLQ, type ConversationRunTurnJob } from "../queues.ts";
 
-export const WORKER_EXPIRED_FAILURE_REASON = "worker_expired";
+const WORKER_EXPIRED_FAILURE_REASON = "worker_expired";
 
-export interface RegisterConversationRunTurnDlqOptions {
+interface RegisterConversationRunTurnDlqOptions {
   boss: PgBoss;
   db: Db;
 }

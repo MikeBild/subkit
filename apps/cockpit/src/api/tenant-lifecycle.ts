@@ -3,7 +3,7 @@ import { apiRequest } from "./client";
 
 type OwnedTenant =
   paths["/v1/identity/owned-tenant"]["get"]["responses"][200]["content"]["application/json"];
-export type RecoveryState =
+type RecoveryState =
   paths["/v1/identity/recovery"]["get"]["responses"][200]["content"]["application/json"];
 
 export function readOwnedTenant(): Promise<OwnedTenant> {

@@ -20,7 +20,7 @@ interface MessageWithReferences {
   created_at: string;
 }
 
-export function referenceList(value: unknown): ConversationReference[] {
+function referenceList(value: unknown): ConversationReference[] {
   if (!Array.isArray(value)) return [];
   return value.filter(
     (reference): reference is ConversationReference =>
@@ -75,7 +75,7 @@ export function collectReferencedResources(
     .map(({ order: _order, ...resource }) => resource);
 }
 
-export interface NamedResource {
+interface NamedResource {
   id: string;
   kind: string;
   label: string;

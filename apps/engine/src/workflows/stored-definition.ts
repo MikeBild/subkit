@@ -15,11 +15,11 @@ function stepIdAt(dag: unknown, path: ReadonlyArray<PropertyKey>): string | null
   return typeof id === "string" ? id : null;
 }
 
-export type StoredDefinition =
+type StoredDefinition =
   | { invalid: false; definition: WorkflowDef }
   | { invalid: true; issues: VersionIssue[] };
 
-export const ITEM_VAR_RETIRED_MESSAGE =
+const ITEM_VAR_RETIRED_MESSAGE =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: operator-facing message names the literal `${item.…}` placeholder grammar.
   "`item_var` is retired — remove it. Address the loop item as `$item` in JSONata expressions and `${item.<field>}` in URL/header/query/body strings (`$loop_index` is the iteration counter).";
 
@@ -68,7 +68,7 @@ export function describeVersionIssues(issues: VersionIssue[]): string {
   return `${where}${more}`;
 }
 
-export class WorkflowVersionInvalidError extends Error {
+class WorkflowVersionInvalidError extends Error {
   readonly code = "workflow_version_invalid";
   readonly details: { issues: VersionIssue[] };
 

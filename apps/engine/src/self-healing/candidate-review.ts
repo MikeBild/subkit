@@ -141,7 +141,7 @@ export async function previewPatchCandidate(
   };
 }
 
-export type CandidateDryRunOutcome =
+type CandidateDryRunOutcome =
   | {
       status: "ran";
       ok: boolean;

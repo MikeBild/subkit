@@ -9,10 +9,10 @@ import {
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
-import { withConnectorProbe } from "../authoring-state.ts";
+import { withConnectorProbe } from "../authoring-state/index.ts";
 import { appendSnapshot } from "../draft.ts";
 import type { DraftDocument } from "../types.ts";
-import { maybeAutoPersistFromElicitation } from "./auto-persist.ts";
+import { maybeAutoPersistFromElicitation } from "./auto-persist/index.ts";
 import { _resetDraftCredentialCacheForTests } from "./draft-credential-cache.ts";
 
 let ctx: TestDb;

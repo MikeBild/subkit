@@ -35,7 +35,7 @@ export { HttpRequestInvalidError, readBodyBytesCapped, readBodyCapped } from "./
 
 export const FETCH_DEADLINE_MS = 60_000;
 
-export const DEFAULT_MAX_RESPONSE_BYTES = 104_857_600;
+const DEFAULT_MAX_RESPONSE_BYTES = 104_857_600;
 
 export function resolveMaxResponseBytes(tenant_id?: string): number {
   return isConfigLoaded()
@@ -43,7 +43,7 @@ export function resolveMaxResponseBytes(tenant_id?: string): number {
     : DEFAULT_MAX_RESPONSE_BYTES;
 }
 
-export const HTTP_HEADER_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+const HTTP_HEADER_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 
 export function validateOutboundHeaders(headers: unknown): void {
   if (headers === null || typeof headers !== "object" || Array.isArray(headers)) {
@@ -66,13 +66,6 @@ export function validateOutboundHeaders(headers: unknown): void {
       );
     }
   }
-}
-
-export interface HttpRequestDescriptor {
-  base_url: string | null;
-  path_or_url: string;
-  headers: Record<string, string>;
-  query: Record<string, string | number | boolean>;
 }
 
 export function applyAuthMaterial(
@@ -158,7 +151,7 @@ export function applyAuthMaterial(
   void _exhaustive;
 }
 
-export interface ResolveConnectorRequestParams {
+interface ResolveConnectorRequestParams {
   db: Db;
   tenant_id: string;
   connector: ConnectorView;
@@ -385,7 +378,7 @@ function redactSignedJwtResponse(
   };
 }
 
-export interface ResolvedRequestPlan {
+interface ResolvedRequestPlan {
   credential_snapshot?: CredentialUseSnapshot;
   credential_revision: number | null;
   connection_authority: ResolvedConnectorCredential["connection_authority"];
@@ -485,7 +478,7 @@ export async function buildRequestPlan(
   return plan;
 }
 
-export interface HttpExecutionResult {
+interface HttpExecutionResult {
   status: number;
   headers: Record<string, string>;
   body: unknown;
@@ -494,7 +487,7 @@ export interface HttpExecutionResult {
   body_raw?: Buffer;
 }
 
-export interface ConnectorHttpResult extends HttpExecutionResult {
+interface ConnectorHttpResult extends HttpExecutionResult {
   stored_credential_used: boolean;
 }
 
@@ -920,7 +913,7 @@ export async function executeConnectorHttpRequest(params: {
   return { ...result, stored_credential_used: plan.stored_credential_used };
 }
 
-export interface HttpProbeResult {
+interface HttpProbeResult {
   ok: boolean;
   latency_ms: number;
   status?: number;

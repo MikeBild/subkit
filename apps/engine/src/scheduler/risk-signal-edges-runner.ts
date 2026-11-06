@@ -55,7 +55,7 @@ async function worstTokenBudgetSignal(db: Db): Promise<RiskSignal | null> {
   return worst;
 }
 
-export interface RiskSignalEdgeOptions {
+interface RiskSignalEdgeOptions {
   instance?: string;
 }
 

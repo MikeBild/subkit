@@ -27,7 +27,7 @@ export const BOOTSTRAP_TOKEN_KEY = "bootstrap.token";
 export const BOOTSTRAP_TOKEN_TTL_MS = 15 * 60 * 1000;
 
 export const BOOTSTRAP_MAX_ATTEMPTS = 5;
-export const BOOTSTRAP_WINDOW_MS = 15 * 60 * 1000;
+const BOOTSTRAP_WINDOW_MS = 15 * 60 * 1000;
 
 export const BOOTSTRAP_LLM_PROVIDERS = [
   "mock",
@@ -39,8 +39,6 @@ export const BOOTSTRAP_LLM_PROVIDERS = [
   "vertex",
 ] as const;
 
-export type BootstrapLlmProvider = (typeof BOOTSTRAP_LLM_PROVIDERS)[number];
-
 export const BootstrapSetupPayloadSchema = z.object({
   admin_email: z.string().email().min(3).max(254),
   tenant_name: z.string().min(1).max(120),
@@ -49,7 +47,7 @@ export const BootstrapSetupPayloadSchema = z.object({
   llm_model: z.string().trim().min(1).max(200).optional(),
 });
 
-export type BootstrapSetupPayload = z.infer<typeof BootstrapSetupPayloadSchema>;
+type BootstrapSetupPayload = z.infer<typeof BootstrapSetupPayloadSchema>;
 
 interface TokenEnvelope {
   token_sha256: string;
@@ -153,13 +151,13 @@ export function buildBootstrapBanner(plaintextToken: string, expiresAt: Date): s
   return `\n${banner}\n${headline}\n\n  ${cmd}\n\n${docker}\n\n${ttl}\n${note}\n\n`;
 }
 
-export interface BootstrapRunResult {
+interface BootstrapRunResult {
   status: "minted" | "already_completed";
   plaintext_token?: string;
   expires_at?: Date;
 }
 
-export interface BootstrapRunDeps {
+interface BootstrapRunDeps {
   stdout?: { write: (chunk: string) => unknown };
 }
 
@@ -188,7 +186,7 @@ export async function run(db: Db, deps: BootstrapRunDeps = {}): Promise<Bootstra
   return { status: "minted", plaintext_token: plaintext, expires_at };
 }
 
-export type ConsumeFailureCode =
+type ConsumeFailureCode =
   | "rate_limited"
   | "gone"
   | "invalid_token"
@@ -199,7 +197,7 @@ export type ConsumeFailureCode =
 
 const BOOTSTRAP_LOCK = "subkit:bootstrap";
 
-export type ConsumeOutcome =
+type ConsumeOutcome =
   | {
       status: "ok";
       tenant_id: string;
@@ -214,7 +212,7 @@ export type ConsumeOutcome =
       hint?: string;
     };
 
-export interface ConsumeOptions {
+interface ConsumeOptions {
   ip?: string;
   user_agent?: string | null;
   stdout?: { write: (chunk: string) => unknown };

@@ -10,13 +10,12 @@ import {
 import type { Actor } from "../audit/actor.ts";
 import type { RawChunk } from "../docs-ingestion/types.ts";
 
-export const KnowledgeSourceScopeSchema = z.enum(["global", "workflow"]);
-export const KnowledgeSourceStatusSchema = z.enum(["active", "inactive", "processing", "error"]);
-export const KnowledgeSourceRefreshSchema = z.enum(["manual", "scheduled", "webhook"]);
+const KnowledgeSourceScopeSchema = z.enum(["global", "workflow"]);
+const KnowledgeSourceStatusSchema = z.enum(["active", "inactive", "processing", "error"]);
+const KnowledgeSourceRefreshSchema = z.enum(["manual", "scheduled", "webhook"]);
 
 export type KnowledgeSourceScope = z.infer<typeof KnowledgeSourceScopeSchema>;
 export type KnowledgeSourceStatus = z.infer<typeof KnowledgeSourceStatusSchema>;
-export type KnowledgeSourceRefresh = z.infer<typeof KnowledgeSourceRefreshSchema>;
 
 export const KnowledgeSourceSchema = z
   .object({
@@ -79,9 +78,7 @@ export const CreateKnowledgeSourceInlineSchema = CreateKnowledgeSourceSchema.ext
   source_uri: z.string().url().optional(),
 }).openapi("CreateKnowledgeSourceInlineBody");
 
-export type CreateKnowledgeSourceInlineInput = z.infer<typeof CreateKnowledgeSourceInlineSchema>;
-
-export const BundleFileSchema = z
+const BundleFileSchema = z
   .object({
     path: z.string().min(1).max(512),
     content: z.string(),
@@ -97,8 +94,6 @@ export const CreateKnowledgeSourceBundleSchema = CreateKnowledgeSourceSchema.ext
     path: ["workflow_id"],
   })
   .openapi("CreateKnowledgeSourceBundleBody");
-
-export type CreateKnowledgeSourceBundleInput = z.infer<typeof CreateKnowledgeSourceBundleSchema>;
 
 export const UpdateKnowledgeSourceSchema = z
   .object({

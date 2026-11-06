@@ -1,6 +1,6 @@
 import type { TurnEvent } from "./types.ts";
 
-export type TurnEventEmitter = (ev: TurnEvent) => void;
+type TurnEventEmitter = (ev: TurnEvent) => void;
 
 const ACTIVITY_THROTTLE_MS = 200;
 

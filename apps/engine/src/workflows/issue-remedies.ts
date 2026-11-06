@@ -298,7 +298,7 @@ export function remedyFor(
   return REMEDIES[code]?.[driver] ?? null;
 }
 
-export interface RepairGuidance {
+interface RepairGuidance {
   step_id: string;
   code: GateDiagnosisCode;
   instruction: string;

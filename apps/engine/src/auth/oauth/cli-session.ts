@@ -14,9 +14,9 @@ import { revokeOAuthRefreshTokenFamily } from "./refresh-token-revocation.ts";
 import { CLI_LOGIN_SCOPE, oauthResource } from "./resources.ts";
 import { constantTimeHexEquals, parseMcpToken } from "./tokens.ts";
 
-export type CliSessionTokenError = "invalid_token" | "insufficient_scope";
+type CliSessionTokenError = "invalid_token" | "insufficient_scope";
 
-export type ConsumeCliLoginTokenResult =
+type ConsumeCliLoginTokenResult =
   | {
       ok: true;
       api_key: string;

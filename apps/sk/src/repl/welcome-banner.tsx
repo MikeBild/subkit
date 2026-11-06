@@ -5,7 +5,7 @@ import type React from "react";
 import { memo } from "react";
 import type { PermissionMode } from "./status-line/render.ts";
 
-export interface WelcomeBannerProps {
+interface WelcomeBannerProps {
   persona: string;
   tenant: string | null;
   engineUrl: string;

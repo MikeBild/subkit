@@ -1,7 +1,7 @@
 import { checkForUpdate, defaultUpdaterConfig } from "@cli-core/updater.ts";
 import { logger } from "./logging/logger.ts";
 
-export interface EngineUpdateState {
+interface EngineUpdateState {
   update_available: boolean;
   latest_version: string;
 }

@@ -131,7 +131,7 @@ export function recordLlmQuotaExhausted(args: { tenant_id: string }): void {
   });
 }
 
-export type SuggestNextOutcome =
+type SuggestNextOutcome =
   | "generated"
   | "accepted"
   | "dismissed"
@@ -327,7 +327,7 @@ export function recordConversationStep(args: {
   });
 }
 
-export type ConversationRepairKind = "repaired" | "capped";
+type ConversationRepairKind = "repaired" | "capped";
 
 export function recordConversationRepair(args: { kind: ConversationRepairKind }): void {
   safe(() => {
@@ -388,7 +388,7 @@ export function recordConversationCompaction(args: { mode: ConversationCompactio
   });
 }
 
-export type SandboxClampedField = "transform_wall_ms";
+type SandboxClampedField = "transform_wall_ms";
 
 export function recordSandboxLimitClamped(args: { field: SandboxClampedField }): void {
   safe(() => {
@@ -444,7 +444,7 @@ export function recordSelfHealingRepairRetried(args: {
   });
 }
 
-export type ProactiveDriftScanSource = "scheduler" | "admin_http" | "mcp";
+type ProactiveDriftScanSource = "scheduler" | "admin_http" | "mcp";
 
 export function recordProactiveDriftScan(args: {
   tenant_id: string;
@@ -776,18 +776,6 @@ export function recordLlmCacheUsage(args: {
         args.cache_creation_tokens,
       );
     }
-  });
-}
-
-export function recordConversationTurnDuration(args: {
-  tenant_id: string;
-  duration_ms: number;
-}): void {
-  safe(() => {
-    if (!Number.isFinite(args.duration_ms)) return;
-    getMetrics().observe(METRIC_NAMES.CONVERSATION_TURN_DURATION_MS, args.duration_ms, {
-      tenant_id: args.tenant_id,
-    });
   });
 }
 

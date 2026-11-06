@@ -1,7 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { conversations } from "../../../../db/schema/index.ts";
-import { bindPersistedWorkflow } from "../../../authoring-state.ts";
+import { bindPersistedWorkflow } from "../../../authoring-state/index.ts";
 import { translateAutoPersistError } from "../../../persistence/auto-persist/error-translation.ts";
 import { classifyDraftVsPersisted } from "../../../persistence/draft-diff.ts";
 import type { ConversationTool } from "../../index.ts";

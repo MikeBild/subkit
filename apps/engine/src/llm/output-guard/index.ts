@@ -16,7 +16,7 @@ import type { GuardMode, GuardResult, Scanner, ScannerContext, Violation } from 
 
 export type { GuardMode, GuardResult, Scanner, ScannerContext, Violation };
 
-export const DEFAULT_SCANNERS: ReadonlyArray<Scanner> = [
+const DEFAULT_SCANNERS: ReadonlyArray<Scanner> = [
   placeholderScanner,
   urlScanner,
   vendorRecipeScanner,
@@ -74,7 +74,7 @@ function rewriteSoft(text: string, violations: Violation[]): string {
   return out;
 }
 
-export interface RunGuardOptions {
+interface RunGuardOptions {
   mode?: GuardMode;
   scanners?: ReadonlyArray<Scanner>;
 }

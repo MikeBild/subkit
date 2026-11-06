@@ -109,7 +109,7 @@ export function findAgentFile(startDir: string): { path: string; config: AgentFi
   }
 }
 
-export interface HookPayload {
+interface HookPayload {
   hook_event_name: string | null;
   cwd: string | null;
   session_id: string | null;
@@ -142,7 +142,7 @@ export function parseHookPayload(raw: string): HookPayload {
   }
 }
 
-export interface BriefingHookOutput {
+interface BriefingHookOutput {
   systemMessage: string;
   hookSpecificOutput?: { hookEventName: string; additionalContext: string };
 }
@@ -429,7 +429,7 @@ export function boundedFetch(timeout_ms: number, fetchImpl: FetchLike = fetch): 
   return (input, init) => fetchImpl(input, { ...init, signal: AbortSignal.timeout(timeout_ms) });
 }
 
-export type BriefingPlan =
+type BriefingPlan =
   | { kind: "explicit"; domains: string[] }
   | { kind: "declared"; domains: string[] }
   | { kind: "prompt"; prompt: string; declared: string[] }
@@ -503,7 +503,7 @@ export function newPromptDomains(
   return fromPrompt.filter((domain) => !alreadyBriefed.includes(domain));
 }
 
-export function briefedDir(): string {
+function briefedDir(): string {
   return join(configDir(), BRIEFED_DIR);
 }
 
@@ -746,7 +746,7 @@ export function codexHookSnippet(): string {
   ].join("\n");
 }
 
-export function hermesSnippet(engine_url: string): string {
+function hermesSnippet(engine_url: string): string {
   return [
     "# Hermes — no session hook is wired here; register sk as an MCP server and",
     "# hand Hermes the briefing as context when a session starts:",

@@ -50,7 +50,7 @@ export { createEmptyWorkflowDraft };
 
 export type DraftClock = () => string;
 
-export type RefreshedDraft = DraftDocument & { state: AuthoringState; summary: AuthoringSummary };
+type RefreshedDraft = DraftDocument & { state: AuthoringState; summary: AuthoringSummary };
 
 export function createEmptyDraftDocument(
   now: DraftClock,

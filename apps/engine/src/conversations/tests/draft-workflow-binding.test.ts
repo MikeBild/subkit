@@ -10,7 +10,7 @@ import {
   createEmptyDraftDocument,
   withWorkflowDraft,
   withWorkflowPersisted,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import { loadDraft } from "../draft.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 

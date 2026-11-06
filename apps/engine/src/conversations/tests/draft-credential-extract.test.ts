@@ -9,13 +9,13 @@ import {
   withConnectorInspection,
   withConnectorProbe,
   withConnectorValidation,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import { appendSnapshot } from "../draft.ts";
 import {
   extractCredentialFromFormOutput,
   maybeCacheDraftCredentialFromElicitation,
-} from "../persistence/auto-persist.ts";
+} from "../persistence/auto-persist/index.ts";
 import {
   _resetDraftCredentialCacheForTests,
   clearDraftCredential,

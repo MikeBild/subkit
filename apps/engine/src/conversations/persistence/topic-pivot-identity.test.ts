@@ -5,7 +5,7 @@ import {
   withLatestPreview,
   withWorkflowInspection,
   withWorkflowValidation,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import { appendSnapshot, loadDraft } from "../draft.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../tests/setup.ts";
 import type { ToolContext } from "../tools/index.ts";

@@ -24,7 +24,7 @@ export const ServiceMetadataSchema = z.object({
 });
 export type ServiceMetadata = z.infer<typeof ServiceMetadataSchema>;
 
-export interface BuildServiceMetadataInput {
+interface BuildServiceMetadataInput {
   trace_id?: string | null;
   tenant_id: string;
   actor_id?: string | null;

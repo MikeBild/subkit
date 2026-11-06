@@ -1,4 +1,4 @@
-import { createEmptyDraftDocument } from "../../src/conversations/authoring-state.ts";
+import { createEmptyDraftDocument } from "../../src/conversations/authoring-state/index.ts";
 import { detectUserIntent } from "../../src/conversations/intent-detector.ts";
 import {
   applyExecutionToolGate,

@@ -59,11 +59,11 @@ export function addAttachments(
 
 const ZIP_TYPES = new Set(["application/zip", "application/x-zip-compressed"]);
 
-export function isZipFile(file: Pick<File, "name" | "type">): boolean {
+function isZipFile(file: Pick<File, "name" | "type">): boolean {
   return file.name.toLowerCase().endsWith(".zip") || ZIP_TYPES.has(file.type.toLowerCase());
 }
 
-export function packagesSettingsHref(): string {
+function packagesSettingsHref(): string {
   return `${absolute(settingsHref(null, { area: "operations" }))}#packages`;
 }
 

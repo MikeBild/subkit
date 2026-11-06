@@ -14,7 +14,7 @@ import {
 import { HttpError, UnauthorizedError } from "../errors.ts";
 import type { AppEnv } from "../openapi.ts";
 
-export type ResourceFromFn = (c: Context<AppEnv>) => { type: string; id: string } | undefined;
+type ResourceFromFn = (c: Context<AppEnv>) => { type: string; id: string } | undefined;
 
 async function forbiddenFor(
   db: Db,

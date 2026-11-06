@@ -25,7 +25,7 @@ interface AdmittedCorrection {
   workflow_ids: string[];
 }
 
-export interface CorrectionEffectivenessReport {
+interface CorrectionEffectivenessReport {
   measured: number;
 }
 

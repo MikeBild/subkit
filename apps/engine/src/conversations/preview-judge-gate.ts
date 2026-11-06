@@ -15,7 +15,7 @@ import {
 } from "./preview-judge.ts";
 import type { JudgeBreakerState, JudgeVerdictMemo } from "./types.ts";
 
-export interface PreviewJudgeGateResult {
+interface PreviewJudgeGateResult {
   judgeOutcome: PreviewJudgeOutcome | null;
   judgeBlocked: boolean;
   nextJudgeBreaker: JudgeBreakerState | undefined;

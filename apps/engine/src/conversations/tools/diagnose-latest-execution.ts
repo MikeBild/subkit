@@ -1,7 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { isSensitivePayload } from "../../execution/sensitive-payload.ts";
 import { findVisibleExecutionPayload } from "../../execution/visible-reads.ts";
-import { withWorkflowDiagnosis } from "../authoring-state.ts";
+import { withWorkflowDiagnosis } from "../authoring-state/index.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
 import { buildExecutionDiagnosis } from "./execution-diagnosis.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";

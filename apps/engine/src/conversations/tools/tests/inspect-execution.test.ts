@@ -3,7 +3,7 @@ import { executionSteps, executions, tenants, workflows } from "../../../db/sche
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { adminPrincipal } from "../../../test-helpers/principals.ts";
-import { createEmptyDraftDocument, withFocusedExecution } from "../../authoring-state.ts";
+import { createEmptyDraftDocument, withFocusedExecution } from "../../authoring-state/index.ts";
 import type { DraftDocument } from "../../types.ts";
 import { diagnoseLatestExecutionTool } from "../diagnose-latest-execution.ts";
 import type { ToolContext } from "../index.ts";

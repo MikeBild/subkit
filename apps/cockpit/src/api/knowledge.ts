@@ -1,6 +1,6 @@
 import { apiRequest } from "./client";
 
-export interface KnowledgeChunk {
+interface KnowledgeChunk {
   ordinal: number;
   title: string | null;
   path: string | null;

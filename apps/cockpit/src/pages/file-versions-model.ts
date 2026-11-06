@@ -20,7 +20,7 @@ export function fileKindKey(filename: string, contentType: string | null | undef
   return KIND_KEYS[previewKind(filename, contentType)];
 }
 
-export function fileVersionWhat(version: FileVersion, t: Translate): string {
+function fileVersionWhat(version: FileVersion, t: Translate): string {
   if (version.restored_from !== null)
     return t("files.versions.restoredFrom", { version: version.restored_from });
   return version.version === 1 ? t("files.versions.first") : t("files.versions.uploaded");
@@ -51,7 +51,7 @@ export function hasEarlierVersions(versions: readonly FileVersion[] | undefined)
   return (versions ?? []).some((version) => !version.current);
 }
 
-export interface FileUsageCounts {
+interface FileUsageCounts {
   workflows: number;
   conversations: number;
   other?: number;
@@ -85,7 +85,7 @@ export function fileUsageLine(t: Translate, usage: FileUsageCounts | undefined):
   return uses ? t("files.usage.line", { uses }) : null;
 }
 
-export type FileOtherLink = components["schemas"]["FileUsage"]["other_links"][number];
+type FileOtherLink = components["schemas"]["FileUsage"]["other_links"][number];
 
 const OTHER_LINK_LINES: Record<FileOtherLink["resource_type"], TranslationKey> = {
   conversation: "files.usage.conversationLine",

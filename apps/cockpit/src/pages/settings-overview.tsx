@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 import type { AreaStatus, SettingAreaId } from "@/pages/settings-areas";
 import { ExpertLink } from "@/pages/settings-guided";
 
-export const AREA_ICON: Readonly<Record<SettingAreaId, LucideIcon>> = {
+const AREA_ICON: Readonly<Record<SettingAreaId, LucideIcon>> = {
   ai: Sparkles,
   costs: Wallet,
   access: ShieldCheck,
@@ -32,7 +32,7 @@ export const AREA_ICON: Readonly<Record<SettingAreaId, LucideIcon>> = {
   operations: Server,
 };
 
-export const AREA_TITLE: Readonly<Record<SettingAreaId, TranslationKey>> = {
+const AREA_TITLE: Readonly<Record<SettingAreaId, TranslationKey>> = {
   ai: "settings.area.ai.title",
   costs: "settings.area.costs.title",
   access: "settings.area.access.title",
@@ -41,7 +41,7 @@ export const AREA_TITLE: Readonly<Record<SettingAreaId, TranslationKey>> = {
   operations: "settings.area.operations.title",
 };
 
-export const AREA_PURPOSE: Readonly<Record<SettingAreaId, TranslationKey>> = {
+const AREA_PURPOSE: Readonly<Record<SettingAreaId, TranslationKey>> = {
   ai: "settings.area.ai.purpose",
   costs: "settings.area.costs.purpose",
   access: "settings.area.access.purpose",
@@ -73,7 +73,7 @@ function navigateOnClick(onNavigate: (href: string) => void, href: string) {
   };
 }
 
-export function AreaStatusBadge({ status }: { status: AreaStatus | null }) {
+function AreaStatusBadge({ status }: { status: AreaStatus | null }) {
   const { t } = useI18n();
   if (!status) return null;
   const badge = STATUS_BADGE[status];

@@ -71,7 +71,7 @@ const readyRoute = createRoute({
   },
 });
 
-export interface HealthDeps {
+interface HealthDeps {
   db?: Db;
 }
 

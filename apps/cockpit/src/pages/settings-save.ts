@@ -6,7 +6,7 @@ import {
   settingsActivationPath,
 } from "@/pages/settings-model";
 
-export const SETTINGS_ENDPOINT = "/v1/settings";
+const SETTINGS_ENDPOINT = "/v1/settings";
 
 export async function applySettingsPatch(patch: SettingsPatch): Promise<void> {
   const saved = await apiRequest<Parameters<typeof settingsActivationPath>[0]>(SETTINGS_ENDPOINT, {
@@ -22,7 +22,7 @@ export function settingsPatchEndpoint(patch: SettingsPatch): string {
     : SETTINGS_ENDPOINT;
 }
 
-export function settingsReflect(
+function settingsReflect(
   data: Pick<SettingsResponse, "items">,
   changes: Readonly<Record<string, unknown>>,
 ): boolean {

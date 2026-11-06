@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
-import { createEmptyDraftDocument, withWorkflowDraft } from "../../authoring-state.ts";
+import { createEmptyDraftDocument, withWorkflowDraft } from "../../authoring-state/index.ts";
 import type { DraftDocument } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import { inspectWorkflowTool } from "../inspect-workflow.ts";

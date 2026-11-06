@@ -10,13 +10,13 @@ const ExtractEnvelopeSchema = z.object({
 
 type ExtractEnvelope = z.infer<typeof ExtractEnvelopeSchema>;
 
-export interface ExtractParams {
+interface ExtractParams {
   tenant_id: string;
   sample: string;
   hint?: string | undefined;
 }
 
-export interface ExtractResult {
+interface ExtractResult {
   schema: unknown;
   data: unknown;
   raw_text: string;

@@ -4,7 +4,7 @@ type Manifest = components["schemas"]["WorkflowEffectManifest"];
 type Shape = components["schemas"]["AuthorityExecutionShape"];
 type Effect = Manifest["effects"][number];
 
-export interface AuthorityCallGroup {
+interface AuthorityCallGroup {
   step_id: string | null;
   workflow_name: string | null;
   version: number | null;

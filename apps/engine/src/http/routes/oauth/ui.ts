@@ -17,7 +17,7 @@ export interface PageLook {
   scheme: PageScheme | null;
 }
 
-export function contractRegion(css: string, name: string): string {
+function contractRegion(css: string, name: string): string {
   const begin = `/* cockpit-ui:begin ${name} */\n`;
   const end = `/* cockpit-ui:end ${name} */`;
   const start = css.indexOf(begin);
@@ -34,7 +34,7 @@ const DARK_DECLARATIONS = TOKENS_DARK.slice(
   TOKENS_DARK.lastIndexOf("}"),
 );
 
-export const COCKPIT_UI_DIGEST = `sha256-${createHash("sha256").update(contractCss).digest("base64")}`;
+const COCKPIT_UI_DIGEST = `sha256-${createHash("sha256").update(contractCss).digest("base64")}`;
 
 const SINGLE_PAGE = `
 :root{color-scheme:light;--font-sans:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--font-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace}
@@ -85,8 +85,6 @@ ${TOKENS_LIGHT}${TOKENS_DARK}@media (prefers-color-scheme: dark) {
 ${THEME_MAP}}
 ${SINGLE_PAGE}/*mcp-auth:end*/`;
 
-export const AUTH_UI_STYLES = STYLES;
-
 export const AUTH_UI_DIGEST = `sha256-${createHash("sha256").update(sharedRegion(STYLES)).digest("hex").slice(0, 12)}`;
 
 function sharedRegion(css: string): string {
@@ -133,7 +131,7 @@ export function wantsHtmlPage(accept: string | null | undefined): boolean {
 
 export type PageSurface = "auth" | "not-found" | "fatal-error";
 
-export interface SinglePage {
+interface SinglePage {
   look: PageLook;
   surface: PageSurface;
   body: string;
@@ -170,9 +168,9 @@ export function renderSinglePage(page: SinglePage): string {
 </html>`;
 }
 
-export type ChipTone = "warning" | "success" | "destructive" | "accent";
+type ChipTone = "warning" | "success" | "destructive" | "accent";
 
-export interface PageHead {
+interface PageHead {
   title: string;
   slot: string;
   line?: string | null;
@@ -199,7 +197,7 @@ export function pageActions(html: string, opts: { stack?: boolean; slot?: string
   return `<div class="actions${opts.stack ? " stack" : ""}"${slot}>${html}</div>`;
 }
 
-export function linkButton(
+function linkButton(
   href: string,
   label: string,
   variant: "primary" | "outline",
@@ -366,7 +364,7 @@ export function renderErrorPage(error: SignInError, retryHref: string, look: Pag
   });
 }
 
-export interface LoginProviderChoice {
+interface LoginProviderChoice {
   id: string;
   protocol: "api_key" | "oidc";
   href: string;
@@ -557,7 +555,7 @@ export function renderServerErrorPage(look: PageLook, reference: string | null):
   });
 }
 
-export type UnavailablePart = "login" | "cockpit";
+type UnavailablePart = "login" | "cockpit";
 
 export function renderUnavailablePage(look: PageLook, part: UnavailablePart): string {
   const copy = NOTICE_COPY[look.locale];

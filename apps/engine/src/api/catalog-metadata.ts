@@ -15,7 +15,7 @@ export const CatalogGroupBySchema = z
 
 export const CATEGORY_MAX_LENGTH = 40;
 
-export const DESCRIPTION_MAX_LENGTH = 2000;
+const DESCRIPTION_MAX_LENGTH = 2000;
 
 export const LISTED_DESCRIPTION_MAX = 300;
 
@@ -126,7 +126,7 @@ export const CatalogMetadataPatchSchema = z
 
 export type CatalogMetadataPatch = z.infer<typeof CatalogMetadataPatchSchema>;
 
-export const CatalogMetadataViewSchema = z
+const CatalogMetadataViewSchema = z
   .object({
     description: z.string().nullable(),
     category: z.string(),
@@ -135,7 +135,7 @@ export const CatalogMetadataViewSchema = z
   })
   .openapi("CatalogMetadata");
 
-export type CatalogMetadataView = z.infer<typeof CatalogMetadataViewSchema>;
+type CatalogMetadataView = z.infer<typeof CatalogMetadataViewSchema>;
 
 export const UNDESCRIBED_METADATA: CatalogMetadataView = {
   description: null,
@@ -235,7 +235,7 @@ export function compareCategoryCounts(
   return a.category < b.category ? -1 : a.category > b.category ? 1 : 0;
 }
 
-export interface CategoryBlock<T> {
+interface CategoryBlock<T> {
   category: string;
   items: T[];
 }

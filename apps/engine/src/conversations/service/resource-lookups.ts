@@ -10,7 +10,7 @@ import {
   workflows,
 } from "../../db/schema/index.ts";
 
-export type ResourceLookup = (db: Executor, tenant_id: string, id: string) => Promise<boolean>;
+type ResourceLookup = (db: Executor, tenant_id: string, id: string) => Promise<boolean>;
 
 export const RESOURCE_LOOKUPS: Readonly<Record<string, ResourceLookup>> = {
   workflow: async (db, tenant_id, id) =>

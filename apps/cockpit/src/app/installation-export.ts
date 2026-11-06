@@ -2,7 +2,7 @@ interface SaveTarget {
   createWritable(): Promise<WritableStream<Uint8Array>>;
 }
 
-export type InstallationSavePicker = (options: { suggestedName: string }) => Promise<SaveTarget>;
+type InstallationSavePicker = (options: { suggestedName: string }) => Promise<SaveTarget>;
 
 function browserSavePicker(): InstallationSavePicker | null {
   if (typeof window === "undefined" || !window.isSecureContext) return null;

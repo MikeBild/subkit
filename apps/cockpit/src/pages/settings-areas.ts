@@ -41,13 +41,13 @@ export const SETTING_AREAS: readonly { id: SettingAreaId; sections: readonly str
   },
 ];
 
-export const HOSTED_LLM_PREFIX = "llm.hosted.";
+const HOSTED_LLM_PREFIX = "llm.hosted.";
 
-export function isSettingArea(value: string | null | undefined): value is SettingAreaId {
+function isSettingArea(value: string | null | undefined): value is SettingAreaId {
   return SETTING_AREA_IDS.includes(value as SettingAreaId);
 }
 
-export function settingAreaOfSection(section: string): SettingAreaId {
+function settingAreaOfSection(section: string): SettingAreaId {
   return SETTING_AREAS.find((area) => area.sections.includes(section))?.id ?? "operations";
 }
 
@@ -86,7 +86,7 @@ export function scopedAreaOf(level: SettingsLevel): ScopedArea | null {
     : null;
 }
 
-export function workspaceHasOwnValue(
+function workspaceHasOwnValue(
   area: ScopedArea,
   tenantItems: readonly SettingItem[] | null,
 ): boolean {
@@ -108,7 +108,7 @@ export function pageScope(
 
 export type AreaStatus = "configured" | "waiting" | "restart" | "limit";
 
-export interface AreaFacts {
+interface AreaFacts {
   items: readonly SettingItem[];
   pendingRestart: readonly string[];
   budgetConsumedShare: number | null;
@@ -127,7 +127,7 @@ export function providerKeyPath(provider: string): string {
   return `llm.providers.${provider}.api_key`;
 }
 
-export function providerKeyState(
+function providerKeyState(
   items: readonly SettingItem[],
   provider: string,
   primary: boolean,
@@ -139,7 +139,7 @@ export function providerKeyState(
   return generalKey && settingSecretStored(generalKey) ? "stored" : "missing";
 }
 
-export function areaRestartFields(area: SettingAreaId, pending: readonly string[]): string[] {
+function areaRestartFields(area: SettingAreaId, pending: readonly string[]): string[] {
   return pending.filter((path) => settingAreaOf(path) === area);
 }
 
@@ -161,12 +161,12 @@ export function areaStatus(area: SettingAreaId, facts: AreaFacts): AreaStatus | 
   return null;
 }
 
-export interface AreaSentence {
+interface AreaSentence {
   key: TranslationKey;
   values?: Record<string, string | number>;
 }
 
-export interface AreaSentenceFacts extends AreaFacts {
+interface AreaSentenceFacts extends AreaFacts {
   canWrite: boolean;
   providerName(provider: string): string;
   modelName(provider: string, model: string): string;

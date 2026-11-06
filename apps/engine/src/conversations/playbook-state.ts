@@ -12,7 +12,7 @@ export interface PlaybookEvidenceResolution {
 }
 export type PlaybookEvidenceMap = ReadonlyMap<string, readonly PlaybookEvidenceResolution[]>;
 
-export function criterionLabel(step: PlaybookStep, locale: "de" | "en" = "de"): string {
+function criterionLabel(step: PlaybookStep, locale: "de" | "en" = "de"): string {
   switch (step.criterion.kind) {
     case "assessment":
       return step.criterion.description;

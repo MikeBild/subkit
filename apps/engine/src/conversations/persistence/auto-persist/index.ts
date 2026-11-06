@@ -1,22 +1,22 @@
 import { and, desc, eq, isNull, like, not } from "drizzle-orm";
-import { auditAwait } from "../../audit/audit.ts";
-import { resolveActor } from "../../audit/recorders/types.ts";
-import { AuditAction } from "../../audit/types.ts";
-import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { getConnector } from "../../connectors/service.ts";
-import { getCredentialForConnector } from "../../credentials/service.ts";
-import type { Db } from "../../db/client.ts";
-import { conversationElicitations, conversationToolCalls } from "../../db/schema/index.ts";
-import { EngineClient } from "../../engine-client/index.ts";
-import { runExecution } from "../../execution/engine.ts";
-import { approvedDispatchOutcome } from "../../execution/tool-approval-dispatch.ts";
-import { HELD_PREVIEW_WARNING_CODE } from "../../execution/types.ts";
+import { auditAwait } from "../../../audit/audit.ts";
+import { resolveActor } from "../../../audit/recorders/types.ts";
+import { AuditAction } from "../../../audit/types.ts";
+import type { ResolvedPrincipal } from "../../../auth/types.ts";
+import { getConnector } from "../../../connectors/service.ts";
+import { getCredentialForConnector } from "../../../credentials/service.ts";
+import type { Db } from "../../../db/client.ts";
+import { conversationElicitations, conversationToolCalls } from "../../../db/schema/index.ts";
+import { EngineClient } from "../../../engine-client/index.ts";
+import { runExecution } from "../../../execution/engine.ts";
+import { approvedDispatchOutcome } from "../../../execution/tool-approval-dispatch.ts";
+import { HELD_PREVIEW_WARNING_CODE } from "../../../execution/types.ts";
 import {
   authorizeWorkflowRun,
   completedRun,
   createRunWorkflow,
-} from "../../execution/use-cases/run-workflow.ts";
-import { logger } from "../../logging/logger.ts";
+} from "../../../execution/use-cases/run-workflow.ts";
+import { logger } from "../../../logging/logger.ts";
 import {
   approvalAuditResource,
   consumeApproval,
@@ -24,46 +24,51 @@ import {
   grantApproval,
   recordApprovalApproved,
   recordApprovalUnfulfilled,
-} from "../../tools/approval.ts";
-import { preparedWorkflowMatches } from "../../tools/prepared-workflow-approval.ts";
-import { resolveWorkflowInputContract } from "../../workflows/input-schema-synth.ts";
-import { resolveWorkflowByIdOrSlug } from "../../workflows/lookup.ts";
-import type { WorkflowDef } from "../../workflows/types.ts";
-import type { AnswerActor } from "../answer-actor.ts";
-import { resolveAttachmentSlugsInArgs, walkAndResolve } from "../attachments.ts";
-import { appendSnapshot, loadDraft } from "../draft.ts";
-import { partitionDiffs, type ToolDiff } from "../json-patch-apply.ts";
+} from "../../../tools/approval.ts";
+import { preparedWorkflowMatches } from "../../../tools/prepared-workflow-approval.ts";
+import { resolveWorkflowInputContract } from "../../../workflows/input-schema-synth.ts";
+import { resolveWorkflowByIdOrSlug } from "../../../workflows/lookup.ts";
+import type { WorkflowDef } from "../../../workflows/types.ts";
+import type { AnswerActor } from "../../answer-actor.ts";
+import { resolveAttachmentSlugsInArgs, walkAndResolve } from "../../attachments.ts";
+import { appendSnapshot, loadDraft } from "../../draft.ts";
+import { partitionDiffs, type ToolDiff } from "../../json-patch-apply.ts";
 import {
   approvalHandleFromElicitationInput,
   type CommitIntentKind,
   describePatchOps,
-} from "../tools/ask-user/commit-intent.ts";
-import { interpretConfirmDecision } from "../tools/ask-user/interpret-confirm.ts";
-import { WORKFLOW_TOOL_PREFIX } from "../tools/authoring-palette.ts";
-import { applyWorkflowPatchToDraft } from "../tools/edit-workflow-patch.ts";
-import { CreateApiKeyInput, createApiKeyTool } from "../tools/engine-api/writes/create-api-key.ts";
+} from "../../tools/ask-user/commit-intent.ts";
+import { interpretConfirmDecision } from "../../tools/ask-user/interpret-confirm.ts";
+import { WORKFLOW_TOOL_PREFIX } from "../../tools/authoring-palette.ts";
+import { applyWorkflowPatchToDraft } from "../../tools/edit-workflow-patch.ts";
+import {
+  CreateApiKeyInput,
+  createApiKeyTool,
+} from "../../tools/engine-api/writes/create-api-key.ts";
 import {
   UpdateWorkflowInput,
   updateWorkflowTool,
-} from "../tools/engine-api/writes/update-workflow.ts";
-import type { ToolContext, ToolResult } from "../tools/index.ts";
-import { checkToolPermission, resolveConversationPrincipal } from "../tools/permission-gate.ts";
-import { loadWorkflowInputFile, WorkflowInputFileSchema } from "../tools/workflow-file-input.ts";
+} from "../../tools/engine-api/writes/update-workflow.ts";
+import type { ToolContext, ToolResult } from "../../tools/index.ts";
+import { checkToolPermission, resolveConversationPrincipal } from "../../tools/permission-gate.ts";
+import { loadWorkflowInputFile, WorkflowInputFileSchema } from "../../tools/workflow-file-input.ts";
 import {
   normalizeWorkflowInput,
   structuredInputFields,
   workflowInputRecord,
-} from "../tools/workflow-input-normalize.ts";
-import { mergeFormIntoCredential } from "./auto-persist/credential-cache.ts";
+} from "../../tools/workflow-input-normalize.ts";
+import { commitWorkflowAtomic } from "../commit-workflow.ts";
+import { saveConnectorAtomic } from "../save-connector.ts";
+import { mergeFormIntoCredential } from "./credential-cache.ts";
 import {
   dispatchDeleteConnector,
   dispatchDeleteWorkflow,
   dispatchRollbackSkipped,
   maybeAutoFreshenCheckpointsForSave,
   maybeAutoProbeForSave,
-} from "./auto-persist/dispatch.ts";
-import { translateAutoPersistError } from "./auto-persist/error-translation.ts";
-import { readEnvironment, readString } from "./auto-persist/helpers.ts";
+} from "./dispatch.ts";
+import { translateAutoPersistError } from "./error-translation.ts";
+import { readEnvironment, readString } from "./helpers.ts";
 import {
   buildDeclineSynthetic,
   buildSyntheticFromResult,
@@ -73,19 +78,14 @@ import {
   intentToolName,
   isCompletedWorkflowPreparation,
   type SyntheticToolResult,
-} from "./auto-persist/synthetic.ts";
-import { commitWorkflowAtomic } from "./commit-workflow.ts";
-import { saveConnectorAtomic } from "./save-connector.ts";
+} from "./synthetic.ts";
 
 export {
   extractCredentialFromFormOutput,
   maybeCacheDraftCredentialFromElicitation,
-} from "./auto-persist/credential-cache.ts";
-export {
-  type ErrorTranslationContext,
-  translateAutoPersistError,
-} from "./auto-persist/error-translation.ts";
-export type { SyntheticToolResult } from "./auto-persist/synthetic.ts";
+} from "./credential-cache.ts";
+export { translateAutoPersistError } from "./error-translation.ts";
+export type { SyntheticToolResult } from "./synthetic.ts";
 
 export interface AutoPersistInput {
   tenant_id: string;
@@ -898,7 +898,7 @@ export async function maybeAutoPersistFromElicitation(
           };
           break;
         }
-        const { getTool } = await import("../tools/index.ts");
+        const { getTool } = await import("../../tools/index.ts");
         const gatedTool = getTool(gatedToolName);
         if (!gatedTool) {
           result = {

@@ -16,12 +16,12 @@ export interface WorkflowListEntry {
   connectors: string[];
 }
 
-export interface WorkflowListProjection {
+interface WorkflowListProjection {
   entries: WorkflowListEntry[];
   total: number;
 }
 
-export interface WorkflowCategoryBlock {
+interface WorkflowCategoryBlock {
   category: string;
   count: number;
 }
@@ -31,7 +31,7 @@ export interface WorkflowDetailEntry {
   binding: TriggerBinding;
 }
 
-export type WorkflowLookup = { id: string } | { slug: string };
+type WorkflowLookup = { id: string } | { slug: string };
 
 export async function loadWorkflowList(
   tenantId: string,

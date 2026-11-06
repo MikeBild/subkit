@@ -2,8 +2,8 @@
 
 import path from "node:path";
 import { type RunOutcome, runPool, summarize } from "../apps/engine/scripts/audit/import-graph.ts";
-import { loadTestLayers } from "../apps/engine/scripts/audit/test-layer-source.ts";
-import { groupByRoot, isLayer, LAYERS, RUNNERS } from "../apps/engine/scripts/audit/test-layers.ts";
+import { loadTestLayers, readRepoText } from "../apps/engine/scripts/audit/test-layer-source.ts";
+import { isLayer, LAYERS, planRuns, RUNNERS } from "../apps/engine/scripts/audit/test-layers.ts";
 
 const REPO = path.resolve(import.meta.dir, "..");
 const argv = process.argv.slice(2);
@@ -46,12 +46,13 @@ async function run(label: string, targets: readonly string[]): Promise<RunOutcom
   return { file: label, exitCode, output: "" };
 }
 
-const outcomes =
-  runner.mode === "grouped"
-    ? await runPool(groupByRoot(files), 1, (group) =>
-        run(`${group.root} (${group.files.length} files)`, group.files),
-      )
-    : await runPool(files, workers, (file) => run(file, [file]));
+const plan = planRuns(files, runner, (file) => readRepoText(REPO, file));
+const outcomes = [
+  ...(await runPool(plan.groups, 1, (group) =>
+    run(`${group.root} (${group.files.length} files)`, group.files),
+  )),
+  ...(await runPool(plan.solo, workers, (file) => run(file, [file]))),
+];
 const summary = summarize(outcomes);
 console.log(`\n[test-layer] ${layer}: ${summary.text}`);
 process.exit(summary.failed === 0 ? 0 : 1);

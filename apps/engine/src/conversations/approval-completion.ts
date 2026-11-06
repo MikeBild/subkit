@@ -12,7 +12,7 @@ export type ApprovalResumeEnqueuer = (p: {
   decision: "approve" | "decline";
 }) => Promise<boolean>;
 
-export interface ApprovalCompletionResult {
+interface ApprovalCompletionResult {
   matched: number;
   resumed: number;
 }

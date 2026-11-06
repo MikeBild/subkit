@@ -19,7 +19,7 @@ import {
 
 const UNSAFE_ENTRY_NAME = /absolute path|invalid relative path|invalid characters in fileName/i;
 
-export type PackageArchiveErrorCode =
+type PackageArchiveErrorCode =
   | "package_archive_invalid"
   | "package_archive_too_large"
   | "package_archive_unsafe_path"

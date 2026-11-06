@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import { executionSteps, executions } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
-import { createEmptyDraftDocument, withWorkflowDraft } from "../../authoring-state.ts";
+import { createEmptyDraftDocument, withWorkflowDraft } from "../../authoring-state/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import { __resetDryRunCacheForTest } from "../dry-run-cache.ts";
 import { dryRunWorkflowTool } from "../dry-run-workflow.ts";

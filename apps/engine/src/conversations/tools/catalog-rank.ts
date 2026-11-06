@@ -1,4 +1,4 @@
-export type RankField = "category" | "identity" | "description" | "detail";
+type RankField = "category" | "identity" | "description" | "detail";
 
 const WEIGHTS: Record<RankField, { exact: number; variant: number }> = {
   category: { exact: 12, variant: 6 },
@@ -7,7 +7,7 @@ const WEIGHTS: Record<RankField, { exact: number; variant: number }> = {
   detail: { exact: 2, variant: 1 },
 };
 
-export const MIN_RANK_SCORE = 2;
+const MIN_RANK_SCORE = 2;
 
 function fold(text: string): string {
   return text
@@ -89,9 +89,9 @@ function matchesVariant(term: string, index: FieldIndex): boolean {
   return false;
 }
 
-export type RankFields = Partial<Record<RankField, ReadonlyArray<string | null | undefined>>>;
+type RankFields = Partial<Record<RankField, ReadonlyArray<string | null | undefined>>>;
 
-export interface RankReason {
+interface RankReason {
   field: RankField;
   term: string;
   match: "exact" | "variant";
@@ -147,7 +147,7 @@ export function rankCatalog<T>(
   return ranked.map(({ order: _order, ...rest }) => rest);
 }
 
-export interface RankedPage<T> {
+interface RankedPage<T> {
   matches: Array<T | (T & { reasons: string[] })>;
   total: number;
   truncated?: true;

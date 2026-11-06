@@ -32,7 +32,7 @@ export interface ConnectionAuthorityIdentity {
   revision: number;
 }
 
-export interface CredentialAuthorityRequest {
+interface CredentialAuthorityRequest {
   connector_id: string;
   environment: "dev" | "prod";
 }

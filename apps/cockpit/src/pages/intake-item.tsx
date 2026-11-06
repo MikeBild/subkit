@@ -69,8 +69,6 @@ import {
   sessionSnapshot,
 } from "./intake-model";
 
-export const INTAKE_ITEM_TABS = ["content", "review", "history"] as const;
-
 const EVENT_TONE: Record<IntakeEventKind, TimelineTone> = {
   collected: "neutral",
   proposed: "info",

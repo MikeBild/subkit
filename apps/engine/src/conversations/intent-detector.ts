@@ -4,7 +4,7 @@ import {
 } from "./loop/authoring-intent.ts";
 import type { AuthoringSummary, ConversationPermissionMode } from "./types.ts";
 
-export interface DetectedIntent {
+interface DetectedIntent {
   forceTool?: string;
   requestExternalAction?: boolean;
   requestExternalRead?: boolean;
@@ -246,7 +246,7 @@ export function turnToolChoice(
   return forceNoTools ? "none" : "auto";
 }
 
-export type EnvelopeResolution = "approve" | "reject" | null;
+type EnvelopeResolution = "approve" | "reject" | null;
 
 const APPROVE_PATTERNS = [
   /^(approve|ok|okay|yes|ja|yep|yeah|sure|bestätigt?|bestätige|freigegeben|freigabe|confirm)\b/i,

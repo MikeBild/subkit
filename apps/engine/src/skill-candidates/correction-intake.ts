@@ -10,12 +10,12 @@ import { referencesKeyMaterialPath, scrubString } from "../logging/scrub-secrets
 import { type CorrectionObservation, detectCorrectionPatterns } from "./detectors/index.ts";
 
 export const CORRECTION_AGENT = "correction_pattern";
-export const CORRECTION_COLLECTOR_NAME = "authoring-corrections";
+const CORRECTION_COLLECTOR_NAME = "authoring-corrections";
 const CORRECTION_REQUEST_SOURCE = "scheduler";
 const EXCERPT_MAX_CHARS = 2_000;
 const MAX_NEW_ITEMS_PER_PASS = 20;
 
-export interface CorrectionIntakeReport {
+interface CorrectionIntakeReport {
   observed: number;
   collected: number;
   evidence_appended: number;

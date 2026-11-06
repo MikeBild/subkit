@@ -63,7 +63,7 @@ export type SaveWorkflowDraftResult =
       details?: Record<string, unknown>;
     };
 
-export interface SaveWorkflowDraftInput extends VersionActor {
+interface SaveWorkflowDraftInput extends VersionActor {
   tenant_id: string;
   workflow_id?: string;
   expected_draft_version_id?: string | null;

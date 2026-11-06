@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createEmptyDraftDocument } from "../../authoring-state.ts";
+import { createEmptyDraftDocument } from "../../authoring-state/index.ts";
 import {
   buildDraftMutationPayload,
   buildGateError,

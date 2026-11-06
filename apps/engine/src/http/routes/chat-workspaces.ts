@@ -138,7 +138,7 @@ const deleteRoute = createRoute({
   },
 });
 
-export interface ChatWorkspaceRoutesDeps {
+interface ChatWorkspaceRoutesDeps {
   registry: ChatAdapterRegistry;
 }
 

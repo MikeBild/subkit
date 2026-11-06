@@ -1,7 +1,7 @@
 import { appUserProvider } from "@/lib/app-user";
 import type { TranslationKey } from "@/lib/i18n";
 
-export type ActorKind = "user" | "system_account";
+type ActorKind = "user" | "system_account";
 export type ActorKey = `${ActorKind}:${string}`;
 export type ActorDirectory = ReadonlyMap<ActorKey, string>;
 export type People = { items?: Array<{ id: string; email?: string; name?: string }> };

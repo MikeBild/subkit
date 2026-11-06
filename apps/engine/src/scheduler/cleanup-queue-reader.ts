@@ -14,7 +14,7 @@ export const CLEANUP_QUEUE_BUDGET: CleanupQueueBudget = {
   deadline_ms: 15_000,
 };
 
-export interface CleanupReadAdapter {
+interface CleanupReadAdapter {
   executeSql(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
   readonly rowsRemaining: number;
   readonly bytesRemaining: number;

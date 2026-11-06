@@ -11,7 +11,7 @@ import {
   createWorkflowRow,
   type EngineTestCtx,
 } from "../../../execution/tests/setup.ts";
-import { createEmptyDraftDocument } from "../../authoring-state.ts";
+import { createEmptyDraftDocument } from "../../authoring-state/index.ts";
 import { hydrateBoundWorkflow, loadFocusExecution } from "../../draft.ts";
 import { diagnoseLatestExecutionTool } from "../diagnose-latest-execution.ts";
 import { getExecutionTool } from "../engine-api/executions.ts";

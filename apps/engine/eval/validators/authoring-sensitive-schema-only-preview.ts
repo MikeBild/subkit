@@ -1,7 +1,7 @@
 import {
   createEmptyDraftDocument,
   withWorkflowDraft,
-} from "../../src/conversations/authoring-state.ts";
+} from "../../src/conversations/authoring-state/index.ts";
 import { dryRunWorkflowTool } from "../../src/conversations/tools/dry-run-workflow.ts";
 import type { DraftDocument } from "../../src/conversations/types.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";

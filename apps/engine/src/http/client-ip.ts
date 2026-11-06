@@ -44,7 +44,7 @@ export function resolveTrustedClientIp(options: {
   return candidate;
 }
 
-export type ProxyPeerKind = "loopback" | "private";
+type ProxyPeerKind = "loopback" | "private";
 
 export function detectUntrustedProxy(options: {
   peer?: string | undefined;

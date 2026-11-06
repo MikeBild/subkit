@@ -22,7 +22,7 @@ export interface IngestKnowledgeJob {
   read_address_again?: boolean;
 }
 
-export interface RegisterIngestKnowledgeOptions {
+interface RegisterIngestKnowledgeOptions {
   boss: PgBoss;
   db: Db;
 }

@@ -7,13 +7,13 @@ import type { SettingsView } from "./settings-read.ts";
 const SETTINGS_READ_GLOBAL = "settings:read:global";
 const SETTINGS_WRITE_GLOBAL = "settings:write:global";
 
-export type SettingsDenial = {
+type SettingsDenial = {
   ok: false;
   code: "scope_violation" | "operator_required";
   message: string;
 };
 
-export type SettingWriteTarget =
+type SettingWriteTarget =
   | { kind: "engine" }
   | { kind: "tenant"; tenantId: string; restricted: boolean };
 

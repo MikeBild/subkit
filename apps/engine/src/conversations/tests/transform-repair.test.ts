@@ -8,7 +8,7 @@ import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
-import { createEmptyDraftDocument } from "../authoring-state.ts";
+import { createEmptyDraftDocument } from "../authoring-state/index.ts";
 import { runRecordedEval } from "../recorded-eval.ts";
 import { stepFingerprint } from "../step-fingerprint.ts";
 import { dryRunTransformTool } from "../tools/dry-run-transform.ts";

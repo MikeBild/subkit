@@ -1,12 +1,12 @@
 import { listTools } from "../../conversations/tools/index.ts";
 
-export interface ToolManifestEntry {
+interface ToolManifestEntry {
   name: string;
   category: string;
   one_liner: string;
 }
 
-export interface ToolManifest {
+interface ToolManifest {
   names: ReadonlySet<string>;
   entries: ReadonlyMap<string, ToolManifestEntry>;
 }

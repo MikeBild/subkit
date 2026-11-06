@@ -13,7 +13,7 @@ import {
 } from "../db/schema/index.ts";
 import { endCockpitPushForSessions } from "./cockpit-push.ts";
 
-export interface ErasableCaller {
+interface ErasableCaller {
   tenantId: string;
   principalId: string;
   principalKind: "user" | "system_account";
@@ -26,7 +26,7 @@ function refuse(message: string): never {
   throw Object.assign(new Error(message), { code: "caller_erasure_unavailable" });
 }
 
-export type ErasureContext =
+type ErasureContext =
   | { kind: "workflow"; execution_id: string; now?: Date }
   | { kind: "operator"; operator: ErasureOperator; now?: Date };
 

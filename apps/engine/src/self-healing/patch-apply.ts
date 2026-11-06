@@ -8,7 +8,7 @@ export interface ProjectionSlots {
   expression?: string | undefined;
 }
 
-export type PatchableStepKind = "request" | "transform";
+type PatchableStepKind = "request" | "transform";
 
 export interface PathRewrite {
   from: string | null;

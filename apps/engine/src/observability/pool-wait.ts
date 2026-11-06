@@ -1,4 +1,4 @@
-export const SUSTAINED_WAIT_SAMPLES = 3;
+const SUSTAINED_WAIT_SAMPLES = 3;
 
 let recent: number[] = [];
 

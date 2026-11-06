@@ -15,7 +15,7 @@ import {
   updateKnowledgeSource,
 } from "./service.ts";
 
-export interface SeededKnowledge {
+interface SeededKnowledge {
   slug: string;
   name: string;
   description: string;

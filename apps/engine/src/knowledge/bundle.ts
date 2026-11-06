@@ -1,12 +1,12 @@
 import type { RawChunk } from "../docs-ingestion/types.ts";
 import { isStructuralTag } from "./tags.ts";
 
-export interface BundleFile {
+interface BundleFile {
   path: string;
   content: string;
 }
 
-export interface ParsedBundle {
+interface ParsedBundle {
   chunks: RawChunk[];
   sourceTags: string[];
   skipped: string[];

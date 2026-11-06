@@ -18,7 +18,7 @@ import {
   titleSourceSupported,
 } from "./title-source.ts";
 
-export const CONVERSATION_TITLE_MAX = 50;
+const CONVERSATION_TITLE_MAX = 50;
 
 export function deriveConversationTitle(content: unknown): string | null {
   const text = stringifyConversationExcerpt(content);
@@ -49,7 +49,7 @@ export async function ensureConversationTitle(
   return row?.title ?? null;
 }
 
-export const TITLE_REFRESH_EVERY_TURNS = 5;
+const TITLE_REFRESH_EVERY_TURNS = 5;
 const TITLE_SOURCE_REQUESTS = 3;
 
 export const TITLE_WORDS_MAX = 8;

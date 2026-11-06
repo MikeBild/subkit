@@ -25,7 +25,7 @@ export type WorkflowDiagnosis = components["schemas"]["WorkflowDiagnosis"];
 type GateDiagnosis = components["schemas"]["GateDiagnosis"];
 type RepairResponse = components["schemas"]["ProposeWorkflowRepairResponse"];
 type PrepareResponse = { prepared: boolean; reason?: string };
-export type RepairNote = RepairStatus | "failed";
+type RepairNote = RepairStatus | "failed";
 
 export function workflowDiagnosisQuery(workflowId: string, environment: "dev" | "prod" | null) {
   return {

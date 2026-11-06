@@ -1,9 +1,9 @@
 import { hasToolCall, type ModelMessage, stepCountIs, streamText, type ToolSet } from "ai";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { AuditAction, auditAwait } from "../audit/index.ts";
-import { resolveActor } from "../audit/recorders/types.ts";
-import type { ResolvedPrincipal } from "../auth/types.ts";
-import type { Db } from "../db/client.ts";
+import { AuditAction, auditAwait } from "../../audit/index.ts";
+import { resolveActor } from "../../audit/recorders/types.ts";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
+import type { Db } from "../../db/client.ts";
 import {
   connectorEndpointSchemas,
   conversations,
@@ -11,8 +11,8 @@ import {
   executions,
   fileLinks,
   files,
-} from "../db/schema/index.ts";
-import { withTenantWork } from "../execution/tenant-work.ts";
+} from "../../db/schema/index.ts";
+import { withTenantWork } from "../../execution/tenant-work.ts";
 import {
   actorFields,
   checkAndDecrement,
@@ -22,52 +22,55 @@ import {
   engineClientActorType,
   monthlyUsage,
   recordUsage,
-} from "../llm/accounting/index.ts";
-import { isReasoningModel } from "../llm/core/ai-sdk-model.ts";
-import { renderAuthoringContextBlock } from "../llm/core/authoring-context-block.ts";
+} from "../../llm/accounting/index.ts";
+import { isReasoningModel } from "../../llm/core/ai-sdk-model.ts";
+import { renderAuthoringContextBlock } from "../../llm/core/authoring-context-block.ts";
 import {
   promptCacheSupported,
   splitPromptIntoBlocks,
   toSystemMessages,
-} from "../llm/core/cache-blocks.ts";
+} from "../../llm/core/cache-blocks.ts";
 import {
   assembleEnhancedPrompt,
   countSkillTokens,
   detectIntentSkills,
-} from "../llm/core/context-assembler.ts";
-import { recordConversationBudgetReport } from "../llm/core/conversation-budget-report.ts";
-import { resolveModelRoute } from "../llm/core/invoke.ts";
+} from "../../llm/core/context-assembler.ts";
+import { recordConversationBudgetReport } from "../../llm/core/conversation-budget-report.ts";
+import { resolveModelRoute } from "../../llm/core/invoke.ts";
 import {
   anthropicWebSearchApplies,
   buildAnthropicWebSearchTool,
   nativeWebSearchSetting,
-} from "../llm/core/model-init.ts";
-import { isBusinessDecisionTool, pendingPermittedRemedy } from "../llm/core/permitted-remedy.ts";
-import { repairToolCall as repairToolCallHandler } from "../llm/core/repair-tool-call.ts";
-import { PROVIDER_RESPONSE_TIMEOUT_MS } from "../llm/core/response-timeout.ts";
+} from "../../llm/core/model-init.ts";
+import { isBusinessDecisionTool, pendingPermittedRemedy } from "../../llm/core/permitted-remedy.ts";
+import { repairToolCall as repairToolCallHandler } from "../../llm/core/repair-tool-call.ts";
+import { PROVIDER_RESPONSE_TIMEOUT_MS } from "../../llm/core/response-timeout.ts";
 import {
   prepareStep as routerPrepareStep,
   type StepRouterSignals,
   supportsExtendedThinking,
   withStepNudge,
-} from "../llm/core/step-router.ts";
-import { readReasoningEffortSetting, resolveTurnReasoning } from "../llm/core/thinking-policy.ts";
+} from "../../llm/core/step-router.ts";
+import {
+  readReasoningEffortSetting,
+  resolveTurnReasoning,
+} from "../../llm/core/thinking-policy.ts";
 import {
   type CriticArtifact,
   type CriticVerdict,
   runCritic,
   summarizeToolResult,
-} from "../llm/critic/index.ts";
-import { LlmContextTooLarge, LlmQuotaExhausted } from "../llm/errors.ts";
-import { runOutputGuard, runOutputGuardStream } from "../llm/output-guard/index.ts";
-import { createStreamScrubber } from "../llm/output-guard/stream-scrub.ts";
+} from "../../llm/critic/index.ts";
+import { LlmContextTooLarge, LlmQuotaExhausted } from "../../llm/errors.ts";
+import { runOutputGuard, runOutputGuardStream } from "../../llm/output-guard/index.ts";
+import { createStreamScrubber } from "../../llm/output-guard/stream-scrub.ts";
 import {
   classifyProviderError,
   shouldFallBack,
   toLlmProviderError,
-} from "../llm/provider-errors.ts";
-import { engineUrlFromConfig } from "../llm/runtime-context.ts";
-import { log, logger } from "../logging/logger.ts";
+} from "../../llm/provider-errors.ts";
+import { engineUrlFromConfig } from "../../llm/runtime-context.ts";
+import { log, logger } from "../../logging/logger.ts";
 import {
   recordConversationRepair,
   recordConversationStep,
@@ -75,25 +78,33 @@ import {
   recordLlmStepTimeout,
   recordLlmTokens,
   recordToolHallucinatedAbsence,
-} from "../observability/instrumentation.ts";
-import { readMemoryUsage, timePhase, timePhaseAsync } from "../observability/runtime-telemetry.ts";
-import { enrichActiveSpan, isTracingActive, toolSpanAttributes } from "../observability/tracing.ts";
-import { withHostedWork } from "../queue/hosted-work.ts";
-import { skillAudienceForAuthoringMode } from "../skills/types.ts";
-import { now } from "../utils/clock.ts";
-import { validateTenantWorkflowDef } from "../workflows/tenant-validator.ts";
-import { CONVERSATION_CANCELLED_REASON, isExpectedCancellation } from "./abort.ts";
-import { resolveAttachmentSlugsInText } from "./attachments.ts";
-import { expandPriorFailuresFromToolCalls } from "./authoring-critic/prior-failures.ts";
-import { hasInProgressWorkflowDraft, startNewWorkflowDraft } from "./authoring-state.ts";
-import { renderAutomationContext } from "./automation-context.ts";
-import { type Citation, harvestCitations } from "./citations.ts";
-import { appendSnapshot, loadDraft } from "./draft.ts";
-import type { ElicitationBridge } from "./elicitation-bridge.ts";
-import { createElicitation, setElicitationParentMessage } from "./elicitations.ts";
-import { EventSink } from "./event-sink.ts";
-import { turnExecutionSuppression } from "./execution-suppression.ts";
-import { handoffSummary, inferReplyLocale, turnHandoff } from "./handoff-summary.ts";
+} from "../../observability/instrumentation.ts";
+import {
+  readMemoryUsage,
+  timePhase,
+  timePhaseAsync,
+} from "../../observability/runtime-telemetry.ts";
+import {
+  enrichActiveSpan,
+  isTracingActive,
+  toolSpanAttributes,
+} from "../../observability/tracing.ts";
+import { withHostedWork } from "../../queue/hosted-work.ts";
+import { skillAudienceForAuthoringMode } from "../../skills/types.ts";
+import { now } from "../../utils/clock.ts";
+import { validateTenantWorkflowDef } from "../../workflows/tenant-validator.ts";
+import { CONVERSATION_CANCELLED_REASON, isExpectedCancellation } from "../abort.ts";
+import { resolveAttachmentSlugsInText } from "../attachments.ts";
+import { expandPriorFailuresFromToolCalls } from "../authoring-critic/prior-failures.ts";
+import { hasInProgressWorkflowDraft, startNewWorkflowDraft } from "../authoring-state/index.ts";
+import { renderAutomationContext } from "../automation-context.ts";
+import { type Citation, harvestCitations } from "../citations.ts";
+import { appendSnapshot, loadDraft } from "../draft.ts";
+import type { ElicitationBridge } from "../elicitation-bridge.ts";
+import { createElicitation, setElicitationParentMessage } from "../elicitations.ts";
+import { EventSink } from "../event-sink.ts";
+import { turnExecutionSuppression } from "../execution-suppression.ts";
+import { handoffSummary, inferReplyLocale, turnHandoff } from "../handoff-summary.ts";
 import {
   detectMultiArtifactIntent,
   detectsAuthoringRequest,
@@ -103,56 +114,33 @@ import {
   NO_SNAPSHOT_COVERAGE,
   resolvePreferredTool,
   turnToolChoice,
-} from "./intent-detector.ts";
-import { RUN_VERB_RE } from "./intent-patterns.ts";
-import { abstentionDecision } from "./loop/abstention-gate.ts";
-import { resolveConversationAttemptRoutes } from "./loop/attempt-route.ts";
-import { detectConnectorAuthoringIntent } from "./loop/authoring-intent.ts";
-import { loadEnumerationCoverage } from "./loop/enumeration-coverage.ts";
-import {
-  answeringModelLabel,
-  DEFAULT_BUDGET,
-  MAX_REPAIRS_PER_TURN,
-  resolveLanguageModel,
-} from "./loop/model-resolver.ts";
-import { applyRecency, parseLoadedSkills } from "./loop/skill-recency.ts";
-import {
-  abstainedStopCondition,
-  automationReviewStopCondition,
-  committedStopCondition,
-  isAutomationReviewCard,
-  noProgressRepairStopCondition,
-  pausedStopCondition,
-} from "./loop/stop-conditions.ts";
-import { throwForStreamError } from "./loop/stream-result.ts";
-import { buildNextSuggestionFrame } from "./loop/suggest-next-emitter.ts";
-import { detectToolHallucinatedAbsence } from "./loop/tool-not-available-guard.ts";
-import { readStepUsage, stepPromptTokens, stepTotalTokens } from "./loop/usage.ts";
+} from "../intent-detector.ts";
+import { RUN_VERB_RE } from "../intent-patterns.ts";
 import {
   appendMessage,
   buildModelMessages,
   buildUserContentParts,
   setToolCallParentMessage,
   updateMessageContent,
-} from "./persist.ts";
-import { PLAYBOOK_GUIDANCE, readPlaybook, settlePlaybookAtTurnEnd } from "./playbook.ts";
-import { closingProseQuestion } from "./prose-question.ts";
+} from "../persistence/index.ts";
+import { PLAYBOOK_GUIDANCE, readPlaybook, settlePlaybookAtTurnEnd } from "../playbook.ts";
+import { closingProseQuestion } from "../prose-question.ts";
 import {
   type ConversationReference,
   markLatestUserMessageUnresolvedReferences,
   resolveReferences,
-} from "./references.ts";
-import { resolveScopeFactsForConversation } from "./scope-facts.ts";
-import { compactConversation } from "./service/compact.ts";
+} from "../references.ts";
+import { resolveScopeFactsForConversation } from "../scope-facts.ts";
+import { compactConversation } from "../service/compact.ts";
 import {
   autoloadForUserTurn,
   listBaselineSlugs,
   loadActivationCatalog,
   reaffirmLoadedForTurn,
-} from "./skill-autoload.ts";
-import { checkSourceFaithful, keepResolvableCitations } from "./source-faithful.ts";
-import { nextSuggestion } from "./streaming.ts";
-import { elideWithinTurnToolOutputs } from "./tool-output-elision.ts";
+} from "../skill-autoload.ts";
+import { checkSourceFaithful, keepResolvableCitations } from "../source-faithful.ts";
+import { nextSuggestion } from "../streaming.ts";
+import { elideWithinTurnToolOutputs } from "../tool-output-elision.ts";
 import {
   applyExecutionToolGate,
   authoringSkillsForTurn,
@@ -162,28 +150,51 @@ import {
   lockedToolsBySkill,
   resolveExecutionToolGate,
   resolveNamedWorkflowSlug,
-} from "./tools/authoring-palette.ts";
-import { getTool, listTools, type ToolContext } from "./tools/index.ts";
+} from "../tools/authoring-palette.ts";
+import { getTool, listTools, type ToolContext } from "../tools/index.ts";
 import {
   intakeReviewInProgress,
   intakeReviewNote,
   intakeSelectionStatus,
   removeIntakeReviewTools,
-} from "./tools/sdk-wrap/intake-review-guard.ts";
-import { type TurnSignals, wrapTools } from "./tools/sdk-wrap.ts";
+} from "../tools/sdk-wrap/intake-review-guard.ts";
+import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";
 import {
   LlmTimeoutError,
   providerFailureNotice,
   timeoutBudgetOf,
   timeoutPhaseOf,
-} from "./turn-failure.ts";
+} from "../turn-failure.ts";
 import {
   classifyFallbackSynthesis,
   completionEvidenceGuard,
   turnLoopBudgetStopCondition,
-} from "./turn-helpers.ts";
-import { assertConversationTurn } from "./turns.ts";
-import type { ConversationStatus, DraftDocument, TurnEvent } from "./types.ts";
+} from "../turn-helpers.ts";
+import { assertConversationTurn } from "../turns.ts";
+import type { ConversationStatus, DraftDocument, TurnEvent } from "../types.ts";
+import { abstentionDecision } from "./abstention-gate.ts";
+import { resolveConversationAttemptRoutes } from "./attempt-route.ts";
+import { detectConnectorAuthoringIntent } from "./authoring-intent.ts";
+import { loadEnumerationCoverage } from "./enumeration-coverage.ts";
+import {
+  answeringModelLabel,
+  DEFAULT_BUDGET,
+  MAX_REPAIRS_PER_TURN,
+  resolveLanguageModel,
+} from "./model-resolver.ts";
+import { applyRecency, parseLoadedSkills } from "./skill-recency.ts";
+import {
+  abstainedStopCondition,
+  automationReviewStopCondition,
+  committedStopCondition,
+  isAutomationReviewCard,
+  noProgressRepairStopCondition,
+  pausedStopCondition,
+} from "./stop-conditions.ts";
+import { throwForStreamError } from "./stream-result.ts";
+import { buildNextSuggestionFrame } from "./suggest-next-emitter.ts";
+import { detectToolHallucinatedAbsence } from "./tool-not-available-guard.ts";
+import { readStepUsage, stepPromptTokens, stepTotalTokens } from "./usage.ts";
 
 export const CONVERSE_FIRST_CHUNK_TIMEOUT_MS = PROVIDER_RESPONSE_TIMEOUT_MS;
 
@@ -325,7 +336,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
       );
     await appendSnapshot(p.tenant_id, p.conversation_id, draft, p.db);
   }
-  const { EngineClient } = await import("../engine-client/index.ts");
+  const { EngineClient } = await import("../../engine-client/index.ts");
   const ctx: ToolContext = {
     ...(p.locale ? { locale: p.locale } : {}),
     db: p.db,
@@ -1050,7 +1061,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
       phase: "composing",
       label: "composing reply",
     });
-    const toolsByName: Record<string, import("./tools/index.ts").ConversationTool> = {};
+    const toolsByName: Record<string, import("../tools/index.ts").ConversationTool> = {};
     for (const t of listTools()) toolsByName[t.name] = t;
 
     const turnStageReadOnly = false;

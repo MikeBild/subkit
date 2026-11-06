@@ -82,10 +82,6 @@ export function ResponsiveWorkspace({ children }: { children: ReactNode }) {
   );
 }
 
-export function useWorkspaceWidth(): number {
-  return useContext(WorkspaceContext)?.width ?? 0;
-}
-
 export function useInspectorDock(enabled: boolean, size: Inspector["size"]) {
   const workspace = useContext(WorkspaceContext);
   const id = useId();

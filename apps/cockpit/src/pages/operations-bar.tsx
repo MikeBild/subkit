@@ -91,7 +91,7 @@ export function RepairRequiredHint({ count }: { count: number | null }) {
   );
 }
 
-export function useOperatingFiguresQuery(bounds: WindowBounds, enabled: boolean) {
+function useOperatingFiguresQuery(bounds: WindowBounds, enabled: boolean) {
   return useQuery({
     queryKey: ["operations-figures", bounds],
     enabled,

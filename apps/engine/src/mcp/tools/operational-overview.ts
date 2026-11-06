@@ -3,7 +3,7 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { getOperationalOverview } from "../../operator/operational-overview.ts";
 
-export const OPERATIONAL_OVERVIEW_TOOL_NAME = "get_operational_overview";
+const OPERATIONAL_OVERVIEW_TOOL_NAME = "get_operational_overview";
 
 export const operationalOverviewMcpTool: Tool = {
   name: OPERATIONAL_OVERVIEW_TOOL_NAME,

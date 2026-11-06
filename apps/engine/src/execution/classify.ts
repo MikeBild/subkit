@@ -39,17 +39,7 @@ export interface PreviewStepSummary {
   error?: { code: string; message: string };
 }
 
-export interface PreviewWorkflowSummary {
-  ok: boolean;
-  steps_ran: number;
-  duration_ms: number;
-  stopped_at_step_id: string | null;
-  classification: PreviewClassification;
-  summary: string;
-  last_step?: PreviewStepSummary;
-}
-
-export function classifyStepResult(
+function classifyStepResult(
   step: StepDef,
   result: StepResult,
   duration_ms: number,
@@ -153,7 +143,7 @@ export function classifyFailure(result: StepResult): PreviewClassification {
   return "driver_error";
 }
 
-export interface PersistedFailure {
+interface PersistedFailure {
   status: string;
   error: unknown;
 }

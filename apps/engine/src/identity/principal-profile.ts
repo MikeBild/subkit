@@ -3,7 +3,7 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { conversations, roles, systemAccounts, tenants, users } from "../db/schema/index.ts";
 
-export interface UserProfile {
+interface UserProfile {
   email: string;
   role_name: string | null;
 }
@@ -14,7 +14,7 @@ export interface TenantSummary {
   display_name: string;
 }
 
-export interface CockpitIdentity {
+interface CockpitIdentity {
   email: string;
   role_name: string | null;
   tenant_id: string;
@@ -22,7 +22,7 @@ export interface CockpitIdentity {
   tenant_display_name: string;
 }
 
-export interface RecentConversation {
+interface RecentConversation {
   tenant_id: string;
   id: string;
   title: string | null;
@@ -30,7 +30,7 @@ export interface RecentConversation {
   updated_at: Date;
 }
 
-export interface WhoamiProfile {
+interface WhoamiProfile {
   email: string | null;
   role_name: string | null;
   tenant_slug: string | null;

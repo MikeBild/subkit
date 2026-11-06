@@ -34,14 +34,7 @@ export function isSecretField(field: Pick<ChatFormField, "type" | "sensitive">):
   return field.type === "password" || field.sensitive === true;
 }
 
-export type FormInputKind =
-  | "checkbox"
-  | "select"
-  | "multi"
-  | "textarea"
-  | "number"
-  | "secret"
-  | "text";
+type FormInputKind = "checkbox" | "select" | "multi" | "textarea" | "number" | "secret" | "text";
 
 export function formInputKind(field: Pick<ChatFormField, "type" | "sensitive">): FormInputKind {
   switch (field.type) {

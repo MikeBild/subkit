@@ -31,7 +31,7 @@ export interface WebhookDeliverJob {
   outbox_event_id?: number | null;
 }
 
-export interface RegisterDeliveryWorkerOptions {
+interface RegisterDeliveryWorkerOptions {
   boss: PgBoss;
   db: Db;
   fetchImpl?: typeof fetch;
@@ -39,7 +39,7 @@ export interface RegisterDeliveryWorkerOptions {
   noWork?: boolean;
 }
 
-export interface DeliveryWorkerHandle {
+interface DeliveryWorkerHandle {
   workerId: string | null;
   handle: (job: Job<WebhookDeliverJob>) => Promise<void>;
 }

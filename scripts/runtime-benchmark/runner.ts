@@ -261,7 +261,7 @@ async function loadRuntime(sourceRoot: string): Promise<Runtime> {
   };
 }
 
-export async function sourceSha256(sourceRoot: string): Promise<string> {
+async function sourceSha256(sourceRoot: string): Promise<string> {
   const root = resolve(sourceRoot);
   const files = [
     "bun.lock",
@@ -290,7 +290,7 @@ export async function sourceSha256(sourceRoot: string): Promise<string> {
   return hash.digest("hex");
 }
 
-export async function lockfileSha256(sourceRoot: string): Promise<string> {
+async function lockfileSha256(sourceRoot: string): Promise<string> {
   return createHash("sha256")
     .update(await readFile(`${resolve(sourceRoot)}/bun.lock`))
     .digest("hex");

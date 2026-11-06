@@ -33,7 +33,7 @@ function SheetBodySkeleton() {
   );
 }
 
-export interface RecordSheetProps {
+interface RecordSheetProps {
   open: boolean;
   onOpenChange(open: boolean): void;
   size?: SheetSize;

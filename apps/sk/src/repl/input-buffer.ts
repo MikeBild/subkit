@@ -16,7 +16,7 @@ export function buffer(value: string): InputBuffer {
   return { value, cursor: value.length };
 }
 
-export type InputAction =
+type InputAction =
   | { type: "insert"; text: string }
   | { type: "deletePrev" }
   | { type: "deleteNext" }

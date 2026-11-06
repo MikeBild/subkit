@@ -45,7 +45,7 @@ import { compatibleToolPalette } from "./tool-schema-compatibility.ts";
 
 export const LLM_CALL_TIMEOUT_MS = 90_000;
 
-export const MAX_TOOL_LOOP_ATTEMPTS = 8;
+const MAX_TOOL_LOOP_ATTEMPTS = 8;
 const MODEL_CONTEXT_LENGTHS: Record<string, number> = {
   "claude-sonnet-4-5": 200_000,
   "claude-sonnet-4-6": 200_000,
@@ -99,7 +99,7 @@ function withCurrentDate(messages: SubkitLlmMessage[]): SubkitLlmMessage[] {
   return [...messages.slice(0, at), stamp, ...messages.slice(at)];
 }
 
-export interface AiSdkModelOptions extends ModelInitOptions {
+interface AiSdkModelOptions extends ModelInitOptions {
   fallback?: ModelInitOptions;
   maxRetries?: number;
   callTimeoutMs?: number;

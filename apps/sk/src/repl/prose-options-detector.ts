@@ -1,10 +1,10 @@
-export interface ProseOption {
+interface ProseOption {
   index: number;
   label: string;
   value: string;
 }
 
-export interface DetectedProseOptions {
+interface DetectedProseOptions {
   options: ProseOption[];
   question: string;
 }

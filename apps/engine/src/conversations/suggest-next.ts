@@ -9,7 +9,7 @@ export type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-re
 
 import type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-reasons.ts";
 
-export interface SuggestNextResult {
+interface SuggestNextResult {
   suggestion: string | null;
   reason: SuggestNextReason;
   kind: SuggestNextKind | null;
@@ -31,9 +31,9 @@ export type SuggestNextModelInvoker = (
   call: SuggestNextModelInvocation,
 ) => Promise<SuggestNextModelResult>;
 
-export type SuggestNextBudgetGuard = () => Promise<boolean> | boolean;
+type SuggestNextBudgetGuard = () => Promise<boolean> | boolean;
 
-export interface SuggestNextParams {
+interface SuggestNextParams {
   tenant_id: string;
   conversation_id: string;
   recent_messages: ReadonlyArray<RecentMessage>;

@@ -21,7 +21,7 @@ export function getConnectorTemplateSnapshot(connector: Pick<ConnectorView, "tem
   return parseTemplateSnapshot(connector.template_snapshot);
 }
 
-export interface TemplateSignedJwtPolicyIssue {
+interface TemplateSignedJwtPolicyIssue {
   field: "config.signed_jwt";
   message: string;
 }
@@ -145,7 +145,7 @@ export function connectorOAuthGrantType(
   );
 }
 
-export type ConnectorOAuthConfigResolution =
+type ConnectorOAuthConfigResolution =
   | { ok: true; config: OAuth2ClientConfig }
   | { ok: false; missing: "issuer_url" | "client_id" | "template_oauth_credentials" };
 

@@ -58,7 +58,7 @@ export interface DocumentAnalysisAttachment {
   data?: Uint8Array;
 }
 
-export interface DocumentAnalysisParams {
+interface DocumentAnalysisParams {
   tenant_id: string;
   attachments: DocumentAnalysisAttachment[];
   goal?: string;

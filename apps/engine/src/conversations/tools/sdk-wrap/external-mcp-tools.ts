@@ -28,7 +28,7 @@ import {
 } from "../../../tools/policy.ts";
 import { runConfirmGate } from "../../confirmation.ts";
 import { createElicitation } from "../../elicitations.ts";
-import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
+import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persistence/index.ts";
 import type { TurnEvent } from "../../types.ts";
 import { withoutApprovalHandle } from "../ask-user/commit-intent.ts";
 import type { ToolContext } from "../index.ts";

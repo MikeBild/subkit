@@ -8,12 +8,12 @@ import { EngineClient } from "../../engine-client/index.ts";
 import { __setMcpPoolFactoriesForTests, type McpClientLike } from "../../mcp/client/pool.ts";
 import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { startLocalTargetServer } from "../../test-helpers/local-http.ts";
-import { hydrateDraftFromSavedConnector } from "../authoring-state/normalize.ts";
 import {
   withConnectorInspection,
   withConnectorProbe,
   withConnectorValidation,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
+import { hydrateDraftFromSavedConnector } from "../authoring-state/normalize.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import { appendSnapshot, loadDraft } from "../draft.ts";
 import {

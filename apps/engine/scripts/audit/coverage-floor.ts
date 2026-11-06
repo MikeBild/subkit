@@ -9,13 +9,13 @@ export interface FloorEntry {
   observed?: { line?: number | null; branch?: number | null };
 }
 
-export interface CoreDefault {
+interface CoreDefault {
   line_min: number;
   branch_min: number;
   exclude: string[];
 }
 
-export interface FloorFile {
+interface FloorFile {
   subsystems: Record<string, FloorEntry>;
   files: Record<string, FloorEntry>;
   core_default: CoreDefault | null;
@@ -144,7 +144,7 @@ export function aggregateByPrefix(
   return total === 0 ? null : (covered / total) * 100;
 }
 
-export interface FloorVerdict {
+interface FloorVerdict {
   status: "PASS" | "FAIL";
   message: string;
 }

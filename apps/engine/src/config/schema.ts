@@ -1826,19 +1826,6 @@ export const ConfigSchema = z
   .describe("subkit runtime configuration");
 
 export type Config = z.infer<typeof ConfigSchema>;
-export type TenantOverlay = z.infer<typeof TenantOverlaySchema>;
-
-const TENANT_OVERLAY_KEYS = [
-  "llm",
-  "queue",
-  "tokens",
-  "repl",
-  "ui",
-  "notifications",
-  "connectors",
-] as const;
-export type TenantOverlayKey = (typeof TENANT_OVERLAY_KEYS)[number];
-export const TENANT_OVERLAY_SECTION_KEYS: ReadonlyArray<TenantOverlayKey> = TENANT_OVERLAY_KEYS;
 
 export const SECTION_ORDER = [
   "log",
@@ -1864,7 +1851,6 @@ export const SECTION_ORDER = [
   "connectors",
   "products",
 ] as const;
-export type SectionKey = (typeof SECTION_ORDER)[number];
 
 export type AuthProviderConfig = Config["auth"]["providers"][number];
 export type OidcBearerProviderConfig = Extract<AuthProviderConfig, { protocol: "oidc_bearer" }>;

@@ -6,7 +6,7 @@ export type Bootstrap = components["schemas"]["CockpitBootstrapResponse"];
 export type Conversation = components["schemas"]["Conversation"];
 export type ConversationDetail = components["schemas"]["ConversationDetail"];
 export type ConversationList = components["schemas"]["ConversationListResponse"];
-export type ConversationRun = components["schemas"]["ConversationRunOutcome"];
+type ConversationRun = components["schemas"]["ConversationRunOutcome"];
 export type UiMessage = components["schemas"]["UIMessage"];
 export type ConversationReference = components["schemas"]["ConversationReference"];
 
@@ -31,7 +31,7 @@ export class ApiError extends Error {
 
 const sessionExpiryListeners = new Set<() => void>();
 
-export function isSessionExpiry(status: number, code: string | null): boolean {
+function isSessionExpiry(status: number, code: string | null): boolean {
   return (
     (status === 401 &&
       (code === "unauthorized" ||
@@ -77,7 +77,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export const BOOTSTRAP_TIMEOUT_MS = 5000;
 
-export interface RequestLimits {
+interface RequestLimits {
   timeoutMs?: number;
 }
 
@@ -264,7 +264,7 @@ export function getConversation(id: string): Promise<ConversationDetail> {
   return apiRequest(`/v1/conversations/${encodeURIComponent(id)}`);
 }
 
-export type ConversationStreamEvent = { type: string; [key: string]: unknown };
+type ConversationStreamEvent = { type: string; [key: string]: unknown };
 
 async function streamConversation(
   path: string,
@@ -357,7 +357,7 @@ export type ConversationTarget = {
   execution_id?: string;
 };
 
-export type SendConversationTurnInput = {
+type SendConversationTurnInput = {
   message: string;
   references?: readonly ConversationReference[];
 } & (
@@ -435,7 +435,7 @@ export function respondToChatChoice(
   );
 }
 
-export function respondToChatText(
+function respondToChatText(
   conversationId: string,
   elicitationId: string,
   value: string,

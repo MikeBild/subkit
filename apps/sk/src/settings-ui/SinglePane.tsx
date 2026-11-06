@@ -2,11 +2,11 @@ import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useState } from "react";
 
-export interface SinglePaneRenderProps {
+interface SinglePaneRenderProps {
   setInnerEscape: (active: boolean) => void;
 }
 
-export interface SinglePaneProps {
+interface SinglePaneProps {
   title: string;
   tenant?: string | null;
   onDismiss: () => void;

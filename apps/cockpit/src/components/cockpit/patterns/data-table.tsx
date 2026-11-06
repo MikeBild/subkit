@@ -83,7 +83,7 @@ export interface CockpitColumnMeta {
   cardLabel?: boolean;
 }
 
-export const MOBILE_CARD_FACTS = 2;
+const MOBILE_CARD_FACTS = 2;
 
 export function priorityClass(priority: CockpitColumnMeta["priority"]): string | undefined {
   return priority === "low" ? "hidden @4xl:table-cell" : undefined;

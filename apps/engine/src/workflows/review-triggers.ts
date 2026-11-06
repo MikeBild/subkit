@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { webhooksInbound, workflowsSchedules } from "../db/schema/index.ts";
 
-export interface ReviewTriggerState {
+interface ReviewTriggerState {
   id: string;
   kind: "schedule" | "webhook";
   name: string;

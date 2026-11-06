@@ -8,7 +8,7 @@ import type { EngineClient } from "../engine-client.ts";
 
 export type LocalSnippetReason = "engine_unreachable" | "workflow_unknown" | "no_public_address";
 
-export interface InvokeSnippet {
+interface InvokeSnippet {
   snippet: string;
   engine_url: string;
   source: "engine" | "local";

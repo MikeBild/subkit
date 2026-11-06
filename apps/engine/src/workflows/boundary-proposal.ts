@@ -9,7 +9,7 @@ const CLASS_ORDER = ["uuid", "timestamp", "date", "integer", "file_name", "ident
 const MAX_ENUM = 12;
 const EVIDENCE_ROWS = 2000;
 
-export interface ProposedStepBoundary {
+interface ProposedStepBoundary {
   step_id: string;
   max_pages?: number;
   boundary?: {
@@ -22,7 +22,7 @@ export interface ProposedStepBoundary {
   evidence: { observations: number; sample: string; newest_at: string };
 }
 
-export interface UnproposableStep {
+interface UnproposableStep {
   step_id: string;
   reason:
     | "no_history"
@@ -32,7 +32,7 @@ export interface UnproposableStep {
     | "not_supported";
 }
 
-export interface BoundaryProposals {
+interface BoundaryProposals {
   proposals: ProposedStepBoundary[];
   unproposable: UnproposableStep[];
 }

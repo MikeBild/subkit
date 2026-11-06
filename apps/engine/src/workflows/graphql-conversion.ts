@@ -25,7 +25,7 @@ function stepRecords(definition: StepsHolder): StepRecord[] {
   );
 }
 
-export function isGraphqlOverHttpStep(
+function isGraphqlOverHttpStep(
   step: StepRecord,
   baseUrls: ConnectorBaseUrls = NO_BASE_URLS,
 ): boolean {

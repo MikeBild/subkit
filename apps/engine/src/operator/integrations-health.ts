@@ -9,7 +9,7 @@ import { effectiveConnectorHealth } from "../connectors/index.ts";
 import type { Db } from "../db/client.ts";
 import { connectors, workflows } from "../db/schema/index.ts";
 
-export type IntegrationsActor = Pick<ResolvedPrincipal, "tenant_id" | "kind" | "id">;
+type IntegrationsActor = Pick<ResolvedPrincipal, "tenant_id" | "kind" | "id">;
 
 export async function readIntegrationsHealth(db: Db, actor: IntegrationsActor) {
   const tenantId = actor.tenant_id;

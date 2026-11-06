@@ -9,7 +9,7 @@ import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 
-export interface RegisterAgentSessionRoutesOptions {
+interface RegisterAgentSessionRoutesOptions {
   enqueue: (job: AgentSessionAnalyzeJob) => Promise<void>;
 }
 

@@ -3,7 +3,7 @@ import { AuditAction } from "../audit/types.ts";
 import type { Executor } from "../db/client.ts";
 import { auditLog } from "../db/schema/audit.ts";
 
-export interface ConnectorObservation {
+interface ConnectorObservation {
   last_tested_at: string | null;
   tools_count: number | null;
 }

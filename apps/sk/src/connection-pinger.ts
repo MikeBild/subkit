@@ -1,7 +1,7 @@
 import type { EngineClient } from "./engine-client.ts";
 import type { ConnectionState } from "./repl/status-line/render.ts";
 
-export interface ConnectionPingerOptions {
+interface ConnectionPingerOptions {
   client: EngineClient;
   intervalMs?: number;
   timeoutMs?: number;

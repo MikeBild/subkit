@@ -128,7 +128,7 @@ export function resolveForEachConcurrency(
   return 1;
 }
 
-export interface RunExecutionParams {
+interface RunExecutionParams {
   db: Db;
   tenant_id: string;
   source: RunExecutionSource;

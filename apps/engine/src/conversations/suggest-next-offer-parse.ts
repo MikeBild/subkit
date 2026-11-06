@@ -12,7 +12,7 @@ export interface LoadedSkillHint {
   verbs: ReadonlyArray<string>;
 }
 
-export interface OfferParseInput {
+interface OfferParseInput {
   assistant_text: string;
   loaded_skills?: ReadonlyArray<LoadedSkillHint>;
 }

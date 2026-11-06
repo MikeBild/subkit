@@ -43,7 +43,7 @@ interface SetupPayload {
   llm_model?: string;
 }
 
-export interface RunInitOptions {
+interface RunInitOptions {
   payload: SetupPayload;
   engine_url: string;
   profile: string;
@@ -53,7 +53,7 @@ export interface RunInitOptions {
   err?: (line: string) => void;
 }
 
-export interface RunInitResult {
+interface RunInitResult {
   status: "ok" | "failed";
   exitCode: number;
   setup?: SetupOk;

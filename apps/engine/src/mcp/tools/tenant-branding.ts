@@ -57,7 +57,7 @@ export const getTenantBrandingLogoMcpTool: Tool = {
 };
 
 type ToolFailure = { ok: false; data: { error_code: string; message: string } };
-export type ApprovalArgsPreparation =
+type ApprovalArgsPreparation =
   | { ok: true; args: Record<string, unknown> }
   | { ok: false; error_code: string; message: string };
 

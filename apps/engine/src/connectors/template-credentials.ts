@@ -14,7 +14,7 @@ function toBuf(value: Uint8Array): Buffer {
   return Buffer.from(value);
 }
 
-export interface ConnectorTemplateOAuthCredentialValue {
+interface ConnectorTemplateOAuthCredentialValue {
   client_id: string;
   client_secret: string;
 }

@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { createEmptyDraftDocument } from "../../src/conversations/authoring-state.ts";
+import { createEmptyDraftDocument } from "../../src/conversations/authoring-state/index.ts";
 import {
   DIRECT_INVOKE_TOOLS,
   invokeConversationToolDirect,

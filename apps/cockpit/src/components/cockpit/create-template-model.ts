@@ -14,11 +14,11 @@ export const SOLUTIONS_VERTICAL = "solutions";
 
 export type TemplateSignIn = ConnectorSignIn | "machine" | "elsewhere";
 
-export interface SolutionStep extends StepKindSource {
+interface SolutionStep extends StepKindSource {
   id: string;
 }
 
-export interface BoundaryLine {
+interface BoundaryLine {
   name: string;
   effect: "read" | "write";
   host: string | null;
@@ -160,7 +160,7 @@ function swapConnectorIds(value: unknown, mapping: Readonly<Record<string, strin
   );
 }
 
-export type ConnectorChoice = { kind: "existing"; id: string } | { kind: "new" };
+type ConnectorChoice = { kind: "existing"; id: string } | { kind: "new" };
 
 export const NEW_CONNECTOR = "new";
 
@@ -181,7 +181,7 @@ export function choiceOf(
   return defaultChoice(connector);
 }
 
-export interface SolutionPlan {
+interface SolutionPlan {
   slug: string;
   name: string;
   create: SolutionConnector[];

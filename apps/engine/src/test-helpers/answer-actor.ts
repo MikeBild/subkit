@@ -5,7 +5,3 @@ export const TEST_HUMAN_ANSWER: AnswerActor = {
   user_id: "00000000-0000-4000-8000-000000000001",
   via: "chat",
 };
-
-export function testHumanAnswer(user_id: string): AnswerActor {
-  return { kind: "human", user_id, via: "chat" };
-}

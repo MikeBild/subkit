@@ -9,7 +9,7 @@ import type { PaneSpec } from "../repl/slash/handler.ts";
 import { renderProgressLine, type UploadProgressEvent } from "../utils/upload-progress.ts";
 import type { TranscriptMode } from "./types.ts";
 
-export interface BuiltinSlashContext {
+interface BuiltinSlashContext {
   engineClient: EngineClient | undefined;
   cwd: string | undefined;
   conversationId: string | null;

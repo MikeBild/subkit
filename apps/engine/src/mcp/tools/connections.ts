@@ -3,7 +3,7 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { type ConnectionView, listConnections } from "../../credentials/connections/index.ts";
 import type { Db } from "../../db/client.ts";
 
-export const LIST_CONNECTIONS_TOOL_NAME = "list_connections";
+const LIST_CONNECTIONS_TOOL_NAME = "list_connections";
 
 export const listConnectionsMcpTool: Tool = {
   name: LIST_CONNECTIONS_TOOL_NAME,

@@ -11,7 +11,7 @@ interface GraphqlDispatchConnector {
   config?: unknown;
 }
 
-export type GraphqlDispatchTarget =
+type GraphqlDispatchTarget =
   | { ok: true; endpoint: string | null; pass_endpoint: boolean }
   | { ok: false; error: StepErrorDetail };
 

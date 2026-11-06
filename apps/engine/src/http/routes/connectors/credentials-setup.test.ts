@@ -9,7 +9,7 @@ import {
   withConnectorDraft,
   withConnectorInspection,
   withConnectorValidation,
-} from "../../../conversations/authoring-state.ts";
+} from "../../../conversations/authoring-state/index.ts";
 import { validateConnectorDraft } from "../../../conversations/connector-draft.ts";
 import { invokeConversationToolDirect } from "../../../conversations/direct-invoke.ts";
 import { appendSnapshot } from "../../../conversations/draft.ts";

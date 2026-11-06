@@ -21,7 +21,7 @@ export function catalogMetadataBody(args: {
   return body;
 }
 
-export const LIST_DESCRIPTION_WIDTH = 60;
+const LIST_DESCRIPTION_WIDTH = 60;
 
 export function shortDescription(value: unknown): string {
   if (typeof value !== "string") return "";

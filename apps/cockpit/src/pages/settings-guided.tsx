@@ -42,7 +42,7 @@ export function providerName(provider: string, t: (key: TranslationKey) => strin
 
 const PROVIDER_PATHS = new Set(["llm.provider", "llm.fallback_provider", "llm.summarize_provider"]);
 
-export function guidedValueText(
+function guidedValueText(
   path: string,
   value: unknown,
   t: ReturnType<typeof useI18n>["t"],
@@ -77,7 +77,7 @@ export function guidedText(ctx: GuidedContext, path: string): string {
   return item ? settingFieldValue(item, undefined) : "";
 }
 
-export function guidedLocked(item: SettingItem | undefined): boolean {
+function guidedLocked(item: SettingItem | undefined): boolean {
   return item?.meta.source === "override";
 }
 
@@ -85,7 +85,7 @@ export function guidedDisabled(ctx: GuidedContext, item: SettingItem | undefined
   return !ctx.canWrite || ctx.pending || !item || guidedLocked(item);
 }
 
-export function guidedGlobalOnly(ctx: GuidedContext, item: SettingItem | undefined): boolean {
+function guidedGlobalOnly(ctx: GuidedContext, item: SettingItem | undefined): boolean {
   return ctx.scope === "tenant" && item !== undefined && item.meta.scope !== "tenant";
 }
 

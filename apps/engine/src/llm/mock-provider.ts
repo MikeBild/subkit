@@ -2,7 +2,7 @@ import { logger } from "../logging/logger.ts";
 import { LlmProviderError } from "./errors.ts";
 import type { EnhancedPrompt, LlmFlow } from "./types.ts";
 
-export interface MockCall {
+interface MockCall {
   model: string;
   flow: LlmFlow;
   system_length: number;
@@ -23,7 +23,7 @@ export interface MockResult<T = unknown> {
   cache_creation_tokens?: number;
 }
 
-export type MockFailure =
+type MockFailure =
   | "rate_limit"
   | "quota_exhausted"
   | "overloaded"

@@ -4,7 +4,7 @@ import type { Executor } from "../../db/client.ts";
 import { UnprocessableEntityError } from "../../http/errors.ts";
 import type { ConnectorDraftDocument } from "../types.ts";
 
-export type DraftProbeSecrets =
+type DraftProbeSecrets =
   | {
       ok: true;
       base_url: string | null;

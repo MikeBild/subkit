@@ -21,9 +21,9 @@ import {
 } from "./list.ts";
 import { deriveRerunSafety, loadExecutionOutcome, loadFailureSummaries } from "./outcome.ts";
 
-export type ExecutionStepRow = typeof executionSteps.$inferSelect;
+type ExecutionStepRow = typeof executionSteps.$inferSelect;
 
-export interface ExecutionListPage extends ExecutionListResult {
+interface ExecutionListPage extends ExecutionListResult {
   workflow_names: Map<string, string>;
   failures: Awaited<ReturnType<typeof loadFailureSummaries>>;
   held_execution_ids: Set<string>;

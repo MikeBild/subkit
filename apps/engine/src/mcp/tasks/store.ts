@@ -15,7 +15,7 @@ export interface ConversationTurnEnvelope {
   committed_workflow_id?: string;
 }
 
-export interface InsertMcpTaskParams {
+interface InsertMcpTaskParams {
   tenant_id: string;
   conversation_id: string;
   kind: "start" | "append" | "respond_elicitation";
@@ -324,7 +324,7 @@ export async function stampMcpTaskProgress(
     );
 }
 
-export interface ConversationProgress {
+interface ConversationProgress {
   last_action: string;
   phase: string;
   step: string | null;

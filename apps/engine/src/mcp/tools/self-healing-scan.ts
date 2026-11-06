@@ -35,12 +35,12 @@ export const selfHealingScanMcpTool: Tool = {
   },
 };
 
-export interface SelfHealingScanArgs {
+interface SelfHealingScanArgs {
   workflow_id?: string;
   connector_id?: string;
 }
 
-export interface SelfHealingScanResult {
+interface SelfHealingScanResult {
   scan_id: string;
   signals_detected: number;
   candidates_created: number;
@@ -59,7 +59,7 @@ export interface SelfHealingScanResult {
   }>;
 }
 
-export interface SelfHealingScanContext {
+interface SelfHealingScanContext {
   db: Db;
   principal: ResolvedPrincipal;
 }

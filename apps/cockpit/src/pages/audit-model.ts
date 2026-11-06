@@ -329,9 +329,7 @@ const ACTION_KEYS: Record<string, TranslationKey> = {
   "webhook.trigger.failed_verification": "audit.action.webhookVerificationFailed",
 };
 
-export type AuditActionLabel =
-  | { kind: "named"; key: TranslationKey }
-  | { kind: "machine"; value: string };
+type AuditActionLabel = { kind: "named"; key: TranslationKey } | { kind: "machine"; value: string };
 
 export function auditActionLabel(action: string): AuditActionLabel {
   const key = ACTION_KEYS[action];
@@ -356,11 +354,7 @@ export function searchedActionParams(
   return actions.length > 0 ? { ...params, action: actions.join(",") } : null;
 }
 
-export function namedActionCount(): number {
-  return Object.keys(ACTION_KEYS).length;
-}
-
-export const DECISION_ACTIONS = [
+const DECISION_ACTIONS = [
   "patch_candidate.approved",
   "patch_candidate.rejected",
   "skill_candidate.approved",
@@ -435,7 +429,7 @@ export function auditCorrelationFromUrl(search: string): string | null {
   return raw && /^[0-9a-f]{32}$/.test(raw) ? raw : null;
 }
 
-export interface AuditLinkFilter {
+interface AuditLinkFilter {
   resourceType: string | null;
   resourceId: string | null;
   traceId: string | null;
@@ -458,7 +452,7 @@ export function auditActionsFromUrl(search: string): string[] {
 }
 
 const AUDIT_RESULTS = ["success", "denied", "error"] as const;
-export type AuditResultFilter = (typeof AUDIT_RESULTS)[number];
+type AuditResultFilter = (typeof AUDIT_RESULTS)[number];
 
 export function auditResultFromUrl(search: string): AuditResultFilter | null {
   const raw = new URLSearchParams(search).get("result");
@@ -493,23 +487,6 @@ export function auditLinkParams(filter: AuditLinkFilter): Record<string, string>
   return params;
 }
 
-export const AUDIT_LINK_KEYS = {
-  resource: ["resource_type", "resource_id"],
-  trace: ["trace_id"],
-  actions: ["action"],
-  window: ["ts_from", "ts_to"],
-} as const;
-
-export const NO_AUDIT_LINK: AuditLinkFilter = {
-  resourceType: null,
-  resourceId: null,
-  traceId: null,
-  scope: null,
-  actions: [],
-  tsFrom: null,
-  tsTo: null,
-};
-
 export function isAuditEntry(value: unknown): value is AuditEntry {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Record<string, unknown>;
@@ -520,9 +497,9 @@ export function isAuditEntry(value: unknown): value is AuditEntry {
   );
 }
 
-export type AuditEvidenceKind = "before" | "after";
+type AuditEvidenceKind = "before" | "after";
 
-export interface AuditEvidenceBlock {
+interface AuditEvidenceBlock {
   kind: AuditEvidenceKind;
   text: string;
 }
@@ -543,7 +520,7 @@ export function auditEvidenceBlocks(
   return blocks;
 }
 
-export interface AuditMetadataFact {
+interface AuditMetadataFact {
   key: string;
   label: string;
   value: string;
@@ -623,7 +600,7 @@ export function auditMetadataFacts(
   };
 }
 
-export interface AuditFact {
+interface AuditFact {
   label: string;
   value: string | null;
   mono?: boolean;
@@ -695,7 +672,7 @@ export const AUDIT_AREAS = {
   ],
 } as const;
 
-export type AuditArea = keyof typeof AUDIT_AREAS;
+type AuditArea = keyof typeof AUDIT_AREAS;
 
 export function auditAreaParams(area: AuditArea): Record<string, string> {
   return area === "all" ? {} : { resource_types: AUDIT_AREAS[area].join(",") };
@@ -724,7 +701,7 @@ export function initialAuditFilter(search: string, now: number) {
   return { ...filter, tsFrom: new Date(now - 30 * 86_400_000).toISOString() };
 }
 
-export function hasExplicitAuditWindow(search: string): boolean {
+function hasExplicitAuditWindow(search: string): boolean {
   const params = new URLSearchParams(search);
   return params.has("ts_from") || params.has("ts_to");
 }

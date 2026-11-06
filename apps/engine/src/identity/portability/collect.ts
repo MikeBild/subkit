@@ -77,7 +77,7 @@ export interface CollectedPackage {
   categories?: readonly string[];
 }
 
-export interface CollectOptions {
+interface CollectOptions {
   kinds?: readonly PackageItemKind[] | undefined;
   categories?: readonly string[] | undefined;
   include_bytes: boolean;

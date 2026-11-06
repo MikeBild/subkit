@@ -84,10 +84,7 @@ type EditableAuthProvider = ApiKeyProviderSetting | OidcProviderSetting;
 
 type ManagedAuthProvider = { readonly [field: string]: unknown };
 
-export type AuthProviderSetting =
-  | EditableAuthProvider
-  | OidcBearerProviderSetting
-  | ManagedAuthProvider;
+type AuthProviderSetting = EditableAuthProvider | OidcBearerProviderSetting | ManagedAuthProvider;
 
 function isEditableAuthProvider(provider: AuthProviderSetting): provider is EditableAuthProvider {
   return provider.protocol === "api_key" || provider.protocol === "oidc";
@@ -98,7 +95,7 @@ function providerText(provider: AuthProviderSetting, field: string): string {
   return typeof value === "string" ? value : "";
 }
 
-export function authProvidersFrom(value: unknown): AuthProviderSetting[] {
+function authProvidersFrom(value: unknown): AuthProviderSetting[] {
   if (!Array.isArray(value)) return [];
   return value.filter(
     (provider): provider is AuthProviderSetting =>
@@ -529,7 +526,7 @@ export function SettingsSectionNav({
   );
 }
 
-export function SettingCopyKey({ item, index }: { item: SettingItem; index: number }) {
+function SettingCopyKey({ item, index }: { item: SettingItem; index: number }) {
   const { t } = useI18n();
   const copy = useCopy();
   return (
@@ -581,7 +578,7 @@ export function SettingsSummary({
   );
 }
 
-export function SettingDefaultLine({
+function SettingDefaultLine({
   item,
   index,
   draft,

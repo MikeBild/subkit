@@ -6,9 +6,9 @@ import type { Db } from "../../db/client.ts";
 import { deliveries, events } from "../../db/schema/index.ts";
 import { WEBHOOK_DELIVER_QUEUE, type WebhookDeliverJob } from "./delivery-worker.ts";
 
-export type ReplayActor = Pick<ResolvedPrincipal, "tenant_id" | "kind" | "id">;
+type ReplayActor = Pick<ResolvedPrincipal, "tenant_id" | "kind" | "id">;
 
-export interface ReplayDeliveryInput {
+interface ReplayDeliveryInput {
   subscription_id: string;
   delivery_id: string;
 }

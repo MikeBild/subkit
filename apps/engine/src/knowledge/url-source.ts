@@ -29,12 +29,12 @@ export class KnowledgeSourceNotRefreshableError extends Error {
   }
 }
 
-export interface FetchedDocument {
+interface FetchedDocument {
   content: string;
   mime: string;
 }
 
-export async function fetchUrlDocument(
+async function fetchUrlDocument(
   url: string,
   tenant_id: string,
   exec?: Executor,
@@ -89,7 +89,7 @@ export async function fetchUrlDocument(
   return { content, mime: html ? "text/markdown" : contentType.split(";")[0] || "text/plain" };
 }
 
-export function nameFromUrl(url: string): string {
+function nameFromUrl(url: string): string {
   const parsed = new URL(url);
   const path = parsed.pathname.replace(/\/+$/, "");
   return `${parsed.host}${path}`.slice(0, 200);

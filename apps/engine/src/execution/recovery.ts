@@ -16,13 +16,13 @@ const DEFAULT_WORKFLOW_TIMEOUT_MS = 6 * 60 * 60 * 1000;
 const CRASH_GRACE_MULTIPLIER = 1.5;
 const MAX_RECOVER_PER_PASS = 1000;
 
-export interface RecoverCrashedExecutionsOptions {
+interface RecoverCrashedExecutionsOptions {
   now?: Date;
   source?: "boot_recovery" | "periodic_recovery";
   overrideThresholdMs?: number;
 }
 
-export interface RecoverCrashedExecutionsResult {
+interface RecoverCrashedExecutionsResult {
   recovered: number;
   reconciled_steps: number;
 }
@@ -347,7 +347,7 @@ export async function recoverCrashedExecutions(
   return { recovered, reconciled_steps: reconciledSteps };
 }
 
-export interface CrashRecoveryMonitor {
+interface CrashRecoveryMonitor {
   stop(): Promise<void>;
   checkNow(): Promise<RecoverCrashedExecutionsResult>;
 }

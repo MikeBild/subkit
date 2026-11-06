@@ -15,13 +15,13 @@ import {
   preparedReferenceRefusalMessage,
 } from "./connector-availability.ts";
 
-export interface WorkflowConnectorReferences {
+interface WorkflowConnectorReferences {
   ids: Map<string, string | null>;
   slugs: Map<string, { credential: boolean; step_id: string | null }>;
   refusals: Array<{ reason: ConnectorUnavailability; step_id: string | null }>;
 }
 
-export function emptyWorkflowConnectorReferences(): WorkflowConnectorReferences {
+function emptyWorkflowConnectorReferences(): WorkflowConnectorReferences {
   return { ids: new Map(), slugs: new Map(), refusals: [] };
 }
 

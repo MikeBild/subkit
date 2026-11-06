@@ -19,7 +19,7 @@ import {
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { EngineClient } from "../engine-client/index.ts";
 import { FROZEN_NOW, setTestNow } from "../test-helpers/determinism/clock.ts";
-import { createEmptyDraftDocument } from "./authoring-state.ts";
+import { createEmptyDraftDocument } from "./authoring-state/index.ts";
 import { createElicitation, resolveElicitation } from "./elicitations.ts";
 import { buildMessages } from "./parts.ts";
 import {

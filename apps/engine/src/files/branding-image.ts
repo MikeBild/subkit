@@ -27,9 +27,9 @@ function clearCodecLocation(): void {
 clearCodecLocation();
 
 export const BRANDING_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
-export const BRANDING_IMAGE_MAX_PIXELS = 4_000_000;
-export const BRANDING_IMAGE_MAX_EDGE = 512;
-export const BRANDING_IMAGE_MAX_BASE64 = Math.ceil(BRANDING_IMAGE_MAX_BYTES / 3) * 4;
+const BRANDING_IMAGE_MAX_PIXELS = 4_000_000;
+const BRANDING_IMAGE_MAX_EDGE = 512;
+const BRANDING_IMAGE_MAX_BASE64 = Math.ceil(BRANDING_IMAGE_MAX_BYTES / 3) * 4;
 export const BRANDING_APP_ICON_SIZES = [192, 512] as const;
 
 type ImageFormat = "image/png" | "image/jpeg" | "image/webp";

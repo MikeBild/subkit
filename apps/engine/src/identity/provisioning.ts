@@ -38,7 +38,7 @@ export class DuplicateUserError extends Error {
   }
 }
 
-export interface CreateUserInput {
+interface CreateUserInput {
   tenant_id: string;
   email: string;
   display_name?: string | null;
@@ -98,7 +98,7 @@ export async function createUser(input: CreateUserInput, db: Executor) {
   });
 }
 
-export interface DeactivateUserInput {
+interface DeactivateUserInput {
   tenant_id: string;
   user_id: string;
   actor_id: string | null;
@@ -261,7 +261,7 @@ export async function deactivateUser(input: DeactivateUserInput, db: Executor) {
   });
 }
 
-export const INVITE_DEFAULT_TTL_MINUTES = 7 * 24 * 60;
+const INVITE_DEFAULT_TTL_MINUTES = 7 * 24 * 60;
 
 export interface InviteView {
   id: string;
@@ -295,7 +295,7 @@ function toInviteView(row: typeof userInvites.$inferSelect): InviteView {
   };
 }
 
-export interface CreateInviteInput {
+interface CreateInviteInput {
   issuer: ScopeIssuer;
   tenant_id: string;
   user_id: string;
@@ -307,7 +307,7 @@ export interface CreateInviteInput {
   actor_kind?: PrincipalKind | "system";
 }
 
-export interface CreateInviteResult {
+interface CreateInviteResult {
   view: InviteView;
   plaintext: string;
 }
@@ -371,7 +371,7 @@ export async function createInvite(
   });
 }
 
-export interface ListInvitesOptions {
+interface ListInvitesOptions {
   status?: "pending" | "redeemed" | "revoked" | "expired";
 }
 
@@ -396,7 +396,7 @@ export async function listInvites(
   });
 }
 
-export interface RevokeInviteInput {
+interface RevokeInviteInput {
   tenant_id: string;
   invite_id: string;
   actor_id: string | null;
@@ -437,14 +437,14 @@ export async function revokeInvite(
   });
 }
 
-export type RedeemInviteError =
+type RedeemInviteError =
   | "invite_invalid"
   | "invite_browser_required"
   | "invite_expired"
   | "invite_revoked"
   | "invite_already_redeemed";
 
-export type RedeemInviteOutcome =
+type RedeemInviteOutcome =
   | {
       ok: true;
       invite_id: string;
@@ -454,7 +454,7 @@ export type RedeemInviteOutcome =
     }
   | { ok: false; code: RedeemInviteError };
 
-export interface RedeemInviteInput {
+interface RedeemInviteInput {
   token: string;
 }
 

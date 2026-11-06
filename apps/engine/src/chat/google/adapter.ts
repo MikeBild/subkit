@@ -23,7 +23,7 @@ import {
   renderOpenDialogCard,
 } from "./cards.ts";
 
-export interface GoogleChatAdapterOptions extends GoogleAuthOptions {
+interface GoogleChatAdapterOptions extends GoogleAuthOptions {
   baseUrl: string;
   jwksUrl?: string;
   issuer?: string;

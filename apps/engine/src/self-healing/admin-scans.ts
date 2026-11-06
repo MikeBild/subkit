@@ -18,28 +18,28 @@ const IDEMPOTENCY_REPLAY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export type SelfHealingScanRow = typeof selfHealingScans.$inferSelect;
 
-export type ScanActor = Pick<ResolvedPrincipal, "tenant_id" | "kind" | "id">;
+type ScanActor = Pick<ResolvedPrincipal, "tenant_id" | "kind" | "id">;
 
-export interface AdminScanInput {
+interface AdminScanInput {
   workflow_id?: string | undefined;
   connector_id?: string | undefined;
   idempotency_key: string | null;
 }
 
-export interface AdminScanCandidate {
+interface AdminScanCandidate {
   id: string;
   signal_type: DriftSignal["kind"];
   classification: ProcessSignalResult["classification"];
   status: ProcessSignalResult["status"];
 }
 
-export interface AdminScanUnanchored {
+interface AdminScanUnanchored {
   signal_type: DriftSignal["kind"];
   reason: "hook_surface_not_supported" | "no_workflow_anchor";
   resource_id: string;
 }
 
-export interface AdminScanCompleted {
+interface AdminScanCompleted {
   scan_id: string;
   signals_detected: number;
   candidates_created: number;
@@ -49,11 +49,11 @@ export interface AdminScanCompleted {
   unanchored: AdminScanUnanchored[];
 }
 
-export type AdminScanOutcome =
+type AdminScanOutcome =
   | { kind: "replay"; scan: SelfHealingScanRow }
   | { kind: "completed"; result: AdminScanCompleted };
 
-export interface ListScansInput {
+interface ListScansInput {
   status?: "running" | "succeeded" | "failed" | undefined;
   source?: "scheduler" | "admin_http" | "mcp" | undefined;
   limit: number;

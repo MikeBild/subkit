@@ -9,7 +9,7 @@ import { log } from "../../logging/logger.ts";
 import type { AnswerActor } from "../answer-actor.ts";
 import { decidedByAuditActor, decidedByFor } from "../decided-by.ts";
 import type { ElicitationBridge } from "../elicitation-bridge.ts";
-import { runLoop } from "../loop.ts";
+import { runLoop } from "../loop/index.ts";
 import { applyElicitationOutcome } from "../persistence/apply-outcome.ts";
 import { isProseQuestionElicitation } from "../prose-question-answer.ts";
 import { elicitationInputForClient } from "../tools/ask-user/commit-intent.ts";

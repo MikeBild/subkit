@@ -194,19 +194,6 @@ export async function builtinRoleId(exec: Executor, name: string): Promise<strin
   return row.id;
 }
 
-export async function findRoleByName(
-  db: Db,
-  tenant_id: string | null,
-  name: string,
-): Promise<RoleRow | null> {
-  const where = tenant_id
-    ? and(eq(rolesTable.tenant_id, tenant_id), eq(rolesTable.name, name))
-    : and(isNull(rolesTable.tenant_id), eq(rolesTable.name, name));
-  // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
-  const rows = await db.select().from(rolesTable).where(where).limit(1);
-  return rows[0] ?? null;
-}
-
 void inArray;
 
 export async function roleMemberCounts(db: Db, tenant_id: string) {

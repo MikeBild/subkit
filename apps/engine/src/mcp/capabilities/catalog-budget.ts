@@ -13,7 +13,7 @@ export function workflowToolName(slug: string): string {
 export const RUN_WORKFLOW_TOOL = "run_workflow";
 export const DEFAULT_PALETTE_LIMIT = 40;
 
-export interface AssembleCatalogParams {
+interface AssembleCatalogParams {
   principal: ResolvedPrincipal;
   readOnly: boolean;
   mode: McpMode;

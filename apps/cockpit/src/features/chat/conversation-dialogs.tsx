@@ -56,7 +56,7 @@ export function useConversationDialogs({
   };
 }
 
-export type ConversationDialogState = ReturnType<typeof useConversationDialogs>;
+type ConversationDialogState = ReturnType<typeof useConversationDialogs>;
 
 export function ConversationDialogs({ dialogs }: { dialogs: ConversationDialogState }) {
   const { t } = useI18n();

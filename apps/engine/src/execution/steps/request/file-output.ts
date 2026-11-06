@@ -12,7 +12,7 @@ import { persistInlineUpload } from "../../../files/persist-inline-upload.ts";
 import { getContext } from "../../../logging/context.ts";
 import { logger } from "../../../logging/logger.ts";
 
-export interface WorkflowFileOutputEnvelope {
+interface WorkflowFileOutputEnvelope {
   file: { $file: string };
   filename: string;
   content_type: string | null;

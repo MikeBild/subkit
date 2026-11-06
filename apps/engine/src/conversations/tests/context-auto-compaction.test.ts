@@ -3,7 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { conversationMessages, conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { countModelMessagesTokens } from "../../llm/accounting/count.ts";
-import { buildModelMessages } from "../persist.ts";
+import { buildModelMessages } from "../persistence/index.ts";
 import { compactConversation } from "../service/compact.ts";
 
 let ctx: TestDb;

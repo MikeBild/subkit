@@ -30,7 +30,7 @@ import type { AppEnv } from "../../openapi.ts";
 
 export const EXTRACT_BODY_CAP_BYTES = 100 * 1024 * 1024;
 
-export const SUPPORTED_FILE_FORMATS = [
+const SUPPORTED_FILE_FORMATS = [
   "json",
   "csv",
   "yaml",
@@ -42,7 +42,7 @@ export const SUPPORTED_FILE_FORMATS = [
   "xls",
   "pptx",
 ] as const;
-export type SupportedFileFormat = (typeof SUPPORTED_FILE_FORMATS)[number];
+type SupportedFileFormat = (typeof SUPPORTED_FILE_FORMATS)[number];
 
 const AUDITED_BINARY_FORMATS: ReadonlySet<string> = BINARY_FORMATS;
 

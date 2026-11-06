@@ -9,7 +9,7 @@ const SIGNING_HEADERS: Record<string, readonly string[]> = {
   stripe: ["stripe-signature"],
 };
 
-export interface InboundHookSigning {
+interface InboundHookSigning {
   signed: boolean;
   headers: string[];
   hmac: {
@@ -50,7 +50,7 @@ export function describeInboundSigning(
   return { signed: true, headers: [...(SIGNING_HEADERS[verifier] ?? [])], hmac: null };
 }
 
-export interface WorkflowInboundHookView extends InboundHookSigning {
+interface WorkflowInboundHookView extends InboundHookSigning {
   slug: string;
   verifier: string;
   state: "active" | "inactive" | "held";

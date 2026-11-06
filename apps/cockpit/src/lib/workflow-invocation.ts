@@ -20,7 +20,7 @@ export type WorkflowInvocation = components["schemas"]["WorkflowInvocation"] & {
   start_access?: WorkflowStartAccess;
 };
 export type InvocationHook = NonNullable<WorkflowInvocation["hooks"]>[number];
-export type InvocationSchedule = NonNullable<WorkflowInvocation["schedules"]>[number];
+type InvocationSchedule = NonNullable<WorkflowInvocation["schedules"]>[number];
 
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -57,7 +57,7 @@ export function hiddenInvocationKey(
   return null;
 }
 
-export type CallVerdict = "refused" | "live" | "preview" | "unconfirmed";
+type CallVerdict = "refused" | "live" | "preview" | "unconfirmed";
 
 export function callVerdict(
   invocation: Pick<WorkflowInvocation, "authority" | "invalid">,

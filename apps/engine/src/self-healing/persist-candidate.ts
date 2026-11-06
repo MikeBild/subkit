@@ -8,7 +8,7 @@ import { log } from "../logging/logger.ts";
 import { recordPatchCandidate } from "../observability/instrumentation.ts";
 import { closeIfUndecidable } from "./open-decisions.ts";
 
-export interface PersistPatchCandidateInput {
+interface PersistPatchCandidateInput {
   tenant_id: string;
   workflow_id: string;
   connector_id: string | null;
@@ -80,7 +80,7 @@ export const NOT_REPAIRABLE_REASON = "not_repairable";
 export const NOT_REPAIRABLE_NEXT_STEP =
   "Open the affected workflow step, compare its field paths with the recorded response shape, then edit the workflow or record a fresh response shape.";
 
-export interface PersistNotRepairableInput {
+interface PersistNotRepairableInput {
   tenant_id: string;
   workflow_id: string;
   connector_id: string | null;

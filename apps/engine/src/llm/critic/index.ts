@@ -12,8 +12,6 @@ import {
   toolResultIds,
 } from "./tool-claims.ts";
 
-export type CriticKind = "save_workflow_draft" | "chat";
-
 export type CriticArtifact =
   | { kind: "save_workflow_draft"; payload: SaveWorkflowDraftArtifact }
   | { kind: "chat"; payload: string };
@@ -26,7 +24,7 @@ export interface CriticVerdict {
   checks?: Record<string, boolean>;
 }
 
-export interface RunCriticParams {
+interface RunCriticParams {
   artifact: CriticArtifact;
   snapshot?: string;
   runtimeContext?: { engine_url?: string; tenant_slug?: string };

@@ -1,7 +1,7 @@
 import { type Clock, SYSTEM_CLOCK } from "../../clock.ts";
 import type { RequestMeta, RequestPaginationSummary, StepResult } from "../../types.ts";
 
-export interface GraphqlCursorPagination {
+interface GraphqlCursorPagination {
   connection_path: string;
   cursor_variable: string;
   items_field: "nodes" | "edges";

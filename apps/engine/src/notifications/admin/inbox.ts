@@ -4,14 +4,14 @@ import type { Db } from "../../db/client.ts";
 import { cliNotificationInbox, cliNotificationInboxReads } from "../../db/schema/notifications.ts";
 import { auditedBy, type NotificationActor } from "./actor.ts";
 
-export interface InboxListInput {
+interface InboxListInput {
   since: number;
   limit: number;
   unread_only?: boolean | undefined;
   actionable_only?: boolean | undefined;
 }
 
-export interface InboxRow {
+interface InboxRow {
   id: number;
   severity: string;
   event_type: string;
@@ -23,7 +23,7 @@ export interface InboxRow {
   read_at: Date | null;
 }
 
-export interface InboxPage {
+interface InboxPage {
   rows: InboxRow[];
   unread: number;
   actionable_unread: number;

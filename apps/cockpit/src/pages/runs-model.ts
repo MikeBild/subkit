@@ -153,7 +153,7 @@ export function previewText(value: unknown): string | null {
 
 export type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
-export type TranslatePlural = (
+type TranslatePlural = (
   key: PluralKey,
   count: number,
   values?: Record<string, string | number>,
@@ -203,7 +203,7 @@ const VERIFICATION_KEYS = {
   external_bearer: "runs.caller.method.external_bearer",
 } as const satisfies Record<string, TranslationKey>;
 
-export type RunCaller = {
+type RunCaller = {
   who: string;
   channel: string | null;
   state: "verified" | "automatic" | "unknown";
@@ -444,15 +444,15 @@ export function payloadEvidence<T extends StepLike>(
 
 export const FAILED_RUN_STATUSES: ReadonlySet<string> = new Set(["failed", "timed_out", "aborted"]);
 
-export interface RunVerdict {
+interface RunVerdict {
   label: string;
   tone: "critical" | "warning" | null;
   truncated?: true;
 }
 
-export type PaginationLimit = "max_pages" | "max_items" | "max_bytes";
+type PaginationLimit = "max_pages" | "max_items" | "max_bytes";
 
-export interface TruncatedStep {
+interface TruncatedStep {
   step: string;
   limit: PaginationLimit | null;
 }

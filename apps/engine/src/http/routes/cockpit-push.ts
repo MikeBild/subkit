@@ -117,7 +117,7 @@ const deleteRoute = createRoute({
   },
 });
 
-export type ResolveCockpitPushContext = (
+type ResolveCockpitPushContext = (
   db: Db,
   request: Request,
   principal: ReturnType<typeof requireAuth>,

@@ -42,7 +42,7 @@ export {
 } from "./authoring-cards-reauth.tsx";
 export { __testHooks, isPolicyGatePending } from "./authoring-cards-shared.tsx";
 
-export type AuthoringCardMode = "chat" | "inspect";
+type AuthoringCardMode = "chat" | "inspect";
 
 const SaveResultCard: React.FC<CardProps> = memo(({ call }) => {
   const tone = statusTone(call);
@@ -266,7 +266,7 @@ const ExecutionDiagnosisCard: React.FC<CardProps> = memo(({ call }) => {
 });
 ExecutionDiagnosisCard.displayName = "ExecutionDiagnosisCard";
 
-export interface ResumeSummaryProps {
+interface ResumeSummaryProps {
   active_target: {
     kind: "connector" | "workflow" | "none";
     name: string | null;

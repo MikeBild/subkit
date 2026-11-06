@@ -4,7 +4,7 @@ import type { ChatAdapter } from "../adapter.ts";
 import type { ApprovalCard, ChatDelivery, ChatEvent, VerifiedEvent } from "../types.ts";
 import { TeamsAuth, type TeamsAuthOptions } from "./auth.ts";
 
-export interface TeamsAdapterOptions extends TeamsAuthOptions {
+interface TeamsAdapterOptions extends TeamsAuthOptions {
   serviceUrl: string;
   jwksUrl?: string;
   issuer?: string;

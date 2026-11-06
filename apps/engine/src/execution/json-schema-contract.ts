@@ -1,11 +1,11 @@
 import Ajv, { type ValidateFunction } from "ajv";
 
-export interface JsonSchemaViolation {
+interface JsonSchemaViolation {
   path: string;
   message: string;
 }
 
-export type JsonSchemaCheck =
+type JsonSchemaCheck =
   | { ok: true; valid: true }
   | { ok: true; valid: false; violations: JsonSchemaViolation[] }
   | { ok: false; schema_error: string };

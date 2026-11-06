@@ -87,7 +87,7 @@ interface Asset {
   etag: string;
 }
 
-export type CockpitFiles = (relativePath: string) => Uint8Array | null;
+type CockpitFiles = (relativePath: string) => Uint8Array | null;
 
 function embeddedCockpit(): Readonly<Record<string, string>> {
   try {

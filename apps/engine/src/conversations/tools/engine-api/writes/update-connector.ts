@@ -1,5 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { translateAutoPersistError } from "../../../persistence/auto-persist.ts";
+import { translateAutoPersistError } from "../../../persistence/auto-persist/index.ts";
 import type { ConversationTool } from "../../index.ts";
 
 const UpdateConnectorInput = z

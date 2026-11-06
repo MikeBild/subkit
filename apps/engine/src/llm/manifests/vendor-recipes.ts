@@ -7,7 +7,7 @@ import codex from "../../conversations/seed/vendor-recipes/codex.json" with { ty
 import type { Db } from "../../db/client.ts";
 import { vendorRecipeOverrides } from "../../db/schema/index.ts";
 
-export const VendorRecipeSchema = z
+const VendorRecipeSchema = z
   .object({
     client: z.string().min(1).max(80),
     verified_at: z.string().regex(/^\d{4}-\d{2}-\d{2}/),
@@ -19,9 +19,9 @@ export const VendorRecipeSchema = z
   })
   .openapi("VendorRecipe");
 
-export type VendorRecipe = z.infer<typeof VendorRecipeSchema>;
+type VendorRecipe = z.infer<typeof VendorRecipeSchema>;
 
-export interface VendorRecipeFreshness {
+interface VendorRecipeFreshness {
   recipe: VendorRecipe;
   age_days: number;
   status: "fresh" | "warn" | "stale";

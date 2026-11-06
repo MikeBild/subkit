@@ -8,14 +8,14 @@ import { ingestMarkdown } from "./sources/markdown.ts";
 import { ingestOpenAPIUrl } from "./sources/openapi.ts";
 import type { BudgetState, DocSourceType, RawChunk } from "./types.ts";
 
-export interface CascadeAttempt {
+interface CascadeAttempt {
   source: DocSourceType;
   uri: string;
   status: "ok" | "not_found" | "error";
   reason?: string;
 }
 
-export interface CascadeResult {
+interface CascadeResult {
   winning_source: DocSourceType | null;
   source_uri: string | null;
   chunks: RawChunk[];
@@ -23,7 +23,7 @@ export interface CascadeResult {
   budget_state: BudgetState;
 }
 
-export interface CascadeInput {
+interface CascadeInput {
   base_url: string;
   fetchImpl?: typeof fetch;
   state?: BudgetState;

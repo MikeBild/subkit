@@ -7,7 +7,7 @@ import {
   withConnectorInspection,
   withConnectorProbe,
   withConnectorValidation,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import { saveConnectorAtomic } from "../persistence/save-connector.ts";
 import type { ToolContext } from "../tools/index.ts";

@@ -26,30 +26,6 @@ export const AGENT_SKILL_NAMES = [
 
 export type AgentSkillName = (typeof AGENT_SKILL_NAMES)[number];
 
-export const AGENT_SKILL_INDEX: Record<AgentSkillName, string> = {
-  "turn-one-discipline":
-    "Answer-before-action, no-fabrication, snapshot-before-list, one tenant_write per turn",
-  "turn-rhythm-and-language":
-    "One plan-or-result per turn, single trailing question, mirror user's language",
-  "chat-first-contract":
-    "The chat IS the operator surface — never delegate to a CLI or external terminal",
-  "confirmation-discipline":
-    "Single confirmation gate, no prose double-asks, auto mode skips ask_user_confirm",
-  "conversational-authoring":
-    "Ideal user flow, conversational stage signals, silent skill use, audit_log surfacing",
-  "workflow-step-kinds":
-    "Eight step kinds, required fields per kind, banned namespaces (no `type`, no trigger.*)",
-  "placeholder-rules":
-    "$" +
-    "{cred|connector|input|scope|caller.*} placeholder grammar, trusted caller identity, run-warnings repair routine",
-  "attachment-handling":
-    "$file refs resolve before tool dispatch, never paste raw file content into chat",
-  "error-recovery-and-rbac":
-    "Typed tool error codes, recovery routine, RBAC denial handling, interactionLog reading",
-  "tenant-cleanup-and-product-help":
-    "Cleanup tools (delete_*/revoke_*), no-fabrication of UIs, OpenAPI/MCP/Chat product facts",
-};
-
 const AGENT_SKILL_BODIES: Record<AgentSkillName, string> = {
   "turn-one-discipline": turnOneDiscipline,
   "turn-rhythm-and-language": turnRhythmAndLanguage,

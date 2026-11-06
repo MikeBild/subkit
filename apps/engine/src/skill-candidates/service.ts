@@ -128,7 +128,7 @@ export async function getSkillCandidate(
   return toView(rows[0], counts.get(rows[0].id) ?? 0);
 }
 
-export interface SkillCandidateReviewSubject {
+interface SkillCandidateReviewSubject {
   id: string;
   title: string;
   status: SkillCandidateStatus;
@@ -191,7 +191,7 @@ export async function getSkillCandidateEvidence(
   }));
 }
 
-export type UpsertCandidateResult = {
+type UpsertCandidateResult = {
   action: "proposed" | "recorded" | "updated" | "skipped";
   candidate_id: string | null;
 };
@@ -492,10 +492,7 @@ export async function runPatternAnalysis(
   };
 }
 
-export type SkillCandidateApprovalFailure =
-  | "not_found"
-  | "already_decided"
-  | "changed_since_review";
+type SkillCandidateApprovalFailure = "not_found" | "already_decided" | "changed_since_review";
 
 export function approvalFailureOf(
   current: Pick<SkillCandidateView, "status" | "pattern_kind"> | null,
@@ -509,7 +506,7 @@ export function approvalFailureOf(
   return current.status === "proposed" ? "changed_since_review" : "already_decided";
 }
 
-export interface ApproveSkillCandidateResult {
+interface ApproveSkillCandidateResult {
   candidate: SkillCandidateView;
   skill_id: string;
 }
@@ -655,7 +652,7 @@ export async function approveSkillCandidate(
   return { candidate: out.candidate, skill_id: out.skill_id };
 }
 
-export type RejectSkillCandidateOutcome =
+type RejectSkillCandidateOutcome =
   | { kind: "rejected" }
   | { kind: "not_found" }
   | { kind: "already_decided"; status: SkillCandidateStatus };

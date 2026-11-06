@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-export interface SkSettings {
+interface SkSettings {
   model?: string;
   defaultTenant?: string;
   additionalDirectories?: string[];
@@ -21,14 +21,14 @@ export interface SkSettings {
   nextCommandPreviewEnabled?: boolean;
 }
 
-export const DEFAULTS: SkSettings = {
+const DEFAULTS: SkSettings = {
   statusLine: { showTokens: true, showPersona: true, showCost: false },
   includeMemoryFile: true,
   maxInlineMentionBytes: 262144,
   nextCommandPreviewEnabled: true,
 };
 
-export interface LoadSettingsResult {
+interface LoadSettingsResult {
   merged: SkSettings;
   sources: string[];
 }
@@ -42,7 +42,7 @@ function readJson(path: string): Record<string, unknown> | null {
   }
 }
 
-export function userSettingsPath(): string {
+function userSettingsPath(): string {
   return join(homedir(), ".sk", "settings.json");
 }
 

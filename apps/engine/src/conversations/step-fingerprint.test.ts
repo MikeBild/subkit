@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { withLatestPreview, withWorkflowDraft } from "./authoring-state.ts";
+import { withLatestPreview, withWorkflowDraft } from "./authoring-state/index.ts";
 import { pruneTracesForMutation, stepFingerprint } from "./step-fingerprint.ts";
 import type { DraftDocument, WorkflowDraftStepPreview } from "./types.ts";
 

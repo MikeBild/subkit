@@ -24,7 +24,7 @@ export type WorkflowCommand =
   | RotateVersion
   | RestoreVersion;
 
-export type WorkflowCommandType = WorkflowCommand["type"];
+type WorkflowCommandType = WorkflowCommand["type"];
 
 export const WORKFLOW_COMMAND_TYPES = [
   "CreateWorkflow",
@@ -47,7 +47,7 @@ export const WORKFLOW_TRANSITIONS: Readonly<
   archived: ["SaveDraft", "RestoreWorkflow", "RotateVersion", "RestoreVersion"],
 };
 
-export type WorkflowEvent =
+type WorkflowEvent =
   | {
       type: "WorkflowCreated";
       lifecycle: "active" | "draft";
@@ -61,7 +61,7 @@ export type WorkflowEvent =
   | { type: "VersionRotated"; current_version_id: string }
   | { type: "VersionRestored"; current_version_id: string };
 
-export interface LifecycleRejection {
+interface LifecycleRejection {
   code: "lifecycle_transition_not_allowed";
   from: WorkflowStatus;
   command: WorkflowCommandType;

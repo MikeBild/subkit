@@ -9,7 +9,7 @@ import { debugLog, serializeDebugError } from "../debug.ts";
 import type { EngineClient } from "../engine-client.ts";
 import type { PersonaProbe } from "../slash.ts";
 
-export const PERSISTED_SNAPSHOT_VERSION = 3 as const;
+const PERSISTED_SNAPSHOT_VERSION = 3 as const;
 
 export function fingerprintApiKey(apiKey: string | undefined): string {
   return createHash("sha256")
@@ -18,7 +18,7 @@ export function fingerprintApiKey(apiKey: string | undefined): string {
     .slice(0, 16);
 }
 
-export function bootstrapCacheKey(profile: ResolvedProfile): {
+function bootstrapCacheKey(profile: ResolvedProfile): {
   engineSlug: string;
   tenantSlug: string;
   tokenFp: string;
@@ -173,7 +173,7 @@ function materialize(
   };
 }
 
-export const DEFAULT_SK_PREFS: SkBootstrapWireResponse["prefs"] = {
+const DEFAULT_SK_PREFS: SkBootstrapWireResponse["prefs"] = {
   permissionMode: "ask",
   theme: "auto",
   personality: "balanced",

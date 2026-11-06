@@ -89,7 +89,7 @@ export const PreparedRequestProofSchema = z
     max_attempts: z.number().int().min(1).max(20),
   })
   .strict();
-export type PreparedRequestProof = z.infer<typeof PreparedRequestProofSchema>;
+type PreparedRequestProof = z.infer<typeof PreparedRequestProofSchema>;
 
 export const PreparedRequestReviewSchema = z
   .object({

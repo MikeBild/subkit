@@ -7,24 +7,24 @@ import { type OutboxChannel, writeEvent } from "../../db/events.ts";
 import { events } from "../../db/schema/index.ts";
 import { fanoutEvent } from "../outbound/fanout.ts";
 
-export type OutboxEventRow = typeof events.$inferSelect;
+type OutboxEventRow = typeof events.$inferSelect;
 
-export interface OutboxFilter {
+interface OutboxFilter {
   channel?: string | null | undefined;
   type?: string | null | undefined;
 }
 
-export interface OutboxStreamFilter extends OutboxFilter {
+interface OutboxStreamFilter extends OutboxFilter {
   execution_id?: string | null | undefined;
 }
 
-export interface EmitOutboxEventInput {
+interface EmitOutboxEventInput {
   type: string;
   payload: Record<string, unknown>;
   channel: OutboxChannel;
 }
 
-export type OutboxActor = Pick<ResolvedPrincipal, "tenant_id" | "kind" | "id">;
+type OutboxActor = Pick<ResolvedPrincipal, "tenant_id" | "kind" | "id">;
 
 export function outboxTenantConds(tenantId: string, filter: OutboxStreamFilter): SQL[] {
   const tenantConds = [eq(events.tenant_id, tenantId)];

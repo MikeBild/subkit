@@ -15,7 +15,7 @@ import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sou
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
-import { createEmptyDraftDocument } from "../authoring-state.ts";
+import { createEmptyDraftDocument } from "../authoring-state/index.ts";
 
 let http: HttpTestServer;
 let connectorId: string;

@@ -125,7 +125,7 @@ const AREA_EXPERT_SECTION: Readonly<Record<SettingAreaId, string>> = {
   operations: "server",
 };
 
-export function areaExpertHref(area: SettingAreaId): string {
+function areaExpertHref(area: SettingAreaId): string {
   return settingsHref(null, { section: AREA_EXPERT_SECTION[area] });
 }
 

@@ -12,7 +12,7 @@ export interface AliasScope {
   rules: readonly AliasRule[];
 }
 
-export const TEST_FILE = /\.(?:test|spec)\.(?:ts|tsx|js|jsx)$/;
+const TEST_FILE = /\.(?:test|spec)\.(?:ts|tsx|js|jsx)$/;
 
 export function isTestFile(path: string): boolean {
   return TEST_FILE.test(path);
@@ -76,7 +76,7 @@ export function resolveSpecifier(
   return candidates.find((c) => exists(c)) ?? candidates[0] ?? specifier;
 }
 
-export type ReverseGraph = ReadonlyMap<string, ReadonlySet<string>>;
+type ReverseGraph = ReadonlyMap<string, ReadonlySet<string>>;
 
 export function buildReverseGraph(
   files: readonly string[],
@@ -126,9 +126,20 @@ export function colocatedTests(module: string, testFiles: readonly string[]): st
   );
 }
 
-export interface Selection {
+interface Selection {
   tests: string[];
   reasons: Map<string, string>;
+}
+
+export function sourceReferenceKey(path: string): string {
+  const parts = path.split("/");
+  const base = parts.at(-1) ?? path;
+  return base === "index.ts" || base === "index.tsx" ? parts.slice(-2).join("/") : base;
+}
+
+export function referencesSource(testText: string, path: string): boolean {
+  const key = sourceReferenceKey(path).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`["'\`/]${key}["'\`]`).test(testText);
 }
 
 export function selectAffected(input: {
@@ -136,6 +147,7 @@ export function selectAffected(input: {
   testFiles: readonly string[];
   reverse: ReverseGraph;
   depth: number;
+  testText?: (test: string) => string;
 }): Selection {
   const tests = new Set(input.testFiles);
   const reasons = new Map<string, string>();
@@ -145,6 +157,14 @@ export function selectAffected(input: {
   for (const path of input.changed) {
     if (isTestFile(path)) add(path, "changed");
     else for (const t of colocatedTests(path, input.testFiles)) add(t, `colocated with ${path}`);
+  }
+  if (input.testText) {
+    const sources = input.changed.filter((path) => !isTestFile(path));
+    for (const test of input.testFiles) {
+      const text = input.testText(test);
+      for (const path of sources)
+        if (referencesSource(text, path)) add(test, `reads ${path} as text`);
+    }
   }
   let frontier = new Map<string, string>();
   for (const path of input.changed) for (const v of pathVariants(path)) frontier.set(v, path);
@@ -190,7 +210,7 @@ export async function runPool<T, R>(
   return results;
 }
 
-export interface AffectedArgs {
+interface AffectedArgs {
   list: boolean;
   depth: number;
   workers: number;

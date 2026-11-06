@@ -2,7 +2,7 @@ import type { Executor } from "../../db/client.ts";
 import { listKnowledgeChunks } from "../../knowledge/bundle-service.ts";
 import type { KnowledgeSourceView } from "../../knowledge/types.ts";
 
-export const KNOWLEDGE_READ_MAX_BYTES = 1024 * 1024;
+const KNOWLEDGE_READ_MAX_BYTES = 1024 * 1024;
 
 export async function renderKnowledgeResourceText(
   ks: KnowledgeSourceView,

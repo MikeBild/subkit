@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { PER_PAGE_BYTES } from "./budgets.ts";
 import type { FingerprintedChunk, RawChunk } from "./types.ts";
 
-export const CHUNK_TARGET_BYTES = 32 * 1024;
-export const CHUNK_HARD_BYTES = PER_PAGE_BYTES;
+const CHUNK_TARGET_BYTES = 32 * 1024;
+const CHUNK_HARD_BYTES = PER_PAGE_BYTES;
 
 export function canonicalize(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
@@ -24,7 +24,7 @@ export function shingles(text: string, n = 5): Set<number> {
   return out;
 }
 
-export function fnv1a32(s: string): number {
+function fnv1a32(s: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i += 1) {
     h ^= s.charCodeAt(i);
@@ -37,7 +37,7 @@ export function fingerprint(text: string): string {
   return createHash("sha256").update(canonicalize(text)).digest("hex").slice(0, 32);
 }
 
-export function splitByBudget(text: string, budget = CHUNK_TARGET_BYTES): string[] {
+function splitByBudget(text: string, budget = CHUNK_TARGET_BYTES): string[] {
   if (byteLen(text) <= budget) return [text];
   const out: string[] = [];
   const paragraphs = text.split(/\n{2,}/);
@@ -120,7 +120,7 @@ export function fingerprintChunks(
   return out;
 }
 
-export function trimToBytes(s: string, cap: number): string {
+function trimToBytes(s: string, cap: number): string {
   if (byteLen(s) <= cap) return s;
   let approx = Math.min(s.length, cap);
   while (approx > 0) {

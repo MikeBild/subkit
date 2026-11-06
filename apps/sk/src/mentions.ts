@@ -3,7 +3,7 @@ import { isAbsolute, relative, resolve } from "node:path";
 import type { ConversationReferenceType } from "@shared/conversation-reference.ts";
 import type { EngineClient } from "./engine-client.ts";
 
-export interface MentionResolveOptions {
+interface MentionResolveOptions {
   cwd?: string;
   additionalDirectories?: string[];
   maxBytes?: number;
@@ -16,7 +16,7 @@ export interface ConversationReference {
   label: string;
 }
 
-export interface ResolvedMentions {
+interface ResolvedMentions {
   prompt: string;
   artifacts: Array<{ mention: string; title: string; body: string }>;
   references: ConversationReference[];

@@ -5,7 +5,7 @@ import type { PermissionMode } from "../repl/status-line/render.ts";
 const YOLO_MAX_TURNS = 10;
 const YOLO_MAX_DURATION_MS = 10 * 60 * 1000;
 
-export interface YoloApi {
+interface YoloApi {
   activeMode: PermissionMode;
   setActiveMode: React.Dispatch<React.SetStateAction<PermissionMode>>;
   awaitingYoloArm: boolean;

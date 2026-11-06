@@ -9,7 +9,7 @@ export interface TableSelection<TData> {
   bar?: ReactNode;
 }
 
-export type SelectionState = "none" | "some" | "all";
+type SelectionState = "none" | "some" | "all";
 
 export function selectionState(
   selectable: readonly string[],

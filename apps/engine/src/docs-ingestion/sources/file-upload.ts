@@ -7,7 +7,7 @@ import { byteLen } from "../chunker.ts";
 import { type BinaryFormat, PDF_PAGE_SEPARATOR, parseBinaryFile } from "../parsers/index.ts";
 import type { RawChunk } from "../types.ts";
 
-export type FileUploadFormat =
+type FileUploadFormat =
   | "json"
   | "yaml"
   | "csv"
@@ -30,7 +30,7 @@ export interface FileUploadInput {
   mime?: string;
 }
 
-export interface FileUploadResult {
+interface FileUploadResult {
   format: FileUploadFormat;
   uri: string;
   raw_bytes: number;

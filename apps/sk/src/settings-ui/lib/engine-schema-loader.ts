@@ -16,7 +16,7 @@ export interface EngineSchemaSource {
   fetchDescriptor: (schemaName: string) => Promise<EngineSchemaDescriptor>;
 }
 
-export class EngineSchemaError extends Error {
+class EngineSchemaError extends Error {
   readonly field: string;
   readonly reason: "empty_enum_values" | "unknown_field_type";
   constructor(field: string, reason: "empty_enum_values" | "unknown_field_type", message: string) {

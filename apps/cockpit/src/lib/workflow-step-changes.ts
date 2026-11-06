@@ -1,5 +1,6 @@
 import { sameJsonValue } from "./json-value";
-export interface StepChanges {
+
+interface StepChanges {
   added: number;
   removed: number;
   changed: number;

@@ -25,7 +25,7 @@ import { log, logger } from "../../logging/logger.ts";
 import { tryAcquire } from "../../notifications/rate-limit.ts";
 import { CHAT_EVENT_QUEUE, type ChatEventJob } from "../queues.ts";
 
-export interface RegisterChatEventOptions {
+interface RegisterChatEventOptions {
   boss: PgBoss;
   db: Db;
   chatRegistry: ChatAdapterRegistry;

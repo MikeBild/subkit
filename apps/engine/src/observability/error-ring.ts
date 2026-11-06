@@ -14,7 +14,7 @@ export interface CapturedError {
   bucket: "unhandled" | "llm_provider" | "llm_no_object" | "llm_timeout" | "llm_quota" | "http";
 }
 
-export interface ErrorRing {
+interface ErrorRing {
   record(entry: CapturedError): void;
   tail(opts?: {
     limit?: number;

@@ -237,7 +237,7 @@ function actionLabel(action: string, t: ReturnType<typeof useI18n>["t"]): string
   const label = auditActionLabel(action);
   return label.kind === "named" ? t(label.key) : t("audit.action.other");
 }
-export function changeFieldLabel(field: string, t: ReturnType<typeof useI18n>["t"]): string {
+function changeFieldLabel(field: string, t: ReturnType<typeof useI18n>["t"]): string {
   if (field === "name" || field === "display_name" || field === "title")
     return t("audit.meta.name");
   if (field === "status") return t("audit.meta.status");

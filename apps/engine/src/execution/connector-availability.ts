@@ -73,7 +73,7 @@ export function disabledConnectorRefusal(
   };
 }
 
-export const CONNECTOR_ENVIRONMENT_MISMATCH_CODE = "connector_environment_mismatch";
+const CONNECTOR_ENVIRONMENT_MISMATCH_CODE = "connector_environment_mismatch";
 
 export function environmentMismatchRefusal(
   connector: Pick<ConnectorView, "slug" | "environment" | "base_url">,

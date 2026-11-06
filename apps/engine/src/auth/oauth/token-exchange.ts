@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import * as jose from "jose";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
-import { type Db, getDb } from "../../db/client.ts";
+import type { Db } from "../../db/client.ts";
 import { apiKeys } from "../../db/schema/index.ts";
 import { env } from "../../env.ts";
 import { assertTenantActive, SelfServiceIdentityError } from "../../identity/index.ts";
@@ -24,7 +24,7 @@ export const API_KEY_TOKEN_TYPE = "urn:subkit:params:oauth:token-type:api-key";
 export const ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
 export const TOKEN_EXCHANGE_DEFAULT_TTL_SECONDS = 900;
 export const TOKEN_EXCHANGE_MAX_TTL_SECONDS = 3600;
-export const WORKFLOW_SCOPE_PREFIX = "workflow:";
+const WORKFLOW_SCOPE_PREFIX = "workflow:";
 
 const JWT_TYP = "subkit-tx+jwt";
 const JWT_ALG = "HS256";
@@ -62,12 +62,12 @@ export function resolveTtlSeconds(requested: number | string | undefined): numbe
   return Math.min(n, TOKEN_EXCHANGE_MAX_TTL_SECONDS);
 }
 
-export interface KeyGrants {
+interface KeyGrants {
   scopes: string[];
   allowed_workflows?: AllowList;
 }
 
-export interface NarrowedGrants {
+interface NarrowedGrants {
   scopes: string[];
   allowed_workflows?: string[];
 }
@@ -104,7 +104,7 @@ export function narrowGrants(requested: string[], key: KeyGrants): NarrowedGrant
   };
 }
 
-export interface ExchangedTokenClaims extends jose.JWTPayload {
+interface ExchangedTokenClaims extends jose.JWTPayload {
   tenant_id: string;
   api_key_id: string;
   key_version: string;
@@ -112,8 +112,8 @@ export interface ExchangedTokenClaims extends jose.JWTPayload {
   allowed_workflows?: string[];
 }
 
-export interface TokenExchangeRequest {
-  db?: Db;
+interface TokenExchangeRequest {
+  db: Db;
   subjectToken: string;
   subjectTokenType: string;
   scope?: string | undefined;
@@ -122,7 +122,7 @@ export interface TokenExchangeRequest {
   req?: Request | null;
 }
 
-export interface TokenExchangeResponse {
+interface TokenExchangeResponse {
   access_token: string;
   issued_token_type: typeof ACCESS_TOKEN_TYPE;
   token_type: "Bearer";
@@ -142,7 +142,7 @@ export async function exchangeApiKeyForToken(
   const ttl = resolveTtlSeconds(input.ttl);
   const requested = parseScopeParam(input.scope);
 
-  const db = input.db ?? getDb();
+  const db = input.db;
   const row = await matchApiKeyRow(db, input.subjectToken, input.req ?? null, PROVIDER);
   if (!row) throw new TokenExchangeError("invalid_grant", "api key not accepted");
   const principal = await resolvePrincipalFromApiKeyRow(db, row, { provider: PROVIDER });
@@ -264,11 +264,11 @@ export function applyTokenGrants(
   return principal;
 }
 
-export interface TokenExchangeProviderOptions {
-  db?: Db;
+interface TokenExchangeProviderOptions {
+  db: Db;
 }
 
-export function createTokenExchangeProvider(opts: TokenExchangeProviderOptions = {}): AuthProvider {
+export function createTokenExchangeProvider(opts: TokenExchangeProviderOptions): AuthProvider {
   return {
     name: PROVIDER,
     capabilities: { human: false, machine: true, interactive: false, refresh: false, revoke: true },
@@ -280,7 +280,7 @@ export function createTokenExchangeProvider(opts: TokenExchangeProviderOptions =
         log.auth.denied({ provider: PROVIDER, reason: "token_invalid_or_expired" });
         return null;
       }
-      const db = opts.db ?? getDb();
+      const db = opts.db;
       const rows = await db
         .select()
         .from(apiKeys)

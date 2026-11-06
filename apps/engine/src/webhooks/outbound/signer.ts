@@ -1,13 +1,13 @@
 import { createHmac } from "node:crypto";
 
-export interface SignedEnvelope {
+interface SignedEnvelope {
   webhook_id: string;
   timestamp: string;
   body: string;
   signature: string;
 }
 
-export interface SignOptions {
+interface SignOptions {
   webhook_id: string;
   timestamp: number;
   body: string;
@@ -52,7 +52,7 @@ export function verifySignatureHeader(header: string, base: string, secrets: str
   return false;
 }
 
-export function constantTimeEqual(a: string, b: string): boolean {
+function constantTimeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
   for (let i = 0; i < a.length; i += 1) {

@@ -38,7 +38,7 @@ export interface ScheduleRow {
   updated_at: Date;
 }
 
-export interface CreateScheduleInput {
+interface CreateScheduleInput {
   tenant_id: string;
   workflow_id: string;
   cron: string;
@@ -48,7 +48,7 @@ export interface CreateScheduleInput {
   paused?: boolean;
 }
 
-export type CreateScheduleOutcome = {
+type CreateScheduleOutcome = {
   status: "created" | "updated";
   row: ScheduleRow;
 };
@@ -251,7 +251,7 @@ export async function getSchedule(
   return (rows[0] as ScheduleRow | undefined) ?? null;
 }
 
-export interface UpdateScheduleInput {
+interface UpdateScheduleInput {
   cron?: string;
   timezone?: string;
   execution_mode?: "dev" | "prod";
@@ -323,7 +323,7 @@ export async function deleteSchedule(db: Db, tenant_id: string, id: string): Pro
   return rows.length > 0;
 }
 
-export interface BindScheduleFromWorkflowInput {
+interface BindScheduleFromWorkflowInput {
   tenant_id: string;
   workflow_id: string;
   trigger: ScheduleTrigger;
@@ -331,7 +331,7 @@ export interface BindScheduleFromWorkflowInput {
   actor_type?: AuditActorType;
 }
 
-export type BindScheduleOutcome =
+type BindScheduleOutcome =
   | { status: "created"; row: ScheduleRow }
   | { status: "updated"; row: ScheduleRow }
   | { status: "noop"; row: ScheduleRow };

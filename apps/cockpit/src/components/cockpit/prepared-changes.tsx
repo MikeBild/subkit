@@ -10,7 +10,7 @@ import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { settingLabel } from "@/pages/settings-model";
 
-export type PreparedChange = {
+type PreparedChange = {
   name: string;
   version: number;
   reference: string;
@@ -27,7 +27,7 @@ interface ApprovalOutcome {
 
 const QUERY_KEY = ["admin", "prepared-changes"] as const;
 
-export function preparedChangeTarget(name: string): string {
+function preparedChangeTarget(name: string): string {
   return name.replace(/^settings\./, "").replace(/^tenants\.[^.]+\.settings\./, "");
 }
 

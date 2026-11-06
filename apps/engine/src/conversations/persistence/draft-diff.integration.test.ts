@@ -16,13 +16,13 @@ import {
   withWorkflowDraft,
   withWorkflowInspection,
   withWorkflowValidation,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import { appendSnapshot } from "../draft.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../tests/setup.ts";
 import { updateWorkflowTool } from "../tools/engine-api/writes/update-workflow.ts";
 import type { ToolContext } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
-import { maybeAutoPersistFromElicitation } from "./auto-persist.ts";
+import { maybeAutoPersistFromElicitation } from "./auto-persist/index.ts";
 import { commitWorkflowAtomic } from "./commit-workflow.ts";
 import { classifyDraftVsPersisted } from "./draft-diff.ts";
 

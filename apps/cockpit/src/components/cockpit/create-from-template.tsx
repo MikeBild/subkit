@@ -50,13 +50,13 @@ type WorkflowDraft = components["schemas"]["WorkflowDraft"];
 type RecipePack = components["schemas"]["RecipePackResponse"];
 type TemplateList = components["schemas"]["ConnectorTemplateListResponse"];
 
-export interface TemplateDetail {
+interface TemplateDetail {
   title: string;
   description: string;
   body: ReactNode;
 }
 
-export interface TemplateFlow {
+interface TemplateFlow {
   list(onPick: (slug: string) => void): ReactNode;
   detail(slug: string): TemplateDetail | null;
   submit(slug: string): void;

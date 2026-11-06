@@ -211,7 +211,7 @@ export function settingFieldValue(
 
 export { sameJsonValue as sameSettingValue } from "@/lib/json-value";
 
-export function settingHasDefault(item: Pick<SettingItem, "meta">): boolean {
+function settingHasDefault(item: Pick<SettingItem, "meta">): boolean {
   return Object.hasOwn(item.meta, "default");
 }
 
@@ -237,7 +237,7 @@ export function settingIsChanged(item: SettingItem): boolean {
   return !sameSettingValue(item.value, item.meta.default);
 }
 
-export function settingDraftText(value: unknown): string {
+function settingDraftText(value: unknown): string {
   if (value === null || value === undefined) return "";
   return typeof value === "string" ? value : JSON.stringify(value);
 }
@@ -321,7 +321,7 @@ export function settingHelpKey(path: string): TranslationKey | null {
 
 export type SettingDraftScope = "global" | "tenant";
 
-export const SETTING_DRAFT_SCOPES: readonly SettingDraftScope[] = ["global", "tenant"];
+const SETTING_DRAFT_SCOPES: readonly SettingDraftScope[] = ["global", "tenant"];
 
 export type SettingDraftTexts = Readonly<Record<string, string>>;
 
@@ -329,7 +329,7 @@ export type SettingDrafts = Readonly<Record<SettingDraftScope, SettingDraftTexts
 
 export const NO_SETTING_DRAFTS: SettingDrafts = { global: {}, tenant: {} };
 
-export function settingDraftScope(
+function settingDraftScope(
   item: Pick<SettingItem, "meta">,
   requested: SettingDraftScope,
 ): SettingDraftScope {
@@ -383,7 +383,7 @@ export function pendingSettingDrafts(
   return { global: keep(drafts.global), tenant: keep(drafts.tenant) };
 }
 
-export interface ChangedSetting {
+interface ChangedSetting {
   item: SettingItem;
   scope: SettingDraftScope;
   text: string;
@@ -412,7 +412,7 @@ export type SettingsPatch =
       tenant_id: string;
     };
 
-export type SettingSecretReferences = Readonly<
+type SettingSecretReferences = Readonly<
   Record<SettingDraftScope, Readonly<Record<string, string>>>
 >;
 

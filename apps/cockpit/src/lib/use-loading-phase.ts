@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
-export type LoadingPhase = "reserve" | "skeleton" | "content";
+type LoadingPhase = "reserve" | "skeleton" | "content";
 
-export const SKELETON_DELAY_MS = 150;
+const SKELETON_DELAY_MS = 150;
 export const SKELETON_MIN_MS = 300;
 
 export function loadingPhase(input: {

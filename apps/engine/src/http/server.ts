@@ -10,7 +10,7 @@ import { AuthProviderRegistry } from "../auth/registry.ts";
 import { ChatAdapterRegistry } from "../chat/registry.ts";
 import { getConfig } from "../config/loader.ts";
 import type { Config } from "../config/schema.ts";
-import type { Db } from "../db/client.ts";
+import { type Db, getDb } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
 import { registerMcpHttpRoutes } from "../mcp/transports/streamable-http.ts";
 import { errorRing } from "../observability/error-ring.ts";
@@ -147,8 +147,27 @@ export interface CreateAppOptions {
   rateLimit?: { max?: number; windowMs?: number };
 }
 
+function lazyDb(): Db {
+  let resolved: Db | null = null;
+  const target = (): Db => {
+    resolved ??= getDb();
+    return resolved;
+  };
+  return new Proxy({} as Db, {
+    get(_shell, prop) {
+      const real = target();
+      const value = Reflect.get(real, prop, real);
+      return typeof value === "function" ? value.bind(real) : value;
+    },
+    has(_shell, prop) {
+      return Reflect.has(target(), prop);
+    },
+  });
+}
+
 export function buildDefaultRegistry(db?: Db, cfg?: Config["auth"]): AuthProviderRegistry {
   const reg = new AuthProviderRegistry();
+  const boundDb = db ?? lazyDb();
 
   let auth = cfg;
   if (!auth) {
@@ -159,19 +178,19 @@ export function buildDefaultRegistry(db?: Db, cfg?: Config["auth"]): AuthProvide
   const enableMcpOAuth = auth?.mcp_oauth.enabled ?? true;
   const registered: string[] = [];
 
-  reg.register(createOidcBearerProvider(db ? { db } : {}));
+  reg.register(createOidcBearerProvider({ db: boundDb }));
   registered.push("oidc_bearer");
   if (enableMcpOAuth) {
-    reg.register(createMcpOAuthAuthProvider(db ? { db } : {}));
+    reg.register(createMcpOAuthAuthProvider({ db: boundDb }));
     registered.push("mcp_oauth");
   }
-  reg.register(createPortalTokenProvider(db ? { db } : {}));
+  reg.register(createPortalTokenProvider({ db: boundDb }));
   registered.push("portal_token");
-  reg.register(createTokenExchangeProvider(db ? { db } : {}));
+  reg.register(createTokenExchangeProvider({ db: boundDb }));
   registered.push("token_exchange");
-  reg.register(createApiKeyProvider(db ? { db } : {}));
+  reg.register(createApiKeyProvider({ db: boundDb }));
   registered.push("api_key");
-  reg.register(createBrowserSessionProvider(db ? { db } : {}));
+  reg.register(createBrowserSessionProvider({ db: boundDb }));
   registered.push("browser_session");
 
   logger.info({

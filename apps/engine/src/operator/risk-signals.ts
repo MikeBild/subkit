@@ -33,7 +33,7 @@ function sortBySeverity(a: RiskSignal, b: RiskSignal): number {
   return bOver - aOver;
 }
 
-export interface RiskInputs {
+interface RiskInputs {
   monthTokens?: number;
   monthBudget?: number | null;
 }
@@ -200,7 +200,7 @@ export function topRisk(signals: RiskSignal[]): RiskSignal | null {
 
 export const SHARED_RISK_KINDS: ReadonlySet<string> = new Set(["dlq_growth", "token_budget"]);
 
-export function riskEdgeKey(kind: string, instance: string): string {
+function riskEdgeKey(kind: string, instance: string): string {
   return SHARED_RISK_KINDS.has(kind) ? kind : `${kind}@${instance}`;
 }
 
@@ -209,7 +209,7 @@ function kindOfEdgeKey(key: string): string {
   return at < 0 ? key : key.slice(0, at);
 }
 
-export interface RiskEdges {
+interface RiskEdges {
   raised: RiskSignal[];
   cleared: string[];
 }

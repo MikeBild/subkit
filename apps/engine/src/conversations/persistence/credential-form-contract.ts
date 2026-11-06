@@ -29,7 +29,7 @@ export interface SeedModeConnectorView {
   template_slug?: string | null;
 }
 
-export interface DraftSeedModeResolution {
+interface DraftSeedModeResolution {
   seedMode: string | null;
   seedOverrides: Record<string, unknown>;
   authType: string | null;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createEmptyDraftDocument } from "../../authoring-state.ts";
+import { createEmptyDraftDocument } from "../../authoring-state/index.ts";
 import { getTool } from "../index.ts";
 import { INTAKE_REVIEW_BLOCKED_WRITES, intakeReviewBlocksWrite } from "../sdk-wrap/invoke.ts";
 

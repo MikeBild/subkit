@@ -61,7 +61,7 @@ import {
 import type { ToolListFilter, ToolProvider, ToolRegistry } from "../registry.ts";
 import type { ToolCategory, ToolDescriptor, ToolEnvelope } from "../types.ts";
 
-export interface StaticExecuteCtx {
+interface StaticExecuteCtx {
   readonly db: Db;
   readonly principal: ResolvedPrincipal;
   readonly registry: ToolRegistry;

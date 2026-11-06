@@ -12,7 +12,7 @@ import {
 import { dirname, join } from "node:path";
 
 const names = ["LICENSE", "THIRD_PARTY_NOTICES.txt"] as const;
-export type ReleaseNotices = Partial<Record<(typeof names)[number], Buffer>>;
+type ReleaseNotices = Partial<Record<(typeof names)[number], Buffer>>;
 
 export async function downloadReleaseNotices(
   assets: Array<{ name: string; url: string }>,

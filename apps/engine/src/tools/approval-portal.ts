@@ -18,16 +18,16 @@ import {
 
 export const APPROVAL_PORTAL_PATH = "/v1/tool-approvals/decide";
 
-export const APPROVAL_GRANT_PREFIX = "skag_";
+const APPROVAL_GRANT_PREFIX = "skag_";
 
 const WORKFLOW_TOOL_PREFIX = "wf_";
 
-export interface IssuedApprovalGrant {
+interface IssuedApprovalGrant {
   readonly plaintext: string;
   readonly hash: string;
 }
 
-export function generateApprovalGrant(): IssuedApprovalGrant {
+function generateApprovalGrant(): IssuedApprovalGrant {
   const rand = randomBytes(24).toString("base64url");
   const plaintext = `${APPROVAL_GRANT_PREFIX}${rand}`;
   return { plaintext, hash: sha256Hex(plaintext) };
@@ -55,7 +55,7 @@ function asStringOrNull(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
-export function normalizeWouldWrite(value: unknown): ApprovalWouldWrite[] {
+function normalizeWouldWrite(value: unknown): ApprovalWouldWrite[] {
   if (!Array.isArray(value)) return [];
   const out: ApprovalWouldWrite[] = [];
   for (const item of value) {
@@ -79,7 +79,7 @@ function previewAad(tenant_id: string, approval_id: string): string {
   return `${tenant_id}:${approval_id}:preview`;
 }
 
-export interface EncryptedApprovalPreview {
+interface EncryptedApprovalPreview {
   readonly preview_ciphertext: Uint8Array;
   readonly preview_iv: Uint8Array;
   readonly preview_auth_tag: Uint8Array;
@@ -98,18 +98,18 @@ export function encryptApprovalPreview(
   };
 }
 
-export type MintApprovalGrantUrlError = {
+type MintApprovalGrantUrlError = {
   readonly ok: false;
   readonly error: "engine_public_url_missing" | "approval_not_pending";
 };
 
-export interface MintedApprovalGrantUrl {
+interface MintedApprovalGrantUrl {
   readonly ok: true;
   readonly url: string;
   readonly expires_at: Date;
 }
 
-export interface MintApprovalGrantUrlInput {
+interface MintApprovalGrantUrlInput {
   readonly db: Executor;
   readonly approval: { readonly id: string; readonly tenant_id: string };
 }
@@ -215,7 +215,7 @@ function stateOf(row: {
   return "pending";
 }
 
-export function workflowSlugFromToolName(tool: string): string | null {
+function workflowSlugFromToolName(tool: string): string | null {
   return tool.startsWith(WORKFLOW_TOOL_PREFIX) ? tool.slice(WORKFLOW_TOOL_PREFIX.length) : null;
 }
 

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const SDK_WRAP = join(import.meta.dir, "..", "sdk-wrap", "invoke.ts");
-const LOOP = join(import.meta.dir, "..", "..", "loop.ts");
+const LOOP = join(import.meta.dir, "..", "..", "loop", "index.ts");
 const LOOP_MODEL_RESOLVER = join(import.meta.dir, "..", "..", "loop", "model-resolver.ts");
 
 describe("adaptive loop-breaker · sdk-wrap.ts", () => {
@@ -39,7 +39,7 @@ describe("turn-level step ceiling · loop/model-resolver.ts + loop.ts", () => {
   });
 
   test("loop.ts imports DEFAULT_BUDGET from the extracted model-resolver module", () => {
-    expect(loopBody).toMatch(/DEFAULT_BUDGET[^"]*"\.\/loop\/model-resolver\.ts"/s);
+    expect(loopBody).toMatch(/DEFAULT_BUDGET[^"]*"\.\/model-resolver\.ts"/s);
   });
 
   test("stopWhen uses stepCountIs(budget) — matches reference contract", () => {

@@ -21,7 +21,7 @@ import {
   type StoredPaste,
 } from "../repl/paste-store.ts";
 
-export interface PromptHistoryApi {
+interface PromptHistoryApi {
   historyRef: React.MutableRefObject<string[]>;
   historyCursorRef: React.MutableRefObject<number>;
   historyDraftRef: React.MutableRefObject<InputBuffer | null>;
@@ -57,7 +57,7 @@ export function usePromptHistory(
   return { historyRef, historyCursorRef, historyDraftRef, effectiveHistoryPath, recordPrompt };
 }
 
-export interface PasteBuffersApi {
+interface PasteBuffersApi {
   pasteStoreRef: React.MutableRefObject<PasteStore>;
   pendingPasteRefs: StoredPaste[];
   syncPendingPasteRefs: () => void;
@@ -90,7 +90,7 @@ export function usePasteBuffers(
   return { pasteStoreRef, pendingPasteRefs, syncPendingPasteRefs, insertPasteChunk };
 }
 
-export interface SecretRedirectApi {
+interface SecretRedirectApi {
   pendingSecretRedirect: { kind: string; sample: string } | null;
   consumeArmedRedirect: () => { message: string; event: RequestCredentialFormEvent } | null;
   interceptPlainPrompt: (trimmed: string) => boolean;
@@ -160,7 +160,7 @@ export function useSecretRedirect(
   };
 }
 
-export interface GhostFeedbackApi {
+interface GhostFeedbackApi {
   ghostHandledRef: React.MutableRefObject<boolean>;
 }
 

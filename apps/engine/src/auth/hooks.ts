@@ -6,7 +6,7 @@ import { logger } from "../logging/logger.ts";
 import { runJs } from "../sandboxes/quickjs/runtime.ts";
 import type { ResolvedPrincipal } from "./types.ts";
 
-export interface HookRequestCtx {
+interface HookRequestCtx {
   method: string;
   url: string;
   headers: Record<string, string>;
@@ -16,7 +16,7 @@ export interface HookRequestCtx {
   step_id: string;
 }
 
-export interface HookDecision {
+interface HookDecision {
   allowed: boolean;
   reason?: string;
   hook_id?: string;
@@ -28,7 +28,7 @@ const HOOK_LIMITS = {
   wall_ms: 2_000,
 } as const;
 
-export interface EvaluateHookParams {
+interface EvaluateHookParams {
   db: Db;
   tenant_id: string;
   principal: ResolvedPrincipal;

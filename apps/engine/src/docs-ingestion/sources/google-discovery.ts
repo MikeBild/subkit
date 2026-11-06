@@ -9,7 +9,7 @@ import { byteLen } from "../chunker.ts";
 import { readBoundedText } from "../read-response.ts";
 import type { BudgetState, RawChunk } from "../types.ts";
 
-export interface GoogleDiscoveryIngestResult {
+interface GoogleDiscoveryIngestResult {
   uri: string;
   raw_bytes: number;
   chunks: RawChunk[];

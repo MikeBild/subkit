@@ -5,7 +5,7 @@ export interface Finding {
   url?: string;
 }
 
-export interface AuditReading {
+interface AuditReading {
   findings: Finding[];
   recognised: boolean;
 }

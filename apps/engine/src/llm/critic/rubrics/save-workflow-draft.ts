@@ -12,7 +12,7 @@ export const SaveWorkflowDraftArtifactSchema = z.object({
 
 export type SaveWorkflowDraftArtifact = z.infer<typeof SaveWorkflowDraftArtifactSchema>;
 
-export const SaveWorkflowDraftVerdictSchema = z.object({
+const SaveWorkflowDraftVerdictSchema = z.object({
   verdict: z.enum(["pass", "fail"]),
   confidence: z.number().min(0).max(1),
   reason: z.string(),
@@ -28,8 +28,6 @@ export const SaveWorkflowDraftVerdictSchema = z.object({
     .partial()
     .default({}),
 });
-
-export type SaveWorkflowDraftVerdict = z.infer<typeof SaveWorkflowDraftVerdictSchema>;
 
 export const saveWorkflowDraftRubric = {
   kind: "save_workflow_draft" as const,

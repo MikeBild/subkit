@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { _setConverseFirstChunkTimeoutMsForTests } from "../../conversations/loop.ts";
+import { _setConverseFirstChunkTimeoutMsForTests } from "../../conversations/loop/index.ts";
 import {
   type ConversationTestCtx,
   createConversationTestCtx,

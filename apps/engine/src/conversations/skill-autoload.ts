@@ -25,12 +25,12 @@ export interface ScopeFacts {
   audience?: SkillAudience | undefined;
 }
 
-export interface ToolCallContext extends ScopeFacts {
+interface ToolCallContext extends ScopeFacts {
   tool: string;
   input: unknown;
 }
 
-export interface UserTurnContext extends ScopeFacts {
+interface UserTurnContext extends ScopeFacts {
   user_text: string;
   first_turn?: boolean;
   surface?: string | undefined;

@@ -10,7 +10,7 @@ export type CockpitDemoInstance = {
   stateDir: string;
 };
 
-export type CockpitDemoMarker = {
+type CockpitDemoMarker = {
   schema: "subkit-cockpit-demo-instance-v1";
   instanceId: string | null;
   project: string;

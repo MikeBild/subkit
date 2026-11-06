@@ -5,7 +5,7 @@ export const RATE_LIMIT_PARK_BASE_DELAY_MS = 60_000;
 export const QUOTA_PARK_BASE_DELAY_MS = 15 * 60_000;
 export const PROVIDER_LIMIT_PARK_MAX_HORIZON_MS = 45 * 24 * 60 * 60_000;
 
-export interface ProviderLimitParkPlan {
+interface ProviderLimitParkPlan {
   kind: "quota_exhausted" | "rate_limit";
   start_after: Date;
   parks: number;

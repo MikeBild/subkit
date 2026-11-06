@@ -23,7 +23,7 @@ export function isValidSlug(slug: string): boolean {
   return SLUG_PATTERN.test(slug);
 }
 
-export interface DefinitionIssue {
+interface DefinitionIssue {
   path: string;
   message: string;
   rule_id: "workflow_cycle_detected";
@@ -54,7 +54,7 @@ export function gateIssue(error: string): { path: string; message: string } {
     : { path: error.slice(0, at), message: error.slice(at + 2) };
 }
 
-export type StoredDefinitionRole = "version" | "draft";
+type StoredDefinitionRole = "version" | "draft";
 
 export function toStoredDefinition<T>(def: T, role: StoredDefinitionRole): T {
   return role === "draft" ? def : definitionWithoutDescription(def);

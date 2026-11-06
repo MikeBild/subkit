@@ -109,7 +109,7 @@ function rejected(refusal: RefusalClass, code: string, message: string): RunRefu
   return { kind: "rejected", code, message, refusal };
 }
 
-export interface RunRequestFacts {
+interface RunRequestFacts {
   idempotency_key: string | null;
   hold_writes: boolean | undefined;
   product_bearer: boolean;
@@ -147,7 +147,7 @@ export function effectiveHoldWrites(
   return product_bearer ? false : hold_writes;
 }
 
-export interface AdmittedFacts {
+interface AdmittedFacts {
   execution_authority_id: string | null;
   status: string;
   replayed: boolean;
@@ -185,7 +185,7 @@ export function resolveExecutionEnvironment(facts: {
   return facts.requested ?? "dev";
 }
 
-export interface RbacDenialFacts {
+interface RbacDenialFacts {
   provider: string | undefined;
   allowlisted: boolean;
   reason: string | undefined;

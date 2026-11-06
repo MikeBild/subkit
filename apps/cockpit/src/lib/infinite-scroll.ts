@@ -17,7 +17,7 @@ export function scrollRoot<T extends ScrollBox>(start: T, overflowY: (box: T) =>
   return null;
 }
 
-export interface PagingState {
+interface PagingState {
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
 }
@@ -33,7 +33,7 @@ export function wantsNextPage(
   );
 }
 
-export interface ScrollCandidate {
+interface ScrollCandidate {
   scrollHeight: number;
   clientHeight: number;
   scrollTop: number;

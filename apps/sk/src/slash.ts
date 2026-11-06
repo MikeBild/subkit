@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { frequencyBias } from "./usage-stats.ts";
 
-export const SLASH_NAME_CHAR_RE = /[A-Za-z0-9_-]/;
+const SLASH_NAME_CHAR_RE = /[A-Za-z0-9_-]/;
 
 export function isSlashNameChar(ch: string): boolean {
   return SLASH_NAME_CHAR_RE.test(ch);
@@ -23,8 +23,6 @@ export const INK_INTERCEPTED_ENGINE_SLASHES = Object.freeze([
   "queue",
   "view",
 ] as const);
-
-export const SlashArgsSchemaDefault = z.array(z.string());
 
 export interface SlashCommand {
   name: string;

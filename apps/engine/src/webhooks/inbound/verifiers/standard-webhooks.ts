@@ -2,7 +2,7 @@ import { logger } from "../../../logging/logger.ts";
 import { verifySignatureHeader } from "../../outbound/signer.ts";
 import type { VerifierResult, VerifyInput } from "./types.ts";
 
-export const STANDARD_REPLAY_WINDOW_SECONDS = 5 * 60;
+const STANDARD_REPLAY_WINDOW_SECONDS = 5 * 60;
 
 export function verifyStandard(input: VerifyInput): VerifierResult {
   const id = input.headers["webhook-id"];

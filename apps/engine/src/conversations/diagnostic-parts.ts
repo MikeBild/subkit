@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
 import { FileIdSchema } from "../api/files-schemas.ts";
 
-export const DiagnosticArtifactSchema = z
+const DiagnosticArtifactSchema = z
   .object({
     name: z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/),
     media_type: z.enum(["application/json", "application/x-ndjson", "text/plain"]),

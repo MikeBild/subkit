@@ -101,7 +101,7 @@ const OTHER_LINK_ICONS: Record<FileUsage["other_links"][number]["resource_type"]
   discovery_run: <Search />,
 };
 
-export const UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
+const UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
 
 const LIST_PATH = "/v1/files";
 const LIST_PARAMS = { sort: "created_at", order: "desc" } as const;

@@ -2,7 +2,7 @@ import type { components } from "@cli-core/engine-api/openapi";
 import { ApiError } from "@/api/client";
 import type { TranslationKey } from "@/lib/i18n";
 
-export type SignInRoute = NonNullable<components["schemas"]["Connector"]["sign_in"]>;
+type SignInRoute = NonNullable<components["schemas"]["Connector"]["sign_in"]>;
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 

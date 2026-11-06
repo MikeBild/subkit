@@ -52,7 +52,7 @@ export function makeRegistryAdapterResolver(chatRegistry: ChatAdapterRegistry): 
   };
 }
 
-export interface FanoutInput {
+interface FanoutInput {
   db: Db;
   boss: PgBoss;
   tenant_id: string;
@@ -63,7 +63,7 @@ export interface FanoutInput {
   notificationAdapterResolver?: AdapterResolver;
 }
 
-export interface FanoutStats {
+interface FanoutStats {
   matched: number;
   enqueued: number;
   notifications_matched?: number;

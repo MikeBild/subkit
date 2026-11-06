@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const SRC = join(import.meta.dir, "..", "steps", "request", "dispatch.ts");
+const SRC = join(import.meta.dir, "..", "steps", "request", "http-attempt.ts");
 
-describe("request driver · retry telemetry shape", () => {
+describe("http request driver · retry telemetry shape", () => {
   const body = readFileSync(SRC, "utf-8");
 
   test("emits attempt_no on every retry log", () => {
@@ -23,7 +23,9 @@ describe("request driver · retry telemetry shape", () => {
   });
 
   test("emits next_attempt_at ISO timestamp", () => {
-    expect(body).toMatch(/next_attempt_at:\s*new Date\(Date\.now\(\) \+ wait\)\.toISOString\(\)/);
+    expect(body).toMatch(
+      /next_attempt_at:\s*new Date\((?:p\.clock\.now|rateLimitNow)\(\) \+ wait\)\.toISOString\(\)/,
+    );
   });
 
   test("includes connector_id label so retries can be aggregated per connector", () => {

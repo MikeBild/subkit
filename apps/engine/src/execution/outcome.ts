@@ -14,7 +14,7 @@ import {
 import type { OutputContractVerdict, RefusedConnector } from "./state.ts";
 import { requestRequiresPreparationHold } from "./steps/request/side-effects.ts";
 
-export type OutcomeKind = "succeeded" | "failed" | "held" | "partial" | "running";
+type OutcomeKind = "succeeded" | "failed" | "held" | "partial" | "running";
 
 export interface ExecutionOutcome {
   kind: OutcomeKind;
@@ -29,7 +29,7 @@ export interface ExecutionOutcome {
   rerun_safety: { mode: "repeat_safe" | "prepare_only" | "unavailable"; reason: string };
 }
 
-export interface ExecutionFailureSummary {
+interface ExecutionFailureSummary {
   step_key: string | null;
   cause_class: PreviewClassification | null;
   refusal_reason: ReportDeliveryRefusal | null;

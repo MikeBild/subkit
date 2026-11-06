@@ -10,7 +10,7 @@ const HEADER_MAP_KEYS: ReadonlySet<string> = new Set([
   "extra_token_headers",
 ]);
 
-export interface StrippedValue<T> {
+interface StrippedValue<T> {
   value: T;
   removed: string[];
 }

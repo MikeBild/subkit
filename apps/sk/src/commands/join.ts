@@ -20,7 +20,7 @@ const REDEEM_FRIENDLY: Record<string, string> = {
     "too many redeem attempts from your network — wait a few minutes and try again.",
 };
 
-export interface RunJoinOptions {
+interface RunJoinOptions {
   token: string;
   engine_url: string;
   profile: string;
@@ -30,7 +30,7 @@ export interface RunJoinOptions {
   err?: (line: string) => void;
 }
 
-export interface RunJoinResult {
+interface RunJoinResult {
   status: "ok" | "failed";
   exitCode: number;
   redeemed?: InviteRedeemedWire;

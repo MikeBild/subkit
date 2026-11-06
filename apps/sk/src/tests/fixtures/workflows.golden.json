@@ -1,0 +1,47 @@
+{
+  "list": {
+    "exitCode": 0,
+    "requests": ["GET /v1/workflows?limit=50"],
+    "stdout": "\ncommunication  (1)\nid\tname\tdescription\tlifecycle\tconnectors\truns_on\tupdated_at\n5eed0002-0000-4000-8000-000000000002\tDaily mail\tDaily mail keeps the communication catalog block in shape f…\tactive\t[\"notion\"]\trequest\t2023-11-14T22:13:21.000Z\n\nnotion  (1)\nid\tname\tdescription\tlifecycle\tconnectors\truns_on\tupdated_at\n5eed0002-0000-4000-8000-000000000001\tNotion sync\tNotion sync keeps the notion catalog block in shape for the…\tactive\t[\"notion\"]\trequest\t2023-11-14T22:13:21.000Z\nshowing 2 of 3 workflows · 2 categories — raise --limit to see all\n",
+    "stderr": ""
+  },
+  "list.flat": {
+    "exitCode": 0,
+    "requests": ["GET /v1/workflows?limit=2&category=notion"],
+    "stdout": "id\tname\tdescription\tlifecycle\tconnectors\truns_on\tupdated_at\n5eed0002-0000-4000-8000-000000000001\tNotion sync\tNotion sync keeps the notion catalog block in shape for the…\tactive\t[\"notion\"]\trequest\t2023-11-14T22:13:21.000Z\n5eed0002-0000-4000-8000-000000000002\tDaily mail\tDaily mail keeps the communication catalog block in shape f…\tactive\t[\"notion\"]\trequest\t2023-11-14T22:13:21.000Z\nshowing 2 of 3 workflows — raise --limit to see all\n",
+    "stderr": ""
+  },
+  "list.json": {
+    "exitCode": 0,
+    "requests": ["GET /v1/workflows?limit=50&connector=notion"],
+    "stdout": "[\n  {\n    \"id\": \"5eed0002-0000-4000-8000-000000000001\",\n    \"slug\": \"notion-sync\",\n    \"name\": \"Notion sync\",\n    \"description\": \"Notion sync keeps the notion catalog block in shape for the golden test.\",\n    \"category\": \"notion\",\n    \"lifecycle\": \"active\",\n    \"connectors\": [\n      \"notion\"\n    ],\n    \"trigger\": null,\n    \"schedule\": null,\n    \"webhooks_active\": 0,\n    \"effective_trigger\": {\n      \"kind\": \"manual\"\n    },\n    \"updated_at\": \"2023-11-14T22:13:21.000Z\"\n  },\n  {\n    \"id\": \"5eed0002-0000-4000-8000-000000000002\",\n    \"slug\": \"daily-mail\",\n    \"name\": \"Daily mail\",\n    \"description\": \"Daily mail keeps the communication catalog block in shape for the golden test.\",\n    \"category\": \"communication\",\n    \"lifecycle\": \"active\",\n    \"connectors\": [\n      \"notion\"\n    ],\n    \"trigger\": null,\n    \"schedule\": null,\n    \"webhooks_active\": 0,\n    \"effective_trigger\": {\n      \"kind\": \"manual\"\n    },\n    \"updated_at\": \"2023-11-14T22:13:21.000Z\"\n  }\n]\n",
+    "stderr": ""
+  },
+  "get": {
+    "exitCode": 0,
+    "requests": ["GET /v1/workflows/5eed0002-0000-4000-8000-000000000001"],
+    "stdout": "{\n  \"id\": \"5eed0002-0000-4000-8000-000000000001\",\n  \"slug\": \"notion-sync\",\n  \"name\": \"Notion sync\",\n  \"description\": \"Notion sync keeps the notion catalog block in shape for the golden test.\",\n  \"category\": \"notion\",\n  \"lifecycle\": \"active\",\n  \"connectors\": [\n    \"notion\"\n  ],\n  \"trigger\": null,\n  \"schedule\": null,\n  \"webhooks_active\": 0,\n  \"effective_trigger\": {\n    \"kind\": \"manual\"\n  },\n  \"updated_at\": \"2023-11-14T22:13:21.000Z\",\n  \"definition\": {\n    \"name\": \"Notion sync\",\n    \"steps\": [\n      {\n        \"id\": \"noop\",\n        \"kind\": \"transform\"\n      }\n    ]\n  }\n}\n",
+    "stderr": "\ntrigger: request\n"
+  },
+  "get.missing": {
+    "exitCode": 1,
+    "requests": ["GET /v1/workflows/5eed0002-0000-4000-8000-0000000000ff"],
+    "stdout": "",
+    "stderr": "error: not_found: workflow not found\n"
+  },
+  "patch": {
+    "exitCode": 0,
+    "requests": [
+      "GET /v1/workflows?limit=200",
+      "PATCH /v1/workflows/5eed0002-0000-4000-8000-000000000001/metadata {\"category\":\"notion\",\"name\":\"Notion mirror\"}"
+    ],
+    "stdout": "{\n  \"id\": \"5eed0002-0000-4000-8000-000000000001\",\n  \"slug\": \"notion-sync\",\n  \"name\": \"Notion mirror\",\n  \"description\": \"Notion sync keeps the notion catalog block in shape for the golden test.\",\n  \"category\": \"notion\",\n  \"lifecycle\": \"active\",\n  \"connectors\": [\n    \"notion\"\n  ],\n  \"trigger\": null,\n  \"schedule\": null,\n  \"webhooks_active\": 0,\n  \"effective_trigger\": {\n    \"kind\": \"manual\"\n  },\n  \"updated_at\": \"2023-11-14T22:13:21.000Z\",\n  \"definition\": {\n    \"name\": \"Notion sync\",\n    \"steps\": [\n      {\n        \"id\": \"noop\",\n        \"kind\": \"transform\"\n      }\n    ]\n  }\n}\n",
+    "stderr": ""
+  },
+  "patch.empty": {
+    "exitCode": 1,
+    "requests": [],
+    "stdout": "{\"error\":\"pass at least one of --name, --description, --category\"}\n",
+    "stderr": ""
+  }
+}

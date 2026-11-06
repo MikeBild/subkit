@@ -10,7 +10,7 @@ export const SkillCandidateStatusSchema = z.enum([
   "superseded",
   "context",
 ]);
-export const SkillCandidateConfidenceSchema = z.enum(["low", "medium", "high"]);
+const SkillCandidateConfidenceSchema = z.enum(["low", "medium", "high"]);
 export const SkillCandidatePatternSchema = z.enum([
   "repair_pattern",
   "failure_pattern",
@@ -48,7 +48,7 @@ export const WorkflowCapabilityFactsSchema = z
   .strict()
   .openapi("WorkflowCapabilityFacts");
 
-export const RecurringFailureFactsSchema = z
+const RecurringFailureFactsSchema = z
   .object({
     kind: z.literal("recurring_failure"),
     step_key: z.string(),

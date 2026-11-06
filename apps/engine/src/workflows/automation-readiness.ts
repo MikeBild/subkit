@@ -64,7 +64,7 @@ export async function reviewAutomationEnvironment(
   }
 }
 
-export type AutomationReadinessState = "eligible" | "repair_required" | "verification_unavailable";
+type AutomationReadinessState = "eligible" | "repair_required" | "verification_unavailable";
 
 export interface AutomationReadiness {
   environment: "dev" | "prod";

@@ -6,7 +6,6 @@
 # `--accept-new` also admits new offenders; use it only for a reviewed baseline reset.
 
 apps/engine/src/conversations/tools/dry-run-workflow.ts                   2
-apps/engine/src/conversations/tools/engine-api/writes/rerun-execution.ts  2
 apps/engine/src/conversations/tools/engine-api/writes/run-workflow.ts     2
 apps/engine/src/conversations/tools/engine-api/writes/update-workflow.ts  2
 apps/engine/src/conversations/tools/prepare-service-package-workflow.ts   2

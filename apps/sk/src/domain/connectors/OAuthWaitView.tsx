@@ -13,9 +13,9 @@ const OAuthPollResponseSchema = z.object({
 });
 
 export type OAuthPollResponse = z.infer<typeof OAuthPollResponseSchema>;
-export type OAuthCredential = z.infer<typeof OAuthCredentialSchema>;
+type OAuthCredential = z.infer<typeof OAuthCredentialSchema>;
 
-export const AuthUrlSchema = z
+const AuthUrlSchema = z
   .string()
   .url()
   .refine((u) => /^https?:\/\//i.test(u), {

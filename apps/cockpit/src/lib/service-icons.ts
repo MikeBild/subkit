@@ -36,7 +36,7 @@ export type ServiceIdentity =
   | { kind: "subkit" }
   | { kind: "generic"; driver: string | null };
 
-export interface ServiceSource {
+interface ServiceSource {
   template_slug?: string | null;
   base_url?: string | null;
   slug?: string | null;

@@ -17,7 +17,7 @@ export interface AgentSessionAnalyzeJob {
   actor?: Actor | null;
 }
 
-export interface RegisterAgentSessionAnalyzeOptions {
+interface RegisterAgentSessionAnalyzeOptions {
   boss: PgBoss;
   db: Db;
 }

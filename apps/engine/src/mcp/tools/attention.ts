@@ -3,7 +3,7 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { type AttentionV1, buildAttention } from "../../operator/attention.ts";
 
-export const ATTENTION_TOOL_NAME = "get_attention";
+const ATTENTION_TOOL_NAME = "get_attention";
 
 export const attentionMcpTool: Tool = {
   name: ATTENTION_TOOL_NAME,

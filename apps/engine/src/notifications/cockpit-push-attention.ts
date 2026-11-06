@@ -22,7 +22,7 @@ const NotifiedKeys = z
   .max(ATTENTION_KEYS_MAX)
   .nullable();
 
-export interface CockpitPushAttentionOptions {
+interface CockpitPushAttentionOptions {
   now?: Date;
   readers?: AttentionReaderOverrides;
   attention?: (
@@ -32,12 +32,12 @@ export interface CockpitPushAttentionOptions {
   subject?: string | null;
 }
 
-export interface CockpitPushAttentionResult {
+interface CockpitPushAttentionResult {
   notified: number;
   delivered: number;
 }
 
-export function cockpitPushAttentionKeys(items: AttentionV1["items"]): string[] {
+function cockpitPushAttentionKeys(items: AttentionV1["items"]): string[] {
   return [
     ...new Set(
       items.map((item) =>

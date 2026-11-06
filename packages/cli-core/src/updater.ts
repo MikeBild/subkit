@@ -110,7 +110,7 @@ interface GitHubRelease {
   }>;
 }
 
-export class UpdateCheckError extends Error {
+class UpdateCheckError extends Error {
   constructor(
     message: string,
     readonly status?: number,

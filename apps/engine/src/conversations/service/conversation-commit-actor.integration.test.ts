@@ -10,7 +10,7 @@ let testDb: TestDb;
 let tenant_id: string;
 let runConversationTurn: typeof import("./run-turn.ts").runConversationTurn;
 
-mock.module("../loop.ts", () => ({
+mock.module("../loop/index.ts", () => ({
   runLoop: async () => ({
     events: [],
     status: "committed",

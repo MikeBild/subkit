@@ -18,8 +18,8 @@ import {
 } from "./types.ts";
 
 export const RENDERED_STEPS_CAP = 4096;
-export const RENDERED_GOAL_CAP = 2000;
-export const RENDERED_SCHEMA_CAP = 2000;
+const RENDERED_GOAL_CAP = 2000;
+const RENDERED_SCHEMA_CAP = 2000;
 const RENDERED_TRANSFORM_CAP = 1000;
 
 export type CriticRunResult =
@@ -30,7 +30,7 @@ export type CriticRunResult =
   | "skipped_disabled"
   | "skipped_streak";
 
-export type CriticTool = "author_workflow" | "edit_workflow_patch";
+type CriticTool = "author_workflow" | "edit_workflow_patch";
 
 function cap(text: string, limit: number): string {
   if (text.length <= limit) return text;
@@ -51,7 +51,7 @@ function rubricConventions(conventions: readonly AppliedConvention[]): AppliedCo
     .slice(0, RUBRIC_CAP);
 }
 
-export function specFieldsPresent(draft: WorkflowDraftDocument): string[] {
+function specFieldsPresent(draft: WorkflowDraftDocument): string[] {
   const spec = draft.spec;
   if (!spec) return [];
   return [
@@ -178,7 +178,7 @@ export function rubricFromVerdict(
   });
 }
 
-export async function runCriticAgent(params: RunCriticAgentParams): Promise<CriticAgentOutcome> {
+async function runCriticAgent(params: RunCriticAgentParams): Promise<CriticAgentOutcome> {
   const draftText = renderDraftForCritic(params.draft, params.goal, params.conventions);
   try {
     const result = await invoke<AuthoringCriticVerdict>(
@@ -205,7 +205,7 @@ export async function runCriticAgent(params: RunCriticAgentParams): Promise<Crit
   }
 }
 
-export interface CriticOutcome {
+interface CriticOutcome {
   result: CriticRunResult;
   gating_reason: GatingDecision["reason"];
   repairs: string[];
@@ -215,7 +215,7 @@ export interface CriticOutcome {
   fail_open_reason?: string;
 }
 
-export interface ReviewDraftWithCriticParams {
+interface ReviewDraftWithCriticParams {
   tool: CriticTool;
   draft: WorkflowDraftDocument;
   goal?: string | null;

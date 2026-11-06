@@ -17,14 +17,14 @@ export function loadTs(): typeof TsApi {
   return tsModule;
 }
 
-export type JsLintCode =
+type JsLintCode =
   | "free_identifier"
   | "locale_api"
   | "nondeterministic_api"
   | "host_api"
   | "unknown_sk_member";
 
-export interface JsLintFinding {
+interface JsLintFinding {
   code: JsLintCode;
   identifier: string;
   message: string;

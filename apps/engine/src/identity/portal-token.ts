@@ -4,7 +4,7 @@ import { sha256Hex } from "./api-key.ts";
 export const PORTAL_TOKEN_PREFIX_LITERAL = "wf_portal_";
 export const PORTAL_TOKEN_PREFIX_LENGTH = 14;
 
-export interface IssuedPortalToken {
+interface IssuedPortalToken {
   plaintext: string;
   prefix: string;
   hash: string;

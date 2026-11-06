@@ -8,7 +8,7 @@ import { buildScopeAtStep } from "../../workflows/scope-shape.ts";
 import type { LatestDiagnosisSummary } from "../types.ts";
 import { truncateForLlm } from "./truncate.ts";
 
-export interface ExecutionSummary {
+interface ExecutionSummary {
   execution_id: string;
   workflow_id: string | null;
   workflow_version_id: string | null;
@@ -16,7 +16,7 @@ export interface ExecutionSummary {
   environment: "dev" | "prod";
 }
 
-export type ExecutionDiagnosisResult =
+type ExecutionDiagnosisResult =
   | { found: true; execution: ExecutionSummary; diagnosis: LatestDiagnosisSummary }
   | { found: false };
 
@@ -46,7 +46,7 @@ function summarizeReason(
   return `Execution succeeded across ${stepCount} step${stepCount === 1 ? "" : "s"} with no warnings.`;
 }
 
-export interface StepWarningSource {
+interface StepWarningSource {
   step_key: string;
   code: string;
   identifier: string | null;

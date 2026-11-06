@@ -1,4 +1,4 @@
-export type ElicitationIntent =
+type ElicitationIntent =
   | { kind: "confirm" }
   | { kind: "reject" }
   | { kind: "pick"; optionIndex: number }

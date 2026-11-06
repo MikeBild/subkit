@@ -77,7 +77,7 @@ export class RobotsDisallowedError extends Error {
   }
 }
 
-export class RobotsVerificationUnavailableError extends Error {
+class RobotsVerificationUnavailableError extends Error {
   readonly code = "robots_verification_unavailable";
   constructor() {
     super("robots.txt verification is unavailable; retry before requesting this resource");

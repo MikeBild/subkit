@@ -3,7 +3,7 @@ import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 
-export interface InlineHistorySearchProps {
+interface InlineHistorySearchProps {
   entries: readonly string[];
   onCommit: (prompt: string) => void;
   onCancel: () => void;

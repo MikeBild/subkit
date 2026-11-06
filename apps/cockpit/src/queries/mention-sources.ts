@@ -13,7 +13,7 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 
 const PAGE = 50;
 
-export const MENTION_SOURCE_KEYS = {
+const MENTION_SOURCE_KEYS = {
   workflows: (q: string) => ["catalog-workflow-index", "mention-source", q] as const,
   connectors: (q: string) => ["catalog-connector-index", "mention-source", q] as const,
   sources: (q: string) => ["knowledge", "mention-source", q] as const,
@@ -60,7 +60,7 @@ interface IntakeMentionItem {
   version: number;
 }
 
-export function skillLabel(skill: SkillItem): string {
+function skillLabel(skill: SkillItem): string {
   return skill.slug ?? skill.title.trim().toLowerCase().replace(/\s+/g, "-");
 }
 
@@ -78,7 +78,7 @@ function mentionLabel(title: string, fallback: string): string {
   return isMentionableLabel(label) ? label : fallback;
 }
 
-export interface WorkflowCategory {
+interface WorkflowCategory {
   category: string;
   count: number;
 }

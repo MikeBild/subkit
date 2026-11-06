@@ -100,7 +100,7 @@ function rateLimitFailure(
   };
 }
 
-export interface RunGraphqlWithRetryParams {
+interface RunGraphqlWithRetryParams {
   queryArgs: Parameters<typeof graphqlQuery>[0];
   egressInput: Omit<EgressInput, "credential_id">;
   step: Pick<RequestStep, "max_retries" | "retry_backoff_ms" | "error_policy">;

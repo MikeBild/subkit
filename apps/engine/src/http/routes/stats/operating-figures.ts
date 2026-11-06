@@ -13,7 +13,7 @@ import type { AppEnv } from "../../openapi.ts";
 
 const WINDOW_NAMES = Object.keys(OPERATING_WINDOWS) as [OperatingWindow, ...OperatingWindow[]];
 
-export const OperatingFiguresQuery = z
+const OperatingFiguresQuery = z
   .object({
     window: z
       .enum(WINDOW_NAMES)
@@ -32,7 +32,7 @@ export const OperatingFiguresQuery = z
   })
   .openapi("OperatingFiguresQuery");
 
-export const OperatingFiguresResponse = z
+const OperatingFiguresResponse = z
   .object({
     schema_version: z.literal(OPERATING_FIGURES_SCHEMA_VERSION),
     window: z.object({ from: z.string(), to: z.string() }),

@@ -4,7 +4,7 @@ import {
   withAuthoringFocus,
   withConnectorDraft,
   withWorkflowDraft,
-} from "../../authoring-state.ts";
+} from "../../authoring-state/index.ts";
 import type { ConnectorDraftDocument, DraftDocument } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import { switchAuthoringFocusTool } from "../switch-authoring-focus.ts";

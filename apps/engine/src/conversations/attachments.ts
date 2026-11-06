@@ -11,10 +11,9 @@ import { can } from "../rbac/index.ts";
 export type { FileRow, ResolvedFile, ResolverContext } from "../files/resolver.ts";
 export { FileNotFoundError, requireFileForTenant, walkAndResolve } from "../files/resolver.ts";
 
-export const ATTACHMENT_PREFIX = "@attachment:";
 const ATTACHMENT_RE = /@attachment:([a-z0-9][a-z0-9_-]{0,62})\b/g;
 
-export interface AttachmentSlugMatch {
+interface AttachmentSlugMatch {
   slug: string;
   span: { start: number; end: number };
   raw: string;
@@ -35,7 +34,7 @@ export function parseAttachmentSlugs(value: string): AttachmentSlugMatch[] {
   return out;
 }
 
-export interface SlugLookupCtx {
+interface SlugLookupCtx {
   db: Db;
   tenant_id: string;
   conversation_id: string;
@@ -53,7 +52,7 @@ async function mayReadTenantFiles(ctx: SlugLookupCtx): Promise<boolean> {
   return decision.allow;
 }
 
-export async function lookupSlugsToFileIds(
+async function lookupSlugsToFileIds(
   slugs: string[],
   ctx: SlugLookupCtx,
 ): Promise<Map<string, string>> {
@@ -86,34 +85,7 @@ export async function pinAttachmentFileId(
   return fileId ? { ...args, file_id: fileId } : args;
 }
 
-export async function lookupSlugsToFileRows(
-  slugs: string[],
-  ctx: SlugLookupCtx,
-): Promise<Map<string, typeof files.$inferSelect>> {
-  if (slugs.length === 0) return new Map();
-  const rows = await ctx.db
-    .select({
-      slug: fileLinks.slug,
-      file: files,
-    })
-    .from(fileLinks)
-    .innerJoin(files, eq(files.id, fileLinks.file_id))
-    .where(
-      and(
-        eq(fileLinks.tenant_id, ctx.tenant_id),
-        eq(fileLinks.resource_type, "conversation"),
-        eq(fileLinks.resource_id, ctx.conversation_id),
-        inArray(fileLinks.slug, slugs),
-      ),
-    );
-  const out = new Map<string, typeof files.$inferSelect>();
-  for (const r of rows) {
-    if (r.slug) out.set(r.slug, r.file);
-  }
-  return out;
-}
-
-export interface ChatTextRewriteResult {
+interface ChatTextRewriteResult {
   text: string;
   unresolved: string[];
   resolved: Array<{ slug: string; file_id: string }>;

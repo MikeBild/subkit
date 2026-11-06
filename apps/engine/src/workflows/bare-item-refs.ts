@@ -14,14 +14,12 @@ interface AstNode {
 
 const CONTEXTUAL_AST_KEYS = new Set(["stages", "predicate", "group"]);
 
-export interface BareItemRef {
+interface BareItemRef {
   name: string;
   position: number;
 }
 
-export type FindBareItemRefsResult =
-  | { ok: true; refs: BareItemRef[] }
-  | { ok: false; reason: string };
+type FindBareItemRefsResult = { ok: true; refs: BareItemRef[] } | { ok: false; reason: string };
 
 export function findBareItemRefs(
   expression: string,
@@ -201,7 +199,7 @@ function deepEqual(a: unknown, b: unknown): boolean {
   return false;
 }
 
-export type ExpressionRewrite =
+type ExpressionRewrite =
   | { ok: true; changed: boolean; rewritten: string }
   | { ok: false; reason: string };
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { toAiSdkParts } from "./persist.ts";
+import { toAiSdkParts } from "./persistence/index.ts";
 
 describe("toAiSdkParts — file_part and text_extract", () => {
   test("image media → ImagePart with raw bytes", () => {

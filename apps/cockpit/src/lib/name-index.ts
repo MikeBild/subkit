@@ -3,7 +3,7 @@ export interface NameIndex {
   connector: ReadonlyMap<string, string>;
 }
 
-export type NameKind = "workflow" | "connector";
+type NameKind = "workflow" | "connector";
 
 export interface NamedEntity {
   id: string;

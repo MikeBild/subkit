@@ -3,19 +3,19 @@ import { SignedJwtConfigSchema } from "../credentials/signed-jwt.ts";
 import { type McpAuthConfig, McpAuthConfigSchema } from "../mcp/client/registry.ts";
 import { type AuthType, type DriverName, HttpConnectorConfig } from "./types.ts";
 
-export const GraphQLConnectorConfigSchema = z.object({
+const GraphQLConnectorConfigSchema = z.object({
   default_headers: z.record(z.string(), z.string()).optional(),
   signed_jwt: SignedJwtConfigSchema.optional(),
 });
 
-export const S3ConnectorConfigSchema = z.object({
+const S3ConnectorConfigSchema = z.object({
   bucket: z.string().min(1),
   region: z.string().min(1).optional(),
   endpoint: z.string().optional(),
   force_path_style: z.boolean().optional(),
 });
 
-export const PostgresConnectorConfigSchema = z.object({});
+const PostgresConnectorConfigSchema = z.object({});
 
 export const McpConnectorConfigSchema = z
   .object({
@@ -80,7 +80,7 @@ export function withMcpConfigDefaults(
   };
 }
 
-export interface ConnectorConfigIssue {
+interface ConnectorConfigIssue {
   path: string;
   message: string;
 }

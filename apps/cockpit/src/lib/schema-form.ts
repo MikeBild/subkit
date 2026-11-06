@@ -7,7 +7,7 @@ import {
   WHOLE_INPUT,
 } from "@/lib/workflow-inputs";
 
-export type SchemaFieldKind = "text" | "number" | "boolean" | "enum" | "group" | "list" | "json";
+type SchemaFieldKind = "text" | "number" | "boolean" | "enum" | "group" | "list" | "json";
 
 export type SchemaValue = string | boolean | string[] | SchemaValues;
 

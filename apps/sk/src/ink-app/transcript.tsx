@@ -18,7 +18,7 @@ import {
 } from "./transcript-cells.tsx";
 import type { TranscriptMode } from "./types.ts";
 
-export interface TranscriptBuildInput {
+interface TranscriptBuildInput {
   session: SkSessionState;
   messages: SkSessionState["messages"];
   toolCalls: ToolCallState[];
@@ -32,7 +32,7 @@ export interface TranscriptBuildInput {
   onRespondElicitation: (elicitationId: string, output: unknown, reason?: string) => void;
 }
 
-export interface TranscriptBuildResult {
+interface TranscriptBuildResult {
   staticRows: React.ReactNode[];
   dynamicRows: React.ReactNode[];
   pagerEntries: PagerEntry[];

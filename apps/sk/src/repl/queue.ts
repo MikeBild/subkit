@@ -7,7 +7,7 @@ export interface CommandQueue {
   readonly items: readonly string[];
 }
 
-export interface QueueOptions {
+interface QueueOptions {
   maxSize?: number;
 }
 

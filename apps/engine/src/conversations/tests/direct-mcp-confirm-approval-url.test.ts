@@ -8,7 +8,7 @@ import {
   withWorkflowDraft,
   withWorkflowInspection,
   withWorkflowValidation,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import {
   approvalHandleFromElicitationInput,
   elicitationInputForClient,

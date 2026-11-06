@@ -11,12 +11,12 @@ const MAX_ENTRIES = 256;
 const MAX_ARCHIVE_BYTES = 32 * 1024 * 1024;
 const MAX_ENTRY_BYTES = 8 * 1024 * 1024;
 
-export interface ClipperArchiveManifest {
+interface ClipperArchiveManifest {
   sha256: string;
   files: string[];
 }
 
-export interface InstallClipperOptions {
+interface InstallClipperOptions {
   archivePath: string;
   manifest: ClipperArchiveManifest;
   targetDir?: string;
@@ -179,7 +179,7 @@ async function replaceDirectory(stagedDir: string, targetDir: string): Promise<v
   if (movedCurrent) await fs.rm(backupDir, { recursive: true, force: true });
 }
 
-export function activeProfileEngineUrl(): string | null {
+function activeProfileEngineUrl(): string | null {
   const config = loadConfig();
   const value = config.profiles[config.active_profile]?.engine_url;
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;

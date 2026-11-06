@@ -25,7 +25,7 @@ function latestToolOutcome(calls: ToolCallState[], names: Set<string>): string |
 const PROBE_TOOLS = new Set(["probe_connector", "probe_connector_draft"]);
 const PREVIEW_TOOLS = new Set(["dry_run_step", "dry_run_workflow"]);
 
-export interface StatusLineDeps {
+interface StatusLineDeps {
   statusLineConfig: StatusLineConfig | undefined;
   persona: PersonaInfo;
   model: string | null | undefined;

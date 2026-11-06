@@ -6,7 +6,7 @@ import {
   type AutoPersistDispatch,
   maybeAutoPersistFromElicitation,
   maybeCacheDraftCredentialFromElicitation,
-} from "./auto-persist.ts";
+} from "./auto-persist/index.ts";
 
 export interface ApplyElicitationOutcomeInput {
   tenant_id: string;

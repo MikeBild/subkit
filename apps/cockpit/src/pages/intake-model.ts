@@ -15,7 +15,7 @@ export const INTAKE_STATES = ["collected", "reviewing", "admitted", "discarded"]
 export const INTAKE_ORIGINS = ["clip", "note", "session"] as const;
 export type IntakeOrigin = (typeof INTAKE_ORIGINS)[number];
 export const INTAKE_CHAT_PROMPTS = ["review", "summarize", "compare", "prepare"] as const;
-export type IntakeChatPrompt = (typeof INTAKE_CHAT_PROMPTS)[number];
+type IntakeChatPrompt = (typeof INTAKE_CHAT_PROMPTS)[number];
 
 export function intakeTargetTopic(
   category: string | undefined,
@@ -117,7 +117,7 @@ export function intakeSourceUrl(snapshot: IntakeSnapshot): string | null {
   return "source_url" in snapshot ? (snapshot.source_url ?? null) : null;
 }
 
-export interface IntakeAssistant {
+interface IntakeAssistant {
   mark: AssistantMarkKind;
   name: string | null;
 }
@@ -180,7 +180,7 @@ export function intakeConversationId(
 
 const WHO_SLOT = "\u0000who\u0000";
 
-export interface IntakeProvenance {
+interface IntakeProvenance {
   lead: string;
   who: string;
   tail: string;
@@ -237,7 +237,7 @@ export function intakeNoteRequest(input: {
   };
 }
 
-export type SessionSnapshot = Extract<IntakeSnapshot, { origin: "session" }>;
+type SessionSnapshot = Extract<IntakeSnapshot, { origin: "session" }>;
 
 export function sessionSnapshot(snapshot: IntakeSnapshot): SessionSnapshot | null {
   return snapshot.origin === "session" ? snapshot : null;
@@ -287,7 +287,7 @@ export type ReferencedSkill = {
   domains?: string[];
 };
 
-export type SkillConventionsView = { rules: string[]; domains: string };
+type SkillConventionsView = { rules: string[]; domains: string };
 
 function ruleLine(rule: SkillRule): string {
   const payload = Object.entries(rule.payload)
@@ -314,7 +314,7 @@ export function skillConventionsView(
 
 type NewSkill = NonNullable<IntakeSkillTarget["skill"]["new"]>;
 
-export function skillScopeLabel(
+function skillScopeLabel(
   created: Pick<NewSkill, "scope">,
   bindingName: string | null,
   t: Translate,
@@ -364,7 +364,7 @@ export function skillBodyChange(before: string, after: string): FocusedRow[] {
   return focusDiff(computeLineDiff(before.split("\n"), after.split("\n")));
 }
 
-export type IntakeStripState = "new" | "proposal" | "changed" | "confirmed" | "discarded";
+type IntakeStripState = "new" | "proposal" | "changed" | "confirmed" | "discarded";
 
 export function intakeStripState(
   clip: { state: IntakeState },
@@ -393,7 +393,7 @@ export type IntakeEventKind =
   | "rejected"
   | "discarded";
 
-export interface IntakeEvent {
+interface IntakeEvent {
   id: string;
   kind: IntakeEventKind;
   at: string;

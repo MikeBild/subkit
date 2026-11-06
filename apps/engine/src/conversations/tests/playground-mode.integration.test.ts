@@ -5,7 +5,7 @@ import {
   withLatestPreview,
   withWorkflowInspection,
   withWorkflowValidation,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import { loadDraft } from "../draft.ts";
 import { commitWorkflowAtomic } from "../persistence/commit-workflow.ts";
 import { createConversation } from "../service/create.ts";

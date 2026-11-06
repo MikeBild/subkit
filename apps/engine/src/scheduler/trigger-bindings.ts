@@ -6,12 +6,7 @@ import type { WorkflowTrigger } from "../workflows/types.ts";
 import { scheduleNeedsActivation } from "./automation-status.ts";
 import { nextScheduleFire } from "./next-fire.ts";
 
-export const ScheduleBindingStateSchema = z.enum([
-  "active",
-  "paused",
-  "held",
-  "activation_required",
-]);
+const ScheduleBindingStateSchema = z.enum(["active", "paused", "held", "activation_required"]);
 
 export const WorkflowScheduleBindingSchema = z
   .object({

@@ -53,7 +53,7 @@ function toOutputSchema(
   return undefined;
 }
 
-export interface ListWorkflowToolsParams {
+interface ListWorkflowToolsParams {
   db: Db;
   principal: ResolvedPrincipal;
   limit?: number;

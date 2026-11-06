@@ -32,7 +32,7 @@ import {
   PREFLIGHT_BUDGET_MS,
   preflightConnector,
 } from "../authoring-preflight.ts";
-import { createEmptyDraftDocument } from "../authoring-state.ts";
+import { createEmptyDraftDocument } from "../authoring-state/index.ts";
 import type { RecordedEvalReport } from "../recorded-eval.ts";
 import { authorWorkflowTool } from "../tools/author-workflow.ts";
 import { dryRunWorkflowTool } from "../tools/dry-run-workflow.ts";

@@ -50,7 +50,7 @@ function catalogResourceDescription(
   return category && category !== UNCATEGORIZED ? `[${category}] ${text}` : text;
 }
 
-export interface RegisterResourcesParams {
+interface RegisterResourcesParams {
   server: Server;
   db: Db;
   principal: ResolvedPrincipal;

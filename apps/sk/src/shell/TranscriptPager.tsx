@@ -18,7 +18,7 @@ export interface PagerEntry {
   };
 }
 
-export interface TranscriptPagerProps {
+interface TranscriptPagerProps {
   open: boolean;
   entries: ReadonlyArray<PagerEntry>;
   onClose: () => void;

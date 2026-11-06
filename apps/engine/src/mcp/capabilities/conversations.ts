@@ -40,7 +40,7 @@ import {
 import { buildToolAnnotations } from "./tool-meta.ts";
 import { projectTurnEnvelopeForClient } from "./turn-projection.ts";
 
-export const CONVERSATION_TOOL_PREFIX = "conversation_";
+const CONVERSATION_TOOL_PREFIX = "conversation_";
 
 const conversationToolNames = new Set<string>();
 
@@ -139,7 +139,7 @@ export function listConversationTools(): Tool[] {
   return tools;
 }
 
-export interface HandleConversationToolParams {
+interface HandleConversationToolParams {
   db: Db;
   principal: ResolvedPrincipal;
   name: string;

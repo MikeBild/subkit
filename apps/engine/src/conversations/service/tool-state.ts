@@ -10,12 +10,12 @@ import {
   workflowVersions,
 } from "../../db/schema/index.ts";
 
-export interface ConversationScope {
+interface ConversationScope {
   readonly tenant_id: string;
   readonly conversation_id: string;
 }
 
-export type LoadedSkillEntries = Array<{ slug: string; last_turn: number }>;
+type LoadedSkillEntries = Array<{ slug: string; last_turn: number }>;
 
 function conversationRow(scope: ConversationScope) {
   return and(
@@ -123,7 +123,7 @@ export async function listRecentToolCallOutputs(
     .limit(limit);
 }
 
-export interface AuthoringContextCounts {
+interface AuthoringContextCounts {
   readonly messages: number;
   readonly tool_calls: number;
   readonly attachments: number;

@@ -10,7 +10,7 @@ import {
   withLatestPreview,
   withWorkflowInspection,
   withWorkflowValidation,
-} from "../../authoring-state.ts";
+} from "../../authoring-state/index.ts";
 import { commitWorkflowAtomic } from "../../persistence/commit-workflow.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import type { DraftDocument } from "../../types.ts";

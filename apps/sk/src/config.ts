@@ -11,7 +11,7 @@ export interface Profile {
   notification_inbox_cursor?: number;
 }
 
-export interface SkConfig {
+interface SkConfig {
   active_profile: string;
   profiles: Record<string, Profile>;
 }
@@ -19,7 +19,7 @@ export interface SkConfig {
 export const DEFAULT_ENGINE_URL = "http://localhost:3000";
 export const DEFAULT_PROFILE = "default";
 
-export function defaultProfile(): Profile {
+function defaultProfile(): Profile {
   return {
     engine_url: DEFAULT_ENGINE_URL,
     api_key: "",

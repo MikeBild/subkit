@@ -5,7 +5,7 @@ import {
   type WorkflowDef,
   WorkflowDefSchema,
 } from "../../workflows/types.ts";
-import { getWorkflowDraft } from "../authoring-state.ts";
+import { getWorkflowDraft } from "../authoring-state/index.ts";
 import { turnExecutionSuppression } from "../execution-suppression.ts";
 import { type SaveVerificationEvidence, saveVerificationEvidence } from "../handoff-summary.ts";
 import { buildGateError, missingFreshCheckpoints } from "../tools/authoring-contract.ts";

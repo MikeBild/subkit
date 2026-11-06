@@ -18,7 +18,7 @@ import { DiscoveryError, type DiscoveryResult } from "./types.ts";
 
 export const KNOWLEDGE_SOURCE_TTL_MS = 24 * 60 * 60 * 1000;
 
-export const NEGATIVE_TTL_MS = 30 * 60 * 1000;
+const NEGATIVE_TTL_MS = 30 * 60 * 1000;
 
 export function isUsefulDiscovery(result: DiscoveryResult): boolean {
   return (result.endpoints?.length ?? 0) > 0 || Boolean(result.text_corpus);
@@ -26,7 +26,7 @@ export function isUsefulDiscovery(result: DiscoveryResult): boolean {
 
 export const DISCOVERY_TIMEOUT_MS = 30_000;
 
-export const DISCOVERY_SOURCE_TYPE = "discovery_endpoint_index" as const;
+const DISCOVERY_SOURCE_TYPE = "discovery_endpoint_index" as const;
 
 export interface DiscoveryServiceArgs {
   template_id?: string;

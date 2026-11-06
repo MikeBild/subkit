@@ -1,4 +1,4 @@
-import { getWorkflowDraft } from "./authoring-state.ts";
+import { getWorkflowDraft } from "./authoring-state/index.ts";
 import { missingFreshCheckpoints } from "./tools/authoring-contract.ts";
 import type { DraftDocument } from "./types.ts";
 

@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test
 import { createServer } from "node:http";
 import { eq } from "drizzle-orm";
 import { connectors, credentials } from "../../../db/schema/index.ts";
-import { createEmptyDraftDocument } from "../../authoring-state.ts";
+import { createEmptyDraftDocument } from "../../authoring-state/index.ts";
 import {
   _resetDraftCredentialCacheForTests,
   setDraftCredential,

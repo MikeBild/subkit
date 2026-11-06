@@ -1,11 +1,11 @@
-export interface TokenUsageBreakdown {
+interface TokenUsageBreakdown {
   prompt_tokens: number;
   completion_tokens: number;
   cache_read_tokens: number;
   cache_creation_tokens: number;
 }
 
-export const CACHE_READ_WEIGHT = 0.1;
+const CACHE_READ_WEIGHT = 0.1;
 
 export const CACHE_CREATE_WEIGHT = 2;
 

@@ -1,12 +1,12 @@
 import { walkZipEntries } from "../utils/zip-walk.ts";
 
-export interface ExtractedFile {
+interface ExtractedFile {
   filename: string;
   buffer: Buffer;
   mime?: string;
 }
 
-export interface ArchiveExtractionResult {
+interface ArchiveExtractionResult {
   files: ExtractedFile[];
   skipped_count: number;
   skipped_reasons: Record<string, number>;

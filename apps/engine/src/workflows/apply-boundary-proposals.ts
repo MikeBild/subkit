@@ -16,7 +16,7 @@ export async function currentOrDraftDefinition(
   return workflow?.definition ?? null;
 }
 
-export type ApplyBoundaryProposalsResult =
+type ApplyBoundaryProposalsResult =
   | { draft: NonNullable<SaveWorkflowDraftResult["draft"]>; applied_step_ids: string[] }
   | { draft?: never; code: "nothing_to_apply" }
   | SaveWorkflowDraftResult;

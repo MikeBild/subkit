@@ -446,7 +446,7 @@ export const CONVENTIONS_SECTION_CAP = 600;
 
 export const CONVENTIONS_HEADING = "# Applied conventions (Angewandte Konventionen)";
 
-export type ConventionsRenderMode = "interactive" | "generate";
+type ConventionsRenderMode = "interactive" | "generate";
 
 function conventionLine(entry: AppliedConvention): string {
   return `- ${entry.rule.rule_id} [${entry.rule.type}] ${entry.rule.statement} ${JSON.stringify(entry.rule.payload)} (${entry.level} · ${entry.skill_title})`;
@@ -467,7 +467,7 @@ function omittedNote(omitted: AppliedConvention[], mode: ConventionsRenderMode):
     : `[${omitted.length} more convention${omitted.length === 1 ? "" : "s"} omitted for the section cap; read them with ${titles}.]`;
 }
 
-export interface ConventionsSection {
+interface ConventionsSection {
   section: string;
   included: AppliedConvention[];
 }
@@ -513,7 +513,7 @@ export function conventionsTrimReference(
   return [CONVENTIONS_HEADING, omittedNote(active.conventions, mode)].join("\n");
 }
 
-export const PRIOR_WORKFLOWS_SECTION_CAP = 1500;
+const PRIOR_WORKFLOWS_SECTION_CAP = 1500;
 
 export const PRIOR_WORKFLOWS_TOP_K = 3;
 
@@ -538,7 +538,7 @@ function renderPriorWorkflowRef(ref: PriorWorkflowRef): string {
   return parts.join("\n");
 }
 
-export function formatPriorWorkflows(refs: PriorWorkflowRef[]): string | null {
+function formatPriorWorkflows(refs: PriorWorkflowRef[]): string | null {
   if (refs.length === 0) return null;
   return [
     "### Prior workflows [reference, not template]",

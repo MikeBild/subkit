@@ -93,7 +93,7 @@ export const DIRECT_PROVIDER_KINDS = [
 
 export type DirectProviderKind = (typeof DIRECT_PROVIDER_KINDS)[number];
 export type ProviderKind = "gateway" | "mock" | DirectProviderKind;
-export type ProviderState = ProviderKind | "unconfigured";
+type ProviderState = ProviderKind | "unconfigured";
 
 export interface ModelInitOptions {
   exec?: Executor;
@@ -120,7 +120,7 @@ export class ProviderMisconfiguredError extends Error {
   }
 }
 
-export const PROVIDER_MODEL_SETTING: Record<DirectProviderKind, string> = {
+const PROVIDER_MODEL_SETTING: Record<DirectProviderKind, string> = {
   anthropic: "ANTHROPIC_MODEL",
   openai: "OPENAI_MODEL",
   gemini: "GEMINI_MODEL",
@@ -236,7 +236,7 @@ function isDirectProviderKind(value: string): value is DirectProviderKind {
   return DIRECT_PROVIDER_KINDS.includes(value as DirectProviderKind);
 }
 
-export interface ProviderSetupReport {
+interface ProviderSetupReport {
   detected: ProviderState;
   ok: boolean;
   message: string;

@@ -12,7 +12,7 @@ export interface ServicePackageWorkflowSource {
   definition_hash: string;
 }
 
-export interface ServicePackageWorkflowProvenance extends ServicePackageWorkflowSource {
+interface ServicePackageWorkflowProvenance extends ServicePackageWorkflowSource {
   installed_hash: string;
 }
 

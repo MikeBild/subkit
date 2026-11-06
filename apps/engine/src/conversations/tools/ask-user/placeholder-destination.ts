@@ -1,14 +1,14 @@
 import { findPlaceholderDestinations } from "../../../workflows/destination-placeholders.ts";
 
-export type PlaceholderHintAttribute = "placeholder" | "default";
+type PlaceholderHintAttribute = "placeholder" | "default";
 
-export interface PlaceholderDestinationHint {
+interface PlaceholderDestinationHint {
   field: string;
   attribute: PlaceholderHintAttribute;
   match: string;
 }
 
-export interface StrippedAskInput {
+interface StrippedAskInput {
   input: unknown;
   dropped: PlaceholderDestinationHint[];
 }

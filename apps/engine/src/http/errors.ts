@@ -1,4 +1,4 @@
-export interface HttpErrorBody {
+interface HttpErrorBody {
   code: string;
   message: string;
   hint?: string;
@@ -6,7 +6,7 @@ export interface HttpErrorBody {
   details?: Record<string, unknown>;
 }
 
-export interface HttpErrorOptions {
+interface HttpErrorOptions {
   hint?: string;
   retry_after?: number;
   details?: Record<string, unknown>;

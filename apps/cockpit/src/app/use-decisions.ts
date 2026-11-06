@@ -59,7 +59,7 @@ export function useHeldSchedules(permissions: readonly string[]): HeldSchedule[]
   return query.data ?? [];
 }
 
-export interface ReviewDecisions {
+interface ReviewDecisions {
   access: ReviewAccess;
   isPending: boolean;
   failed: boolean;

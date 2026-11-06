@@ -156,7 +156,7 @@ export class EngineBootLifetime {
   }
 }
 
-export interface EngineScheduler {
+interface EngineScheduler {
   install(): { installed: true; firstPass: Promise<void> };
   stop(): Promise<void>;
 }

@@ -3,7 +3,7 @@ import type { z } from "zod";
 import type { HostedLlmModelSchema } from "../../config/schema.ts";
 import { LlmQuotaExhausted } from "../errors.ts";
 
-export type HostedModelBilling = z.infer<typeof HostedLlmModelSchema>;
+type HostedModelBilling = z.infer<typeof HostedLlmModelSchema>;
 
 export function unsupportedHostedBilling(reason: string): never {
   throw new LlmQuotaExhausted(

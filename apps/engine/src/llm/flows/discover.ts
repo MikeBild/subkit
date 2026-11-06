@@ -42,13 +42,13 @@ const DiscoverEnvelopeSchema = z.object({
 });
 export type DiscoverEnvelope = z.infer<typeof DiscoverEnvelopeSchema>;
 
-export interface DiscoverParams {
+interface DiscoverParams {
   tenant_id: string;
   run_id: string;
   files: Record<string, string>;
 }
 
-export interface DiscoverResult {
+interface DiscoverResult {
   artifacts: DiscoverArtifact[];
   rejected: Array<{ artifact: DiscoverArtifact; issues: string[] }>;
   raw_text: string;

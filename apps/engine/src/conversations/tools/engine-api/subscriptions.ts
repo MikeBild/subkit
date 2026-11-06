@@ -4,7 +4,7 @@ import type { ConversationTool } from "../index.ts";
 const EmptyInput = z.object({}).openapi("SubscriptionsEmptyInput");
 const IdInput = z.object({ id: z.string().uuid() }).openapi("SubscriptionIdInput");
 
-export const listSubscriptionsTool: ConversationTool = {
+const listSubscriptionsTool: ConversationTool = {
   name: "list_subscriptions",
   description: "List outbound webhook subscriptions.",
   inputSchema: EmptyInput,
@@ -15,7 +15,7 @@ export const listSubscriptionsTool: ConversationTool = {
   },
 };
 
-export const getSubscriptionTool: ConversationTool = {
+const getSubscriptionTool: ConversationTool = {
   name: "get_subscription",
   description: "Fetch one subscription by id.",
   inputSchema: IdInput,

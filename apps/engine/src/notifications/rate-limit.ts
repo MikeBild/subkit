@@ -1,4 +1,4 @@
-export interface RateLimitKey {
+interface RateLimitKey {
   tenant_id: string;
   workspace_id: string;
   channel_id: string;
@@ -47,7 +47,7 @@ function getBucket(key: string, capacity: number, now: number): BucketState {
   return fresh;
 }
 
-export interface AcquireResult {
+interface AcquireResult {
   ok: boolean;
   retryAfterMs?: number;
   tokensRemaining?: number;

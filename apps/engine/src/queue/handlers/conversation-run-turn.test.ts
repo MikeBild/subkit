@@ -3,7 +3,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { createElicitation } from "../../conversations/elicitations.ts";
 import { deriveConversationOutcome } from "../../conversations/lifecycle-view.ts";
-import { _setConverseFirstChunkTimeoutMsForTests } from "../../conversations/loop.ts";
+import { _setConverseFirstChunkTimeoutMsForTests } from "../../conversations/loop/index.ts";
 import * as svc from "../../conversations/service.ts";
 import {
   auditLog,

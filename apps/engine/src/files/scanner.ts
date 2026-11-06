@@ -4,7 +4,7 @@ export interface ScanResult {
   signature?: string;
 }
 
-export interface ScanMeta {
+interface ScanMeta {
   content_type?: string | null;
   filename: string;
 }

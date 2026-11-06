@@ -10,7 +10,7 @@ import type {
 import { logger } from "../../logging/logger.ts";
 import { recordExecutionDryRun } from "../../observability/instrumentation.ts";
 import type { WorkflowDef } from "../../workflows/types.ts";
-import { withLatestPreview } from "../authoring-state.ts";
+import { withLatestPreview } from "../authoring-state/index.ts";
 import { buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ToolContext, ToolResult } from "./index.ts";
 import { clearLastPreview } from "./last-preview-store.ts";

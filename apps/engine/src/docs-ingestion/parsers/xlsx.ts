@@ -9,7 +9,7 @@ import {
 import { hasZipEntryPrefix } from "./zip-sniff.ts";
 
 const XLS_OLE_SIG = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
-export const XLSX_ROW_CAP_PER_SHEET = 200;
+const XLSX_ROW_CAP_PER_SHEET = 200;
 
 export type XlsxFormat = "xlsx" | "xls";
 

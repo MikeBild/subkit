@@ -1,7 +1,7 @@
 import ts from "typescript";
 import type { RuleHit } from "./rules.ts";
 
-export type RequestPart = "params" | "query" | "body";
+type RequestPart = "params" | "query" | "body";
 
 const VALID_TARGET: Readonly<Record<string, RequestPart>> = {
   param: "params",

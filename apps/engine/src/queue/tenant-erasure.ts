@@ -10,7 +10,7 @@ export interface TenantErasureQueue {
   unschedule(name: string, key?: string): Promise<void>;
 }
 
-export interface TenantQueueTargets {
+interface TenantQueueTargets {
   tenant_id: string;
   event_ids: number[];
   workspaces: Array<{ platform: string; workspace_id: string }>;

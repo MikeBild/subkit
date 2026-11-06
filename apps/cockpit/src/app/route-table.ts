@@ -21,7 +21,7 @@ export function movedTarget(search: string): string {
   return redirectTarget(peopleHref("roles"), search);
 }
 
-export function redirectTarget(target: string, incomingSearch: string): string {
+function redirectTarget(target: string, incomingSearch: string): string {
   const [path, own = ""] = target.split("?");
   const params = new URLSearchParams(own);
   for (const [key, value] of new URLSearchParams(incomingSearch)) {
@@ -35,11 +35,11 @@ export const CHAT_ROUTES = ["/chat", "/chat/new", "/chat/$conversationId"] as co
 
 export const INTAKE_ROUTES = ["/intake", "/intake/$resourceId"] as const;
 
-export const INSTALLATION_ROUTES = ["/incoming/files"] as const;
+const INSTALLATION_ROUTES = ["/incoming/files"] as const;
 
-export const SKILL_CANDIDATE_ROUTES = ["/skills/candidates"] as const;
+const SKILL_CANDIDATE_ROUTES = ["/skills/candidates"] as const;
 
-export const DOCS_ROUTES = ["/docs", "/docs/$slug"] as const;
+const DOCS_ROUTES = ["/docs", "/docs/$slug"] as const;
 
 export const CATALOG_RESOURCES = [
   "workflows",

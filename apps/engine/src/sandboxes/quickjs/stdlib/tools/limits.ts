@@ -1,4 +1,4 @@
-export const MAX_TEXT = 1_048_576;
+const MAX_TEXT = 1_048_576;
 export const MAX_ROWS = 10_000;
 export function text(value: unknown): string {
   if (typeof value !== "string" || value.length > MAX_TEXT)

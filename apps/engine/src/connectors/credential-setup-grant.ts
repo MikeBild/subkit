@@ -12,7 +12,7 @@ import type { ConnectorView } from "./types.ts";
 
 export const CREDENTIAL_SETUP_GRANT_PREFIX = "sksg_";
 
-export interface IssuedCredentialSetupGrant {
+interface IssuedCredentialSetupGrant {
   plaintext: string;
   hash: string;
 }
@@ -23,9 +23,9 @@ export function generateCredentialSetupGrant(): IssuedCredentialSetupGrant {
   return { plaintext, hash: sha256Hex(plaintext) };
 }
 
-export type MintCredentialSetupGrantError = { ok: false; error: "engine_public_url_missing" };
+type MintCredentialSetupGrantError = { ok: false; error: "engine_public_url_missing" };
 
-export interface MintedCredentialSetupGrant {
+interface MintedCredentialSetupGrant {
   ok: true;
   url: string;
   expires_at: Date;
@@ -78,7 +78,7 @@ export async function mintCredentialSetupGrantUrl(
   return { ok: true, url, expires_at };
 }
 
-export interface ValidatedCredentialSetupGrant {
+interface ValidatedCredentialSetupGrant {
   id: string;
   tenant_id: string;
   connector_id: string;
@@ -113,7 +113,7 @@ export async function validateSetupGrant(
   };
 }
 
-export interface ConsumedCredentialSetupGrant {
+interface ConsumedCredentialSetupGrant {
   id: string;
   tenant_id: string;
   connector_id: string;

@@ -4,7 +4,7 @@ import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import * as docsService from "../../docs-ingestion/service.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
-import { createEmptyDraftDocument } from "../authoring-state.ts";
+import { createEmptyDraftDocument } from "../authoring-state/index.ts";
 import type { DraftDocument } from "../types.ts";
 import { fetchConnectorDocsTool } from "./fetch-connector-docs.ts";
 import type { ToolContext } from "./index.ts";

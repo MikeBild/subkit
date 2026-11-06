@@ -397,7 +397,7 @@ export async function can(db: Executor, check: PermissionCheck): Promise<Decisio
   };
 }
 
-export interface ResourceAccess {
+interface ResourceAccess {
   tenantWide: Decision;
   allows(id: string): boolean;
   any: boolean;
@@ -560,4 +560,4 @@ export async function connectorAccessLevel(
   return "none";
 }
 
-export { permissionsTable as rbacPermissions, rolesTable as rbacRoles };
+export { rolesTable as rbacRoles };

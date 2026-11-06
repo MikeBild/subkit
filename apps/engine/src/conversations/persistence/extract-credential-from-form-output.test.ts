@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { extractCredentialFromFormOutput } from "./auto-persist.ts";
+import { extractCredentialFromFormOutput } from "./auto-persist/index.ts";
 
 describe("extractCredentialFromFormOutput — bearer / basic / header / query", () => {
   it("maps a bearer form into a bearer credential", () => {

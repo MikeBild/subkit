@@ -12,7 +12,7 @@ export interface ObjectStoreBinding {
   force_path_style: boolean;
 }
 
-export interface SecretBinding {
+interface SecretBinding {
   name: string;
   version: number;
   path: string;

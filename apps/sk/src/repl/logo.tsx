@@ -7,7 +7,7 @@ const STANDARD_ROWS = ["▛▀▘▐▘ ", "▜▄  ▐▖", "      "] as const;
 
 const APPLE_ROWS = ["▛▀▘▐▘ ", "▜▄  ▐▖", "▘▘ ▝▝ "] as const;
 
-export interface LogoProps {
+interface LogoProps {
   appleFallback?: boolean;
 }
 

@@ -2,15 +2,15 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { resolveToolMode } from "../../conversations/tool-policies.ts";
 import type { ToolCategory } from "../../tools/types.ts";
 
-export type McpToolAnnotations = NonNullable<Tool["annotations"]>;
+type McpToolAnnotations = NonNullable<Tool["annotations"]>;
 
-export interface SubkitToolMeta {
+interface SubkitToolMeta {
   category: ToolCategory | "workflow_run";
   confirm_required: boolean;
   destructive: boolean;
 }
 
-export interface SubkitToolMetaEnvelope {
+interface SubkitToolMetaEnvelope {
   subkit: SubkitToolMeta;
   [k: string]: unknown;
 }

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { createEmptyDraftDocument } from "../conversations/authoring-state.ts";
+import { createEmptyDraftDocument } from "../conversations/authoring-state/index.ts";
 import type { ToolContext } from "../conversations/tools/index.ts";
 import { connectors, conversations, tenants, workflows } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";

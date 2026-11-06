@@ -11,7 +11,7 @@ import {
 import { z } from "zod";
 import { getConfig, isConfigLoaded } from "../../config/loader.ts";
 import type { OidcBearerProviderConfig } from "../../config/schema.ts";
-import { type Db, getDb } from "../../db/client.ts";
+import type { Db } from "../../db/client.ts";
 import { tenants } from "../../db/schema/index.ts";
 import { fetchDiscovery } from "../../identity/oidc-discovery.ts";
 import { log } from "../../logging/logger.ts";
@@ -30,7 +30,7 @@ const DISCOVERY_FAILURE_COOLDOWN_MS = 30_000;
 const COMPACT_JWS = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/;
 
 export interface OidcBearerProviderOptions {
-  db?: Db;
+  db: Db;
   providers?: () => OidcBearerProviderConfig[];
   now?: () => Date;
   jwksCooldownMs?: number;
@@ -142,9 +142,7 @@ function deny(reason: string): AuthDenial {
   return { denied: true, provider: OIDC_BEARER_PROVIDER_NAME, reason };
 }
 
-export function createOidcBearerProvider(
-  opts: OidcBearerProviderOptions = {},
-): DenyingAuthProvider {
+export function createOidcBearerProvider(opts: OidcBearerProviderOptions): DenyingAuthProvider {
   const providers = opts.providers ?? configuredBearerProviders;
   const now = opts.now ?? (() => new Date());
 
@@ -220,7 +218,7 @@ export function createOidcBearerProvider(
         return deny("token_times_missing");
       }
 
-      const db = opts.db ?? getDb();
+      const db = opts.db;
       // tenant-filter:exempt — bearer tokens resolve their tenant from operator configuration by slug.
       const [tenant] = await db
         .select({ id: tenants.id })

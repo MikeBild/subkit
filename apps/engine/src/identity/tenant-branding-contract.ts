@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { TenantBrandingValue } from "./tenant-branding.ts";
 
-export const TenantBrandingLogoOperationSchema = z.discriminatedUnion("operation", [
+const TenantBrandingLogoOperationSchema = z.discriminatedUnion("operation", [
   z.object({ operation: z.literal("keep") }).strict(),
   z.object({ operation: z.literal("remove") }).strict(),
   z
@@ -13,7 +13,7 @@ export const TenantBrandingLogoOperationSchema = z.discriminatedUnion("operation
     .strict(),
 ]);
 
-export const TenantBrandingAppIconOperationSchema = TenantBrandingLogoOperationSchema;
+const TenantBrandingAppIconOperationSchema = TenantBrandingLogoOperationSchema;
 
 export const TenantBrandingUpdateSchema = z
   .object({

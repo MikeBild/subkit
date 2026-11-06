@@ -16,7 +16,7 @@ export function terminalText(value: string): string {
   return value.replace(OSC_ESCAPE, "").replace(CSI_ESCAPE, "").replace(CONTROL_CHARACTER, " ");
 }
 
-export type CliLocale = "de" | "en";
+type CliLocale = "de" | "en";
 
 export const SELECTED_ITEMS_LABEL = "these selected items";
 

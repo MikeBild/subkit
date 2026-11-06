@@ -10,7 +10,7 @@ import {
 import type { AppEnv } from "../openapi.ts";
 import { streamTenantSSE as streamSSE } from "../tenant-stream.ts";
 
-export interface OutboxTailOptions {
+interface OutboxTailOptions {
   db: Db;
   conds: () => SQL[];
   replay: "recent" | "all" | "tail";
@@ -21,8 +21,8 @@ export interface OutboxTailOptions {
   heartbeatMs?: number;
 }
 
-export const OUTBOX_REPLAY_CAP = 1_000;
-export const OUTBOX_POLL_MS = 250;
+const OUTBOX_REPLAY_CAP = 1_000;
+const OUTBOX_POLL_MS = 250;
 
 type AbortListenerTarget = Pick<
   AbortSignal,

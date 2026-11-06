@@ -10,7 +10,7 @@ import {
   resolveOperatingBounds,
 } from "../../operator/operating-figures.ts";
 
-export const OPERATING_FIGURES_TOOL_NAME = "get_operating_figures";
+const OPERATING_FIGURES_TOOL_NAME = "get_operating_figures";
 
 const WINDOW_NAMES = Object.keys(OPERATING_WINDOWS) as [OperatingWindow, ...OperatingWindow[]];
 

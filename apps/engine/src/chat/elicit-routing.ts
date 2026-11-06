@@ -81,7 +81,7 @@ function parseViewMetadata(raw: string): { c: string; e: string; k: string } | n
   return result.data;
 }
 
-export type ChatElicitErrorClass =
+type ChatElicitErrorClass =
   | { kind: "actor_mismatch"; audit_reason: "actor_not_owner"; user_text: string }
   | {
       kind: "validation";
@@ -130,7 +130,7 @@ export function classifyChatElicitError(err: unknown): ChatElicitErrorClass {
   return { kind: "rethrow" };
 }
 
-export interface RouteChatInteractionArgs {
+interface RouteChatInteractionArgs {
   ev: ChatEvent;
   tenant_id: string;
   user_id: string;

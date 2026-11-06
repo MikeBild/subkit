@@ -5,7 +5,7 @@ import {
   conversations,
   workflowVersions,
 } from "../../db/schema/index.ts";
-import { withLatestPreview } from "../authoring-state.ts";
+import { withLatestPreview } from "../authoring-state/index.ts";
 import { commitWorkflowAtomic } from "../persistence/commit-workflow.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { saveWorkflowDraftTool } from "../tools/save-workflow-draft.ts";

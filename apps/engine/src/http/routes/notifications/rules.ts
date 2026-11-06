@@ -89,7 +89,7 @@ const TestRuleResponse = z
   })
   .openapi("TestNotificationRuleResponse");
 
-export function serializeRule(row: NotificationRuleRow) {
+function serializeRule(row: NotificationRuleRow) {
   return {
     id: row.id,
     tenant_id: row.tenant_id,

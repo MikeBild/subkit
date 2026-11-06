@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { roles as rolesTable, systemAccounts, users as usersTable } from "../db/schema/index.ts";
 
-export interface QueryPrincipal {
+interface QueryPrincipal {
   provider: string;
   kind: "user" | "system_account";
   id: string;

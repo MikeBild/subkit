@@ -1,8 +1,8 @@
 import { z } from "@hono/zod-openapi";
 import { classifyRequestStepSideEffects } from "../../execution/steps/request/side-effects.ts";
 import type { RequestStep } from "../../workflows/types.ts";
+import { getWorkflowDraft, withWorkflowInspection } from "../authoring-state/index.ts";
 import { pendingInactiveDraft, persistedResourceForKind } from "../authoring-state/summary.ts";
-import { getWorkflowDraft, withWorkflowInspection } from "../authoring-state.ts";
 import type { WorkflowDraftStepPreview } from "../types.ts";
 import { buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";

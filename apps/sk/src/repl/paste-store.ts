@@ -1,6 +1,6 @@
 import { formatFileRef as formatFileLeaf, parseAllFileMentions } from "../utils/file-ref.ts";
 
-export const LARGE_PASTE_CHAR_THRESHOLD = 1000;
+const LARGE_PASTE_CHAR_THRESHOLD = 1000;
 export const MAX_USER_INPUT_TEXT_CHARS = 1 << 20;
 
 export type StoredPaste =

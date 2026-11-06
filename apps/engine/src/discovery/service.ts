@@ -207,111 +207,6 @@ export async function createDiscoveryRun(
   });
 }
 
-export async function markRunAnalyzing(
-  tenant_id: string,
-  run_id: string,
-  exec?: Executor,
-): Promise<void> {
-  const db = exec ?? getDb();
-  await db
-    .update(discoveryRuns)
-    .set({ status: "analyzing", updated_at: new Date() })
-    .where(and(eq(discoveryRuns.tenant_id, tenant_id), eq(discoveryRuns.id, run_id)));
-}
-
-export async function markRunCompleted(
-  tenant_id: string,
-  run_id: string,
-  artifact_count: number,
-  exec?: Executor,
-): Promise<void> {
-  const db = exec ?? getDb();
-  await (db as Db).transaction(async (tx) => {
-    await tx
-      .update(discoveryRuns)
-      .set({
-        status: "completed",
-        artifact_count,
-        completed_at: new Date(),
-        updated_at: new Date(),
-      })
-      .where(and(eq(discoveryRuns.tenant_id, tenant_id), eq(discoveryRuns.id, run_id)));
-
-    await tx.update(discoveryFiles).set({ content: null }).where(eq(discoveryFiles.run_id, run_id));
-
-    await auditAwait(
-      {
-        tenant_id,
-        actor_type: "system",
-        action: AuditAction.DISCOVERY_RUN_COMPLETED,
-        resource_type: "discovery_run",
-        resource_id: run_id,
-        result: "success",
-        metadata: { artifact_count },
-      },
-      tx,
-    );
-  });
-}
-
-export async function markRunFailed(
-  tenant_id: string,
-  run_id: string,
-  error: string,
-  exec?: Executor,
-): Promise<void> {
-  const db = exec ?? getDb();
-  await (db as Db).transaction(async (tx) => {
-    await tx
-      .update(discoveryRuns)
-      .set({
-        status: "failed",
-        error,
-        completed_at: new Date(),
-        updated_at: new Date(),
-      })
-      .where(and(eq(discoveryRuns.tenant_id, tenant_id), eq(discoveryRuns.id, run_id)));
-
-    await auditAwait(
-      {
-        tenant_id,
-        actor_type: "system",
-        action: AuditAction.DISCOVERY_RUN_FAILED,
-        resource_type: "discovery_run",
-        resource_id: run_id,
-        result: "error",
-        metadata: { error },
-      },
-      tx,
-    );
-  });
-}
-
-export async function markFileAnalyzed(file_id: string, exec?: Executor): Promise<void> {
-  const db = exec ?? getDb();
-  await db
-    .update(discoveryFiles)
-    .set({ status: "analyzed", content: null, updated_at: new Date() })
-    .where(eq(discoveryFiles.id, file_id));
-}
-
-export async function incrementFilesAnalyzed(
-  tenant_id: string,
-  run_id: string,
-  exec?: Executor,
-): Promise<number> {
-  const db = exec ?? getDb();
-  const [row] = await db
-    .update(discoveryRuns)
-    .set({
-      files_analyzed: sql`${discoveryRuns.files_analyzed} + 1`,
-      updated_at: new Date(),
-    })
-    .where(and(eq(discoveryRuns.tenant_id, tenant_id), eq(discoveryRuns.id, run_id)))
-    .returning({ files_analyzed: discoveryRuns.files_analyzed });
-  return row?.files_analyzed ?? 0;
-}
-
 export async function getDiscoveryRun(
   tenant_id: string,
   run_id: string,
@@ -503,9 +398,9 @@ function normalizeIntent(s: string): string {
     .replace(/\s+/g, " ");
 }
 
-export type SuggestedGapKind = "connector" | "workflow" | "knowledge" | "unknown";
+type SuggestedGapKind = "connector" | "workflow" | "knowledge" | "unknown";
 
-export interface RecordGapCandidateParams {
+interface RecordGapCandidateParams {
   tenant_id: string;
   conversation_id: string | null;
   requested: string;
@@ -515,7 +410,7 @@ export interface RecordGapCandidateParams {
   actor?: Actor | null;
 }
 
-export interface CapabilityGapDraft {
+interface CapabilityGapDraft {
   requested: string;
   missing_capability: string | null;
   suggested_kind: SuggestedGapKind;
@@ -525,12 +420,12 @@ export interface CapabilityGapDraft {
   resolution?: CapabilityGapResolution;
 }
 
-export interface CapabilityGapResolution {
+interface CapabilityGapResolution {
   note: string;
   resolved_at: string;
 }
 
-export type CapabilityGapState = "open" | "accepted" | "declined" | "resolved";
+type CapabilityGapState = "open" | "accepted" | "declined" | "resolved";
 
 const GAP_STATE_BY_STATUS: Record<DiscoveryArtifactStatus, CapabilityGapState> = {
   proposed: "open",
@@ -539,11 +434,11 @@ const GAP_STATE_BY_STATUS: Record<DiscoveryArtifactStatus, CapabilityGapState> =
   superseded: "resolved",
 };
 
-export function capabilityGapState(status: DiscoveryArtifactStatus): CapabilityGapState {
+function capabilityGapState(status: DiscoveryArtifactStatus): CapabilityGapState {
   return GAP_STATE_BY_STATUS[status];
 }
 
-export interface CapabilityGapView {
+interface CapabilityGapView {
   id: string;
   status: DiscoveryArtifactStatus;
   state: CapabilityGapState;
@@ -761,7 +656,7 @@ export async function recordGapCandidate(
   }
 }
 
-export interface ListCapabilityGapsParams {
+interface ListCapabilityGapsParams {
   tenant_id: string;
   status?: DiscoveryArtifactStatus;
   limit?: number;

@@ -42,7 +42,7 @@ export interface WorkflowAuthorityEnvironmentSummary {
   ready_for_new_run: boolean;
 }
 
-export interface WorkflowOperatingState {
+interface WorkflowOperatingState {
   operating_status: WorkflowOperatingStatus;
   authority_environments: Record<"dev" | "prod", WorkflowAuthorityEnvironmentSummary | null>;
 }

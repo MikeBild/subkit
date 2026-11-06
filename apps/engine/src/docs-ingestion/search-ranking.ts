@@ -1,6 +1,6 @@
 export type SearchHitMatchType = "operation" | "auth" | "schema" | "general";
 
-export interface SearchHitCandidate {
+interface SearchHitCandidate {
   id: string;
   document_id: string;
   title: string | null;
@@ -11,7 +11,7 @@ export interface SearchHitCandidate {
   fetched_at: string | null;
 }
 
-export interface RankedSearchHit {
+interface RankedSearchHit {
   id: string;
   document_id: string;
   title: string | null;

@@ -1,6 +1,6 @@
 import { pluralKey, type TranslationKey } from "@/lib/i18n";
 
-export interface StorageScopePresentation {
+interface StorageScopePresentation {
   title: TranslationKey;
   detail: TranslationKey;
   values: Record<string, string | number>;

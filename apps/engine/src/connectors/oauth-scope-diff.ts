@@ -5,7 +5,7 @@ import { type Db } from "../db/client.ts";
 import { credentials } from "../db/schema/index.ts";
 import type { ConnectorView } from "./types.ts";
 
-export interface ScopeDiff {
+interface ScopeDiff {
   partial_grant: boolean | "unknown";
   expected: string[];
   granted: string[];

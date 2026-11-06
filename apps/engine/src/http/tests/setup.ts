@@ -102,7 +102,7 @@ export async function browserSessionHeaders(
   };
 }
 
-export interface CreateHttpTestServerOptions {
+interface CreateHttpTestServerOptions {
   appOptions?: Partial<Parameters<typeof createApp>[0]>;
   operator?: boolean;
   hosted?: boolean;

@@ -21,7 +21,7 @@ import {
   withConnectorAuthenticated,
   withConnectorPersisted,
   withConnectorValidation,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import { toCreateConnectorInput, validateConnectorDraft } from "../connector-draft.ts";
 import { auditActorFromToolContext, connectorActorFromToolContext } from "../tools/audit-actor.ts";
 import {

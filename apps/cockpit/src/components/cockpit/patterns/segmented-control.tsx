@@ -8,7 +8,7 @@ export interface SegmentedOption {
   testId?: string;
 }
 
-export interface HorizontalSpan {
+interface HorizontalSpan {
   left: number;
   right: number;
 }

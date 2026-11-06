@@ -20,7 +20,7 @@ const SUBMITTED_DELIVERY_STATES: ReadonlySet<string> = new Set([
   "url_failed",
 ]);
 
-export type DraftCredentialSetupAuthType =
+type DraftCredentialSetupAuthType =
   | "bearer"
   | "basic"
   | "header"
@@ -41,7 +41,7 @@ export function isDraftCredentialSetupAuthType(
   );
 }
 
-export type MintDraftCredentialSetupResult =
+type MintDraftCredentialSetupResult =
   | { ok: true; url: string; expires_at: Date }
   | { ok: false; error: "engine_public_url_missing" };
 
@@ -62,7 +62,7 @@ export function mintDraftCredentialSetupUrl(
   };
 }
 
-export interface ValidatedDraftCredentialSetup {
+interface ValidatedDraftCredentialSetup {
   tenant_id: string;
   conversation_id: string;
   elicitation_id: string;
@@ -134,7 +134,7 @@ export function draftCredentialSetupNote(url: string, expires_at: Date): string 
   );
 }
 
-export type ReissueDraftCredentialSetupResult =
+type ReissueDraftCredentialSetupResult =
   | { reissued: true; input: Record<string, unknown>; expires_at: Date }
   | {
       reissued: false;

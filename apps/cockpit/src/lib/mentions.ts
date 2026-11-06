@@ -9,7 +9,7 @@ const LABEL_RE = /^[\p{L}\p{N} _./-]{1,200}$/u;
 
 const TOKEN_CONTINUATION = /[\p{L}\p{N}_./-]/u;
 
-export const CATEGORY_MENTION_PREFIX = "kategorie/";
+const CATEGORY_MENTION_PREFIX = "kategorie/";
 
 export function categoryMentionToken(category: string): string {
   return `${MENTION_TRIGGER}${CATEGORY_MENTION_PREFIX}${category}`;
@@ -56,7 +56,7 @@ export function insertMentionText(
   return { text: next, caret: start + token.length };
 }
 
-export interface MentionTokenMatch {
+interface MentionTokenMatch {
   start: number;
   end: number;
   reference: ConversationReference;
@@ -128,7 +128,7 @@ export function dedupeReferences(
   });
 }
 
-export interface MentionSegment {
+interface MentionSegment {
   text: string;
   reference?: ConversationReference;
 }

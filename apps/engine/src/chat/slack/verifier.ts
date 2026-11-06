@@ -1,18 +1,18 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-export interface SlackVerifyOptions {
+interface SlackVerifyOptions {
   signingSecret: string;
   maxSkewSeconds?: number;
   now?: () => number;
 }
 
-export interface SlackVerifyInput {
+interface SlackVerifyInput {
   timestamp: string | null;
   signature: string | null;
   body: string;
 }
 
-export type SlackVerifyResult =
+type SlackVerifyResult =
   | { ok: true }
   | { ok: false; reason: "missing_headers" | "stale" | "bad_signature" };
 

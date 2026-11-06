@@ -4,7 +4,7 @@ import { instrument } from "../observability/runtime-telemetry.ts";
 import { applyRewriteToSlots, resolvePathRewrite } from "./patch-apply.ts";
 import type { DryRunFixture, DryRunResult, DryRunStep } from "./types.ts";
 
-export interface FixtureRunParams {
+interface FixtureRunParams {
   step: DryRunStep;
   patch: PatchProposal;
   fixture: DryRunFixture;

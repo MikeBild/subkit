@@ -1,4 +1,4 @@
-export interface TextSegment {
+interface TextSegment {
   text: string;
   code: boolean;
 }

@@ -102,7 +102,7 @@ export function isProviderNativeMedia(contentType: string | null | undefined): b
   return ct.startsWith("image/") || ct === "application/pdf";
 }
 
-export type FileStrategy = "file_part" | "text_extract";
+type FileStrategy = "file_part" | "text_extract";
 
 export function chooseFileStrategy(
   caps: ModelCapabilities,

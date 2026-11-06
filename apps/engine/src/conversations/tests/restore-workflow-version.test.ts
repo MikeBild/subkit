@@ -3,7 +3,7 @@ import { workflowVersions } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { createWorkflow, getWorkflow, updateWorkflow } from "../../workflows/service.ts";
-import { createEmptyDraftDocument } from "../authoring-state.ts";
+import { createEmptyDraftDocument } from "../authoring-state/index.ts";
 import { decideToolMode } from "../tool-policies.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { restoreWorkflowVersionTool } from "../tools/restore-workflow-version.ts";

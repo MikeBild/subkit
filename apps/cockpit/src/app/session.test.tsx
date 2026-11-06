@@ -7,6 +7,7 @@ import {
   bootstrap,
   bootstrapLimits,
 } from "@/api/client";
+import { tenantContextHeaders } from "@/api/tenant-context";
 import { render } from "@/components/cockpit/patterns/test-utils";
 import { SessionSkeleton, sessionView } from "./session";
 
@@ -15,6 +16,10 @@ const originalFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = originalFetch;
 });
+
+function pinnedTenant(): string {
+  return tenantContextHeaders()["x-subkit-tenant"] ?? "tenant-a";
+}
 
 function hangUntilAborted() {
   return mock(
@@ -36,7 +41,7 @@ describe("session loading", () => {
 
   test("the first bootstrap request carries a five second limit", async () => {
     const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      Response.json({ csrf_token: "token", tenant: { id: "tenant-a" } }),
+      Response.json({ csrf_token: "token", tenant: { id: pinnedTenant() } }),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     expect(bootstrapLimits(undefined)).toEqual({ timeoutMs: BOOTSTRAP_TIMEOUT_MS });
@@ -49,7 +54,7 @@ describe("session loading", () => {
 
   test("a refresh of a loaded session is not cut off by the first-load limit", async () => {
     const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      Response.json({ csrf_token: "token", tenant: { id: "tenant-a" } }),
+      Response.json({ csrf_token: "token", tenant: { id: pinnedTenant() } }),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     const loaded = { csrf_token: "token" } as Bootstrap;

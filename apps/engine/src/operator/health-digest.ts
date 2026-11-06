@@ -353,7 +353,7 @@ const CLASS_WORD: Record<AttentionItem["class"], string> = {
   decide: "to decide",
 };
 
-export function attentionHeadline(attention: AttentionV1): string {
+function attentionHeadline(attention: AttentionV1): string {
   const failed = Object.entries(attention.sources)
     .filter(([, state]) => state === "failed")
     .map(([source]) => source);
@@ -461,7 +461,7 @@ function renderDigest(
   return lines.join("\n");
 }
 
-export const MCP_SUMMARY_TOP_N = 10;
+const MCP_SUMMARY_TOP_N = 10;
 
 export async function buildOperatorHealthSummary(
   db: Db,

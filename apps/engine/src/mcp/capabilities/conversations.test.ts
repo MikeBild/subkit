@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig, setConfigKey } from "../../config/loader.ts";
-import { withWorkflowPersisted } from "../../conversations/authoring-state.ts";
+import { withWorkflowPersisted } from "../../conversations/authoring-state/index.ts";
 import { appendSnapshot, loadDraft } from "../../conversations/draft.ts";
 import { finishConversationTurn } from "../../conversations/turns.ts";
 import type { DraftDocument } from "../../conversations/types.ts";

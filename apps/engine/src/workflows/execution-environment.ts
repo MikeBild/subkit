@@ -10,7 +10,7 @@ import {
 
 type ExecutionEnvironment = "dev" | "prod";
 
-export type ReviewEnvironmentSource = "schedule" | "hook" | "bindings" | "default";
+type ReviewEnvironmentSource = "schedule" | "hook" | "bindings" | "default";
 
 export async function workflowExecutionEnvironment(
   db: Executor,

@@ -5,7 +5,7 @@ import type { StepDef } from "../workflows/types.ts";
 import { runExecution } from "./engine.ts";
 import type { ExecutionMode, RequestSource, RunResult } from "./types.ts";
 
-export interface RunSingleStepParams {
+interface RunSingleStepParams {
   db: Db;
   tenant_id: string;
   step: StepDef | unknown;

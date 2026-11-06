@@ -268,7 +268,7 @@ export function clearReauthIfProved(
   });
 }
 
-export async function emitConnectorAuthFailed(
+async function emitConnectorAuthFailed(
   tx: Executor,
   ev: {
     tenant_id: string;
@@ -295,7 +295,7 @@ export async function emitConnectorAuthFailed(
   });
 }
 
-export type ReauthConnector = Pick<
+type ReauthConnector = Pick<
   ConnectorView,
   "id" | "slug" | "driver" | "auth_type" | "config" | "template_snapshot"
 >;

@@ -7,7 +7,7 @@ import type { Executor } from "../db/client.ts";
 import { connectors } from "../db/schema/index.ts";
 import { BadRequestError } from "../http/errors.ts";
 
-export const MCP_TRUST_KEY = "tools_without_confirmation";
+const MCP_TRUST_KEY = "tools_without_confirmation";
 
 function mcpBlock(config: unknown): Record<string, unknown> | null {
   if (!config || typeof config !== "object") return null;
@@ -80,7 +80,7 @@ export async function readMcpToolsWithoutConfirmation(
   return mcpTrustedTools(row.config);
 }
 
-export interface SetMcpToolConfirmationParams {
+interface SetMcpToolConfirmationParams {
   tenant_id: string;
   connector_id: string;
   tool: string;
@@ -90,7 +90,7 @@ export interface SetMcpToolConfirmationParams {
   actor_type?: AuditActorType;
 }
 
-export interface McpToolConfirmationResult {
+interface McpToolConfirmationResult {
   tool: string;
   confirm: boolean;
   tools_without_confirmation: string[];

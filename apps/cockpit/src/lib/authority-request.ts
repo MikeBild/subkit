@@ -12,7 +12,7 @@ export interface RequestBoundaryView {
   destructive?: true;
 }
 
-export interface RequestBoundaryPresentation {
+interface RequestBoundaryPresentation {
   title: TranslationKey;
   destructive: boolean;
   target: string;

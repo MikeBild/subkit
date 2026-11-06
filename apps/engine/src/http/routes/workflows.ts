@@ -1,16 +1,18 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { WORKFLOW_OPERATING_STATUSES } from "@shared/workflow-operating-status.ts";
-import {
-  AcceptDescriptionSchema,
-  CatalogGroupBySchema,
-  CategorySchema,
-  DescriptionSchema,
-  descriptionAcceptanceValid,
-} from "../../api/catalog-metadata.ts";
+import { CategorySchema, DescriptionSchema } from "../../api/catalog-metadata.ts";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
+import { toHonoRoute } from "../../api/operations/hono.ts";
+import {
+  serializeOne,
+  WorkflowDetailSchema,
+} from "../../api/operations/workflow-representation.ts";
+import {
+  getWorkflowOperation,
+  listWorkflowsOperation,
+  updateWorkflowMetadataOperation,
+} from "../../api/operations/workflows.ts";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
 import { logger } from "../../logging/index.ts";
-import { can } from "../../rbac/index.ts";
 import {
   createSchedule,
   deleteSchedule,
@@ -21,19 +23,11 @@ import {
 } from "../../scheduler/index.ts";
 import * as svc from "../../workflows/index.ts";
 import {
-  loadWorkflowCategoryBlocks,
-  loadWorkflowList,
   prepareWorkflowSave,
   resolveWorkflowInputSchema,
   TriggerSchema,
 } from "../../workflows/index.ts";
-import {
-  BadRequestError,
-  ConflictError,
-  ForbiddenError,
-  HttpError,
-  NotFoundError,
-} from "../errors.ts";
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -42,12 +36,6 @@ import { registerWorkflowAuthorityRoutes } from "./workflow-authorities.ts";
 import { registerWorkflowDiagnosisRoutes } from "./workflow-diagnosis.ts";
 import { registerWorkflowDraftRoutes } from "./workflow-drafts.ts";
 import { registerWorkflowInvocationRoutes } from "./workflow-invocation.ts";
-import {
-  serializeOne,
-  toWorkflowListItem,
-  WorkflowDetailSchema,
-  WorkflowListResponse,
-} from "./workflow-representation.ts";
 import {
   AutomationReadinessSchema,
   ScheduleCreateBody,
@@ -100,41 +88,6 @@ function preserveOmittedTrigger(body: WorkflowBody, existing: svc.WorkflowView):
   return { ...body, trigger: existing.definition.trigger };
 }
 
-const listRoute = createRoute({
-  method: "get",
-  path: "/v1/workflows",
-  tags: ["workflows"],
-  summary: "List workflows",
-  security: [{ bearerAuth: [] }],
-  request: {
-    query: z
-      .object({
-        limit: z.coerce.number().int().positive().max(200).optional(),
-        offset: z.coerce.number().int().min(0).optional(),
-        status: z.enum(["draft", "active", "archived"]).optional(),
-        operating_status: z.enum(WORKFLOW_OPERATING_STATUSES).optional(),
-        name_contains: z.string().optional(),
-        q: z.string().min(1).max(200).optional(),
-        sort: z.enum(["name", "lifecycle", "created_at", "updated_at"]).optional(),
-        order: z.enum(["asc", "desc"]).optional(),
-        group_by: CatalogGroupBySchema.optional(),
-        description_source: z.enum(["llm", "human"]).optional(),
-        category: z
-          .string()
-          .optional()
-          .describe("Only workflows in this catalog block (see the `category` field on each item)"),
-        connector: z
-          .string()
-          .optional()
-          .describe("Only workflows whose current version uses this connector (id or slug)"),
-      })
-      .openapi("ListWorkflowsQuery"),
-  },
-  responses: {
-    200: { description: "OK", content: { "application/json": { schema: WorkflowListResponse } } },
-  },
-});
-
 const createRouteSpec = createRoute({
   method: "post",
   path: "/v1/workflows",
@@ -156,19 +109,6 @@ const createRouteSpec = createRoute({
   },
 });
 
-const getRoute = createRoute({
-  method: "get",
-  path: "/v1/workflows/{id}",
-  tags: ["workflows"],
-  summary: "Fetch a workflow",
-  security: [{ bearerAuth: [] }],
-  request: { params: IdParam },
-  responses: {
-    200: { description: "OK", content: { "application/json": { schema: WorkflowDetailSchema } } },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
-
 const updateRoute = createRoute({
   method: "put",
   path: "/v1/workflows/{id}",
@@ -183,43 +123,6 @@ const updateRoute = createRoute({
     200: { description: "OK", content: { "application/json": { schema: WorkflowSaveResponse } } },
     400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
-
-const WorkflowMetadataPatchBody = z
-  .object({
-    slug: z.string().min(1).optional(),
-    name: z.string().min(1).optional(),
-    description: DescriptionSchema.nullable().optional(),
-    accept_description: AcceptDescriptionSchema.optional(),
-    category: CategorySchema.nullable().optional(),
-    lifecycle: z.enum(["active", "archived"]).optional(),
-  })
-  .refine(descriptionAcceptanceValid, {
-    message: "accept_description requires the exact nonempty description",
-    path: ["accept_description"],
-  })
-  .openapi("WorkflowMetadataPatchBody");
-
-const metadataRoute = createRoute({
-  method: "patch",
-  path: "/v1/workflows/{id}/metadata",
-  tags: ["workflows"],
-  summary:
-    "Patch workflow metadata (slug/name/description/category/lifecycle) without rotating a version",
-  security: [{ bearerAuth: [] }],
-  request: {
-    params: IdParam,
-    body: { content: { "application/json": { schema: WorkflowMetadataPatchBody } } },
-  },
-  responses: {
-    200: { description: "OK", content: { "application/json": { schema: WorkflowDetailSchema } } },
-    400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-    409: {
-      description: "Slug or description conflict",
-      content: { "application/json": { schema: ErrorSchema } },
-    },
   },
 });
 
@@ -389,7 +292,6 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
   registerWorkflowDraftRoutes(app);
   registerWorkflowVersionRoutes(app);
   app.use("/v1/workflows", async (c, next) => {
-    if (c.req.method === "GET") return requirePermission("workflow:read")(c, next);
     if (c.req.method === "POST") return requirePermission("workflow:write")(c, next);
     return next();
   });
@@ -410,9 +312,6 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
   });
   app.use("/v1/workflows/:id", async (c, next) => {
     const id = c.req.param("id");
-    if (c.req.method === "GET") {
-      return requirePermission("workflow:read", () => ({ type: "workflow", id }))(c, next);
-    }
     if (c.req.method === "PUT") {
       return requirePermission("workflow:write", () => ({ type: "workflow", id }))(c, next);
     }
@@ -421,53 +320,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     }
     return next();
   });
-  app.use("/v1/workflows/:id/metadata", async (c, next) => {
-    const id = c.req.param("id");
-    if (c.req.method === "PATCH") {
-      return requirePermission("workflow:write", () => ({ type: "workflow", id }))(c, next);
-    }
-    return next();
-  });
-
-  app.openapi(listRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const q = c.req.valid("query");
-    const opts: svc.ListWorkflowsOptions = {};
-    if (q.limit !== undefined) opts.limit = q.limit;
-    if (q.offset !== undefined) opts.offset = q.offset;
-    if (q.status !== undefined) opts.status = q.status;
-    if (q.operating_status !== undefined) opts.operating_status = q.operating_status;
-    const operatingMay = async (
-      permission: "schedule:read" | "inbound_hook:read" | "connector:read",
-    ) =>
-      (await can(db, { tenant_id: principal.tenant_id, principal, permission, quiet: true })).allow;
-    const [scheduleAccess, hookAccess, connectorAccess] = await Promise.all([
-      operatingMay("schedule:read"),
-      operatingMay("inbound_hook:read"),
-      operatingMay("connector:read"),
-    ]);
-    opts.include_operating_status = true;
-    opts.operating_access = {
-      schedules: scheduleAccess,
-      hooks: hookAccess,
-      connectors: connectorAccess,
-    };
-    if (q.name_contains !== undefined) opts.name_contains = q.name_contains;
-    if (q.q !== undefined) opts.q = q.q;
-    if (q.sort !== undefined) opts.sort = q.sort;
-    if (q.order !== undefined) opts.order = q.order;
-    if (q.group_by !== undefined) opts.group_by = q.group_by;
-    if (q.category !== undefined) opts.category = q.category;
-    if (q.description_source) opts.description_source = q.description_source;
-    if (q.connector !== undefined) opts.connector = q.connector;
-    const [{ entries, total }, blocks] = await Promise.all([
-      loadWorkflowList(principal.tenant_id, opts, db),
-      loadWorkflowCategoryBlocks(principal.tenant_id, db),
-    ]);
-    const items = entries.map(toWorkflowListItem);
-    return c.json({ items, total, categories: blocks }, 200);
-  });
+  toHonoRoute(app, listWorkflowsOperation);
 
   app.openapi(listSchedulesRoute, async (c) => {
     const principal = requireAuth(c);
@@ -759,14 +612,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json({ ok: false, errors: res.issues }, 200);
   });
 
-  app.openapi(getRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-    const wf = await svc.getWorkflow(principal.tenant_id, id, db);
-    if (!wf) throw new NotFoundError("workflow");
-    return c.json(await serializeOne(wf, principal.tenant_id, db), 200);
-  });
+  toHonoRoute(app, getWorkflowOperation);
 
   app.openapi(inputSchemaRoute, async (c) => {
     const principal = requireAuth(c);
@@ -816,47 +662,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     );
   });
 
-  app.openapi(metadataRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-    const body = c.req.valid("json");
-    const result = await svc.updateWorkflowMetadata(
-      {
-        tenant_id: principal.tenant_id,
-        id,
-        actor_id: principal.id,
-        actor_type: principal.kind,
-        ...(body.slug !== undefined ? { slug: body.slug } : {}),
-        ...(body.name !== undefined ? { name: body.name } : {}),
-        ...(body.description !== undefined ? { description: body.description } : {}),
-        ...(body.accept_description !== undefined
-          ? { accept_description: body.accept_description }
-          : {}),
-        ...(body.category !== undefined ? { category: body.category } : {}),
-        ...(body.lifecycle !== undefined ? { lifecycle: body.lifecycle } : {}),
-      },
-      db,
-    );
-    if ("workflow" in result && result.workflow) {
-      return c.json(await serializeOne(result.workflow, principal.tenant_id, db), 200);
-    }
-    if (result.code) {
-      throw new HttpError(409, result.code, result.errors[0] ?? "lifecycle change not allowed", {
-        details: { errors: result.errors },
-      });
-    }
-    if (result.conflict) {
-      throw new ConflictError("slug already in use by a live workflow", {
-        errors: result.errors,
-        conflict: result.conflict,
-      });
-    }
-    if (result.errors[0] === "workflow not found") {
-      throw new NotFoundError("workflow");
-    }
-    throw new BadRequestError("invalid workflow metadata", { errors: result.errors });
-  });
+  toHonoRoute(app, updateWorkflowMetadataOperation);
 
   app.openapi(deleteRoute, async (c) => {
     const principal = requireAuth(c);

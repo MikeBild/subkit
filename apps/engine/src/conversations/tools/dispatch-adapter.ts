@@ -6,7 +6,7 @@ import type { ToolEnvelope, ToolInvocation } from "../../tools/types.ts";
 import type { PermissionMode } from "../tool-policies.ts";
 import type { ToolContext, ToolResult } from "./index.ts";
 
-export function envelopeToToolResult(envelope: ToolEnvelope): ToolResult {
+function envelopeToToolResult(envelope: ToolEnvelope): ToolResult {
   if (envelope.status === "ok") {
     const out: ToolResult = { ok: true, data: envelope.data };
     if (envelope.pause) Object.assign(out, { pause: envelope.pause });

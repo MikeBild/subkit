@@ -1,7 +1,7 @@
 import { inspectAutomationReview } from "../automation-review.ts";
 import type { ToolContext } from "./index.ts";
 
-export interface SavedDraftReadiness {
+interface SavedDraftReadiness {
   eligible_for_repeated_runs: boolean;
   message: string;
   issues?: Array<{ step_id: string; code: string }>;

@@ -1,4 +1,4 @@
-export interface ClipboardOptions {
+interface ClipboardOptions {
   stream?: NodeJS.WriteStream;
   maxBytes?: number;
 }

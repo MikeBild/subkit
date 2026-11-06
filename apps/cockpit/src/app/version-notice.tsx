@@ -6,7 +6,7 @@ import { useSession } from "./session";
 
 const dirtyForms = new Set<symbol>();
 
-export function hasDirtyForms(): boolean {
+function hasDirtyForms(): boolean {
   return dirtyForms.size > 0;
 }
 
@@ -26,7 +26,7 @@ export function isNewVersion(booted: string, announced: string | null): boolean 
   return announced !== null && announced !== "" && announced !== booted;
 }
 
-export const VERSION_TOAST_ID = "cockpit-new-version";
+const VERSION_TOAST_ID = "cockpit-new-version";
 
 export function VersionNotice() {
   const session = useSession();

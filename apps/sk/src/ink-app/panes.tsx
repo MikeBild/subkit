@@ -436,7 +436,7 @@ const SetupDiagnosticsPane: React.FC<{
 ));
 SetupDiagnosticsPane.displayName = "SetupDiagnosticsPane";
 
-export interface PaneHostProps {
+interface PaneHostProps {
   pane: PaneSpec | null;
   engineClient?: EngineClient | undefined;
   conversationId: string | null;

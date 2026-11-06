@@ -18,7 +18,7 @@ import { PackageItemKindSchema } from "../../identity/portability/format.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 import { resolvePublicBaseUrl } from "./usage-guidance.ts";
 
-export const PACKAGE_ITEM_LIMIT = 100;
+const PACKAGE_ITEM_LIMIT = 100;
 
 const FileIdInput = z
   .string()

@@ -5,7 +5,7 @@ import { WorkflowDefSchema } from "./types.ts";
 const SpecText = z.string().trim().min(1).max(2000);
 const SpecName = z.string().trim().min(1).max(200);
 
-export const WorkflowSpecFieldSchema = z
+const WorkflowSpecFieldSchema = z
   .object({
     name: SpecName,
     description: SpecText.optional(),
@@ -13,7 +13,7 @@ export const WorkflowSpecFieldSchema = z
   .strict()
   .openapi("WorkflowSpecField");
 
-export const WorkflowSpecDeliverySchema = z
+const WorkflowSpecDeliverySchema = z
   .object({
     channel: SpecName.describe("Where the result goes, for example email, slack or a file."),
     destination: SpecText.optional().describe("The concrete recipient, address or location."),
@@ -22,7 +22,7 @@ export const WorkflowSpecDeliverySchema = z
   .strict()
   .openapi("WorkflowSpecDelivery");
 
-export const WorkflowSpecConventionSchema = z
+const WorkflowSpecConventionSchema = z
   .object({
     skill_id: z.string().uuid().optional().describe("The skill the convention comes from."),
     note: SpecText.describe("The convention as applied to this workflow."),
@@ -30,7 +30,7 @@ export const WorkflowSpecConventionSchema = z
   .strict()
   .openapi("WorkflowSpecConvention");
 
-export const WorkflowSpecEvidenceSchema = z
+const WorkflowSpecEvidenceSchema = z
   .object({
     source: SpecName.describe(
       "Where the evidence comes from, for example a connector or document.",
@@ -40,7 +40,7 @@ export const WorkflowSpecEvidenceSchema = z
   .strict()
   .openapi("WorkflowSpecEvidence");
 
-export const WorkflowSpecOriginSchema = z
+const WorkflowSpecOriginSchema = z
   .enum(["person", "chat", "derived"])
   .describe(
     "Who stated the spec: a person, the authoring chat, or derived from existing material. Only a person's statement counts as confirmed.",

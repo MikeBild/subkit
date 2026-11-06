@@ -2,7 +2,7 @@ import { createConnector } from "../../connectors/service.ts";
 import type { Executor } from "../../db/client.ts";
 import type { McpAuthConfig } from "./registry.ts";
 
-export interface SeedMcpConnectorInput {
+interface SeedMcpConnectorInput {
   tenant_id: string;
   slug: string;
   url: string;

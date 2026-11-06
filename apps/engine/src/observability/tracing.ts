@@ -110,7 +110,7 @@ export function reconfigureTracing(): Promise<void> {
   });
 }
 
-export function shutdownTracing(): Promise<void> {
+function shutdownTracing(): Promise<void> {
   if (tracingClosed) return tracingClosed;
   tracingClosing = true;
   tracingClosed = serializeTracing(async () => {

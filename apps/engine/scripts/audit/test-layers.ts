@@ -6,12 +6,15 @@ export interface LayerRunner {
   mode: "grouped" | "isolated";
   timeoutMs: number;
   skipDocker: boolean;
+  solo?: RegExp;
 }
 
+export const MODULE_MOCK = /\bmock\.module\(/;
+
 export const RUNNERS: Readonly<Record<Layer, LayerRunner>> = {
-  unit: { mode: "grouped", timeoutMs: 120_000, skipDocker: true },
+  unit: { mode: "grouped", timeoutMs: 120_000, skipDocker: true, solo: MODULE_MOCK },
   integration: { mode: "isolated", timeoutMs: 120_000, skipDocker: false },
-  regression: { mode: "grouped", timeoutMs: 120_000, skipDocker: true },
+  regression: { mode: "grouped", timeoutMs: 120_000, skipDocker: true, solo: MODULE_MOCK },
   journey: { mode: "isolated", timeoutMs: 120_000, skipDocker: false },
   e2e: { mode: "isolated", timeoutMs: 120_000, skipDocker: false },
   docker: { mode: "isolated", timeoutMs: 600_000, skipDocker: false },
@@ -100,4 +103,21 @@ export function groupByRoot(files: readonly string[]): Array<{ root: string; fil
   return [...groups.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([root, list]) => ({ root, files: list }));
+}
+
+export interface RunPlan {
+  groups: Array<{ root: string; files: string[] }>;
+  solo: string[];
+}
+
+export function planRuns(
+  files: readonly string[],
+  runner: LayerRunner,
+  text: (path: string) => string | null,
+): RunPlan {
+  if (runner.mode === "isolated") return { groups: [], solo: [...files] };
+  const pattern = runner.solo;
+  const solo = pattern ? files.filter((file) => pattern.test(text(file) ?? "")) : [];
+  const alone = new Set(solo);
+  return { groups: groupByRoot(files.filter((file) => !alone.has(file))), solo };
 }

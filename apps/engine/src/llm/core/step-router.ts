@@ -45,7 +45,7 @@ export interface StepRouterParams {
   forcedTool?: string | null;
 }
 
-export interface StepDecision {
+interface StepDecision {
   modelId?: string;
   toolChoice?: ToolChoice<ToolSet>;
   activeTools?: string[];
@@ -173,7 +173,7 @@ function warnOnceNoUpgrade(provider: LlmProviderKind, modelId: string, reason: s
   });
 }
 
-export interface StepInstruction {
+interface StepInstruction {
   role: "system";
   content: string;
   providerOptions?: Record<string, unknown>;

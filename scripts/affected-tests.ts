@@ -95,6 +95,7 @@ const selection = selectAffected({
   testFiles: files.filter(isTestFile),
   reverse,
   depth: args.depth,
+  testText: (test) => readText(test) ?? "",
 });
 
 if (args.list) {

@@ -24,7 +24,7 @@ export type AuditGroupDim =
   | "action"
   | "endpoint_path_template";
 
-export interface AuditStatsParams {
+interface AuditStatsParams {
   tenantId: string;
   bucket: BucketUnit;
   from: Date;
@@ -51,7 +51,7 @@ export interface LatencyAgg {
   max: number;
 }
 
-export interface AuditBucketRow {
+interface AuditBucketRow {
   ts: string;
   calls: number;
   latency_ms: LatencyAgg;
@@ -67,7 +67,7 @@ export interface AuditGroup {
   };
 }
 
-export interface AuditStatsResult {
+interface AuditStatsResult {
   groups: AuditGroup[];
   totals: {
     calls: {

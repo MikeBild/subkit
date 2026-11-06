@@ -178,7 +178,7 @@ export function synthesizeInputSchema(dag: WorkflowDef): JsonSchemaObject | null
   return { type: "object", properties, additionalProperties: true };
 }
 
-export interface WorkflowInputContract {
+interface WorkflowInputContract {
   schema: Record<string, unknown>;
   source: "declared" | "sample" | "synth";
   properties: string[];

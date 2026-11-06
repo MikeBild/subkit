@@ -427,7 +427,7 @@ function SkillEvidenceList({
   );
 }
 
-export interface DecisionCardProps {
+interface DecisionCardProps {
   item: DecidableItem;
   index: number;
   canDecide: boolean;

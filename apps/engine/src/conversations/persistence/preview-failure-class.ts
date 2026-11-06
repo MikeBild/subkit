@@ -1,6 +1,6 @@
 import type { DraftDocument, WorkflowDraftStepPreview } from "../types.ts";
 
-export type PreviewFailureClass = "config_invalid" | "runtime_data" | "unknown";
+type PreviewFailureClass = "config_invalid" | "runtime_data" | "unknown";
 
 function isRuntimeDataHttpStatus(status: number): boolean {
   return status === 404 || status === 410 || (status >= 500 && status <= 599);

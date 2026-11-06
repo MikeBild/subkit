@@ -10,7 +10,7 @@ export interface ErasedAppUser {
   erased: true;
 }
 
-export interface AppUserKeptByOtherAccess {
+interface AppUserKeptByOtherAccess {
   kept: true;
   reason: "other_access";
 }

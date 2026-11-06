@@ -158,7 +158,6 @@ export const CONVERSATION_RUN_TURN_QUEUE: QueueName = "conversation.run-turn";
 export const CONVERSATION_RUN_TURN_DLQ: string = "conversation.run-turn.dlq";
 
 export const CHAT_EVENT_QUEUE: QueueName = "chat.event";
-export const CHAT_EVENT_DLQ: string = "chat.event.dlq";
 
 export interface ChatEventJob {
   event: ChatEvent;

@@ -3,7 +3,19 @@ import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 import { withCommandErrors } from "./command-runtime.ts";
 
-function makeWizardCommand(name: string, description: string, wizardModule: string) {
+type Wizard = { run(client: EngineClient): Promise<void> };
+
+const WIZARDS = {
+  slack: () => import("../install/slack.ts"),
+  teams: () => import("../install/teams.ts"),
+  github: () => import("../install/github.ts"),
+  "google-workspace": () => import("../install/google-workspace.ts"),
+  salesforce: () => import("../install/salesforce.ts"),
+  jira: () => import("../install/jira.ts"),
+  hubspot: () => import("../install/hubspot.ts"),
+} satisfies Record<string, () => Promise<Wizard>>;
+
+function makeWizardCommand(name: keyof typeof WIZARDS, description: string) {
   return defineCommand({
     meta: { name, description },
     async run() {
@@ -14,7 +26,7 @@ function makeWizardCommand(name: string, description: string, wizardModule: stri
         tenant: profile.active_tenant_id,
       });
       return withCommandErrors(async () => {
-        const mod = await import(wizardModule);
+        const mod = await WIZARDS[name]();
         await mod.run(client);
       });
     },
@@ -24,24 +36,12 @@ function makeWizardCommand(name: string, description: string, wizardModule: stri
 export const installCommand = defineCommand({
   meta: { name: "install", description: "Guided setup for enterprise integrations" },
   subCommands: {
-    slack: makeWizardCommand("slack", "Install Slack notifications", "../install/slack.ts"),
-    teams: makeWizardCommand(
-      "teams",
-      "Install Microsoft Teams notifications",
-      "../install/teams.ts",
-    ),
-    github: makeWizardCommand("github", "Install GitHub connector", "../install/github.ts"),
-    "google-workspace": makeWizardCommand(
-      "google-workspace",
-      "Install Google Workspace connector",
-      "../install/google-workspace.ts",
-    ),
-    salesforce: makeWizardCommand(
-      "salesforce",
-      "Install Salesforce connector",
-      "../install/salesforce.ts",
-    ),
-    jira: makeWizardCommand("jira", "Install Jira connector", "../install/jira.ts"),
-    hubspot: makeWizardCommand("hubspot", "Install HubSpot connector", "../install/hubspot.ts"),
+    slack: makeWizardCommand("slack", "Install Slack notifications"),
+    teams: makeWizardCommand("teams", "Install Microsoft Teams notifications"),
+    github: makeWizardCommand("github", "Install GitHub connector"),
+    "google-workspace": makeWizardCommand("google-workspace", "Install Google Workspace connector"),
+    salesforce: makeWizardCommand("salesforce", "Install Salesforce connector"),
+    jira: makeWizardCommand("jira", "Install Jira connector"),
+    hubspot: makeWizardCommand("hubspot", "Install HubSpot connector"),
   },
 });

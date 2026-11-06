@@ -1,19 +1,16 @@
 import { z } from "@hono/zod-openapi";
 import { WORKFLOW_OPERATING_STATUSES } from "@shared/workflow-operating-status.ts";
-import { CatalogSourceSchema } from "../../api/catalog-metadata.ts";
 import type { Executor } from "../../db/client.ts";
 import {
   EffectiveTriggerSchema,
   type TriggerBinding,
   WorkflowScheduleBindingSchema,
   workflowTriggerView,
-} from "../../scheduler/index.ts";
+} from "../../scheduler/trigger-bindings.ts";
 import type * as svc from "../../workflows/index.ts";
-import {
-  loadWorkflowBinding,
-  TriggerSchema,
-  type WorkflowListEntry,
-} from "../../workflows/index.ts";
+import { loadWorkflowBinding, type WorkflowListEntry } from "../../workflows/read-model.ts";
+import { TriggerSchema } from "../../workflows/types.ts";
+import { CatalogSourceSchema } from "../catalog-metadata.ts";
 
 export const WorkflowSchema = z
   .object({

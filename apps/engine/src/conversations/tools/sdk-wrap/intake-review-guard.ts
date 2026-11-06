@@ -49,7 +49,7 @@ export function removeIntakeReviewTools(
   return removed;
 }
 
-export type IntakeSelectionStatus = "open" | "all_decided" | "unknown";
+type IntakeSelectionStatus = "open" | "all_decided" | "unknown";
 
 export async function intakeSelectionStatus(
   db: Executor,

@@ -2,7 +2,7 @@ import { scrubString } from "../../logging/scrub-secrets.ts";
 
 const TOKEN_CHAR_RE = /[A-Za-z0-9+/=_.-]/;
 
-export interface StreamScrubber {
+interface StreamScrubber {
   push(chunk: string): string;
   flush(): string;
 }

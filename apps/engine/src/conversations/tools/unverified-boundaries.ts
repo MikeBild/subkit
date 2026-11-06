@@ -1,8 +1,8 @@
 import type { StepDef } from "../../workflows/types.ts";
 
-export const UNVERIFIED_BOUNDARY_CODE = "boundary_unverified_in_preview";
+const UNVERIFIED_BOUNDARY_CODE = "boundary_unverified_in_preview";
 
-export interface UnverifiedBoundariesNotice {
+interface UnverifiedBoundariesNotice {
   code: typeof UNVERIFIED_BOUNDARY_CODE;
   message: string;
   step_ids: string[];

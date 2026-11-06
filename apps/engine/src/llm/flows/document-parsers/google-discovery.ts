@@ -2,12 +2,12 @@ import type { EndpointSpec, HttpMethod } from "../document-analysis.ts";
 
 export type GoogleDiscoveryObject = Record<string, unknown>;
 
-export interface GoogleDiscoveryAuthHint {
+interface GoogleDiscoveryAuthHint {
   type: "query" | "oauth2";
   query_param?: string;
 }
 
-export interface ParsedGoogleDiscovery {
+interface ParsedGoogleDiscovery {
   endpoints: EndpointSpec[];
   base_url: string;
   auth_hint: GoogleDiscoveryAuthHint | null;
@@ -15,7 +15,7 @@ export interface ParsedGoogleDiscovery {
   version: string;
 }
 
-export interface GoogleDiscoveryMethodEntry {
+interface GoogleDiscoveryMethodEntry {
   id: string;
   resource_path: string;
   method: GoogleDiscoveryObject;

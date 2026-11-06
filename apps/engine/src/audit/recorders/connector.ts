@@ -155,7 +155,7 @@ export async function recordConnectorInvoked(
   );
 }
 
-export interface RecordConnectorProbedParams extends RecorderBase {
+interface RecordConnectorProbedParams extends RecorderBase {
   connector: {
     id: string;
     slug: string;

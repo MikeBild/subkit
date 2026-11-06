@@ -27,9 +27,9 @@ export interface ArchiveParseOutput {
 }
 
 export const ARCHIVE_MAX_ENTRIES = 200;
-export const ARCHIVE_MAX_PER_ENTRY_BYTES = 25 * 1024 * 1024;
-export const ARCHIVE_MAX_TOTAL_BYTES = 100 * 1024 * 1024;
-export const ARCHIVE_MAX_DEPTH = 2;
+const ARCHIVE_MAX_PER_ENTRY_BYTES = 25 * 1024 * 1024;
+const ARCHIVE_MAX_TOTAL_BYTES = 100 * 1024 * 1024;
+const ARCHIVE_MAX_DEPTH = 2;
 
 const GZIP_MAGIC_0 = 0x1f;
 const GZIP_MAGIC_1 = 0x8b;
@@ -42,7 +42,7 @@ function shouldSkipDocEntry(path: string): string | null {
   return null;
 }
 
-export interface ArchiveDeps {
+interface ArchiveDeps {
   detect(buffer: Buffer): Promise<BinaryFormat | null>;
   parse(buffer: Buffer, format: BinaryFormat): Promise<unknown>;
   render(parsed: unknown): string;

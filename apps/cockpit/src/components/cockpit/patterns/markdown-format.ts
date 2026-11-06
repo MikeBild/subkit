@@ -11,12 +11,12 @@ export const MARKDOWN_FORMATS = [
 
 export type MarkdownFormat = (typeof MARKDOWN_FORMATS)[number];
 
-export interface MarkdownSelection {
+interface MarkdownSelection {
   from: number;
   to: number;
 }
 
-export interface MarkdownEdit {
+interface MarkdownEdit {
   from: number;
   to: number;
   insert: string;

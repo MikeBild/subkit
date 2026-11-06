@@ -17,7 +17,7 @@ import { account } from "../accounting/accountant.ts";
 import { type AiSdkUsage, usageOf } from "./ai-sdk-model.ts";
 import { normalizeSchema } from "./schema-normalizer.ts";
 
-export interface RepairToolCallParams<TOOLS extends ToolSet> {
+interface RepairToolCallParams<TOOLS extends ToolSet> {
   toolCall: LanguageModelV3ToolCall;
   tools: TOOLS;
   messages: ModelMessage[];

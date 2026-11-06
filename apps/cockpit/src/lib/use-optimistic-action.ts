@@ -2,7 +2,7 @@ import { type QueryKey, useMutation, useQueryClient } from "@tanstack/react-quer
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n-context";
 
-export interface OptimisticAction<TVars, TResult, TData> {
+interface OptimisticAction<TVars, TResult, TData> {
   queryKey: QueryKey;
   mutationFn(vars: TVars): Promise<TResult>;
   apply(current: TData | undefined, vars: TVars): TData | undefined;

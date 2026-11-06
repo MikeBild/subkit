@@ -37,16 +37,6 @@ export interface InteractionLogEntry {
   meta?: Record<string, unknown>;
 }
 
-export interface ConfirmationConfig {
-  validActions: ReadonlyArray<ConfirmationState>;
-  processConfirmation(
-    input: unknown,
-    currentOutput: unknown,
-    newState: ConfirmationState,
-    data: Record<string, unknown> | undefined,
-  ): Promise<{ status: "completed" | "declined"; output: unknown }>;
-}
-
 function transcriptMarkerFor(state: ConfirmationState, tool: string | undefined): string | null {
   const label = tool ?? "action";
   switch (state) {
@@ -175,7 +165,7 @@ export interface ConfirmGateInput extends PolicyDecideInput {
   readonly environment?: string;
 }
 
-export type ConfirmGateResult =
+type ConfirmGateResult =
   | { kind: "proceed"; decision: Extract<PolicyDecision, { kind: "proceed" }>; record: GateRecord }
   | { kind: "unavailable"; reason: string; record: GateRecord }
   | { kind: "refused"; result: ToolResult; record: GateRecord }

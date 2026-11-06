@@ -42,7 +42,7 @@ export function getSolutionRecipe(slug: string): ConnectorRecipe | null {
   return loadSolutionRecipes().find((recipe) => recipe.slug === slug) ?? null;
 }
 
-export interface RecipePackMembership {
+interface RecipePackMembership {
   categories: readonly string[];
   tags: readonly string[];
 }

@@ -1,4 +1,4 @@
-export interface NormalizedSchema {
+interface NormalizedSchema {
   schema: Record<string, unknown>;
   wrappedInResult: boolean;
 }

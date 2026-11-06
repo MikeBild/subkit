@@ -3,7 +3,7 @@ import type { EngineClient } from "../engine-client.ts";
 import type { ApiBody, ApiQuery } from "./http.ts";
 
 export type Subscription = components["schemas"]["Subscription"];
-export type SubscriptionList = components["schemas"]["SubscriptionListResponse"];
+type SubscriptionList = components["schemas"]["SubscriptionListResponse"];
 export type CreateSubscriptionBody = components["schemas"]["CreateSubscriptionBody"];
 export type UpdateSubscriptionBody = components["schemas"]["UpdateSubscriptionBody"];
 

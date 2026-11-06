@@ -12,7 +12,7 @@ import { probeS3Connector } from "../../connectors/drivers/s3.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import { logger } from "../../logging/logger.ts";
-import { withConnectorProbe, withConnectorValidation } from "../authoring-state.ts";
+import { withConnectorProbe, withConnectorValidation } from "../authoring-state/index.ts";
 import { toCreateConnectorInput, validateConnectorDraft } from "../connector-draft.ts";
 import { proposeConnectorCapabilityCandidate } from "../persistence/connector-skill-candidate.ts";
 import { credentialModeMatchesAuthType } from "../persistence/credential-form-contract.ts";

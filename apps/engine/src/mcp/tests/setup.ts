@@ -63,7 +63,7 @@ export interface McpTestSuite {
   seedExecution: (opts?: SeedExecutionOpts) => Promise<{ execution_id: string }>;
 }
 
-export interface StartMcpTestSuiteOptions {
+interface StartMcpTestSuiteOptions {
   withQueue?: boolean;
 }
 

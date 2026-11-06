@@ -126,7 +126,7 @@ export function pickPrimaryDataPath(value: unknown, depth = 0): string | null {
   return null;
 }
 
-export interface ScopeAtStep {
+interface ScopeAtStep {
   available_paths: string[];
   shape_summary: string;
   primary_data_path: string | null;

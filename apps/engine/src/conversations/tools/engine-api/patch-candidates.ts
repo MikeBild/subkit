@@ -9,7 +9,7 @@ const ListInput = z
   .openapi("ListPatchCandidatesToolInput");
 const GetInput = z.object({ id: z.string().uuid() }).openapi("GetPatchCandidateToolInput");
 
-export const listPatchCandidatesTool: ConversationTool = {
+const listPatchCandidatesTool: ConversationTool = {
   name: "list_patch_candidates",
   description:
     "List Patch Candidates — LLM-proposed fixes for drifted workflow steps. open_total counts the ones a human can decide now; review_reason says why a proposed one cannot be.",
@@ -42,7 +42,7 @@ export const listPatchCandidatesTool: ConversationTool = {
   },
 };
 
-export const getPatchCandidateTool: ConversationTool = {
+const getPatchCandidateTool: ConversationTool = {
   name: "get_patch_candidate",
   description: "Fetch a patch candidate with full proposal body and reasoning.",
   inputSchema: GetInput,
@@ -54,7 +54,7 @@ export const getPatchCandidateTool: ConversationTool = {
   },
 };
 
-export const previewPatchCandidateTool: ConversationTool = {
+const previewPatchCandidateTool: ConversationTool = {
   name: "preview_patch_candidate",
   description:
     "Human-readable before/after preview of a patch candidate: the affected step's current shape, the patched shape, and which paths change. Show this to the user BEFORE asking them to approve.",
@@ -67,7 +67,7 @@ export const previewPatchCandidateTool: ConversationTool = {
   },
 };
 
-export const dryRunPatchCandidateTool: ConversationTool = {
+const dryRunPatchCandidateTool: ConversationTool = {
   name: "dry_run_patch_candidate",
   description:
     "Replay a patch candidate against a recorded (or synthesized) execution fixture WITHOUT applying it. Use to verify the patch projects cleanly before approval. Never mutates the candidate.",

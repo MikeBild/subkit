@@ -39,7 +39,7 @@ type Failure =
   | { kind: "approval"; environment: RunEnvironment }
   | { kind: "failed"; executionId: string | null };
 
-export interface RunWording {
+interface RunWording {
   title: string;
   intro: string;
   submit: string;

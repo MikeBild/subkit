@@ -89,7 +89,7 @@ export function focusDiff(lines: readonly DiffLine[], context = 2): FocusedRow[]
   return rows;
 }
 
-export interface DiffSides {
+interface DiffSides {
   before: FocusedRow[];
   after: FocusedRow[];
 }
@@ -101,7 +101,7 @@ export function splitSides(rows: readonly FocusedRow[]): DiffSides {
   };
 }
 
-export type ChangeView =
+type ChangeView =
   | { kind: "diff"; lines: DiffLine[] }
   | { kind: "patch"; lines: string[] }
   | { kind: "unchanged" };

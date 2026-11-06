@@ -24,7 +24,7 @@ export function formatInviteIssued(invite: UserInviteIssuedWire): string {
   );
 }
 
-export const USER_LIST_COLUMNS = ["id", "email", "role", "status", "apps", "created_at"];
+const USER_LIST_COLUMNS = ["id", "email", "role", "status", "apps", "created_at"];
 
 export function userAppIds(user: Record<string, unknown>): string[] {
   const identities = Array.isArray(user.identities) ? user.identities : [];

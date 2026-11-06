@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createIntakeItem, patchIntakeItem } from "../../../knowledge/index.ts";
 import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "../../../knowledge/tests/setup.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
-import { createEmptyDraftDocument } from "../../authoring-state.ts";
+import { createEmptyDraftDocument } from "../../authoring-state/index.ts";
 import type { DraftDocument } from "../../types.ts";
 import {
   INTAKE_REVIEW_REMOVED_TOOLS,

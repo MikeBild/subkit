@@ -42,14 +42,14 @@ export type ConnectedClientItem = components["schemas"]["OAuthClient"] & {
   last_used_at?: string | null;
 };
 
-export interface ConnectedClientHistoryLine {
+interface ConnectedClientHistoryLine {
   person: string;
   connectedAt: string | null;
   revokedAt: string | null;
   legacyUnknown: boolean;
 }
 
-export interface ConnectedClientActiveSummary {
+interface ConnectedClientActiveSummary {
   people: string[];
   moreCount: number;
   hasUnknownLegacy: boolean;
@@ -138,7 +138,7 @@ export function keysNeedingAction(
   }).length;
 }
 
-export type ScopeRisk = "reads" | "writes" | "manages";
+type ScopeRisk = "reads" | "writes" | "manages";
 
 const READ_ACTIONS = new Set(["read", "list", "export"]);
 const MANAGE_ACTIONS = new Set(["admin", "approve", "promote", "revoke", "rotate", "delete"]);
@@ -189,7 +189,7 @@ export function defaultKeyScopes(permissions: readonly string[]): string[] {
   );
 }
 
-export function keyExpired(key: Pick<ApiKeyItem, "expires_at">, nowMs: number): boolean {
+function keyExpired(key: Pick<ApiKeyItem, "expires_at">, nowMs: number): boolean {
   return key.expires_at !== null && Date.parse(key.expires_at) <= nowMs;
 }
 
@@ -211,7 +211,7 @@ export function groupApiKeys<T extends Pick<ApiKeyItem, "revoked_at">>(
   };
 }
 
-export interface ClientGroups<T> {
+interface ClientGroups<T> {
   granted: T[];
   ungranted: T[];
   disabled: T[];
@@ -231,7 +231,7 @@ export function groupConnectedClients<
 
 export const KEY_EXPIRING_DAYS = 7;
 
-export type KeyState =
+type KeyState =
   | { kind: "revoked" }
   | { kind: "expired" }
   | { kind: "expiring"; days: number }

@@ -110,7 +110,7 @@ export function budgetBarShare(used: number | null, budget: number): number | nu
   return Math.min(used / budget, 1);
 }
 
-export function effectiveProviderOf(ctx: GuidedContext): string {
+function effectiveProviderOf(ctx: GuidedContext): string {
   const value = ctx.effectiveItems.find((item) => item.path === "llm.provider")?.value;
   return typeof value === "string" ? value : "";
 }

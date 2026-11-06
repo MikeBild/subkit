@@ -1,11 +1,11 @@
 import { checkJsonSchemaContract, compileJsonSchemaContract } from "./json-schema-contract.ts";
 
-export interface OutputContractViolation {
+interface OutputContractViolation {
   path: string;
   message: string;
 }
 
-export type OutputContractCheck =
+type OutputContractCheck =
   | { ok: true; valid: true }
   | { ok: true; valid: false; violations: OutputContractViolation[] }
   | { ok: false; schema_error: string };

@@ -37,14 +37,7 @@ export type VaultCliCommand =
   | RewrapCommand
   | PreflightCommand;
 
-export type VaultCliParse = { ok: true; command: VaultCliCommand } | { ok: false; message: string };
-
-export const VAULT_CLI_FLAGS = [
-  "--preflight",
-  "--vault-check",
-  "--vault-set",
-  "--rewrap-master-key",
-] as const;
+type VaultCliParse = { ok: true; command: VaultCliCommand } | { ok: false; message: string };
 
 export const VAULT_CLI_USAGE: string = [
   "  engine --preflight",
@@ -305,7 +298,7 @@ export interface VaultOps {
   preflight(): Promise<VaultCliOutcome>;
 }
 
-export interface VaultCliDeps {
+interface VaultCliDeps {
   ops: VaultOps;
   readFile?(path: string): string;
 }

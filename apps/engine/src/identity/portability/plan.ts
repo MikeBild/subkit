@@ -42,9 +42,9 @@ export interface PackagePlan {
   summary: Record<PackagePlanAction, number>;
 }
 
-export type RegistryRow = typeof packageInstallItems.$inferSelect;
+type RegistryRow = typeof packageInstallItems.$inferSelect;
 
-export interface PlanContext {
+interface PlanContext {
   plan: PackagePlan;
   target_hashes: Map<string, string>;
   index: PackageIndex;
@@ -103,10 +103,7 @@ function dependencies(item: PackagePayload): { kind: PackageItemKind; key: strin
   }
 }
 
-export async function loadRegistry(
-  exec: Executor,
-  tenant_id: string,
-): Promise<Map<string, RegistryRow>> {
+async function loadRegistry(exec: Executor, tenant_id: string): Promise<Map<string, RegistryRow>> {
   const rows = await exec
     .select()
     .from(packageInstallItems)

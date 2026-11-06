@@ -69,7 +69,7 @@ export const MissingEvidenceNextActionSchema = z.enum([
   "rewrite_with_sk_base64",
 ]);
 
-export type MissingEvidenceNextAction = z.infer<typeof MissingEvidenceNextActionSchema>;
+type MissingEvidenceNextAction = z.infer<typeof MissingEvidenceNextActionSchema>;
 
 export const MISSING_EVIDENCE_NEXT_ACTIONS = {
   PREVIEW_GAP: "dry_run_workflow",
@@ -98,20 +98,20 @@ export interface RecordedEvalReport {
   repair_skipped?: { reason: "too_many_findings"; finding_count: number; threshold: number };
 }
 
-export interface RecordedEvalEvidence {
+interface RecordedEvalEvidence {
   latest_preview: DraftDocument["latest_preview"] | null;
   scope?: Record<string, unknown> | null;
   input?: unknown;
   probedConnectorSlugs?: ReadonlySet<string>;
 }
 
-export interface RecordedEvalRepairContext {
+interface RecordedEvalRepairContext {
   tenant_id: string;
   db?: Parameters<typeof repairTransformExpression>[0]["db"];
   signal?: AbortSignal;
 }
 
-export interface RecordedEvalOptions {
+interface RecordedEvalOptions {
   repair?: RecordedEvalRepairContext;
 }
 
@@ -121,7 +121,7 @@ interface WorkflowLike {
   output_schema?: Record<string, unknown>;
 }
 
-export interface ExpressionSite {
+interface ExpressionSite {
   site: string;
   step_id: string | null;
   language: "jsonata" | "javascript";

@@ -37,7 +37,7 @@ const ROW_KEYS: Readonly<Record<GateRow, TranslationKey>> = {
   liveRuns: "chat.mode.gate.liveRuns",
 };
 
-export interface ModeGates {
+interface ModeGates {
   asks: TranslationKey[];
   free: TranslationKey[];
   outside: TranslationKey[];

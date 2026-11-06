@@ -1,9 +1,9 @@
-export interface UserLivenessRow {
+interface UserLivenessRow {
   status: string;
   deleted_at: Date | null;
 }
 
-export interface ClientLivenessRow {
+interface ClientLivenessRow {
   disabled_at: Date | null;
   retired_at: Date | null;
 }

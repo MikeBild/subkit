@@ -1,7 +1,7 @@
 import type { ResolvedProfile } from "../../config.ts";
 import type { ConversationDetail, ConversationSummary, EngineClient } from "../../engine-client.ts";
 
-export interface FakeEngineClientOptions {
+interface FakeEngineClientOptions {
   whoami?: {
     id: string;
     kind: "user" | "system_account";

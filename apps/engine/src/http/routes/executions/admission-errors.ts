@@ -1,4 +1,3 @@
-import type { Context } from "hono";
 import { actorType } from "../../../audit/index.ts";
 import type { ResolvedPrincipal } from "../../../auth/index.ts";
 import type { Executor } from "../../../db/client.ts";
@@ -88,56 +87,5 @@ export async function admissionRefusal(
     code,
     message,
     details ? { details } : {},
-  );
-}
-
-const callerBudgetRefusals = {
-  rate_limited: { status: 429, error: "rate-limited" },
-  turn_busy: { status: 409, error: "turn-busy" },
-  turn_limit: { status: 429, error: "turn-limit" },
-  invalid: { status: 400, error: "invalid" },
-} as const;
-
-type CallerBudgetRefusalCode = keyof typeof callerBudgetRefusals;
-
-function isCallerBudgetRefusal(code: unknown): code is CallerBudgetRefusalCode {
-  return typeof code === "string" && Object.hasOwn(callerBudgetRefusals, code);
-}
-
-export async function callerBudgetRefusal(
-  c: Context,
-  error: unknown,
-  context: {
-    db: Executor;
-    principal: ResolvedPrincipal;
-    workflow_id: string;
-    request_source: string;
-    extra?: Record<string, unknown>;
-  },
-): Promise<Response | null> {
-  const code = (error as { code?: unknown }).code;
-  if (!isCallerBudgetRefusal(code)) return null;
-  const message = (error as Error).message;
-  await auditAdmissionRefusal(
-    {
-      tenant_id: context.principal.tenant_id,
-      reason: code,
-      message,
-      workflow_id: context.workflow_id,
-      request_source: context.request_source,
-      actor_id: context.principal.id ?? null,
-      actor_type: actorType(context.principal),
-      ...(context.extra ? { extra: context.extra } : {}),
-    },
-    context.db,
-  );
-  const details = (error as { details?: { usage?: Record<string, unknown> } }).details;
-  const usage = details?.usage
-    ? { usedToday: details.usage.usedToday, dailyLimit: details.usage.dailyLimit }
-    : undefined;
-  const refusal = callerBudgetRefusals[code];
-  return c.json(
-    { error: refusal.error, code, message, ...(usage ? { usage } : {}) },
-    refusal.status,
   );
 }

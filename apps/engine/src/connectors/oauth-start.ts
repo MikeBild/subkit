@@ -29,11 +29,11 @@ import {
   resolveConnectorOAuthConfigDetailed,
 } from "./template-binding.ts";
 
-export type OAuthDanceResult =
+type OAuthDanceResult =
   | { kind: "browser"; authorization_url: string; state: string }
   | { kind: "done" };
 
-export interface BeginConnectorOAuthDanceOptions {
+interface BeginConnectorOAuthDanceOptions {
   db: Db;
   tenant_id: string;
   connector_id: string;

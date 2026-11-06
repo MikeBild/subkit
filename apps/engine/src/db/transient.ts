@@ -37,7 +37,7 @@ export function isTransientDbError(err: unknown): boolean {
   return false;
 }
 
-export interface RetryTransientOptions {
+interface RetryTransientOptions {
   tries?: number;
   startMs?: number;
   maxMs?: number;

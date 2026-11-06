@@ -19,7 +19,7 @@ type AuditFilterArg =
   | "conversation-id"
   | "workflow-id";
 
-export type AuditFilterArgs = Partial<Record<AuditFilterArg, string | undefined>>;
+type AuditFilterArgs = Partial<Record<AuditFilterArg, string | undefined>>;
 
 export function auditFilterQuery(args: AuditFilterArgs): Record<string, string> {
   const fields: ReadonlyArray<[keyof AuditFilterArgs, string]> = [

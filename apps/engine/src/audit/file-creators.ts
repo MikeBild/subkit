@@ -45,7 +45,7 @@ export async function recordedFileCreators(
   return creators;
 }
 
-export interface FileCreatorNames {
+interface FileCreatorNames {
   name: string | null;
   api_key_name: string | null;
 }

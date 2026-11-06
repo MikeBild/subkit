@@ -3,8 +3,8 @@ import type { Db } from "../db/client.ts";
 import { llmUsage } from "../db/schema/index.ts";
 import { classifyProviderError } from "../llm/provider-errors.ts";
 
-export const PROVIDER_OUTAGE_WINDOW_MS = 60 * 60_000;
-export const PROVIDER_OUTAGE_MIN_FAILURES = 2;
+const PROVIDER_OUTAGE_WINDOW_MS = 60 * 60_000;
+const PROVIDER_OUTAGE_MIN_FAILURES = 2;
 const PROVIDER_OUTAGE_SCAN_LIMIT = 50;
 
 export type ProviderOutageKind = "llm_provider_quota" | "llm_provider_unavailable";
@@ -16,7 +16,7 @@ export interface ProviderOutage {
   last_error: string | null;
 }
 
-export interface UsageOutcome {
+interface UsageOutcome {
   result: string;
   error: string | null;
   created_at: Date;

@@ -306,7 +306,7 @@ export async function getIntakeItem(
   return rows[0] ? intakeItemView(rows[0]) : null;
 }
 
-export interface IntakeItemReviewSubject {
+interface IntakeItemReviewSubject {
   id: string;
   title: string;
   state: IntakeItemView["state"];

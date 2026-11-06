@@ -12,7 +12,7 @@ import { noticeSessionExpiry } from "@/api/client";
 import { readSseStream, SseHttpError } from "@/lib/sse-stream";
 import { keyId, keysForEvent } from "./live-invalidation";
 
-export const LIVE_STREAM_PATH = "/v1/cockpit/events/stream";
+const LIVE_STREAM_PATH = "/v1/cockpit/events/stream";
 
 export type LiveStatus = "connecting" | "live" | "reconnecting" | "offline";
 
@@ -23,7 +23,7 @@ interface LiveContextValue {
 
 const LiveContext = createContext<LiveContextValue>({ status: "offline", serverVersion: null });
 
-export const COALESCE_MS = 300;
+const COALESCE_MS = 300;
 const BACKOFF_MS = [1_000, 2_000, 5_000, 10_000, 30_000] as const;
 
 export function backoffDelay(attempt: number): number {

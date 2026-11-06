@@ -54,7 +54,7 @@ const appendRoute = createRoute({
 
 const UploadErrorSchema = z.object({ error: z.string() });
 
-export const UploadRunOutcomeSchema = RunOutcomeSchema.extend({
+const UploadRunOutcomeSchema = RunOutcomeSchema.extend({
   ingested_knowledge_source_ids: z.array(z.string()),
 }).openapi("ConversationUploadRunOutcome");
 

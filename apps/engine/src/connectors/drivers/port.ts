@@ -1,13 +1,13 @@
 import type { SideEffect } from "@shared/index.ts";
 import type { DriverName } from "../types.ts";
 
-export type DriverRetry = "graphql_errors" | "mcp_availability" | "http_status" | "none";
+type DriverRetry = "graphql_errors" | "mcp_availability" | "http_status" | "none";
 
-export type DriverPagination = "graphql_cursor" | "http_strategy" | "s3_list" | "none";
+type DriverPagination = "graphql_cursor" | "http_strategy" | "s3_list" | "none";
 
-export type DriverResponseFilters = "result" | "page" | "none";
+type DriverResponseFilters = "result" | "page" | "none";
 
-export type DriverCircuitClose = "outcome" | "success";
+type DriverCircuitClose = "outcome" | "success";
 
 export interface DriverCapabilities {
   readonly retry: DriverRetry;

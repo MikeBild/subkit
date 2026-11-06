@@ -12,7 +12,7 @@ export function buildOAuthRedirectUri(hints?: OAuthOriginHints): string | null {
   return `${origin}${OAUTH_CALLBACK_PATH}`;
 }
 
-export const CONNECTION_CALLBACK_PATH = "/v1/connections/callback";
+const CONNECTION_CALLBACK_PATH = "/v1/connections/callback";
 
 export function buildConnectionCallbackUri(hints?: OAuthOriginHints): string | null {
   const origin = resolveOrigin(hints?.req);

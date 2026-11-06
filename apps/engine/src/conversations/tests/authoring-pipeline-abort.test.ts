@@ -16,7 +16,7 @@ import { createDeterministicUuidFactory } from "../../test-helpers/determinism/i
 import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { runAuthoringPipeline } from "../authoring-pipeline.ts";
 import { _withConnectorPreflightForTests } from "../authoring-preflight.ts";
-import { createEmptyDraftDocument } from "../authoring-state.ts";
+import { createEmptyDraftDocument } from "../authoring-state/index.ts";
 import { authorWorkflowTool } from "../tools/author-workflow.ts";
 import type { ToolContext } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";

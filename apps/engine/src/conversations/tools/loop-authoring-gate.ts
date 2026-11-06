@@ -25,7 +25,7 @@ export function describeLoopGateBlock(b: LoopGateBlock): string {
   return `loop \`${b.loop_step_id}\` reads \`$scope.${b.referenced_step_id}\` but ${why}`;
 }
 
-export interface LoopGateResult {
+interface LoopGateResult {
   ok: boolean;
   blocks: LoopGateBlock[];
 }
@@ -52,7 +52,7 @@ function pickLoopSource(step: LoopLikeStep): string | null {
   return null;
 }
 
-export interface LoopAuthoringGateOptions {
+interface LoopAuthoringGateOptions {
   probedConnectorSlugs?: ReadonlySet<string>;
 }
 

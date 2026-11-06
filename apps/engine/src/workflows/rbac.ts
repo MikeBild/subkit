@@ -9,7 +9,7 @@ import type { ApprovalAuditResource } from "../tools/approval.ts";
 
 export type WorkflowRunRequestSource = "mcp" | "chat" | "fast_path" | "auto_persist";
 
-export interface GateWorkflowRunRbacParams {
+interface GateWorkflowRunRbacParams {
   db: Db;
   principal: ResolvedPrincipal;
   workflow_id: string;
@@ -19,7 +19,7 @@ export interface GateWorkflowRunRbacParams {
   approval?: ApprovalAuditResource;
 }
 
-export type WorkflowRunRbacDecision =
+type WorkflowRunRbacDecision =
   | { allow: true; workflow_permission: WorkflowPermission | null }
   | { allow: false; reason: string; error_message: string };
 

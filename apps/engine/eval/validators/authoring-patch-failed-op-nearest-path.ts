@@ -1,7 +1,7 @@
 import {
   createEmptyDraftDocument,
   withWorkflowDraft,
-} from "../../src/conversations/authoring-state.ts";
+} from "../../src/conversations/authoring-state/index.ts";
 import { editWorkflowPatchTool } from "../../src/conversations/tools/edit-workflow-patch.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 import { Checks } from "./shared/authoring-env.ts";

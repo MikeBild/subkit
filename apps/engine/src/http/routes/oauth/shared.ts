@@ -13,7 +13,7 @@ import { can } from "../../../rbac/index.ts";
 import { PayloadTooLargeError } from "../../errors.ts";
 
 export const SESSION_COOKIE = "subkit_session";
-export const CSRF_ALG = "HS256";
+const CSRF_ALG = "HS256";
 
 export function parseCookies(header: string | null): Record<string, string> {
   if (!header) return {};
@@ -56,7 +56,7 @@ export async function verifySessionCookie(
   }
 }
 
-export interface SessionPrincipal {
+interface SessionPrincipal {
   session_id: string;
   user_id: string;
   tenant_id: string;
@@ -151,7 +151,7 @@ export function buildErrorRedirect(
   return Response.redirect(url.toString(), 302);
 }
 
-export const FORM_BODY_MAX_BYTES = 64 * 1024;
+const FORM_BODY_MAX_BYTES = 64 * 1024;
 export async function parseFormBody(req: Request): Promise<URLSearchParams> {
   const contentLength = req.headers.get("content-length");
   if (contentLength !== null && parseInt(contentLength, 10) > FORM_BODY_MAX_BYTES) {

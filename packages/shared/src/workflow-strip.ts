@@ -31,9 +31,9 @@ export type StripAction =
   | { kind: "cause"; runId: string }
   | { kind: "review" };
 
-export type StripTone = "ok" | "info" | "warn" | "error";
+type StripTone = "ok" | "info" | "warn" | "error";
 
-export interface WorkflowStrip {
+interface WorkflowStrip {
   kind: StripKind;
   tone: StripTone;
   action: StripAction | null;

@@ -4,7 +4,7 @@ import { OAuthApprovalInputSchema } from "@shared/elicitation-constants.ts";
 import { formatCitationsFooter, terminalAssistantCitations } from "../lib/citations-footer.ts";
 import { BrowserUrlSchema, defaultOpenBrowser } from "../lib/open-browser.ts";
 
-export type RenderLineSink = (s: string) => void;
+type RenderLineSink = (s: string) => void;
 
 function extractOAuthUrl(input: unknown): string | null {
   const approval = OAuthApprovalInputSchema.safeParse(input);

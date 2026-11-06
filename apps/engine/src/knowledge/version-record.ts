@@ -13,7 +13,7 @@ export type { KnowledgeVersionContent } from "../db/schema/knowledge_sources.ts"
 
 export const KNOWLEDGE_VERSIONS_KEPT = 50;
 
-export const RESTORED_NOTE_PREFIX = "restored from v";
+const RESTORED_NOTE_PREFIX = "restored from v";
 
 export function restoredNote(version: number): string {
   return `${RESTORED_NOTE_PREFIX}${version}`;
@@ -47,7 +47,7 @@ export function knowledgeVersionContent(p: {
   };
 }
 
-export interface KnowledgeVersionUpload {
+interface KnowledgeVersionUpload {
   text: string;
   filename: string;
   mime: string | null;

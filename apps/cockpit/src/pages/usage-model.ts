@@ -28,7 +28,7 @@ export const CONSUMPTION_AXES = [
 ] as const;
 export type ConsumptionAxis = (typeof CONSUMPTION_AXES)[number];
 
-export interface ConsumptionRow {
+interface ConsumptionRow {
   key: string;
   name?: string;
   unattributed: boolean;
@@ -366,7 +366,7 @@ export function llmGroups(envelope: unknown): LlmGroupView[] {
 
 export const FAILED_RESULTS = ["error", "context_too_large", "quota_exhausted"] as const;
 
-export function isFailedResult(result: string): boolean {
+function isFailedResult(result: string): boolean {
   return (FAILED_RESULTS as readonly string[]).includes(result);
 }
 
@@ -402,7 +402,7 @@ export function llmWindow(envelope: unknown): LlmWindow | null {
   };
 }
 
-export const TREND_SAME_BELOW_PERCENT = 5;
+const TREND_SAME_BELOW_PERCENT = 5;
 
 export type Trend =
   | { kind: "none" }
@@ -418,8 +418,8 @@ export function trendOf(current: number | null, previous: number | null | undefi
   return { kind: change > 0 ? "more" : "less", percent: Math.round(Math.abs(change)) };
 }
 
-export const FORECAST_TIGHT_SHARE = 0.9;
-export const FORECAST_MIN_DAY = 3;
+const FORECAST_TIGHT_SHARE = 0.9;
+const FORECAST_MIN_DAY = 3;
 const DAY_MS = 86_400_000;
 
 export type BudgetForecast =
@@ -462,12 +462,12 @@ function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-export function localBucketKey(date: Date, unit: BucketUnit): string {
+function localBucketKey(date: Date, unit: BucketUnit): string {
   const day = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
   return unit === "hour" ? `${day}T${pad(date.getHours())}` : day;
 }
 
-export function engineBucketKey(ts: string, unit: BucketUnit): string {
+function engineBucketKey(ts: string, unit: BucketUnit): string {
   return unit === "hour" ? ts.slice(0, 13) : ts.slice(0, 10);
 }
 
@@ -636,8 +636,8 @@ export function breakdown(
 }
 
 export const RUN_COST_FACTOR = 1.5;
-export const PERSON_SHARE = 0.5;
-export const MAX_RUN_HINTS = 3;
+const PERSON_SHARE = 0.5;
+const MAX_RUN_HINTS = 3;
 
 export type UsageHint =
   | { kind: "runCost"; workflowId: string; factor: number }
@@ -707,7 +707,7 @@ export function mainDriver(
   return best;
 }
 
-export interface FailureRow {
+interface FailureRow {
   workflowId: string | null;
   conversationId: string | null;
   title: string | null;
@@ -736,7 +736,7 @@ export function failureRows(envelope: unknown): FailureRow[] {
     .sort((a, b) => (b.cost ?? 0) - (a.cost ?? 0) || b.calls - a.calls);
 }
 
-export interface CsvLabels {
+interface CsvLabels {
   period: string;
   origin: string;
   model: string;

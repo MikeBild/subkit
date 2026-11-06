@@ -5,7 +5,7 @@ import { connectors } from "../db/schema/index.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
 import type { ConnectorRecipe } from "./templates.ts";
 
-export const RecipeConnectorCandidateSchema = z
+const RecipeConnectorCandidateSchema = z
   .object({ id: z.string(), slug: z.string(), name: z.string() })
   .openapi("RecipeConnectorCandidate");
 
@@ -25,7 +25,7 @@ export const RecipeConnectorBindingSchema = z
   .openapi("RecipeConnectorBinding");
 export type RecipeConnectorBinding = z.infer<typeof RecipeConnectorBindingSchema>;
 
-export interface TemplateConnector {
+interface TemplateConnector {
   id: string;
   slug: string;
   display_name: string;
@@ -33,7 +33,7 @@ export interface TemplateConnector {
   enabled: boolean;
 }
 
-export interface BoundRecipe {
+interface BoundRecipe {
   workflow: WorkflowDef;
   connectors: RecipeConnectorBinding[];
 }
@@ -79,12 +79,12 @@ export async function listTemplateConnectors(
   );
 }
 
-export interface BindableTemplate {
+interface BindableTemplate {
   name: string;
   base_url: string | null;
 }
 
-export function bindsByTemplate(template: BindableTemplate | undefined): boolean {
+function bindsByTemplate(template: BindableTemplate | undefined): boolean {
   return Boolean(template?.base_url);
 }
 

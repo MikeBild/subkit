@@ -34,7 +34,7 @@ import {
   workflowStateOf,
 } from "./version-write-lock.ts";
 
-export interface VersionView {
+interface VersionView {
   author: VersionAuthor;
   checksum: string;
   id: string;
@@ -46,7 +46,7 @@ export interface VersionView {
   created_at: Date;
 }
 
-export interface ListWorkflowVersionsOptions {
+interface ListWorkflowVersionsOptions {
   limit?: number;
   offset?: number;
 }

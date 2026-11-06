@@ -10,7 +10,7 @@ async function fetchSkillRef(tenant_id: string, ref: string, db: Executor): Prom
     : await getSkillBySlug(tenant_id, ref, db);
 }
 
-export interface LoadedSkillSets {
+interface LoadedSkillSets {
   fullBody: Skill[];
   index: Skill[];
 }

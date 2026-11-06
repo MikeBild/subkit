@@ -73,7 +73,7 @@ export function localDateTimeInput(instant: string | null, zone = localTimeZone(
   return `${fields.year}-${fields.month}-${fields.day}T${fields.hour}:${fields.minute}`;
 }
 
-export interface UtcChoice {
+interface UtcChoice {
   instant: string;
   offset: string;
 }
@@ -154,7 +154,7 @@ export function utcFromLocalInputPreservingInstant(
   return utcFromLocalInput(value, zone, selected);
 }
 
-export function auditGroupKey(entry: TimelineEntry, group: AuditGroup, zone: string): string {
+function auditGroupKey(entry: TimelineEntry, group: AuditGroup, zone: string): string {
   switch (group) {
     case "day": {
       const parts = Object.fromEntries(

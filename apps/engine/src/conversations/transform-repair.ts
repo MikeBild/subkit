@@ -45,7 +45,7 @@ export type TransformEvaluation =
       output_schema: Record<string, unknown> | null;
     };
 
-export interface RepairTransformParams {
+interface RepairTransformParams {
   expression: string;
   language?: TransformRepairLanguage;
   finding: TransformRepairFinding;

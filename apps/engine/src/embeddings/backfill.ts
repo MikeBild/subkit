@@ -37,12 +37,12 @@ function extractMessageText(content: unknown): string {
 
 const BATCH = 16;
 
-export interface BackfillResult {
+interface BackfillResult {
   scanned: number;
   embedded: number;
 }
 
-export interface BackfillOptions {
+interface BackfillOptions {
   tenant_id?: string;
   knowledge_source_id?: string;
   connector_id?: string;

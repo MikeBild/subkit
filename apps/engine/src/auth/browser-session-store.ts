@@ -7,13 +7,13 @@ import { endCockpitPushForSessions } from "../identity/index.ts";
 import type { RequestSource } from "../observability/service-metadata.ts";
 import { browserSessionDenyReason } from "./browser-session-validity.ts";
 
-export interface OwnedSessionKey {
+interface OwnedSessionKey {
   session_id: string;
   tenant_id: string;
   user_id: string;
 }
 
-export interface OwnedSessionRow {
+interface OwnedSessionRow {
   auth_identity_id: string | null;
   expires_at: Date;
   absolute_expires_at: Date | null;

@@ -8,7 +8,7 @@ import {
 } from "../../db/schema/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
 import { buildMessages } from "../parts.ts";
-import { buildModelMessages } from "../persist.ts";
+import { buildModelMessages } from "../persistence/index.ts";
 import { getConversation } from "../service/get.ts";
 
 let ctx: LlmTestCtx;

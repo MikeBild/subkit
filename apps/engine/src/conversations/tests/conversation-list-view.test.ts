@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
 import { auditLog, conversationHidden, conversations, workflows } from "../../db/schema/index.ts";
-import { appendMessage } from "../persist.ts";
+import { appendMessage } from "../persistence/index.ts";
 import {
   appendUserMessage,
   countConversations,

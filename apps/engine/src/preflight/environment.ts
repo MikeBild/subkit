@@ -23,7 +23,7 @@ function truthy(value: string | undefined): boolean {
   return value === "true" || value === "1";
 }
 
-export function objectStoreSeedFromEnv(
+function objectStoreSeedFromEnv(
   environment: Record<string, string | undefined> = process.env,
 ): ObjectStoreBinding | null {
   const endpoint = environment.OBJECT_STORAGE_ENDPOINT?.trim();
@@ -145,7 +145,7 @@ export async function readSecretVersion(db: Db, name: string, version: number): 
   await readSecretValue(db, name, version);
 }
 
-export async function readSecretValue(db: Db, name: string, version: number): Promise<string> {
+async function readSecretValue(db: Db, name: string, version: number): Promise<string> {
   // tenant-filter:exempt — secret versions are product-global operator state.
   const [row] = await db
     .select({

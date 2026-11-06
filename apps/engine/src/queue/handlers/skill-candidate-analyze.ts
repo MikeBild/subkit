@@ -7,11 +7,11 @@ import { withActiveTenantJobContext } from "../job-context.ts";
 
 export const SKILL_CANDIDATE_ANALYZE_QUEUE = "skill-candidate.analyze" as const;
 
-export interface SkillCandidateAnalyzeJob {
+interface SkillCandidateAnalyzeJob {
   tenant_id: string;
 }
 
-export interface RegisterSkillCandidateAnalyzeOptions {
+interface RegisterSkillCandidateAnalyzeOptions {
   boss: PgBoss;
   db: Db;
 }

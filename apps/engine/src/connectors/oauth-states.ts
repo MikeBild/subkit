@@ -2,9 +2,9 @@ import { and, desc, eq, gt } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { connectorOauthStates, mcpOauthStates } from "../db/schema/index.ts";
 
-export type ConnectorOAuthStateRow = typeof connectorOauthStates.$inferSelect;
-export type McpOAuthStateRow = typeof mcpOauthStates.$inferSelect;
-export type NewMcpOAuthState = Omit<typeof mcpOauthStates.$inferInsert, "id" | "created_at">;
+type ConnectorOAuthStateRow = typeof connectorOauthStates.$inferSelect;
+type McpOAuthStateRow = typeof mcpOauthStates.$inferSelect;
+type NewMcpOAuthState = Omit<typeof mcpOauthStates.$inferInsert, "id" | "created_at">;
 
 export async function claimConnectorOAuthState(
   db: Executor,

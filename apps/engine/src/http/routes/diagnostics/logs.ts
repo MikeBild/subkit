@@ -13,7 +13,7 @@ import { principalHolds } from "../../../rbac/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 
-export const LOG_STREAM_PATH = DIAGNOSTICS_LOG_STREAM_PATH;
+const LOG_STREAM_PATH = DIAGNOSTICS_LOG_STREAM_PATH;
 
 const SSE_HEARTBEAT_MS = 15_000;
 

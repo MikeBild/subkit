@@ -23,7 +23,7 @@ import {
 import { buildScopeAtStep } from "../../workflows/scope-shape.ts";
 import type { StepDef, WorkflowDef } from "../../workflows/types.ts";
 import { draftGoal } from "../authoring-spec.ts";
-import { getWorkflowDraft, withJudgeBreaker, withLatestPreview } from "../authoring-state.ts";
+import { getWorkflowDraft, withJudgeBreaker, withLatestPreview } from "../authoring-state/index.ts";
 import { proposeDryRunRepairs, workflowOutputSite } from "../dry-run-repair.ts";
 import { declinesSaving } from "../intent-detector.ts";
 import { commitWorkflowAtomic } from "../persistence/commit-workflow.ts";

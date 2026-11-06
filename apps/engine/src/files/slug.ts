@@ -9,7 +9,7 @@ import { storageKey } from "./resolver.ts";
 
 export const ATTACHMENT_REFERENCE_PREFIX = "@attachment:";
 
-export const FILE_SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,62}$/;
+const FILE_SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,62}$/;
 
 const SLUG_BASE_MAX = 48;
 const MAX_ATTEMPTS = 5;
@@ -41,11 +41,7 @@ export function parseFileReference(value: string): string | null {
   return FILE_SLUG_RE.test(slug) ? slug : null;
 }
 
-export async function nextFreeFileSlug(
-  db: Db,
-  tenant_id: string,
-  filename: string,
-): Promise<string> {
+async function nextFreeFileSlug(db: Db, tenant_id: string, filename: string): Promise<string> {
   const base = slugifyFilename(filename);
   const taken = await db
     .select({ slug: files.slug })

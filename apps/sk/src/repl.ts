@@ -32,7 +32,7 @@ import { saveSessionMetadata } from "./sessions.ts";
 import { loadSettings } from "./settings.ts";
 import { findSlashCommand, type PersonaProbe, renderHelp, SLASH_COMMANDS } from "./slash.ts";
 
-export interface ReplRunOptions {
+interface ReplRunOptions {
   profile: ResolvedProfile;
   initialPrompt?: string;
   resumeConversationId?: string;

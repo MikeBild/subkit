@@ -98,12 +98,12 @@ const GROUP_HEADING = {
 
 const candidateKey = (c: Pick<MentionCandidate, "type" | "id">) => `${c.type}:${c.id}`;
 
-export interface MentionGroup {
+interface MentionGroup {
   type: MentionCandidateType;
   items: MentionCandidate[];
 }
 
-export interface UseMentionInputOptions {
+interface UseMentionInputOptions {
   value: string;
   setValue: (next: string) => void;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
@@ -394,7 +394,7 @@ export function MentionPicker({
   );
 }
 
-export interface MentionChipsProps {
+interface MentionChipsProps {
   text: string;
   references: readonly ConversationReference[];
   unresolved?: readonly ConversationReference[];

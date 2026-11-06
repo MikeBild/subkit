@@ -37,7 +37,7 @@ const PackageArtifactSchema = z.object({
   prefixDefault: z.string().max(120).optional(),
 });
 
-export const ServicePackageEnrollmentSchema = z.object({
+const ServicePackageEnrollmentSchema = z.object({
   type: z.literal("enrollment"),
   endpoint: z.string().min(1).max(2048),
   acknowledgement: z.string().min(1).max(2048),
@@ -57,7 +57,6 @@ export const ServicePackageEnrollmentSchema = z.object({
     acknowledgeAfterEncryptedStorage: z.literal(true),
   }),
 });
-export type ServicePackageEnrollment = z.infer<typeof ServicePackageEnrollmentSchema>;
 
 export const ServicePackageSchema = z.object({
   format: z.literal("subkit.package/v1"),

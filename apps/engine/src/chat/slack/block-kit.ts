@@ -1,12 +1,12 @@
 import { encodeInteractionEnvelope } from "../api.ts";
 import type { ApprovalCard, ChatDelivery, ChatElicitation, ElicitationField } from "../types.ts";
 
-export interface SlackBlock {
+interface SlackBlock {
   type: string;
   [k: string]: unknown;
 }
 
-export interface SlackView {
+interface SlackView {
   type: "modal";
   callback_id: string;
   title: { type: "plain_text"; text: string };

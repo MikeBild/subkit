@@ -14,10 +14,10 @@ import {
   withConnectorInspection,
   withConnectorProbe,
   withConnectorValidation,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import { appendSnapshot } from "../draft.ts";
-import { maybeAutoPersistFromElicitation } from "../persistence/auto-persist.ts";
+import { maybeAutoPersistFromElicitation } from "../persistence/auto-persist/index.ts";
 import type { DraftDocument } from "../types.ts";
 
 let ctx: TestDb;

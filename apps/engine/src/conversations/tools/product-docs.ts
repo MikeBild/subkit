@@ -1,9 +1,9 @@
 import { DocsBundleSchema } from "@shared/llms-index.ts";
 import docsJson from "../../http/llms/docs.json" with { type: "text" };
 
-export type ProductDocLocale = "en" | "de";
+type ProductDocLocale = "en" | "de";
 
-export interface ProductDocHit {
+interface ProductDocHit {
   id: string;
   source: "product_docs";
   slug: string;

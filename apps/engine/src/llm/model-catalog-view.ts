@@ -58,7 +58,7 @@ export function modelFamilyMismatch(provider: string, model: string): boolean {
   return family !== null && family !== provider;
 }
 
-export interface LlmModelSettings {
+interface LlmModelSettings {
   provider: string;
   model?: string;
   fallback_provider?: string | null;
@@ -69,13 +69,13 @@ export interface LlmModelSettings {
   providers?: object;
 }
 
-export const MODEL_SETTING_LEAVES = [
+const MODEL_SETTING_LEAVES = [
   "model",
   "fallback_model",
   "summarize_model",
   "suggestion_model",
 ] as const;
-export type ModelSettingLeaf = (typeof MODEL_SETTING_LEAVES)[number];
+type ModelSettingLeaf = (typeof MODEL_SETTING_LEAVES)[number];
 
 function targetProviderOf(llm: LlmModelSettings, leaf: ModelSettingLeaf): string {
   if (leaf === "fallback_model") return llm.fallback_provider || llm.provider;
@@ -106,7 +106,7 @@ export function modelProviderMismatch(
 
 export const MODEL_BADGE_OUTPUT_PRICE = Object.freeze({ economicalAtMost: 5, capableAtLeast: 15 });
 
-export interface CatalogModelBadges {
+interface CatalogModelBadges {
   recommended: boolean;
   economical: boolean;
   capable: boolean;

@@ -104,7 +104,7 @@ export interface SkillConventionsWrite {
   domains?: string[] | undefined;
 }
 
-export interface CreateSkillParams {
+interface CreateSkillParams {
   tenant_id: string;
   input: CreateSkillInput;
   actor_id?: string | null;
@@ -195,7 +195,7 @@ export async function createSkill(p: CreateSkillParams, db: Executor): Promise<S
   });
 }
 
-export interface ListSkillsParams {
+interface ListSkillsParams {
   description_source?: "llm" | "human";
   tenant_id: string;
   scope?: SkillScope;
@@ -773,7 +773,7 @@ export async function restoreSkill(
   );
 }
 
-export interface RetrieveApplicableParams {
+interface RetrieveApplicableParams {
   tenant_id: string;
   connector_ids?: string[];
   workflow_ids?: string[];

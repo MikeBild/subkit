@@ -2,7 +2,7 @@ import { type SQLWrapper, sql } from "drizzle-orm";
 import { FILE_SENTINEL_RE } from "../files/sentinel.ts";
 
 export const TITLE_SOURCE_CHARS = 300;
-export const TITLE_FALLBACK_JSON_BYTES = 65_536;
+const TITLE_FALLBACK_JSON_BYTES = 65_536;
 const ECMASCRIPT_WHITESPACE =
   "\u0009-\u000d\u0020\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff";
 const TRIM_WHITESPACE = `^[${ECMASCRIPT_WHITESPACE}]+|[${ECMASCRIPT_WHITESPACE}]+$`;
@@ -12,7 +12,7 @@ function trimmed(value: SQLWrapper) {
   return sql<string>`regexp_replace(${value},${TRIM_WHITESPACE},'','g')`;
 }
 
-export function titleSourceText(content: SQLWrapper) {
+function titleSourceText(content: SQLWrapper) {
   const text = sql`${content}->>'text'`;
   const summary = sql`${content}->>'summary'`;
   const raw = sql`CASE

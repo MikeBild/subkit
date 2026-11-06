@@ -44,7 +44,7 @@ function staticQuery(raw: unknown): ProbeQuery | null | undefined {
   return Object.keys(query).length > 0 ? query : undefined;
 }
 
-export function operationKey(op: GetOperation): string {
+function operationKey(op: GetOperation): string {
   const query = op.query
     ? new URLSearchParams(
         Object.entries(op.query)
@@ -55,7 +55,7 @@ export function operationKey(op: GetOperation): string {
   return `${op.connector_id} ${op.path}?${query}`;
 }
 
-export function extractGetOperations(dag: unknown): GetOperation[] {
+function extractGetOperations(dag: unknown): GetOperation[] {
   const out: GetOperation[] = [];
   const steps = (dag as { steps?: unknown })?.steps;
   if (!Array.isArray(steps)) return out;

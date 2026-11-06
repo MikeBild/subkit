@@ -6,7 +6,7 @@ import type { AppEnv } from "../openapi.ts";
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-export interface ChangeAnnouncement {
+interface ChangeAnnouncement {
   type: ResourceChangeType;
   prefixes: readonly string[];
   reads?: readonly string[];
@@ -37,7 +37,7 @@ export function announcesChange(
   return !(announcement.reads ?? []).includes(path);
 }
 
-export function announceChange(announcement: ChangeAnnouncement): MiddlewareHandler<AppEnv> {
+function announceChange(announcement: ChangeAnnouncement): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     await next();
     if (

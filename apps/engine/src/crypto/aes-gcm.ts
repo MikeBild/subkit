@@ -8,12 +8,12 @@ import {
 } from "node:crypto";
 import { logger } from "../logging/logger.ts";
 
-export const AES_ALGORITHM = "aes-256-gcm" as const;
-export const AES_KEY_BYTES = 32;
+const AES_ALGORITHM = "aes-256-gcm" as const;
+const AES_KEY_BYTES = 32;
 export const AES_IV_BYTES = 12;
-export const AES_AUTH_TAG_BYTES = 16;
+const AES_AUTH_TAG_BYTES = 16;
 
-export class CryptoError extends Error {
+class CryptoError extends Error {
   constructor(
     message: string,
     public readonly code:

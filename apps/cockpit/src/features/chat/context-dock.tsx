@@ -42,7 +42,7 @@ export function useContextDock(chatWorkspace: ContextWorkspace) {
   return { contextContainer, contextDock, contextToggle, closeContext, attachContext };
 }
 
-export type ContextDock = ReturnType<typeof useContextDock>;
+type ContextDock = ReturnType<typeof useContextDock>;
 
 export function ChatContextDock({
   dock,

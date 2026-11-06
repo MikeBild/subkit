@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { normalizeDraftDocument } from "../../authoring-state.ts";
+import { normalizeDraftDocument } from "../../authoring-state/index.ts";
 import { saveVerificationEvidence } from "../../handoff-summary.ts";
 import { stepFingerprint } from "../../step-fingerprint.ts";
 import type { DraftDocument } from "../../types.ts";

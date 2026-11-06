@@ -11,7 +11,7 @@ import { withActiveTenantJobContext } from "../job-context.ts";
 
 export const WORKFLOW_REPAIR_QUEUE = "workflow.repair" as const;
 
-export interface RegisterWorkflowRepairOptions {
+interface RegisterWorkflowRepairOptions {
   boss: PgBoss;
   db: Db;
 }
@@ -116,7 +116,7 @@ export async function registerWorkflowRepairHandler(
   return workerId;
 }
 
-export const REPAIR_SINGLETON_SECONDS = 3600;
+const REPAIR_SINGLETON_SECONDS = 3600;
 
 export async function enqueueRepair(
   boss: PgBoss,

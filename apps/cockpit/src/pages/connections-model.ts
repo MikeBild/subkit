@@ -5,8 +5,6 @@ export type ConnectionItem = components["schemas"]["Connection"];
 export type ConnectionState = ConnectionItem["state"];
 export type ConnectionStateReason = NonNullable<ConnectionItem["state_reason"]>;
 
-export type DiscoveryItem = components["schemas"]["ConnectionDiscoverResponse"];
-
 export function connectionStateKey(state: ConnectionItem["state"]): TranslationKey {
   switch (state) {
     case "valid":

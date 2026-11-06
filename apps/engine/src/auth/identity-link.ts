@@ -34,7 +34,7 @@ async function assertTenantLocalIdentityAllowed(exec: Executor, tenantId: string
   if (tenant?.origin === "self_service") throw new IdentityLinkConflictError();
 }
 
-export interface ResolveProviderIdentityOptions {
+interface ResolveProviderIdentityOptions {
   tenantId: string;
   providerId: string;
   subject: string;
@@ -219,7 +219,7 @@ export class ProductIdentityErasedError extends Error {
   }
 }
 
-export interface ResolveProductBearerIdentityOptions {
+interface ResolveProductBearerIdentityOptions {
   tenantId: string;
   providerId: string;
   issuerUrl: string;
@@ -229,7 +229,7 @@ export interface ResolveProductBearerIdentityOptions {
   now?: Date;
 }
 
-export interface ProductBearerIdentity {
+interface ProductBearerIdentity {
   userId: string;
   identityId: string;
   role: string | null;
@@ -242,7 +242,7 @@ export function productSubjectDigest(subject: string): string {
   return createHash("sha256").update(subject).digest("hex");
 }
 
-export function productPlaceholderEmail(providerId: string, subject: string): string {
+function productPlaceholderEmail(providerId: string, subject: string): string {
   return `${providerId}:${subject}@invalid`;
 }
 

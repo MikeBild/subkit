@@ -35,8 +35,8 @@ import { JsonValueSchema, type RequestStep, WorkflowDefSchema } from "./types.ts
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const environment = z.enum(["dev", "prod"]);
 
-export const CallPathSchema = z.array(z.string().min(1)).length(1);
-export type CallPath = z.infer<typeof CallPathSchema>;
+const CallPathSchema = z.array(z.string().min(1)).length(1);
+type CallPath = z.infer<typeof CallPathSchema>;
 
 export const ResolvedEffectBindingSchema = z
   .object({
@@ -101,8 +101,8 @@ const inputSchema = z
   })
   .strict();
 
-export type CallRefusalReason = "child_unavailable" | "target_not_static" | "child_calls_workflow";
-export interface CallRefusal {
+type CallRefusalReason = "child_unavailable" | "target_not_static" | "child_calls_workflow";
+interface CallRefusal {
   step_id: string;
   reason: CallRefusalReason;
 }

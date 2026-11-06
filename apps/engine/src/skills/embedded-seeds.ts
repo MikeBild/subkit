@@ -110,7 +110,7 @@ import workflowFindRunCheck from "../conversations/seed/skills/workflow-find-run
   type: "text",
 };
 
-export interface EmbeddedSeedFile {
+interface EmbeddedSeedFile {
   file: string;
   content: string;
 }

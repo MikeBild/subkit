@@ -1,7 +1,7 @@
 import ts from "typescript";
 import type { ImportRef } from "./imports.ts";
 
-export const ENGINE_SRC_PREFIX = "apps/engine/src/";
+const ENGINE_SRC_PREFIX = "apps/engine/src/";
 
 export interface ResolvedImport extends ImportRef {
   resolved: string;
@@ -139,9 +139,9 @@ export function getDbFallbackHits(sf: ts.SourceFile): RuleHit[] {
   return hits;
 }
 
-export const CONVERSATIONS_PREFIX = `${ENGINE_SRC_PREFIX}conversations/`;
+const CONVERSATIONS_PREFIX = `${ENGINE_SRC_PREFIX}conversations/`;
 
-export const CONVERSATIONS_ENTRY_POINTS: ReadonlySet<string> = new Set([
+const CONVERSATIONS_ENTRY_POINTS: ReadonlySet<string> = new Set([
   `${CONVERSATIONS_PREFIX}tools/index.ts`,
   `${CONVERSATIONS_PREFIX}types.ts`,
 ]);

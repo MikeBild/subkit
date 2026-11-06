@@ -2,7 +2,7 @@ import { isDatabaseQueryError } from "../logging/logger.ts";
 
 export const DATABASE_FAILURE_MESSAGE = "the lookup failed; check the arguments";
 
-export interface ToolExecutionFailure {
+interface ToolExecutionFailure {
   database_failure: boolean;
   message: string;
   span_error: unknown;

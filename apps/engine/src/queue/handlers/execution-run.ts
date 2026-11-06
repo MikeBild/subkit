@@ -42,7 +42,7 @@ import { withActiveTenantJobContext } from "../job-context.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queues.ts";
 import { enqueueGateDiagnosis, enqueueRepair } from "./workflow-repair.ts";
 
-export interface RegisterExecutionRunOptions {
+interface RegisterExecutionRunOptions {
   boss: PgBoss;
   db: Db;
 }

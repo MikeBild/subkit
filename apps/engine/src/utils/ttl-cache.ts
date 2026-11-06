@@ -1,4 +1,4 @@
-export interface TtlCacheOptions {
+interface TtlCacheOptions {
   maxEntries: number;
   ttlMs: number;
   now?: () => number;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { translateAutoPersistError } from "./auto-persist.ts";
+import { translateAutoPersistError } from "./auto-persist/index.ts";
 
 function pgError(code: string, message: string, detail?: string): Error {
   const e = new Error(message);

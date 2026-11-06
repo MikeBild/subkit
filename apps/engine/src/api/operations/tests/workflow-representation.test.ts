@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import type { WorkflowView } from "../../workflows/index.ts";
-import { serializeWorkflowDetail, WorkflowDetailSchema } from "./workflow-representation.ts";
+import type { WorkflowView } from "../../../workflows/index.ts";
+import { serializeWorkflowDetail, WorkflowDetailSchema } from "../workflow-representation.ts";
 
 test("workflow detail exposes the full active definition for a safe draft edit", () => {
   const definition = {

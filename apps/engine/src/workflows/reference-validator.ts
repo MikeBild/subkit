@@ -53,7 +53,7 @@ export interface ReferenceValidationError {
   did_you_mean: string[];
 }
 
-export interface UnsupportedPlaceholderError {
+interface UnsupportedPlaceholderError {
   step_id: string;
   field: string;
   raw: string;

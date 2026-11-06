@@ -9,7 +9,7 @@ import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
 import { safeParseJson } from "../../llm/core/safe-json.ts";
 import { logger } from "../../logging/logger.ts";
-import { translateAutoPersistError } from "../persistence/auto-persist.ts";
+import { translateAutoPersistError } from "../persistence/auto-persist/index.ts";
 import {
   type AtomicCredentialInput,
   connectorFieldPatch,

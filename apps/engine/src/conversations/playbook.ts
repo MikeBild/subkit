@@ -238,7 +238,7 @@ export async function updatePlaybook(
 
 const DECISION_NOTE_MAX = 600;
 
-export interface PlaybookDecision {
+interface PlaybookDecision {
   elicitation_id: string;
   step_id: string | null;
   question: string;

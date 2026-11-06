@@ -1,7 +1,7 @@
 import { buildScopeAtStep } from "../workflows/scope-shape.ts";
 import type { DraftDocument } from "./types.ts";
 
-export interface ScopeDriftWarning {
+interface ScopeDriftWarning {
   step_key: string;
   code: string;
   message: string;

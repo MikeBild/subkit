@@ -17,13 +17,13 @@ import { readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { type CallExpression, Node, Project, type SourceFile } from "ts-morph";
 
-export interface TenantFilterViolation {
+interface TenantFilterViolation {
   file: string;
   line: number;
   table: string;
 }
 
-export interface AuditOpts {
+interface AuditOpts {
   repoRoot: string;
   engineSrc: string;
   tableAllowlist: ReadonlySet<string>;

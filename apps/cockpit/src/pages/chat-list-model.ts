@@ -2,7 +2,7 @@ import { clipAtWord } from "@/lib/presentation";
 
 export const TITLE_MAX = 72;
 
-export interface ConversationRowInput {
+interface ConversationRowInput {
   title?: string | null | undefined;
   last_message_role?: string | null | undefined;
   last_message_excerpt?: string | null | undefined;

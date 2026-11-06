@@ -1,6 +1,6 @@
 import { TtlCache } from "../../utils/ttl-cache.ts";
 
-export interface ConversationBudgetReport {
+interface ConversationBudgetReport {
   cap_tokens: number;
   total_tokens: number;
   dropped_sections: string[];

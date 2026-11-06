@@ -15,7 +15,7 @@ import {
   withWorkflowDraft,
   withWorkflowInspection,
   withWorkflowValidation,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import type { DraftDocument, TurnEvent } from "../types.ts";
 import {
   appendMessageWithTurn,

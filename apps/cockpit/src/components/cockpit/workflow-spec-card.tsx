@@ -45,7 +45,7 @@ const ORIGIN_KEYS: Record<WorkflowSpecOrigin, TranslationKey> = {
   derived: "workflowSpec.origin.derived",
 };
 
-export function useWorkflowSpecDraft(workflowId: string, draftVersionId: string | null) {
+function useWorkflowSpecDraft(workflowId: string, draftVersionId: string | null) {
   return useQuery({
     queryKey: ["workflow-draft-version", workflowId, draftVersionId, "spec"],
     enabled: draftVersionId !== null,

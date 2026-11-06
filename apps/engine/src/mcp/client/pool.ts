@@ -69,7 +69,8 @@ export type {
   NegotiatedServerCapabilities,
   ServerCapabilitiesLike,
 } from "./session.ts";
-export type McpPoolTestFactories = McpSessionFactories;
+
+type McpPoolTestFactories = McpSessionFactories;
 
 export function __setMcpPoolFactoriesForTests(f: McpPoolTestFactories | null): void {
   setMcpSessionFactoriesForTests(f);
@@ -213,7 +214,7 @@ async function connectClient(
   }
 }
 
-export type TransientMcpProbeOutcome =
+type TransientMcpProbeOutcome =
   | {
       ok: true;
       tool_count: number;
@@ -334,7 +335,7 @@ export async function getTenantMcpTools(
   return out;
 }
 
-export type ConnectServerOutcome =
+type ConnectServerOutcome =
   | { ok: true; tools: TenantMcpToolSet }
   | { ok: false; reason: "not_found" | "disabled" | "handshake_failed"; detail: string | null };
 

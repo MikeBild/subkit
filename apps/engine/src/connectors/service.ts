@@ -191,7 +191,7 @@ async function resolveCreateTemplateBinding(
   };
 }
 
-export interface CreateConnectorParams {
+interface CreateConnectorParams {
   tenant_id: string;
   input: CreateConnectorInput;
   actor_id: string | null;
@@ -365,7 +365,7 @@ export async function createConnector(
   });
 }
 
-export const CONNECTOR_LIST_MAX_LIMIT = 1000;
+const CONNECTOR_LIST_MAX_LIMIT = 1000;
 
 export async function listConnectors(
   tenant_id: string,

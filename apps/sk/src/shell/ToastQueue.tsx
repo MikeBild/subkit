@@ -84,7 +84,7 @@ export interface ToastQueueAPI {
 
 const ToastQueueContext = createContext<ToastQueueAPI | null>(null);
 
-export interface ToastQueueProps {
+interface ToastQueueProps {
   maxVisible?: number;
   defaultTtlMs?: number;
   clock?: () => number;

@@ -11,7 +11,7 @@ import {
   hasInProgressWorkflowDraft,
   startNewWorkflowDraft,
   withWorkflowDraft,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import type { WorkflowDraftDocument } from "../types.ts";
 import { fetchServicePackage } from "./fetch-connector-self-description.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";

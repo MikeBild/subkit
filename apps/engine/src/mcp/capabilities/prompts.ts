@@ -24,7 +24,7 @@ function toName(id: string): string {
   return `${PREFIX}${id}`;
 }
 
-export interface RegisterPromptsParams {
+interface RegisterPromptsParams {
   server: Server;
   db: Db;
   principal: ResolvedPrincipal;

@@ -45,7 +45,7 @@ export class RuntimeSecretInUseError extends Error {
   readonly code = "secret_in_use";
 }
 
-export const OPERATOR_CHANGE_PENDING_MESSAGE =
+const OPERATOR_CHANGE_PENDING_MESSAGE =
   "The engine operator has saved engine-wide settings that are not active yet. Your workspace setting was not saved. Try again after the operator activates them or restarts the engine.";
 
 export class RuntimeConfigPendingError extends Error {

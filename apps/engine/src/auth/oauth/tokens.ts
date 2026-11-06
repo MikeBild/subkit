@@ -7,7 +7,7 @@ export const ACCESS_TOKEN_PREFIX_LITERAL = "wf_mcp_";
 export const REFRESH_TOKEN_PREFIX_LITERAL = "wf_mcr_";
 export const TOKEN_PREFIX_LENGTH = 12;
 
-export interface IssuedMcpToken {
+interface IssuedMcpToken {
   plaintext: string;
   prefix: string;
   hash: string;
@@ -33,7 +33,7 @@ export function generateRefreshToken(): IssuedMcpToken {
   };
 }
 
-export interface IssuedAuthCode {
+interface IssuedAuthCode {
   plaintext: string;
   hash: string;
 }
@@ -43,7 +43,7 @@ export function generateAuthorizationCode(): IssuedAuthCode {
   return { plaintext, hash: sha256Hex(plaintext) };
 }
 
-export interface ParsedMcpToken {
+interface ParsedMcpToken {
   prefix: string;
   hash: string;
   kind: "access" | "refresh";

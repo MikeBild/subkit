@@ -1,17 +1,17 @@
 import data from "./cli-manifest.json" with { type: "json" };
 
-export interface CliFlagSpec {
+interface CliFlagSpec {
   name: string;
   type: "string" | "boolean" | "number";
 }
 
-export interface CliCommandSpec {
+interface CliCommandSpec {
   flags: string[];
   positionals: string[];
   subcommands?: Record<string, CliCommandSpec>;
 }
 
-export interface CliManifest {
+interface CliManifest {
   binary: string;
   aliases: string[];
   global_flags: CliFlagSpec[];

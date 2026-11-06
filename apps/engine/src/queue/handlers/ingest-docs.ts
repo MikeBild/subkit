@@ -17,7 +17,7 @@ export interface IngestDocsJob {
   actor_id?: string | null;
 }
 
-export interface RegisterIngestDocsOptions {
+interface RegisterIngestDocsOptions {
   boss: PgBoss;
   db: Db;
 }

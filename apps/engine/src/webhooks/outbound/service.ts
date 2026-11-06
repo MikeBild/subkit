@@ -42,7 +42,7 @@ function serialize(row: typeof subscriptions.$inferSelect): SubscriptionRow {
   };
 }
 
-export interface CreateSubscriptionInput {
+interface CreateSubscriptionInput {
   tenant_id: string;
   actor_id: string | null;
   actor?: Actor | null;
@@ -135,7 +135,7 @@ export async function getSubscription(
   return row ? serialize(row) : null;
 }
 
-export interface DecryptedSubscription {
+interface DecryptedSubscription {
   row: typeof subscriptions.$inferSelect;
   primary_secret: string;
   rotating_secret: string | null;

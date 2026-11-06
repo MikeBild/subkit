@@ -138,7 +138,7 @@ function assertSourceSize(content: string): void {
   }
 }
 
-export interface PreparedKnowledgeCreate {
+interface PreparedKnowledgeCreate {
   slug: string;
   hash: string;
   source_type: NonNullable<CreateKnowledgeSourceParams["source_type_override"]>;
@@ -604,7 +604,7 @@ export async function deleteKnowledgeSource(
   });
 }
 
-export interface PreparedKnowledgeIngest {
+interface PreparedKnowledgeIngest {
   format: ReturnType<typeof detectFormat>;
   hash: string;
   accepted: FingerprintedChunk[];
@@ -614,7 +614,7 @@ export interface PreparedKnowledgeIngest {
   content: KnowledgeVersionContent;
 }
 
-export interface AppliedKnowledgeIngest {
+interface AppliedKnowledgeIngest {
   version: number | null;
 }
 

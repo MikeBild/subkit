@@ -1,13 +1,13 @@
 import type { ChatAdapter } from "./adapter.ts";
 import type { ChatDelivery, ChatPlatform, OutboundSendResult } from "./types.ts";
 
-export interface AdapterKey {
+interface AdapterKey {
   tenant_id: string;
   platform: ChatPlatform;
   workspace_id: string;
 }
 
-export interface OutboundFallbackAdapter {
+interface OutboundFallbackAdapter {
   readonly platform: ChatPlatform;
   send(delivery: ChatDelivery): Promise<OutboundSendResult>;
 }

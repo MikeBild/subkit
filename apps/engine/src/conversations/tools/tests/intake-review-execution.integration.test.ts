@@ -14,7 +14,7 @@ import {
 import { builtinRoleId } from "../../../rbac/roles.ts";
 import { createSkill } from "../../../skills/service.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
-import { createEmptyDraftDocument } from "../../authoring-state.ts";
+import { createEmptyDraftDocument } from "../../authoring-state/index.ts";
 import { decideToolMode } from "../../tool-policies.ts";
 import type { TurnEvent } from "../../types.ts";
 import { proposalReviewUrl } from "../engine-api/intake.ts";

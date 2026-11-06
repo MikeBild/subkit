@@ -49,7 +49,7 @@ export async function loadTenantWorkflowHeaderPolicies(
   return policies;
 }
 
-export async function loadTenantWorkflowGraphqlTargets(
+async function loadTenantWorkflowGraphqlTargets(
   input: unknown,
   tenantId: string,
   db: Executor,
@@ -142,16 +142,16 @@ function readReportDeliveryConnectorIds(input: unknown): string[] {
   });
 }
 
-export interface ConsistencyLintScope {
+interface ConsistencyLintScope {
   workflow_id?: string | null;
 }
 
-export type TenantValidateOptions = Pick<
+type TenantValidateOptions = Pick<
   ValidateOptions,
   "allowForwardRefs" | "destinationTier" | "lintJavascript"
 > & { consistency?: ConsistencyLintScope };
 
-export async function loadConsistencyContext(
+async function loadConsistencyContext(
   input: unknown,
   tenantId: string,
   db: Executor,

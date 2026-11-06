@@ -13,7 +13,7 @@ import type { ConnectorView } from "./types.ts";
 
 export const GRANT_PREFIX = "skog_";
 
-export interface IssuedStartGrant {
+interface IssuedStartGrant {
   plaintext: string;
   hash: string;
 }
@@ -28,11 +28,11 @@ export function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-export type MintGrantError =
+type MintGrantError =
   | { ok: false; error: "engine_public_url_missing" }
   | { ok: false; error: "no_browser_flow" };
 
-export interface MintedGrant {
+interface MintedGrant {
   ok: true;
   url: string;
   expires_at: Date;
@@ -103,7 +103,7 @@ export async function mintOAuthStartGrantUrl(
   return { ok: true, url, expires_at };
 }
 
-export interface ConsumedGrant {
+interface ConsumedGrant {
   id: string;
   tenant_id: string;
   connector_id: string;

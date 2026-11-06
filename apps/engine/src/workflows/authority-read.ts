@@ -12,7 +12,7 @@ import { readDatabaseNow } from "./database-clock.ts";
 import type { WorkflowEffectManifest } from "./effect-manifest.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
 
-export interface ReviewedAuthorityVersion {
+interface ReviewedAuthorityVersion {
   tenant_id: string;
   workflow_id: string;
   workflow_version_id: string;
@@ -104,7 +104,7 @@ export async function observeAuthorityById(
   return observeWorkflowAuthority(db, row, workflow, now);
 }
 
-export type AuthorityPage =
+type AuthorityPage =
   | { ok: true; ids: string[]; next_cursor: string | null }
   | { ok: false; missing: "workflow" | "authority cursor" };
 

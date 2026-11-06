@@ -5,7 +5,7 @@ export interface VersionActor {
   actor_type?: PrincipalKind | "system" | "unknown" | undefined;
 }
 
-export interface VersionAuthorColumns {
+interface VersionAuthorColumns {
   author_user_id: string | null;
   author_system_account_id: string | null;
 }

@@ -47,7 +47,7 @@ export const FileRefSchema = z
   .object({ $file: FileIdSchema, $range: FileByteRangeSchema.optional() })
   .openapi("FileRef");
 
-export const FileStatusSchema = z
+const FileStatusSchema = z
   .enum(["pending", "uploading", "scanning", "ready", "failed", "expired"])
   .openapi("FileStatus");
 
@@ -109,11 +109,10 @@ export const InlineUploadSchema = z
 const SHA256_REGEX = /^[0-9a-f]{64}$/;
 
 export const MAX_STREAM_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024;
-export const MAX_PRESIGN_BYTES = MAX_STREAM_UPLOAD_BYTES;
 
 export const MAX_FINALIZE_VERIFY_BYTES = MAX_STREAM_UPLOAD_BYTES;
 
-export const BatchCreateEntrySchema = z
+const BatchCreateEntrySchema = z
   .object({
     filename: z.string().min(1).max(255),
     content_type: z.string().max(200).optional(),
@@ -157,9 +156,7 @@ export const FinalizeRequestSchema = z
 
 export { FILE_LINK_RESOURCE_TYPES };
 
-export const FileLinkResourceTypeSchema = z
-  .enum(FILE_LINK_RESOURCE_TYPES)
-  .openapi("FileLinkResourceType");
+const FileLinkResourceTypeSchema = z.enum(FILE_LINK_RESOURCE_TYPES).openapi("FileLinkResourceType");
 
 export const LinkRequestSchema = z
   .object({
@@ -213,7 +210,7 @@ export const ListFilesQuerySchema = z
   })
   .openapi("ListFilesQuery");
 
-export const FileListItemSchema = FileSchema.extend({
+const FileListItemSchema = FileSchema.extend({
   usage: z.object({
     workflows: z.number().int().nonnegative(),
     conversations: z.number().int().nonnegative(),
@@ -265,7 +262,7 @@ export const FileUsageSchema = z
   })
   .openapi("FileUsage");
 
-export const FileVersionActorSchema = z
+const FileVersionActorSchema = z
   .object({ kind: z.enum(["user", "system_account"]), id: z.string().uuid() })
   .nullable()
   .openapi("FileVersionActor");

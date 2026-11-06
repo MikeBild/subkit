@@ -10,7 +10,7 @@ const connector = "00000000-0000-4000-8000-000000000004";
 const PROJECT_ITEMS_QUERY =
   "query ProjectItems($after: String, $owner: String!, $number: Int!) { user(login: $owner) { projectV2(number: $number) { items(first: 50, after: $after) { totalCount nodes { id } pageInfo { hasNextPage endCursor } } } } }";
 
-export const projectItemsGraphql = {
+const projectItemsGraphql = {
   operation: "query",
   query: PROJECT_ITEMS_QUERY,
   variables: { after: null, owner: "MikeBild", number: 4 },
@@ -23,10 +23,7 @@ export const projectItemsGraphql = {
   },
 };
 
-export function manifestInput(
-  step: Record<string, unknown>,
-  binding: Partial<ResolvedEffectBinding>,
-) {
+function manifestInput(step: Record<string, unknown>, binding: Partial<ResolvedEffectBinding>) {
   const definition = WorkflowDefSchema.parse(
     JSON.parse(JSON.stringify({ name: "GitHub briefing", steps: [{ ...step, id: "items" }] })),
   );

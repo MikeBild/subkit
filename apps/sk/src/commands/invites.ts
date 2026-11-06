@@ -3,7 +3,7 @@ import { defineCommand } from "citty";
 import type { UserInviteWire } from "../engine-client.ts";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
-export function inviteStatus(invite: UserInviteWire, nowMs: number = Date.now()): string {
+function inviteStatus(invite: UserInviteWire, nowMs: number = Date.now()): string {
   if (invite.revoked_at) return "revoked";
   if (invite.redeemed_at) return "redeemed";
   if (Date.parse(invite.expires_at) <= nowMs) return "expired";

@@ -1,6 +1,6 @@
 import type { TranslationKey } from "./i18n";
 
-export type ToolTier = "background" | "action";
+type ToolTier = "background" | "action";
 
 const WORKFLOW_TOOL_PREFIX = "wf_";
 
@@ -226,7 +226,7 @@ export function toolTier(toolName: string): ToolTier {
   return "action";
 }
 
-export type ToolLabel =
+type ToolLabel =
   | { kind: "workflow"; slug: string }
   | { kind: "key"; key: TranslationKey }
   | { kind: "background"; words: BackgroundWords }
@@ -332,7 +332,7 @@ export function workflowRunTitleKey(
   return named ? "tool.name.runNamedWorkflow" : "tool.name.runWorkflow";
 }
 
-export type ToolOutcomeInput = {
+type ToolOutcomeInput = {
   confirmationState?: string | null | undefined;
   outcome?: string | null | undefined;
   stale?: boolean;

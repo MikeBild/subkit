@@ -14,7 +14,7 @@ export interface StepEdge {
     | "loop_body";
 }
 
-export interface StepDag {
+interface StepDag {
   step_ids: ReadonlyArray<string>;
   edges: ReadonlyArray<StepEdge>;
   adjacency: ReadonlyMap<string, ReadonlyArray<string>>;

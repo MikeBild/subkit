@@ -1,4 +1,4 @@
-export type FilterReason =
+type FilterReason =
   | "empty"
   | "done"
   | "meta_text"

@@ -9,13 +9,13 @@ import { chatWorkspaceAad } from "./api.ts";
 import { requiresHostedChatOwnership } from "./hosted-ownership.ts";
 import { type ChatEvent, PLATFORM_HAS_GLOBAL_USER_IDS } from "./types.ts";
 
-export type DmAutoRegistrationDenial =
+type DmAutoRegistrationDenial =
   | "not_dm_autoregistrable"
   | "dm_sender_not_linked"
   | "dm_sender_ambiguous"
   | "hosted_ownership_proof_required";
 
-export type DmAutoRegistrationResult =
+type DmAutoRegistrationResult =
   | { workspace: typeof chatWorkspaces.$inferSelect; user_id: string }
   | { denied: DmAutoRegistrationDenial };
 

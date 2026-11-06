@@ -70,7 +70,7 @@ function zodToJson(schema: ZodType): Record<string, unknown> {
   return zodToJsonSchema7(schema);
 }
 
-export interface GlobalLlmStatus {
+interface GlobalLlmStatus {
   provider_env: string | null;
   inferred_provider: LlmProviderKind | "unconfigured";
   fallback_provider_env: string | null;
@@ -237,7 +237,7 @@ export function applyFlowEnvOverrides(route: ModelRoute, flow: LlmFlow): ModelRo
   };
 }
 
-export interface InvokeParams<T = unknown> {
+interface InvokeParams<T = unknown> {
   flow: LlmFlow;
   tenant_id: string;
   user_turns: UserTurn[];
@@ -255,7 +255,7 @@ export interface InvokeParams<T = unknown> {
   signal?: AbortSignal;
 }
 
-export interface InvokeResult<T = unknown> {
+interface InvokeResult<T = unknown> {
   object?: T;
   text: string;
   model_used: string;

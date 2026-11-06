@@ -1,12 +1,12 @@
 import type { TranslationKey } from "@/lib/i18n";
 
-export interface ResumeTargetLike {
+interface ResumeTargetLike {
   kind?: string | null;
   name?: string | null;
   environment?: string | null;
 }
 
-export interface ResumeSummaryLike {
+interface ResumeSummaryLike {
   stage?: string | null;
   pending_approval?: { tool_name: string } | null;
   active_target?: ResumeTargetLike | null;
@@ -14,7 +14,7 @@ export interface ResumeSummaryLike {
   live_test?: { execution_id: string; status: string } | null;
 }
 
-export type LiveTestState = "pending" | "running" | "succeeded" | "failed" | "blocked";
+type LiveTestState = "pending" | "running" | "succeeded" | "failed" | "blocked";
 
 export function liveTestState(status: string | null | undefined): LiveTestState {
   switch (status) {
@@ -71,7 +71,7 @@ const STAGE_KEYS: Partial<Record<string, TranslationKey>> = {
   workflow_ready_to_commit: "chat.resume.stage.workflowReadyToCommit",
 };
 
-export function resumeTarget(target: ResumeTargetLike | null | undefined, t: Translate): string {
+function resumeTarget(target: ResumeTargetLike | null | undefined, t: Translate): string {
   const kind = target?.kind?.toLowerCase() ?? "none";
   const name = target?.name?.trim();
   const named =

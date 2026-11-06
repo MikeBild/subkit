@@ -1,4 +1,4 @@
-export interface AuditProcessResult {
+interface AuditProcessResult {
   stdout: string;
   stderr: string;
   exitCode: number | null;
@@ -6,7 +6,7 @@ export interface AuditProcessResult {
   killed: boolean;
 }
 
-export type AuditProcessDisposition =
+type AuditProcessDisposition =
   | { kind: "report"; stdout: string }
   | { kind: "unreachable"; reason: string };
 

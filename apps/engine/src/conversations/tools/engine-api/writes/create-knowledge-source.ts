@@ -25,10 +25,6 @@ const CreateKnowledgeSourceOutputData = z.object({
   audit_log_id: z.string(),
 });
 export type CreateKnowledgeSourceOutputData = z.infer<typeof CreateKnowledgeSourceOutputData>;
-export type CreateKnowledgeSourceOutput = {
-  ok: true;
-  data: CreateKnowledgeSourceOutputData;
-};
 
 const CreateKnowledgeSourceInput = z
   .object({

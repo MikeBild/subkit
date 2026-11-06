@@ -5,7 +5,7 @@ export const DAY_MS = 86_400_000;
 export const AUTHORITY_WINDOW_MAX_MS = AUTHORITY_WINDOW_MAX_DAYS * DAY_MS;
 export const AUTHORITY_REPLACEMENT_MAX_HOPS = 32;
 
-export interface AuthorityRuns {
+interface AuthorityRuns {
   max_runs: number | null;
   reserved_runs: number;
 }
@@ -79,7 +79,7 @@ export function replacementFor(chain: ReadonlyArray<AuthorityBoundary>, originId
   return current.id;
 }
 
-export type CarryForwardDecision =
+type CarryForwardDecision =
   | { kind: "growth" }
   | { kind: "exhausted" }
   | { kind: "carry"; max_runs: number | null; valid_until: Date | null };

@@ -6,7 +6,7 @@ const EXIT_ALT_SCREEN = "\x1b[?1049l";
 const HIDE_CURSOR = "\x1b[?25l";
 const SHOW_CURSOR = "\x1b[?25h";
 
-export interface AlternateScreenProps {
+interface AlternateScreenProps {
   enabled: boolean;
   children: React.ReactNode;
 }

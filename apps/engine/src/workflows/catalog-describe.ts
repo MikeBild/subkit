@@ -64,9 +64,9 @@ const KNOWLEDGE_SAMPLE_CHUNKS = 4;
 
 const KNOWLEDGE_SAMPLE_CHARS = 3000;
 
-export const CATALOG_DESCRIBE_BATCH = 25;
+const CATALOG_DESCRIBE_BATCH = 25;
 
-export const CATALOG_DESCRIBE_RETRY_MS = 6 * 60 * 60 * 1000;
+const CATALOG_DESCRIBE_RETRY_MS = 6 * 60 * 60 * 1000;
 
 type CatalogTable = (typeof TABLES)[CatalogKind];
 
@@ -170,7 +170,7 @@ function describeSteps(steps: unknown, depth = 0): string[] {
   return lines;
 }
 
-export function addressWithoutSecrets(address: string | null): string | null {
+function addressWithoutSecrets(address: string | null): string | null {
   if (!address) return null;
   try {
     const url = new URL(address);
@@ -341,12 +341,12 @@ function isTextLike(content_type: string | null, filename: string): boolean {
   return generic && TEXT_FILE_EXTENSIONS.has(extension);
 }
 
-export function thinEvidenceNote(excerpt: string): string | null {
+function thinEvidenceNote(excerpt: string): string | null {
   if (excerpt.startsWith("(") || excerpt.length >= THIN_FILE_EXCERPT_CHARS) return null;
   return `very little text (${excerpt.length} characters): say only what the name and these lines state, and nothing about what the file is used for beyond the links shown`;
 }
 
-export async function fileExcerpt(row: FileRow): Promise<string> {
+async function fileExcerpt(row: FileRow): Promise<string> {
   if (!isTextLike(row.content_type, row.filename)) {
     return "(binary file — its content is not shown)";
   }
@@ -420,7 +420,7 @@ const INPUT_BUILDERS: Record<
   file: fileInput,
 };
 
-export type CatalogDescribeOutcome = "described" | "unchanged" | "skipped" | "failed";
+type CatalogDescribeOutcome = "described" | "unchanged" | "skipped" | "failed";
 
 const CATALOG_LOCK_RETRY = { tries: 5, startMs: 25, maxMs: 200 } as const;
 
@@ -568,7 +568,7 @@ export async function describeOne(
   return "described";
 }
 
-export interface CatalogDescribeRun {
+interface CatalogDescribeRun {
   described: number;
   unchanged: number;
   skipped: number;

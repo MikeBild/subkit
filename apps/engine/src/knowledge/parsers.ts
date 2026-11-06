@@ -6,7 +6,7 @@ import {
 } from "../docs-ingestion/parsers/index.ts";
 import type { RawChunk } from "../docs-ingestion/types.ts";
 
-export type ParsedFormat =
+type ParsedFormat =
   | "json"
   | "yaml"
   | "csv"
@@ -22,15 +22,6 @@ export type ParsedFormat =
   | "zip"
   | "gzip"
   | "unknown";
-
-export class UnsupportedFileFormatError extends Error {
-  readonly format: string;
-  constructor(format: string) {
-    super(`Unsupported file format for knowledge ingestion: ${format}`);
-    this.name = "UnsupportedFileFormatError";
-    this.format = format;
-  }
-}
 
 export function isBinaryFormat(format: ParsedFormat): format is BinaryFormat {
   return isBinaryFormatId(format);

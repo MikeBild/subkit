@@ -54,7 +54,7 @@ const WF_INLINE_TIMEOUT_MS = 50_000;
 const TOOLS_CALL_DEADLINE_MS = 30_000;
 const TOOL_LIST_CHANGED_DEBOUNCE_MS = 250;
 
-export interface RegisterToolsParams {
+interface RegisterToolsParams {
   server: Server;
   db: Db;
   principal: ResolvedPrincipal;

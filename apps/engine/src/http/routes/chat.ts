@@ -15,7 +15,7 @@ import { logger } from "../../logging/index.ts";
 import { trafficClassFromHeader } from "../../stats/usage-events.ts";
 import type { AppEnv } from "../openapi.ts";
 
-export interface ChatRoutesDeps {
+interface ChatRoutesDeps {
   registry: ChatAdapterRegistry;
   enqueue?: (job: { event: ChatEvent }) => Promise<void>;
   systemTenantId?: string;

@@ -17,7 +17,7 @@ import {
   WORKFLOW_BINDING_TOOL,
   withLatestPreview,
   withWorkflowExecution,
-} from "../../../authoring-state.ts";
+} from "../../../authoring-state/index.ts";
 import { hydrateBoundWorkflow } from "../../../draft.ts";
 import { detectUserIntent } from "../../../intent-detector.ts";
 import { stampStepTraceFingerprints } from "../../../step-fingerprint.ts";

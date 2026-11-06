@@ -33,7 +33,7 @@ export interface AssistantRecord {
   product_id: string | null;
 }
 
-export interface ActiveAssistant {
+interface ActiveAssistant {
   versionId: string;
   def: WorkflowDef;
 }
@@ -47,7 +47,7 @@ export interface ProductReadinessFacts {
   credentials_present: boolean;
 }
 
-export interface ProductReadiness {
+interface ProductReadiness {
   assistant: ActiveAssistant | null;
   record: AssistantRecord | null;
   checks: AppCheck[];
@@ -104,7 +104,7 @@ async function loadAssistant(
   };
 }
 
-export function activeAssistant(
+function activeAssistant(
   record: AssistantRecord | null,
   product_id: string,
 ): ActiveAssistant | null {

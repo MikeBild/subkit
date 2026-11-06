@@ -30,7 +30,7 @@ import { retiredItemVarIssues } from "./stored-definition.ts";
 import { type StepDef, type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION } from "./types-web-scraper.ts";
 
-export interface SkillSchemaGateResult {
+interface SkillSchemaGateResult {
   ok: boolean;
   missing_fields: string[];
 }
@@ -75,13 +75,13 @@ export interface ValidateOptions {
   lintJavascript?: boolean;
 }
 
-export interface ForwardRef {
+interface ForwardRef {
   step_id: string;
   field: "loop.body" | "parallel.branches" | "branch.then_steps" | "branch.else_steps";
   ref: string;
 }
 
-export interface ValidateWorkflowDefResult {
+interface ValidateWorkflowDefResult {
   ok: boolean;
   workflow?: WorkflowDef;
   errors: ValidationError[];

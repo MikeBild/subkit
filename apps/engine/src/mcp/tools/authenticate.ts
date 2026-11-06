@@ -40,20 +40,20 @@ export const authenticateTool: Tool = {
   },
 };
 
-export interface AuthenticateArgs {
+interface AuthenticateArgs {
   connector_id?: string;
   scope?: "session" | "connector";
   return_url?: string;
 }
 
-export interface AuthenticateResult {
+interface AuthenticateResult {
   portal_url: string;
   expires_at: string;
   state: string;
   redirect_uri: string;
 }
 
-export interface AuthenticateContext {
+interface AuthenticateContext {
   db: Db;
   principal: ResolvedPrincipal;
 }

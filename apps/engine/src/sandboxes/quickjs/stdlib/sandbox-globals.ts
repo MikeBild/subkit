@@ -64,7 +64,7 @@ export const SANDBOX_ECMASCRIPT_GLOBALS: readonly string[] = Object.freeze([
 
 export const SANDBOX_STDLIB_GLOBALS: readonly string[] = Object.freeze(["sk", "btoa", "atob"]);
 
-export const SANDBOX_BODY_BINDINGS: readonly string[] = Object.freeze(["input", "arguments"]);
+const SANDBOX_BODY_BINDINGS: readonly string[] = Object.freeze(["input", "arguments"]);
 
 export const SANDBOX_SK_MEMBERS: readonly string[] = Object.freeze([
   "allow",

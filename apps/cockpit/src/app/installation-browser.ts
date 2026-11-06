@@ -129,7 +129,7 @@ interface DeviceStorage {
   setItem(key: string, value: string): void;
 }
 
-export async function registerBrowserPushWorker(
+async function registerBrowserPushWorker(
   container: WorkerRegistrar = navigator.serviceWorker,
   pathname = window.location.pathname,
 ): Promise<ServiceWorkerRegistration | null> {

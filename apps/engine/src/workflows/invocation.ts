@@ -5,9 +5,9 @@ import { authorityLive } from "./authority-live.ts";
 import { synthesizeInputSchema } from "./input-schema-synth.ts";
 import type { WorkflowDef } from "./types.ts";
 
-export type WorkflowInputSchemaSource = "declared" | "synthesized" | "none";
+type WorkflowInputSchemaSource = "declared" | "synthesized" | "none";
 
-export interface WorkflowInputSchema {
+interface WorkflowInputSchema {
   source: WorkflowInputSchemaSource;
   schema: Record<string, unknown> | null;
 }
@@ -61,7 +61,7 @@ export function workflowSampleInput(
   return sampleFromSchema(schema);
 }
 
-export type RunAuthorityMode = "live_run_allowed" | "held_preview_only";
+type RunAuthorityMode = "live_run_allowed" | "held_preview_only";
 
 export async function workflowRunAuthority(
   db: Executor,

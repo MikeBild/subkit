@@ -3,12 +3,12 @@ import { byteLen } from "../chunker.ts";
 import { readBoundedText } from "../read-response.ts";
 import type { BudgetState, RawChunk } from "../types.ts";
 
-export interface MarkdownSourceInput {
+interface MarkdownSourceInput {
   url?: string;
   content?: string;
 }
 
-export interface MarkdownIngestResult {
+interface MarkdownIngestResult {
   uri: string;
   raw_bytes: number;
   chunks: RawChunk[];
@@ -33,7 +33,7 @@ export async function fetchMarkdown(
   return { uri: input.url, body, bytes };
 }
 
-export function stripFrontmatter(md: string): string {
+function stripFrontmatter(md: string): string {
   if (!md.startsWith("---\n")) return md;
   const end = md.indexOf("\n---", 4);
   if (end === -1) return md;

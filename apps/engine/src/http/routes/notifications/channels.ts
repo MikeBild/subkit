@@ -55,7 +55,7 @@ const UpdateChannelBody = z
   })
   .openapi("UpdateNotificationChannelBody");
 
-export function serializeChannel(row: NotificationChannelRow) {
+function serializeChannel(row: NotificationChannelRow) {
   return {
     id: row.id,
     tenant_id: row.tenant_id,

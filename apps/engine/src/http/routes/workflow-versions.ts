@@ -1,11 +1,14 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
+import {
+  serializeOne,
+  WorkflowDetailSchema,
+} from "../../api/operations/workflow-representation.ts";
 import * as svc from "../../workflows/index.ts";
 import { BadRequestError, HttpError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-import { serializeOne, WorkflowDetailSchema } from "./workflow-representation.ts";
 
 const VersionSchema = z
   .object({

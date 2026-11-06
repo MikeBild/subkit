@@ -46,7 +46,7 @@ import {
   renderWorkflowsList,
 } from "./fast-path-lists.ts";
 import { renderRunOutput } from "./fast-path-render.ts";
-import { appendMessage, insertToolCall, updateToolCallOutput } from "./persist.ts";
+import { appendMessage, insertToolCall, updateToolCallOutput } from "./persistence/index.ts";
 import type { ToolCallOutcome } from "./tools/result-payload.ts";
 import { prepareGate } from "./tools/sdk-wrap/gate-subjects.ts";
 import type { ConversationStatus, TurnEvent } from "./types.ts";

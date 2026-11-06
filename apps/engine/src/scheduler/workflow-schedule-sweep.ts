@@ -24,7 +24,7 @@ import {
 } from "./sweep-cursor.ts";
 
 type ScheduleIdentity = { schedule_id: string; tenant_id: string; workflow_id?: string };
-export type ScheduleFire = (
+type ScheduleFire = (
   key: string,
   payload: ExecutionRunJob,
   audit: {
@@ -36,7 +36,7 @@ export type ScheduleFire = (
   },
 ) => Promise<void>;
 
-export async function readScheduleDescriptor(db: Executor, identity: ScheduleIdentity) {
+async function readScheduleDescriptor(db: Executor, identity: ScheduleIdentity) {
   const [row] = await db
     .select({
       id: workflowsSchedules.id,

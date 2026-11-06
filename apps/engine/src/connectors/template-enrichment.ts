@@ -6,7 +6,7 @@ import {
   type OperatorQuirks,
 } from "./types.ts";
 
-export interface ConnectorDraftForEnrichment {
+interface ConnectorDraftForEnrichment {
   name?: string | undefined;
   slug?: string | undefined;
   driver?: DriverName | undefined;
@@ -18,7 +18,7 @@ export interface ConnectorDraftForEnrichment {
   operator_quirks?: OperatorQuirks | undefined;
 }
 
-export interface EnrichmentOptions {
+interface EnrichmentOptions {
   environment?: string;
 }
 

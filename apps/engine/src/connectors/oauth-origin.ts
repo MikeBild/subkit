@@ -9,7 +9,7 @@ export function oauthFlowOrigin(stored: string | null | undefined): OAuthFlowOri
 
 export const SIGNED_IN_MARKER = "signed_in";
 export const SIGNIN_FAILED_MARKER = "signin_failed";
-export const SIGNIN_CODE_MARKER = "signin_code";
+const SIGNIN_CODE_MARKER = "signin_code";
 const PROVIDER_CODE = /^[a-z0-9_.-]{1,64}$/i;
 
 export const SIGN_IN_FAILURES = [

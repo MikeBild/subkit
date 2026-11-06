@@ -15,7 +15,7 @@ export function approxValueSize(value: unknown): number {
   }
 }
 
-export interface ElidedToolOutputStub {
+interface ElidedToolOutputStub {
   _elided: true;
   _tool: string;
   _raw_ref: string;
@@ -23,7 +23,7 @@ export interface ElidedToolOutputStub {
   [key: string]: unknown;
 }
 
-export interface CriticalToolOutputStub extends ElidedToolOutputStub {
+interface CriticalToolOutputStub extends ElidedToolOutputStub {
   _critical: true;
   ok?: false;
   error_code?: string;
@@ -138,7 +138,7 @@ function criticalEvidenceSource(value: unknown): Record<string, unknown> | null 
     : null;
 }
 
-export interface WithinTurnElisionResult {
+interface WithinTurnElisionResult {
   messages: ModelMessage[];
   elided_count: number;
   elided_chars: number;

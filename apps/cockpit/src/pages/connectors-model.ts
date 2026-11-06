@@ -1,4 +1,4 @@
-export interface WorkflowUsingConnectors {
+interface WorkflowUsingConnectors {
   id: string;
   name: string;
   connectors: string[];

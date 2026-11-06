@@ -71,7 +71,7 @@ export const OPERATING_STATUS_KEYS: Record<WorkflowOperatingStatus, TranslationK
   unknown: "automation.state.unknown",
 };
 
-export const WORKFLOW_ATTENTION_STATUSES: ReadonlySet<WorkflowOperatingStatus> = new Set([
+const WORKFLOW_ATTENTION_STATUSES: ReadonlySet<WorkflowOperatingStatus> = new Set([
   "failing",
   "repair_required",
   "waiting_approval",
@@ -82,7 +82,7 @@ export function workflowNeedsAttention(row: { operating_status?: unknown }): boo
   return WORKFLOW_ATTENTION_STATUSES.has(catalogOperatingStatus(row.operating_status));
 }
 
-export const CATALOG_ALL_GROUPS = "all";
+const CATALOG_ALL_GROUPS = "all";
 
 export const CATALOG_CATEGORY_GROUP = "category";
 

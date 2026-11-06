@@ -1,6 +1,6 @@
 import { ApiError } from "@/api/client";
 
-export type ReviewFailure = "stale" | "expired" | "failed" | "uncertain" | "blocked";
+type ReviewFailure = "stale" | "expired" | "failed" | "uncertain" | "blocked";
 
 export function workflowReviewFailure(error: unknown, finalizing: boolean): ReviewFailure {
   if (!(error instanceof ApiError)) return finalizing ? "uncertain" : "failed";

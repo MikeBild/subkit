@@ -18,7 +18,7 @@ export async function withCommandErrors<T>(
   }
 }
 
-export function profileOptionsFromArgs(args: Record<string, unknown>): ResolveOptions {
+function profileOptionsFromArgs(args: Record<string, unknown>): ResolveOptions {
   return {
     engine_url: args["engine-url"] as string | undefined,
     api_key: args["api-key"] as string | undefined,

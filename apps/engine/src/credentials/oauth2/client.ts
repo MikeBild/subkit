@@ -131,7 +131,7 @@ export function isTokenExpired(
   return expiresAt.getTime() - Date.now() <= bufferMs;
 }
 
-export interface StartAuthCodeResult {
+interface StartAuthCodeResult {
   authorization_url: string;
   state: string;
   code_verifier: string;
@@ -185,7 +185,7 @@ export async function startAuthorizationCode(
   };
 }
 
-export interface CompleteAuthCodeParams {
+interface CompleteAuthCodeParams {
   cfg: OAuth2ClientConfig;
   current_url: URL;
   code_verifier: string;
@@ -241,7 +241,7 @@ export async function runPasswordGrant(
   return credentialOperation(() => toBundle(res, cfg.issuer_url));
 }
 
-export interface CognitoUserPasswordParams {
+interface CognitoUserPasswordParams {
   region: string;
   client_id: string;
   username: string;
@@ -388,13 +388,13 @@ export class DynamicRegistrationError extends Error {
   }
 }
 
-export interface DynamicRegistrationArgs {
+interface DynamicRegistrationArgs {
   issuerUrl: string;
   clientMetadata: RFC7591ClientMetadata;
   allowInsecureRequests?: boolean;
 }
 
-export interface DynamicRegistrationResult {
+interface DynamicRegistrationResult {
   clientId: string;
   clientSecret: string | undefined;
   registrationEndpoint: string;
@@ -489,7 +489,7 @@ export async function dynamicallyRegisterClient(
   };
 }
 
-export interface ClientCredentialsJsonParams {
+interface ClientCredentialsJsonParams {
   token_endpoint: string;
   body_mapping: Record<string, string>;
   response_format: "raw" | "json";

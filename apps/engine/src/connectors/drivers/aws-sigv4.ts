@@ -2,7 +2,7 @@ import aws4 from "aws4";
 import type { AwsSigV4CredentialValue } from "../../credentials/types.ts";
 import { HttpRequestInvalidError } from "./http.ts";
 
-export interface SigV4SignParams {
+interface SigV4SignParams {
   method: string;
   url: URL;
   headers: Record<string, string>;

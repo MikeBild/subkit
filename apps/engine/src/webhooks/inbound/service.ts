@@ -46,7 +46,7 @@ const VERIFIERS: Record<InboundVerifierName, VerifierFn> = {
 
 const ACCEPTED_VERIFIERS = Object.keys(VERIFIERS) as InboundVerifierName[];
 
-export interface CreateInboundInput {
+interface CreateInboundInput {
   tenant_id: string;
   actor_id: string | null;
   actor?: Actor | null;
@@ -59,7 +59,7 @@ export interface CreateInboundInput {
   active?: boolean;
 }
 
-export const INBOUND_SLUG_MAX_LENGTH = 64;
+const INBOUND_SLUG_MAX_LENGTH = 64;
 
 const INBOUND_SLUG_INDEX = "webhooks_inbound_slug_key";
 
@@ -73,7 +73,7 @@ export class InboundSlugTakenError extends Error {
   }
 }
 
-export function isInboundSlugTaken(err: unknown): boolean {
+function isInboundSlugTaken(err: unknown): boolean {
   let cur: unknown = err;
   for (let depth = 0; cur && depth < 5; depth += 1) {
     const e = cur as {
@@ -283,7 +283,7 @@ async function claimInboundSlug<T>(
   throw new InboundSlugTakenError(desired);
 }
 
-export interface BindFromWorkflowInput {
+interface BindFromWorkflowInput {
   tenant_id: string;
   workflow_id: string;
   workflow_slug: string;
@@ -293,7 +293,7 @@ export interface BindFromWorkflowInput {
   actor_type?: import("../../audit/types.ts").AuditActorType;
 }
 
-export type BindFromWorkflowOutcome =
+type BindFromWorkflowOutcome =
   | { status: "created"; row: InboundRow }
   | { status: "updated"; row: InboundRow }
   | { status: "noop"; row: InboundRow };
@@ -510,14 +510,14 @@ export async function unbindFromWorkflow(
   });
 }
 
-export interface HandleInboundInput {
+interface HandleInboundInput {
   slug: string;
   headers: Record<string, string>;
   rawBody: string;
   now?: number;
 }
 
-export type HandleOutcome =
+type HandleOutcome =
   | {
       status: "ok";
       inbound_id: string;
@@ -528,7 +528,7 @@ export type HandleOutcome =
   | { status: "not_found" }
   | { status: "denied"; reason: string; inbound_id?: string; hint?: string };
 
-export interface HandleInboundOptions {
+interface HandleInboundOptions {
   db: Db;
   boss: PgBoss;
 }

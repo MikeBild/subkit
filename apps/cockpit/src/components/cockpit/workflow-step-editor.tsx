@@ -78,7 +78,7 @@ export function stepId(step: unknown): string {
     : "";
 }
 
-export function moveStep<T>(steps: readonly T[], from: number, by: -1 | 1): T[] {
+function moveStep<T>(steps: readonly T[], from: number, by: -1 | 1): T[] {
   const to = from + by;
   if (to < 0 || to >= steps.length) return [...steps];
   const next = [...steps];
@@ -153,7 +153,7 @@ export function useStepDraft(saved: readonly unknown[]) {
   };
 }
 
-export type StepMark = "new" | "changed" | "moved";
+type StepMark = "new" | "changed" | "moved";
 
 export type StepDraft = ReturnType<typeof useStepDraft>;
 

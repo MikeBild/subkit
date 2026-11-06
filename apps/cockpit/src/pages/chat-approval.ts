@@ -90,7 +90,7 @@ export function chatApproval(detail: ConversationDetail | undefined): ChatApprov
   };
 }
 
-export type ApprovalSubject = Pick<
+type ApprovalSubject = Pick<
   ChatApproval,
   | "question"
   | "oauth"

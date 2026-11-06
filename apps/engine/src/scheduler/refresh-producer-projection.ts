@@ -31,8 +31,6 @@ const projectionSchema = z
     address: textWithin(REFRESH_ADDRESS_MAX_BYTES).nullable(),
   })
   .strict();
-
-export type RefreshProjection = z.infer<typeof projectionSchema>;
 type RefreshInput = {
   cron: string;
   last_fired_at: Date | null;

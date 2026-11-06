@@ -261,7 +261,7 @@ function endpointOf(url: string | null | undefined): string | null {
   }
 }
 
-export interface ConnectorSecretFields {
+interface ConnectorSecretFields {
   base_url?: string | null | undefined;
   config?: Record<string, unknown> | undefined;
   dsn?: string | undefined;
@@ -273,7 +273,7 @@ export interface StoredConnectorSecrets {
   dsn: string | null;
 }
 
-export interface RestoreMaskedSecretsOptions {
+interface RestoreMaskedSecretsOptions {
   template_rebound?: boolean;
 }
 

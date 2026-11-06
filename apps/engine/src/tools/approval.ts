@@ -39,11 +39,7 @@ export type ApprovalExecutionMode = "dev" | "prod";
 
 export type ApprovalGrantVia = "portal" | "in_band_elicitation" | "chat";
 
-export function approvalDecidingUserId(principal: ResolvedPrincipal): string | null {
-  return principal.kind === "user" ? principal.id : null;
-}
-
-export type ApprovalDenialCode =
+type ApprovalDenialCode =
   | "confirmation_missing_id"
   | "unknown_confirmation"
   | "confirmation_tool_mismatch"
@@ -67,13 +63,13 @@ export interface ClaimedApproval {
   readonly execution_mode: ApprovalExecutionMode | null;
 }
 
-export type ApprovalDenial = {
+type ApprovalDenial = {
   readonly ok: false;
   readonly code: ApprovalDenialCode;
   readonly message: string;
 };
 
-export type ConsumeApprovalResult = ClaimedApproval | ApprovalDenial;
+type ConsumeApprovalResult = ClaimedApproval | ApprovalDenial;
 
 function stableStringify(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
@@ -135,7 +131,7 @@ function lifecycleMetadata(p: {
   };
 }
 
-export interface RequestApprovalInput {
+interface RequestApprovalInput {
   readonly prepared_execution_id?: string;
   readonly db: Db;
   readonly principal: ResolvedPrincipal;
@@ -149,7 +145,7 @@ export interface RequestApprovalInput {
   readonly preview?: { readonly would_write?: unknown } | undefined;
 }
 
-export interface RequestedApproval {
+interface RequestedApproval {
   readonly approval_url: string | null;
 }
 
@@ -258,18 +254,18 @@ export type ApprovalDecisionDenialCode =
   | "approval_already_used"
   | "approval_expired";
 
-export interface ApprovalDecisionOk {
+interface ApprovalDecisionOk {
   readonly ok: true;
   readonly approval_id: string;
   readonly tool: string;
   readonly surface: ToolSurface;
 }
 
-export type ApprovalDecisionResult =
+type ApprovalDecisionResult =
   | ApprovalDecisionOk
   | { readonly ok: false; readonly code: ApprovalDecisionDenialCode; readonly message: string };
 
-export interface ApprovalDecisionInput {
+interface ApprovalDecisionInput {
   readonly db: Db;
   readonly approval_id: string;
   readonly tenant_id: string;
@@ -498,7 +494,7 @@ function logDecisionMiss(p: {
   });
 }
 
-export interface RecordApprovalApprovedInput {
+interface RecordApprovalApprovedInput {
   readonly db: Db;
   readonly principal: ResolvedPrincipal;
   readonly claim: ClaimedApproval;
@@ -543,7 +539,7 @@ export async function recordApprovalApproved(p: RecordApprovalApprovedInput): Pr
   }
 }
 
-export interface RecordApprovalUnfulfilledInput {
+interface RecordApprovalUnfulfilledInput {
   readonly db: Db;
   readonly principal: ResolvedPrincipal;
   readonly claim: ClaimedApproval;
@@ -589,7 +585,7 @@ export async function recordApprovalUnfulfilled(p: RecordApprovalUnfulfilledInpu
   }
 }
 
-export interface ConsumeApprovalInput {
+interface ConsumeApprovalInput {
   readonly db: Db;
   readonly principal: ResolvedPrincipal;
   readonly approval_id: string | null;

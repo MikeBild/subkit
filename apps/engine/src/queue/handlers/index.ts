@@ -16,13 +16,13 @@ import { registerSkillCandidateAnalyzeHandler } from "./skill-candidate-analyze.
 import { registerWebhookDeliverHandler } from "./webhook-deliver.ts";
 import { registerWorkflowRepairHandler } from "./workflow-repair.ts";
 
-export interface RegisterHandlersOptions {
+interface RegisterHandlersOptions {
   boss: PgBoss;
   db: Db;
   chatRegistry?: ChatAdapterRegistry;
 }
 
-export interface RegisteredHandlers {
+interface RegisteredHandlers {
   executionRunWorkerId: string;
   conversationRunTurnWorkerId: string;
   conversationRunTurnDlqWorkerId: string;

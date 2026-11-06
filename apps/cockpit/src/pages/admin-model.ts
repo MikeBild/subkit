@@ -97,7 +97,7 @@ export function permissionLabel(permission: string, t: Translate): CatalogLabel 
   return { text: permission, machine: true };
 }
 
-export interface PermissionGroup {
+interface PermissionGroup {
   key: string;
   area: CatalogLabel;
   items: CatalogLabel[];
@@ -149,7 +149,7 @@ export function resourceTypeLabel(resourceType: string, t: Translate): CatalogLa
   return catalogLabel(resourceType, PERMISSION_RESOURCE_KEYS[resourceType], t);
 }
 
-export interface RoleLike {
+interface RoleLike {
   id: string;
   name: string;
   is_builtin: boolean;
@@ -184,7 +184,7 @@ export function assignableRoles<T extends RoleLike>(roles: readonly T[]): T[] {
   return [...people, ...custom];
 }
 
-export type RoleChangeNote = "leavesAdmin" | "self" | "selfLeavesAdmin";
+type RoleChangeNote = "leavesAdmin" | "self" | "selfLeavesAdmin";
 
 export function roleChangeNotes(change: {
   from: string;

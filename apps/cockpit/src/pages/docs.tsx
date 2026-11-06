@@ -60,7 +60,7 @@ import {
   sectionText,
 } from "./docs-model";
 
-export const DOCS_QUERY_KEY = ["docs-bundle"] as const;
+const DOCS_QUERY_KEY = ["docs-bundle"] as const;
 
 function useDocsBundle() {
   return useQuery({

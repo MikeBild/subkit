@@ -3,7 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { auditLog, connectors, credentials } from "../../../db/schema/index.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import { withSelfHostedDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
-import { createEmptyDraftDocument, withConnectorProbe } from "../../authoring-state.ts";
+import { createEmptyDraftDocument, withConnectorProbe } from "../../authoring-state/index.ts";
 import { setDraftCredential } from "../../persistence/draft-credential-cache.ts";
 import { createConversation } from "../../service.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";

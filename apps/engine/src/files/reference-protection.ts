@@ -11,7 +11,7 @@ import {
   workflowVersions,
 } from "../db/schema/index.ts";
 
-export interface FileReferenceCandidate {
+interface FileReferenceCandidate {
   id: string;
   tenant_id: string;
   slug: string | null;

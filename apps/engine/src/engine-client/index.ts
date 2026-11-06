@@ -62,7 +62,7 @@ import {
 
 export type EngineClientActorType = "user" | "system_account" | "system" | "unknown";
 
-export interface EngineClientCtx {
+interface EngineClientCtx {
   tenant_id: string;
   actor_id: string | null;
   actor_type?: EngineClientActorType;

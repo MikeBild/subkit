@@ -35,7 +35,7 @@ export const COCKPIT_PUSH_IDLE_MAX_MS = 30 * 24 * 60 * 60 * 1000;
 const PUSH_ENDPOINT_HOSTS = new Set(["fcm.googleapis.com", "updates.push.services.mozilla.com"]);
 const ATTENTION_PUSH_PAYLOAD = JSON.stringify({ type: "attention" });
 
-export interface CockpitPushSubscriptionInput {
+interface CockpitPushSubscriptionInput {
   endpoint: string;
   keys: { p256dh: string; auth: string };
 }
@@ -60,7 +60,7 @@ export interface CockpitBrowserPushContext extends CockpitPushSessionContext {
 
 export type CockpitPushContext = CockpitInstallationPushContext | CockpitBrowserPushContext;
 
-export interface CockpitPushSubscriptionOptions {
+interface CockpitPushSubscriptionOptions {
   device?: string;
 }
 
@@ -509,7 +509,7 @@ export async function rebindCockpitBrowserPushSubscription(
   });
 }
 
-export type CockpitPushEndReason =
+type CockpitPushEndReason =
   | "session_logout"
   | "session_replaced"
   | "user_deactivated"
@@ -517,7 +517,7 @@ export type CockpitPushEndReason =
   | "erasure"
   | "installation_revoked";
 
-export type CockpitPushEndScope =
+type CockpitPushEndScope =
   | { tenant_id: string; session_ids: string[] }
   | { tenant_id: string; user_id: string }
   | { tenant_id: string; installation_id: string }

@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 
-export const AppCheckKeySchema = z
+const AppCheckKeySchema = z
   .enum([
     "product_configured",
     "sign_in_provider",

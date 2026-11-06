@@ -10,7 +10,7 @@ export interface ConversationUsage {
   cost: { amount: number; currency: string; unpriced_models: string[] } | null;
 }
 
-export interface ConversationUsageRow {
+interface ConversationUsageRow {
   model: string;
   calls: number;
   total_tokens: number;

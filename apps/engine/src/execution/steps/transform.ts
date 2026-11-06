@@ -26,7 +26,7 @@ import { buildStepErrorDetail } from "./error-detail.ts";
 import { detectTransformWarnings } from "./transform-warnings.ts";
 import { runHtmlToMarkdown, runReadability, runStructuredData } from "./transform-web-scraper.ts";
 
-export interface RunTransformParams {
+interface RunTransformParams {
   ctx: StepRunContext;
   step: TransformStep;
   scope: Record<string, unknown>;

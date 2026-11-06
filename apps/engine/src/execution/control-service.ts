@@ -12,7 +12,7 @@ import { executionVisibilityFilter } from "./execution-owner.ts";
 import { findOwnedExecution } from "./read-service.ts";
 import { finalizeExecution, requestExecutionAbort } from "./state.ts";
 
-export interface CancelExecutionRequest {
+interface CancelExecutionRequest {
   principal: ResolvedPrincipal;
   execution_id: string;
   request_source: string;
@@ -65,7 +65,7 @@ export async function cancelExecutionRequest(
   return true;
 }
 
-export type SignalTarget =
+type SignalTarget =
   | { ok: true; tenant_id: string; input: unknown }
   | { ok: false; reason: "not_found" }
   | { ok: false; reason: "token_rejected"; detail: string };

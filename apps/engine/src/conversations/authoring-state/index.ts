@@ -1,12 +1,12 @@
-import type { DraftClock } from "./core/draft.ts";
-import * as draftCore from "./core/draft.ts";
-import type { DraftDocument, WorkflowDraftDocument } from "./types.ts";
+import type { DraftClock } from "../core/draft.ts";
+import * as draftCore from "../core/draft.ts";
+import type { DraftDocument, WorkflowDraftDocument } from "../types.ts";
 
 export {
   createEmptyWorkflowDraft,
   hasInProgressWorkflowDraft,
   WORKFLOW_BINDING_TOOL,
-} from "./core/draft.ts";
+} from "../core/draft.ts";
 
 type ClockFree<F> = F extends (now: DraftClock, ...rest: infer A) => unknown ? A : never;
 

@@ -7,7 +7,7 @@ import { listResolvedConnectorTemplates } from "../../connectors/template-resolv
 import { matchTemplatesByUrl } from "../../connectors/template-url-match.ts";
 import { DriverEnum } from "../../connectors/types.ts";
 import { logger } from "../../logging/logger.ts";
-import { withConnectorDraft } from "../authoring-state.ts";
+import { withConnectorDraft } from "../authoring-state/index.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import {
   allowedTemplateAuthTypes,

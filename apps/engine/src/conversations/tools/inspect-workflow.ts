@@ -2,7 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { resolveWorkflowInputContract } from "../../workflows/input-schema-synth.ts";
 import { deriveOutputBehavior } from "../../workflows/output-behavior.ts";
 import type { WorkflowDef } from "../../workflows/types.ts";
-import { getWorkflowDraft } from "../authoring-state.ts";
+import { getWorkflowDraft } from "../authoring-state/index.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const SectionEnum = z.enum([

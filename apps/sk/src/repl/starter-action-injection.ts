@@ -38,7 +38,7 @@ export function shouldInjectIntakeReview(
   return probe.allows(REVIEW_INTAKE_PERMISSION) && probe.allows("conversation:write");
 }
 
-export function intakeReviewAction(pending: PendingIntake): TaskAction {
+function intakeReviewAction(pending: PendingIntake): TaskAction {
   const category = terminalText(pending.category);
   return {
     id: REVIEW_INTAKE_ACTION_ID,

@@ -12,7 +12,7 @@ import {
   withWorkflowDraft,
   withWorkflowInspection,
   withWorkflowValidation,
-} from "./authoring-state.ts";
+} from "./authoring-state/index.ts";
 
 describe("authoring-state", () => {
   test("createEmptyDraftDocument stores the workflow only in draft.workflow", () => {

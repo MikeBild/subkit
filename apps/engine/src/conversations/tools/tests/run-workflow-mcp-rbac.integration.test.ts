@@ -11,7 +11,7 @@ import {
 import { createMockServer, jsonResponse, type MockServer } from "../../../execution/tests/setup.ts";
 import { buildMcpStubCtx } from "../../../mcp/adapter.ts";
 import { emptyRoleId } from "../../../test-helpers/roles.ts";
-import { createEmptyDraftDocument } from "../../authoring-state.ts";
+import { createEmptyDraftDocument } from "../../authoring-state/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import { runWorkflowTool } from "../engine-api/writes/run-workflow.ts";
 

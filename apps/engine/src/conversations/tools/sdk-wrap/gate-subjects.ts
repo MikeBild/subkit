@@ -10,7 +10,7 @@ import type { ToolContext } from "../index.ts";
 import { formatPackagePlanTitle } from "../package-portability.ts";
 import { decodeWorkflowInputFile, WorkflowInputFileSchema } from "../workflow-file-input.ts";
 
-export const GATE_BODY_EXCERPT_CHARS = 280;
+const GATE_BODY_EXCERPT_CHARS = 280;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -206,7 +206,7 @@ export function unresolvedGateSubjects(
   };
 }
 
-export interface PreparedGate {
+interface PreparedGate {
   args: Record<string, unknown>;
   pending_output: Record<string, unknown> | null;
   execution_data_transfer?: true;

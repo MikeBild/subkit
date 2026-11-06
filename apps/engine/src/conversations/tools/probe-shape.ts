@@ -7,8 +7,6 @@ const MAX_PATHS = 64;
 const MAX_EXAMPLES = 3;
 const MAX_EXAMPLE_CHARS = 120;
 
-export type ProbeResponseMode = "shape" | "sample" | "full";
-
 function atPath(value: unknown, path: string): unknown {
   let current = value;
   for (const segment of path

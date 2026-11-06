@@ -2,7 +2,7 @@ import type { Db } from "../../db/client.ts";
 import { invoke } from "../core/invoke.ts";
 import type { EnhancedPrompt } from "../types.ts";
 
-export interface ConverseParams {
+interface ConverseParams {
   tenant_id: string;
   conversation_id?: string | undefined;
   user_message: string;
@@ -10,7 +10,7 @@ export interface ConverseParams {
   workflow_id?: string | undefined;
 }
 
-export interface ConverseResult {
+interface ConverseResult {
   assistant_message: string;
   conversation_id: string | null;
   included_skill_ids: string[];

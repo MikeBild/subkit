@@ -3,7 +3,7 @@ import type { ApiBody, ApiQuery } from "./http.ts";
 
 export type ChatPlatform = "slack" | "teams" | "google_chat";
 
-export interface ChatWorkspaceWire {
+interface ChatWorkspaceWire {
   id: string;
   tenant_id: string;
   platform: ChatPlatform;

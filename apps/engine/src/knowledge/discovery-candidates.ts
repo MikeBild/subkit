@@ -6,8 +6,8 @@ import type { Executor } from "../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../db/schema/knowledge_sources.ts";
 import { type KnowledgeVersionContent, recordKnowledgeVersion } from "./version-record.ts";
 
-export type KnowledgeSourceRow = typeof knowledgeSources.$inferSelect;
-export type KnowledgeChunkRow = typeof knowledgeChunks.$inferSelect;
+type KnowledgeSourceRow = typeof knowledgeSources.$inferSelect;
+type KnowledgeChunkRow = typeof knowledgeChunks.$inferSelect;
 
 export async function findKnowledgeSourceRow(
   db: Executor,
@@ -71,7 +71,7 @@ export async function findFirstKnowledgeChunk(
   return chunks[0];
 }
 
-export interface SingleChunkSourceWrite {
+interface SingleChunkSourceWrite {
   readonly tenant_id: string;
   readonly slug: string;
   readonly source_type: string;

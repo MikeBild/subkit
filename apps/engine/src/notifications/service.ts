@@ -35,7 +35,7 @@ export interface DispatchDeps {
   now?: () => number;
 }
 
-export type DeliveryStatus = "sent" | "rate_limited" | "breaker_open" | "failed" | "skipped";
+type DeliveryStatus = "sent" | "rate_limited" | "breaker_open" | "failed" | "skipped";
 
 export interface DeliveryOutcome {
   rule_id: string;
@@ -383,24 +383,4 @@ export async function dispatchEvent(
   }
 
   return result;
-}
-
-export async function listDeliveries(
-  db: Db,
-  tenant_id: string,
-  opts: { limit?: number; offset?: number; status?: DeliveryStatus } = {},
-): Promise<Array<typeof notificationDeliveries.$inferSelect>> {
-  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 500);
-  const offset = Math.max(opts.offset ?? 0, 0);
-  const tenantWhereClauses = [eq(notificationDeliveries.tenant_id, tenant_id)];
-  if (opts.status) {
-    tenantWhereClauses.push(eq(notificationDeliveries.status, opts.status));
-  }
-  const rows = await db
-    .select()
-    .from(notificationDeliveries)
-    .where(tenantWhereClauses.length === 1 ? tenantWhereClauses[0] : and(...tenantWhereClauses))
-    .limit(limit)
-    .offset(offset);
-  return rows;
 }

@@ -7,7 +7,7 @@ import { fileLinks, files } from "../db/schema/index.ts";
 import { getObjectStore } from "../storage/object-store.ts";
 import { insertFileRow } from "./slug.ts";
 
-export interface AttachInlineForTestParams {
+interface AttachInlineForTestParams {
   db: Db;
   tenant_id: string;
   conversation_id: string;
@@ -17,7 +17,7 @@ export interface AttachInlineForTestParams {
   slug?: string;
 }
 
-export interface AttachInlineForTestResult {
+interface AttachInlineForTestResult {
   file_id: string;
   file_uuid: string;
   storage_key: string;

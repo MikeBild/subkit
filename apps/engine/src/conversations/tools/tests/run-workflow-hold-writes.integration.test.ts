@@ -33,7 +33,7 @@ import {
   bindPersistedWorkflow,
   createEmptyDraftDocument,
   withWorkflowDraft,
-} from "../../authoring-state.ts";
+} from "../../authoring-state/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import { draftPreviewInput } from "../draft-preview-input.ts";
 import { dryRunWorkflowTool } from "../dry-run-workflow.ts";

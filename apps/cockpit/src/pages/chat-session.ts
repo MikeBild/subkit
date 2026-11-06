@@ -14,7 +14,7 @@ export interface OptimisticMessage {
   sentAt: string;
 }
 
-export type MessageAuthor = "user" | "assistant" | "system";
+type MessageAuthor = "user" | "assistant" | "system";
 
 export function messageAuthor(role: string): MessageAuthor {
   if (role === "user") return "user";
@@ -51,7 +51,7 @@ export function conversationOpenedByFailedSend(input: {
   return input.startedId;
 }
 
-export type TurnFailureCause =
+type TurnFailureCause =
   | {
       kind:
         | "provider_quota_exhausted"

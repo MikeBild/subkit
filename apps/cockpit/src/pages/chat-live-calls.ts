@@ -6,7 +6,7 @@ export interface LiveCall {
   done: boolean;
 }
 
-export type LiveCallEvent =
+type LiveCallEvent =
   | { kind: "start"; callId: string; toolName: string | null; at: number }
   | { kind: "log"; callId: string; message: string }
   | { kind: "end"; callId: string };

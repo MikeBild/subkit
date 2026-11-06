@@ -63,7 +63,7 @@ export function buildGroundingIndex(
   return index;
 }
 
-export interface EndpointGroundingBlock {
+interface EndpointGroundingBlock {
   step_id: string;
   connector_slug: string;
   method: string;
@@ -72,7 +72,7 @@ export interface EndpointGroundingBlock {
   nearest: string[];
 }
 
-export interface EndpointGroundingResult {
+interface EndpointGroundingResult {
   ok: boolean;
   blocks: EndpointGroundingBlock[];
 }

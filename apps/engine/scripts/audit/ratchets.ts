@@ -23,11 +23,11 @@ import {
 } from "./rules.ts";
 import { routeSchemaHits, toolSchemaHits } from "./zod-boundaries.ts";
 
-export const SIZE_LIMIT = 600;
+const SIZE_LIMIT = 600;
 
 const isTs = (p: string) => p.endsWith(".ts") || p.endsWith(".tsx");
 
-export class SourceCache {
+class SourceCache {
   private readonly texts = new Map<string, string>();
   private readonly trees = new Map<string, ts.SourceFile>();
   private readonly imports = new Map<string, ResolvedImport[]>();
@@ -77,7 +77,7 @@ export class SourceCache {
   }
 }
 
-export interface Ratchet {
+interface Ratchet {
   id: string;
   allowlist: string;
   rule: string;
@@ -196,7 +196,7 @@ export const RATCHETS: readonly Ratchet[] = [
   },
 ];
 
-export interface RatchetResult {
+interface RatchetResult {
   id: string;
   status: "PASS" | "FAIL";
   message: string;

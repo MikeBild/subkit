@@ -60,7 +60,7 @@ interface IntrospectionSchema {
   types: IntrospectionType[];
 }
 
-export interface GraphQLIngestResult {
+interface GraphQLIngestResult {
   uri: string;
   raw_bytes: number;
   chunks: RawChunk[];

@@ -1,11 +1,11 @@
 import { getConfig } from "../../config/loader.ts";
 
-export interface ResolveThinkingInput {
+interface ResolveThinkingInput {
   enableThinking: boolean;
   forcesTool: boolean;
 }
 
-export interface ResolveThinkingDecision {
+interface ResolveThinkingDecision {
   enabled: boolean;
   suppressedByForcedTool: boolean;
 }
@@ -26,11 +26,11 @@ export function readReasoningEffortSetting(tenantId?: string): ReasoningEffortSe
   }
 }
 
-export const REASONING_EFFORT_SETTINGS = ["default", "none", "low", "medium", "high"] as const;
-export type ReasoningEffortSetting = (typeof REASONING_EFFORT_SETTINGS)[number];
-export type ReasoningEffort = Exclude<ReasoningEffortSetting, "default">;
+const REASONING_EFFORT_SETTINGS = ["default", "none", "low", "medium", "high"] as const;
+type ReasoningEffortSetting = (typeof REASONING_EFFORT_SETTINGS)[number];
+type ReasoningEffort = Exclude<ReasoningEffortSetting, "default">;
 
-export interface ResolveTurnReasoningInput {
+interface ResolveTurnReasoningInput {
   setting: ReasoningEffortSetting;
   lateStage: boolean;
   supportsThinking: boolean;
@@ -38,7 +38,7 @@ export interface ResolveTurnReasoningInput {
   forcesTool: boolean;
 }
 
-export interface TurnReasoningDecision extends ResolveThinkingDecision {
+interface TurnReasoningDecision extends ResolveThinkingDecision {
   effort: ReasoningEffort;
   source: "stage_default" | "setting";
 }

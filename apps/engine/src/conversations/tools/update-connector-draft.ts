@@ -5,7 +5,7 @@ import { listResolvedConnectorTemplates } from "../../connectors/template-resolv
 import { type AuthType, DriverEnum } from "../../connectors/types.ts";
 import { log } from "../../logging/logger.ts";
 import { SECRET_PATTERNS, SENSITIVE_KEY_PATTERN } from "../../logging/scrub-secrets.ts";
-import { withConnectorDraft } from "../authoring-state.ts";
+import { withConnectorDraft } from "../authoring-state/index.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import { clearDraftCredential, getDraftCredential } from "../persistence/draft-credential-cache.ts";
 import type { ConnectorDraftDocument } from "../types.ts";

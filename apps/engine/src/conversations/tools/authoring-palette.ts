@@ -171,7 +171,7 @@ export function filterByAuthoringPalette<
   );
 }
 
-export interface AuthoringTurnSignals {
+interface AuthoringTurnSignals {
   surface: string | undefined;
   draft: DraftDocument;
   userMessage: string | null | undefined;

@@ -1,7 +1,7 @@
 import { DEDUP_THRESHOLD } from "./budgets.ts";
 import type { FingerprintedChunk } from "./types.ts";
 
-export interface DedupStats {
+interface DedupStats {
   accepted: FingerprintedChunk[];
   skipped: number;
 }

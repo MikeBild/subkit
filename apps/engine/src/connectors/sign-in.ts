@@ -1,7 +1,7 @@
 import { connectorOAuthGrantType } from "./template-binding.ts";
 import type { ConnectorView } from "./types.ts";
 
-export type ConnectorSignInKind = "oauth" | "mcp";
+type ConnectorSignInKind = "oauth" | "mcp";
 
 export interface ConnectorSignIn {
   kind: ConnectorSignInKind;

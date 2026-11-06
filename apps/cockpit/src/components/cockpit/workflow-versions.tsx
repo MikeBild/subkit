@@ -33,7 +33,7 @@ import { fetchCurrentVersionDag } from "@/pages/apps-model";
 
 const VERSION_PAGE = 20;
 
-export function useWorkflowVersionList(workflowId: string, enabled = true) {
+function useWorkflowVersionList(workflowId: string, enabled = true) {
   return useInfiniteList<WorkflowVersion>(
     `/v1/workflows/${encodeURIComponent(workflowId)}/history`,
     {},

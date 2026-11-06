@@ -9,7 +9,7 @@ import {
 } from "../../workflows/graphql-conversion.ts";
 import type { RequestStep } from "../../workflows/types.ts";
 
-export interface BuildWarning {
+interface BuildWarning {
   step_key: string | null;
   code: string;
   message: string;

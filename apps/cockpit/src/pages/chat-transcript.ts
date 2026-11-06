@@ -2,7 +2,7 @@ import type { ToolPart } from "@/components/ai-elements/tool";
 import { asToolPart, toolNameOf, withToolResult } from "@/lib/tool-parts";
 import { toolTier } from "@/lib/tool-presentation";
 
-export type TranscriptGroup =
+type TranscriptGroup =
   | { kind: "part"; part: unknown; index: number }
   | { kind: "tool"; tool: ToolPart; index: number }
   | { kind: "background"; tools: readonly ToolPart[]; index: number };

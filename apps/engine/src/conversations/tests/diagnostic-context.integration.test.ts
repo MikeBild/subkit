@@ -12,7 +12,7 @@ import { getStaticCapabilities } from "../../llm/core/capabilities.ts";
 import { buildFileContentBlocks } from "../../llm/core/file-context.ts";
 import { analyzeConversationAttachments } from "../../llm/flows/analyze-conversation-attachments.ts";
 import { logRing } from "../../observability/log-ring.ts";
-import { createEmptyDraftDocument } from "../authoring-state.ts";
+import { createEmptyDraftDocument } from "../authoring-state/index.ts";
 import { collectDiagnosticContext, type DiagnosticContext } from "../diagnostic-context.ts";
 import { exportDiagnosticContext } from "../diagnostic-export.ts";
 import { executionDataTransfer, prepareGate } from "../tools/sdk-wrap/gate-subjects.ts";

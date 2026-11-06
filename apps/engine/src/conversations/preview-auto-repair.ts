@@ -7,7 +7,7 @@ import type { RunResult } from "../execution/types.ts";
 import { logger } from "../logging/logger.ts";
 import { recordConversationRepair } from "../observability/instrumentation.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
-import { getWorkflowDraft, withWorkflowDraft } from "./authoring-state.ts";
+import { getWorkflowDraft, withWorkflowDraft } from "./authoring-state/index.ts";
 import { type WorkflowOutputSite, workflowOutputSite } from "./dry-run-repair.ts";
 import {
   repairTransformExpression,

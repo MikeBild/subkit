@@ -9,7 +9,7 @@ import {
 import { validateTenantWorkflowDef } from "../../workflows/index.ts";
 import { buildScopeAtStep } from "../../workflows/scope-shape.ts";
 import type { StepDef } from "../../workflows/types.ts";
-import { getWorkflowDraft, withLatestPreview } from "../authoring-state.ts";
+import { getWorkflowDraft, withLatestPreview } from "../authoring-state/index.ts";
 import { stepFingerprint } from "../step-fingerprint.ts";
 import { authorConnectorWriteWarnings } from "./author-build-warnings.ts";
 import { buildLifecyclePayload } from "./authoring-contract.ts";

@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { conversations } from "../db/schema/index.ts";
 
-export interface ConversationLabel {
+interface ConversationLabel {
   title: string | null;
   owner_id: string | null;
   updated_at: string;

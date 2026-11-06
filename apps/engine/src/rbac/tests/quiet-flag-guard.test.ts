@@ -31,7 +31,7 @@ const ALLOWED = new Set<string>([
   "apps/engine/src/http/routes/agent-briefing.ts",
   "apps/engine/src/http/routes/identity/cockpit.ts",
   "apps/engine/src/http/routes/identity/users.ts",
-  "apps/engine/src/http/routes/workflows.ts",
+  "apps/engine/src/api/operations/workflows.ts",
   "apps/engine/src/rbac/workflow-start-access.ts",
   "apps/engine/src/conversations/tools/engine-api/metrics.ts",
   "apps/engine/src/mcp/server.ts",

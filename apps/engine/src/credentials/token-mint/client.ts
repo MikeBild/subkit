@@ -3,7 +3,7 @@ import type { EgressGuardContext } from "../../connectors/index.ts";
 import { CredentialRequestError, credentialOperation, fetchCredentialRequest } from "../request.ts";
 import type { TokenMintCredentialValue } from "../types.ts";
 
-export interface TokenMintBundle {
+interface TokenMintBundle {
   access_token: string;
   refresh_token: string | null;
   expires_at: Date | null;

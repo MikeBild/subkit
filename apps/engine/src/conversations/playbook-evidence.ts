@@ -33,7 +33,7 @@ export interface PlaybookScope {
   principal: ResolvedPrincipal;
   locale?: "de" | "en";
 }
-export interface ResolvedPlaybookEvidence extends PlaybookEvidenceResolution {
+interface ResolvedPlaybookEvidence extends PlaybookEvidenceResolution {
   fingerprint: string | null;
 }
 const object = (value: unknown): Record<string, unknown> =>

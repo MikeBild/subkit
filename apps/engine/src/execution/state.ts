@@ -68,45 +68,6 @@ export interface CreateExecutionParams {
   idempotency_key?: string | null;
 }
 
-export function isIdempotencyConflict(err: unknown): boolean {
-  let cur: unknown = err;
-  for (let depth = 0; cur && depth < 5; depth += 1) {
-    const e = cur as {
-      code?: string;
-      constraint_name?: string;
-      constraint?: string;
-      message?: string;
-      cause?: unknown;
-    };
-    const named = e.constraint_name ?? e.constraint ?? "";
-    const msg = e.message ?? "";
-    if (
-      (e.code === "23505" || msg.includes("23505") || msg.includes("duplicate key")) &&
-      (named === "executions_tenant_idempotency_key_uidx" ||
-        msg.includes("executions_tenant_idempotency_key_uidx"))
-    ) {
-      return true;
-    }
-    cur = e.cause;
-  }
-  return false;
-}
-
-export async function findExecutionByIdempotencyKey(
-  db: Db,
-  tenant_id: string,
-  idempotency_key: string,
-): Promise<{ id: string; status: ExecutionStatus } | null> {
-  const [row] = await db
-    .select({ id: executions.id, status: executions.status })
-    .from(executions)
-    .where(
-      and(eq(executions.tenant_id, tenant_id), eq(executions.idempotency_key, idempotency_key)),
-    )
-    .limit(1);
-  return row ?? null;
-}
-
 export async function createExecution(
   db: Executor,
   params: CreateExecutionParams,
@@ -264,7 +225,7 @@ export async function markExecutionRunning(
   return true;
 }
 
-export interface RequestExecutionAbortParams {
+interface RequestExecutionAbortParams {
   tenant_id: string;
   execution_id: string;
   actor_type: AuditActorType;
@@ -318,7 +279,7 @@ export async function requestExecutionAbort(
 
 export type OutputContractVerdict = "passed" | "violated" | "none";
 
-export interface ExecutionFailureDetail {
+interface ExecutionFailureDetail {
   step_id: string | null;
   error_code: string;
   error_message: string;
@@ -332,7 +293,7 @@ export interface RefusedConnector {
 
 const NON_TERMINAL_STATUSES: ExecutionStatus[] = [...NON_TERMINAL_EXECUTION_STATUSES];
 
-export interface TerminalizeExecutionParams {
+interface TerminalizeExecutionParams {
   tenant_id: string;
   execution_id: string;
   status: ExecutionStatus;
@@ -345,7 +306,7 @@ export interface TerminalizeExecutionParams {
   sensitive_result?: unknown;
 }
 
-export interface TerminalizedExecutionRow {
+interface TerminalizedExecutionRow {
   id: string;
   workflow_id: string | null;
   request_source: string | null;
@@ -394,7 +355,7 @@ export async function terminalizeExecutionRow(
   return row ?? null;
 }
 
-export interface FinalizeExecutionDetails {
+interface FinalizeExecutionDetails {
   result_storage_uri?: string | null;
   failure?: ExecutionFailureDetail | null;
   result_sha256?: string | null;

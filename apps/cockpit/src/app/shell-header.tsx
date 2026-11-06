@@ -15,7 +15,7 @@ export const CHAT_COLUMN = "w-full min-w-0 max-w-[80rem]";
 export const ACCOUNT_TRIGGER =
   "h-auto min-h-12 items-center py-2 group-data-[collapsible=icon]:min-h-0";
 
-export type TriggerOwner = "bar" | "page";
+type TriggerOwner = "bar" | "page";
 
 export function triggerOwner(input: {
   mobile: boolean;
@@ -99,10 +99,4 @@ export function SidebarToggle({ className }: { className?: string }) {
       data-testid="sidebar-trigger"
     />
   );
-}
-
-export function useChatHeaderSlot(): HTMLElement | null {
-  const { slot, claimChatHeader } = useContext(ShellHeaderContext);
-  useLayoutEffect(() => claimChatHeader(), [claimChatHeader]);
-  return slot;
 }

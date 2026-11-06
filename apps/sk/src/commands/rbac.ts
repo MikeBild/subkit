@@ -11,11 +11,7 @@ const permissionsListCmd = defineCommand({
     return withCommandErrors(
       async () => {
         const { items } = await client.listPermissions();
-        if (args.json) {
-          printJson(items);
-          return;
-        }
-        for (const p of items) process.stdout.write(`${p}\n`);
+        emitList(!!args.json, ["name", "resource_type", "operator", "description"], items);
       },
       { json: Boolean(args.json) },
     );

@@ -27,7 +27,7 @@ export async function resolvePolicy(
   return row.policy as AutohealPolicy;
 }
 
-export interface PolicyDecisionInput {
+interface PolicyDecisionInput {
   policy: AutohealPolicy;
   classification: "safe" | "unsafe";
   fixture_passed: boolean;

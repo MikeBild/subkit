@@ -32,17 +32,17 @@ export interface AuditQueryFilters {
   ts_to?: Date;
 }
 
-export interface AuditQueryOptions {
+interface AuditQueryOptions {
   limit?: number;
   cursor?: string;
 }
 
-export interface AuditQueryResult {
+interface AuditQueryResult {
   items: AuditEntry[];
   next_cursor: string | null;
 }
 
-export interface AuditResourceMatch {
+interface AuditResourceMatch {
   resource_type: string;
   resource_id: string;
   resource_name: string | null;
@@ -70,14 +70,14 @@ function formatAuditCursor(c: AuditKeysetCursor): string {
 export const AUDIT_CURSOR_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z(?:\|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})?$/;
 
-export class InvalidAuditCursorError extends Error {
+class InvalidAuditCursorError extends Error {
   constructor(raw: string) {
     super(`invalid audit cursor: ${JSON.stringify(raw)}`);
     this.name = "InvalidAuditCursorError";
   }
 }
 
-export function parseAuditCursor(raw: string): AuditKeysetCursor | undefined {
+function parseAuditCursor(raw: string): AuditKeysetCursor | undefined {
   const trimmed = raw.trim();
   if (trimmed === "") return undefined;
   if (!AUDIT_CURSOR_PATTERN.test(trimmed)) throw new InvalidAuditCursorError(raw);

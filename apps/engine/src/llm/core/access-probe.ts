@@ -10,7 +10,7 @@ import {
   ProviderMisconfiguredError,
 } from "./model-init.ts";
 
-export type LlmAccessProvider = "mock" | DirectProviderKind;
+type LlmAccessProvider = "mock" | DirectProviderKind;
 
 export type LlmAccessResult =
   | { ok: true; model: string | null }
@@ -28,7 +28,7 @@ const NON_CATALOG_PROBE_MODELS: Partial<Record<DirectProviderKind, string>> = {
   vertex: DEFAULT_MODELS.gemini.light,
 };
 
-export const LLM_PROBE_TIMEOUT_MS = 20_000;
+const LLM_PROBE_TIMEOUT_MS = 20_000;
 
 function primaryModelFor(provider: DirectProviderKind): string | undefined {
   try {

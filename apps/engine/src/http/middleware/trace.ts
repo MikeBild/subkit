@@ -13,7 +13,7 @@ const INBOUND_TRACE_ID = /^[A-Za-z0-9_-]{8,128}$/;
 
 const TRACEPARENT_RE = /^(00)-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/i;
 
-export interface ParsedTraceparent {
+interface ParsedTraceparent {
   trace_id: string;
   parent_id: string;
   flags: string;

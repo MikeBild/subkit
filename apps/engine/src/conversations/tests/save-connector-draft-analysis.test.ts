@@ -9,7 +9,7 @@ import {
   withConnectorInspection,
   withConnectorProbe,
   withConnectorValidation,
-} from "../authoring-state.ts";
+} from "../authoring-state/index.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { saveConnectorDraftTool } from "../tools/save-connector-draft.ts";

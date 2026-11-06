@@ -1,4 +1,4 @@
-export type JsonSchema7 = Record<string, unknown>;
+type JsonSchema7 = Record<string, unknown>;
 
 export function sampleToSchema(sample: unknown): JsonSchema7 {
   if (sample === null || sample === undefined) return {};

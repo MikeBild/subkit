@@ -1,6 +1,6 @@
 import type { TranslationKey } from "@/lib/i18n";
 
-export interface WorkflowStarters {
+interface WorkflowStarters {
   webhook: boolean;
   schedule: boolean;
 }

@@ -1,4 +1,4 @@
-export interface McpRequestClass {
+interface McpRequestClass {
   operation: string;
   taskPhase?: "working" | "cancelled" | "none" | undefined;
 }

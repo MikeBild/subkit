@@ -19,7 +19,7 @@ import { registerToolsCapability } from "./capabilities/tools.ts";
 import { resolveMcpMode } from "./mode-resolver.ts";
 import { ConversationTaskStore } from "./tasks/task-store.ts";
 
-export interface CreateMcpServerParams {
+interface CreateMcpServerParams {
   db: Db;
   principal: ResolvedPrincipal;
   transport: "http" | "stdio";

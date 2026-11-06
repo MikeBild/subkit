@@ -7,7 +7,7 @@ import {
   SPEC_GOAL_QUESTION,
   specQuestions,
 } from "./authoring-spec.ts";
-import { normalizeDraftDocument } from "./authoring-state.ts";
+import { normalizeDraftDocument } from "./authoring-state/index.ts";
 import type { WorkflowDraftDocument } from "./types.ts";
 
 function spec(goal: string | null, origin: WorkflowSpec["origin"] = "chat"): WorkflowSpec {

@@ -1,4 +1,4 @@
-export type OutputBehavior = "explicit_transform" | "transform_function" | "last_step_passthrough";
+type OutputBehavior = "explicit_transform" | "transform_function" | "last_step_passthrough";
 
 interface OutputBehaviorInput {
   output_transform?: unknown;

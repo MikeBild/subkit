@@ -124,7 +124,7 @@ export function readLlmWindowCost(
   return readLlmCost(db, params.tenantId, buildWhere(params), llmFromClause(params));
 }
 
-export interface KeyedLlmCost {
+interface KeyedLlmCost {
   groups: Map<string, CostResult>;
   buckets: Map<string, CostResult>;
 }
@@ -161,7 +161,7 @@ export async function readLlmCostByKey(
   return { groups: price(byGroup), buckets: price(byBucket) };
 }
 
-export interface EffectiveModelRate {
+interface EffectiveModelRate {
   input_per_mtok: number;
   output_per_mtok: number;
   cache_read_per_mtok: number;

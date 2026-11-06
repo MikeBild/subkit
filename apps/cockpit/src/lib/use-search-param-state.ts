@@ -14,7 +14,7 @@ export function searchWithParam(
   return query ? `?${query}` : "";
 }
 
-export function readSearchParam(name: string): string | null {
+function readSearchParam(name: string): string | null {
   return typeof window === "undefined"
     ? null
     : new URLSearchParams(window.location.search).get(name);

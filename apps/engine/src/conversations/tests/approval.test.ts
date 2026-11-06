@@ -7,7 +7,7 @@ import {
 } from "../../db/schema/index.ts";
 import { decidedByFor } from "../decided-by.ts";
 import { createElicitation, resolveElicitation } from "../elicitations.ts";
-import { buildModelMessages } from "../persist.ts";
+import { buildModelMessages } from "../persistence/index.ts";
 import { createConversation, getConversation } from "../service.ts";
 import {
   appendMessageWithTurn,

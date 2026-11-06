@@ -88,7 +88,7 @@ export function graphqlEndpointKey(operation_name: string): string {
   return `POST /graphql#${operation_name || "anonymous"}`;
 }
 
-export interface RecordShapeParams {
+interface RecordShapeParams {
   tenant_id: string;
   connector_id: string;
   endpoint_key: string;
@@ -143,7 +143,7 @@ export async function recordSuccessShape(p: RecordShapeParams, exec?: Executor):
   return row.id;
 }
 
-export interface GetLatestShapeParams {
+interface GetLatestShapeParams {
   tenant_id: string;
   connector_id: string;
   endpoint_key: string;
@@ -151,7 +151,7 @@ export interface GetLatestShapeParams {
   step_id?: string;
 }
 
-export interface LatestEndpointShape {
+interface LatestEndpointShape {
   endpoint_key: string;
   shape: SchemaShape;
   seen_at: Date;
@@ -283,7 +283,7 @@ export function diffShapesDeep(
   return { added, removed, widened };
 }
 
-export interface ShapeHistoryEntry {
+interface ShapeHistoryEntry {
   schema: SchemaShape;
   seen_at: Date;
 }
@@ -311,7 +311,7 @@ export async function listShapeHistory(
   }));
 }
 
-export interface MigrationStep {
+interface MigrationStep {
   kind: "rename" | "add" | "remove" | "widen";
   path: string;
   from?: string;
@@ -319,7 +319,7 @@ export interface MigrationStep {
   safe: boolean;
 }
 
-export interface MigrationPlan {
+interface MigrationPlan {
   steps: MigrationStep[];
   fully_safe: boolean;
   before: SchemaShape;

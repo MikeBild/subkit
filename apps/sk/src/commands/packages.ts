@@ -18,7 +18,7 @@ export const PACKAGE_KINDS: readonly PackageItemKind[] = [
   "knowledge",
 ];
 
-export const PLAN_CHANGED_EXIT_CODE = 3;
+const PLAN_CHANGED_EXIT_CODE = 3;
 
 const connectionArgs = {
   profile: { type: "string" as const, description: "Profile name" },
@@ -54,7 +54,7 @@ export function parseCategories(raw: string | undefined): string[] | undefined {
 
 type Requirement = PackagePlan["requires"][number];
 
-export function describeRequirement(req: Requirement): string {
+function describeRequirement(req: Requirement): string {
   switch (req.kind) {
     case "credential":
       return req.fields.length > 0

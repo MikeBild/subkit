@@ -4,7 +4,7 @@ export const SAMPLE_MARKER_TRUNCATED_COUNT = "_truncated_count";
 export const SAMPLE_MARKER_TRUNCATED_KIND = "_truncated_kind";
 export const SAMPLE_MARKER_TRUNCATED_KEYS = "_truncated_keys";
 
-export interface SampleOptions {
+interface SampleOptions {
   depth?: number;
   array_cap?: number;
 }

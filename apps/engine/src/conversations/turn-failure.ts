@@ -34,7 +34,7 @@ export interface TurnFailure {
   timeout?: { phase: TimeoutPhase; timeout_ms: number | null };
 }
 
-export function timeoutMessage(timeout_ms: number): string {
+function timeoutMessage(timeout_ms: number): string {
   return `Timed out after ${Math.ceil(timeout_ms / 1000)} s`;
 }
 

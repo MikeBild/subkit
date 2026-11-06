@@ -13,13 +13,13 @@ import {
   isPrivateOrLoopback,
 } from "./egress-guard.ts";
 
-export interface FetchedSpec {
+interface FetchedSpec {
   content: string;
   content_type: string;
   fetched_from: string;
 }
 
-export const API_SPEC_MAX_BYTES = 50 * 1024 * 1024;
+const API_SPEC_MAX_BYTES = 50 * 1024 * 1024;
 export const OPENAPI_SPEC_MAX_BYTES = API_SPEC_MAX_BYTES;
 export const GOOGLE_DISCOVERY_SPEC_MAX_BYTES = API_SPEC_MAX_BYTES;
 const TIMEOUT_MS = 15_000;

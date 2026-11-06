@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { RunLoopResult } from "../conversations/loop.ts";
+import type { RunLoopResult } from "../conversations/loop/index.ts";
 import { intakeReviewHandoff } from "./intake-handoff.ts";
 
 const conversationId = "10000000-0000-4000-8000-000000000001";

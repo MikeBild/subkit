@@ -23,13 +23,13 @@ export type { ConversationReference, ConversationReferenceType };
 
 export const REFERENCED_ENTITIES_MARKER = "[REFERENCED ENTITIES]";
 
-export const MAX_REFERENCES_PER_TURN = 20;
+const MAX_REFERENCES_PER_TURN = 20;
 
 export const REFERENCE_LABEL_RE = /^[\p{L}\p{N} _./-]{1,200}$/u;
 
-export type ReferenceOutcome = "ok" | "missing_or_forbidden" | "load_error";
+type ReferenceOutcome = "ok" | "missing_or_forbidden" | "load_error";
 
-export interface ResolvedReferences {
+interface ResolvedReferences {
   block: string | null;
   trim_ref: string | null;
   resolved: ConversationReference[];
@@ -55,7 +55,7 @@ const RELOAD_TOOL: Record<ConversationReferenceType, string> = {
   intake_item: "get_intake_item",
 };
 
-export function referenceToken(ref: ConversationReference): string {
+function referenceToken(ref: ConversationReference): string {
   return `@${ref.label}`;
 }
 
@@ -158,7 +158,7 @@ function projectExecution(execution: NonNullable<Awaited<ReturnType<typeof loadF
   };
 }
 
-export interface ResolveReferencesCtx {
+interface ResolveReferencesCtx {
   db: Executor;
   tenant_id: string;
   conversation_id: string;

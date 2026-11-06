@@ -10,7 +10,7 @@ export type RunExecutionSource =
   | { kind: "draft"; definition: WorkflowDef | unknown; name?: string }
   | { kind: "step"; step: StepDef | unknown; workflow_slug?: string };
 
-export interface ResolvedDefinition {
+interface ResolvedDefinition {
   def: WorkflowDef;
   workflow_id: string;
   workflow_version_id: string;

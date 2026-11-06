@@ -39,7 +39,7 @@ export interface ResolvedWindow {
   truncated_at?: string;
 }
 
-export interface RawWindowInput {
+interface RawWindowInput {
   bucket: string;
   from: string;
   to?: string | undefined;

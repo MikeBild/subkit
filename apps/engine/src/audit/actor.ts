@@ -1,7 +1,7 @@
 import type { PrincipalKind } from "../auth/types.ts";
 import type { KnownAuditActorType } from "./types.ts";
 
-export interface PrincipalLike {
+interface PrincipalLike {
   kind: "user" | "system_account";
 }
 

@@ -108,7 +108,7 @@ export function previewWorkflowAuthority(
   );
 }
 
-export interface HumanContext {
+interface HumanContext {
   request: Request;
   principal: ResolvedPrincipal;
   db: Db;
@@ -156,7 +156,7 @@ export async function lockLiveSession(
   if (!live) fail("human_session_expired", "the human session has expired or was revoked");
 }
 
-export async function resolveGrantedAdmissionHolds(
+async function resolveGrantedAdmissionHolds(
   authority: typeof workflowExecutionAuthorities.$inferSelect,
   activeVersion: string | null,
   tx: Executor,

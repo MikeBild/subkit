@@ -7,14 +7,10 @@ import {
   connectorSignIn,
   effectiveConnectorHealth,
   OperatorQuirksSchema,
-  resolveConnectorOAuthConfig,
   toPublicConnector,
 } from "../../../connectors/index.ts";
-import type { OAuth2ClientConfig } from "../../../credentials/index.ts";
-import type { Db } from "../../../db/client.ts";
-import { BadRequestError } from "../../errors.ts";
 
-export const CredentialSummarySchema = z
+const CredentialSummarySchema = z
   .object({
     id: z.string(),
     mode: z.string(),
@@ -27,7 +23,7 @@ export const CredentialSummarySchema = z
   })
   .openapi("CredentialSummary");
 
-export const ConnectorCredentialStateSchema = z
+const ConnectorCredentialStateSchema = z
   .object({
     mode: z.string(),
     connection: ConnectionSummarySchema.nullable(),
@@ -38,7 +34,7 @@ export const ConnectorCredentialStateSchema = z
   )
   .openapi("ConnectorCredentialState");
 
-export const ConnectorHealthStateEnum = z
+const ConnectorHealthStateEnum = z
   .enum(["ok", "degraded", "needs_update", "needs_reauth"])
   .openapi("ConnectorHealthState");
 
@@ -129,7 +125,7 @@ export const ConnectorListResponse = z
   })
   .openapi("ConnectorListResponse");
 
-export const ProbeErrorCodeEnum = z
+const ProbeErrorCodeEnum = z
   .enum([
     "credential_missing",
     "credential_invalid",
@@ -248,16 +244,4 @@ export function serialize(view: ConnectorView) {
     last_tested_at: null as string | null,
     tools_count: null as number | null,
   };
-}
-
-export async function connectorOauthCfg(
-  db: Db,
-  tenant_id: string,
-  c: ConnectorView,
-): Promise<OAuth2ClientConfig> {
-  const cfg = await resolveConnectorOAuthConfig(db, tenant_id, c);
-  if (!cfg) {
-    throw new BadRequestError("connector is missing oauth2 config (issuer_url + client_id)");
-  }
-  return cfg;
 }

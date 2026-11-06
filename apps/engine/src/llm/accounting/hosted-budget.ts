@@ -24,7 +24,7 @@ const reservationInput = z
   })
   .strict();
 
-export type HostedBudgetReservationInput = z.input<typeof reservationInput>;
+type HostedBudgetReservationInput = z.input<typeof reservationInput>;
 
 function monthBucket(): string {
   const current = new Date(now());

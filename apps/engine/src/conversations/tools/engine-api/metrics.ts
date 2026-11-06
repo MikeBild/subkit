@@ -91,7 +91,7 @@ async function resolveUsageScope(
   return { ok: true, userId: requestedUserId, tenant: false };
 }
 
-export const getLlmUsageTool: ConversationTool = {
+const getLlmUsageTool: ConversationTool = {
   name: "get_llm_usage",
   description:
     "Return this month's total LLM token usage, the priced spend over a window (default: this month) and the N most recent llm_usage rows. `cost` prices every model at SubKit's built-in list price unless the operator overrides it (`price_sources` names catalog or override per model); a model neither prices is named in `unpriced_models`, never counted as free. Defaults to your own usage; pass user_id to scope to another user (requires stats:read:all).",
@@ -158,7 +158,7 @@ export const getLlmUsageTool: ConversationTool = {
   },
 };
 
-export const getTokenBudgetTool: ConversationTool = {
+const getTokenBudgetTool: ConversationTool = {
   name: "get_token_budget",
   description:
     "Report current-month token usage against the ceiling that will actually refuse the next call. A caller is bounded by both a per-user cap and the workspace cap; `budget_tokens`/`remaining_tokens`/`state` (ample, tightening at 75 %, critical at 90 %) describe whichever binds first, `binding_scope` names it, and `user`/`tenant` carry both so the answer can be checked. Defaults to your own figures; pass user_id to scope to another user (requires stats:read:all).",

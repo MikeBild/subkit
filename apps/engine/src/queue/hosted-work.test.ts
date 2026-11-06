@@ -481,7 +481,7 @@ test("unawaited nested producers retain the shared admission until they actually
 test("public direct execution and chat entry points cannot bypass active hosted quotas", async () => {
   const tenant = await fixture();
   const { runExecution } = await import("../execution/engine.ts");
-  const { runLoop } = await import("../conversations/loop.ts");
+  const { runLoop } = await import("../conversations/loop/index.ts");
   await tdb.db.insert(hostedWorkAdmissions).values([
     { tenant_id: tenant, kind: "execution", state: "active", owner_boot_id: uuid() },
     { tenant_id: tenant, kind: "chat", state: "active", owner_boot_id: uuid() },

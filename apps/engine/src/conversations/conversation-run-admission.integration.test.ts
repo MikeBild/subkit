@@ -29,10 +29,10 @@ import { capturePreparedWorkflowBinding } from "../tools/prepared-workflow-appro
 import { authorityConnectorDigest } from "../workflows/authority-configuration.ts";
 import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts";
 import { WorkflowDefSchema } from "../workflows/types.ts";
-import { createEmptyDraftDocument } from "./authoring-state.ts";
+import { createEmptyDraftDocument } from "./authoring-state/index.ts";
 import { resolveElicitationAndReactivate } from "./elicitations.ts";
 import { type FastPathParams, tryFastPath } from "./fast-path.ts";
-import { maybeAutoPersistFromElicitation } from "./persistence/auto-persist.ts";
+import { maybeAutoPersistFromElicitation } from "./persistence/auto-persist/index.ts";
 import { decideToolMode, type ToolPolicies } from "./tool-policies.ts";
 import { runWorkflowTool } from "./tools/engine-api/writes/run-workflow.ts";
 import type { ToolContext } from "./tools/index.ts";

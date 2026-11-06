@@ -2,7 +2,7 @@ import { AuditAction, type AuditActorType, auditAwait, sanitizeForAudit } from "
 import type { Executor } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
 
-export interface AdmissionRefusal {
+interface AdmissionRefusal {
   tenant_id: string;
   reason: string;
   message?: string | null;

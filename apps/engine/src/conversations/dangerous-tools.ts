@@ -11,8 +11,6 @@ export const DANGEROUS_TOOLS = [
   "approve_discovery_artifact",
 ] as const;
 
-export type DangerousTool = (typeof DANGEROUS_TOOLS)[number];
-
 export const DANGEROUS_TOOLS_SET: ReadonlySet<string> = new Set(DANGEROUS_TOOLS);
 
 export function isDangerousTool(name: string): boolean {

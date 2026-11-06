@@ -3,11 +3,11 @@ import { type Executor, getDb } from "../db/client.ts";
 import { conversations } from "../db/schema/conversations.ts";
 import { vectorScoreCandidates } from "../embeddings/vector-rerank.ts";
 
-export const TOPIC_MIN_COSINE = 0.425;
+const TOPIC_MIN_COSINE = 0.425;
 
 const CANDIDATE_SCAN = 30;
 
-export interface ConversationSuggestion {
+interface ConversationSuggestion {
   conversation_id: string;
   title: string | null;
   cosine: number;

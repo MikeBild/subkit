@@ -5,7 +5,7 @@ import { CallerContextSchema } from "./caller-context.ts";
 import { resolveExecutionCallerOrigin } from "./caller-origin.ts";
 import { matchingWorkflowPermission } from "./workflow-permission.ts";
 
-export const CALLER_VERIFICATION_METHODS = [
+const CALLER_VERIFICATION_METHODS = [
   "api_key",
   "browser_session",
   "mcp_oauth",

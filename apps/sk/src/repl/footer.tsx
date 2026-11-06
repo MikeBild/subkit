@@ -7,7 +7,7 @@ import type { PermissionMode } from "./status-line/render.ts";
 
 export { formatTokens };
 
-export interface FooterProps {
+interface FooterProps {
   user: string;
   tenant: string | null;
   engineUrl: string;

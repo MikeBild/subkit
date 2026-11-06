@@ -10,7 +10,7 @@ import {
   withSettingDraft,
 } from "@/pages/settings-model";
 
-export interface SettingsDraftState {
+interface SettingsDraftState {
   drafts: SettingDrafts;
   pending: SettingDrafts;
   texts(items: readonly SettingItem[], scope: SettingDraftScope): Record<string, string>;

@@ -19,7 +19,7 @@ import { storageKey } from "./resolver.ts";
 type FileRow = typeof files.$inferSelect;
 type VersionRow = typeof fileVersions.$inferSelect;
 
-export interface ContentActor {
+interface ContentActor {
   kind: "user" | "system_account";
   id: string;
 }
@@ -42,7 +42,7 @@ export class DuplicateFileContentError extends Error {
   }
 }
 
-export type ReplaceOutcome =
+type ReplaceOutcome =
   | { kind: "not_found" }
   | { kind: "unchanged"; row: FileRow }
   | { kind: "replaced"; row: FileRow; previous: FileRow; archived: boolean };
@@ -74,7 +74,7 @@ async function latestArchived(
   return latest;
 }
 
-export async function currentUploader(
+async function currentUploader(
   db: Executor,
   tenantId: string,
   row: FileRow,

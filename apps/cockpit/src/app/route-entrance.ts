@@ -1,6 +1,6 @@
 import { type RefObject, useLayoutEffect, useRef } from "react";
 
-export const ROUTE_ENTRANCE_MS = 180;
+const ROUTE_ENTRANCE_MS = 180;
 
 const ENTRANCE: Keyframe[] = [
   { opacity: 0, transform: "translateY(4px)" },

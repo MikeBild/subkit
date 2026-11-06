@@ -10,7 +10,7 @@ import { auditedBy, type NotificationActor } from "./actor.ts";
 
 export type { NotificationChannelRow };
 
-export interface CreateChannelInput {
+interface CreateChannelInput {
   workspace_id: string;
   channel_id: string;
   platform: string;
@@ -19,7 +19,7 @@ export interface CreateChannelInput {
   active?: boolean | undefined;
 }
 
-export interface UpdateChannelInput {
+interface UpdateChannelInput {
   default_severity?: NotificationSeverity | undefined;
   rate_limit_per_minute?: number | undefined;
   active?: boolean | undefined;

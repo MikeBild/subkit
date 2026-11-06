@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { conversationMessages, conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { buildModelMessages } from "../persist.ts";
+import { buildModelMessages } from "../persistence/index.ts";
 
 let ctx: TestDb;
 let tenant: string;

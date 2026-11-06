@@ -1,6 +1,6 @@
 import { ApiError } from "@/api/client";
 
-export type ConversationFailure = "missing" | "transient";
+type ConversationFailure = "missing" | "transient";
 
 export function conversationFailureKind(error: unknown): ConversationFailure {
   return error instanceof ApiError && (error.status === 404 || error.status === 403)

@@ -1,4 +1,4 @@
-export interface EngineHealthState {
+interface EngineHealthState {
   schema_drift: boolean;
 
   draining: boolean;

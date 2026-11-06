@@ -4,8 +4,6 @@ import { errorFields, logger } from "../logging/logger.ts";
 import { enqueueSkillCandidateAnalysis } from "../queue/handlers/skill-candidate-analyze.ts";
 import { runTenantCadenceSweep } from "./cadence-sweep.ts";
 
-export const SKILL_CANDIDATE_ANALYZE_CADENCE_MS = 6 * 60 * 60 * 1000;
-
 export async function runSkillCandidateAnalysisSweep(
   now: Date,
   db: Db,

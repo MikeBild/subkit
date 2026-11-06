@@ -423,7 +423,7 @@ export function truncateStepPreviewForLlm(value: unknown): TruncatedOutput {
 const MAX_WORKFLOW_OUTPUT_CHARS = 5000;
 const SAMPLE_STRING_HEAD_CHARS = 400;
 
-export interface SampledOutput {
+interface SampledOutput {
   value: unknown;
   sampled: boolean;
   raw_ref?: string;

@@ -23,7 +23,7 @@ import type { PaneSpec } from "../repl/slash/handler.ts";
 import { findSlashCommand, type PersonaProbe, renderHelp } from "../slash.ts";
 import type { NotifyPrefs, PushNotifyOverride } from "./types.ts";
 
-export interface RunEventStreamOptions {
+interface RunEventStreamOptions {
   base: SkSessionState;
   events: AsyncIterable<TurnEvent> | undefined;
   conversationId: string | null | undefined;
@@ -102,7 +102,7 @@ export async function runEventStream(opts: RunEventStreamOptions): Promise<SkSes
   return next;
 }
 
-export interface SlashDispatchContext {
+interface SlashDispatchContext {
   session: SkSessionState;
   busyRef: React.MutableRefObject<boolean>;
   personaProbe: PersonaProbe;
@@ -308,7 +308,7 @@ export function warnIfUnresolvedConfirmIntent(
   }
 }
 
-export interface PreparedPrompt {
+interface PreparedPrompt {
   finalPrompt: string;
   consumedIds: ExpandedPrompt["consumedIds"];
 }

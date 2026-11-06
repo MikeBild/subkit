@@ -42,7 +42,7 @@ export const REPORT_DELIVERY_DISCREPANCIES = [
   "sender_differs",
   "content_type_differs",
 ] as const;
-export type ReportDeliveryDiscrepancy = (typeof REPORT_DELIVERY_DISCREPANCIES)[number];
+type ReportDeliveryDiscrepancy = (typeof REPORT_DELIVERY_DISCREPANCIES)[number];
 
 export const REPORT_DELIVERY_REFUSALS = [
   ...REPORT_MESSAGE_REFUSALS,
@@ -67,7 +67,7 @@ export function isReportMessageRefusal(reason: unknown): reason is ReportMessage
   return typeof reason === "string" && MESSAGE_REFUSALS.has(reason);
 }
 
-export type ReportMessageInspection =
+type ReportMessageInspection =
   | { ok: true; boundary: ReportDeliveryBoundary; subject: string; text: string }
   | { ok: false; reason: ReportMessageRefusal };
 

@@ -91,7 +91,7 @@ export interface EgressInput {
   step_id?: string | null;
 }
 
-export interface EgressOutcome {
+interface EgressOutcome {
   status?: number | null;
   bytes_in?: number | null;
   ok?: boolean;

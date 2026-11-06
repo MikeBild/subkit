@@ -32,13 +32,13 @@ import { assertTenantActive } from "./self-service.ts";
 export const SESSION_SLIDING_TTL_MS = 8 * 60 * 60 * 1000;
 export const SESSION_ABSOLUTE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-export interface ListOptions {
+interface ListOptions {
   limit?: number;
   offset?: number;
   productId?: string;
 }
 
-export interface UserIdentitySummary {
+interface UserIdentitySummary {
   user_id: string;
   provider_id: string;
   product_id: string | null;
@@ -130,7 +130,7 @@ export async function getUser(tenantId: string, id: string, db: Executor) {
 export type UserRole = "admin" | "member" | "enduser";
 export type UserStatus = "invited" | "active" | "disabled";
 
-export interface UpdateUserInput {
+interface UpdateUserInput {
   tenant_id: string;
   id: string;
   role?: UserRole;
@@ -234,7 +234,7 @@ export async function listSystemAccounts(tenantId: string, opts: ListOptions = {
     .offset(opts.offset ?? 0);
 }
 
-export interface CreateSystemAccountInput {
+interface CreateSystemAccountInput {
   tenant_id: string;
   name: string;
   description?: string | null;
@@ -310,7 +310,7 @@ export async function ensureNamedSystemAccount(
   });
 }
 
-export interface DeleteSystemAccountInput {
+interface DeleteSystemAccountInput {
   tenant_id: string;
   id: string;
   actor_kind?: PrincipalKind;
@@ -437,7 +437,7 @@ export async function getApiKey(
   return rows[0] ? toApiKeyView(rows[0]) : null;
 }
 
-export interface IssueApiKeyInput {
+interface IssueApiKeyInput {
   issuer: ScopeIssuer;
   tenant_id: string;
   owner_kind: "user" | "system_account";
@@ -535,7 +535,7 @@ async function issueApiKeyInternal(
   });
 }
 
-export interface RotateApiKeyInput {
+interface RotateApiKeyInput {
   issuer: ScopeIssuer;
   tenant_id: string;
   id: string;
@@ -544,7 +544,7 @@ export interface RotateApiKeyInput {
   actor_id?: string | null;
 }
 
-export interface RotateApiKeyResult {
+interface RotateApiKeyResult {
   old: ApiKeyView;
   new: ApiKeyView;
   plaintext: string;
@@ -655,7 +655,7 @@ export async function rotateApiKey(
   });
 }
 
-export interface RevokeApiKeyInput {
+interface RevokeApiKeyInput {
   tenant_id: string;
   id: string;
   actor_id: string | null;
@@ -734,7 +734,7 @@ export async function listPortalTokens(tenantId: string, db: Executor) {
   return rows.map(toPortalTokenView);
 }
 
-export interface IssuePortalTokenInput {
+interface IssuePortalTokenInput {
   tenant_id: string;
   user_id: string;
   allowed_workflows: string[];
@@ -743,7 +743,7 @@ export interface IssuePortalTokenInput {
   actor_kind?: PrincipalKind | "system";
 }
 
-export interface IssuePortalTokenResult {
+interface IssuePortalTokenResult {
   view: PortalTokenView;
   plaintext: string;
 }
@@ -794,7 +794,7 @@ export async function issuePortalToken(
   });
 }
 
-export interface RevokePortalTokenInput {
+interface RevokePortalTokenInput {
   tenant_id: string;
   id: string;
   actor_id: string | null;
@@ -863,7 +863,7 @@ function toSessionView(row: typeof sessions.$inferSelect): SessionView {
   };
 }
 
-export interface CreateSessionInput {
+interface CreateSessionInput {
   tenant_id: string;
   user_id: string;
   actor_id?: string | null;
@@ -905,9 +905,9 @@ export async function createSession(input: CreateSessionInput, db: Executor): Pr
   });
 }
 
-export type ResolveSessionReason = "expired_sliding" | "expired_absolute" | "revoked" | "not_found";
+type ResolveSessionReason = "expired_sliding" | "expired_absolute" | "revoked" | "not_found";
 
-export interface ResolveSessionResult {
+interface ResolveSessionResult {
   session: SessionView | null;
   reason?: ResolveSessionReason;
 }

@@ -491,7 +491,7 @@ export function maskIdentifiers(value: string): string {
   return value.replace(UUID, "…");
 }
 
-export interface BuildWorkflow {
+interface BuildWorkflow {
   current_version_id: string | null;
   current_version: number | null;
   draft_version_id: string | null;
@@ -550,7 +550,7 @@ interface PreviewRunStep {
   held?: boolean;
 }
 
-export interface PreviewSummary {
+interface PreviewSummary {
   status: string;
   ran: number;
   total: number;

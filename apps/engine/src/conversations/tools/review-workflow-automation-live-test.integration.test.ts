@@ -10,7 +10,7 @@ import {
 } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { workflowJsonDigest } from "../../workflows/canonical-json.ts";
-import { createEmptyDraftDocument, refreshDraftSummary } from "../authoring-state.ts";
+import { createEmptyDraftDocument, refreshDraftSummary } from "../authoring-state/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../tests/setup.ts";
 import type { DraftDocument } from "../types.ts";
 import { reviewWorkflowAutomationTool } from "./review-workflow-automation.ts";

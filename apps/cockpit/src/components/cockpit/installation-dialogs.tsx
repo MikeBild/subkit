@@ -17,7 +17,7 @@ interface DeferredInstallPrompt extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
-export type InstallationDialogMode = { kind: "install" } | { kind: "open"; href: string };
+type InstallationDialogMode = { kind: "install" } | { kind: "open"; href: string };
 
 export function installationDialogMode(
   currentInstallationId: string | null,
@@ -27,7 +27,7 @@ export function installationDialogMode(
   return { kind: "open", href: installation.start_url };
 }
 
-export interface NotificationDialogInput {
+interface NotificationDialogInput {
   installed: boolean;
   supported: boolean;
   permission: NotificationPermission | null;
@@ -36,7 +36,7 @@ export interface NotificationDialogInput {
   handledByApp: boolean;
 }
 
-export interface NotificationDialogState {
+interface NotificationDialogState {
   bell: boolean;
   checked: boolean;
   disabled: boolean;
@@ -164,7 +164,7 @@ export function InstallationDialog({
   );
 }
 
-export function InstallationNotificationsDialog({
+function InstallationNotificationsDialog({
   open,
   onOpenChange,
 }: {

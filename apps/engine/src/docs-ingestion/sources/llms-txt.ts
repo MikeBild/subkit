@@ -10,7 +10,7 @@ import type { BudgetState, RawChunk } from "../types.ts";
 import { ingestMarkdown } from "./markdown.ts";
 import { ingestOpenAPIUrl } from "./openapi.ts";
 
-export interface LlmsTxtIngestResult {
+interface LlmsTxtIngestResult {
   uri: string;
   raw_bytes: number;
   chunks: RawChunk[];

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const ChatVerdictSchema = z.object({
+const ChatVerdictSchema = z.object({
   verdict: z.enum(["pass", "fail"]),
   confidence: z.number().min(0).max(1),
   reason: z.string(),
@@ -15,8 +15,6 @@ export const ChatVerdictSchema = z.object({
     .partial()
     .default({}),
 });
-
-export type ChatVerdict = z.infer<typeof ChatVerdictSchema>;
 
 export const chatRubric = {
   kind: "chat" as const,

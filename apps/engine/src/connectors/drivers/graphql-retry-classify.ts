@@ -129,7 +129,7 @@ function rootFieldFromMessage(message: string): string | null {
   return null;
 }
 
-export interface GraphqlSchemaErrorVerdict {
+interface GraphqlSchemaErrorVerdict {
   schema_shaped: boolean;
   root_field: string | null;
 }

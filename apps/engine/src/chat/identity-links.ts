@@ -7,7 +7,7 @@ import type { InboundChatPlatform } from "./types.ts";
 
 export type ChatIdentityRow = typeof chatIdentities.$inferSelect;
 
-export type ChatIdentityLinkRefusal = "workspace_not_found" | "user_not_found" | "already_linked";
+type ChatIdentityLinkRefusal = "workspace_not_found" | "user_not_found" | "already_linked";
 
 export class ChatIdentityLinkRefusedError extends Error {
   constructor(
@@ -19,7 +19,7 @@ export class ChatIdentityLinkRefusedError extends Error {
   }
 }
 
-export interface ChatIdentityLinkInput {
+interface ChatIdentityLinkInput {
   principal: ResolvedPrincipal;
   body: {
     user_id: string;

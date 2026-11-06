@@ -8,7 +8,7 @@ import { auditedBy, type NotificationActor } from "./actor.ts";
 
 export type { NotificationRuleRow };
 
-export interface CreateRuleInput {
+interface CreateRuleInput {
   name: string;
   event_pattern: string;
   workflow_pattern?: string | undefined;
@@ -19,9 +19,9 @@ export interface CreateRuleInput {
   active?: boolean | undefined;
 }
 
-export type UpdateRuleInput = { [K in keyof CreateRuleInput]?: CreateRuleInput[K] | undefined };
+type UpdateRuleInput = { [K in keyof CreateRuleInput]?: CreateRuleInput[K] | undefined };
 
-export interface TestRuleInput {
+interface TestRuleInput {
   event_type: string;
   workflow_id?: string | null | undefined;
   workflow_slug?: string | null | undefined;
@@ -29,7 +29,7 @@ export interface TestRuleInput {
   payload?: Record<string, unknown> | null | undefined;
 }
 
-export interface TestRuleContext {
+interface TestRuleContext {
   tenant_id: string;
   actor_type: NotificationActor["kind"];
   actor_id: string;

@@ -15,7 +15,7 @@ import { auditActorFromToolContext } from "./audit-actor.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { toolActor } from "./tool-actor.ts";
 
-export const CANDIDATES_TTL_MS = 24 * 60 * 60 * 1000;
+const CANDIDATES_TTL_MS = 24 * 60 * 60 * 1000;
 
 export const KNOWLEDGE_SOURCE_MAX_CHARS = 100_000;
 
@@ -73,8 +73,6 @@ const CandidateEnvelopeSchema = z.object({
 
 export type ConnectorEndpointCandidate = z.infer<typeof CandidateSchema>;
 export type ConnectorEndpointCandidateEnvelope = z.infer<typeof CandidateEnvelopeSchema>;
-export type DataFlowRole = z.infer<typeof DataFlowRoleEnum>;
-export type CandidateCapability = z.infer<typeof CapabilityEnum>;
 export type PotentialConnection = z.infer<typeof PotentialConnectionSchema>;
 
 interface CachedCandidates {

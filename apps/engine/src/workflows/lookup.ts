@@ -2,7 +2,7 @@ import { and, eq, isNotNull, isNull, or } from "drizzle-orm";
 import type { Db, Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 
-export interface WorkflowLookupResult {
+interface WorkflowLookupResult {
   id: string;
   slug: string;
   name: string;
@@ -10,7 +10,7 @@ export interface WorkflowLookupResult {
   is_tool: boolean;
 }
 
-export interface ResolveWorkflowOptions {
+interface ResolveWorkflowOptions {
   require_published?: boolean;
 }
 
@@ -67,7 +67,7 @@ export async function workflowIdBySlug(
   return rows[0]?.id ?? null;
 }
 
-export interface WorkflowHead {
+interface WorkflowHead {
   workflow: {
     id: string;
     slug: string;

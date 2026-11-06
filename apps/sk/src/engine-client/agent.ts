@@ -1,7 +1,7 @@
 import type { EngineClient } from "../engine-client.ts";
 import type { ApiBody, ApiQuery } from "./http.ts";
 
-export interface AgentBriefing {
+interface AgentBriefing {
   markdown: string;
   domains: string[];
   budget_tokens: number;
@@ -20,7 +20,7 @@ export interface AgentBriefing {
   intake?: { clips: number; sessions: number; proposals: number } | null;
 }
 
-export interface AgentDomains {
+interface AgentDomains {
   domains: string[];
   from_prompt: string[];
   from_repo: string[];

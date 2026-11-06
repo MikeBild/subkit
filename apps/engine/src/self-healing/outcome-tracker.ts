@@ -3,9 +3,7 @@ import type { Executor } from "../db/client.ts";
 import { patchCandidates } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 
-const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-
-export interface OutcomeUpdate {
+interface OutcomeUpdate {
   tenant_id: string;
   workflow_id: string;
   outcome: "success" | "failure";
@@ -47,19 +45,4 @@ export async function recordExecutionOutcome(p: OutcomeUpdate, db: Executor): Pr
       error: err instanceof Error ? err.message : String(err),
     });
   }
-}
-
-export async function closeExpiredOutcomeWindows(db: Executor): Promise<number> {
-  const cutoff = new Date(Date.now() - WINDOW_MS);
-  const result = await db
-    .update(patchCandidates)
-    .set({ outcome_window_ended_at: new Date() })
-    .where(
-      and(
-        eq(patchCandidates.status, "applied"),
-        isNull(patchCandidates.outcome_window_ended_at),
-        sql`${patchCandidates.updated_at} < ${cutoff}`,
-      ),
-    );
-  return Number((result as unknown as { rowCount?: number })?.rowCount ?? 0);
 }

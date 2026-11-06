@@ -102,7 +102,7 @@ const SlashFormPayload = z
   })
   .passthrough();
 
-export type ParsedSlackPayload =
+type ParsedSlackPayload =
   | {
       kind: "app_mention";
       team_id: string;
@@ -197,6 +197,3 @@ export function parseSlackInboundPayload(raw: unknown): ParsedSlackPayload {
 
   return { kind: "unknown", reason: `unrecognised top-level type: ${String(r.type)}` };
 }
-
-export type ParsedBlockActions = z.infer<typeof BlockActionsPayload>;
-export type ParsedViewSubmission = z.infer<typeof ViewSubmissionPayload>;

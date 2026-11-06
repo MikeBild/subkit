@@ -32,7 +32,7 @@ export function eligibleNoConfirmTools(): string[] {
   return [...NO_CONFIRM_OVERRIDE_TOOLS];
 }
 
-export function canSetNoConfirmOverride(toolName: string, mode: ToolPolicyMode | null): boolean {
+function canSetNoConfirmOverride(toolName: string, mode: ToolPolicyMode | null): boolean {
   return mode !== "no_confirm" || noConfirmOverrideTools.has(toolName);
 }
 
@@ -221,7 +221,7 @@ function pickFields(input: unknown, fields: ReadonlyArray<string>): Record<strin
   return out;
 }
 
-export function callConnectorSideEffect(input: unknown): SideEffect {
+function callConnectorSideEffect(input: unknown): SideEffect {
   const obj = asObj(input);
   if (typeof obj.sql === "string") {
     return classifyHttpSideEffect({
@@ -507,7 +507,7 @@ export type ToolModeRule =
   | "tool_default"
   | "category_default";
 
-export interface ToolModeDecision {
+interface ToolModeDecision {
   mode: ToolPolicyMode;
   rule: ToolModeRule;
 }
@@ -635,7 +635,7 @@ export function resolveToolMode(args: {
   return decideToolMode(args).mode;
 }
 
-export type ApprovalMode = "auto" | "approval_before" | "approval_after";
+type ApprovalMode = "auto" | "approval_before" | "approval_after";
 
 export function getApprovalMode(toolName: string): ApprovalMode {
   if (toolName.startsWith("mcp_")) return "approval_before";

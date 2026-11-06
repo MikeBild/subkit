@@ -183,7 +183,7 @@ export function useWorkflowSteps({
   };
 }
 
-export type WorkflowSteps = ReturnType<typeof useWorkflowSteps>;
+type WorkflowSteps = ReturnType<typeof useWorkflowSteps>;
 
 export function WorkflowTestRun({
   steps,
@@ -354,7 +354,7 @@ export const TRIGGER_ICONS: Record<TriggerKind, LucideIcon> = {
   request: Hand,
 };
 
-export interface StepConnector {
+interface StepConnector {
   id: string | null;
   name: string;
   service: ServiceIdentity;

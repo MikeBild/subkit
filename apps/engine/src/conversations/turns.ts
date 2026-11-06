@@ -90,7 +90,7 @@ async function releaseLease(client: pg.Client, id: string): Promise<void> {
   }
 }
 
-export async function reconcileInterruptedConversationTurn(
+async function reconcileInterruptedConversationTurn(
   db: Db,
   tenantId: string,
   conversationId: string,

@@ -5,7 +5,7 @@ export type DocsPage = DocsBundle["pages"][number];
 export type DocsSectionId = DocsPage["section"];
 export type DocsContent = DocsPage["locales"]["en"];
 export type DocsHeading = DocsContent["headings"][number];
-export type DocsImage = DocsContent["images"][number];
+type DocsImage = DocsContent["images"][number];
 
 export interface DocsRow {
   slug: string;
@@ -150,7 +150,7 @@ export interface DocsChoice {
   pages: DocsPage[];
 }
 
-export interface DocsNeighbours {
+interface DocsNeighbours {
   previous: DocsPage | null;
   next: DocsPage | null;
   choice: DocsChoice | null;
@@ -301,7 +301,7 @@ export function headingLevel(depth: number, titleDepth: number): 2 | 3 | 4 | 5 |
   return Math.min(6, Math.max(2, depth - titleDepth + 1)) as 2 | 3 | 4 | 5 | 6;
 }
 
-export type DocsLink =
+type DocsLink =
   | { kind: "anchor"; anchor: string }
   | { kind: "chapter"; slug: string; anchor?: string }
   | { kind: "external"; href: string }

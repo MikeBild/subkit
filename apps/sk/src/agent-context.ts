@@ -8,7 +8,7 @@ export interface AgentBriefingUpdate {
   changed: boolean;
 }
 
-export interface AgentBriefingContextOptions {
+interface AgentBriefingContextOptions {
   profile: ResolvedProfile;
   cwd: string;
   sessionId?: string;

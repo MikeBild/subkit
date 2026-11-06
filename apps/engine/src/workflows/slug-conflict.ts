@@ -2,7 +2,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { workflows } from "../db/schema/index.ts";
 
-export interface SlugConflict {
+interface SlugConflict {
   workflow_id: string;
   slug: string;
   name: string;

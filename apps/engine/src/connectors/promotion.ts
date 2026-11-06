@@ -21,15 +21,15 @@ import {
 } from "../db/schema/index.ts";
 import { withoutMcpTrustList } from "./mcp-tool-trust.ts";
 
-export type ConnectorPromotionStrategy = "copy" | "move";
+type ConnectorPromotionStrategy = "copy" | "move";
 
-export interface ConnectorPromotionCredentialMapping {
+interface ConnectorPromotionCredentialMapping {
   mode: CredentialMode;
   source_credential_id: string;
   target_credential_id: string;
 }
 
-export interface ConnectorPromotionResult {
+interface ConnectorPromotionResult {
   strategy: ConnectorPromotionStrategy;
   source_connector_id: string;
   target_connector_id: string;
@@ -41,7 +41,7 @@ export interface ConnectorPromotionResult {
   audit_log_ids: string[];
 }
 
-export type ConnectorPromotionErrorCode =
+type ConnectorPromotionErrorCode =
   | "source_not_found"
   | "source_not_dev"
   | "target_exists"

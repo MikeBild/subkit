@@ -22,7 +22,7 @@ import {
 } from "../../confirmation.ts";
 import { createElicitation } from "../../elicitations.ts";
 import { executionSuppressionRefusal } from "../../execution-suppression.ts";
-import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
+import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persistence/index.ts";
 import type { PermissionMode, ToolPolicies } from "../../tool-policies.ts";
 import type { TurnEvent } from "../../types.ts";
 import { withoutApprovalHandle } from "../ask-user/commit-intent.ts";

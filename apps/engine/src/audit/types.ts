@@ -436,7 +436,6 @@ export const ConversationForkedMetadataSchema = z.object({
   copy_cap: z.number().int().positive(),
   request_source: RequestSourceSchema,
 });
-export type ConversationForkedMetadata = z.infer<typeof ConversationForkedMetadataSchema>;
 
 export const ConversationDeletedMetadataSchema = z.object({
   conversation_id: z.string().uuid(),
@@ -446,7 +445,6 @@ export const ConversationDeletedMetadataSchema = z.object({
   file_links_removed: z.number().int().nonnegative(),
   request_source: RequestSourceSchema,
 });
-export type ConversationDeletedMetadata = z.infer<typeof ConversationDeletedMetadataSchema>;
 
 export const ToolPolicyChangedMetadataSchema = z.object({
   tool: z.string().min(1),
@@ -466,7 +464,6 @@ export const ToolPolicyChangedMetadataSchema = z.object({
     .nullable(),
   request_source: RequestSourceSchema,
 });
-export type ToolPolicyChangedMetadata = z.infer<typeof ToolPolicyChangedMetadataSchema>;
 
 export const ToolDispatchPolicyDeniedMetadataSchema = z.object({
   tool: z.string().min(1),
@@ -479,9 +476,6 @@ export const ToolDispatchPolicyDeniedMetadataSchema = z.object({
   rbac_resource_type: z.string().min(1).optional(),
   rbac_resource_id: z.string().min(1).optional(),
 });
-export type ToolDispatchPolicyDeniedMetadata = z.infer<
-  typeof ToolDispatchPolicyDeniedMetadataSchema
->;
 
 export const DiagnosticsLogsTailedMetadataSchema = z.object({
   mode: z.union([z.literal("json"), z.literal("stream")]),
@@ -491,7 +485,6 @@ export const DiagnosticsLogsTailedMetadataSchema = z.object({
   action_filter: z.string().optional(),
   level_filter: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).optional(),
 });
-export type DiagnosticsLogsTailedMetadata = z.infer<typeof DiagnosticsLogsTailedMetadataSchema>;
 
 export const DiagnosticsDriftReadMetadataSchema = z.object({
   embedded: z.number().int().nonnegative(),
@@ -500,7 +493,6 @@ export const DiagnosticsDriftReadMetadataSchema = z.object({
   historical: z.number().int().nonnegative(),
   missing: z.number().int().nonnegative(),
 });
-export type DiagnosticsDriftReadMetadata = z.infer<typeof DiagnosticsDriftReadMetadataSchema>;
 
 export const DiagnosticsVersionReadMetadataSchema = z.object({
   engine_version: z.string(),
@@ -508,16 +500,12 @@ export const DiagnosticsVersionReadMetadataSchema = z.object({
   update_available: z.boolean(),
   schema_drift: z.boolean(),
 });
-export type DiagnosticsVersionReadMetadata = z.infer<typeof DiagnosticsVersionReadMetadataSchema>;
 
 export const DiagnosticsIntegrationsReadMetadataSchema = z.object({
   connectors_total: z.number().int().nonnegative(),
   connectors_attention: z.number().int().nonnegative(),
   workflows_attention: z.number().int().nonnegative(),
 });
-export type DiagnosticsIntegrationsReadMetadata = z.infer<
-  typeof DiagnosticsIntegrationsReadMetadataSchema
->;
 
 const SizeBucketSchema = z.enum(["<1KB", "<1MB", "<10MB", "<100MB", ">=100MB"]);
 
@@ -534,7 +522,6 @@ export const FileCreatedMetadataSchema = z.object({
   request_source: RequestSourceSchema.optional(),
   source: z.string().optional(),
 });
-export type FileCreatedMetadata = z.infer<typeof FileCreatedMetadataSchema>;
 
 export const FileLinkAddedMetadataSchema = z.object({
   file_id: z.string().uuid(),
@@ -545,10 +532,8 @@ export const FileLinkAddedMetadataSchema = z.object({
   source: z.string().optional(),
   request_source: RequestSourceSchema.optional(),
 });
-export type FileLinkAddedMetadata = z.infer<typeof FileLinkAddedMetadataSchema>;
 
 export const FileLinkRemovedMetadataSchema = FileLinkAddedMetadataSchema;
-export type FileLinkRemovedMetadata = z.infer<typeof FileLinkRemovedMetadataSchema>;
 
 export const FileFinalizedMetadataSchema = z.object({
   file_id: z.string().uuid(),
@@ -563,7 +548,6 @@ export const FileFinalizedMetadataSchema = z.object({
   content_type: z.string().nullable().optional(),
   request_source: RequestSourceSchema.optional(),
 });
-export type FileFinalizedMetadata = z.infer<typeof FileFinalizedMetadataSchema>;
 
 export const FileDownloadedMetadataSchema = z.object({
   file_id: z.string().uuid(),
@@ -573,14 +557,12 @@ export const FileDownloadedMetadataSchema = z.object({
   version: z.number().int().positive().optional(),
   request_source: RequestSourceSchema.optional(),
 });
-export type FileDownloadedMetadata = z.infer<typeof FileDownloadedMetadataSchema>;
 
 export const FileDeletedMetadataSchema = z.object({
   file_id: z.string().uuid(),
   reason: z.string(),
   request_source: RequestSourceSchema.optional(),
 });
-export type FileDeletedMetadata = z.infer<typeof FileDeletedMetadataSchema>;
 
 export const FileReplacedMetadataSchema = z.object({
   file_id: z.string().uuid(),
@@ -592,13 +574,11 @@ export const FileReplacedMetadataSchema = z.object({
   pruned_versions: z.number().int().positive().optional(),
   request_source: RequestSourceSchema.optional(),
 });
-export type FileReplacedMetadata = z.infer<typeof FileReplacedMetadataSchema>;
 
 export const FileRenamedMetadataSchema = z.object({
   file_id: z.string().uuid(),
   request_source: RequestSourceSchema.optional(),
 });
-export type FileRenamedMetadata = z.infer<typeof FileRenamedMetadataSchema>;
 
 export const FileScanCompletedMetadataSchema = z.object({
   file_id: z.string().uuid(),
@@ -607,7 +587,6 @@ export const FileScanCompletedMetadataSchema = z.object({
   signature: z.string().nullable().optional(),
   request_source: RequestSourceSchema.optional(),
 });
-export type FileScanCompletedMetadata = z.infer<typeof FileScanCompletedMetadataSchema>;
 
 export const FileBatchCreatedMetadataSchema = z.object({
   count: z.number().int().nonnegative(),
@@ -615,7 +594,6 @@ export const FileBatchCreatedMetadataSchema = z.object({
   dedup_hits: z.number().int().nonnegative(),
   request_source: RequestSourceSchema.optional(),
 });
-export type FileBatchCreatedMetadata = z.infer<typeof FileBatchCreatedMetadataSchema>;
 
 export const FileUploadReceivedMetadataSchema = z.object({
   file_id: z.string().uuid(),
@@ -623,16 +601,6 @@ export const FileUploadReceivedMetadataSchema = z.object({
   source: z.enum(["authenticated_engine_upload"]),
   request_source: RequestSourceSchema.optional(),
 });
-export type FileUploadReceivedMetadata = z.infer<typeof FileUploadReceivedMetadataSchema>;
-
-export const ContentPartSentMetadataSchema = z.object({
-  provider: z.enum(["anthropic", "openai", "gemini"]),
-  file_id: z.string().uuid(),
-  content_type: z.string(),
-  size_bytes_bucket: SizeBucketSchema,
-  request_source: RequestSourceSchema.optional(),
-});
-export type ContentPartSentMetadata = z.infer<typeof ContentPartSentMetadataSchema>;
 
 export const EngineUpdateMetadataSchema = z.object({
   from_version: z.string(),
@@ -642,7 +610,6 @@ export const EngineUpdateMetadataSchema = z.object({
   request_source: z.enum(["self-update", "rollback"]),
   reason: z.string().optional(),
 });
-export type EngineUpdateMetadata = z.infer<typeof EngineUpdateMetadataSchema>;
 
 export const RiskSignalRaisedMetadataSchema = z.object({
   kind: z.string(),
@@ -654,51 +621,12 @@ export const RiskSignalRaisedMetadataSchema = z.object({
   request_source: RequestSourceSchema.optional(),
   instance: z.string().optional(),
 });
-export type RiskSignalRaisedMetadata = z.infer<typeof RiskSignalRaisedMetadataSchema>;
 
 export const RiskSignalClearedMetadataSchema = z.object({
   kind: z.string(),
   request_source: RequestSourceSchema.optional(),
   instance: z.string().optional(),
 });
-export type RiskSignalClearedMetadata = z.infer<typeof RiskSignalClearedMetadataSchema>;
-
-export const UserInvitedMetadataSchema = z.object({
-  invite_id: z.string().uuid(),
-  user_id: z.string().uuid(),
-  prefix: z.string(),
-  scopes: z.array(z.string()),
-  allowed_workflows: z.array(z.string()).nullable().optional(),
-  allowed_connectors: z.array(z.string()).nullable().optional(),
-  expires_at: z.string(),
-  request_source: RequestSourceSchema.optional(),
-});
-export type UserInvitedMetadata = z.infer<typeof UserInvitedMetadataSchema>;
-
-export const InviteRedeemedMetadataSchema = z.object({
-  invite_id: z.string().uuid(),
-  user_id: z.string().uuid(),
-  api_key_id: z.string().uuid(),
-  prefix: z.string(),
-  request_source: RequestSourceSchema.optional(),
-});
-export type InviteRedeemedMetadata = z.infer<typeof InviteRedeemedMetadataSchema>;
-
-export const UserInviteRevokedMetadataSchema = z.object({
-  invite_id: z.string().uuid(),
-  user_id: z.string().uuid(),
-  prefix: z.string(),
-  request_source: RequestSourceSchema.optional(),
-});
-export type UserInviteRevokedMetadata = z.infer<typeof UserInviteRevokedMetadataSchema>;
-
-export const UserIdentityLinkedMetadataSchema = z.object({
-  source: z.string(),
-  subject: z.string(),
-  email: z.string().optional(),
-  request_source: RequestSourceSchema.optional(),
-});
-export type UserIdentityLinkedMetadata = z.infer<typeof UserIdentityLinkedMetadataSchema>;
 
 export const ChatMessageDeniedMetadataSchema = z.object({
   platform: z.string(),
@@ -708,7 +636,6 @@ export const ChatMessageDeniedMetadataSchema = z.object({
   sender_platform_user_id: z.string().nullable().optional(),
   space_display_name: z.string().nullable().optional(),
 });
-export type ChatMessageDeniedMetadata = z.infer<typeof ChatMessageDeniedMetadataSchema>;
 
 export type AuditEntry = {
   id: string;

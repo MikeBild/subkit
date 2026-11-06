@@ -27,11 +27,11 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-export function isMcpAvailabilityFailure(failure: McpInvokeResult["failure"]): boolean {
+function isMcpAvailabilityFailure(failure: McpInvokeResult["failure"]): boolean {
   return failure === "transport" || failure === "not_connected";
 }
 
-export interface RunMcpWithRetryParams {
+interface RunMcpWithRetryParams {
   attempt: () => Promise<McpInvokeResult>;
   step: Pick<RequestStep, "max_retries" | "retry_backoff_ms" | "error_policy">;
   signal: AbortSignal;

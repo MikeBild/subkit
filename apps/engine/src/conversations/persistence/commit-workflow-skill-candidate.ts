@@ -37,7 +37,7 @@ function outputFields(output_schema: unknown): string[] | null {
   return props && typeof props === "object" ? Object.keys(props) : [];
 }
 
-export function workflowCapabilityFacts(args: {
+function workflowCapabilityFacts(args: {
   def: WorkflowDefFromDraft;
   scope_index: ScopeIndex;
   draft_version_id?: string;

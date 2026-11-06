@@ -26,7 +26,7 @@ export const JudgeVerdictSchema = z.object({
   verdict: z.enum(["passes", "partial", "failed"]),
 });
 
-export type PreviewJudgeVerdict = z.infer<typeof JudgeVerdictSchema>;
+type PreviewJudgeVerdict = z.infer<typeof JudgeVerdictSchema>;
 
 export type PreviewJudgeOutcome =
   | { verdict: "passes" | "partial" | "failed"; reason: string; missing: string[] }
@@ -40,7 +40,7 @@ export interface JudgeStepArtifact {
   held_request?: unknown;
 }
 
-export interface JudgeAcceptance {
+interface JudgeAcceptance {
   outputs: Array<{ name: string; description?: string | undefined }>;
   delivery: {
     channel: string;
@@ -49,7 +49,7 @@ export interface JudgeAcceptance {
   } | null;
 }
 
-export interface JudgePreviewParams {
+interface JudgePreviewParams {
   goal: string;
   acceptance?: JudgeAcceptance | null;
   definition_summary: string;
@@ -180,7 +180,7 @@ function renderFinalOutputSection(params: JudgePreviewParams): string[] {
   ];
 }
 
-export function renderJudgeAcceptance(acceptance: JudgeAcceptance | null | undefined): string[] {
+function renderJudgeAcceptance(acceptance: JudgeAcceptance | null | undefined): string[] {
   if (!acceptance || (acceptance.outputs.length === 0 && !acceptance.delivery)) return [];
   const delivery = acceptance.delivery;
   return [

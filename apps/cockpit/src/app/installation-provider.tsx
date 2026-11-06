@@ -36,14 +36,14 @@ import {
   validateInstallationIncoming,
 } from "./installation-input";
 
-export interface InstallationIdentity {
+interface InstallationIdentity {
   tenantId: string;
   userId: string;
 }
 
-export interface InstallationIncomingReceipt extends InstallationIncoming, InstallationIdentity {}
+interface InstallationIncomingReceipt extends InstallationIncoming, InstallationIdentity {}
 
-export interface InstallationContextValue {
+interface InstallationContextValue {
   available: boolean;
   capabilities: ReturnType<typeof installationCapabilities>;
   incoming: InstallationIncomingReceipt | null;

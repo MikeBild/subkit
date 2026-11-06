@@ -2,9 +2,9 @@ import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 
-export const PATCHABLE_STEP_ID = "read";
+const PATCHABLE_STEP_ID = "read";
 
-export function patchableDag(dataSelector = "$.data.id") {
+function patchableDag(dataSelector = "$.data.id") {
   return { steps: [{ id: PATCHABLE_STEP_ID, kind: "request", data_selector: dataSelector }] };
 }
 

@@ -7,7 +7,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n-context";
 
-export type QueryView = "loading" | "error" | "empty" | "ready";
+type QueryView = "loading" | "error" | "empty" | "ready";
 
 export function queryView<T>(
   query: { data: T | undefined; error: unknown; failureReason?: unknown; isPending: boolean },

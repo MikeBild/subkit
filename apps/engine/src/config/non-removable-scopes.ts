@@ -1,7 +1,7 @@
 import { withNonRemovableScopes } from "../auth/scopes.ts";
 import { type Config, ConfigSchema } from "./schema.ts";
 
-export function pinNonRemovableMcpScopes(cfg: Config): void {
+function pinNonRemovableMcpScopes(cfg: Config): void {
   cfg.auth.mcp_oauth.scopes_supported = withNonRemovableScopes(cfg.auth.mcp_oauth.scopes_supported);
 }
 

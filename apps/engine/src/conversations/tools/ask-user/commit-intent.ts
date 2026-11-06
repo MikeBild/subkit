@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 
-export const MODEL_COMMIT_INTENT_KINDS = [
+const MODEL_COMMIT_INTENT_KINDS = [
   "save_connector_draft",
   "save_workflow_draft",
   "delete_connector",
@@ -14,7 +14,7 @@ export const MODEL_COMMIT_INTENT_KINDS = [
   "update_workflow_metadata",
 ] as const;
 
-export const ENGINE_COMMIT_INTENT_KINDS = [
+const ENGINE_COMMIT_INTENT_KINDS = [
   "commit_held_workflow_writes",
   "execute_confirmed_tool_call",
   "grant_relayed_tool_call",
@@ -96,7 +96,7 @@ export interface CommitIntent {
   description: string;
 }
 
-export interface PatchOpEntry {
+interface PatchOpEntry {
   label: string;
   preview?: string;
 }

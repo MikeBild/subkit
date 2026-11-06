@@ -22,7 +22,7 @@ export function executionDurationMs(startedAt: unknown, finishedAt: unknown): nu
   return d >= 0 ? d : null;
 }
 
-export interface StepBottleneck {
+interface StepBottleneck {
   step_key: string;
   kind: string | null;
   connector_slug: string | null;

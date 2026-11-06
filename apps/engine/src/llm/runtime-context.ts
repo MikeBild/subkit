@@ -1,6 +1,6 @@
 import { getConfig } from "../config/loader.ts";
 
-export interface RuntimeContext {
+interface RuntimeContext {
   engine_url?: string;
   tenant_slug?: string;
   actor_email?: string;
