@@ -144,6 +144,26 @@ describe("aggregateByPrefix", () => {
     expect(aggregateByPrefix(rows, "apps/engine/src/a/", () => 0)).toBeCloseTo(60, 10);
     expect(aggregateByPrefix(rows, "apps/engine/src/b", () => 10)).toBeNull();
   });
+
+  test("leaves test helpers and fixtures out of the subsystem number", () => {
+    const withHelpers = [
+      ...rows,
+      { file: "apps/engine/src/a/x-fixtures.ts", funcs: 100, lines: 100 },
+      { file: "apps/engine/src/a/tests/fixture.ts", funcs: 100, lines: 100 },
+      { file: "apps/engine/src/a/x.test.ts", funcs: 100, lines: 100 },
+    ];
+    const sizes: Record<string, number> = {
+      "apps/engine/src/a/x.ts": 30,
+      "apps/engine/src/a/y.ts": 10,
+    };
+    expect(aggregateByPrefix(withHelpers, "apps/engine/src/a", (f) => sizes[f] ?? 500)).toBeCloseTo(
+      70,
+      10,
+    );
+    expect(
+      aggregateByPrefix(withHelpers.slice(rows.length), "apps/engine/src/a", () => 10),
+    ).toBeNull();
+  });
 });
 
 describe("judgeFile", () => {

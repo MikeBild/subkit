@@ -1,10 +1,13 @@
-import type { Executor } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
 import { getDriverFetch, withDriverFetch } from "../drivers/fetch-seam.ts";
 import { validateOutboundHeaders } from "../drivers/http.ts";
 import { scrubUrl } from "../egress.ts";
 import { guardedFetch } from "../egress-fetch.ts";
-import { resolveEgressGuardMode, resolveTenantEgressContext } from "../egress-guard.ts";
+import {
+  type EgressTenantScope,
+  resolveEgressGuardMode,
+  resolveTenantEgressContext,
+} from "../egress-guard.ts";
 import { getBuiltinTemplate } from "../templates.ts";
 import { graphqlIntrospectStrategy } from "./graphql-introspect.ts";
 import { htmlScrapeStrategy } from "./html-scrape.ts";
@@ -41,16 +44,14 @@ export {
 export { extractEmbeddedSpecUrl, swaggerUiScrapeStrategy } from "./swagger-ui-scrape.ts";
 export * from "./types.ts";
 
-export interface DiscoverConnectorEndpointsInput {
-  exec?: Executor;
-  tenant_id?: string;
+export type DiscoverConnectorEndpointsInput = EgressTenantScope & {
   template_id?: string;
   base_url?: string;
   ingestion_url?: string;
   signal?: AbortSignal;
   headers?: Record<string, string>;
   strategies?: DiscoveryStrategy[];
-}
+};
 
 const DEFAULT_STRATEGIES: DiscoveryStrategy[] = [
   postgresIntrospectStrategy,
@@ -115,18 +116,17 @@ export async function discoverConnectorEndpoints(
   }
   const strategies =
     input.strategies ?? reorderStrategiesForTemplate(input.template_id, DEFAULT_STRATEGIES);
+  const scope: EgressTenantScope = input.tenant_id
+    ? { tenant_id: input.tenant_id, exec: input.exec }
+    : {};
   const opts: DiscoveryStrategyOptions = {
-    ...(input.exec ? { exec: input.exec } : {}),
-    ...(input.tenant_id ? { tenant_id: input.tenant_id } : {}),
+    ...scope,
     ...(input.signal ? { signal: input.signal } : {}),
     ...(input.headers ? { headers: input.headers } : {}),
   };
 
   const warnings: DiscoveryWarning[] = [];
-  const context = await resolveTenantEgressContext({
-    ...(input.tenant_id ? { tenant_id: input.tenant_id } : {}),
-    ...(input.exec ? { exec: input.exec } : {}),
-  });
+  const context = await resolveTenantEgressContext(scope);
   const transport = guardedFetch(context, getDriverFetch());
   let authRequired: DiscoveryWarning | null = null;
 

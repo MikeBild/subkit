@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "
 
 import * as loader from "../config/loader.ts";
 import { type Config, ConfigSchema } from "../config/schema.ts";
+import type { Executor } from "../db/client.ts";
 import { _withEgressLookupForTests, _withEgressTenantOriginForTests } from "./egress-guard.ts";
 import {
   __getRobotsCacheStatsForTests,
@@ -9,10 +10,12 @@ import {
 } from "./robots-cache.test-helpers.ts";
 import { getRobots as readRobots } from "./robots-cache.ts";
 
-function getRobots(params: Parameters<typeof readRobots>[0]) {
+const originOverrideExec = {} as Executor;
+
+function getRobots(params: Omit<Parameters<typeof readRobots>[0], "exec">) {
   return _withEgressTenantOriginForTests(
     async () => "self_hosted",
-    () => readRobots(params),
+    () => readRobots({ ...params, exec: originOverrideExec }),
   );
 }
 
@@ -191,6 +194,7 @@ describe("hosted robots transport", () => {
             expect(
               await readRobots({
                 tenantId: "hosted-tenant",
+                exec: originOverrideExec,
                 origin: "https://robots.example.test",
                 userAgent: "fixture",
                 fetchImpl,
@@ -223,6 +227,7 @@ describe("hosted robots transport", () => {
             expect(
               await readRobots({
                 tenantId: "hosted-tenant",
+                exec: originOverrideExec,
                 origin: "https://robots.example.test",
                 userAgent: "fixture",
                 fetchImpl,

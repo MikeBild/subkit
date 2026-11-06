@@ -6,6 +6,7 @@ import {
   effectHits,
   getDbFallbackHits,
   isCorePath,
+  isGetDbFallbackScope,
   isTestPath,
   lineCount,
   pureCoreImportHits,
@@ -166,6 +167,27 @@ describe("getDbFallbackHits", () => {
         "const a = getDb();\nconst b = x ?? y;\nconst c = x || getDb();\nconst d = x ?? getDb(tx);",
       ),
     ).toEqual([]);
+  });
+});
+
+describe("isGetDbFallbackScope", () => {
+  test("covers services, the egress guard and the engine client", () => {
+    for (const path of [
+      "apps/engine/src/identity/service.ts",
+      "apps/engine/src/connectors/egress-guard.ts",
+      "apps/engine/src/engine-client/index.ts",
+    ])
+      expect(isGetDbFallbackScope(path)).toBe(true);
+  });
+
+  test("leaves other engine files, tests and other apps out", () => {
+    for (const path of [
+      "apps/engine/src/connectors/robots-cache.ts",
+      "apps/engine/src/connectors/egress-guard.test.ts",
+      "apps/engine/src/identity/tests/service.ts",
+      "apps/sk/src/engine-client/index.ts",
+    ])
+      expect(isGetDbFallbackScope(path)).toBe(false);
   });
 });
 

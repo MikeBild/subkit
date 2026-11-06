@@ -1,4 +1,4 @@
-import type { Executor } from "../../db/client.ts";
+import type { EgressTenantScope } from "../egress-guard.ts";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 
@@ -72,12 +72,10 @@ export interface DiscoveryResult {
   text_corpus?: string | null;
 }
 
-export interface DiscoveryStrategyOptions {
-  exec?: Executor;
-  tenant_id?: string;
+export type DiscoveryStrategyOptions = EgressTenantScope & {
   signal?: AbortSignal;
   headers?: Record<string, string>;
-}
+};
 
 export interface DiscoveryStrategy {
   name: DiscoveryStrategyName;

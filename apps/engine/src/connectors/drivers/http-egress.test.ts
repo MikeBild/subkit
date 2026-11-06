@@ -1,7 +1,10 @@
 import { expect, mock, test } from "bun:test";
+import type { Executor } from "../../db/client.ts";
 import { runWithTestEnv } from "../../test-helpers/determinism/env.ts";
 import { _withDriverFetchForTests } from "./fetch-seam.ts";
 import { executePlannedHttpRequest } from "./http.ts";
+
+const strictModeExec = {} as Executor;
 
 test("strict HTTP execution refuses a public-to-private redirect before dispatch", async () => {
   const fetchImpl = mock(
@@ -15,6 +18,7 @@ test("strict HTTP execution refuses a public-to-private redirect before dispatch
     _withDriverFetchForTests(fetchImpl as unknown as typeof fetch, async () => {
       await expect(
         executePlannedHttpRequest({
+          exec: strictModeExec,
           tenant_id: "fixture",
           method: "GET",
           url: new URL("https://93.184.216.34/fixture"),

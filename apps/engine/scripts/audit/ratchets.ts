@@ -16,6 +16,7 @@ import {
   effectHits,
   getDbFallbackHits,
   isCorePath,
+  isGetDbFallbackScope,
   isTestPath,
   lineCount,
   pureCoreImportHits,
@@ -143,11 +144,11 @@ export const RATCHETS: readonly Ratchet[] = [
   {
     id: "no_getdb_fallback",
     allowlist: "getdb-fallback.txt",
-    rule: "`?? getDb()` in a service.ts; pass the executor explicitly",
+    rule: "`?? getDb()` in a service.ts, connectors/egress-guard.ts or engine-client/index.ts; pass the executor explicitly",
     unit: "fallbacks",
     measure: (cache) =>
       countBy(
-        cache.list([ENGINE], (rel) => rel.endsWith("/service.ts") && !isTestPath(rel)),
+        cache.list([ENGINE], isGetDbFallbackScope),
         (rel) => getDbFallbackHits(cache.tree(rel)).length,
       ),
   },

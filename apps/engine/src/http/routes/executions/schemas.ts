@@ -72,18 +72,35 @@ const RuntimeRunBodyVariants = z.discriminatedUnion("source", [
 
 export const RuntimeRunBodySchema = z.preprocess(savedWhenUnnamed, RuntimeRunBodyVariants);
 
+const workflowField = WorkflowDefSchema.shape;
+
 const OpenApiDraftDefinitionSchema = z
   .object({
-    name: z.string().min(1),
-    slug: z.string().min(1).optional(),
-    description: z.string().optional(),
-    execution_privacy: WorkflowDefSchema.shape.execution_privacy,
-    input_schema: z.record(z.string(), z.unknown()).optional(),
-    output_schema: z.record(z.string(), z.unknown()).optional(),
+    name: workflowField.name,
+    slug: workflowField.slug,
+    description: workflowField.description,
+    product_id: workflowField.product_id,
+    required_caller_kind: workflowField.required_caller_kind,
+    execution_privacy: workflowField.execution_privacy,
+    tool_effect: workflowField.tool_effect,
+    input_schema: workflowField.input_schema,
+    output_schema: workflowField.output_schema,
+    validation_expression: workflowField.validation_expression,
+    validation_function: workflowField.validation_function,
+    output_transform: workflowField.output_transform,
+    output_transform_function: workflowField.output_transform_function,
+    response_filters: workflowField.response_filters,
     steps: z.array(z.record(z.string(), z.unknown())).min(1).max(200),
-    timeout_ms: z.number().int().positive().optional(),
+    timeout_ms: workflowField.timeout_ms,
+    max_llm_tokens_per_run: workflowField.max_llm_tokens_per_run,
+    runtime: workflowField.runtime,
+    execution_guards: workflowField.execution_guards,
+    caller_erasure: workflowField.caller_erasure,
   })
-  .openapi("ExecutionRunDraftDefinition");
+  .openapi("ExecutionRunDraftDefinition", {
+    description:
+      "An unsaved workflow definition, run and validated like a saved one. A draft run is always started by hand, so trigger is ignored; derived_from_skill_id and input_schema_sample only matter when saving and are ignored too.",
+  });
 
 const OpenApiStepSchema = z
   .object({ kind: z.string().min(1) })

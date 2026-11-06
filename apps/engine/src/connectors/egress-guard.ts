@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { getConfig } from "../config/loader.ts";
-import { type Executor, getDb } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
 import { getRobotsVerification } from "./robots-cache.ts";
 
@@ -32,11 +32,8 @@ export async function resolveTenantEgressContext(
     const readOrigin = tenantOriginOverrides.getStore();
     const origin = readOrigin
       ? await readOrigin(context.tenant_id)
-      : (
-          await (
-            await import("../identity/service.ts")
-          ).getTenant(context.tenant_id, context.exec ?? getDb())
-        )?.origin;
+      : (await (await import("../identity/service.ts")).getTenant(context.tenant_id, context.exec))
+          ?.origin;
     if (!origin) throw new EgressBlockedError("tenant_context_unavailable", "");
     return origin === "self_service" ? { ...context, mode: "strict" } : context;
   } catch (error) {
@@ -52,11 +49,11 @@ export function _withEgressLookupForTests<T>(
   return lookupOverrides.run(lookupImpl, run);
 }
 
-export interface EgressGuardContext {
-  exec?: Executor;
-  tenant_id?: string;
-  mode?: EgressGuardMode;
-}
+export type EgressTenantScope =
+  | { tenant_id: string; exec: Executor }
+  | { tenant_id?: undefined; exec?: undefined };
+
+export type EgressGuardContext = EgressTenantScope & { mode?: EgressGuardMode };
 
 export class EgressBlockedError extends Error {
   readonly code = "egress_blocked";
@@ -262,7 +259,7 @@ export async function assertRobotsAllowed(
   url: URL | string,
   ctx: {
     tenant_id: string;
-    exec?: Executor;
+    exec: Executor;
     userAgent: string;
     fetchImpl?: typeof fetch;
   },
@@ -271,7 +268,7 @@ export async function assertRobotsAllowed(
   const origin = parsed.origin;
   const verification = await getRobotsVerification({
     tenantId: ctx.tenant_id,
-    ...(ctx.exec ? { exec: ctx.exec } : {}),
+    exec: ctx.exec,
     origin,
     userAgent: ctx.userAgent,
     ...(ctx.fetchImpl ? { fetchImpl: ctx.fetchImpl } : {}),

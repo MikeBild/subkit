@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { Executor } from "../db/client.ts";
 import {
   _withEgressTenantOriginForTests,
   assertEgressAllowed,
@@ -7,6 +8,8 @@ import {
   isPrivateOrLoopback,
 } from "./egress-guard.ts";
 
+const originOverrideExec = {} as Executor;
+
 test("persisted self-service origin overrides permissive mode without hosted feature flags", async () => {
   await _withEgressTenantOriginForTests(
     async () => "self_service",
@@ -14,6 +17,7 @@ test("persisted self-service origin overrides permissive mode without hosted fea
       await expect(
         assertEgressAllowedResolved("https://10.0.0.1/", {
           tenant_id: "self-service-fixture",
+          exec: originOverrideExec,
           mode: "permissive",
         }),
       ).rejects.toThrow("private_ip_blocked");
@@ -28,6 +32,7 @@ test("persisted self-hosted origin retains explicit private connection policy", 
       await expect(
         assertEgressAllowedResolved("https://10.0.0.1/", {
           tenant_id: "self-hosted-fixture",
+          exec: originOverrideExec,
           mode: "permissive",
         }),
       ).resolves.toBeUndefined();
@@ -46,6 +51,7 @@ test("tenant origin lookup failures and missing tenants fail closed", async () =
       await expect(
         assertEgressAllowedResolved("https://93.184.216.34/", {
           tenant_id: "missing-fixture",
+          exec: originOverrideExec,
           mode: "permissive",
         }),
       ).rejects.toThrow("tenant_context_unavailable");

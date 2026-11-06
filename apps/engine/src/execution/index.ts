@@ -8,7 +8,11 @@ export {
 } from "./authority-admission.ts";
 export { authorizationContextFromPrincipal } from "./authorization-context.ts";
 export { settleExecutionGuards } from "./caller-budget.ts";
-export { assertCallerExecutionSource, CallerContextSchema } from "./caller-context.ts";
+export {
+  assertCallerExecutionSource,
+  CallerContextSchema,
+  callerFromPrincipal,
+} from "./caller-context.ts";
 export * from "./caller-summary.ts";
 export { PREVIEW_CLASSIFICATIONS, type PreviewClassification } from "./classify.ts";
 export * from "./control-service.ts";

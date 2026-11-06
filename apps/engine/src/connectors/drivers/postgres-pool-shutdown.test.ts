@@ -26,7 +26,10 @@ const { mkdtempSync, rmSync } = await import("node:fs");
 const { tmpdir } = await import("node:os");
 const { join } = await import("node:path");
 
+import type { Executor } from "../../db/client.ts";
 import type { ConnectorView } from "../types.ts";
+
+const originOverrideExec = {} as Executor;
 
 test("active and retired pools retain real close promises and failed closes block global drain", async () => {
   const dir = mkdtempSync(join(tmpdir(), "subkit-pool-shutdown-"));
@@ -45,10 +48,13 @@ test("active and retired pools retain real close promises and failed closes bloc
           environment: "dev",
           dsn: "postgres://fixture@127.0.0.1/test",
         } as ConnectorView;
-        await getPoolForConnector(connector);
+        await getPoolForConnector(connector, originOverrideExec);
         const first = pools[0];
         if (!first) throw new Error("pool_fixture_missing");
-        await getPoolForConnector({ ...connector, dsn: "postgres://fixture@127.0.0.1/other" });
+        await getPoolForConnector(
+          { ...connector, dsn: "postgres://fixture@127.0.0.1/other" },
+          originOverrideExec,
+        );
         const second = pools[1];
         if (!second) throw new Error("pool_fixture_missing");
         let drained = false;
@@ -66,7 +72,7 @@ test("active and retired pools retain real close promises and failed closes bloc
         await closing;
         expect(drained).toBe(true);
         await closeAllPools();
-        await getPoolForConnector({ ...connector, id: "failed-pool" });
+        await getPoolForConnector({ ...connector, id: "failed-pool" }, originOverrideExec);
         const failed = pools[2];
         if (!failed) throw new Error("pool_fixture_missing");
         failed.failure = true;

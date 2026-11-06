@@ -114,6 +114,16 @@ export function effectHits(sf: ts.SourceFile): RuleHit[] {
   return hits;
 }
 
+const GETDB_FALLBACK_FILES: ReadonlySet<string> = new Set([
+  `${ENGINE_SRC_PREFIX}connectors/egress-guard.ts`,
+  `${ENGINE_SRC_PREFIX}engine-client/index.ts`,
+]);
+
+export function isGetDbFallbackScope(path: string): boolean {
+  if (!path.startsWith(ENGINE_SRC_PREFIX) || isTestPath(path)) return false;
+  return path.endsWith("/service.ts") || GETDB_FALLBACK_FILES.has(path);
+}
+
 export function getDbFallbackHits(sf: ts.SourceFile): RuleHit[] {
   const hits: RuleHit[] = [];
   const visit = (node: ts.Node) => {

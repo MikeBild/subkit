@@ -12,7 +12,6 @@ import {
 } from "../connectors/service.ts";
 import type { UpdateConnectorInput } from "../connectors/types.ts";
 import type { Db } from "../db/client.ts";
-import { getDb } from "../db/client.ts";
 import {
   auditLog,
   connectorDocuments,
@@ -66,7 +65,7 @@ interface EngineClientCtx {
   tenant_id: string;
   actor_id: string | null;
   actor_type?: EngineClientActorType;
-  db?: Db;
+  db: Db;
 }
 
 export class EngineClient {
@@ -97,7 +96,7 @@ export class EngineClient {
         : (this.actor_type === "user" || this.actor_type === "system_account") && this.actor_id
           ? { kind: this.actor_type, id: this.actor_id }
           : null;
-    this.db = ctx.db ?? getDb();
+    this.db = ctx.db;
   }
 
   private get actor(): Actor | null {

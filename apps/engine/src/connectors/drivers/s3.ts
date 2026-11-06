@@ -167,10 +167,10 @@ class ObservedS3Client extends S3Client {
   #credentials: S3Credentials | null;
   constructor(
     options: ConstructorParameters<typeof S3Client>[0],
+    private readonly tenantId: string,
+    private readonly exec: Executor,
     private readonly onCredentialUse?: () => Promise<void>,
-    private readonly tenantId?: string,
     credentials: S3Credentials | null = null,
-    private readonly exec?: Executor,
   ) {
     super(options);
     this.#credentials = credentials;
@@ -178,10 +178,7 @@ class ObservedS3Client extends S3Client {
   override async makeRequest(options: Parameters<S3Client["makeRequest"]>[0]): Promise<Response> {
     const bucket = options.bucketName ?? this.defaultBucket;
     const host = this.pathStyle ? this.host : `${bucket}.${this.host}`;
-    const context = await resolveTenantEgressContext({
-      ...(this.tenantId === undefined ? {} : { tenant_id: this.tenantId }),
-      ...(this.exec ? { exec: this.exec } : {}),
-    });
+    const context = await resolveTenantEgressContext({ tenant_id: this.tenantId, exec: this.exec });
     if (resolveEgressGuardMode(context) === "strict") {
       await assertEgressAllowedResolved(`${this.protocol}//${host}/`, context);
       return makeGuardedS3Request({
@@ -199,7 +196,7 @@ class ObservedS3Client extends S3Client {
 }
 
 export function buildS3Client(p: {
-  exec?: Executor;
+  exec: Executor;
   on_credential_use?: () => Promise<void>;
   connector: ConnectorView;
   credentials?: S3Credentials | null;
@@ -218,10 +215,10 @@ export function buildS3Client(p: {
   }
   return new ObservedS3Client(
     opts as ConstructorParameters<typeof S3Client>[0],
-    p.on_credential_use,
     p.connector.tenant_id,
-    p.credentials ?? null,
     p.exec,
+    p.on_credential_use,
+    p.credentials ?? null,
   );
 }
 

@@ -100,11 +100,13 @@ function intentFromBody(body: Record<string, unknown>): WorkflowIntent {
   };
 }
 
-function isWorkflowDefinition(body: Record<string, unknown>): body is CreateWorkflowRequest {
+type WorkflowFileDefinition = CreateWorkflowRequest & ExecutionRunDraftDefinition;
+
+function isWorkflowDefinition(body: Record<string, unknown>): body is WorkflowFileDefinition {
   return typeof body.name === "string" && Array.isArray(body.steps);
 }
 
-export function workflowDefinition(body: Record<string, unknown>): CreateWorkflowRequest {
+export function workflowDefinition(body: Record<string, unknown>): WorkflowFileDefinition {
   if (isWorkflowDefinition(body)) return body;
   throw new Error("the workflow definition needs a name and a steps array");
 }

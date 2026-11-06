@@ -467,6 +467,7 @@ describe("executePlannedHttpRequest header contract", () => {
   test("rejects a non-object headers value before fetch", async () => {
     await expect(
       executePlannedHttpRequest({
+        exec: ctx.testDb.db,
         tenant_id: ctx.tenantId,
         method: "GET",
         url: new URL(`${mock.baseUrl}/ping`),
@@ -479,6 +480,7 @@ describe("executePlannedHttpRequest header contract", () => {
   test("rejects header names that aren't RFC 7230 tokens", async () => {
     await expect(
       executePlannedHttpRequest({
+        exec: ctx.testDb.db,
         tenant_id: ctx.tenantId,
         method: "GET",
         url: new URL(`${mock.baseUrl}/ping`),
@@ -491,6 +493,7 @@ describe("executePlannedHttpRequest header contract", () => {
   test("rejects non-string header values", async () => {
     await expect(
       executePlannedHttpRequest({
+        exec: ctx.testDb.db,
         tenant_id: ctx.tenantId,
         method: "GET",
         url: new URL(`${mock.baseUrl}/ping`),

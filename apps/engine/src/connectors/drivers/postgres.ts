@@ -51,7 +51,7 @@ export function postgresConnectorTarget(connector: Pick<ConnectorView, "id" | "d
 
 export async function assertPostgresConnectorEgress(
   connector: ConnectorView,
-  context: EgressGuardContext = { tenant_id: connector.tenant_id },
+  context: EgressGuardContext,
 ): Promise<void> {
   if (!connector.dsn) throw new Error("Postgres connector has no dsn");
   await assertPostgresDsnEgress(connector.dsn, context);
@@ -59,14 +59,14 @@ export async function assertPostgresConnectorEgress(
 
 export async function getPoolForConnector(
   connector: ConnectorView,
-  exec?: Executor,
+  exec: Executor,
 ): Promise<pg.Pool> {
   if (!connector.dsn) {
     throw new Error(`Postgres connector ${connector.id} has no dsn; cannot open pool`);
   }
   const prepared = await postgresPoolConfiguration(
     connector.dsn,
-    { tenant_id: connector.tenant_id, ...(exec ? { exec } : {}) },
+    { tenant_id: connector.tenant_id, exec },
     { max: 5 },
   );
   const key = `${poolKey(connector)}:${connector.tenant_id}:${prepared.key}`;
@@ -94,7 +94,7 @@ export async function getPoolForConnector(
 
 export async function probePgConnector(
   connector: ConnectorView,
-  exec?: Executor,
+  exec: Executor,
 ): Promise<DriverProbeResult> {
   const start = Date.now();
   if (!connector.dsn) {
@@ -106,10 +106,7 @@ export async function probePgConnector(
     };
   }
   try {
-    await assertPostgresConnectorEgress(connector, {
-      tenant_id: connector.tenant_id,
-      ...(exec ? { exec } : {}),
-    });
+    await assertPostgresConnectorEgress(connector, { tenant_id: connector.tenant_id, exec });
     const pool = await getPoolForConnector(connector, exec);
     const res = await pool.query("SELECT 1 as ok");
     return {
@@ -127,7 +124,7 @@ export async function probePgConnector(
 }
 
 export interface PgQueryParams {
-  exec?: Executor;
+  exec: Executor;
   on_credential_use?: () => Promise<void>;
   connector: ConnectorView;
   sql: string;
@@ -142,7 +139,7 @@ export interface PgQueryResult<T = unknown> {
 export async function pgQueryWithCount<T = unknown>(p: PgQueryParams): Promise<PgQueryResult<T>> {
   await assertPostgresConnectorEgress(p.connector, {
     tenant_id: p.connector.tenant_id,
-    ...(p.exec ? { exec: p.exec } : {}),
+    exec: p.exec,
   });
   const pool = await getPoolForConnector(p.connector, p.exec);
   const res = await instrument({
@@ -173,7 +170,7 @@ export interface PgTransactionStatement {
 }
 
 export async function pgTransaction<T = unknown>(p: {
-  exec?: Executor;
+  exec: Executor;
   on_credential_use?: () => Promise<void>;
   connector: ConnectorView;
   statements: PgTransactionStatement[];
@@ -185,7 +182,7 @@ export async function pgTransaction<T = unknown>(p: {
 }> {
   await assertPostgresConnectorEgress(p.connector, {
     tenant_id: p.connector.tenant_id,
-    ...(p.exec ? { exec: p.exec } : {}),
+    exec: p.exec,
   });
   const pool = await getPoolForConnector(p.connector, p.exec);
   const client = await pool.connect();
@@ -234,7 +231,7 @@ export async function pgTransaction<T = unknown>(p: {
 }
 
 export async function pgQueryCursor<T = unknown>(p: {
-  exec?: Executor;
+  exec: Executor;
   on_credential_use?: () => Promise<void>;
   connector: ConnectorView;
   sql: string;
@@ -243,7 +240,7 @@ export async function pgQueryCursor<T = unknown>(p: {
 }): Promise<T[]> {
   await assertPostgresConnectorEgress(p.connector, {
     tenant_id: p.connector.tenant_id,
-    ...(p.exec ? { exec: p.exec } : {}),
+    exec: p.exec,
   });
   const pool = await getPoolForConnector(p.connector, p.exec);
   const client = await pool.connect();

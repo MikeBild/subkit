@@ -1,8 +1,11 @@
 import { expect, mock, test } from "bun:test";
+import type { Executor } from "../../db/client.ts";
 import { _withDriverFetchForTests, getDriverFetch } from "../drivers/fetch-seam.ts";
 import { _withEgressTenantOriginForTests } from "../egress-guard.ts";
 import { discoverConnectorEndpoints } from "./index.ts";
 import type { DiscoveryStrategy } from "./types.ts";
+
+const originOverrideExec = {} as Executor;
 
 test("hosted discovery cannot follow a raw strategy HTTP redirect to a private address", async () => {
   const fetchImpl = mock(
@@ -27,6 +30,7 @@ test("hosted discovery cannot follow a raw strategy HTTP redirect to a private a
         await expect(
           discoverConnectorEndpoints({
             tenant_id: "hosted-fixture",
+            exec: originOverrideExec,
             base_url: "https://93.184.216.34/",
             strategies: [strategy],
           }),
@@ -46,6 +50,7 @@ test("hosted browser discovery provides an unsupported-action continuation witho
       await expect(
         discoverConnectorEndpoints({
           tenant_id: "hosted-fixture",
+          exec: originOverrideExec,
           base_url: "https://93.184.216.34/",
           strategies: [{ name: "playwright-crawl", canHandle: () => true, fetch: fetchBrowser }],
         }),

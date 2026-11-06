@@ -1,41 +1,17 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { AuditAction, auditAwait } from "../../audit/index.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import {
-  getConfig,
-  getDiagnostics,
-  RestartRequiredError,
-  ScopeViolationError,
-  setConfigKey,
-  ValidationError,
-} from "../../config/loader.ts";
-import { findLeafByPath } from "../../config/walk.ts";
 import type { Db } from "../../db/client.ts";
-import {
-  activateRuntimeRevision,
-  assertNoPendingEngineChange,
-  createSecretVersion,
-  getRuntimeConfigState,
-  parseSecretReference,
-  RuntimeConfigConflictError,
-  RuntimeConfigNotFoundError,
-  RuntimeConfigPendingError,
-  RuntimeConfigValidationError,
-  saveRuntimeConfigPatch,
-  settingSecretName,
-} from "../../runtime-config/service.ts";
 import {
   engineOnlyReadDenial,
   resolveSettingsReadView,
-  resolveSettingWriteTarget,
 } from "../../runtime-config/settings-access.ts";
 import {
-  maskedSettingValue,
   readSettingEntry,
   readSettingsList,
   type SettingsList,
 } from "../../runtime-config/settings-read.ts";
+import { writeSetting } from "../../runtime-config/settings-write.ts";
 
 export const SUBKIT_SETTINGS_TOOL_NAME = "subkit_settings";
 export const SUBKIT_UPDATE_SETTING_TOOL_NAME = "subkit_update_setting";
@@ -102,22 +78,13 @@ export const subkitUpdateSettingMcpTool: Tool = {
         type: "boolean",
         default: false,
         description:
-          "Legacy compatibility flag. Restart-sensitive revisions are saved but never activated in-process.",
+          "Confirm a write while the saved revision has fields that need a restart. Without it such a write is refused with restart_required; with it the revision is saved and takes effect after the restart.",
       },
     },
     required: ["path", "value"],
     additionalProperties: false,
   },
 };
-
-function readDeep(source: unknown, path: readonly string[]): unknown {
-  let cursor = source;
-  for (const segment of path) {
-    if (typeof cursor !== "object" || cursor === null) return undefined;
-    cursor = (cursor as Record<string, unknown>)[segment];
-  }
-  return cursor;
-}
 
 function invalidArguments(error: z.ZodError): {
   ok: false;
@@ -191,235 +158,49 @@ export async function handleSubkitUpdateSetting(
         message: string;
         requires_restart?: boolean;
         write_applied?: boolean;
+        hint?: string;
       };
     }
 > {
   const parsed = UpdateSettingArgsSchema.safeParse(rawArgs);
   if (!parsed.success) return invalidArguments(parsed.error);
-  const { path, value, tenant_id: requestedTenant, force } = parsed.data;
-  const leaf = findLeafByPath(path);
-  if (!leaf) {
-    return {
-      ok: false,
-      data: {
-        error_code: "not_found",
-        message: `unknown setting path: ${path}`,
-      },
-    };
-  }
-  if (path === "database.url") {
-    return {
-      ok: false,
-      data: {
-        error_code: "validation_failed",
-        message: "database.url is bootstrap-only; rotate DATABASE_URL and restart replicas instead",
-      },
-    };
-  }
-  const access = await resolveSettingWriteTarget(
-    ctx.db,
-    ctx.principal,
-    leaf,
+  const { path, value, tenant_id, force } = parsed.data;
+  const outcome = await writeSetting({
+    db: ctx.db,
+    principal: ctx.principal,
     path,
-    requestedTenant,
-  );
-  if (!access.ok) {
-    return { ok: false, data: { error_code: access.code, message: access.message } };
-  }
-  const tenant_id = access.target.kind === "tenant" ? access.target.tenantId : undefined;
-  const restricted = access.target.kind === "tenant" && access.target.restricted;
-
-  try {
-    let result: Awaited<ReturnType<typeof setConfigKey>>;
-    let pendingRestartKeys: string[];
-    if (process.env.NODE_ENV === "production") {
-      try {
-        const state = await getRuntimeConfigState(ctx.db);
-        if (restricted) await assertNoPendingEngineChange(ctx.db);
-        const before = readDeep(getConfig(tenant_id), leaf.path);
-        let storedValue = value;
-        if (
-          leaf.meta.secret &&
-          typeof value === "string" &&
-          value.length > 0 &&
-          !parseSecretReference(value)
-        ) {
-          const secretName = settingSecretName(tenant_id, leaf.path);
-          const secret = await createSecretVersion(ctx.db, {
-            name: secretName,
-            value,
-            created_by: ctx.principal.id,
-          });
-          storedValue = secret.reference;
-          await auditAwait(
-            {
-              tenant_id: tenant_id ?? ctx.principal.tenant_id,
-              actor_type: ctx.principal.kind === "user" ? "user" : "system_account",
-              actor_id: ctx.principal.id,
-              action: AuditAction.SECRET_VERSION_CREATED,
-              resource_type: "runtime_secret",
-              resource_id: secret.reference,
-              metadata: {
-                name: secret.name,
-                version: secret.version,
-                request_source: "mcp",
-              },
-            },
-            ctx.db,
-          );
-        }
-        const saved = await saveRuntimeConfigPatch(ctx.db, {
-          expected_revision: state.saved_revision,
-          changes: { [leaf.path.join(".")]: storedValue },
-          scope: tenant_id ? "tenant" : "global",
-          ...(tenant_id ? { tenant_id } : {}),
-          created_by: ctx.principal.id,
-          ...(restricted && tenant_id ? { restrict_to_tenant: tenant_id } : {}),
-        });
-        await auditAwait(
-          {
-            tenant_id: tenant_id ?? ctx.principal.tenant_id,
-            actor_type: ctx.principal.kind === "user" ? "user" : "system_account",
-            actor_id: ctx.principal.id,
-            action: AuditAction.SETTINGS_REVISION_SAVED,
-            resource_type: "runtime_config_revision",
-            resource_id: String(saved.saved_revision),
-            metadata: {
-              scope: tenant_id ? "tenant" : "global",
-              changed_paths: [leaf.path.join(".")],
-              pending_restart_fields: saved.pending_restart_fields,
-              request_source: "mcp",
-            },
-          },
-          ctx.db,
-        );
-        const activation = await activateRuntimeRevision(
-          ctx.db,
-          saved.saved_revision,
-          {
-            tenant_id: tenant_id ?? ctx.principal.tenant_id,
-            actor_type: ctx.principal.kind === "user" ? "user" : "system_account",
-            actor_id: ctx.principal.id,
-            source: "mcp",
-          },
-          restricted && tenant_id ? { restrict_to_tenant: tenant_id } : {},
-        );
-        if (saved.pending_restart_fields.length === 0) {
-          if (activation.activation_status !== "active") {
-            throw new Error(
-              `runtime config revision ${saved.saved_revision} activation failed: ${activation.activation_status}`,
-            );
-          }
-        }
-        await auditAwait(
-          {
-            tenant_id: tenant_id ?? ctx.principal.tenant_id,
-            actor_type: ctx.principal.kind === "user" ? "user" : "system_account",
-            actor_id: ctx.principal.id,
-            action:
-              activation.activation_status === "restart_required"
-                ? AuditAction.SETTINGS_REVISION_RESTART_REQUIRED
-                : activation.activation_status === "active"
-                  ? AuditAction.SETTINGS_REVISION_ACTIVATED
-                  : AuditAction.SETTINGS_REVISION_ACTIVATION_FAILED,
-            resource_type: "runtime_config_revision",
-            resource_id: String(saved.saved_revision),
-            metadata: {
-              activation_status: activation.activation_status,
-              request_source: "mcp",
-            },
-          },
-          ctx.db,
-        );
-        pendingRestartKeys = saved.pending_restart_fields;
-        result = {
-          before,
-          after: value,
-          requiresRestart: pendingRestartKeys.length > 0,
-          scope: tenant_id ? `tenant:${tenant_id}` : "global",
-          leafPath: leaf.path.join("."),
-        };
-      } catch (error) {
-        if (!(error instanceof RuntimeConfigNotFoundError)) throw error;
-        result = await setConfigKey(leaf.path, value, {
-          ...(tenant_id ? { tenantId: tenant_id } : {}),
-          force,
-        });
-        pendingRestartKeys = getDiagnostics().pending_restart_keys;
-      }
-    } else {
-      result = await setConfigKey(leaf.path, value, {
-        ...(tenant_id ? { tenantId: tenant_id } : {}),
-        force,
-      });
-      pendingRestartKeys = getDiagnostics().pending_restart_keys;
-    }
-    await auditAwait(
-      {
-        tenant_id: tenant_id ?? ctx.principal.tenant_id,
-        actor_type: ctx.principal.kind === "user" ? "user" : "system_account",
-        actor_id: ctx.principal.id,
-        action: AuditAction.SETTINGS_CHANGED,
-        resource_type: "setting",
-        resource_id: result.leafPath,
-        before: maskedSettingValue(!!leaf.meta.secret, result.before),
-        after: maskedSettingValue(!!leaf.meta.secret, result.after),
-        metadata: {
-          scope: result.scope,
-          requires_restart: result.requiresRestart,
-          force_applied: force,
-          request_source: "mcp",
-          ...(result.reconfigureFailed ? { reconfigure_failed: true } : {}),
-        },
-      },
-      ctx.db,
-    );
-    const requiresRestart = result.requiresRestart;
-    return {
-      ok: true,
-      data: {
-        path: result.leafPath,
-        value: maskedSettingValue(!!leaf.meta.secret, result.after),
-        activation: requiresRestart ? "restart_required" : "active",
-        applied_immediately: !requiresRestart,
-        requires_restart: requiresRestart,
-        pending_restart_keys: pendingRestartKeys,
-      },
-    };
-  } catch (error) {
-    if (error instanceof RestartRequiredError) {
+    tenant: tenant_id,
+    value,
+    force,
+    surface: "mcp",
+    requestSource: "mcp",
+    auditSource: null,
+    deployVersion: null,
+  });
+  if (!outcome.ok) {
+    if (outcome.code === "restart_required") {
       return {
         ok: false,
         data: {
-          error_code: "restart_required",
-          message: error.message,
+          error_code: outcome.code,
+          message: outcome.message,
           requires_restart: true,
           write_applied: false,
+          hint: "Call subkit_update_setting again with force: true to accept that this revision becomes active only with the next engine restart.",
         },
       };
     }
-    if (error instanceof ValidationError) {
-      return {
-        ok: false,
-        data: { error_code: "validation_failed", message: error.message },
-      };
-    }
-    if (
-      error instanceof RuntimeConfigValidationError ||
-      error instanceof RuntimeConfigConflictError ||
-      error instanceof RuntimeConfigPendingError
-    ) {
-      return {
-        ok: false,
-        data: { error_code: error.code, message: error.message },
-      };
-    }
-    if (error instanceof ScopeViolationError) {
-      return {
-        ok: false,
-        data: { error_code: "scope_violation", message: error.message },
-      };
-    }
-    throw error;
+    return { ok: false, data: { error_code: outcome.code, message: outcome.message } };
   }
+  return {
+    ok: true,
+    data: {
+      path: outcome.path,
+      value: outcome.value,
+      activation: outcome.requiresRestart ? "restart_required" : "active",
+      applied_immediately: !outcome.requiresRestart,
+      requires_restart: outcome.requiresRestart,
+      pending_restart_keys: outcome.pendingRestartKeys,
+    },
+  };
 }

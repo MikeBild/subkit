@@ -164,11 +164,11 @@ async function probeGraphQL(
   return null;
 }
 
-interface SelfDescriptionProbeOptions extends EgressGuardContext {
+type SelfDescriptionProbeOptions = EgressGuardContext & {
   fetchImpl?: typeof fetch;
   signal?: AbortSignal;
   headers?: Record<string, string>;
-}
+};
 
 export async function probeAllSelfDescriptionLinks(
   baseUrl: string,

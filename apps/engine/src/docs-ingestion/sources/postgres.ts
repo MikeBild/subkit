@@ -8,8 +8,8 @@ import type { BudgetState, RawChunk } from "../types.ts";
 const { Pool } = pg;
 
 interface PostgresIngestParams {
-  exec?: Executor;
-  tenant_id?: string;
+  exec: Executor;
+  tenant_id: string;
   dsn: string;
   schemas?: string[];
 }
@@ -93,10 +93,7 @@ export async function ingestPostgresInformationSchema(
 ): Promise<PostgresIngestResult> {
   const prepared = await postgresPoolConfiguration(
     p.dsn,
-    {
-      ...(p.tenant_id ? { tenant_id: p.tenant_id } : {}),
-      ...(p.exec ? { exec: p.exec } : {}),
-    },
+    { tenant_id: p.tenant_id, exec: p.exec },
     { max: 2 },
   );
   const schemas = p.schemas && p.schemas.length > 0 ? p.schemas : ["public"];

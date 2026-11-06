@@ -1,13 +1,17 @@
 import { expect, mock, test } from "bun:test";
+import type { Executor } from "../../db/client.ts";
 import { runWithTestEnv } from "../../test-helpers/determinism/env.ts";
 import type { ConnectorView } from "../types.ts";
 import { _withDriverFetchForTests } from "./fetch-seam.ts";
 import { buildS3Client } from "./s3.ts";
 
+const strictModeExec = {} as Executor;
+
 test("strict unbound S3 checks endpoint before credential use or SDK request", async () => {
   await runWithTestEnv({ NODE_ENV: "production" }, async () => {
     let credentialUsed = false;
     const client = buildS3Client({
+      exec: strictModeExec,
       connector: {
         id: "s3-fixture",
         tenant_id: "s3-fixture",
@@ -33,6 +37,7 @@ test("strict signed S3 transport sends binary payload through manual guarded fet
   await runWithTestEnv({ NODE_ENV: "production" }, () =>
     _withDriverFetchForTests(fetchImpl as unknown as typeof fetch, async () => {
       const client = buildS3Client({
+        exec: strictModeExec,
         connector: {
           id: "s3-fixture",
           tenant_id: "s3-fixture",
@@ -74,6 +79,7 @@ test("strict S3 rejects redirect without allowing SDK follow-up request", async 
   await runWithTestEnv({ NODE_ENV: "production" }, () =>
     _withDriverFetchForTests(fetchImpl as unknown as typeof fetch, async () => {
       const client = buildS3Client({
+        exec: strictModeExec,
         connector: {
           id: "s3-fixture",
           tenant_id: "s3-fixture",
@@ -91,6 +97,7 @@ test("strict S3 rejects redirect without allowing SDK follow-up request", async 
 test("strict unbound virtual-host S3 checks the bucket endpoint", async () => {
   await runWithTestEnv({ NODE_ENV: "production" }, async () => {
     const client = buildS3Client({
+      exec: strictModeExec,
       connector: {
         id: "s3-fixture",
         tenant_id: "s3-fixture",

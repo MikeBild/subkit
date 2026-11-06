@@ -64,12 +64,8 @@ export async function checkAuthorityRedirect(
   }
 }
 
-function egressScope(tenant_id: string, exec: Executor | undefined) {
-  return { tenant_id, ...(exec ? { exec } : {}) };
-}
-
 export async function executePlannedHttpRequest(params: {
-  exec?: Executor;
+  exec: Executor;
   before_dispatch?: (
     request: HttpDispatchObservation,
   ) => Promise<RequestDispatchPolicy | undefined>;
@@ -139,7 +135,10 @@ export async function executePlannedHttpRequest(params: {
   if (policy) init.redirect = policy.redirect;
   let signedJwtToken: string | null = null;
   if (params.signed_jwt) {
-    await assertEgressAllowedResolved(params.url, egressScope(params.tenant_id, params.exec));
+    await assertEgressAllowedResolved(params.url, {
+      tenant_id: params.tenant_id,
+      exec: params.exec,
+    });
     signedJwtToken = await applySignedJwtAuth(
       params.signed_jwt.connector,
       params.signed_jwt.credential,
@@ -155,9 +154,14 @@ export async function executePlannedHttpRequest(params: {
     fields: { method: params.method, url_host: params.url.host },
     fn: () =>
       settleOnAbort(
-        fetchWithEgressGuard(params.url, init, egressScope(params.tenant_id, params.exec), {
-          fetchImpl: getDriverFetch(),
-        }),
+        fetchWithEgressGuard(
+          params.url,
+          init,
+          { tenant_id: params.tenant_id, exec: params.exec },
+          {
+            fetchImpl: getDriverFetch(),
+          },
+        ),
         params.signal,
       ),
   });

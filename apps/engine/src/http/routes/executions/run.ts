@@ -6,6 +6,7 @@ import type { ResolvedPrincipal } from "../../../auth/index.ts";
 import {
   assertCallerExecutionSource,
   authorizationContextFromPrincipal,
+  callerFromPrincipal,
   isBearerProductPrincipal,
   principalExecutionEnvironment,
   type RunExecutionSource,
@@ -232,6 +233,14 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
     const request_source = runRequestSource(c, body.request_source);
     try {
       assertCallerExecutionSource(principal, body.source);
+      if (body.source === "draft") {
+        callerFromPrincipal(
+          principal,
+          principal.tenant_id,
+          body.definition.product_id,
+          body.definition.required_caller_kind,
+        );
+      }
     } catch (error) {
       return admissionRefusal(error, { db, principal, request_source });
     }

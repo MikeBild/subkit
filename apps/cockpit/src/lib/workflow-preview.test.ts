@@ -38,6 +38,29 @@ describe("cockpit workflow previews", () => {
     });
   });
 
+  test("an edited draft keeps every field that shapes the saved run", () => {
+    const saved = {
+      name: "Product briefing",
+      product_id: "briefing-app",
+      required_caller_kind: "user" as const,
+      execution_privacy: "sensitive" as const,
+      tool_effect: "read" as const,
+      validation_expression: "ok = true",
+      output_transform: '{"summary": summary}',
+      response_filters: [
+        { target: "KEYS" as const, action: "REMOVE" as const, pattern: "^token$" },
+      ],
+      timeout_ms: 30_000,
+      max_llm_tokens_per_run: 4_000,
+      runtime: { stdlib_version: "1" },
+      execution_guards: { input_bytes: { question: 2_000 } },
+      caller_erasure: "on_success" as const,
+      steps: [{ id: "old" }],
+    };
+    const steps = [{ id: "new" }];
+    expect(workflowPreviewDefinition(saved, steps)).toEqual({ ...saved, steps });
+  });
+
   test("a definition without a name previews under an empty name", () => {
     const unnamed = { execution_privacy: "sensitive" as const };
     expect(workflowPreviewDefinition(unnamed, [{ id: "a" }])).toEqual({

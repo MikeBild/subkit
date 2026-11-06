@@ -1,5 +1,5 @@
 import { basename, dirname, join } from "node:path/posix";
-import { isCorePath } from "./rules.ts";
+import { isCorePath, isTestPath } from "./rules.ts";
 
 export interface FloorEntry {
   line_min: number;
@@ -148,7 +148,7 @@ export function aggregateByPrefix(
   let total = 0;
   let covered = 0;
   for (const row of rows) {
-    if (!row.file.startsWith(dir)) continue;
+    if (!row.file.startsWith(dir) || isTestPath(row.file)) continue;
     const lines = totalLinesOf(row.file) || 1;
     total += lines;
     covered += (row.lines / 100) * lines;

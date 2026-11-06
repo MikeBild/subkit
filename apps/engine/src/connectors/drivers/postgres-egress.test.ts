@@ -1,10 +1,13 @@
 import { expect, test } from "bun:test";
+import type { Executor } from "../../db/client.ts";
 import { createBudgetState } from "../../docs-ingestion/budgets.ts";
 import { ingestPostgresInformationSchema } from "../../docs-ingestion/sources/postgres.ts";
 import { postgresIntrospectStrategy } from "../discovery/postgres-introspect.ts";
 import { _withEgressTenantOriginForTests } from "../egress-guard.ts";
 import type { ConnectorView } from "../types.ts";
 import { assertPostgresConnectorEgress, postgresConnectorTarget } from "./postgres.ts";
+
+const originOverrideExec = {} as Executor;
 
 function connector(dsn: string): ConnectorView {
   return { id: "fixture", tenant_id: "fixture", dsn } as ConnectorView;
@@ -23,12 +26,14 @@ test("hosted discovery and ingestion reject private DSNs before opening their in
       await expect(
         postgresIntrospectStrategy.fetch("postgresql://user@127.0.0.1/db", {
           tenant_id: "hosted-fixture",
+          exec: originOverrideExec,
         }),
       ).rejects.toThrow("private_ip_blocked");
       await expect(
         ingestPostgresInformationSchema(
           {
             tenant_id: "hosted-fixture",
+            exec: originOverrideExec,
             dsn: "postgresql://user@127.0.0.1/db",
           },
           createBudgetState(),

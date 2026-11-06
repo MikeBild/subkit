@@ -37,13 +37,13 @@ interface FetchedDocument {
 async function fetchUrlDocument(
   url: string,
   tenant_id: string,
-  exec?: Executor,
+  exec: Executor,
 ): Promise<FetchedDocument> {
   const parsed = new URL(url);
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:")
     throw new KnowledgeUrlFetchError("only http and https addresses can be read", null);
   try {
-    await assertEgressAllowedResolved(parsed, { tenant_id, ...(exec ? { exec } : {}) });
+    await assertEgressAllowedResolved(parsed, { tenant_id, exec });
   } catch (error) {
     if (error instanceof EgressBlockedError)
       throw new KnowledgeUrlFetchError(`the address may not be read: ${error.reason}`, null);
@@ -58,7 +58,7 @@ async function fetchUrlDocument(
         headers: { accept: "text/html, text/markdown, text/plain;q=0.9, */*;q=0.5" },
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       },
-      { tenant_id, ...(exec ? { exec } : {}) },
+      { tenant_id, exec },
       { fetchImpl: getDriverFetch() },
     );
   } catch (error) {

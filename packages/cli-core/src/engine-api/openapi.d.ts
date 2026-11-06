@@ -26257,22 +26257,38 @@ export interface components {
              */
             request_source?: "api" | "cli";
         };
+        /** @description An unsaved workflow definition, run and validated like a saved one. A draft run is always started by hand, so trigger is ignored; derived_from_skill_id and input_schema_sample only matter when saving and are ignored too. */
         ExecutionRunDraftDefinition: {
             name: string;
             slug?: string;
             description?: string;
+            product_id?: string;
+            /** @enum {string} */
+            required_caller_kind?: "user" | "system_account";
             /** @enum {string} */
             execution_privacy?: "sensitive";
+            /** @enum {string} */
+            tool_effect?: "read" | "reversible_write" | "irreversible_write";
             input_schema?: {
                 [key: string]: unknown;
             };
             output_schema?: {
                 [key: string]: unknown;
             };
+            validation_expression?: string;
+            validation_function?: string;
+            output_transform?: string;
+            output_transform_function?: string;
+            response_filters?: components["schemas"]["ResponseFilter"][];
             steps: {
                 [key: string]: unknown;
             }[];
             timeout_ms?: number;
+            max_llm_tokens_per_run?: number;
+            runtime?: components["schemas"]["WorkflowRuntime"];
+            execution_guards?: components["schemas"]["ExecutionGuards"];
+            /** @enum {string} */
+            caller_erasure?: "on_success";
         };
         ExecutionRunStepBody: {
             /**

@@ -46,7 +46,7 @@ function evictLruIfFull(maxEntries: number): void {
 }
 
 interface RobotsLookup {
-  exec?: Executor;
+  exec: Executor;
   tenantId: string;
   origin: string;
   userAgent: string;
@@ -91,7 +91,7 @@ export async function getRobotsVerification(params: RobotsLookup): Promise<Robot
         headers: { "User-Agent": userAgent, Accept: "text/plain" },
         signal,
       },
-      { tenant_id: tenantId, ...(params.exec ? { exec: params.exec } : {}) },
+      { tenant_id: tenantId, exec: params.exec },
       { fetchImpl: doFetch },
     );
     if (res.ok) {

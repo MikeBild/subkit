@@ -92,10 +92,7 @@ async function fetchSchema(
   const signal = opts.signal;
   const prepared = await postgresPoolConfiguration(
     url,
-    {
-      ...(opts.tenant_id ? { tenant_id: opts.tenant_id } : {}),
-      ...(opts.exec ? { exec: opts.exec } : {}),
-    },
+    opts.tenant_id ? { tenant_id: opts.tenant_id, exec: opts.exec } : {},
     {
       max: 1,
       connectionTimeoutMillis: DEFAULT_TIMEOUT_MS,

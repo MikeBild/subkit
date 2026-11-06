@@ -37,6 +37,7 @@ function runCoverage(targets: readonly string[]): CoverageRow[] {
     cwd: REPO,
     env: {
       ...process.env,
+      NODE_ENV: "test",
       SKIP_DOCKER: "1",
       DATABASE_URL: localDatabaseUrl(process.env),
       MASTER_KEY:

@@ -157,8 +157,7 @@ export const importConnectorFromSpecTool: ConversationTool = {
       ok: true,
       data: await importConnectorDraftFromSpec({
         args,
-        ...(ctx?.tenant_id ? { tenant_id: ctx.tenant_id } : {}),
-        ...(ctx?.db ? { db: ctx.db } : {}),
+        ...(ctx?.tenant_id ? { tenant_id: ctx.tenant_id, db: ctx.db } : {}),
       }),
     };
   },
@@ -166,16 +165,14 @@ export const importConnectorFromSpecTool: ConversationTool = {
 
 type ImportConnectorDraftResult = ReusedConnectorEnvelope | Record<string, unknown>;
 
-export async function importConnectorDraftFromSpec(p: {
-  args: z.infer<typeof inputSchema>;
-  tenant_id?: string;
-  db?: ToolContext["db"];
-}): Promise<ImportConnectorDraftResult> {
+export async function importConnectorDraftFromSpec(
+  p: { args: z.infer<typeof inputSchema> } & (
+    | { tenant_id: string; db: ToolContext["db"] }
+    | { tenant_id?: undefined; db?: undefined }
+  ),
+): Promise<ImportConnectorDraftResult> {
   const { args } = p;
-  const parsed = await parseSource(args, {
-    ...(p.tenant_id ? { tenant_id: p.tenant_id } : {}),
-    ...(p.db ? { exec: p.db } : {}),
-  });
+  const parsed = await parseSource(args, p.tenant_id ? { tenant_id: p.tenant_id, exec: p.db } : {});
   const baseUrl = parsed.base_url;
   const reuseEnvelope =
     p.tenant_id && p.db
