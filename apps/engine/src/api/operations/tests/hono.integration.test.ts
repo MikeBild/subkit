@@ -192,6 +192,24 @@ const unsecured = defineOperation({
   },
 });
 
+const validate = defineOperation({
+  id: "things.validate",
+  permission: "workflow:read",
+  effect: "read",
+  handler: async () => ({ ok: true as const, issues: [] as string[] }),
+  http: {
+    method: "post",
+    path: "/v1/things-validate",
+    tags: ["things"],
+    body: z.object({ name: z.string().min(2) }),
+    response: z.object({ ok: z.boolean(), issues: z.array(z.string()) }),
+    invalid: (issues) => ({ status: 200, body: { ok: false, issues: issues.map((i) => i.path) } }),
+    responseHeaders: () => ({ "cache-control": "no-store" }),
+    toInput: () => ({}),
+    toBody: (result) => result,
+  },
+});
+
 function buildApp(roles: string[] = ["admin"]) {
   const app = createOpenApiApp();
   app.use("*", errorMiddleware());
@@ -209,6 +227,7 @@ function buildApp(roles: string[] = ["admin"]) {
   toHonoRoute(app, whoami);
   toHonoRoute(app, guarded);
   toHonoRoute(app, unsecured);
+  toHonoRoute(app, validate);
   return app;
 }
 
@@ -376,5 +395,27 @@ describe("toHonoRoute documentation overrides", () => {
       body: "{}",
     });
     expect(response.status).toBe(200);
+  });
+});
+
+describe("toHonoRoute validation results and response headers", () => {
+  const post = (body: unknown) =>
+    buildApp().request("/v1/things-validate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  test("an invalid body can answer a success status with a result body", async () => {
+    const response = await post({ name: "a" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: false, issues: ["name"] });
+  });
+
+  test("a valid answer carries the binding's response headers", async () => {
+    const response = await post({ name: "ab" });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.json()).toEqual({ ok: true, issues: [] });
   });
 });

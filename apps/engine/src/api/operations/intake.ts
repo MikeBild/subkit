@@ -22,16 +22,22 @@ import {
 import { INTAKE_ITEM_ORIGIN_FILTERS } from "../../knowledge/intake-rows.ts";
 import { readIntakeItemEvidence } from "../../knowledge/intake-session.ts";
 import { resolveDomainKnowledgeTarget } from "../../knowledge/intake-targets.ts";
-import type { IntakeItemEvidenceView, IntakeItemView } from "../../knowledge/intake-types.ts";
+import type {
+  IntakeCategoryView,
+  IntakeItemEvidenceView,
+  IntakeItemView,
+} from "../../knowledge/intake-types.ts";
 import { principalHolds } from "../../rbac/evaluator.ts";
 import { CategorySchema } from "../catalog-metadata.ts";
 import { IdParam } from "../common-schemas.ts";
 import {
   defineOperation,
   isRejection,
+  type Operation,
   type OperationScope,
   type Rejection,
   reject,
+  type ToolBinding,
 } from "./index.ts";
 import {
   CreateItemSchema,
@@ -87,6 +93,14 @@ const ProcessItemToolInput = z
 const MoveItemToolInput = ProcessItemToolInput.extend({ category: CategorySchema }).openapi(
   "MoveIntakeItemToolInput",
 );
+
+const ListCategoriesToolInput = z.object({}).openapi("ListIntakeCategoriesToolInput");
+
+const MAX_DISCARD_BATCH = 100;
+
+export const DiscardItemsToolInput = z
+  .object({ item_ids: z.array(z.string().uuid()).min(1).max(MAX_DISCARD_BATCH) })
+  .openapi("DiscardIntakeItemsToolInput");
 
 const TOOL_EVIDENCE_LIMIT = 5;
 const TOOL_EVIDENCE_EXCERPT_CHARS = 500;
@@ -645,6 +659,155 @@ export const moveIntakeItemOperation = defineOperation<
     onError: patchToolError,
   },
 });
+
+export const listIntakeCategoriesOperation = defineOperation<
+  Record<string, never>,
+  { items: IntakeCategoryView[]; default_category: string }
+>({
+  id: "intake.list_categories",
+  summary: "List shared categories with collected clips and the caller's personal default",
+  permission: INTAKE_READ,
+  effect: "read",
+  async handler(scope) {
+    const caller = intakeCaller(scope);
+    if (isRejection(caller)) return caller;
+    return await listIntakeCategories(
+      { tenant_id: scope.tenant_id, actor: caller.actor },
+      scope.db,
+    );
+  },
+  tool: {
+    name: "list_intake_categories",
+    description:
+      "List shared categories that contain collected clips and the caller's personal default category. Categories organize intake; they do not make a clip regular knowledge.",
+    input: ListCategoriesToolInput,
+    gate: "enforced",
+    resourceType: "intake",
+    toInput: () => ({}),
+    toResult: (outcome) =>
+      isRejection(outcome)
+        ? { ok: false, data: { error: "human_actor_required" } }
+        : { ok: true, data: outcome },
+  },
+});
+
+type DiscardArgs = z.infer<typeof DiscardItemsToolInput>;
+
+type DiscardOutcome = "discarded" | "not_found" | "not_discardable" | "changed";
+
+export interface DiscardItemsInput {
+  readonly items: readonly { readonly id: string; readonly expected_version?: number }[];
+}
+
+interface DiscardItemResult {
+  readonly id: string;
+  readonly title: string | null;
+  readonly outcome: DiscardOutcome;
+}
+
+export const INTAKE_DISCARD_NEXT_ACTIONS = ["list_intake_items", "get_intake_item"];
+
+async function discardOne(
+  scope: OperationScope,
+  actor: Actor,
+  id: string,
+  expected: number | undefined,
+): Promise<DiscardItemResult> {
+  const current = await getIntakeItem(scope.tenant_id, id, scope.db);
+  if (!current) return { id, title: null, outcome: "not_found" };
+  if (current.state === "discarded" || current.state === "admitted")
+    return { id, title: current.title, outcome: "not_discardable" };
+  if (expected === undefined || expected !== current.version)
+    return { id, title: current.title, outcome: "changed" };
+  try {
+    const item = await patchIntakeItem(
+      { tenant_id: scope.tenant_id, actor, id, expected_version: expected, state: "discarded" },
+      scope.db,
+    );
+    return { id, title: item?.title ?? current.title, outcome: item ? "discarded" : "not_found" };
+  } catch (error) {
+    if (!(error instanceof IntakeConflictError)) throw error;
+    return { id, title: current.title, outcome: "changed" };
+  }
+}
+
+function discardResult(results: readonly DiscardItemResult[]): ToolResult {
+  const count = (outcome: DiscardOutcome) => results.filter((r) => r.outcome === outcome).length;
+  const data = {
+    results,
+    discarded: count("discarded"),
+    not_found: count("not_found"),
+    not_discardable: count("not_discardable"),
+    changed: count("changed"),
+  };
+  if (data.discarded > 0) return { ok: true, data };
+  const message = `Nothing was discarded. The confirmed items changed before the discard ran: ${data.not_found} no longer exist, ${data.not_discardable} were already discarded or admitted, and ${data.changed} changed since they were read. Read them again before retrying.`;
+  return {
+    ok: false,
+    error_code: "intake_items_changed",
+    message,
+    data: { ...data, error: "intake_items_changed", message },
+    next_best_actions: INTAKE_DISCARD_NEXT_ACTIONS,
+  };
+}
+
+const discardIntakeItemsCore = {
+  id: "intake.discard_items",
+  summary: "Discard a batch of read intake clips, each at the version it was read",
+  permission: INTAKE_WRITE,
+  effect: "write" as const,
+  audit: AuditAction.INTAKE_ITEM_UPDATED,
+  async handler(
+    scope: OperationScope,
+    { items }: DiscardItemsInput,
+  ): Promise<DiscardItemResult[] | Rejection> {
+    const caller = intakeCaller(scope);
+    if (isRejection(caller)) return caller;
+    const results: DiscardItemResult[] = [];
+    for (const { id, expected_version } of items)
+      results.push(await discardOne(scope, caller.actor, id, expected_version));
+    return results;
+  },
+};
+
+export interface DiscardIntakeItemsGuards {
+  readonly precheck: NonNullable<ToolBinding<DiscardItemsInput, DiscardItemResult[]>["precheck"]>;
+  readonly guard: NonNullable<ToolBinding<DiscardItemsInput, DiscardItemResult[]>["guard"]>;
+}
+
+export function discardIntakeItemsOperationWith(
+  guards: DiscardIntakeItemsGuards,
+): Operation<DiscardItemsInput, DiscardItemResult[]> {
+  return defineOperation<DiscardItemsInput, DiscardItemResult[]>({
+    ...discardIntakeItemsCore,
+    tool: {
+      name: "discard_intake_items",
+      description:
+        "Discard one or more collected intake items you have read (1-100 ids; one confirmation covers the batch and shows each item's stored title). Discarding keeps the original source and can be undone with restore_intake_item; it never deletes or publishes knowledge or skills. Unknown, already discarded, admitted or unread items fail the whole call before anyone is asked to confirm. Returns one outcome per item.",
+      input: DiscardItemsToolInput,
+      gate: "enforced",
+      resourceType: "intake",
+      resolveResourceId: async (_ctx, rawArgs) => {
+        const ids = rawArgs.item_ids;
+        return Array.isArray(ids) && typeof ids[0] === "string" ? ids[0] : null;
+      },
+      requires_draft: true,
+      toInput: (raw, ctx) => {
+        const reads = intakeReadVersions(ctx);
+        return {
+          items: [...new Set((raw as DiscardArgs).item_ids)].map((id) => ({
+            id,
+            ...(typeof reads[id] === "number" ? { expected_version: reads[id] } : {}),
+          })),
+        };
+      },
+      toResult: (outcome) =>
+        isRejection(outcome) ? itemFailure("human_actor_required") : discardResult(outcome),
+      precheck: guards.precheck,
+      guard: guards.guard,
+    },
+  });
+}
 
 export const deleteIntakeItemOperation = defineOperation<
   IntakeIdInput<DeleteItemFields>,

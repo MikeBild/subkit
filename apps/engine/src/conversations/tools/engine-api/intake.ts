@@ -1,8 +1,12 @@
-import { z } from "@hono/zod-openapi";
 import {
+  type DiscardItemsInput,
+  DiscardItemsToolInput,
+  discardIntakeItemsOperationWith,
   getIntakeItemOperation,
-  intakeReadVersions,
+  INTAKE_DISCARD_NEXT_ACTIONS,
+  INTAKE_WRITE,
   intakeSourcesReadAtCurrentVersion,
+  listIntakeCategoriesOperation,
   listIntakeItemsOperation,
   moveIntakeItemOperation,
   restoreIntakeItemOperation,
@@ -14,41 +18,9 @@ import {
   reviseIntakeProposalOperation,
 } from "../../../api/operations/intake-proposals.ts";
 import { toConversationTool } from "../../../api/operations/tool.ts";
-import * as intake from "../../../knowledge/index.ts";
-import type { ConversationTool, ToolPrecheck, ToolResult } from "../index.ts";
+import type { ConversationTool, ToolContext, ToolPrecheck, ToolResult } from "../index.ts";
 import { checkTenantPermission } from "../permission-gate.ts";
 import { resolveGateSubjects, unresolvedGateSubjects } from "../sdk-wrap/gate-subjects.ts";
-import { toolActor } from "../tool-actor.ts";
-
-const ListCategoriesInput = z.object({}).openapi("ListIntakeCategoriesToolInput");
-const MAX_DISCARD_BATCH = 100;
-const DiscardItemsInput = z
-  .object({ item_ids: z.array(z.string().uuid()).min(1).max(MAX_DISCARD_BATCH) })
-  .openapi("DiscardIntakeItemsToolInput");
-function actor(ctx: Parameters<ConversationTool["execute"]>[0]) {
-  return toolActor(ctx);
-}
-
-const listIntakeItemsTool: ConversationTool = toConversationTool(listIntakeItemsOperation);
-
-const listIntakeCategoriesTool: ConversationTool = {
-  name: "list_intake_categories",
-  description:
-    "List shared categories that contain collected clips and the caller's personal default category. Categories organize intake; they do not make a clip regular knowledge.",
-  inputSchema: ListCategoriesInput,
-  category: "tenant_read",
-  permission: { action: "intake:read", resourceType: "intake" },
-  async execute(ctx) {
-    const caller = actor(ctx);
-    if (!caller) return { ok: false, data: { error: "human_actor_required" } };
-    return {
-      ok: true,
-      data: await intake.listIntakeCategories({ tenant_id: ctx.tenant_id, actor: caller }, ctx.db),
-    };
-  },
-};
-
-type DiscardOutcome = "discarded" | "not_found" | "not_discardable" | "changed";
 
 function discardRefusal(
   error: string,
@@ -62,18 +34,15 @@ function discardRefusal(
       error_code: error,
       message,
       data: { error, message, ...extra },
-      next_best_actions: ["list_intake_items", "get_intake_item"],
+      next_best_actions: INTAKE_DISCARD_NEXT_ACTIONS,
     },
   };
 }
 
-async function discardPrecheck(
-  ctx: Parameters<ConversationTool["execute"]>[0],
-  rawArgs: unknown,
-): Promise<ToolPrecheck> {
-  const parsed = DiscardItemsInput.safeParse(rawArgs);
+async function discardPrecheck(ctx: ToolContext, rawArgs: unknown): Promise<ToolPrecheck> {
+  const parsed = DiscardItemsToolInput.safeParse(rawArgs);
   if (!parsed.success) return { ok: true };
-  if (!actor(ctx))
+  if (!ctx.principal)
     return discardRefusal("human_actor_required", "Discarding intake items needs a person.");
   const ids = [...new Set(parsed.data.item_ids)];
   const selected = selectedIntakeIds(ctx);
@@ -113,118 +82,36 @@ async function discardPrecheck(
   return { ok: true };
 }
 
-const discardIntakeItemsTool: ConversationTool = {
-  name: "discard_intake_items",
-  description:
-    "Discard one or more collected intake items you have read (1-100 ids; one confirmation covers the batch and shows each item's stored title). Discarding keeps the original source and can be undone with restore_intake_item; it never deletes or publishes knowledge or skills. Unknown, already discarded, admitted or unread items fail the whole call before anyone is asked to confirm. Returns one outcome per item.",
-  inputSchema: DiscardItemsInput,
-  category: "tenant_write",
-  permission: {
-    action: "intake:write",
-    resourceType: "intake",
-    resolveResourceId: async (_ctx, rawArgs) => {
-      const ids = rawArgs.item_ids;
-      return Array.isArray(ids) && typeof ids[0] === "string" ? ids[0] : null;
-    },
-  },
-  requires_draft: true,
-  precheck: discardPrecheck,
-  async execute(ctx, args: z.infer<typeof DiscardItemsInput>): Promise<ToolResult> {
-    const caller = actor(ctx);
-    if (!caller) return { ok: false, data: { error: "human_actor_required" } };
-    const ids = [...new Set(args.item_ids)];
-    for (const id of ids) {
-      const gate = await checkTenantPermission(ctx, "intake:write", { type: "intake", id });
-      if (!gate.allow)
-        return {
-          ok: false,
-          data: { error: "permission_denied", permission: gate.permission, reason: gate.reason },
-        };
-    }
-    const reads = intakeReadVersions(ctx);
-    const results: Array<{ id: string; title: string | null; outcome: DiscardOutcome }> = [];
-    for (const id of ids) {
-      const current = await intake.getIntakeItem(ctx.tenant_id, id, ctx.db);
-      if (!current) {
-        results.push({ id, title: null, outcome: "not_found" });
-        continue;
-      }
-      if (current.state === "discarded" || current.state === "admitted") {
-        results.push({ id, title: current.title, outcome: "not_discardable" });
-        continue;
-      }
-      const expected = reads[id];
-      if (expected !== current.version) {
-        results.push({ id, title: current.title, outcome: "changed" });
-        continue;
-      }
-      try {
-        const item = await intake.patchIntakeItem(
-          {
-            tenant_id: ctx.tenant_id,
-            actor: caller,
-            id,
-            expected_version: expected,
-            state: "discarded",
-          },
-          ctx.db,
-        );
-        results.push({
-          id,
-          title: item?.title ?? current.title,
-          outcome: item ? "discarded" : "not_found",
-        });
-      } catch (error) {
-        if (!(error instanceof intake.IntakeConflictError)) throw error;
-        results.push({ id, title: current.title, outcome: "changed" });
-      }
-    }
-    const count = (outcome: DiscardOutcome) => results.filter((r) => r.outcome === outcome).length;
-    const data = {
-      results,
-      discarded: count("discarded"),
-      not_found: count("not_found"),
-      not_discardable: count("not_discardable"),
-      changed: count("changed"),
-    };
-    if (data.discarded > 0) return { ok: true, data };
-    const message = `Nothing was discarded. The confirmed items changed before the discard ran: ${data.not_found} no longer exist, ${data.not_discardable} were already discarded or admitted, and ${data.changed} changed since they were read. Read them again before retrying.`;
-    return {
-      ok: false,
-      error_code: "intake_items_changed",
-      message,
-      data: { ...data, error: "intake_items_changed", message },
-      next_best_actions: ["list_intake_items", "get_intake_item"],
-    };
-  },
-};
+async function discardGuard(
+  { items }: DiscardItemsInput,
+  ctx: ToolContext,
+): Promise<ToolResult | null> {
+  if (!ctx.principal) return { ok: false, data: { error: "human_actor_required" } };
+  for (const { id } of items) {
+    const gate = await checkTenantPermission(ctx, INTAKE_WRITE, { type: "intake", id });
+    if (!gate.allow)
+      return {
+        ok: false,
+        data: { error: "permission_denied", permission: gate.permission, reason: gate.reason },
+      };
+  }
+  return null;
+}
 
-const restoreIntakeItemTool: ConversationTool = toConversationTool(restoreIntakeItemOperation);
-
-const moveIntakeItemTool: ConversationTool = toConversationTool(moveIntakeItemOperation);
-
-const getIntakeItemTool: ConversationTool = toConversationTool(getIntakeItemOperation);
-
-const setDefaultIntakeCategoryTool: ConversationTool = toConversationTool(
-  setIntakeDefaultCategoryOperation,
-);
-
-const createIntakeProposalTool: ConversationTool = toConversationTool(
-  createIntakeProposalOperation,
-);
-
-const reviseIntakeProposalTool: ConversationTool = toConversationTool(
-  reviseIntakeProposalOperation,
-);
+function discardIntakeItemsTool(): ConversationTool {
+  return toConversationTool(
+    discardIntakeItemsOperationWith({ precheck: discardPrecheck, guard: discardGuard }),
+  );
+}
 
 export const intakeTools: ConversationTool[] = [
-  listIntakeCategoriesTool,
-  listIntakeItemsTool,
-  getIntakeItemTool,
-  discardIntakeItemsTool,
-  restoreIntakeItemTool,
-  moveIntakeItemTool,
-  setDefaultIntakeCategoryTool,
-  createIntakeProposalTool,
-  reviseIntakeProposalTool,
+  toConversationTool(listIntakeCategoriesOperation),
+  toConversationTool(listIntakeItemsOperation),
+  toConversationTool(getIntakeItemOperation),
+  discardIntakeItemsTool(),
+  toConversationTool(restoreIntakeItemOperation),
+  toConversationTool(moveIntakeItemOperation),
+  toConversationTool(setIntakeDefaultCategoryOperation),
+  toConversationTool(createIntakeProposalOperation),
+  toConversationTool(reviseIntakeProposalOperation),
 ];

@@ -1,6 +1,6 @@
 import { type SQL, sql } from "drizzle-orm";
+import type { BucketUnit } from "../api/stats/bucket-window.ts";
 import type { Db } from "../db/client.ts";
-import type { BucketUnit } from "../http/routes/stats/bucket-window.ts";
 import type { TrafficClass, UsageSurface } from "./usage-events.ts";
 
 export const USAGE_GROUP_DIMS = [

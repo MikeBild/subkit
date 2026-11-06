@@ -1,7 +1,6 @@
-import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { BadRequestError } from "../../errors.ts";
-import { requireAuth } from "../../middleware/auth.ts";
+import { type OpenAPIHono, z } from "@hono/zod-openapi";
+import { toHonoRoute } from "../../../api/operations/hono.ts";
+import { defineOperation, reject } from "../../../api/operations/index.ts";
 import type { AppEnv } from "../../openapi.ts";
 
 const ImportRequestSchema = z
@@ -54,33 +53,18 @@ const ImportResponseSchema = z
   })
   .openapi("ConnectorSpecImportResponse");
 
-const importRoute = createRoute({
-  method: "post",
-  path: "/v1/connector-templates/import",
-  tags: ["connectors"],
+type ImportRequest = z.infer<typeof ImportRequestSchema>;
+
+const importConnectorSpecOperation = defineOperation<
+  ImportRequest,
+  z.infer<typeof ImportResponseSchema>
+>({
+  id: "connector_template.import_spec",
   summary:
     "Import a connector draft from an API collection, HAR, OpenAPI/Google Discovery/GraphQL spec, or curl command",
-  description:
-    "URL-fetched OpenAPI and Google Discovery documents are streamed with a 50 MiB limit. Specification server and authentication metadata seed the draft.",
-  security: [{ bearerAuth: [] }],
-  request: { body: { content: { "application/json": { schema: ImportRequestSchema } } } },
-  responses: {
-    200: {
-      description: "OK",
-      content: { "application/json": { schema: ImportResponseSchema } },
-    },
-    400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
-    502: {
-      description: "Upstream spec fetch failed",
-      content: { "application/json": { schema: ErrorSchema } },
-    },
-  },
-});
-
-export function registerImportRoutes(app: OpenAPIHono<AppEnv>): void {
-  app.openapi(importRoute, async (c) => {
-    requireAuth(c);
-    const body = c.req.valid("json");
+  permission: "connector:write",
+  effect: "read",
+  handler: async (_scope, body) => {
     const tool = await import("../../../conversations/tools/import-connector-from-spec.ts");
     try {
       const result = await tool.importConnectorFromSpecTool.execute(
@@ -88,22 +72,33 @@ export function registerImportRoutes(app: OpenAPIHono<AppEnv>): void {
         body,
       );
       if (!result.ok) {
-        throw new BadRequestError(
+        return reject.badRequest(
           String((result.data as { error?: string } | null)?.error ?? "import failed"),
         );
       }
-      const data = result.data as {
-        draft: unknown;
-        template_match: { slug: string; score: number; matched_segment: string } | null;
-        recommended_next: string[];
-      };
-      return c.json(data as z.infer<typeof ImportResponseSchema>, 200);
+      return result.data as z.infer<typeof ImportResponseSchema>;
     } catch (err) {
       const mod = await import("../../../connectors/spec-fetchers.ts");
       if (err instanceof mod.SpecFetchError) {
-        throw new BadRequestError(`spec fetch failed: ${err.message}`);
+        return reject.badRequest(`spec fetch failed: ${err.message}`);
       }
       throw err;
     }
-  });
+  },
+  http: {
+    method: "post",
+    path: "/v1/connector-templates/import",
+    tags: ["connectors"],
+    description:
+      "URL-fetched OpenAPI and Google Discovery documents are streamed with a 50 MiB limit. Specification server and authentication metadata seed the draft.",
+    body: ImportRequestSchema,
+    response: ImportResponseSchema,
+    errors: { 400: "Bad request", 502: "Upstream spec fetch failed" },
+    toInput: ({ json }) => json as ImportRequest,
+    toBody: (result) => result,
+  },
+});
+
+export function registerImportRoutes(app: OpenAPIHono<AppEnv>): void {
+  toHonoRoute(app, importConnectorSpecOperation);
 }

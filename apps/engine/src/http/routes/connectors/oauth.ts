@@ -1,6 +1,8 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { AuditAction, actorOf, auditAwait, readRequestSource } from "../../../audit/index.ts";
+import { IdParam } from "../../../api/common-schemas.ts";
+import { toHonoRoute } from "../../../api/operations/hono.ts";
+import { defineOperation, reject } from "../../../api/operations/index.ts";
+import { AuditAction, actorOf, auditAwait } from "../../../audit/index.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import {
   beginConnectorOAuthDance,
@@ -18,8 +20,7 @@ import {
 import { logger } from "../../../logging/index.ts";
 import { redactUpstreamDetail } from "../../../mcp/index.ts";
 import { now } from "../../../utils/clock.ts";
-import { BadRequestError, HttpError, NotFoundError } from "../../errors.ts";
-import { requireAuth } from "../../middleware/auth.ts";
+import { BadRequestError, NotFoundError } from "../../errors.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { OAuthCallbackQuery, OAuthStartResponse } from "./schemas.ts";
 import {
@@ -36,21 +37,70 @@ import {
   signalSignInSucceeded,
 } from "./signin-signals.ts";
 
-const oauthStartRoute = createRoute({
-  method: "post",
-  path: "/v1/connectors/{id}/oauth/start",
-  tags: ["connectors"],
+const startOAuthOperation = defineOperation<{ id: string }, z.infer<typeof OAuthStartResponse>>({
+  id: "connector.oauth_start",
   summary: "Begin an OAuth2 authorization-code flow",
-  security: [{ bearerAuth: [] }],
-  request: { params: IdParam },
-  responses: {
-    200: { description: "OK", content: { "application/json": { schema: OAuthStartResponse } } },
-    400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-    502: {
-      description: "The sign-in service's discovery failed or it refused the request",
-      content: { "application/json": { schema: ErrorSchema } },
+  permission: "connector:oauth",
+  resource: { type: "connector", param: "id" },
+  effect: "write",
+  audit: AuditAction.OAUTH_CLIENT_REGISTERED,
+  handler: async (scope, { id }) => {
+    const principal = scope.principal;
+    if (!principal || !scope.request) return reject.unauthorized();
+    const redirect_uri = buildOAuthRedirectUri({ req: scope.request });
+    if (!redirect_uri) {
+      return reject.status(
+        400,
+        "engine_public_url_missing",
+        "engine has no resolvable public origin — set server.public_base_url",
+      );
+    }
+
+    let result: Awaited<ReturnType<typeof beginConnectorOAuthDance>>;
+    try {
+      result = await beginConnectorOAuthDance({
+        db: scope.db,
+        tenant_id: principal.tenant_id,
+        connector_id: id,
+        actor_id: principal.id,
+        actor: actorOf(principal),
+        redirect_uri,
+        origin: scope.request_source === "ui" ? "cockpit" : "cli",
+      });
+    } catch (err) {
+      if (!isOAuthProviderError(err)) throw err;
+      logger.warn({
+        module: "oauth",
+        action: "oauth.start.failed",
+        msg: "OAuth sign-in could not be started at the sign-in service",
+        tenant_id: principal.tenant_id,
+        connector_id: id,
+        error_class: err instanceof Error ? err.name : "Error",
+        error: redactUpstreamDetail(err instanceof Error ? err.message : String(err)),
+      });
+      return reject.status(
+        502,
+        "oauth_start_failed",
+        "could not begin sign-in — the sign-in service's discovery document is missing or does not match its issuer URL, or it refused the request",
+      );
+    }
+
+    if (result.kind === "done") return { authorization_url: "", state: "" };
+    return { authorization_url: result.authorization_url, state: result.state };
+  },
+  http: {
+    method: "post",
+    path: "/v1/connectors/{id}/oauth/start",
+    tags: ["connectors"],
+    params: IdParam,
+    response: OAuthStartResponse,
+    errors: {
+      400: "Bad request",
+      404: "Not found",
+      502: "The sign-in service's discovery failed or it refused the request",
     },
+    toInput: ({ param }) => param as { id: string },
+    toBody: (result) => result,
   },
 });
 
@@ -90,54 +140,7 @@ const oauthCallbackRoute = createRoute({
 });
 
 export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
-  app.openapi(oauthStartRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-
-    const redirect_uri = buildOAuthRedirectUri({ req: c.req.raw });
-    if (!redirect_uri) {
-      throw new HttpError(
-        400,
-        "engine_public_url_missing",
-        "engine has no resolvable public origin — set server.public_base_url",
-      );
-    }
-
-    let result: Awaited<ReturnType<typeof beginConnectorOAuthDance>>;
-    try {
-      result = await beginConnectorOAuthDance({
-        db,
-        tenant_id: principal.tenant_id,
-        connector_id: id,
-        actor_id: principal.id,
-        actor: actorOf(principal),
-        redirect_uri,
-        origin: readRequestSource(c) === "ui" ? "cockpit" : "cli",
-      });
-    } catch (err) {
-      if (!isOAuthProviderError(err)) throw err;
-      logger.warn({
-        module: "oauth",
-        action: "oauth.start.failed",
-        msg: "OAuth sign-in could not be started at the sign-in service",
-        tenant_id: principal.tenant_id,
-        connector_id: id,
-        error_class: err instanceof Error ? err.name : "Error",
-        error: redactUpstreamDetail(err instanceof Error ? err.message : String(err)),
-      });
-      throw new HttpError(
-        502,
-        "oauth_start_failed",
-        "could not begin sign-in — the sign-in service's discovery document is missing or does not match its issuer URL, or it refused the request",
-      );
-    }
-
-    if (result.kind === "done") {
-      return c.json({ authorization_url: "", state: "" }, 200);
-    }
-    return c.json({ authorization_url: result.authorization_url, state: result.state }, 200);
-  });
+  toHonoRoute(app, startOAuthOperation);
 
   app.openapi(oauthGrantStartRoute, async (c) => {
     const db = c.get("db");

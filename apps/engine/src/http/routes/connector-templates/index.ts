@@ -13,16 +13,10 @@ import {
   storeTemplateOAuthCredentialsOperation,
 } from "../../../api/operations/connector-templates.ts";
 import { toHonoRoute } from "../../../api/operations/hono.ts";
-import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { registerImportRoutes } from "./import-spec.ts";
 
 export function registerConnectorTemplateRoutes(app: OpenAPIHono<AppEnv>): void {
-  app.use("/v1/connector-templates/import", async (c, next) => {
-    if (c.req.method === "POST") return requirePermission("connector:write")(c, next);
-    return next();
-  });
-
   registerImportRoutes(app);
   toHonoRoute(app, matchConnectorTemplateUrlOperation);
   toHonoRoute(app, listConnectorTemplatesOperation);

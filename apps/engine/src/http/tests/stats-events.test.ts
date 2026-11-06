@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { EVENT_CLASS_ACTIONS, type EventClass } from "../../api/stats/event-classes.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { auditLog } from "../../db/schema/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
-import { EVENT_CLASS_ACTIONS, type EventClass } from "../routes/stats/event-classes.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 const uuid = createDeterministicUuidFactory(0x03);

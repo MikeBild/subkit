@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { credentialValueOf } from "../../api/operations/connector-credentials.ts";
+import { isRejection } from "../../api/operations/index.ts";
 import { redactSignedJwtValue } from "../../connectors/drivers/http.ts";
-import { credentialBodyToValue } from "../../http/routes/connectors/credential-body.ts";
 import { flattenCredential } from "../../llm/substitution/resolver.ts";
 import { scrubSecrets, scrubString } from "../../logging/scrub-secrets.ts";
 import { isDraftCredentialSetupAuthType } from "../draft-credential-setup.ts";
@@ -35,10 +36,12 @@ describe("signed JWT credential boundaries", () => {
 
   test("API, draft and secure cache preserve the credential shape", () => {
     const credential = { mode: "signed_jwt" as const, private_key: privateKey };
-    expect(credentialBodyToValue(credential)).toEqual(credential);
+    expect(credentialValueOf(credential)).toEqual(credential);
     expect(toDecryptedCredential(credential)).toEqual(credential);
     expect(saveConnectorDraftTool.inputSchema.safeParse({ credential }).success).toBe(true);
-    expect(() => credentialBodyToValue({ mode: "signed_jwt" })).toThrow("private_key");
+    const missingKey = credentialValueOf({ mode: "signed_jwt" });
+    expect(isRejection(missingKey)).toBe(true);
+    expect(isRejection(missingKey) ? missingKey.message : "").toContain("private_key");
     expect(
       saveConnectorDraftTool.inputSchema.safeParse({
         credential: { mode: "signed_jwt", token: "jwt" },

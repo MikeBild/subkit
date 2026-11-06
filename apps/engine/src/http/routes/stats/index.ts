@@ -1,32 +1,43 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
+import type { MiddlewareHandler } from "hono";
+import { toHonoRoute } from "../../../api/operations/hono.ts";
+import type { Operation } from "../../../api/operations/index.ts";
+import {
+  connectorsStatsOperation,
+  eventsStatsOperation,
+  executionsStatsOperation,
+  qualityStatsOperation,
+} from "../../../api/operations/stats.ts";
+import { llmStatsOperation } from "../../../api/operations/stats-llm.ts";
+import { operatingFiguresOperation } from "../../../api/operations/stats-operating-figures.ts";
+import {
+  chatUsageStatsOperation,
+  conversationsUsageStatsOperation,
+  httpUsageStatsOperation,
+  mcpUsageStatsOperation,
+} from "../../../api/operations/stats-usage.ts";
 import { gateOtherMethods, requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { registerStatsConnectorsRoute } from "./connectors.ts";
-import { registerStatsEventsRoute } from "./events.ts";
-import { registerStatsExecutionsRoute } from "./executions.ts";
-import { registerStatsLlmRoute } from "./llm.ts";
-import { registerStatsOperatingFiguresRoute } from "./operating-figures.ts";
-import { registerStatsQualityRoute } from "./quality.ts";
-import { registerUsageStatsRoutes } from "./usage.ts";
+
+function registerStatsOperation<I, R>(
+  app: OpenAPIHono<AppEnv>,
+  otherMethods: MiddlewareHandler<AppEnv>,
+  operation: Operation<I, R>,
+): void {
+  if (operation.http) app.use(operation.http.path, otherMethods);
+  toHonoRoute(app, operation);
+}
 
 export function registerStatsRoutes(app: OpenAPIHono<AppEnv>): void {
-  app.use("/v1/stats/executions", requirePermission("stats:read"));
-  app.use("/v1/stats/connectors", requirePermission("stats:read"));
-  app.use("/v1/stats/events", requirePermission("stats:read"));
-  app.use("/v1/stats/llm", requirePermission("stats:read"));
-  app.use("/v1/stats/operating-figures", requirePermission("stats:read"));
-  app.use("/v1/stats/quality", requirePermission("stats:read"));
-  const usage = gateOtherMethods(["GET", "HEAD"], requirePermission("stats:read"));
-  app.use("/v1/stats/http", usage);
-  app.use("/v1/stats/chat", usage);
-  app.use("/v1/stats/mcp", usage);
-  app.use("/v1/stats/conversations", usage);
-
-  registerStatsExecutionsRoute(app);
-  registerStatsConnectorsRoute(app);
-  registerStatsEventsRoute(app);
-  registerStatsLlmRoute(app);
-  registerStatsOperatingFiguresRoute(app);
-  registerStatsQualityRoute(app);
-  registerUsageStatsRoutes(app);
+  const otherMethods = gateOtherMethods(["GET", "HEAD"], requirePermission("stats:read"));
+  registerStatsOperation(app, otherMethods, executionsStatsOperation);
+  registerStatsOperation(app, otherMethods, connectorsStatsOperation);
+  registerStatsOperation(app, otherMethods, eventsStatsOperation);
+  registerStatsOperation(app, otherMethods, llmStatsOperation);
+  registerStatsOperation(app, otherMethods, operatingFiguresOperation);
+  registerStatsOperation(app, otherMethods, qualityStatsOperation);
+  registerStatsOperation(app, otherMethods, httpUsageStatsOperation);
+  registerStatsOperation(app, otherMethods, chatUsageStatsOperation);
+  registerStatsOperation(app, otherMethods, mcpUsageStatsOperation);
+  registerStatsOperation(app, otherMethods, conversationsUsageStatsOperation);
 }

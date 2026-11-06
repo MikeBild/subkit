@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const SDK_WRAP = join(import.meta.dir, "..", "sdk-wrap", "invoke.ts");
+const SDK_WRAP = join(import.meta.dir, "..", "..", "core", "tool-invoke.ts");
 const LOOP = join(import.meta.dir, "..", "..", "loop", "index.ts");
 const LOOP_MODEL_RESOLVER = join(import.meta.dir, "..", "..", "loop", "model-resolver.ts");
 

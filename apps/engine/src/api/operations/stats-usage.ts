@@ -2,8 +2,6 @@ import type { z } from "@hono/zod-openapi";
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { BadRequestError } from "../../http/errors.ts";
-import { type ResolvedWindow, resolveWindow } from "../../http/routes/stats/bucket-window.ts";
-import { UsageStatsQuery, UsageStatsResponse } from "../../http/routes/stats/schemas.ts";
 import {
   aggregateUsage,
   USAGE_GROUP_DIMS,
@@ -11,6 +9,8 @@ import {
 } from "../../stats/aggregate-usage.ts";
 import { TRAFFIC_CLASSES, type TrafficClass, type UsageSurface } from "../../stats/usage-events.ts";
 import { now } from "../../utils/clock.ts";
+import { type ResolvedWindow, resolveWindow } from "../stats/bucket-window.ts";
+import { UsageStatsQuery, UsageStatsResponse } from "../stats/schemas.ts";
 import { defineOperation, type Operation, reject } from "./index.ts";
 
 type UsageQuery = z.infer<typeof UsageStatsQuery>;

@@ -92,7 +92,6 @@ export const listPendingSecretVersionsOperation = defineOperation<null, PendingS
   id: "secret_approval.list",
   summary: "Prepared secret versions waiting for a person",
   permission: "settings:read:global",
-  requiredPermissions: [{ permission: "settings:write:global" }],
   effect: "read",
   handler: (scope) => listPendingSecretVersions(scope.db),
   http: {

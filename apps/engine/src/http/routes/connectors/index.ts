@@ -17,24 +17,9 @@ import { registerPromotionRoutes } from "./promotion.ts";
 import { registerConnectorRuntimeRoutes } from "./runtime.ts";
 
 export function registerConnectorRoutes(app: OpenAPIHono<AppEnv>): void {
-  app.use("/v1/connectors/validate", requirePermission("connector:write"));
-  app.use("/v1/connectors/:id/mcp/inspect", async (c, next) => {
-    const id = c.req.param("id");
-    return requirePermission("connector:test", () => ({ type: "connector", id }))(c, next);
-  });
-  app.use("/v1/connectors/:id/mcp/authorize", async (c, next) => {
-    if (c.req.method === "POST") {
-      const id = c.req.param("id");
-      return requirePermission("connector:oauth", () => ({ type: "connector", id }))(c, next);
-    }
-    return next();
-  });
-  app.use("/v1/connectors/:id/oauth/start", async (c, next) => {
-    if (c.req.method === "POST") {
-      const id = c.req.param("id");
-      return requirePermission("connector:oauth", () => ({ type: "connector", id }))(c, next);
-    }
-    return next();
+  app.use("/v1/connectors/validate", async (c, next) => {
+    if (c.req.method === "POST") return next();
+    return requirePermission("connector:write")(c, next);
   });
 
   registerAuthoringRoutes(app);

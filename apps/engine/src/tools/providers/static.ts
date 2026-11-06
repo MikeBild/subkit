@@ -16,7 +16,12 @@ import {
   authenticateTool,
   handleAuthenticate,
 } from "../../mcp/tools/authenticate.ts";
-import { handleListConnections, listConnectionsMcpTool } from "../../mcp/tools/connections.ts";
+import {
+  invokeListConnections,
+  listConnectionsCategory,
+  listConnectionsMcpTool,
+  listConnectionsRbac,
+} from "../../mcp/tools/connections.ts";
 import {
   handleOperatingFigures,
   operatingFiguresMcpTool,
@@ -159,12 +164,9 @@ const STATIC_ENTRIES: ReadonlyArray<StaticEntry> = [
     tool: listConnectionsMcpTool,
     visibleInMcpModes: null,
     visibleOnChat: false,
-    category: "tenant_read",
-    rbac: { permission: "connection:read" },
-    async invoke(ctx) {
-      const result = await handleListConnections({ db: ctx.db, principal: ctx.principal });
-      return envelopeForOk(result.data);
-    },
+    category: listConnectionsCategory,
+    rbac: listConnectionsRbac,
+    invoke: (ctx) => invokeListConnections(ctx),
   },
   {
     tool: attentionMcpTool,

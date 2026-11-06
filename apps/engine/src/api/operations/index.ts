@@ -27,7 +27,7 @@ export interface OperationScope {
   ensurePermission?(permission: string, resource?: { type: string; id: string }): Promise<void>;
 }
 
-export type RejectionStatus = 400 | 401 | 403 | 404 | 409 | 410 | 413 | 422 | 429;
+export type RejectionStatus = 400 | 401 | 403 | 404 | 409 | 410 | 413 | 422 | 429 | 502;
 
 const REJECTION: unique symbol = Symbol("operation.rejection");
 
@@ -40,6 +40,7 @@ export interface Rejection {
   readonly details?: Record<string, unknown>;
   readonly hint?: string;
   readonly plain?: true;
+  readonly bare?: true;
   readonly extra?: Record<string, unknown>;
 }
 
@@ -91,7 +92,7 @@ export const reject = {
 export function plainRejection(
   status: RejectionStatus,
   code: string,
-  message: string,
+  message?: string,
   extra?: Record<string, unknown>,
 ): Rejection {
   return {
@@ -99,8 +100,9 @@ export function plainRejection(
     rejected: true,
     status,
     code,
-    message,
+    message: message ?? "",
     plain: true,
+    ...(message === undefined ? { bare: true } : {}),
     ...(extra ? { extra } : {}),
   };
 }
@@ -115,7 +117,7 @@ export function isRejection(value: unknown): value is Rejection {
 
 export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
 
-export type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 410 | 413 | 422 | 429 | 500;
+export type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 410 | 413 | 422 | 429 | 500 | 502;
 
 export interface HttpRequestParts {
   readonly param: unknown;
@@ -155,7 +157,10 @@ export interface HttpBinding<I, R> {
   >;
   readonly success?: SuccessResponse | readonly SuccessResponse[];
   statusFor?(result: R): SuccessStatus;
-  invalid?(issues: readonly ValidationIssue[]): Rejection;
+  invalid?(
+    issues: readonly ValidationIssue[],
+  ): Rejection | { readonly status: SuccessStatus; readonly body: unknown };
+  responseHeaders?(result: R, scope: OperationScope): Readonly<Record<string, string>>;
   toInput(request: HttpRequestParts): I;
   toBody(result: R, scope: OperationScope): unknown;
 }

@@ -1,4 +1,4 @@
-import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { type OpenAPIHono, z } from "@hono/zod-openapi";
 import { probeConnectorDefinitionOperation } from "../../../api/operations/connector-probe.ts";
 import { toHonoRoute } from "../../../api/operations/hono.ts";
 import { defineOperation } from "../../../api/operations/index.ts";
@@ -14,7 +14,6 @@ import {
   importConnectorDraftFromSpec,
   importConnectorFromSpecInputSchema,
 } from "../../../conversations/index.ts";
-import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 
 const ConnectorIssue = z
@@ -40,21 +39,51 @@ const ImportConnectorResponse = z
   .passthrough()
   .openapi("ImportConnectorResponse");
 
-const validateRoute = createRoute({
-  method: "post",
-  path: "/v1/connectors/validate",
-  tags: ["connectors"],
+type ConnectorDefinition = z.infer<typeof CreateConnectorSchema>;
+
+const validateConnectorOperation = defineOperation<
+  ConnectorDefinition,
+  z.infer<typeof ValidateConnectorResponse>
+>({
+  id: "connector.validate",
   summary: "Validate a connector definition without saving it",
-  description:
-    "Checks the definition against its driver's config schema. Persists nothing. Use before `POST /v1/connectors`; `sk connectors validate --file` calls this.",
-  security: [{ bearerAuth: [] }],
-  request: { body: { content: { "application/json": { schema: CreateConnectorSchema } } } },
-  responses: {
-    200: {
+  permission: "connector:write",
+  effect: "read",
+  handler: async (_scope, body) => {
+    const effectiveConfig = withMcpConfigDefaults(
+      body.driver as DriverName,
+      body.auth_type ?? "none",
+      body.config as Record<string, unknown> | undefined,
+    );
+    const issues = [
+      ...validateConnectorConfig(body.driver as DriverName, effectiveConfig),
+      ...validateConnectorAuthType(body.driver as DriverName, body.auth_type),
+      ...validateMcpAuthConsistency(body.driver as DriverName, body.auth_type, effectiveConfig),
+    ];
+    return { ok: issues.length === 0, issues };
+  },
+  http: {
+    method: "post",
+    path: "/v1/connectors/validate",
+    tags: ["connectors"],
+    description:
+      "Checks the definition against its driver's config schema. Persists nothing. Use before `POST /v1/connectors`; `sk connectors validate --file` calls this.",
+    body: CreateConnectorSchema,
+    response: ValidateConnectorResponse,
+    success: {
+      status: 200,
       description:
         "Validation verdict — check `ok`; a well-formed request with an invalid definition is still a 200",
-      content: { "application/json": { schema: ValidateConnectorResponse } },
     },
+    invalid: (issues) => ({
+      status: 200,
+      body: {
+        ok: false,
+        issues: issues.map((issue) => ({ path: issue.path || "body", message: issue.message })),
+      },
+    }),
+    toInput: ({ json }) => json as ConnectorDefinition,
+    toBody: (result) => result,
   },
 });
 
@@ -89,32 +118,7 @@ const importConnectorDraftOperation = defineOperation<
 });
 
 export function registerAuthoringRoutes(app: OpenAPIHono<AppEnv>): void {
-  app.openapi(
-    validateRoute,
-    async (c) => {
-      requireAuth(c);
-      const body = c.req.valid("json");
-      const effectiveConfig = withMcpConfigDefaults(
-        body.driver as DriverName,
-        body.auth_type ?? "none",
-        body.config as Record<string, unknown> | undefined,
-      );
-      const issues = [
-        ...validateConnectorConfig(body.driver as DriverName, effectiveConfig),
-        ...validateConnectorAuthType(body.driver as DriverName, body.auth_type),
-        ...validateMcpAuthConsistency(body.driver as DriverName, body.auth_type, effectiveConfig),
-      ];
-      return c.json({ ok: issues.length === 0, issues }, 200);
-    },
-    (result, c) => {
-      if (result.success) return undefined;
-      const issues = result.error.issues.map((i) => ({
-        path: i.path.length > 0 ? i.path.join(".") : "body",
-        message: i.message,
-      }));
-      return c.json({ ok: false, issues }, 200);
-    },
-  );
+  toHonoRoute(app, validateConnectorOperation);
   toHonoRoute(app, probeConnectorDefinitionOperation);
   toHonoRoute(app, importConnectorDraftOperation);
 }

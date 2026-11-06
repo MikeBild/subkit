@@ -138,6 +138,20 @@ describe("secret approvals keep their HTTP responses byte for byte", () => {
     record("http.list", await http("GET", "/v1/secret-approvals"));
   });
 
+  test("a settings:read:global reader lists the queue without settings:write:global", async () => {
+    const list = await http("GET", "/v1/secret-approvals", readerKey);
+    expect(list.status).toBe(200);
+    expect((list.body as { items: { name: string; version: number }[] }).items).toEqual([
+      expect.objectContaining({ name: secretName, version: 1 }),
+      expect.objectContaining({ name: secretName, version: 2 }),
+    ]);
+    const decide = await http("POST", `/v1/secret-approvals/${secretName}/1/approve`, readerKey);
+    expect(decide.status).toBe(403);
+    expect((decide.body as { message: string }).message).toBe(
+      "permission_denied:settings:write:global",
+    );
+  });
+
   test("reject and approve", async () => {
     const base = `/v1/secret-approvals/${secretName}`;
     record("http.reject", await http("POST", `${base}/2/reject`));

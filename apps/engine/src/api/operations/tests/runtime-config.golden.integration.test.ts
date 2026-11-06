@@ -280,6 +280,9 @@ describe("runtime configuration routes keep their HTTP responses byte for byte",
     record("http.activate.missing", await http("POST", "/v1/settings/revisions/999/activate"));
     record("http.activate.invalid", await http("POST", "/v1/settings/revisions/0/activate"));
     record("http.activations.none", await http("GET", "/v1/settings/activations/999"));
+    for (let attempt = 0; attempt < 200 && getConfig().log.level !== "warn"; attempt += 1)
+      await Bun.sleep(25);
+    record("http.activate.applied", getConfig().log.level);
   });
 
   test("secrets", async () => {
@@ -539,6 +542,41 @@ describe("runtime configuration routes keep their HTTP responses byte for byte",
         },
         null,
       ),
+    );
+  });
+
+  test("settings leaves in production: secrets, restart, pending operator change and validation", async () => {
+    const since = await databaseNow();
+    const own = `/v1/settings/llm.model?tenant=${secondary.tenantId}`;
+    const admin = secondary.admin.apiKey;
+    const writes: [string, string, unknown, string][] = [
+      ["secret", "/v1/settings/mcp.api_key", { value: "golden-leaf-secret" }, ctx.apiKey],
+      [
+        "secret-reference",
+        "/v1/settings/mcp.api_key",
+        { value: "secret://golden.key/1" },
+        ctx.apiKey,
+      ],
+      ["invalid", "/v1/settings/log.level", { value: 42 }, ctx.apiKey],
+      ["tenant-admin.own", own, { value: "prod-model" }, admin],
+      ["restart", "/v1/settings/server.port", { value: 4101 }, ctx.apiKey],
+      ["tenant-admin.pending", own, { value: "pending-model" }, admin],
+      ["restart-force", "/v1/settings/server.port", { value: 4102, force: true }, ctx.apiKey],
+      ["operator.tenant", own, { value: "operator-model" }, ctx.apiKey],
+    ];
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      for (const [name, path, body, key] of writes)
+        record(`http.settings.put.production.${name}`, await http("PUT", path, body, key));
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+    }
+    const changes = or(like(auditLog.action, "settings.%"), like(auditLog.action, "secret.%"));
+    recordRows(
+      "http.settings.production.audit",
+      await auditRows(and(auditedSince(since), changes)),
     );
   });
 

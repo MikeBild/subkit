@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const SRC = join(import.meta.dir, "..", "tools", "sdk-wrap", "invoke.ts");
+const SRC = join(import.meta.dir, "..", "tools", "sdk-wrap", "invoke", "confirm.ts");
 
 describe("policy-gate confirm summary · run_workflow", () => {
   const body = readFileSync(SRC, "utf-8");

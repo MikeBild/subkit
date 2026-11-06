@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { WINDOW_CAP_MS } from "../../api/stats/bucket-window.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { auditLog } from "../../db/schema/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
-import { WINDOW_CAP_MS } from "../routes/stats/bucket-window.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 const uuid = createDeterministicUuidFactory(0x02);

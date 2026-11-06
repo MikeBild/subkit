@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const SRC = join(import.meta.dir, "..", "sdk-wrap", "invoke.ts");
+const SRC = join(import.meta.dir, "..", "..", "core", "tool-invoke.ts");
 
 describe("sdk-wrap · per-tool repeat-cap exemptions", () => {
   const body = readFileSync(SRC, "utf-8");

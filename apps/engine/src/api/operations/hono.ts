@@ -30,6 +30,7 @@ interface OperationContext {
   get(key: "trace_id"): string | undefined;
   req: { valid(target: "param" | "query" | "json" | "header"): unknown; raw: Request };
   json(body: unknown, status: number): Response;
+  header(name: string, value: string): void;
   body(data: null, status: number): Response;
 }
 
@@ -56,7 +57,9 @@ function isEmpty(response: SuccessResponse): boolean {
 function rejectionResponse(c: OperationContext, outcome: Rejection): Response {
   if (outcome.plain)
     return c.json(
-      { code: outcome.code, message: outcome.message, ...outcome.extra },
+      outcome.bare
+        ? { code: outcome.code, ...outcome.extra }
+        : { code: outcome.code, message: outcome.message, ...outcome.extra },
       outcome.status,
     );
   throw new HttpError(outcome.status, outcome.code, outcome.message, {
@@ -194,6 +197,8 @@ export function toHonoRoute<I, R>(app: OpenAPIHono<AppEnv>, op: Operation<I, R>)
     const status = http.statusFor ? http.statusFor(outcome) : primary.status;
     const response = successes.find((candidate) => candidate.status === status);
     if (!response) throw new Error(`operation ${op.id} answered undeclared status ${status}`);
+    const headers = http.responseHeaders ? http.responseHeaders(outcome, scope) : undefined;
+    if (headers) for (const [name, value] of Object.entries(headers)) c.header(name, value);
     if (isEmpty(response)) return c.body(null, status);
     return c.json(await http.toBody(outcome, scope), status);
   };
@@ -205,7 +210,9 @@ export function toHonoRoute<I, R>(app: OpenAPIHono<AppEnv>, op: Operation<I, R>)
           path: issue.path.map(String).join("."),
           message: issue.message,
         }));
-        return rejectionResponse(c, invalid(issues));
+        const answer = invalid(issues);
+        if (isRejection(answer)) return rejectionResponse(c, answer);
+        return c.json(answer.body, answer.status);
       }
     : undefined;
   if (hook) app.openapi(route, handler as never, hook as never);

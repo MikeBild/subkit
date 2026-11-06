@@ -1,7 +1,10 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { classifyMcpToolSideEffect } from "@shared/index.ts";
-import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
+import { IdParam } from "../../../api/common-schemas.ts";
+import { inspectMcpConnectorOperation, MCP_ERRORS } from "../../../api/operations/connector-mcp.ts";
+import { toHonoRoute } from "../../../api/operations/hono.ts";
+import { defineOperation, reject } from "../../../api/operations/index.ts";
 import {
+  AuditAction,
   readRequestSource,
   recordConnectorMcpAuthorizationFailed,
   recordConnectorMcpAuthorizationStarted,
@@ -24,7 +27,6 @@ import { logger } from "../../../logging/index.ts";
 import {
   buildMcpOAuthRedirectUri,
   clearMcpConnectorFailure,
-  connectServerById,
   evictServer,
   getMcpConnector,
   MCP_CREDENTIAL_ENVIRONMENT,
@@ -35,8 +37,6 @@ import {
 } from "../../../mcp/index.ts";
 import type { RequestSource } from "../../../observability/index.ts";
 import { now } from "../../../utils/clock.ts";
-import { HttpError, NotFoundError, UnprocessableEntityError } from "../../errors.ts";
-import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import {
   cockpitReturn,
@@ -64,27 +64,6 @@ const AuthorizeResponse = z
   })
   .openapi("ConnectorMcpAuthorizeResponse");
 
-const InspectResponse = z
-  .object({
-    connector_id: z.string(),
-    slug: z.string(),
-    tools: z.array(
-      z.object({
-        name: z.string(),
-        title: z.string().optional(),
-        description: z.string().optional(),
-        input_schema: z.record(z.string(), z.unknown()).nullable(),
-        claims: z.enum(["read", "write"]).optional(),
-      }),
-    ),
-    capabilities: z
-      .object({ tools: z.boolean(), resources: z.boolean(), prompts: z.boolean() })
-      .nullable(),
-    instructions: z.string().nullable(),
-    server_version: z.record(z.string(), z.unknown()).nullable(),
-  })
-  .openapi("ConnectorMcpInspectResponse");
-
 const McpOAuthCallbackQuery = z.object({
   code: z.string().optional(),
   state: z.string().min(1),
@@ -95,44 +74,71 @@ const McpOAuthCallbackQuery = z.object({
 
 const McpAuthorizeGrantQuery = z.object({ grant: z.string().min(20) });
 
-const inspectRoute = createRoute({
-  method: "post",
-  path: "/v1/connectors/{id}/mcp/inspect",
-  tags: ["connectors"],
-  summary: "Force one handshake against an mcp connector and report what it serves",
-  security: [{ bearerAuth: [] }],
-  request: { params: IdParam },
-  responses: {
-    200: { description: "OK", content: { "application/json": { schema: InspectResponse } } },
-    401: { description: "Unauthorized", content: { "application/json": { schema: ErrorSchema } } },
-    403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-    422: { description: "Invalid", content: { "application/json": { schema: ErrorSchema } } },
-    502: {
-      description: "Handshake failed",
-      content: { "application/json": { schema: ErrorSchema } },
-    },
-  },
-});
-
-const authorizeRoute = createRoute({
-  method: "post",
-  path: "/v1/connectors/{id}/mcp/authorize",
-  tags: ["connectors"],
+const authorizeMcpConnectorOperation = defineOperation<
+  { id: string },
+  z.infer<typeof AuthorizeResponse>
+>({
+  id: "connector.mcp_authorize",
   summary: "Begin an interactive OAuth 2.1 authorization for an mcp connector",
-  security: [{ bearerAuth: [] }],
-  request: { params: IdParam },
-  responses: {
-    200: { description: "OK", content: { "application/json": { schema: AuthorizeResponse } } },
-    400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
-    401: { description: "Unauthorized", content: { "application/json": { schema: ErrorSchema } } },
-    403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-    422: { description: "Invalid", content: { "application/json": { schema: ErrorSchema } } },
-    502: {
-      description: "Authorization-server discovery failed",
-      content: { "application/json": { schema: ErrorSchema } },
-    },
+  permission: "connector:oauth",
+  resource: { type: "connector", param: "id" },
+  effect: "write",
+  audit: AuditAction.CONNECTOR_MCP_AUTHORIZATION_STARTED,
+  handler: async (scope, { id }) => {
+    const principal = scope.principal;
+    if (!principal || !scope.request) return reject.unauthorized();
+    const requestSource = scope.request_source ?? "api";
+    const started = await startMcpAuthorization({
+      db: scope.db,
+      req: scope.request,
+      tenant_id: scope.tenant_id,
+      connector_id: id,
+      actor_id: principal.id,
+      actor_type: principal.kind,
+      origin: requestSource === "ui" ? "cockpit" : "cli",
+      request_source: requestSource,
+    });
+    if (started.ok) return started.flow;
+    switch (started.failure) {
+      case "not_found":
+        return reject.notFound("mcp connector");
+      case "not_this_route":
+        return started.route
+          ? reject.status(
+              422,
+              "sign_in_route_mismatch",
+              "this connector does not sign in through mcp/authorize",
+              undefined,
+              `start its sign-in at ${started.route}`,
+            )
+          : reject.status(
+              422,
+              "no_browser_sign_in",
+              "this connector has no browser sign-in — interactive authorization is only available for an mcp connector whose auth_type is 'oauth2'",
+            );
+      case "no_public_address":
+        return reject.status(
+          400,
+          "engine_public_url_missing",
+          "engine has no resolvable public origin — set server.public_base_url (it must be an HTTPS URL reachable by the external authorization server)",
+        );
+      case "start_failed":
+        return reject.status(
+          502,
+          "mcp_authorization_failed",
+          "could not begin authorization — the external MCP server's authorization-server discovery or dynamic client registration failed",
+        );
+    }
+  },
+  http: {
+    method: "post",
+    path: "/v1/connectors/{id}/mcp/authorize",
+    tags: ["connectors"],
+    params: IdParam,
+    response: AuthorizeResponse,
+    errors: { 400: "Bad request", ...MCP_ERRORS, 502: "Authorization-server discovery failed" },
+    toInput: ({ param }) => param as { id: string },
+    toBody: (result) => result,
   },
 });
 
@@ -165,98 +171,8 @@ const callbackRoute = createRoute({
 });
 
 export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
-  app.openapi(inspectRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-    const requestSource: RequestSource = readRequestSource(c) ?? "api";
-
-    const connector = await getMcpConnector(db, principal.tenant_id, id);
-    if (!connector) throw new NotFoundError("mcp connector");
-
-    const outcome = await connectServerById(db, principal.tenant_id, id, {
-      environment: MCP_CREDENTIAL_ENVIRONMENT,
-      requestSource,
-      actor_id: principal.id,
-      actor_type: principal.kind,
-    });
-    if (!outcome.ok) {
-      if (outcome.reason === "disabled") {
-        throw new UnprocessableEntityError(
-          "this mcp connector is disabled — enable it before inspecting",
-        );
-      }
-      throw new HttpError(
-        502,
-        "mcp_handshake_failed",
-        outcome.detail ?? "the external MCP server refused the handshake",
-      );
-    }
-    const set = outcome.tools;
-    return c.json(
-      {
-        connector_id: id,
-        slug: set.slug,
-        tools: set.tools.map((t) => ({
-          name: t.name,
-          ...(t.title !== undefined ? { title: t.title } : {}),
-          ...(t.description !== undefined ? { description: t.description } : {}),
-          input_schema: t.inputSchema ?? null,
-          ...(t.annotations ? { claims: classifyMcpToolSideEffect(t.annotations) } : {}),
-        })),
-        capabilities: set.capabilities,
-        instructions: set.instructions,
-        server_version: set.server_version,
-      },
-      200,
-    );
-  });
-
-  app.openapi(authorizeRoute, async (c) => {
-    const principal = requireAuth(c);
-    const { id } = c.req.valid("param");
-    const requestSource: RequestSource = readRequestSource(c) ?? "api";
-    const started = await startMcpAuthorization({
-      db: c.get("db"),
-      req: c.req.raw,
-      tenant_id: principal.tenant_id,
-      connector_id: id,
-      actor_id: principal.id,
-      actor_type: principal.kind,
-      origin: requestSource === "ui" ? "cockpit" : "cli",
-      request_source: requestSource,
-    });
-    if (started.ok) return c.json(started.flow, 200);
-    switch (started.failure) {
-      case "not_found":
-        throw new NotFoundError("mcp connector");
-      case "not_this_route":
-        throw started.route
-          ? new HttpError(
-              422,
-              "sign_in_route_mismatch",
-              "this connector does not sign in through mcp/authorize",
-              { hint: `start its sign-in at ${started.route}` },
-            )
-          : new HttpError(
-              422,
-              "no_browser_sign_in",
-              "this connector has no browser sign-in — interactive authorization is only available for an mcp connector whose auth_type is 'oauth2'",
-            );
-      case "no_public_address":
-        throw new HttpError(
-          400,
-          "engine_public_url_missing",
-          "engine has no resolvable public origin — set server.public_base_url (it must be an HTTPS URL reachable by the external authorization server)",
-        );
-      case "start_failed":
-        throw new HttpError(
-          502,
-          "mcp_authorization_failed",
-          "could not begin authorization — the external MCP server's authorization-server discovery or dynamic client registration failed",
-        );
-    }
-  });
+  toHonoRoute(app, inspectMcpConnectorOperation);
+  toHonoRoute(app, authorizeMcpConnectorOperation);
 
   app.openapi(authorizeGrantRoute, async (c) => {
     const db = c.get("db");
