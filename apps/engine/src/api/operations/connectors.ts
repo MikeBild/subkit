@@ -24,11 +24,6 @@ import {
 import { summarizeConnections } from "../../credentials/connections/service.ts";
 import { describeConnectorCredentialStates } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
-import {
-  ConnectorListResponse,
-  ConnectorSchema,
-  serialize,
-} from "../../http/routes/connectors/schemas.ts";
 import { describeConnectorPlaceholders } from "../../llm/substitution/resolver.ts";
 import { logger } from "../../logging/logger.ts";
 import {
@@ -37,6 +32,7 @@ import {
   listedDescription,
 } from "../catalog-metadata.ts";
 import { IdParam } from "../common-schemas.ts";
+import { ConnectorListResponse, ConnectorSchema, serialize } from "./connector-representation.ts";
 import { defineOperation, isRejection, type OperationScope, reject } from "./index.ts";
 
 const ListConnectorsQuery = z
@@ -426,7 +422,7 @@ export const updateConnectorOperation = defineOperation<ConnectorUpdateInput, Co
     errors: {
       400: "Invalid description acceptance",
       404: "Not found",
-      409: "The reviewed description changed",
+      409: "The reviewed description changed, or clear_template_binding was combined with template_slug",
     },
     toInput: ({ param, json }) => ({
       id: (param as { id: string }).id,

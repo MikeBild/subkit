@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
 import type { ServerResponse } from "node:http";
 import { and, eq } from "drizzle-orm";
+import { serializeStep } from "../../api/operations/execution-representation.ts";
 import { auditLog, connectors, executionSteps } from "../../db/schema/index.ts";
-import { serializeStep } from "../../http/routes/executions/schemas.ts";
 import { logRing } from "../../observability/log-ring.ts";
 import { runExecution } from "../engine.ts";
 import { RequestMetaSchema } from "../request-meta-schema.ts";

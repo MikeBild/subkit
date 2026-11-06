@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { AuditAction } from "../../audit/types.ts";
+import type { ToolResult } from "../../conversations/tools/index.ts";
 import {
   activateSkill,
   archiveSkill,
@@ -59,6 +60,13 @@ const ListAllSkillsToolInput = z
   .openapi("ListAllSkillsToolInput");
 
 const GetSkillToolInput = z.object({ id: z.string().uuid() }).openapi("GetSkillToolInput");
+
+const UpdateSkillToolInput = z
+  .object({ id: z.string().uuid() })
+  .merge(UpdateSkillSchema)
+  .openapi("UpdateSkillToolInput");
+
+const DeleteSkillToolInput = z.object({ id: z.string().uuid() }).openapi("DeleteSkillToolInput");
 
 const SkillHistoryEntrySchema = z
   .object({
@@ -204,14 +212,13 @@ export const createSkillOperation = defineOperation<CreateSkillInput, Skill>({
   effect: "write",
   audit: AuditAction.SKILL_CREATED,
   async handler(scope, input) {
-    const principal = scope.principal;
-    if (!principal) return reject.unauthorized();
+    const actor = scope.actor;
     return createSkill(
       {
         tenant_id: scope.tenant_id,
         input,
-        actor_id: principal.id,
-        actor_type: principal.kind,
+        actor_id: actor.id,
+        actor_type: actor.type,
       },
       scope.db,
     );
@@ -266,6 +273,15 @@ interface SkillPatchInput {
   readonly patch: UpdateSkillInput;
 }
 
+function skillNotFound(id: string): ToolResult {
+  return { ok: false, data: { error: "not_found", message: `Skill ${id} not found` } };
+}
+
+function toolFailure(error: string, cause: unknown): ToolResult {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return { ok: false, data: { error, message } };
+}
+
 export const updateSkillOperation = defineOperation<SkillPatchInput, Skill>({
   id: "skill.update",
   summary: "Update a skill",
@@ -274,16 +290,8 @@ export const updateSkillOperation = defineOperation<SkillPatchInput, Skill>({
   effect: "write",
   audit: AuditAction.SKILL_UPDATED,
   async handler(scope, { id, patch }) {
-    const principal = scope.principal;
-    if (!principal) return reject.unauthorized();
-    const updated = await updateSkill(
-      scope.tenant_id,
-      id,
-      patch,
-      principal.id,
-      scope.db,
-      principal.kind,
-    );
+    const actor = scope.actor;
+    const updated = await updateSkill(scope.tenant_id, id, patch, actor.id, scope.db, actor.type);
     return updated ?? reject.notFound("skill");
   },
   http: {
@@ -301,6 +309,41 @@ export const updateSkillOperation = defineOperation<SkillPatchInput, Skill>({
     toInput: ({ param, json }) => ({ ...idFrom(param), patch: json as UpdateSkillInput }),
     toBody: (skill) => skill,
   },
+  tool: {
+    name: "update_skill",
+    description:
+      "Patch a persisted tenant Skill — edit its title/body, examples, best practices, pitfalls, doc refs, gated tools, activation rules, I/O schemas, side-effect/idempotency/maturity metadata, tags, or lifecycle status. Send only the fields that should change.",
+    use_case:
+      "Use when the user asks to rename a skill, revise its guidance, adjust when it activates, change which tools it gates, or change its lifecycle status. Send only the fields that should change.",
+    important_notes: [
+      "Send only the fields you want to change — omitted fields are left untouched.",
+      "Audits as conversation.update_skill with full before/after snapshots.",
+    ],
+    input: UpdateSkillToolInput,
+    gate: "enforced",
+    toInput: (raw) => {
+      const { id, ...patch } = raw as z.infer<typeof UpdateSkillToolInput>;
+      return { id, patch };
+    },
+    prepare: (input, ctx) => ctx.engineClient.skills.get(input.id),
+    toResult: async (outcome, { id, patch }, ctx, before) => {
+      if (isRejection(outcome)) return skillNotFound(id);
+      const audit_log_id = await ctx.engineClient.audit_write({
+        resource_type: "skill",
+        resource_id: id,
+        action: "conversation.update_skill",
+        result: "success",
+        metadata: {
+          conversation_id: ctx.conversation_id,
+          fields: Object.keys(patch),
+          before: before ?? null,
+          after: outcome,
+        },
+      });
+      return { ok: true, data: { updated: true, skill: outcome, audit_log_id } };
+    },
+    onError: (error) => toolFailure("update_failed", error),
+  },
 });
 
 export const deleteSkillOperation = defineOperation<SkillIdInput, true>({
@@ -311,9 +354,8 @@ export const deleteSkillOperation = defineOperation<SkillIdInput, true>({
   effect: "write",
   audit: AuditAction.SKILL_DELETED,
   async handler(scope, { id }) {
-    const principal = scope.principal;
-    if (!principal) return reject.unauthorized();
-    const deleted = await deleteSkill(scope.tenant_id, id, principal.id, scope.db, principal.kind);
+    const actor = scope.actor;
+    const deleted = await deleteSkill(scope.tenant_id, id, actor.id, scope.db, actor.type);
     return deleted ? true : reject.notFound("skill");
   },
   http: {
@@ -327,15 +369,34 @@ export const deleteSkillOperation = defineOperation<SkillIdInput, true>({
     toInput: ({ param }) => idFrom(param),
     toBody: () => null,
   },
+  tool: {
+    name: "delete_skill",
+    description:
+      "Hard-delete a skill by id — the row is permanently removed (prefer archiving instead). Requires confirmation first and records audit.",
+    input: DeleteSkillToolInput,
+    gate: "enforced",
+    toInput: (raw) => idFrom(raw),
+    toResult: async (outcome, { id }, ctx) => {
+      if (isRejection(outcome)) return skillNotFound(id);
+      const audit_log_id = await ctx.engineClient.audit_write({
+        resource_type: "skill",
+        resource_id: id,
+        action: "conversation.delete_skill",
+        result: "success",
+        metadata: { conversation_id: ctx.conversation_id },
+      });
+      return { ok: true, data: { deleted: true, id, audit_log_id } };
+    },
+    onError: (error) => toolFailure("delete_failed", error),
+  },
 });
 
 type LifecycleTransition = typeof activateSkill;
 
 function lifecycleHandler(transition: LifecycleTransition) {
   return async (scope: OperationScope, { id }: SkillIdInput) => {
-    const principal = scope.principal;
-    if (!principal) return reject.unauthorized();
-    const skill = await transition(scope.tenant_id, id, principal.id, scope.db, principal.kind);
+    const actor = scope.actor;
+    const skill = await transition(scope.tenant_id, id, actor.id, scope.db, actor.type);
     return skill ?? reject.notFound("skill");
   };
 }
@@ -446,15 +507,14 @@ export const restoreSkillOperation = defineOperation<SkillHistoryEntryInput, Ski
   effect: "write",
   audit: AuditAction.SKILL_UPDATED,
   async handler(scope, { id, audit_entry_id }) {
-    const principal = scope.principal;
-    if (!principal) return reject.unauthorized();
+    const actor = scope.actor;
     const restored = await restoreSkill(
       scope.tenant_id,
       id,
       audit_entry_id,
-      principal.id,
+      actor.id,
       scope.db,
-      principal.kind,
+      actor.type,
     );
     return restored ?? reject.notFound("skill");
   },

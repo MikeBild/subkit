@@ -1,7 +1,20 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { AuditAction } from "../../audit/types.ts";
-import { auditLog, selfHealingScans } from "../../db/schema/index.ts";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
+import {
+  auditLog,
+  patchCandidates,
+  schemaVersions,
+  selfHealingScans,
+} from "../../db/schema/index.ts";
+import {
+  createSelfHealingCtx,
+  SEED_STEP_ID,
+  type SelfHealingTestCtx,
+} from "../../self-healing/tests/setup.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import { handleSelfHealingScan } from "../tools/self-healing-scan.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;
@@ -101,4 +114,106 @@ describe("mcp self_healing_scan tool", () => {
       ),
     ).toBe(true);
   });
+});
+
+describe("handleSelfHealingScan on the shared scan", () => {
+  let shCtx: SelfHealingTestCtx;
+
+  beforeAll(async () => {
+    shCtx = await createSelfHealingCtx("mcp_scan_shared");
+    const now = getTestNow();
+    await shCtx.testDb.db.insert(schemaVersions).values([
+      {
+        tenant_id: shCtx.tenant_id,
+        connector_id: shCtx.connector_id,
+        workflow_id: shCtx.workflow_id,
+        step_id: SEED_STEP_ID,
+        endpoint_key: "GET /users/1",
+        schema: { type: "object", properties: { data: { type: "object", properties: {} } } },
+        seen_at: new Date(now - 60_000),
+      },
+      {
+        tenant_id: shCtx.tenant_id,
+        connector_id: shCtx.connector_id,
+        workflow_id: shCtx.workflow_id,
+        step_id: SEED_STEP_ID,
+        endpoint_key: "GET /users/1",
+        schema: { type: "object", properties: { data: { type: "string" } } },
+        seen_at: new Date(now),
+      },
+    ]);
+  }, 60_000);
+
+  afterAll(async () => {
+    await shCtx.cleanup();
+  }, 30_000);
+
+  function admin(): ResolvedPrincipal {
+    return {
+      provider: "test",
+      kind: "user",
+      id: "0d15a503-ce35-460b-a03c-3f0b15bb8be5",
+      tenant_id: shCtx.tenant_id,
+      roles: ["admin"],
+    };
+  }
+
+  test("a non-admin caller is refused before any scan row is written", async () => {
+    const result = await handleSelfHealingScan(
+      { db: shCtx.testDb.db, principal: { ...admin(), roles: ["viewer"] } },
+      {},
+    );
+    expect(result).toEqual({
+      ok: false,
+      data: {
+        error: "admin role required to trigger a self-healing scan",
+        reason: "admin_required",
+      },
+    });
+    const rows = await shCtx.testDb.db
+      .select()
+      .from(selfHealingScans)
+      .where(eq(selfHealingScans.tenant_id, shCtx.tenant_id));
+    expect(rows).toHaveLength(0);
+  });
+
+  test("a schema drift candidate keeps its workflow_step_id anchor and the mcp source", async () => {
+    const result = await handleSelfHealingScan({ db: shCtx.testDb.db, principal: admin() }, {});
+    if (!result.ok) throw new Error(`scan failed: ${result.data.reason}`);
+    expect(result.data.candidates_created).toBeGreaterThan(0);
+    expect("error" in result.data).toBe(false);
+    const candidateId = result.data.candidates[0]?.id;
+    if (!candidateId) throw new Error("no candidate");
+
+    const [candidate] = await shCtx.testDb.db
+      .select({ diff: patchCandidates.diff })
+      .from(patchCandidates)
+      .where(
+        and(eq(patchCandidates.tenant_id, shCtx.tenant_id), eq(patchCandidates.id, candidateId)),
+      );
+    const diff = candidate?.diff as Record<string, unknown> | undefined;
+    expect(diff?.workflow_step_id).toBe(SEED_STEP_ID);
+
+    const [scan] = await shCtx.testDb.db
+      .select()
+      .from(selfHealingScans)
+      .where(
+        and(
+          eq(selfHealingScans.tenant_id, shCtx.tenant_id),
+          eq(selfHealingScans.id, result.data.scan_id),
+        ),
+      );
+    expect(scan?.source).toBe("mcp");
+    expect(scan?.status).toBe("succeeded");
+    expect(scan?.idempotency_key).toBeNull();
+    expect(scan?.candidates_created).toBe(result.data.candidates_created);
+  }, 90_000);
+
+  test("repeated calls never replay: each call writes its own scan row", async () => {
+    const first = await handleSelfHealingScan({ db: shCtx.testDb.db, principal: admin() }, {});
+    const second = await handleSelfHealingScan({ db: shCtx.testDb.db, principal: admin() }, {});
+    if (!first.ok || !second.ok) throw new Error("scan failed");
+    expect(second.data.scan_id).not.toBe(first.data.scan_id);
+    expect("idempotent_replay" in second.data).toBe(false);
+  }, 90_000);
 });

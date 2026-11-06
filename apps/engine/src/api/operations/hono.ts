@@ -1,5 +1,7 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import type { MiddlewareHandler } from "hono";
+import type { PgBoss } from "pg-boss";
+import { readRequestSource } from "../../audit/request-source.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { HttpError } from "../../http/errors.ts";
@@ -10,14 +12,57 @@ import {
 } from "../../http/middleware/require-permission.ts";
 import type { AppEnv } from "../../http/openapi.ts";
 import { ErrorSchema } from "../common-schemas.ts";
-import { isRejection, type Operation, type OperationScope } from "./index.ts";
+import {
+  actorOfPrincipal,
+  isRejection,
+  type Operation,
+  type OperationScope,
+  type Rejection,
+  type SuccessResponse,
+  type ValidationIssue,
+} from "./index.ts";
 
 interface OperationContext {
   get(key: "db"): Db;
   get(key: "principal"): ResolvedPrincipal | undefined;
-  req: { valid(target: "param" | "query" | "json"): unknown };
+  get(key: "boss"): PgBoss | undefined;
+  req: { valid(target: "param" | "query" | "json" | "header"): unknown };
   json(body: unknown, status: number): Response;
-  body(data: null, status: 204): Response;
+  body(data: null, status: number): Response;
+}
+
+interface ValidationResult {
+  success: boolean;
+  error?: { issues: readonly { path: readonly PropertyKey[]; message: string }[] };
+}
+
+function successResponses(success: SuccessResponse | readonly SuccessResponse[] | undefined) {
+  const list: readonly SuccessResponse[] =
+    success === undefined
+      ? [{ status: 200, description: "OK" }]
+      : "status" in success
+        ? [success]
+        : success;
+  if (list.length === 0) throw new Error("an http binding needs at least one success response");
+  return list;
+}
+
+function isEmpty(response: SuccessResponse): boolean {
+  return response.status === 204 || response.empty === true;
+}
+
+function rejectionResponse(c: OperationContext, outcome: Rejection): Response {
+  if (outcome.plain)
+    return c.json(
+      { code: outcome.code, message: outcome.message, ...outcome.extra },
+      outcome.status,
+    );
+  throw new HttpError(
+    outcome.status,
+    outcome.code,
+    outcome.message,
+    outcome.details ? { details: outcome.details } : {},
+  );
 }
 
 function honoPath(path: string): string {
@@ -42,7 +87,8 @@ export function toHonoRoute<I, R>(app: OpenAPIHono<AppEnv>, op: Operation<I, R>)
   if (!http) throw new Error(`operation ${op.id} has no http binding`);
   const method = http.method.toUpperCase();
   const gatedMethods = method === "GET" ? ["GET", "HEAD"] : [method];
-  const success = http.success ?? { status: 200, description: "OK" };
+  const successes = successResponses(http.success);
+  const primary = successes[0] as SuccessResponse;
   const gate = permissionGate(op);
   app.use(honoPath(http.path), async (c, next) => {
     if (gatedMethods.includes(c.req.method)) return gate(c, next);
@@ -58,16 +104,21 @@ export function toHonoRoute<I, R>(app: OpenAPIHono<AppEnv>, op: Operation<I, R>)
     request: {
       ...(http.params ? { params: http.params } : {}),
       ...(http.query ? { query: http.query } : {}),
+      ...(http.headers ? { headers: http.headers } : {}),
       ...(http.body ? { body: { content: { "application/json": { schema: http.body } } } } : {}),
     },
     responses: {
-      [success.status]:
-        success.status === 204
-          ? { description: success.description }
-          : {
-              description: success.description,
-              content: { "application/json": { schema: http.response } },
-            },
+      ...Object.fromEntries(
+        successes.map((response) => [
+          response.status,
+          isEmpty(response)
+            ? { description: response.description }
+            : {
+                description: response.description,
+                content: { "application/json": { schema: http.response } },
+              },
+        ]),
+      ),
       ...Object.fromEntries(
         Object.entries(http.errors ?? {}).map(([status, description]) => [
           status,
@@ -78,28 +129,40 @@ export function toHonoRoute<I, R>(app: OpenAPIHono<AppEnv>, op: Operation<I, R>)
   } as unknown as Parameters<typeof createRoute>[0]);
   const handler = async (c: OperationContext) => {
     const principal = requireAuth(c);
-    const scope: OperationScope = { db: c.get("db"), tenant_id: principal.tenant_id, principal };
+    const boss = c.get("boss");
+    const scope: OperationScope = {
+      db: c.get("db"),
+      tenant_id: principal.tenant_id,
+      principal,
+      actor: actorOfPrincipal(principal),
+      request_source: readRequestSource(c as never) ?? "api",
+      ...(boss ? { boss } : {}),
+    };
     const input = http.toInput({
       param: http.params ? c.req.valid("param") : undefined,
       query: http.query ? c.req.valid("query") : undefined,
       json: http.body ? c.req.valid("json") : undefined,
+      header: http.headers ? c.req.valid("header") : undefined,
     });
     const outcome = await op.handler(scope, input);
-    if (isRejection(outcome)) {
-      if (outcome.plain)
-        return c.json(
-          { code: outcome.code, message: outcome.message, ...outcome.extra },
-          outcome.status,
-        );
-      throw new HttpError(
-        outcome.status,
-        outcome.code,
-        outcome.message,
-        outcome.details ? { details: outcome.details } : {},
-      );
-    }
-    if (success.status === 204) return c.body(null, 204);
-    return c.json(await http.toBody(outcome, scope), success.status);
+    if (isRejection(outcome)) return rejectionResponse(c, outcome);
+    const status = http.statusFor ? http.statusFor(outcome) : primary.status;
+    const response = successes.find((candidate) => candidate.status === status);
+    if (!response) throw new Error(`operation ${op.id} answered undeclared status ${status}`);
+    if (isEmpty(response)) return c.body(null, status);
+    return c.json(await http.toBody(outcome, scope), status);
   };
-  app.openapi(route, handler as never);
+  const invalid = http.invalid;
+  const hook = invalid
+    ? (result: ValidationResult, c: OperationContext) => {
+        if (result.success) return undefined;
+        const issues: ValidationIssue[] = (result.error?.issues ?? []).map((issue) => ({
+          path: issue.path.map(String).join("."),
+          message: issue.message,
+        }));
+        return rejectionResponse(c, invalid(issues));
+      }
+    : undefined;
+  if (hook) app.openapi(route, handler as never, hook as never);
+  else app.openapi(route, handler as never);
 }

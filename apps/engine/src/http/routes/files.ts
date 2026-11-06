@@ -44,8 +44,6 @@ export function fileActor(c: Context<AppEnv>): FileActor {
   return { principal: requireAuth(c), request_source: readRequestSource(c) };
 }
 
-export { toFileWire };
-
 export function gateOtherMethods(
   methods: readonly string[],
   permission: string,

@@ -269,6 +269,86 @@ describe("connectors/service", () => {
     expect(created.template_snapshot?.slug).toBe("stripe");
   });
 
+  test("clearing and setting a template binding in one patch is a 409 conflict", async () => {
+    const tenant_id = (await seedTenant(ctx.db)).id;
+    const created = await createConnector(
+      {
+        tenant_id,
+        input: {
+          name: "Stripe",
+          slug: "stripe",
+          driver: "http",
+          environment: "dev",
+          auth_type: "bearer",
+          template_slug: "stripe",
+        },
+        actor_id: null,
+      },
+      ctx.db,
+    );
+    await expect(
+      updateConnector(
+        tenant_id,
+        created.id,
+        { clear_template_binding: true, template_slug: "github" },
+        null,
+        ctx.db,
+      ),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "connector_template_conflict",
+      message: "clear_template_binding cannot be combined with template_slug: send one of them",
+    });
+    const after = await getConnector(tenant_id, created.id, ctx.db);
+    expect(after?.template_slug).toBe("stripe");
+    expect(after?.template_snapshot?.slug).toBe("stripe");
+    expect(after?.updated_at.toISOString()).toBe(created.updated_at.toISOString());
+  });
+
+  test("an unknown template slug is a 400 on create and on update", async () => {
+    const tenant_id = (await seedTenant(ctx.db)).id;
+    const unknown = {
+      status: 400,
+      code: "connector_template_unknown",
+      message: "unknown connector template: no-such-template",
+      details: { template_slug: "no-such-template" },
+    };
+    await expect(
+      createConnector(
+        {
+          tenant_id,
+          input: {
+            name: "Ghost",
+            slug: "ghost",
+            driver: "http",
+            environment: "dev",
+            auth_type: "none",
+            template_slug: "no-such-template",
+          },
+          actor_id: null,
+        },
+        ctx.db,
+      ),
+    ).rejects.toMatchObject(unknown);
+    const created = await createConnector(
+      {
+        tenant_id,
+        input: {
+          name: "Plain",
+          slug: "plain",
+          driver: "http",
+          environment: "dev",
+          auth_type: "none",
+        },
+        actor_id: null,
+      },
+      ctx.db,
+    );
+    await expect(
+      updateConnector(tenant_id, created.id, { template_slug: "no-such-template" }, null, ctx.db),
+    ).rejects.toMatchObject(unknown);
+  });
+
   test("a bound signed-JWT template fixes its static policy until the binding is cleared", async () => {
     const tenant_id = (await seedTenant(ctx.db)).id;
     const created = await createConnector(

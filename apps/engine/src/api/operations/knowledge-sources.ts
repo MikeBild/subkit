@@ -32,7 +32,20 @@ import {
 } from "../../knowledge/url-source.ts";
 import { CatalogGroupBySchema, CategoryFilterSchema } from "../catalog-metadata.ts";
 import { IdParam } from "../common-schemas.ts";
-import { defineOperation, type Rejection, reject } from "./index.ts";
+import { defineOperation, isRejection, type Rejection, reject } from "./index.ts";
+import {
+  AnalyzeKnowledgeSourceToolInput,
+  analyzeToolError,
+  analyzeToolResult,
+  GetKnowledgeSourceToolInput,
+  knowledgeActorOf,
+  ListKnowledgeSourcesToolInput,
+  listToolResult,
+  patchFromToolArgs,
+  UpdateKnowledgeSourceToolInput,
+  updateToolError,
+  updateToolResult,
+} from "./knowledge-source-tools.ts";
 
 const ListKnowledgeSourcesQuery = z
   .object({
@@ -98,31 +111,50 @@ function listFilterFromQuery(q: ListQuery): ListFilter {
   };
 }
 
-export const listKnowledgeSourcesOperation = defineOperation<ListFilter, KnowledgeSourceListResult>(
-  {
-    id: "knowledge.list",
-    summary: "List knowledge sources",
-    permission: "knowledge:read",
-    effect: "read",
-    async handler(scope, filter) {
-      const params = { tenant_id: scope.tenant_id, ...filter };
-      const [items, totals] = await Promise.all([
-        listKnowledgeSources(params, scope.db),
-        knowledgeSourceTotals(params, scope.db),
-      ]);
-      return { items, ...totals };
-    },
-    http: {
-      method: "get",
-      path: "/v1/knowledge-sources",
-      tags: ["knowledge"],
-      query: ListKnowledgeSourcesQuery,
-      response: KnowledgeSourceListResponse,
-      toInput: ({ query }) => listFilterFromQuery(query as ListQuery),
-      toBody: (result) => result,
-    },
+interface KnowledgeSourceListInput {
+  readonly filter: ListFilter;
+  readonly tool_category?: string;
+}
+
+export const listKnowledgeSourcesOperation = defineOperation<
+  KnowledgeSourceListInput,
+  KnowledgeSourceListResult
+>({
+  id: "knowledge.list",
+  summary: "List knowledge sources",
+  permission: "knowledge:read",
+  effect: "read",
+  async handler(scope, { filter }) {
+    const params = { tenant_id: scope.tenant_id, ...filter };
+    const [items, totals] = await Promise.all([
+      listKnowledgeSources(params, scope.db),
+      knowledgeSourceTotals(params, scope.db),
+    ]);
+    return { items, ...totals };
   },
-);
+  http: {
+    method: "get",
+    path: "/v1/knowledge-sources",
+    tags: ["knowledge"],
+    query: ListKnowledgeSourcesQuery,
+    response: KnowledgeSourceListResponse,
+    toInput: ({ query }) => ({ filter: listFilterFromQuery(query as ListQuery) }),
+    toBody: (result) => result,
+  },
+  tool: {
+    name: "list_knowledge_sources",
+    description:
+      "List the tenant's Knowledge Sources with what each covers (`description`), its catalog block (`category`, also a filter) and its tags. Use this first to decide which source covers a topic, then call search_knowledge to pull the relevant chunks.",
+    input: ListKnowledgeSourcesToolInput,
+    gate: "enforced",
+    permission: { resourceType: "knowledge" },
+    toInput: (raw) => {
+      const category = (raw as { category?: string } | undefined)?.category;
+      return { filter: {}, ...(category !== undefined ? { tool_category: category } : {}) };
+    },
+    toResult: (outcome, input) => listToolResult(outcome, input.tool_category),
+  },
+});
 
 export const getKnowledgeSourceOperation = defineOperation<{ id: string }, KnowledgeSourceView>({
   id: "knowledge.get",
@@ -145,11 +177,24 @@ export const getKnowledgeSourceOperation = defineOperation<{ id: string }, Knowl
     toInput: ({ param }) => ({ id: (param as { id: string }).id }),
     toBody: (source) => source,
   },
+  tool: {
+    name: "get_knowledge_source",
+    description: "Fetch a single knowledge source by id.",
+    input: GetKnowledgeSourceToolInput,
+    gate: "enforced",
+    permission: { resourceType: "knowledge", resourceIdArg: "id" },
+    toInput: (raw) => ({ id: (raw as { id: string }).id }),
+    toResult: (outcome) => {
+      if (isRejection(outcome)) return { ok: false, data: { error: "knowledge_source_not_found" } };
+      return { ok: true, data: { source: outcome } };
+    },
+  },
 });
 
 interface KnowledgeSourcePatchInput {
   readonly id: string;
   readonly patch: UpdateKnowledgeSourceInput;
+  readonly fields?: readonly string[];
 }
 
 export const updateKnowledgeSourceOperation = defineOperation<
@@ -162,16 +207,14 @@ export const updateKnowledgeSourceOperation = defineOperation<
   effect: "write",
   audit: AuditAction.KNOWLEDGE_SOURCE_UPDATED,
   async handler(scope, { id, patch }) {
-    const principal = scope.principal;
-    if (!principal) return reject.unauthorized();
     try {
       const updated = await updateKnowledgeSource(
         {
           tenant_id: scope.tenant_id,
           id,
           patch,
-          actor_id: principal.id,
-          actor: actorOf(principal),
+          actor_id: scope.actor.id,
+          actor: knowledgeActorOf(scope.actor),
         },
         scope.db,
       );
@@ -201,6 +244,31 @@ export const updateKnowledgeSourceOperation = defineOperation<
     }),
     toBody: (source) => source,
   },
+  tool: {
+    name: "update_knowledge_source",
+    description:
+      "Patch a persisted knowledge source — rename, edit its description/tags, retarget the workflow scope, change status, or change refresh cadence.",
+    use_case:
+      "Use when the user asks to rename a knowledge source, set its description or tags, archive it (status='inactive'), repoint it to a different workflow scope, or change its refresh cadence. To auto-generate a description/tags from the content instead of dictating them, use analyze_knowledge_source. Send only the fields that should change.",
+    important_notes: [
+      "At least one patch field is required.",
+      "Switching scope to 'workflow' requires workflow_id to be set (either in this patch or already on the row).",
+      "Audits as knowledge_source.updated with full before/after snapshots — never overrides ingested chunk history.",
+    ],
+    input: UpdateKnowledgeSourceToolInput,
+    gate: "enforced",
+    permission: { resourceType: "knowledge", resourceIdArg: "id" },
+    toInput: (raw) => {
+      const args = raw as z.infer<typeof UpdateKnowledgeSourceToolInput>;
+      return {
+        id: args.id,
+        patch: patchFromToolArgs(args),
+        fields: Object.keys(args).filter((k) => k !== "id"),
+      };
+    },
+    toResult: updateToolResult,
+    onError: updateToolError,
+  },
 });
 
 interface KnowledgeSourceAnalyzeInput {
@@ -218,14 +286,12 @@ export const analyzeKnowledgeSourceOperation = defineOperation<
   effect: "write",
   audit: AuditAction.KNOWLEDGE_SOURCE_ANALYZED,
   async handler(scope, { id, force }) {
-    const principal = scope.principal;
-    if (!principal) return reject.unauthorized();
     const updated = await analyzeKnowledgeSource(
       {
         tenant_id: scope.tenant_id,
         id,
-        actor_id: principal.id,
-        actor: actorOf(principal),
+        actor_id: scope.actor.id,
+        actor: knowledgeActorOf(scope.actor),
         ...(force !== undefined ? { force } : {}),
       },
       scope.db,
@@ -245,6 +311,28 @@ export const analyzeKnowledgeSourceOperation = defineOperation<
       return { id: (param as { id: string }).id, ...(force !== undefined ? { force } : {}) };
     },
     toBody: (source) => ({ analyzed: true, knowledge_source: source }),
+  },
+  tool: {
+    name: "analyze_knowledge_source",
+    description:
+      "Generate a description and topical tags for a persisted Knowledge Source by reading its first chunks. Use this to make a legacy source (uploaded without a description, or with no tags) self-describing and routable. Tags are replaced with a freshly generated set; the description is only overwritten when force=true.",
+    use_case:
+      "Use when the user asks to summarise, describe, tag, or 're-analyze' an existing Knowledge Source, or when list_knowledge_sources shows a source with a null description / empty tags. Pass force=true to regenerate an existing description.",
+    important_notes: [
+      "Never renames the source — analysis enriches description + tags only.",
+      "tags are a deduped replacement set (3-8 short topical tags).",
+      "description is overwritten only when currently empty or force=true.",
+      "Counts against the tenant LLM budget; one model call per analyze.",
+    ],
+    input: AnalyzeKnowledgeSourceToolInput,
+    gate: "enforced",
+    permission: { resourceType: "knowledge", resourceIdArg: "id" },
+    toInput: (raw) => {
+      const { id, force } = raw as z.infer<typeof AnalyzeKnowledgeSourceToolInput>;
+      return { id, ...(force !== undefined ? { force } : {}) };
+    },
+    toResult: analyzeToolResult,
+    onError: analyzeToolError,
   },
 });
 
@@ -293,22 +381,10 @@ const URL_FAILURES = {
 function urlRejection(error: unknown): Rejection {
   if (error instanceof KnowledgeSourceAddressConflictError) return reject.conflict(error.message);
   if (error instanceof KnowledgeUrlFetchError) {
-    return {
-      rejected: true,
-      status: 422,
-      code: "unprocessable_entity",
-      message: error.message,
-      details: { reason: error.code },
-    };
+    return reject.unprocessable(error.message, { reason: error.code }, "unprocessable_entity");
   }
   if (error instanceof KnowledgeBudgetExceededError) {
-    return {
-      rejected: true,
-      status: 413,
-      code: "payload_too_large",
-      message: error.message,
-      details: { bytes_limit: error.bytes_limit },
-    };
+    return reject.payloadTooLarge(error.message, { bytes_limit: error.bytes_limit });
   }
   if (error instanceof KnowledgeSourceNotRefreshableError) {
     return reject.conflict(error.message, { reason: error.code, source_type: error.source_type });

@@ -1,6 +1,8 @@
 import { z } from "@hono/zod-openapi";
 import { executionStartTraceId } from "../../audit/execution-traces.ts";
+import { AuditAction } from "../../audit/types.ts";
 import { KEYSET_CURSOR_PATTERN } from "../../db/keyset-cursor.ts";
+import { cancelExecutionRequest } from "../../execution/control-service.ts";
 import { EXECUTION_STATUSES } from "../../execution/core/status.ts";
 import { describeExecutionEvidence } from "../../execution/evidence.ts";
 import {
@@ -11,22 +13,28 @@ import {
 } from "../../execution/list.ts";
 import { loadExecutionOutcome } from "../../execution/outcome.ts";
 import {
+  findVisibleExecutionRow,
   listExecutionPage,
   listVisibleExecutionSteps,
   loadExecutionCost,
   loadExecutionDetail,
 } from "../../execution/read-service.ts";
-import { isSensitivePayload } from "../../execution/sensitive-payload.ts";
+import {
+  authorizeSensitiveResume,
+  isSensitivePayload,
+  recoverExecutionPayload,
+} from "../../execution/sensitive-payload.ts";
 import { findVisibleExecution } from "../../execution/visible-reads.ts";
+import { IdParam } from "../common-schemas.ts";
+import { admissionRejection } from "./execution-admission.ts";
+import { ExecutionCost } from "./execution-cost-representation.ts";
 import {
   ExecDetailSchema,
   ExecListResponse,
   StepListResponse,
   serializeExec,
   serializeStep,
-} from "../../http/routes/executions/schemas.ts";
-import { IdParam } from "../common-schemas.ts";
-import { ExecutionCost } from "./execution-cost-representation.ts";
+} from "./execution-representation.ts";
 import { defineOperation, isRejection, reject } from "./index.ts";
 
 const ListExecutionsQuery = z
@@ -200,6 +208,7 @@ export const listExecutionsOperation = defineOperation<ExecutionListInput, Execu
       "List recent executions for the tenant (newest first, paged — executions are an unbounded history). Omit cursor on the first page. Use only filters justified by the task; do not invent status, channel or date bounds. When the user names a workflow, first resolve it with get_workflow/find_workflow and pass workflow_id; never treat the tenant-wide latest execution as evidence for a named workflow. started_from/started_to narrow to a window on the start time (the window `get_operating_figures` counts over), status to one outcome. `total` is the exact count under the given filters; while `has_more` is true, pass `next_cursor` back verbatim as `cursor` with unchanged filters for the next page. A failed read is missing evidence, not an empty history.",
     input: ListExecutionsToolInput,
     gate: "deferred",
+    strict: false,
     toInput: (raw) => ({ options: listOptionsFromToolArgs(raw as ListToolArgs), enrich: false }),
     toResult: (outcome) => {
       if (isRejection(outcome)) return { ok: false, data: { error: "principal_required" } };
@@ -355,5 +364,87 @@ export const getExecutionCostOperation = defineOperation<
     errors: { 404: "Not found" },
     toInput: ({ param }) => ({ id: (param as { id: string }).id }),
     toBody: (cost) => cost,
+  },
+});
+
+const SensitiveResultResponse = z.object({ result: z.unknown() });
+
+export const getSensitiveExecutionResultOperation = defineOperation<
+  { readonly id: string },
+  z.infer<typeof SensitiveResultResponse>
+>({
+  id: "executions.result",
+  summary: "Get the result of a sensitive execution for its original caller",
+  permission: "execution:read",
+  resource: { type: "execution", param: "id" },
+  effect: "read",
+  async handler(scope, { id }) {
+    const principal = scope.principal;
+    if (!principal) return reject.unauthorized();
+    const row = await findVisibleExecutionRow(scope.db, principal, id);
+    if (
+      row?.status !== "succeeded" ||
+      !isSensitivePayload(row.input) ||
+      !isSensitivePayload(row.sensitive_result)
+    )
+      return reject.notFound("execution_result");
+    try {
+      await authorizeSensitiveResume(scope.db, row, principal);
+    } catch (error) {
+      return admissionRejection(error, {
+        db: scope.db,
+        principal,
+        workflow_id: row.workflow_id,
+        request_source: scope.request_source ?? "api",
+        execution_id: row.id,
+      });
+    }
+    return {
+      result: recoverExecutionPayload(row.sensitive_result, principal.tenant_id, row.id, "result"),
+    };
+  },
+  http: {
+    method: "get",
+    path: "/v1/executions/{id}/result",
+    tags: ["executions"],
+    params: IdParam,
+    response: SensitiveResultResponse,
+    errors: {
+      403: "The authenticated caller does not match the original sensitive execution",
+      404: "Not found",
+    },
+    toInput: ({ param }) => ({ id: (param as { id: string }).id }),
+    toBody: (body) => body,
+  },
+});
+
+export const cancelExecutionOperation = defineOperation<{ readonly id: string }, true>({
+  id: "executions.cancel",
+  summary: "Cancel an in-flight execution",
+  permission: "execution:abort",
+  resource: { type: "execution", param: "id" },
+  effect: "write",
+  audit: AuditAction.EXECUTION_ABORT_REQUESTED,
+  async handler(scope, { id }) {
+    const principal = scope.principal;
+    if (!principal) return reject.unauthorized();
+    const found = await cancelExecutionRequest(scope.db, {
+      principal,
+      execution_id: id,
+      request_source: scope.request_source ?? "api",
+      boss: scope.boss,
+    });
+    return found ? true : reject.notFound("execution");
+  },
+  http: {
+    method: "post",
+    path: "/v1/executions/{id}/cancel",
+    tags: ["executions"],
+    params: IdParam,
+    response: z.null(),
+    success: { status: 202, description: "Cancellation requested", empty: true },
+    errors: { 404: "Not found" },
+    toInput: ({ param }) => ({ id: (param as { id: string }).id }),
+    toBody: () => null,
   },
 });

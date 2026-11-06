@@ -6,7 +6,7 @@ import { createOpenApiApp } from "../../../http/openapi.ts";
 import { adminPrincipal } from "../../../test-helpers/principals.ts";
 import { seedTenant } from "../../../test-helpers/seed.ts";
 import { toHonoRoute } from "../hono.ts";
-import { defineOperation, plainRejection } from "../index.ts";
+import { defineOperation, plainRejection, reject } from "../index.ts";
 
 let testDb: TestDb;
 let tenant_id: string;
@@ -80,6 +80,44 @@ const read = defineOperation({
   },
 });
 
+let seenScope: { request_source?: string; hasBoss: boolean } | null = null;
+
+const accept = defineOperation({
+  id: "things.accept",
+  permission: "workflow:write",
+  effect: "write",
+  audit: "workflow.updated",
+  handler: async (scope, input: { id: string; mode: string; name: string }) => {
+    seenScope = {
+      ...(scope.request_source ? { request_source: scope.request_source } : {}),
+      hasBoss: scope.boss !== undefined,
+    };
+    return input.id === "gone" ? reject.payloadTooLarge("too big", { limit: 1 }) : input;
+  },
+  http: {
+    method: "post",
+    path: "/v1/things/{id}/accept",
+    tags: ["things"],
+    params: IdParam,
+    headers: z.object({ "x-mode": z.string() }),
+    body: z.object({ name: z.string().min(2) }),
+    response: z.object({ id: z.string(), mode: z.string(), name: z.string() }),
+    success: [
+      { status: 200, description: "Replayed" },
+      { status: 201, description: "Accepted" },
+      { status: 202, description: "Queued", empty: true },
+    ],
+    statusFor: (result) => (result.mode === "queue" ? 202 : result.mode === "new" ? 201 : 200),
+    invalid: (issues) => reject.unprocessable("body invalid", { issues }, "validation_failed"),
+    toInput: (request) => ({
+      id: (request.param as { id: string }).id,
+      mode: (request.header as { "x-mode": string })["x-mode"],
+      name: (request.json as { name: string }).name,
+    }),
+    toBody: (result) => result,
+  },
+});
+
 function buildApp(roles: string[] = ["admin"]) {
   const app = createOpenApiApp();
   app.use("*", errorMiddleware());
@@ -93,6 +131,7 @@ function buildApp(roles: string[] = ["admin"]) {
   toHonoRoute(app, remove);
   toHonoRoute(app, link);
   toHonoRoute(app, read);
+  toHonoRoute(app, accept);
   return app;
 }
 
@@ -140,5 +179,57 @@ describe("toHonoRoute permission gate", () => {
     expect((await denied.request("/v1/things/t-1", { method: "GET" })).status).toBe(403);
     expect((await denied.request("/v1/things/t-1", { method: "HEAD" })).status).toBe(403);
     expect((await buildApp().request("/v1/things/t-1", { method: "HEAD" })).status).toBe(200);
+  });
+});
+
+describe("toHonoRoute success, header and validation bindings", () => {
+  const post = (id: string, mode: string, body: unknown) =>
+    buildApp().request(`/v1/things/${id}/accept`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-mode": mode },
+      body: JSON.stringify(body),
+    });
+
+  test("documents every declared success status", () => {
+    const spec = buildApp().getOpenAPI31Document({
+      openapi: "3.1.0",
+      info: { title: "t", version: "0" },
+    });
+    const responses = spec.paths?.["/v1/things/{id}/accept"]?.post?.responses ?? {};
+    expect(responses["200"]).toMatchObject({ description: "Replayed" });
+    expect(responses["201"]).toMatchObject({ description: "Accepted" });
+    expect(responses["202"]).toEqual({ description: "Queued" });
+  });
+
+  test("picks the status from the result and reads the header", async () => {
+    const created = await post("t-1", "new", { name: "ab" });
+    expect(created.status).toBe(201);
+    expect(await created.json()).toEqual({ id: "t-1", mode: "new", name: "ab" });
+    expect((await post("t-1", "again", { name: "ab" })).status).toBe(200);
+    const queued = await post("t-1", "queue", { name: "ab" });
+    expect(queued.status).toBe(202);
+    expect(await queued.text()).toBe("");
+  });
+
+  test("passes the request source into the scope", async () => {
+    await post("t-1", "new", { name: "ab" });
+    expect(seenScope).toEqual({ request_source: "api", hasBoss: false });
+  });
+
+  test("answers an invalid body through the binding's own rejection", async () => {
+    const response = await post("t-1", "new", { name: "a" });
+    expect(response.status).toBe(422);
+    const body = (await response.json()) as {
+      code: string;
+      details: { issues: { path: string }[] };
+    };
+    expect(body.code).toBe("validation_failed");
+    expect(body.details.issues[0]?.path).toBe("name");
+  });
+
+  test("maps a payload-too-large rejection to 413", async () => {
+    const response = await post("gone", "new", { name: "ab" });
+    expect(response.status).toBe(413);
+    expect(((await response.json()) as { code: string }).code).toBe("payload_too_large");
   });
 });

@@ -10523,7 +10523,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description The reviewed description changed */
+                /** @description The reviewed description changed, or clear_template_binding was combined with template_slug */
                 409: {
                     headers: {
                         [name: string]: unknown;

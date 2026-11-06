@@ -7,6 +7,7 @@ import {
   MAX_INLINE_BYTES,
   parseFileIdOrThrow,
 } from "../../api/files-schemas.ts";
+import { toFileWire } from "../../api/operations/files-representation.ts";
 import { actorType, readRequestSource } from "../../audit/index.ts";
 import { recordFilesDedupSeen } from "../../files/dedup-counter.ts";
 import { FileLinkError, linkStoredFile } from "../../files/links.ts";
@@ -27,7 +28,6 @@ import {
 import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-import { toFileWire } from "./files.ts";
 
 const IdParam = z.object({ id: z.string().uuid() });
 const SlugParam = z.object({ id: z.string().uuid(), slug: z.string().min(1) });

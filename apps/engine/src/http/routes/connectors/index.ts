@@ -35,10 +35,6 @@ export function registerConnectorRoutes(app: OpenAPIHono<AppEnv>): void {
     const id = c.req.param("id");
     return requirePermission("connector:test", () => ({ type: "connector", id }))(c, next);
   });
-  app.use("/v1/connectors/:id/promote", async (c, next) => {
-    const id = c.req.param("id");
-    return requirePermission("connector:promote", () => ({ type: "connector", id }))(c, next);
-  });
   app.use("/v1/connectors/:id/call", async (c, next) => {
     const id = c.req.param("id");
     return requirePermission("connector:read", () => ({ type: "connector", id }))(c, next);

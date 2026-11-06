@@ -1,13 +1,27 @@
 import type { z } from "@hono/zod-openapi";
+import type { PgBoss } from "pg-boss";
 import type { AuditActionValue } from "../../audit/index.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { ToolContext, ToolResult } from "../../conversations/tools/index.ts";
 import type { Db } from "../../db/client.ts";
+import type { RequestSource } from "../../observability/service-metadata.ts";
+
+export interface OperationActor {
+  readonly id: string | null;
+  readonly type: "user" | "system_account" | "system" | "unknown";
+}
+
+export function actorOfPrincipal(principal: ResolvedPrincipal): OperationActor {
+  return { id: principal.id, type: principal.kind };
+}
 
 export interface OperationScope {
   readonly db: Db;
   readonly tenant_id: string;
   readonly principal: ResolvedPrincipal | null;
+  readonly actor: OperationActor;
+  readonly request_source?: RequestSource;
+  readonly boss?: PgBoss;
 }
 
 export type RejectionStatus = 400 | 401 | 403 | 404 | 409 | 413 | 422;
@@ -40,6 +54,21 @@ export const reject = {
     rejection(400, "bad_request", message, details),
   conflict: (message: string, details?: Record<string, unknown>, code = "conflict"): Rejection =>
     rejection(409, code, message, details),
+  forbidden: (message: string, details?: Record<string, unknown>): Rejection =>
+    rejection(403, "forbidden", message, details),
+  payloadTooLarge: (message: string, details?: Record<string, unknown>): Rejection =>
+    rejection(413, "payload_too_large", message, details),
+  unprocessable: (
+    message: string,
+    details?: Record<string, unknown>,
+    code = "unprocessable",
+  ): Rejection => rejection(422, code, message, details),
+  status: (
+    status: RejectionStatus,
+    code: string,
+    message: string,
+    details?: Record<string, unknown>,
+  ): Rejection => rejection(status, code, message, details),
 };
 
 export function plainRejection(
@@ -67,6 +96,20 @@ export interface HttpRequestParts {
   readonly param: unknown;
   readonly query: unknown;
   readonly json: unknown;
+  readonly header: unknown;
+}
+
+export type SuccessStatus = 200 | 201 | 202 | 204;
+
+export interface SuccessResponse {
+  readonly status: SuccessStatus;
+  readonly description: string;
+  readonly empty?: true;
+}
+
+export interface ValidationIssue {
+  readonly path: string;
+  readonly message: string;
 }
 
 export interface HttpBinding<I, R> {
@@ -77,9 +120,12 @@ export interface HttpBinding<I, R> {
   readonly params?: z.ZodTypeAny;
   readonly query?: z.ZodTypeAny;
   readonly body?: z.ZodTypeAny;
+  readonly headers?: z.ZodTypeAny;
   readonly response: z.ZodTypeAny;
   readonly errors?: Partial<Record<ErrorStatus, string>>;
-  readonly success?: { readonly status: 200 | 201 | 204; readonly description: string };
+  readonly success?: SuccessResponse | readonly SuccessResponse[];
+  statusFor?(result: R): SuccessStatus;
+  invalid?(issues: readonly ValidationIssue[]): Rejection;
   toInput(request: HttpRequestParts): I;
   toBody(result: R, scope: OperationScope): unknown;
 }
@@ -89,6 +135,8 @@ export interface ToolBinding<I, R> {
   readonly description: string;
   readonly input: z.ZodTypeAny;
   readonly gate: "enforced" | "deferred";
+  readonly strict?: boolean;
+  readonly permission?: { readonly resourceType: string; readonly resourceIdArg?: string };
   readonly resourceType?: string;
   readonly resolveResourceId?: (
     ctx: ToolContext,
@@ -97,7 +145,14 @@ export interface ToolBinding<I, R> {
   readonly use_case?: string;
   readonly important_notes?: readonly string[];
   toInput(args: unknown): I;
-  toResult(outcome: R | Rejection, input: I): ToolResult;
+  prepare?(input: I, ctx: ToolContext): Promise<unknown>;
+  toResult(
+    outcome: R | Rejection,
+    input: I,
+    ctx: ToolContext,
+    prepared: unknown,
+  ): ToolResult | Promise<ToolResult>;
+  onError?(error: unknown, input: I, ctx: ToolContext, prepared: unknown): ToolResult;
 }
 
 interface OperationCore<I, R> {

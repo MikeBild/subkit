@@ -1,16 +1,11 @@
 import { z } from "@hono/zod-openapi";
-import { listedDescription } from "../../../api/catalog-metadata.ts";
+import {
+  getKnowledgeSourceOperation,
+  listKnowledgeSourcesOperation,
+} from "../../../api/operations/knowledge-sources.ts";
+import { toConversationTool } from "../../../api/operations/tool.ts";
 import type { ConversationTool } from "../index.ts";
 
-const ListInput = z
-  .object({
-    category: z
-      .string()
-      .optional()
-      .describe("Only sources in this catalog block (see `category` on each source)."),
-  })
-  .openapi("ListKnowledgeSourcesToolInput");
-const GetInput = z.object({ id: z.string().uuid() }).openapi("GetKnowledgeSourceToolInput");
 const SearchInput = z
   .object({
     query: z.string().min(1),
@@ -22,68 +17,13 @@ const SearchInput = z
 
 const SEARCH_KNOWLEDGE_DEFAULT_LIMIT = 5;
 
-export const listKnowledgeSourcesTool: ConversationTool = {
-  name: "list_knowledge_sources",
-  description:
-    "List the tenant's Knowledge Sources with what each covers (`description`), its catalog block (`category`, also a filter) and its tags. Use this first to decide which source covers a topic, then call search_knowledge to pull the relevant chunks.",
-  inputSchema: ListInput,
-  category: "tenant_read",
-  permission: { action: "knowledge:read", resourceType: "knowledge" },
-  async execute(ctx, args: z.infer<typeof ListInput>) {
-    const all = await ctx.engineClient.knowledgeSources.list();
-    const rows = all.filter((k) => args?.category === undefined || k.category === args.category);
-    const filtered =
-      args?.category === undefined
-        ? {}
-        : {
-            category_filter: args.category,
-            total_sources: all.length,
-            categories: [...new Set(all.map((k) => k.category))].sort(),
-            ...(rows.length === 0 && all.length > 0
-              ? {
-                  hint: `No source in category '${args.category}', but the workspace has ${all.length} source(s) in other categories, listed in sources_in_other_categories. Use them before telling the person nothing was found.`,
-                  sources_in_other_categories: all.slice(0, 25).map((k) => ({
-                    id: k.id,
-                    name: k.name,
-                    category: k.category,
-                  })),
-                }
-              : {}),
-          };
-    return {
-      ok: true,
-      data: {
-        ...filtered,
-        sources: rows.map((k) => ({
-          id: k.id,
-          name: k.name,
-          slug: k.slug,
-          description: listedDescription(k.description),
-          category: k.category,
-          tags: k.tags,
-          scope: k.scope,
-          status: k.status,
-          source_type: k.source_type,
-          version: k.version,
-          chunk_count: k.chunk_count,
-        })),
-      },
-    };
-  },
-};
+export const listKnowledgeSourcesTool: ConversationTool = toConversationTool(
+  listKnowledgeSourcesOperation,
+);
 
-export const getKnowledgeSourceTool: ConversationTool = {
-  name: "get_knowledge_source",
-  description: "Fetch a single knowledge source by id.",
-  inputSchema: GetInput,
-  category: "tenant_read",
-  permission: { action: "knowledge:read", resourceType: "knowledge", resourceIdArg: "id" },
-  async execute(ctx, args: z.infer<typeof GetInput>) {
-    const k = await ctx.engineClient.knowledgeSources.get(args.id);
-    if (!k) return { ok: false, data: { error: "knowledge_source_not_found" } };
-    return { ok: true, data: { source: k } };
-  },
-};
+export const getKnowledgeSourceTool: ConversationTool = toConversationTool(
+  getKnowledgeSourceOperation,
+);
 
 const searchKnowledgeTool: ConversationTool = {
   name: "search_knowledge",

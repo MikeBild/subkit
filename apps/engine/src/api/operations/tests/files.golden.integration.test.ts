@@ -73,7 +73,7 @@ async function inline(text: string, filename: string): Promise<string> {
 }
 
 async function auditTrail(resource_id: string) {
-  return ctx.db
+  const rows = await ctx.db
     .select({
       action: auditLog.action,
       actor_type: auditLog.actor_type,
@@ -85,6 +85,8 @@ async function auditTrail(resource_id: string) {
     .from(auditLog)
     .where(and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.resource_id, resource_id)))
     .orderBy(asc(auditLog.ts), asc(auditLog.action));
+  const key = (row: (typeof rows)[number]) => `${row.action} ${JSON.stringify(row.metadata)}`;
+  return rows.toSorted((a, b) => key(a).localeCompare(key(b)));
 }
 
 beforeAll(async () => {

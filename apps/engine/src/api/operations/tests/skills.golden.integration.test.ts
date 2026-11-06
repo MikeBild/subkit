@@ -3,13 +3,16 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { and, asc, eq } from "drizzle-orm";
 import { getSkillTool, listAllSkillsTool } from "../../../conversations/tools/engine-api/skills.ts";
+import { deleteSkillTool } from "../../../conversations/tools/engine-api/writes/delete-skill.ts";
+import { updateSkillTool } from "../../../conversations/tools/engine-api/writes/update-skill.ts";
 import type { ToolContext } from "../../../conversations/tools/index.ts";
 import { auditLog, users } from "../../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../../http/tests/setup.ts";
 import { createSkill } from "../../../skills/service.ts";
 import { createDeterministicHexFactory } from "../../../test-helpers/determinism/ids.ts";
 import { emptyRoleId } from "../../../test-helpers/roles.ts";
-import { makeToolCtx, seedTenant } from "../../../test-helpers/seed.ts";
+import { makeToolCtx, seedTenant, seedUuid } from "../../../test-helpers/seed.ts";
+import { makeTestPrincipal } from "../../../tools/tests/_helpers.ts";
 
 const GOLDEN_PATH = new URL("./fixtures/skills.golden.json", import.meta.url).pathname;
 const golden = JSON.parse(readFileSync(GOLDEN_PATH, "utf8")) as Record<string, string>;
@@ -61,6 +64,50 @@ async function http(
 
 function toolCtx(): ToolContext {
   return makeToolCtx({ db: ctx.db, tenant_id: ctx.tenantId });
+}
+
+const TOOL_CONVERSATION = seedUuid("conversation", 7);
+
+function systemToolCtx(): ToolContext {
+  return makeToolCtx({ db: ctx.db, tenant_id: ctx.tenantId, conversation_id: TOOL_CONVERSATION });
+}
+
+function userToolCtx(): ToolContext {
+  return makeToolCtx({
+    db: ctx.db,
+    tenant_id: ctx.tenantId,
+    conversation_id: TOOL_CONVERSATION,
+    actor_id: ctx.userId,
+    principal: makeTestPrincipal({ id: ctx.userId, tenant_id: ctx.tenantId, roles: ["admin"] }),
+  });
+}
+
+async function seedToolSkill(title: string): Promise<string> {
+  return (
+    await createSkill(
+      { tenant_id: ctx.tenantId, input: { scope: "global", title, body: `${title} body` } },
+      ctx.db,
+    )
+  ).id;
+}
+
+async function toolAuditTrail(resourceId: string) {
+  const rows = await ctx.db
+    .select({
+      action: auditLog.action,
+      actor_type: auditLog.actor_type,
+      actor_id: auditLog.actor_id,
+      resource_type: auditLog.resource_type,
+      result: auditLog.result,
+      reason: auditLog.reason,
+      before: auditLog.before,
+      after: auditLog.after,
+      metadata: auditLog.metadata,
+    })
+    .from(auditLog)
+    .where(and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.resource_id, resourceId)))
+    .orderBy(asc(auditLog.ts), asc(auditLog.action));
+  return [...rows].sort((a, b) => a.action.localeCompare(b.action));
 }
 
 async function auditTrail(resourceId: string) {
@@ -317,6 +364,78 @@ describe("skill tools keep their results byte for byte", () => {
       use_case: getSkillTool.use_case,
       important_notes: getSkillTool.important_notes,
       rejects_slug: getSkillTool.inputSchema.safeParse({ id: "alpha" }).success,
+    });
+  });
+
+  test("update_skill", async () => {
+    for (const [shape, makeCtx] of [
+      ["system", systemToolCtx],
+      ["user", userToolCtx],
+    ] as const) {
+      const id = await seedToolSkill(`Tool update ${shape}`);
+      record(
+        `tool.update.${shape}`,
+        await updateSkillTool.execute(makeCtx(), { id, title: `Tool updated ${shape}` }),
+      );
+      record(`tool.update.${shape}.audit`, await toolAuditTrail(id));
+      record(
+        `tool.update.${shape}.missing`,
+        await updateSkillTool.execute(makeCtx(), { id: MISSING, title: "Nobody" }),
+      );
+      record(
+        `tool.update.${shape}.foreign`,
+        await updateSkillTool.execute(makeCtx(), { id: foreignId, title: "No" }),
+      );
+      const stale = await seedToolSkill(`Tool stale ${shape}`);
+      record(
+        `tool.update.${shape}.version-conflict`,
+        await updateSkillTool.execute(makeCtx(), {
+          id: stale,
+          expected_version: 7,
+          title: "Stale",
+        }),
+      );
+      record(`tool.update.${shape}.version-conflict.audit`, await toolAuditTrail(stale));
+    }
+    record("tool.update.audit.missing", await toolAuditTrail(MISSING));
+    record("tool.update.descriptor", {
+      name: updateSkillTool.name,
+      description: updateSkillTool.description,
+      category: updateSkillTool.category,
+      permission: updateSkillTool.permission,
+      use_case: updateSkillTool.use_case,
+      important_notes: updateSkillTool.important_notes,
+      strict: updateSkillTool.strict,
+      rejects_slug: updateSkillTool.inputSchema.safeParse({ id: "alpha" }).success,
+      accepts_patch: updateSkillTool.inputSchema.safeParse({ id: MISSING, title: "x", tags: ["y"] })
+        .success,
+    });
+  });
+
+  test("delete_skill", async () => {
+    for (const [shape, makeCtx] of [
+      ["system", systemToolCtx],
+      ["user", userToolCtx],
+    ] as const) {
+      const id = await seedToolSkill(`Tool delete ${shape}`);
+      record(`tool.delete.${shape}`, await deleteSkillTool.execute(makeCtx(), { id }));
+      record(`tool.delete.${shape}.audit`, await toolAuditTrail(id));
+      record(`tool.delete.${shape}.missing`, await deleteSkillTool.execute(makeCtx(), { id }));
+      record(
+        `tool.delete.${shape}.foreign`,
+        await deleteSkillTool.execute(makeCtx(), { id: foreignId }),
+      );
+    }
+    record("tool.delete.audit.foreign", await toolAuditTrail(foreignId));
+    record("tool.delete.descriptor", {
+      name: deleteSkillTool.name,
+      description: deleteSkillTool.description,
+      category: deleteSkillTool.category,
+      permission: deleteSkillTool.permission,
+      use_case: deleteSkillTool.use_case,
+      important_notes: deleteSkillTool.important_notes,
+      strict: deleteSkillTool.strict,
+      rejects_slug: deleteSkillTool.inputSchema.safeParse({ id: "alpha" }).success,
     });
   });
 

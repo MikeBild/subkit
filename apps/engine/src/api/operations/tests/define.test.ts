@@ -68,6 +68,16 @@ describe("rejections", () => {
     });
     expect(reject.conflict("taken", undefined, "lifecycle_blocked").code).toBe("lifecycle_blocked");
     expect(reject.unauthorized().status).toBe(401);
+    expect(reject.forbidden("no").status).toBe(403);
+    expect(reject.payloadTooLarge("big").code).toBe("payload_too_large");
+    expect(reject.unprocessable("bad").code).toBe("unprocessable");
+    expect(reject.status(409, "taken", "taken", { id: "x" })).toEqual({
+      rejected: true,
+      status: 409,
+      code: "taken",
+      message: "taken",
+      details: { id: "x" },
+    });
   });
 
   test("are told apart from results", () => {
@@ -100,6 +110,96 @@ describe("toConversationTool", () => {
     const derived = toConversationTool(op);
     expect(derived.category).toBe("tenant_write");
     expect(derived.permission).toBeUndefined();
+  });
+
+  test("a tool permission override wins over the operation resource", () => {
+    const op = defineOperation({
+      ...base,
+      resource: { type: "thing", param: "id" },
+      tool: {
+        ...tool,
+        permission: { resourceType: "knowledge", resourceIdArg: "id" },
+        strict: false,
+      },
+    });
+    const derived = toConversationTool(op);
+    expect(derived.permission).toEqual({
+      action: "thing:read",
+      resourceType: "knowledge",
+      resourceIdArg: "id",
+    });
+    expect(derived.strict).toBe(false);
+  });
+
+  test("toResult sees the tool context and onError turns a throw into a result", async () => {
+    const ctx = {
+      db: {},
+      tenant_id: "t",
+      conversation_id: "c-1",
+      engineClient: { context: { tenant_id: "t", actor_id: null } },
+    } as never;
+    const seen = defineOperation({
+      ...base,
+      tool: {
+        ...tool,
+        toResult: async (
+          _outcome: unknown,
+          _input: unknown,
+          context: { conversation_id: string },
+        ) => ({
+          ok: true as const,
+          data: context.conversation_id,
+        }),
+      },
+    });
+    expect(await toConversationTool(seen).execute(ctx, { id: "x" })).toEqual({
+      ok: true,
+      data: "c-1",
+    });
+    const failing = defineOperation({
+      ...base,
+      handler: async () => {
+        throw new Error("boom");
+      },
+      tool: {
+        ...tool,
+        onError: (error: unknown) => ({
+          ok: false as const,
+          error_code: String((error as Error).message),
+        }),
+      },
+    });
+    expect(await toConversationTool(failing).execute(ctx, { id: "x" })).toEqual({
+      ok: false,
+      error_code: "boom",
+    });
+    const unguarded = defineOperation({ ...failing, tool });
+    await expect(toConversationTool(unguarded).execute(ctx, { id: "x" })).rejects.toThrow("boom");
+  });
+
+  test("without a principal the scope takes the engine client actor and prepare feeds toResult", async () => {
+    const ctx = {
+      db: {},
+      tenant_id: "t",
+      conversation_id: "c-1",
+      engineClient: { context: { tenant_id: "t", actor_id: null, actor_type: "system" } },
+    } as never;
+    const op = defineOperation({
+      ...base,
+      handler: async (scope: { actor: unknown }) => scope.actor as never,
+      tool: {
+        ...tool,
+        prepare: async () => "before",
+        toResult: (outcome: unknown, _input: unknown, _ctx: unknown, prepared: unknown) => ({
+          ok: true as const,
+          data: { outcome, prepared },
+        }),
+      },
+    });
+    expect(await toConversationTool(op).execute(ctx, { id: "x" })).toEqual({
+      ok: true,
+      data: { outcome: { id: null, type: "system" }, prepared: "before" },
+    });
   });
 
   test("refuses an operation without a tool binding", () => {

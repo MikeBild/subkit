@@ -20,7 +20,7 @@ import {
   totalOverWindow,
 } from "../db/list-result.ts";
 import { connectors, credentials } from "../db/schema/index.ts";
-import { BadRequestError } from "../http/errors.ts";
+import { BadRequestError, HttpError } from "../http/errors.ts";
 import { evictServer as evictMcpServer } from "../mcp/client/pool.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
 import {
@@ -159,10 +159,14 @@ async function resolveCreateTemplateBinding(
     preferred_source: input.template_source,
   });
   if (!resolved) {
-    throw Object.assign(new Error(`unknown connector template: ${input.template_slug}`), {
-      code: "connector_template_unknown",
-      template_slug: input.template_slug,
-    });
+    throw new HttpError(
+      400,
+      "connector_template_unknown",
+      `unknown connector template: ${input.template_slug}`,
+      {
+        details: { template_slug: input.template_slug },
+      },
+    );
   }
   const enriched = enrichConnectorFromTemplate(
     {
@@ -683,9 +687,10 @@ export async function updateConnector(
         (requested.template_slug != null && requested.template_slug !== prior.template_slug),
     });
     if (patch.clear_template_binding && patch.template_slug) {
-      throw Object.assign(
-        new Error("clear_template_binding cannot be combined with template_slug"),
-        { code: "connector_template_conflict" },
+      throw new HttpError(
+        409,
+        "connector_template_conflict",
+        "clear_template_binding cannot be combined with template_slug: send one of them",
       );
     }
     const set: Partial<typeof connectors.$inferInsert> = { updated_at: new Date() };
@@ -710,10 +715,14 @@ export async function updateConnector(
         preferred_source: patch.template_source,
       });
       if (!resolved) {
-        throw Object.assign(new Error(`unknown connector template: ${patch.template_slug}`), {
-          code: "connector_template_unknown",
-          template_slug: patch.template_slug,
-        });
+        throw new HttpError(
+          400,
+          "connector_template_unknown",
+          `unknown connector template: ${patch.template_slug}`,
+          {
+            details: { template_slug: patch.template_slug },
+          },
+        );
       }
       Object.assign(set, buildTemplateBindingFields(resolved));
       const enriched = enrichConnectorFromTemplate(

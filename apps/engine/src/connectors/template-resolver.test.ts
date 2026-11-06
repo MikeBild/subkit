@@ -59,7 +59,9 @@ describe("buildTemplateBindingFields", () => {
   });
 
   test("ConnectorSchema.parse accepts a serialised connector that carries a template_snapshot", async () => {
-    const { ConnectorSchema, serialize } = await import("../http/routes/connectors/schemas.ts");
+    const { ConnectorSchema, serialize } = await import(
+      "../api/operations/connector-representation.ts"
+    );
     const fields = buildTemplateBindingFields({
       id: null,
       source: "builtin",
