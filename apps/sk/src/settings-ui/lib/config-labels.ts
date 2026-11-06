@@ -96,8 +96,6 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "platform.slack.signing_secret": "Slack signing secret",
   "platform.slack.client_id": "Slack client ID",
   "platform.slack.client_secret": "Slack client secret",
-  "platform.teams.app_id": "Teams app ID",
-  "platform.teams.app_password": "Teams app password",
   "platform.googlechat.project_id": "Google Chat project ID",
   "platform.googlechat.client_email": "Google Chat service-account email",
   "platform.googlechat.private_key": "Google Chat service-account private key",

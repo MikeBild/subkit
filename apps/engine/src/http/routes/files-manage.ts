@@ -1,38 +1,32 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import {
-  FILE_VERSION_RETENTION,
   FileIdSchema,
   FileSchema,
-  FileUsageSchema,
-  FileVersionListSchema,
   InlineUploadSchema,
   MAX_INLINE_BYTES,
   parseFileIdOrThrow,
   toFileId,
-  UpdateFileSchema,
 } from "../../api/files-schemas.ts";
+import {
+  fileUsageOperation,
+  listFileVersionsOperation,
+  renameFileOperation,
+} from "../../api/operations/files.ts";
+import { FileIdParam, toFileWire } from "../../api/operations/files-representation.ts";
+import { toHonoRoute } from "../../api/operations/hono.ts";
 import { storedContentHeaders } from "../../files/content-type.ts";
 import {
   downloadFileVersion,
-  fileUsage,
   findLiveFile,
-  findTenantFile,
   replaceFileBytes,
   restoreFileVersion,
-  updateFileDetails,
 } from "../../files/service.ts";
-import { listFileVersions } from "../../files/versions.ts";
-import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-import { fileActor, toFileWire } from "./files.ts";
+import { fileActor, gateOtherMethods } from "./files.ts";
 
 const TAG = "Files";
-
-const FileIdParam = z.object({
-  id: FileIdSchema.openapi({ param: { name: "id", in: "path" } }),
-});
 
 const notFound = { code: "not_found", message: "file not found" } as const;
 const versionNotFound = { code: "not_found", message: "file version not found" } as const;
@@ -56,41 +50,12 @@ function duplicate(twinId: string) {
 
 export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/files/:id/replace", requireAnyPermission(["file:write"]));
-  app.use("/v1/files/:id/versions", requireAnyPermission(["file:read"]));
+  app.use("/v1/files/:id/versions", gateOtherMethods(["GET"], "file:read"));
   app.use("/v1/files/:id/versions/:version/content", requireAnyPermission(["file:read"]));
   app.use("/v1/files/:id/versions/:version/restore", requireAnyPermission(["file:write"]));
-  app.use("/v1/files/:id/usage", requireAnyPermission(["file:read"]));
+  app.use("/v1/files/:id/usage", gateOtherMethods(["GET"], "file:read"));
 
-  const renameRoute = createRoute({
-    method: "patch",
-    path: "/v1/files/{id}",
-    tags: [TAG],
-    security: [{ bearerAuth: [] }],
-    request: {
-      params: FileIdParam,
-      body: { content: { "application/json": { schema: UpdateFileSchema } } },
-    },
-    responses: {
-      400: {
-        description: "Invalid description acceptance",
-        content: { "application/json": { schema: ErrorSchema } },
-      },
-      409: {
-        description: "The reviewed description changed",
-        content: { "application/json": { schema: ErrorSchema } },
-      },
-      200: { description: "Updated", content: { "application/json": { schema: FileSchema } } },
-      404: { description: "not_found", content: { "application/json": { schema: ErrorSchema } } },
-    },
-  });
-
-  app.openapi(renameRoute, async (c) => {
-    const { id } = c.req.valid("param");
-    const body = c.req.valid("json");
-    const row = await updateFileDetails(c.get("db"), fileActor(c), parseFileIdOrThrow(id), body);
-    if (!row) return c.json(notFound, 404);
-    return c.json(toFileWire(row), 200);
-  });
+  toHonoRoute(app, renameFileOperation);
 
   const replaceRoute = createRoute({
     method: "post",
@@ -157,31 +122,7 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json(toFileWire(result.row), 200);
   });
 
-  const versionsRoute = createRoute({
-    method: "get",
-    path: "/v1/files/{id}/versions",
-    tags: [TAG],
-    summary: "List a file's content versions, newest first",
-    description: `The current content and every earlier content kept after a replace or restore, newest first. \`current\` marks the content the file serves now. The newest ${FILE_VERSION_RETENTION} earlier versions are kept; deleting the file removes all of them.`,
-    security: [{ bearerAuth: [] }],
-    request: { params: FileIdParam },
-    responses: {
-      200: {
-        description: "OK",
-        content: { "application/json": { schema: FileVersionListSchema } },
-      },
-      404: { description: "not_found", content: { "application/json": { schema: ErrorSchema } } },
-    },
-  });
-
-  app.openapi(versionsRoute, async (c) => {
-    const { id } = c.req.valid("param");
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const row = await findLiveFile(db, principal.tenant_id, parseFileIdOrThrow(id));
-    if (!row) return c.json(notFound, 404);
-    return c.json({ items: await listFileVersions(db, principal.tenant_id, row) }, 200);
-  });
+  toHonoRoute(app, listFileVersionsOperation);
 
   const versionContentRoute = createRoute({
     method: "get",
@@ -250,24 +191,5 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json(toFileWire(result.row), 200);
   });
 
-  const usageRoute = createRoute({
-    method: "get",
-    path: "/v1/files/{id}/usage",
-    tags: [TAG],
-    security: [{ bearerAuth: [] }],
-    request: { params: FileIdParam },
-    responses: {
-      200: { description: "OK", content: { "application/json": { schema: FileUsageSchema } } },
-      404: { description: "not_found", content: { "application/json": { schema: ErrorSchema } } },
-    },
-  });
-
-  app.openapi(usageRoute, async (c) => {
-    const { id } = c.req.valid("param");
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const row = await findTenantFile(db, principal.tenant_id, parseFileIdOrThrow(id));
-    if (!row) return c.json(notFound, 404);
-    return c.json(await fileUsage(db, principal, row), 200);
-  });
+  toHonoRoute(app, fileUsageOperation);
 }

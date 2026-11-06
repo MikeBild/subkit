@@ -16,8 +16,12 @@ export function toConversationTool<I, R>(op: Operation<I, R>): ConversationTool 
       ? {
           permission: {
             action: op.permission,
-            resourceType: resource?.type ?? op.id.split(".")[0] ?? op.id,
-            ...(resource ? { resourceIdArg: resource.param } : {}),
+            resourceType: tool.resourceType ?? resource?.type ?? op.id.split(".")[0] ?? op.id,
+            ...(tool.resolveResourceId
+              ? { resolveResourceId: tool.resolveResourceId }
+              : resource
+                ? { resourceIdArg: resource.param }
+                : {}),
           },
         }
       : {}),

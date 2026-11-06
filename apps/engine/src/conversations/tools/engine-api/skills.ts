@@ -1,63 +1,9 @@
-import { z } from "@hono/zod-openapi";
-import { countSkills, listSkills } from "../../../skills/service.ts";
+import { getSkillOperation, listSkillsOperation } from "../../../api/operations/skills.ts";
+import { toConversationTool } from "../../../api/operations/tool.ts";
 import type { ConversationTool } from "../index.ts";
 
-const LIST_DEFAULT_LIMIT = 50;
-const LIST_MAX_LIMIT = 200;
+export const listAllSkillsTool: ConversationTool = toConversationTool(listSkillsOperation);
 
-const ListInput = z
-  .object({
-    limit: z.number().int().min(1).max(LIST_MAX_LIMIT).optional(),
-    offset: z.number().int().min(0).optional(),
-  })
-  .openapi("ListAllSkillsToolInput");
-const GetInput = z.object({ id: z.string().uuid() }).openapi("GetSkillToolInput");
-
-export const listAllSkillsTool: ConversationTool = {
-  name: "list_all_skills",
-  description:
-    "List every skill owned by the tenant, one page at a time (default 50, max 200, ordered by title) with `total`, `has_more` and `next_offset`; per item id, title, scope, updated_at. When `has_more` is true the list is incomplete: page through with `offset` before drawing conclusions. Different from `list_skills` which returns only skills applicable to the current conversation scope.",
-  inputSchema: ListInput,
-  category: "tenant_read",
-  permission: { action: "skill:read", resourceType: "skill" },
-  async execute(ctx, args: z.infer<typeof ListInput>) {
-    const limit = args.limit ?? LIST_DEFAULT_LIMIT;
-    const offset = args.offset ?? 0;
-    const [rows, total] = await Promise.all([
-      listSkills({ tenant_id: ctx.tenant_id, sort: "title", order: "asc", limit, offset }, ctx.db),
-      countSkills({ tenant_id: ctx.tenant_id }, ctx.db),
-    ]);
-    const hasMore = offset + rows.length < total;
-    return {
-      ok: true,
-      data: {
-        total,
-        limit,
-        offset,
-        has_more: hasMore,
-        ...(hasMore ? { next_offset: offset + rows.length } : {}),
-        skills: rows.map((s) => ({
-          id: s.id,
-          title: s.title,
-          scope: s.scope,
-          updated_at: s.updated_at,
-        })),
-      },
-    };
-  },
-};
-
-export const getSkillTool: ConversationTool = {
-  name: "get_skill",
-  description: "Fetch full skill body including examples, best_practices, pitfalls, doc_refs.",
-  inputSchema: GetInput,
-  category: "tenant_read",
-  permission: { action: "skill:read", resourceType: "skill", resourceIdArg: "id" },
-  async execute(ctx, args: z.infer<typeof GetInput>) {
-    const s = await ctx.engineClient.skills.get(args.id);
-    if (!s) return { ok: false, data: { error: "skill_not_found" } };
-    return { ok: true, data: { skill: s } };
-  },
-};
+export const getSkillTool: ConversationTool = toConversationTool(getSkillOperation);
 
 export const skillReadTools: ConversationTool[] = [listAllSkillsTool, getSkillTool];

@@ -4,6 +4,7 @@ import type { CredentialUseSnapshot } from "../../credentials/index.ts";
 import { refreshIfStale } from "../../credentials/oauth2/refresh-worker.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import { parseSignedJwtConfig, signJwtBearer } from "../../credentials/signed-jwt.ts";
+import { refreshTokenMintIfStale } from "../../credentials/token-mint/refresh-worker.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db, Executor } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
@@ -268,6 +269,10 @@ export async function resolveConnectorCredential(p: {
     if (credential.mode === "oauth2" && credential.access_token !== preToken) {
       oauth2_refreshed = true;
     }
+  } else if (credential.mode === "token_mint") {
+    const preToken = credential.access_token;
+    credential = await refreshTokenMintIfStale(p.db, p.tenant_id, row.row, credential);
+    oauth2_refreshed = credential.mode === "token_mint" && credential.access_token !== preToken;
   }
   return {
     credential,

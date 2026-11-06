@@ -752,19 +752,6 @@ const PlatformSection = z
       })
       .prefault({})
       .describe("Slack app"),
-    teams: z
-      .object({
-        app_id: z
-          .string()
-          .default("")
-          .meta(global({ requiresRestart: true })),
-        app_password: z
-          .string()
-          .default("")
-          .meta(global({ requiresRestart: true, secret: true })),
-      })
-      .prefault({})
-      .describe("Microsoft Teams"),
     googlechat: z
       .object({
         project_id: z

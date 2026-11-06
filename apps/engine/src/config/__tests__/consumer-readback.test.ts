@@ -367,8 +367,6 @@ describe("consumer read-back per subsystem", () => {
       "platform.slack.signing_secret",
       "platform.slack.client_id",
       "platform.slack.client_secret",
-      "platform.teams.app_id",
-      "platform.teams.app_password",
       "platform.googlechat.project_id",
       "errors.ring_size",
     ];

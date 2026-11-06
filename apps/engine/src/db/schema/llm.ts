@@ -1,35 +1,17 @@
 import {
   bigint,
   bigserial,
-  boolean,
   index,
   integer,
   jsonb,
   pgTable,
   text,
-  timestamp,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { tenantId, timestamps } from "./_common.ts";
 import { executions } from "./executions.ts";
 import { tenants } from "./identity.ts";
-
-export const tenantDlpRules = pgTable(
-  "tenant_dlp_rules",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
-    path_match: text("path_match").notNull(),
-    pattern_regex: text("pattern_regex"),
-    action: text("action").notNull(),
-    reason: text("reason"),
-    enabled: boolean("enabled").notNull().default(true),
-    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (t) => [index("tenant_dlp_rules_tenant_enabled_idx").on(t.tenant_id, t.enabled)],
-);
 
 export const vendorRecipeOverrides = pgTable(
   "vendor_recipe_overrides",

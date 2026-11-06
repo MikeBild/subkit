@@ -226,8 +226,6 @@ describe("/v1/diagnostics/setup", () => {
         "Per-platform credentials live in the chat-platform diagnostic, not the bootstrap setup view.",
       "platform.slack.client_secret":
         "Per-platform credentials live in the chat-platform diagnostic, not the bootstrap setup view.",
-      "platform.teams.app_password":
-        "Per-platform credentials live in the chat-platform diagnostic, not the bootstrap setup view.",
       "platform.googlechat.private_key":
         "Per-platform credentials live in the chat-platform diagnostic, not the bootstrap setup view.",
       "observability.langfuse.secret_key":

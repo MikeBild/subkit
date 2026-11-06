@@ -178,7 +178,6 @@ interface AreaSentenceFacts extends AreaFacts {
 
 const CHAT_PLATFORMS: readonly { id: string; secret: string; name: string }[] = [
   { id: "slack", secret: "platform.slack.signing_secret", name: "Slack" },
-  { id: "teams", secret: "platform.teams.app_password", name: "Microsoft Teams" },
   { id: "googlechat", secret: "platform.googlechat.private_key", name: "Google Chat" },
 ];
 

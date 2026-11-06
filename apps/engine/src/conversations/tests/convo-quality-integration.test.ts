@@ -5,7 +5,6 @@ import { upsertCredential } from "../../credentials/service.ts";
 import { auditLog, connectors, conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
-import { applyDlpFilters, DEFAULT_DLP_RULES } from "../../execution/response-filters.ts";
 import { editWorkflowPatchTool } from "../tools/edit-workflow-patch.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { probeConnectorTool, resetProbeRateLimit } from "../tools/probe-connector.ts";
@@ -158,21 +157,6 @@ describe("convo-quality integration chain", () => {
       ?.workflow;
     expect(wf?.slug).toBe("daily-stripe-customers");
     expect(wf?.steps).toHaveLength(2);
-  });
-
-  test("DLP filters mask the canary email before the LLM sees step output", () => {
-    const mockResponseFromStep = {
-      data: [
-        { id: "cus_1", email: CANARY_EMAIL, name: "Ada" },
-        { id: "cus_2", email: "grace@example.test", name: "Grace" },
-      ],
-    };
-    const { value, redacted } = applyDlpFilters(mockResponseFromStep, [...DEFAULT_DLP_RULES]);
-    expect(redacted.length).toBeGreaterThanOrEqual(2);
-    const paths = redacted.map((r) => r.path).sort();
-    expect(paths.some((p) => p.endsWith(".email"))).toBe(true);
-    const serialised = JSON.stringify(value);
-    expect(serialised.includes(CANARY_EMAIL)).toBe(false);
   });
 
   test("audit trail captures the probe without leaking the credential", async () => {

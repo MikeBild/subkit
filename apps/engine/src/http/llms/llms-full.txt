@@ -2992,7 +2992,7 @@ The `requires` column names the permission that shows a command in
 | `sk health` | — | Runtime posture: liveness, token budget, failing runs, risk signals, schema drift, and process runtime. Use `sk doctor` for connectivity/setup. | — |
 | `sk hooks` | `inbound_hook:read` | Manage inbound webhook bindings | `create`, `delete`, `get`, `list` |
 | `sk init` | — | Complete first-run engine bootstrap (consumes the token printed at engine boot) | — |
-| `sk install` | `connector:write` | Guided setup for enterprise integrations | `github`, `google-workspace`, `hubspot`, `jira`, `salesforce`, `slack`, `teams` |
+| `sk install` | `connector:write` | Guided setup for enterprise integrations | `github`, `google-workspace`, `hubspot`, `jira`, `salesforce`, `slack` |
 | `sk intake` | `intake:read` | List collected items and start a selected Chat review | `default`, `discard`, `list`, `move`, `restore`, `review` |
 | `sk invites` | `identity:read` | Manage user-provisioning invites | `list`, `revoke` |
 | `sk join` | — | Redeem an invite to provision your personal API key (no login required) | — |
@@ -3949,12 +3949,6 @@ _No arguments._
 #### `sk install slack`
 
 Install Slack notifications
-
-_No arguments._
-
-#### `sk install teams`
-
-Install Microsoft Teams notifications
 
 _No arguments._
 
@@ -5313,8 +5307,6 @@ Chat platform integrations
 | `platform.slack.client_id` | string | `""` | global | no | yes |  |
 | `platform.slack.client_secret` | string | `""` | global | yes | yes |  |
 | `platform.slack.signing_secret` | string | `""` | global | yes | yes |  |
-| `platform.teams.app_id` | string | `""` | global | no | yes |  |
-| `platform.teams.app_password` | string | `""` | global | yes | yes |  |
 
 ## storage
 Object storage

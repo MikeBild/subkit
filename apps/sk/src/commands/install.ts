@@ -7,7 +7,6 @@ type Wizard = { run(client: EngineClient): Promise<void> };
 
 const WIZARDS = {
   slack: () => import("../install/slack.ts"),
-  teams: () => import("../install/teams.ts"),
   github: () => import("../install/github.ts"),
   "google-workspace": () => import("../install/google-workspace.ts"),
   salesforce: () => import("../install/salesforce.ts"),
@@ -37,7 +36,6 @@ export const installCommand = defineCommand({
   meta: { name: "install", description: "Guided setup for enterprise integrations" },
   subCommands: {
     slack: makeWizardCommand("slack", "Install Slack notifications"),
-    teams: makeWizardCommand("teams", "Install Microsoft Teams notifications"),
     github: makeWizardCommand("github", "Install GitHub connector"),
     "google-workspace": makeWizardCommand("google-workspace", "Install Google Workspace connector"),
     salesforce: makeWizardCommand("salesforce", "Install Salesforce connector"),

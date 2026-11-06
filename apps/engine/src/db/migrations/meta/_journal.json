@@ -15,6 +15,13 @@
       "when": 1793957849723,
       "tag": "0001_hosted_meter_workflow_review_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793968052214,
+      "tag": "0002_drop_tenant_dlp_rules",
+      "breakpoints": true
     }
   ]
 }

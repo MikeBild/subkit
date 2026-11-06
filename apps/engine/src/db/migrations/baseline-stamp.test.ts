@@ -58,6 +58,7 @@ describe("baseline over the squashed migration chain", () => {
     expect(EMBEDDED_MIGRATIONS.map((m) => m.tag)).toEqual([
       baseline.tag,
       "0001_hosted_meter_workflow_review_receipts",
+      "0002_drop_tenant_dlp_rules",
     ]);
     expect(baseline.idx).toBe(0);
   });

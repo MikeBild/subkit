@@ -1,9 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { AuditAction } from "../../../../audit/types.ts";
-import { tenants } from "../../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../../db/tests/setup.ts";
-import { EngineClient } from "../../../../engine-client/index.ts";
 import { createSkill } from "../../../../skills/service.ts";
+import { makeToolCtx, seedTenant } from "../../../../test-helpers/seed.ts";
 import { dispatchTool } from "../../../../tools/dispatcher.ts";
 import { conversationToolProvider } from "../../../../tools/providers/conversation.ts";
 import { buildRegistry } from "../../../../tools/registry.ts";
@@ -27,35 +26,19 @@ describe("skill write tools — integration (b–d)", () => {
   let tenantBId = "";
 
   function makeCtx(tenantId: string): ToolContext {
-    const engineClient = new EngineClient({
-      tenant_id: tenantId,
-      actor_id: null,
-      db: testDb.db,
-    });
-    return {
-      db: testDb.db,
-      tenant_id: tenantId,
-      conversation_id: CONVO_ID,
-      actor_id: null,
-      connector_id: null,
-      workflow_id: null,
-      engineClient,
-      getDraft: () => ({ workflow: { name: "", steps: [] } }) as never,
-      setDraft: async () => {},
-    } as unknown as ToolContext;
+    return makeToolCtx({ db: testDb.db, tenant_id: tenantId, conversation_id: CONVO_ID });
   }
 
   beforeAll(async () => {
     testDb = await createTestDb("skill-write-tools");
-    const [rowA] = await testDb.db
-      .insert(tenants)
-      .values({ slug: "swt-tenant-a", display_name: "SWT Tenant A" })
-      .returning();
-    const [rowB] = await testDb.db
-      .insert(tenants)
-      .values({ slug: "swt-tenant-b", display_name: "SWT Tenant B" })
-      .returning();
-    if (!rowA || !rowB) throw new Error("tenant seed failed");
+    const rowA = await seedTenant(testDb.db, {
+      slug: "swt-tenant-a",
+      display_name: "SWT Tenant A",
+    });
+    const rowB = await seedTenant(testDb.db, {
+      slug: "swt-tenant-b",
+      display_name: "SWT Tenant B",
+    });
     tenantAId = rowA.id;
     tenantBId = rowB.id;
   });

@@ -198,7 +198,6 @@ async function enforceWorkflowAllowlist(
 
 export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/executions", async (c, next) => {
-    if (c.req.method === "GET") return requirePermission("execution:read")(c, next);
     if (c.req.method === "POST") {
       let workflowId: string | undefined;
       try {

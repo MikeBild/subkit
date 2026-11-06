@@ -203,10 +203,6 @@ export const settingsHelpEn = {
     "Client secret of your Slack app. Read at startup: takes effect after a restart.",
   "settings.help.platform.slack.signing_secret":
     "Verifies that incoming Slack requests really come from Slack. Read at startup: takes effect after a restart.",
-  "settings.help.platform.teams.app_id":
-    "App ID of your Teams bot. Read at startup: takes effect after a restart.",
-  "settings.help.platform.teams.app_password":
-    "Password of your Teams bot. Read at startup: takes effect after a restart.",
   "settings.help.queue.concurrency":
     "How many runs one engine instance executes at once. More means faster throughput and more memory; takes effect after a restart.",
   "settings.help.repl.permissionMode":
@@ -435,10 +431,6 @@ export const settingsHelpDe: Record<keyof typeof settingsHelpEn, string> = {
     "Client-Secret deiner Slack-App. Wird beim Start gelesen: wirkt nach einem Neustart.",
   "settings.help.platform.slack.signing_secret":
     "Prüft, dass eingehende Slack-Anfragen wirklich von Slack stammen. Wird beim Start gelesen: wirkt nach einem Neustart.",
-  "settings.help.platform.teams.app_id":
-    "App-ID deines Teams-Bots. Wird beim Start gelesen: wirkt nach einem Neustart.",
-  "settings.help.platform.teams.app_password":
-    "Passwort deines Teams-Bots. Wird beim Start gelesen: wirkt nach einem Neustart.",
   "settings.help.queue.concurrency":
     "Wie viele Läufe eine Engine-Instanz gleichzeitig ausführt. Mehr heißt mehr Durchsatz und mehr Speicher; wirkt nach einem Neustart.",
   "settings.help.repl.permissionMode":

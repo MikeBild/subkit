@@ -1,6 +1,15 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { CatalogGroupBySchema, CategoryFilterSchema } from "../../api/catalog-metadata.ts";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
+import { toHonoRoute } from "../../api/operations/hono.ts";
+import {
+  analyzeKnowledgeSourceOperation,
+  createKnowledgeSourceFromUrlOperation,
+  deleteKnowledgeSourceOperation,
+  getKnowledgeSourceOperation,
+  listKnowledgeSourcesOperation,
+  refreshKnowledgeSourceOperation,
+  updateKnowledgeSourceOperation,
+} from "../../api/operations/knowledge-sources.ts";
 import { actorOf } from "../../audit/index.ts";
 import * as svc from "../../knowledge/index.ts";
 import {
@@ -12,42 +21,14 @@ import {
   KnowledgeSlugConflictError,
   KnowledgeSlugExistsError,
   KnowledgeSourceSchema,
-  UpdateKnowledgeSourceSchema,
 } from "../../knowledge/index.ts";
 import { log } from "../../logging/index.ts";
-import {
-  BadRequestError,
-  ConflictError,
-  NotFoundError,
-  PayloadTooLargeError,
-  UnprocessableEntityError,
-} from "../errors.ts";
+import { BadRequestError, ConflictError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 import { registerKnowledgeDocumentRoutes } from "./knowledge-documents.ts";
 import { registerKnowledgeVersionRoutes } from "./knowledge-versions.ts";
-
-const KnowledgeSourceListResponse = z
-  .object({
-    items: z.array(KnowledgeSourceSchema),
-    total: z.number().int().nonnegative(),
-    sections_total: z.number().int().nonnegative(),
-  })
-  .openapi("KnowledgeSourceListResponse");
-
-const AnalyzeKnowledgeSourceBody = z
-  .object({
-    force: z.boolean().optional(),
-  })
-  .openapi("AnalyzeKnowledgeSourceBody");
-
-const AnalyzeKnowledgeSourceResponse = z
-  .object({
-    analyzed: z.boolean(),
-    knowledge_source: KnowledgeSourceSchema,
-  })
-  .openapi("AnalyzeKnowledgeSourceResponse");
 
 const SearchResultSchema = z
   .object({
@@ -66,115 +47,6 @@ const SearchResultSchema = z
     ),
   })
   .openapi("KnowledgeSearchResult");
-
-const listRoute = createRoute({
-  method: "get",
-  path: "/v1/knowledge-sources",
-  tags: ["knowledge"],
-  summary: "List knowledge sources",
-  security: [{ bearerAuth: [] }],
-  request: {
-    query: z
-      .object({
-        scope: z.enum(["global", "workflow"]).optional(),
-        workflow_id: z.string().uuid().optional(),
-        status: z.enum(["active", "inactive", "processing", "error"]).optional(),
-        description_source: z.enum(["llm", "human"]).optional(),
-        category: CategoryFilterSchema.optional(),
-        q: z.string().min(1).max(200).optional(),
-        sort: z.enum(["name", "status", "source_type", "bytes_total", "updated_at"]).optional(),
-        group_by: CatalogGroupBySchema.optional(),
-        order: z.enum(["asc", "desc"]).optional(),
-        limit: z.coerce.number().int().positive().max(500).optional(),
-        offset: z.coerce.number().int().min(0).optional(),
-      })
-      .openapi("ListKnowledgeSourcesQuery"),
-  },
-  responses: {
-    200: {
-      description: "OK",
-      content: { "application/json": { schema: KnowledgeSourceListResponse } },
-    },
-  },
-});
-
-const getRoute = createRoute({
-  method: "get",
-  path: "/v1/knowledge-sources/{id}",
-  tags: ["knowledge"],
-  summary: "Get a knowledge source",
-  security: [{ bearerAuth: [] }],
-  request: { params: IdParam },
-  responses: {
-    200: {
-      description: "OK",
-      content: { "application/json": { schema: KnowledgeSourceSchema } },
-    },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
-
-const updateRoute = createRoute({
-  method: "patch",
-  path: "/v1/knowledge-sources/{id}",
-  tags: ["knowledge"],
-  summary: "Update a knowledge source",
-  security: [{ bearerAuth: [] }],
-  request: {
-    params: IdParam,
-    body: { content: { "application/json": { schema: UpdateKnowledgeSourceSchema } } },
-  },
-  responses: {
-    400: {
-      description: "Invalid description acceptance",
-      content: { "application/json": { schema: ErrorSchema } },
-    },
-    409: {
-      description: "The reviewed description changed",
-      content: { "application/json": { schema: ErrorSchema } },
-    },
-    200: {
-      description: "OK",
-      content: { "application/json": { schema: KnowledgeSourceSchema } },
-    },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
-
-const deleteRoute = createRoute({
-  method: "delete",
-  path: "/v1/knowledge-sources/{id}",
-  tags: ["knowledge"],
-  summary: "Delete a knowledge source",
-  security: [{ bearerAuth: [] }],
-  request: { params: IdParam },
-  responses: {
-    200: {
-      description: "OK",
-      content: { "application/json": { schema: z.object({ deleted: z.boolean() }) } },
-    },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
-
-const analyzeRoute = createRoute({
-  method: "post",
-  path: "/v1/knowledge-sources/{id}/analyze",
-  tags: ["knowledge"],
-  summary: "Analyze a knowledge source (LLM-generate description + tags)",
-  security: [{ bearerAuth: [] }],
-  request: {
-    params: IdParam,
-    body: { content: { "application/json": { schema: AnalyzeKnowledgeSourceBody } } },
-  },
-  responses: {
-    200: {
-      description: "OK",
-      content: { "application/json": { schema: AnalyzeKnowledgeSourceResponse } },
-    },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
 
 const createInlineRoute = createRoute({
   method: "post",
@@ -426,87 +298,8 @@ const searchRoute = createRoute({
   },
 });
 
-const CreateKnowledgeSourceFromUrlBody = CreateKnowledgeSourceSchema.extend({
-  name: z.string().min(1).max(200).optional(),
-  url: z.string().url().max(2048),
-}).openapi("CreateKnowledgeSourceFromUrlBody");
-
-const urlFailure = {
-  413: {
-    description: "The page exceeds the maximum size",
-    content: { "application/json": { schema: ErrorSchema } },
-  },
-  422: {
-    description: "The address could not be read, or is not allowed",
-    content: { "application/json": { schema: ErrorSchema } },
-  },
-} as const;
-
-const createFromUrlRoute = createRoute({
-  method: "post",
-  path: "/v1/knowledge-sources/url",
-  tags: ["knowledge"],
-  summary: "Create a knowledge source by reading an address",
-  security: [{ bearerAuth: [] }],
-  request: {
-    body: { content: { "application/json": { schema: CreateKnowledgeSourceFromUrlBody } } },
-  },
-  responses: {
-    201: {
-      description: "Created",
-      content: { "application/json": { schema: KnowledgeSourceSchema } },
-    },
-    ...urlFailure,
-  },
-});
-
-const refreshRoute = createRoute({
-  method: "post",
-  path: "/v1/knowledge-sources/{id}/refresh",
-  tags: ["knowledge"],
-  summary: "Read an address source again now",
-  security: [{ bearerAuth: [] }],
-  request: { params: IdParam },
-  responses: {
-    200: {
-      description: "Read again",
-      content: { "application/json": { schema: KnowledgeSourceSchema } },
-    },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-    409: {
-      description: "The source has no address to read again or its address changed during refresh",
-      content: { "application/json": { schema: ErrorSchema } },
-    },
-    ...urlFailure,
-  },
-});
-
-function urlError(error: unknown): never {
-  if (error instanceof svc.KnowledgeSourceAddressConflictError) {
-    throw new ConflictError(error.message);
-  }
-  if (error instanceof svc.KnowledgeUrlFetchError)
-    throw new UnprocessableEntityError(error.message, { reason: error.code });
-  if (error instanceof KnowledgeBudgetExceededError)
-    throw new PayloadTooLargeError(error.message, { bytes_limit: error.bytes_limit });
-  if (error instanceof svc.KnowledgeSourceNotRefreshableError)
-    throw new ConflictError(error.message, { reason: error.code, source_type: error.source_type });
-  throw error;
-}
-
 export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/knowledge-sources", async (c, next) => {
-    if (c.req.method === "GET") return requirePermission("knowledge:read")(c, next);
-    if (c.req.method === "POST") return requirePermission("knowledge:write")(c, next);
-    return next();
-  });
-
-  app.use("/v1/knowledge-sources/url", async (c, next) => {
-    if (c.req.method === "POST") return requirePermission("knowledge:write")(c, next);
-    return next();
-  });
-
-  app.use("/v1/knowledge-sources/:id/refresh", async (c, next) => {
     if (c.req.method === "POST") return requirePermission("knowledge:write")(c, next);
     return next();
   });
@@ -532,47 +325,12 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     return next();
   });
 
-  app.use("/v1/knowledge-sources/:id/analyze", async (c, next) => {
-    if (c.req.method === "POST") return requirePermission("knowledge:write")(c, next);
-    return next();
-  });
-
-  app.use("/v1/knowledge-sources/:id", async (c, next) => {
-    if (c.req.method === "GET") return requirePermission("knowledge:read")(c, next);
-    if (c.req.method === "PATCH") return requirePermission("knowledge:write")(c, next);
-    if (c.req.method === "DELETE") return requirePermission("knowledge:delete")(c, next);
-    return next();
-  });
-
   app.use("/v1/knowledge-sources/search", requirePermission("knowledge:read"));
 
   registerKnowledgeVersionRoutes(app);
   registerKnowledgeDocumentRoutes(app);
 
-  app.openapi(listRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const q = c.req.valid("query");
-    const params = {
-      tenant_id: principal.tenant_id,
-      ...(q.scope ? { scope: q.scope } : {}),
-      ...(q.workflow_id ? { workflow_id: q.workflow_id } : {}),
-      ...(q.status ? { status: q.status } : {}),
-      ...(q.category ? { category: q.category } : {}),
-      ...(q.description_source ? { description_source: q.description_source } : {}),
-      ...(q.q ? { q: q.q } : {}),
-      ...(q.sort ? { sort: q.sort } : {}),
-      ...(q.order ? { order: q.order } : {}),
-      ...(q.group_by ? { group_by: q.group_by } : {}),
-      ...(q.limit !== undefined ? { limit: q.limit } : {}),
-      ...(q.offset !== undefined ? { offset: q.offset } : {}),
-    };
-    const [items, totals] = await Promise.all([
-      svc.listKnowledgeSources(params, db),
-      svc.knowledgeSourceTotals(params, db),
-    ]);
-    return c.json({ items, ...totals }, 200);
-  });
+  toHonoRoute(app, listKnowledgeSourcesOperation);
 
   app.openapi(searchRoute, async (c) => {
     const principal = requireAuth(c);
@@ -669,112 +427,17 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     }
   });
 
-  app.openapi(createFromUrlRoute, async (c) => {
-    const principal = requireAuth(c);
-    const { url, ...input } = c.req.valid("json");
-    try {
-      const source = await svc.createKnowledgeSourceFromUrl(
-        {
-          tenant_id: principal.tenant_id,
-          actor: actorOf(principal),
-          url,
-          input,
-        },
-        c.get("db"),
-      );
-      return c.json(source, 201);
-    } catch (error) {
-      return urlError(error);
-    }
-  });
+  toHonoRoute(app, createKnowledgeSourceFromUrlOperation);
 
-  app.openapi(refreshRoute, async (c) => {
-    const principal = requireAuth(c);
-    const { id } = c.req.valid("param");
-    try {
-      const source = await svc.refreshKnowledgeSource(
-        {
-          tenant_id: principal.tenant_id,
-          actor: actorOf(principal),
-          id,
-        },
-        c.get("db"),
-      );
-      if (!source) throw new NotFoundError("knowledge_source");
-      return c.json(source, 200);
-    } catch (error) {
-      return urlError(error);
-    }
-  });
+  toHonoRoute(app, refreshKnowledgeSourceOperation);
 
-  app.openapi(getRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-    const source = await svc.getKnowledgeSource(principal.tenant_id, id, db);
-    if (!source) throw new NotFoundError("knowledge_source");
-    return c.json(source, 200);
-  });
+  toHonoRoute(app, getKnowledgeSourceOperation);
 
-  app.openapi(updateRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-    const body = c.req.valid("json");
-    try {
-      const updated = await svc.updateKnowledgeSource(
-        {
-          tenant_id: principal.tenant_id,
-          id,
-          patch: body,
-          actor_id: principal.id,
-          actor: actorOf(principal),
-        },
-        db,
-      );
-      if (!updated) throw new NotFoundError("knowledge_source");
-      return c.json(updated, 200);
-    } catch (error) {
-      if (error instanceof svc.KnowledgeSourceAddressReadOnlyError) {
-        throw new BadRequestError(error.message);
-      }
-      throw error;
-    }
-  });
+  toHonoRoute(app, updateKnowledgeSourceOperation);
 
-  app.openapi(analyzeRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-    const body = c.req.valid("json");
-    const updated = await svc.analyzeKnowledgeSource(
-      {
-        tenant_id: principal.tenant_id,
-        id,
-        actor_id: principal.id,
-        actor: actorOf(principal),
-        ...(body.force !== undefined ? { force: body.force } : {}),
-      },
-      db,
-    );
-    if (!updated) throw new NotFoundError("knowledge_source");
-    return c.json({ analyzed: true, knowledge_source: updated }, 200);
-  });
+  toHonoRoute(app, analyzeKnowledgeSourceOperation);
 
-  app.openapi(deleteRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-    const deleted = await svc.deleteKnowledgeSource(
-      principal.tenant_id,
-      id,
-      principal.id,
-      db,
-      actorOf(principal),
-    );
-    if (!deleted) throw new NotFoundError("knowledge_source");
-    return c.json({ deleted: true }, 200);
-  });
+  toHonoRoute(app, deleteKnowledgeSourceOperation);
 
   app.openapi(
     createInlineRoute,

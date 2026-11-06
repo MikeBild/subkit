@@ -6,6 +6,7 @@ import { can } from "../../rbac/evaluator.ts";
 import { workflowTriggerView } from "../../scheduler/trigger-bindings.ts";
 import type { ListWorkflowsOptions } from "../../workflows/catalog-view.ts";
 import { getWorkflowDraft } from "../../workflows/drafts.ts";
+import { workflowIdBySlug } from "../../workflows/lookup.ts";
 import {
   loadWorkflowCategoryBlocks,
   loadWorkflowDetail,
@@ -210,7 +211,8 @@ export const listWorkflowsOperation = defineOperation<WorkflowListInput, Workflo
     description:
       "List the tenant's workflows — returns the COMPLETE set by default (workflows are a bounded catalog). Each item carries what it is for (`description`), the catalog block it belongs to (`category`) and the `connectors` it uses; `category` and `connector` are filters. `effective_trigger` says what really starts the workflow (a bound schedule or webhook beats the definition's declared trigger; `declared_unbound` means declared but nothing fires it); `schedule` is the bound schedule, if any. `total` is the exact tenant count under the given filters; `has_more` is true only when an explicit limit/offset page was requested.",
     input: ListWorkflowsToolInput,
-    gate: "deferred",
+    gate: "enforced",
+    resourceType: "workflow",
     toInput: (raw) => {
       const args = raw as ListToolArgs;
       return {
@@ -291,7 +293,13 @@ export const getWorkflowOperation = defineOperation<WorkflowGetInput, WorkflowGe
     description:
       "Fetch a single workflow by id or slug. `definition` is the active version; pass include_draft to also read the saved inactive draft with its version id. `effective_trigger` says what really starts it (a bound schedule or webhook beats the definition's declared `trigger`); `schedule` is the bound schedule, if any. Transactional email workflows also include their newest durable mail receipts, without applicant data. attempted or delivery_unknown never authorizes resend.",
     input: GetWorkflowToolInput,
-    gate: "deferred",
+    gate: "enforced",
+    resolveResourceId: async (ctx, args) => {
+      if (typeof args.id === "string" && args.id.length > 0) return args.id;
+      if (typeof args.slug === "string" && args.slug.length > 0)
+        return workflowIdBySlug(ctx.db, ctx.tenant_id, args.slug);
+      return null;
+    },
     toInput: (raw) => {
       const args = raw as GetToolArgs;
       return {

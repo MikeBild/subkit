@@ -136,10 +136,6 @@
       "client_id": "",
       "client_secret": ""
     },
-    "teams": {
-      "app_id": "",
-      "app_password": ""
-    },
     "googlechat": {
       "project_id": "",
       "client_email": "",

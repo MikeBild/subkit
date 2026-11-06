@@ -1,17 +1,19 @@
 ---
 slug: sk-ref-chat
 name: sk Platform Reference — External Chat
-description: How sk ingests Slack, Teams, and Google Chat messages — signature verify, normalization to ChatEvent, the async dispatch pipeline, and the identity/workspace model that maps a platform user to an sk user.
-tags: [sk-platform-reference, chat, slack, teams, google-chat, ingestion, identity]
+description: How sk ingests Slack and Google Chat messages — signature verify, normalization to ChatEvent, the async dispatch pipeline, and the identity/workspace model that maps a platform user to an sk user.
+tags: [sk-platform-reference, chat, slack, google-chat, ingestion, identity]
 scope: global
 version: 1
 ---
 
 # External Chat — Overview
 
-sk runs governed conversations and workflows from inside team chat. A message in Slack, Microsoft Teams, or Google Chat becomes an authenticated, audited turn against the sk conversation pipeline — the same pipeline the MCP and HTTP surfaces drive.
+sk runs governed conversations and workflows from inside team chat. A message in Slack or Google Chat becomes an authenticated, audited turn against the sk conversation pipeline — the same pipeline the MCP and HTTP surfaces drive.
 
-Supported inbound platforms: `slack`, `teams`, `google_chat`. These map 1:1 to the `chat_platform` Postgres enum and to a `chat_workspaces` row. There is also an outbound-only `sk_cli` pseudo-platform (local notification sink) that never ingests inbound traffic.
+Supported inbound platforms: `slack` and `google_chat`. Each installed workspace is a `chat_workspaces` row. There is also an outbound-only `sk_cli` pseudo-platform (local notification sink) that never ingests inbound traffic.
+
+Microsoft Teams is NOT supported yet. The `chat_platform` enum keeps a `teams` value, but no Teams adapter exists: `POST /v1/chat/workspaces` with `platform: "teams"` is refused with `400` (`platform_unsupported`, "teams chat spaces are not supported yet") and a denied `chat.workspace.installed` audit row, and `POST /v1/chat/teams/messages` answers `503 {error:"adapter_not_registered"}`. Do not offer Teams setup.
 
 Email is NOT a supported chat channel. There is no email ingestion route, no email adapter, and no email platform value. Do not claim sk receives chat over email.
 
@@ -19,14 +21,13 @@ Pipeline shape (every platform): inbound HTTP route → `adapter.verify()` → `
 
 # Ingestion Routes
 
-All inbound routes are plain Hono `POST` handlers. They sit OUTSIDE the OpenAPI catalog because the request payloads are platform-owned (Slack/Bot Framework/Google envelopes).
+All inbound routes are plain Hono `POST` handlers. They sit OUTSIDE the OpenAPI catalog because the request payloads are platform-owned (Slack/Google envelopes).
 
 | Route | Platform | Carries |
 |---|---|---|
 | `POST /v1/chat/slack/events` | slack | Events API (`app_mention`, `url_verification`) |
 | `POST /v1/chat/slack/interactions` | slack | Block Kit interactions (button clicks, `view_submission`) |
 | `POST /v1/chat/slack/slash` | slack | Slash commands |
-| `POST /v1/chat/teams/messages` | teams | Bot Framework activities |
 | `POST /v1/chat/google/events` | google_chat | Google Chat events |
 
 The slash route path is `/v1/chat/slack/slash` (namespaced under `slack` for consistency). Internal comments and some prose call it "the slash route" / `/v1/chat/slash`; the actually-registered path is `/v1/chat/slack/slash`.
@@ -52,17 +53,15 @@ Verification is per-platform and mandatory. A failed verify returns `401 {error:
 
 Slack: HMAC-SHA256. Signature base string is `v0:{timestamp}:{body}`, MAC keyed by the workspace signing secret, formatted `v0=<hex>`. Headers: `x-slack-signature`, `x-slack-request-timestamp`. Replay protection rejects timestamps older than 5 minutes (clock-skew tolerance, default 300 s). Constant-time compare (`timingSafeEqual`). Missing headers / non-numeric timestamp / length mismatch / stale → reject.
 
-Teams: Bot Framework JWT. Reads `Authorization: Bearer <jwt>`, verifies the token against AAD's JWKS via `jose.jwtVerify`, checking expected `issuer` and `audience` (the bot's app id). Missing Bearer header or invalid JWT → reject (`jwt_invalid`).
-
 Google Chat: service-account JWT. Reads `Authorization: Bearer <jwt>`, verifies against the configured JWKS via `jose.jwtVerify`. Default expected issuer is `chat@system.gserviceaccount.com`; audience is the bot's client id. Missing Bearer header or invalid JWT → reject.
 
-Outbound auth is separate from inbound verify: Teams uses an AAD `client_credentials` token (`https://api.botframework.com/.default`), Google uses a signed service-account JWT-bearer assertion (`https://www.googleapis.com/auth/chat.bot`), both cached until `expires_in - 60s`. Slack outbound uses the stored bot token.
+Outbound auth is separate from inbound verify: Google uses a signed service-account JWT-bearer assertion (`https://www.googleapis.com/auth/chat.bot`), cached until `expires_in - 60s`. Slack outbound uses the stored bot token.
 
 # Normalization — ChatEvent
 
 `adapter.receive()` turns a verified raw envelope into a provider-neutral `ChatEvent`:
 
-- `platform`: `"slack" | "teams" | "google_chat"`
+- `platform`: `"slack" | "google_chat"`
 - `workspace_id`: platform-native workspace/team id (string)
 - `channel_id`, optional `thread_id`
 - `user_id`: platform-native sender id (NOT yet an sk user)
@@ -139,7 +138,6 @@ The registry binds adapters to a `(tenant, platform, workspace)` triple, hydrate
 
 Per-platform outbound ceilings (`CHAT_RATES`, token bucket keyed on `(tenant_id, workspace_id, channel_id)`):
 - slack: 60/min, burst 20
-- teams: 30/min, burst 10
 - google_chat: 60/min, burst 20
 - sk_cli: 0 (local INSERT, no remote API, limiter skipped)
 

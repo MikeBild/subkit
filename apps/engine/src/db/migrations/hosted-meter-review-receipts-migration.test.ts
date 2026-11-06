@@ -110,7 +110,7 @@ describe(TAG, () => {
 
     await restoreSquashedChainHistory();
     expect(await runMigrations(ctx.db)).toEqual({
-      applied: 1,
+      applied: EMBEDDED_MIGRATIONS.length - 1,
       skipped: 0,
       hash_drift_backfilled: 1,
       total: EMBEDDED_MIGRATIONS.length,

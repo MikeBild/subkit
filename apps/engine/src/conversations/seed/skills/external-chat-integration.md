@@ -2,7 +2,7 @@
 slug: external-chat-integration
 scope: global
 title: External Chat Integration
-description: Mental model for bringing sk into Slack, Microsoft Teams, and Google Chat — the same governed Conversation authoring loop, rendered as native platform messages. Exhaustive setup, route, and identity-linking facts live in the sk-ref-chat knowledge source; fetch them with search_knowledge.
+description: Mental model for bringing sk into Slack and Google Chat (Microsoft Teams is not supported yet) — the same governed Conversation authoring loop, rendered as native platform messages. Exhaustive setup, route, and identity-linking facts live in the sk-ref-chat knowledge source; fetch them with search_knowledge.
 activates_when: [{"kind":"intent_keyword","word":"slack"},{"kind":"intent_keyword","word":"teams"},{"kind":"intent_keyword","word":"google chat"},{"kind":"intent_keyword","word":"chat"}]
 side_effects: read
 idempotency: none
@@ -11,7 +11,7 @@ tags: [chat, integration, sk-platform-reference]
 version: 2
 ---
 
-# Bringing sk into Slack, Teams, and Google Chat
+# Bringing sk into Slack and Google Chat
 
 Mental model: each chat platform gets a dedicated adapter that normalises
 incoming messages — mentions, slash commands, interaction callbacks — into sk's
@@ -22,14 +22,18 @@ not a second authoring stack.
 
 ## Key facts
 
-- **Three platforms, one enum.** The platform tag is `slack`, `teams`, or
-  `google_chat`. Each owns ingress routes under `/v1/chat/<platform>/...`
+- **Two supported platforms.** The platform tag is `slack` or `google_chat`.
+  Each owns ingress routes under `/v1/chat/<platform>/...`
   (e.g. `/v1/chat/slack/events`, `/v1/chat/slack/interactions`,
-  `/v1/chat/slack/slash`, `/v1/chat/teams/messages`, `/v1/chat/google/events`).
+  `/v1/chat/slack/slash`, `/v1/chat/google/events`).
   Every request that lands under `/v1/chat` carries request source `chat` in the
   identity envelope and Audit Log.
-- **Identity linking is mandatory.** A platform identity (Slack user ID, Teams
-  user principal, Google Chat identity) must be linked to an sk account before
+- **Microsoft Teams is not supported yet.** The `teams` enum value exists, but
+  no adapter does: installing a Teams workspace is refused with
+  `platform_unsupported`. Say so plainly and do not walk anyone through a
+  Teams setup.
+- **Identity linking is mandatory.** A platform identity (Slack user ID or Google
+  Chat identity) must be linked to an sk account before
   messages carry a role and permissions. Unlinked senders are rejected, not
   silently run. Workspaces are installed via `/v1/chat/workspaces`; identities
   are managed via `/v1/chat/identities` (admin routes).
@@ -49,7 +53,7 @@ not a second authoring stack.
 - **The chat palette is read-only, and that excludes remote MCP tools.** A
   tenant's external MCP servers are connectors with `driver: "mcp"`, and their
   remote tools (`mcp_<connector_slug>__<remote_tool>`) are merged into the
-  palette on authoring surfaces only — never on Slack, Teams, or Google Chat,
+  palette on authoring surfaces only — never on Slack or Google Chat,
   the same posture as `call_connector`. On this channel, explain what the
   connector does and point the operator at the `sk` CLI or the web portal;
   do not offer to call a remote MCP tool you cannot reach.

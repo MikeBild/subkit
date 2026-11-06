@@ -1,80 +1,57 @@
-import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import type { Context } from "hono";
-import { catalogMetadataView } from "../../api/catalog-metadata.ts";
+import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
+import type { Context, MiddlewareHandler } from "hono";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import {
   BatchCreateRequestSchema,
   BatchCreateResponseSchema,
-  FileIdSchema,
-  FileLinkSchema,
-  type FileLinkWire,
-  FileListResponseSchema,
   FileSchema,
-  FileStatsSchema,
-  type FileWire,
   FinalizeRequestSchema,
   InlineUploadSchema,
-  LinkRequestSchema,
-  ListFilesQuerySchema,
   MAX_FINALIZE_VERIFY_BYTES,
   MAX_INLINE_BYTES,
   parseFileIdOrThrow,
   toFileId,
 } from "../../api/files-schemas.ts";
+import {
+  deleteFileOperation,
+  fileStatsOperation,
+  getFileOperation,
+  linkFileOperation,
+  listFilesOperation,
+} from "../../api/operations/files.ts";
+import { FileIdParam, toFileWire } from "../../api/operations/files-representation.ts";
+import { toHonoRoute } from "../../api/operations/hono.ts";
 import { readRequestSource } from "../../audit/index.ts";
 import { storedContentHeaders } from "../../files/content-type.ts";
 import { SCANNER_TIMEOUT_SECONDS } from "../../files/scanner.ts";
 import {
   createInlineFile,
   createUploadSlots,
-  deleteFile,
   downloadFile,
   type FileActor,
-  type FileRow,
-  fileStats,
   finalizeFile,
   findDownloadableFile,
   findUploadSlot,
-  getFileDetail,
-  linkFile,
-  listFiles,
   storeUpload,
 } from "../../files/service.ts";
-import { fileReference } from "../../files/slug.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 
 const TAG = "Files";
 
-const FileIdParam = z.object({
-  id: FileIdSchema.openapi({ param: { name: "id", in: "path" } }),
-});
-
 export function fileActor(c: Context<AppEnv>): FileActor {
   return { principal: requireAuth(c), request_source: readRequestSource(c) };
 }
 
-export function toFileWire(row: FileRow): FileWire {
-  return {
-    id: toFileId(row.id),
-    status: row.status,
-    filename: row.filename,
-    content_type: row.content_type,
-    size_bytes: row.size_bytes,
-    sha256: row.sha256,
-    scan_result: row.scan_result,
-    created_by: row.created_by,
-    creator: null,
-    created_at: row.created_at.toISOString(),
-    updated_at: row.updated_at.toISOString(),
-    replaced_at: row.replaced_at ? row.replaced_at.toISOString() : null,
-    version: row.version,
-    deleted_at: row.deleted_at ? row.deleted_at.toISOString() : null,
-    slug: row.slug,
-    reference: fileReference(row.slug),
-    ...catalogMetadataView(row),
-  };
+export { toFileWire };
+
+export function gateOtherMethods(
+  methods: readonly string[],
+  permission: string,
+): MiddlewareHandler<AppEnv> {
+  const gate = requireAnyPermission([permission]);
+  return (c, next) => (methods.includes(c.req.method) ? next() : gate(c, next));
 }
 
 export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
@@ -161,22 +138,13 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.body(null, 200);
   });
 
-  app.use("/v1/files", requireAnyPermission(["file:read"]));
+  app.use("/v1/files", gateOtherMethods(["GET"], "file:read"));
   app.use("/v1/files/inline", requireAnyPermission(["file:write"]));
   app.use("/v1/files/batch-create", requireAnyPermission(["file:write"]));
-  app.use("/v1/files/stats", requireAnyPermission(["file:read"]));
-  app.use("/v1/files/:id", async (c, next) => {
-    if (c.req.method === "DELETE") {
-      return requireAnyPermission(["file:delete"])(c, next);
-    }
-    if (c.req.method === "PATCH") {
-      return requireAnyPermission(["file:write"])(c, next);
-    }
-    return requireAnyPermission(["file:read"])(c, next);
-  });
+  app.use("/v1/files/:id", gateOtherMethods(["GET", "DELETE", "PATCH"], "file:read"));
   app.use("/v1/files/:id/content", requireAnyPermission(["file:read"]));
   app.use("/v1/files/:id/finalize", requireAnyPermission(["file:write"]));
-  app.use("/v1/files/:id/links", requireAnyPermission(["file:write"]));
+  app.use("/v1/files/:id/links", gateOtherMethods(["POST"], "file:write"));
 
   const inlineRoute = createRoute({
     method: "post",
@@ -366,85 +334,9 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     }
   });
 
-  const listRoute = createRoute({
-    method: "get",
-    path: "/v1/files",
-    tags: [TAG],
-    security: [{ bearerAuth: [] }],
-    request: { query: ListFilesQuerySchema },
-    responses: {
-      200: {
-        description: "OK",
-        content: { "application/json": { schema: FileListResponseSchema } },
-      },
-    },
-  });
-
-  app.openapi(listRoute, async (c) => {
-    const q = c.req.valid("query");
-    const principal = requireAuth(c);
-    const page = await listFiles(c.get("db"), principal.tenant_id, q);
-    const items = page.entries.map(({ row, creator, usage }) => ({
-      ...toFileWire(row),
-      creator,
-      usage,
-    }));
-    return c.json({ items, total: page.total, next_cursor: page.next_cursor }, 200);
-  });
-
-  const statsRoute = createRoute({
-    method: "get",
-    path: "/v1/files/stats",
-    tags: [TAG],
-    security: [{ bearerAuth: [] }],
-    responses: {
-      200: {
-        description: "OK",
-        content: { "application/json": { schema: FileStatsSchema } },
-      },
-    },
-  });
-
-  app.openapi(statsRoute, async (c) => {
-    const principal = requireAuth(c);
-    return c.json(await fileStats(c.get("db"), principal.tenant_id), 200);
-  });
-
-  const getRoute = createRoute({
-    method: "get",
-    path: "/v1/files/{id}",
-    tags: [TAG],
-    security: [{ bearerAuth: [] }],
-    request: { params: FileIdParam },
-    responses: {
-      200: {
-        description: "OK",
-        content: { "application/json": { schema: FileSchema } },
-      },
-      404: {
-        description: "not_found",
-        content: { "application/json": { schema: ErrorSchema } },
-      },
-    },
-  });
-
-  app.openapi(getRoute, async (c) => {
-    const { id } = c.req.valid("param");
-    const principal = requireAuth(c);
-    const detail = await getFileDetail(c.get("db"), principal, parseFileIdOrThrow(id));
-    if (!detail) {
-      return c.json({ code: "not_found", message: "file not found" }, 404);
-    }
-    return c.json(
-      {
-        ...toFileWire(detail.row),
-        creator: detail.creator,
-        creator_name: detail.creator_name,
-        creator_api_key_name: detail.creator_api_key_name,
-      },
-      200,
-    );
-  });
+  toHonoRoute(app, listFilesOperation);
+  toHonoRoute(app, fileStatsOperation);
+  toHonoRoute(app, getFileOperation);
 
   const contentRoute = createRoute({
     method: "get",
@@ -510,85 +402,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     });
   });
 
-  const deleteRoute = createRoute({
-    method: "delete",
-    path: "/v1/files/{id}",
-    tags: [TAG],
-    security: [{ bearerAuth: [] }],
-    request: { params: FileIdParam },
-    responses: {
-      204: { description: "Deleted" },
-      404: {
-        description: "not_found",
-        content: { "application/json": { schema: ErrorSchema } },
-      },
-    },
-  });
-
-  app.openapi(deleteRoute, async (c) => {
-    const { id } = c.req.valid("param");
-    const outcome = await deleteFile(c.get("db"), fileActor(c), parseFileIdOrThrow(id));
-    if (outcome === "not_found") {
-      return c.json({ code: "not_found", message: "file not found" }, 404);
-    }
-    return c.body(null, 204);
-  });
-
-  const linkRoute = createRoute({
-    method: "post",
-    path: "/v1/files/{id}/links",
-    tags: [TAG],
-    security: [{ bearerAuth: [] }],
-    request: {
-      params: FileIdParam,
-      body: { content: { "application/json": { schema: LinkRequestSchema } } },
-    },
-    responses: {
-      201: {
-        description: "Linked",
-        content: { "application/json": { schema: FileLinkSchema } },
-      },
-      404: {
-        description: "not_found",
-        content: { "application/json": { schema: ErrorSchema } },
-      },
-      409: {
-        description: "conflict",
-        content: { "application/json": { schema: ErrorSchema } },
-      },
-    },
-  });
-
-  app.openapi(linkRoute, async (c) => {
-    const { id } = c.req.valid("param");
-    const body = c.req.valid("json");
-    const outcome = await linkFile(c.get("db"), fileActor(c), parseFileIdOrThrow(id), body);
-    if (outcome.kind === "not_found") {
-      return c.json({ code: "not_found", message: "file not found" }, 404);
-    }
-    if (outcome.kind === "not_ready") {
-      return c.json(
-        {
-          code: "file_not_ready",
-          message: `cannot link file in status=${outcome.status}; wait for finalize`,
-          status: outcome.status,
-        },
-        409,
-      );
-    }
-    if (outcome.kind === "link_changed") {
-      return c.json({ code: outcome.code, message: "File link changed; reload and retry." }, 409);
-    }
-    const linkRow = outcome.link;
-    const wire: FileLinkWire = {
-      id: linkRow.id,
-      file_id: toFileId(linkRow.file_id),
-      resource_type: linkRow.resource_type,
-      resource_id: linkRow.resource_id,
-      slug: linkRow.slug,
-      role: linkRow.role,
-      created_at: linkRow.created_at.toISOString(),
-    };
-    return c.json(wire, 201);
-  });
+  toHonoRoute(app, deleteFileOperation);
+  toHonoRoute(app, linkFileOperation);
 }

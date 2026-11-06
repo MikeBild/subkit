@@ -1,16 +1,16 @@
 import type { z } from "@hono/zod-openapi";
 import type { AuditActionValue } from "../../audit/index.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import type { ToolResult } from "../../conversations/tools/index.ts";
-import type { Executor } from "../../db/client.ts";
+import type { ToolContext, ToolResult } from "../../conversations/tools/index.ts";
+import type { Db } from "../../db/client.ts";
 
 export interface OperationScope {
-  readonly db: Executor;
+  readonly db: Db;
   readonly tenant_id: string;
   readonly principal: ResolvedPrincipal | null;
 }
 
-export type RejectionStatus = 400 | 401 | 404 | 409;
+export type RejectionStatus = 400 | 401 | 403 | 404 | 409 | 413 | 422;
 
 export interface Rejection {
   readonly rejected: true;
@@ -18,6 +18,8 @@ export interface Rejection {
   readonly code: string;
   readonly message: string;
   readonly details?: Record<string, unknown>;
+  readonly plain?: true;
+  readonly extra?: Record<string, unknown>;
 }
 
 function rejection(
@@ -40,6 +42,15 @@ export const reject = {
     rejection(409, code, message, details),
 };
 
+export function plainRejection(
+  status: RejectionStatus,
+  code: string,
+  message: string,
+  extra?: Record<string, unknown>,
+): Rejection {
+  return { rejected: true, status, code, message, plain: true, ...(extra ? { extra } : {}) };
+}
+
 export function isRejection(value: unknown): value is Rejection {
   return (
     typeof value === "object" &&
@@ -50,7 +61,7 @@ export function isRejection(value: unknown): value is Rejection {
 
 export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
 
-export type ErrorStatus = 400 | 404 | 409 | 422;
+export type ErrorStatus = 400 | 403 | 404 | 409 | 413 | 422;
 
 export interface HttpRequestParts {
   readonly param: unknown;
@@ -68,6 +79,7 @@ export interface HttpBinding<I, R> {
   readonly body?: z.ZodTypeAny;
   readonly response: z.ZodTypeAny;
   readonly errors?: Partial<Record<ErrorStatus, string>>;
+  readonly success?: { readonly status: 200 | 201 | 204; readonly description: string };
   toInput(request: HttpRequestParts): I;
   toBody(result: R, scope: OperationScope): unknown;
 }
@@ -77,6 +89,11 @@ export interface ToolBinding<I, R> {
   readonly description: string;
   readonly input: z.ZodTypeAny;
   readonly gate: "enforced" | "deferred";
+  readonly resourceType?: string;
+  readonly resolveResourceId?: (
+    ctx: ToolContext,
+    args: Record<string, unknown>,
+  ) => Promise<string | null>;
   readonly use_case?: string;
   readonly important_notes?: readonly string[];
   toInput(args: unknown): I;
@@ -85,8 +102,9 @@ export interface ToolBinding<I, R> {
 
 interface OperationCore<I, R> {
   readonly id: string;
-  readonly summary: string;
+  readonly summary?: string;
   readonly permission: string;
+  readonly alternatePermissions?: readonly string[];
   readonly resource?: { readonly type: string; readonly param: string };
   handler(scope: OperationScope, input: I): Promise<R | Rejection>;
   readonly http?: HttpBinding<I, R>;
