@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { useActorDirectory } from "@/app/actor-directory";
 import type { ActorDirectory } from "@/app/actor-directory-model";
 import { useLiveQueryOptions } from "@/app/live-events";
@@ -23,19 +23,12 @@ import { useSearchParamState } from "@/lib/use-search-param-state";
 import {
   authorName,
   type KnowledgeVersion,
-  type KnowledgeVersionDetail,
   previousVersion,
   restoreHint,
   versionChange,
   versionText,
   versionWhy,
 } from "@/pages/knowledge-versions-model";
-
-type History = { items: KnowledgeVersion[]; total: number };
-
-function sourcePath(sourceId: string): string {
-  return `/v1/knowledge-sources/${encodeURIComponent(sourceId)}`;
-}
 
 function versionBadge(version: KnowledgeVersion, t: ReturnType<typeof useI18n>["t"]) {
   return (
@@ -50,7 +43,11 @@ export function useKnowledgeHistory(sourceId: string) {
   const live = useLiveQueryOptions();
   return useQuery({
     queryKey: ["knowledge-source", sourceId, "history"],
-    queryFn: () => apiRequest<History>(`${sourcePath(sourceId)}/history?limit=200`),
+    queryFn: () =>
+      apiCall("get", "/v1/knowledge-sources/{id}/history", {
+        path: { id: sourceId },
+        query: { limit: 200 },
+      }),
     ...live,
   });
 }
@@ -155,20 +152,27 @@ function KnowledgeVersionSheet({
   const prior = previousVersion(kept, number);
   const detail = useQuery({
     queryKey: ["knowledge-source", sourceId, "history", number],
-    queryFn: () => apiRequest<KnowledgeVersionDetail>(`${sourcePath(sourceId)}/history/${number}`),
+    queryFn: () =>
+      apiCall("get", "/v1/knowledge-sources/{id}/history/{version}", {
+        path: { id: sourceId, version: number },
+      }),
     enabled: version !== null,
   });
   const previous = useQuery({
     queryKey: ["knowledge-source", sourceId, "history", prior],
-    queryFn: () => apiRequest<KnowledgeVersionDetail>(`${sourcePath(sourceId)}/history/${prior}`),
+    queryFn: () =>
+      apiCall("get", "/v1/knowledge-sources/{id}/history/{version}", {
+        path: { id: sourceId, version: prior ?? 0 },
+      }),
     enabled: version !== null && prior !== null,
   });
   const [confirming, setConfirming] = useState(false);
   const restore = useMutation({
     mutationFn: () =>
-      apiRequest<{ version: number }>(`${sourcePath(sourceId)}/restore/${number}`, {
-        method: "POST",
+      apiCall("post", "/v1/knowledge-sources/{id}/restore/{version}", {
+        path: { id: sourceId, version: number },
       }),
+
     onSuccess: (result) => {
       toast.success(t("knowledge.versions.restored", { from: number, to: result.version }));
       void client.invalidateQueries({ queryKey: ["knowledge-source", sourceId] });

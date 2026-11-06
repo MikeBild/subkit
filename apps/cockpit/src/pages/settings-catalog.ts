@@ -3,16 +3,8 @@ import type { components } from "@cli-core/engine-api/openapi";
 export type ModelCatalog = components["schemas"]["SettingsModelCatalog"];
 export type ModelCatalogEntry = components["schemas"]["SettingsModelCatalogEntry"];
 
-const MODEL_CATALOG_ENDPOINT = "/v1/settings/catalog/models";
-
 export function modelCatalogQueryKey(tenantId: string | null) {
   return ["admin", "settings", "catalog", tenantId] as const;
-}
-
-export function modelCatalogEndpoint(tenantId: string | null): string {
-  return tenantId
-    ? `${MODEL_CATALOG_ENDPOINT}?tenant=${encodeURIComponent(tenantId)}`
-    : MODEL_CATALOG_ENDPOINT;
 }
 
 const CATALOG_FAMILY: Readonly<Record<string, ModelCatalogEntry["provider"]>> = {

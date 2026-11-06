@@ -1,6 +1,9 @@
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
+
+type Schemas = components["schemas"];
 
 const listCmd = defineCommand({
   meta: { name: "list", description: "List API keys" },
@@ -10,11 +13,7 @@ const listCmd = defineCommand({
     return withCommandErrors(
       async () => {
         const { items } = await client.listApiKeys();
-        emitList(
-          !!args.json,
-          ["id", "name", "prefix", "created_at", "expires_at"],
-          items as Record<string, unknown>[],
-        );
+        emitList(!!args.json, ["id", "name", "prefix", "created_at", "expires_at"], items);
       },
       { json: Boolean(args.json) },
     );
@@ -52,11 +51,8 @@ const createCmd = defineCommand({
   async run({ args }) {
     const client = makeClient();
     return withCommandErrors(async () => {
-      const me = (await client.whoami()) as {
-        id: string;
-        kind: "user" | "system_account";
-      };
-      const body: Record<string, unknown> = {
+      const me = await client.whoami();
+      const body: Schemas["IssueApiKeyBody"] = {
         owner_kind: me.kind,
         owner_id: me.id,
       };

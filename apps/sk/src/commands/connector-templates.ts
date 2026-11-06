@@ -2,7 +2,35 @@ import { readFile } from "node:fs/promises";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import Fuse from "fuse.js";
+import type {
+  ConnectorTemplateCreateBody,
+  RecipePackVertical,
+} from "../engine-client/connectors.ts";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
+
+const TEMPLATE_DRIVERS = [
+  "http",
+  "postgres",
+  "s3",
+  "graphql",
+  "mcp",
+] as const satisfies readonly ConnectorTemplateCreateBody["driver"][];
+
+const RECIPE_PACK_VERTICALS = [
+  "revops",
+  "customer-success",
+  "finance",
+  "data",
+  "devops",
+  "security",
+  "marketing",
+  "hr",
+  "solutions",
+] as const satisfies readonly RecipePackVertical[];
+
+function oneOf<T extends string>(values: readonly T[], value: string): value is T {
+  return (values as readonly string[]).includes(value);
+}
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List connector templates" },
@@ -21,11 +49,11 @@ const listCommand = defineCommand({
   },
 });
 
-export function rankTemplates(
-  items: Record<string, unknown>[],
+export function rankTemplates<T extends Record<string, unknown>>(
+  items: T[],
   query: string,
   limit: number,
-): Record<string, unknown>[] {
+): Array<T & { score: number }> {
   const fuse = new Fuse(items, {
     includeScore: true,
     threshold: 0.4,
@@ -71,17 +99,22 @@ const searchCommand = defineCommand({
   },
 });
 
-async function loadTemplateBodyFromArgs(args: Record<string, unknown>) {
+export async function loadTemplateBodyFromArgs(
+  args: Record<string, unknown>,
+): Promise<ConnectorTemplateCreateBody> {
   const file = typeof args.file === "string" ? args.file : "";
   if (file) {
     const raw = await readFile(file, "utf8");
-    return JSON.parse(raw) as Record<string, unknown>;
+    return JSON.parse(raw) as ConnectorTemplateCreateBody;
   }
   const slug = String(args.slug ?? "");
   const name = String(args.name ?? "");
   const driver = String(args.driver ?? "");
   if (!slug || !name || !driver) {
     throw new Error("create requires either --file or --slug + --name + --driver");
+  }
+  if (!oneOf(TEMPLATE_DRIVERS, driver)) {
+    throw new Error(`--driver must be one of: ${TEMPLATE_DRIVERS.join(" | ")}`);
   }
   return {
     version: 1,
@@ -112,6 +145,8 @@ async function loadTemplateBodyFromArgs(args: Record<string, unknown>) {
     keywords: [],
     inline_schema: null,
     probe_endpoint: null,
+    read_operations: [],
+    resource_url_parser: null,
     credential_hints: [],
     base_url_options: [],
     pagination_defaults: null,
@@ -120,6 +155,12 @@ async function loadTemplateBodyFromArgs(args: Record<string, unknown>) {
       webhook_events: [],
       rate_limits: null,
     },
+    example_paths: [],
+    recipes: [],
+    aws_service: null,
+    aws_region: null,
+    verified_at: null,
+    respects_robots: false,
   };
 }
 
@@ -220,17 +261,12 @@ const recipeShowCommand = defineCommand({
     const client = makeClient();
     return withCommandErrors(
       async () => {
-        const data = await client.getConnectorTemplateRecipe(slug, recipe);
+        const r = await client.getConnectorTemplateRecipe(slug, recipe);
         if (args.json) {
-          printJson(data);
+          printJson(r);
           return;
         }
-        const r = data as Record<string, unknown>;
-        const wf =
-          (r.workflow as {
-            steps?: unknown[];
-            trigger?: Record<string, unknown> | null;
-          }) ?? {};
+        const wf: { steps?: unknown; trigger?: unknown } = r.workflow ?? {};
         const stepCount = Array.isArray(wf.steps) ? wf.steps.length : 0;
         process.stdout.write(`recipe ${slug}/${r.slug}\n`);
         process.stdout.write(`  title:        ${r.title}\n`);
@@ -239,13 +275,11 @@ const recipeShowCommand = defineCommand({
           `  category:     ${r.category}  difficulty: ${r.difficulty}  version: ${r.version}\n`,
         );
         process.stdout.write(
-          `  tags:         ${Array.isArray(r.tags) && r.tags.length > 0 ? (r.tags as string[]).join(", ") : "(none)"}\n`,
+          `  tags:         ${r.tags.length > 0 ? r.tags.join(", ") : "(none)"}\n`,
         );
-        process.stdout.write(
-          `  intent_keywords: ${(r.intent_keywords as string[] | undefined)?.join(", ") ?? "(none)"}\n`,
-        );
-        const prereqs = r.prerequisites as string[] | undefined;
-        if (prereqs && prereqs.length > 0) {
+        process.stdout.write(`  intent_keywords: ${r.intent_keywords.join(", ")}\n`);
+        const prereqs = r.prerequisites;
+        if (prereqs.length > 0) {
           process.stdout.write(`  prerequisites:\n`);
           for (const p of prereqs) process.stdout.write(`    - ${p}\n`);
         }
@@ -316,6 +350,12 @@ const recipePackCommand = defineCommand({
     const vertical = String(args.vertical ?? "");
     if (!vertical) {
       process.stderr.write("recipe-pack: positional <vertical> is required\n");
+      process.exit(2);
+    }
+    if (!oneOf(RECIPE_PACK_VERTICALS, vertical)) {
+      process.stderr.write(
+        `recipe-pack: unknown vertical '${vertical}' (${RECIPE_PACK_VERTICALS.join(" | ")})\n`,
+      );
       process.exit(2);
     }
     const client = makeClient();

@@ -27,6 +27,7 @@ const attach = spyOn(EngineClient.prototype, "createCredential").mockImplementat
 );
 const probe = spyOn(EngineClient.prototype, "testConnector").mockImplementation(async () => ({
   ok: probeOk,
+  latency_ms: 0,
 }));
 const originalExitCode = process.exitCode ?? 0;
 

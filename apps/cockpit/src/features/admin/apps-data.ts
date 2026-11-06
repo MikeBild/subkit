@@ -1,27 +1,25 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError, apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
+import { ApiError } from "@/api/client";
 import { useLiveQueryOptions } from "@/app/live-events";
 import type { TranslationKey } from "@/lib/i18n";
 import {
   type AppActivationOutcome,
   type AppSettingsChanges,
-  type AppSummary,
-  type AppView,
   appActivationOutcome,
   appSettingsPatch,
 } from "@/pages/apps-model";
-import {
-  type SettingsResponse,
-  settingsActivationPath,
-  settingsSaveFailure,
-} from "@/pages/settings-model";
-import type { Envelope, Translate } from "./data";
+import { settingsSaveFailure } from "@/pages/settings-model";
+import type { Translate } from "./data";
 
-const fetchApps = () => apiRequest<Envelope<AppSummary>>("/v1/apps");
+type SettingsSnapshot = components["schemas"]["SettingsListResponse"];
 
-export const fetchApp = (id: string) => apiRequest<AppView>(`/v1/apps/${encodeURIComponent(id)}`);
+const fetchApps = () => apiCall("get", "/v1/apps", {});
 
-const fetchSettings = () => apiRequest<SettingsResponse>("/v1/settings");
+export const fetchApp = (id: string) => apiCall("get", "/v1/apps/{id}", { path: { id } });
+
+const fetchSettings = () => apiCall("get", "/v1/settings", {});
 
 const SETTINGS_KEY = ["admin", "settings"] as const;
 
@@ -36,7 +34,7 @@ export function useSettingsSnapshot(enabled: boolean) {
   return useQuery({ queryKey: SETTINGS_KEY, queryFn: fetchSettings, enabled });
 }
 
-export function settingValue(data: SettingsResponse | undefined, path: string): unknown {
+export function settingValue(data: SettingsSnapshot | undefined, path: string): unknown {
   return data?.items.find((item) => item.path === path)?.value;
 }
 
@@ -51,14 +49,12 @@ export function useAppSettingsSave() {
         queryFn: fetchSettings,
         staleTime: 0,
       });
-      const saved = await apiRequest<{ saved_revision: number }>("/v1/settings", {
-        method: "PATCH",
-        body: JSON.stringify(appSettingsPatch(data, changes)),
+      const saved = await apiCall("patch", "/v1/settings", {
+        body: appSettingsPatch(data, changes),
       });
-      const activated = await apiRequest<{ activation_status: string }>(
-        settingsActivationPath(saved),
-        { method: "POST" },
-      );
+      const activated = await apiCall("post", "/v1/settings/revisions/{revision}/activate", {
+        path: { revision: saved.saved_revision },
+      });
       const outcome = appActivationOutcome(activated.activation_status);
       if (outcome === "failed") throw new ActivationRefused(activated.activation_status);
       return outcome;

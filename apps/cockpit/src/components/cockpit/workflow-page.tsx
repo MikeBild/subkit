@@ -4,7 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { useActorDirectory } from "@/app/actor-directory";
 import {
   absolute,
@@ -304,9 +304,9 @@ export function WorkflowPage({
   const lifecycle = useOptimisticAction({
     queryKey: ["catalog-detail", "workflows", id],
     mutationFn: (next: "active" | "archived") =>
-      apiRequest(`/v1/workflows/${encodeURIComponent(id)}/metadata`, {
-        method: "PATCH",
-        body: JSON.stringify({ lifecycle: next }),
+      apiCall("patch", "/v1/workflows/{id}/metadata", {
+        path: { id },
+        body: { lifecycle: next },
       }),
     apply: (current: RecordValue | undefined, next) =>
       current ? { ...current, lifecycle: next } : current,
@@ -319,7 +319,8 @@ export function WorkflowPage({
     },
   });
   const remove = useMutation({
-    mutationFn: () => apiRequest(`/v1/workflows/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    mutationFn: () => apiCall("delete", "/v1/workflows/{id}", { path: { id } }),
+
     onSuccess: async () => {
       toast.success(t("workflowPage.deleted", { name: title }));
       setConfirming(null);

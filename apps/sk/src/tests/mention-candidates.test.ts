@@ -21,10 +21,12 @@ describe("mention catalog candidates", () => {
       executionMentionCandidates([
         { id: "execution-1", workflow_name: "Customer sync" },
         { id: "execution-2" },
+        { id: "execution-3", workflow_name: null },
       ]),
     ).toEqual([
       { value: "execution:execution-1", label: "Customer sync", kind: "execution" },
       { value: "execution:execution-2", label: "execution-2", kind: "execution" },
+      { value: "execution:execution-3", label: "execution-3", kind: "execution" },
     ]);
   });
 

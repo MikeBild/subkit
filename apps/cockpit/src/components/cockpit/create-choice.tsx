@@ -1,4 +1,3 @@
-import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -11,11 +10,16 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { absolute, chatNewHref, workflowHref } from "@/app/links";
 import { CreateConnectorDialog } from "@/components/cockpit/create-connector";
 import { useSolutionFlow } from "@/components/cockpit/create-from-template";
 import { createRefusal, slugify } from "@/components/cockpit/create-refusal";
+import {
+  manualWorkflowDefinition,
+  type WorkflowTrigger,
+} from "@/components/cockpit/create-workflow-model";
+
 import { SelectField, TextField } from "@/components/cockpit/form-field";
 import {
   ActionButton,
@@ -32,8 +36,6 @@ import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { DEFAULT_RHYTHM, type RhythmValue, rhythmToCron, validTime } from "@/lib/schedule-rhythm";
 import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
-
-type WorkflowDraft = components["schemas"]["WorkflowDraft"];
 
 type Kind = "workflow" | "connector";
 type Step = "choose" | "what" | "when" | "review" | "template" | "template-detail";
@@ -265,8 +267,6 @@ interface ManualForm {
   pending: boolean;
 }
 
-type WorkflowTrigger = "webhook" | "schedule" | "request";
-
 const TRIGGER_CARDS: readonly {
   value: WorkflowTrigger;
   icon: ReactNode;
@@ -309,8 +309,7 @@ function useManualWorkflow(
   const categories = useQuery({
     queryKey: ["workflow-categories"],
     enabled: active,
-    queryFn: () =>
-      apiRequest<{ categories?: { category: string; count: number }[] }>("/v1/workflows?limit=1"),
+    queryFn: () => apiCall("get", "/v1/workflows", { query: { limit: 1 } }),
   });
   const reset = () => {
     setName("");
@@ -322,28 +321,18 @@ function useManualWorkflow(
   const create = useMutation({
     mutationFn: () => {
       const slug = slugify(name);
-      const definition = {
-        name: name.trim(),
+      const definition = manualWorkflowDefinition({
+        name,
         slug,
-        ...(purpose.trim() ? { description: purpose.trim() } : {}),
-        steps: [{ id: "start", kind: "transform", expression: "return input;" }],
-        trigger:
-          trigger === "schedule"
-            ? {
-                kind: "schedule",
-                cron: rhythmToCron(rhythm),
-                tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-              }
-            : trigger === "webhook"
-              ? { kind: "webhook", source: slug, events: [], verify: "none" }
-              : { kind: "request" },
-      };
-      return apiRequest<WorkflowDraft>("/v1/workflows/drafts", {
-        method: "POST",
-        body: JSON.stringify({
-          definition,
-          ...(category !== UNCATEGORIZED ? { category } : {}),
+        purpose,
+        trigger,
+        schedule: () => ({
+          cron: rhythmToCron(rhythm),
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
         }),
+      });
+      return apiCall("post", "/v1/workflows/drafts", {
+        body: { definition, ...(category !== UNCATEGORIZED ? { category } : {}) },
       });
     },
     onSuccess: async (draft) => {

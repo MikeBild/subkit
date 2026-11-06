@@ -393,7 +393,9 @@ isolated(
         view.calls.filter((call) => reviewPath(call) && call.init.method === "POST"),
       ).toHaveLength(1);
       expect(
-        view.calls.filter((call) => call.path.endsWith("/receipt-a") && !call.init.method),
+        view.calls.filter(
+          (call) => call.path.endsWith("/receipt-a") && (call.init.method ?? "GET") === "GET",
+        ),
       ).toHaveLength(1);
       expect(view.calls.filter((call) => call.path.endsWith("/finalize"))).toHaveLength(0);
     } finally {

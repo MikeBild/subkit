@@ -3,77 +3,20 @@ import type { InvokeEnvironment } from "@shared/invoke-snippet.ts";
 import type { EngineClient } from "../engine-client.ts";
 import type { ApiBody, ApiQuery } from "./http.ts";
 
-export type ExecutionCost = components["schemas"]["ExecutionCost"];
+type Schemas = components["schemas"];
 
+export type ExecutionCost = Schemas["ExecutionCost"];
 export type RunEnvironment = InvokeEnvironment;
-
-export type RunExecutionBody =
-  | {
-      source: "saved";
-      workflow_id: string;
-      version_id?: string;
-      input?: unknown;
-      async?: boolean;
-      idempotency_key?: string;
-      request_source?: "api" | "cli";
-    }
-  | {
-      source: "draft";
-      definition: Record<string, unknown>;
-      name?: string;
-      input?: unknown;
-      request_source?: "api" | "cli";
-    }
-  | {
-      source: "step";
-      step: Record<string, unknown>;
-      workflow_slug?: string;
-      input?: unknown;
-      scope?: Record<string, unknown>;
-      timeout_ms?: number;
-      request_source?: "api" | "cli";
-    };
-
-export interface RunExecutionStepSummary {
-  step_key: string;
-  step_index: number;
-  kind: string;
-  status: string;
-  duration_ms: number | null;
-  retry_count: number;
-  error: unknown;
-  request_meta?: Record<string, unknown> | null;
-}
-
-export interface ConnectorResolutionSummary {
-  step_key: string;
-  connector_id: string;
-  connector_slug: string;
-  driver: string;
-  requested_environment: "dev" | "prod";
-  resolved_environment: "dev" | "prod";
-  auth_method:
-    | "none"
-    | "bearer"
-    | "header"
-    | "query"
-    | "basic"
-    | "oauth2_static"
-    | "oauth2_refreshed";
-  base_url?: string | null;
-}
-
-export interface RunExecutionResponse {
-  execution_id: string;
-  status: string;
-  output?: unknown;
-  error?: unknown;
-  steps?: RunExecutionStepSummary[];
-  connector_resolutions?: ConnectorResolutionSummary[];
-  warnings?: unknown[];
-  idempotent_replay?: boolean;
-  hold_writes?: boolean;
-}
+export type RunExecutionBody = ApiBody<"/v1/executions", "post">;
+export type ExecutionRunDraftDefinition = Schemas["ExecutionRunDraftDefinition"];
+export type RunExecutionStepSummary = Schemas["ExecutionRunStepSummary"];
+export type ConnectorResolutionSummary = Schemas["ConnectorResolutionSummary"];
+export type RunExecutionResponse = Schemas["ExecutionRunResponse"];
+export type ExecutionListQuery = ApiQuery<"/v1/executions", "get">;
+export type ExecutionListItem = Schemas["ExecutionListItem"];
+export type ExecutionDetail = Schemas["ExecutionDetail"];
+export type ExecutionStep = Schemas["ExecutionStep"];
+export type RerunExecutionBody = ApiBody<"/v1/executions/{id}/rerun", "post">;
 
 export const executionsMethods = {
   runExecution(
@@ -84,7 +27,7 @@ export const executionsMethods = {
     return this.request<RunExecutionResponse>(
       "POST",
       "/v1/executions",
-      body as Record<string, unknown>,
+      body,
       undefined,
       undefined,
       opts.environment ? { "x-subkit-environment": opts.environment } : undefined,
@@ -93,23 +36,21 @@ export const executionsMethods = {
 
   async listExecutions(
     this: EngineClient,
-    query: Record<string, string | number | undefined> = {},
-  ): Promise<{ items: Record<string, unknown>[]; total: number; next_cursor: string | null }> {
-    const { data } = await this.api.GET("/v1/executions", {
-      params: { query: query as ApiQuery<"/v1/executions", "get"> },
-    });
-    return data as { items: Record<string, unknown>[]; total: number; next_cursor: string | null };
+    query: ExecutionListQuery = {},
+  ): Promise<Schemas["ExecutionListResponse"]> {
+    const { data } = await this.api.GET("/v1/executions", { params: { query } });
+    return data as Schemas["ExecutionListResponse"];
   },
-  async getExecution(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+  async getExecution(this: EngineClient, id: string): Promise<ExecutionDetail> {
     const { data } = await this.api.GET("/v1/executions/{id}", { params: { path: { id } } });
-    return data as Record<string, unknown>;
+    return data as ExecutionDetail;
   },
   async executionSteps(
     this: EngineClient,
     id: string,
-  ): Promise<{ items: Record<string, unknown>[] }> {
+  ): Promise<Schemas["ExecutionStepListResponse"]> {
     const { data } = await this.api.GET("/v1/executions/{id}/steps", { params: { path: { id } } });
-    return data as { items: Record<string, unknown>[] };
+    return data as Schemas["ExecutionStepListResponse"];
   },
   async executionCost(this: EngineClient, id: string): Promise<ExecutionCost> {
     const { data } = await this.api.GET("/v1/executions/{id}/cost", { params: { path: { id } } });
@@ -124,14 +65,11 @@ export const executionsMethods = {
   async rerunExecution(
     this: EngineClient,
     id: string,
-    body: { input?: unknown; async?: boolean } = {},
+    body: Omit<RerunExecutionBody, "request_source"> = {},
   ): Promise<RunExecutionResponse> {
     const { data } = await this.api.POST("/v1/executions/{id}/rerun", {
       params: { path: { id } },
-      body: {
-        ...body,
-        request_source: "cli",
-      } as ApiBody<"/v1/executions/{id}/rerun", "post">,
+      body: { ...body, request_source: "cli" },
     });
     return data as RunExecutionResponse;
   },

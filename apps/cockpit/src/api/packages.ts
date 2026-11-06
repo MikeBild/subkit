@@ -1,4 +1,5 @@
 import type { components } from "@cli-core/engine-api/openapi";
+import { apiCall } from "./call";
 import { apiRequest } from "./client";
 import { tenantContentHref } from "./tenant-context";
 
@@ -30,12 +31,13 @@ export function exportPackage(input: {
   kinds: readonly PackageKind[];
   categories?: readonly string[];
 }): Promise<PackageExportResult> {
-  return apiRequest("/v1/packages/export", {
-    method: "POST",
-    body: JSON.stringify({
-      kinds: input.kinds,
-      ...(input.categories && input.categories.length > 0 ? { categories: input.categories } : {}),
-    }),
+  return apiCall("post", "/v1/packages/export", {
+    body: {
+      kinds: [...input.kinds],
+      ...(input.categories && input.categories.length > 0
+        ? { categories: [...input.categories] }
+        : {}),
+    },
   });
 }
 
@@ -50,9 +52,8 @@ export function previewPackageFile(file: File): Promise<PackagePreviewResult> {
 }
 
 export function previewStoredPackage(archiveFileId: string): Promise<PackagePreviewResult> {
-  return apiRequest("/v1/packages/import/preview", {
-    method: "POST",
-    body: JSON.stringify({ archive_file_id: archiveFileId }),
+  return apiCall("post", "/v1/packages/import/preview", {
+    body: { archive_file_id: archiveFileId },
   });
 }
 
@@ -60,15 +61,11 @@ export function applyPackage(
   archiveFileId: string,
   expectedPlanDigest: string,
 ): Promise<PackageApplyResult> {
-  return apiRequest("/v1/packages/import/apply", {
-    method: "POST",
-    body: JSON.stringify({
-      archive_file_id: archiveFileId,
-      expected_plan_digest: expectedPlanDigest,
-    }),
+  return apiCall("post", "/v1/packages/import/apply", {
+    body: { archive_file_id: archiveFileId, expected_plan_digest: expectedPlanDigest },
   });
 }
 
 export function listPackageInstalls(): Promise<PackageInstallList> {
-  return apiRequest("/v1/packages/installs");
+  return apiCall("get", "/v1/packages/installs", {});
 }

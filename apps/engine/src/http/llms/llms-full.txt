@@ -3428,6 +3428,7 @@ Ingest docs from a URL into a connector
 
 - `<id>` (positional, required) — Connector id
 - `--url` (string, required) — URL to ingest
+- `--source-type` (string, required) — Document format: openapi | google_discovery | markdown | llms_txt
 
 #### `sk connectors docs-list`
 
@@ -4296,9 +4297,9 @@ Manage portal tokens
 
 Issue a portal token (shown once)
 
-- `--name` (string, required) — Token name
-- `--user-id` (string) — User id to bind the token to
-- `--expires` (string) — Expiry — ISO-8601 timestamp
+- `--user-id` (string, required) — User id to bind the token to
+- `--workflows` (string, required) — Comma-separated workflow ids the token may run
+- `--ttl` (string) — Token lifetime in minutes
 
 #### `sk portal-tokens list`
 

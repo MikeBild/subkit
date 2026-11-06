@@ -59,8 +59,7 @@ export const SettingsPane: React.FC<SettingsPaneProps> = ({
             : Promise.resolve(null),
         ]);
         if (cancelled) return;
-        const conv = convDetail as { conversation?: { title?: string | null } } | null;
-        const fetchedTitle = conv?.conversation?.title ?? null;
+        const fetchedTitle = convDetail?.conversation.title ?? null;
         setState({
           loading: false,
           items: settingsRes.items,

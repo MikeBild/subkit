@@ -1,8 +1,12 @@
 import * as prompts from "@clack/prompts";
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
+import type { ApiQuery } from "../engine-client/http.ts";
 import type { UserInviteIssuedWire } from "../engine-client.ts";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
+
+type Schemas = components["schemas"];
 
 function csv(value: unknown): string[] | undefined {
   if (typeof value !== "string" || value.length === 0) return undefined;
@@ -41,8 +45,8 @@ export function userListRows(items: Record<string, unknown>[]): Record<string, u
 export function userListQuery(args: {
   limit?: unknown;
   app?: unknown;
-}): Record<string, string | number | undefined> {
-  const q: Record<string, string | number | undefined> = {};
+}): ApiQuery<"/v1/identity/users", "get"> {
+  const q: ApiQuery<"/v1/identity/users", "get"> = {};
   if (args.limit) q.limit = Number(args.limit);
   if (typeof args.app === "string" && args.app.length > 0) q.product_id = args.app;
   return q;
@@ -85,7 +89,7 @@ const createCmd = defineCommand({
     const client = makeClient();
     return withCommandErrors(
       async () => {
-        const body: { email: string; role?: "admin" | "member" | "enduser" } = {
+        const body: Schemas["CreateUserBody"] = {
           email: String(args.email),
         };
         if (args.role) {
@@ -134,12 +138,7 @@ const inviteCmd = defineCommand({
     const client = makeClient();
     return withCommandErrors(
       async () => {
-        const body: {
-          scopes?: string[];
-          allowed_workflows?: string[];
-          allowed_connectors?: string[];
-          ttl_minutes?: number;
-        } = {};
+        const body: Schemas["CreateInviteBody"] = {};
         const scopes = csv(args.scopes);
         if (scopes) body.scopes = scopes;
         const aw = csv(args["allowed-workflows"]);

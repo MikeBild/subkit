@@ -1,21 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   categoryChoices,
-  metadataEndpoint,
   metadataPatch,
   normalizeCategoryInput,
   writtenByAssistant,
 } from "./catalog-metadata-model";
-
-describe("metadataEndpoint", () => {
-  test("each kind saves through its own resource", () => {
-    expect(metadataEndpoint("workflow", "w 1")).toBe("/v1/workflows/w%201/metadata");
-    expect(metadataEndpoint("connector", "c")).toBe("/v1/connectors/c");
-    expect(metadataEndpoint("knowledge_source", "k")).toBe("/v1/knowledge-sources/k");
-    expect(metadataEndpoint("skill", "s")).toBe("/v1/skills/s");
-    expect(metadataEndpoint("file", "fid_x")).toBe("/v1/files/fid_x");
-  });
-});
 
 describe("metadataPatch", () => {
   const record = { description: "Sends the report.", category: "reports" };

@@ -77,7 +77,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export const BOOTSTRAP_TIMEOUT_MS = 5000;
 
-interface RequestLimits {
+export interface RequestLimits {
   timeoutMs?: number;
 }
 

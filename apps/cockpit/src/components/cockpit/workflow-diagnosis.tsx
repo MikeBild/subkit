@@ -2,7 +2,7 @@ import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { apiRequest } from "@/api/client";
+import { type ApiResponse, apiCall } from "@/api/call";
 import { absolute, attentionHref, chatNewHref, routerTarget } from "@/app/links";
 import { useSession } from "@/app/session";
 import { ActionMenu, ContextHelp, DataState } from "@/components/cockpit/patterns";
@@ -23,17 +23,20 @@ import { catalogLabel, LabelText } from "@/lib/machine-label";
 
 export type WorkflowDiagnosis = components["schemas"]["WorkflowDiagnosis"];
 type GateDiagnosis = components["schemas"]["GateDiagnosis"];
-type RepairResponse = components["schemas"]["ProposeWorkflowRepairResponse"];
-type PrepareResponse = { prepared: boolean; reason?: string };
+type PrepareResponse = ApiResponse<
+  "/v1/workflows/{id}/versions/{version_id}/prepare-authority",
+  "post"
+>;
 type RepairNote = RepairStatus | "failed";
 
 export function workflowDiagnosisQuery(workflowId: string, environment: "dev" | "prod" | null) {
   return {
     queryKey: ["workflow-diagnosis", workflowId, environment],
     queryFn: () =>
-      apiRequest<WorkflowDiagnosis>(
-        `/v1/workflows/${encodeURIComponent(workflowId)}/diagnosis?environment=${environment}`,
-      ),
+      apiCall("get", "/v1/workflows/{id}/diagnosis", {
+        path: { id: workflowId },
+        query: { environment: environment ?? undefined },
+      }),
     retry: false,
     refetchInterval: AUTOMATION_REFRESH_MS,
   } as const;
@@ -72,9 +75,9 @@ export function useStepRepair({
   const workflowId = diagnosis.workflow_id;
   return useMutation({
     mutationFn: (fixer: NonNullable<GateDiagnosis["fixer"]>) =>
-      apiRequest<RepairResponse>(`/v1/workflows/${encodeURIComponent(workflowId)}/repairs`, {
-        method: "POST",
-        body: JSON.stringify({ step_id: entry.subject.step_id, fixer, environment }),
+      apiCall("post", "/v1/workflows/{id}/repairs", {
+        path: { id: workflowId },
+        body: { step_id: entry.subject.step_id, fixer, environment },
       }),
     onSuccess: (result) => {
       void client.invalidateQueries({ queryKey: ["run-open-repair", workflowId] });
@@ -277,11 +280,14 @@ function usePrepare(
   const [result, setResult] = useState<TranslationKey | null>(null);
   const workflowId = diagnosis?.workflow_id ?? "";
   const prepare = useMutation({
-    mutationFn: () =>
-      apiRequest<PrepareResponse>(
-        `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(diagnosis?.workflow_version_id ?? "")}/prepare-authority`,
-        { method: "POST", body: JSON.stringify({ environment }) },
-      ),
+    mutationFn: () => {
+      if (environment === null) throw new Error("no environment to prepare");
+      return apiCall("post", "/v1/workflows/{id}/versions/{version_id}/prepare-authority", {
+        path: { id: workflowId, version_id: diagnosis?.workflow_version_id ?? "" },
+        body: { environment },
+      });
+    },
+
     onSuccess: (response) => {
       setResult(preparedKey(response));
       void invalidateWorkflowAutomation(client, workflowId);

@@ -1,21 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { navigationItem } from "@/app/navigation";
 import { ConnectorPage } from "@/components/cockpit/connector-page";
 import { BackLink, Skeleton } from "@/components/cockpit/patterns";
 import { WorkflowPage } from "@/components/cockpit/workflow-page";
 import { ForbiddenState, LoadFailed, queryView } from "@/components/failure-state";
 import { useI18n } from "@/lib/i18n-context";
-import { type RecordValue, recordTitle } from "@/pages/catalog-model";
+import { recordTitle } from "@/pages/catalog-model";
 import { signInReturn, withoutSignInReturn } from "@/pages/connector-detail-model";
 
 type DetailResource = "workflows" | "connectors";
 
-const ENDPOINTS: Record<DetailResource, string> = {
-  workflows: "/v1/workflows",
-  connectors: "/v1/connectors",
-};
+async function loadDetail(resource: DetailResource, id: string) {
+  if (resource === "workflows") return await apiCall("get", "/v1/workflows/{id}", { path: { id } });
+  return await apiCall("get", "/v1/connectors/{id}", { path: { id } });
+}
 
 const PERMISSIONS: Record<DetailResource, { read: string; write: string }> = {
   workflows: { read: "workflow:read", write: "workflow:write" },
@@ -45,7 +45,7 @@ export function CatalogDetailPage({
   const canRead = permissions.includes(PERMISSIONS[resource].read);
   const query = useQuery({
     queryKey: ["catalog-detail", resource, id],
-    queryFn: () => apiRequest<RecordValue>(`${ENDPOINTS[resource]}/${encodeURIComponent(id)}`),
+    queryFn: () => loadDetail(resource, id),
     enabled: canRead && Boolean(id),
   });
   const record = query.data;

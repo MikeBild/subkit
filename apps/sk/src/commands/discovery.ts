@@ -21,11 +21,7 @@ const listCommand = defineCommand({
     return withCommandErrors(
       async () => {
         const { items } = await client.listDiscoveryRuns({ limit: Number(args.limit) });
-        emitList(
-          !!args.json,
-          ["id", "label", "status", "created_at"],
-          items as Record<string, unknown>[],
-        );
+        emitList(!!args.json, ["id", "label", "status", "created_at"], items);
       },
       { json: Boolean(args.json) },
     );
@@ -59,11 +55,7 @@ const artifactsCommand = defineCommand({
     return withCommandErrors(
       async () => {
         const { items } = await client.listDiscoveryArtifacts(args["run-id"]);
-        emitList(
-          !!args.json,
-          ["id", "kind", "title", "status"],
-          items as Record<string, unknown>[],
-        );
+        emitList(!!args.json, ["id", "kind", "title", "status"], items);
       },
       { json: Boolean(args.json) },
     );
@@ -123,8 +115,8 @@ const createCommand = defineCommand({
         content: readFileSync(p),
         mime_type: detectMime(p),
       }));
-      const run = (await client.createDiscoveryRun(files, args.label)) as Record<string, unknown>;
-      const runId = typeof run.id === "string" ? run.id : null;
+      const run = await client.createDiscoveryRun(files, args.label);
+      const runId = run.id;
       if (runId) {
         for (const f of fileRows) {
           try {

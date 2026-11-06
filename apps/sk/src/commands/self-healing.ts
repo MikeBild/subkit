@@ -2,8 +2,36 @@ import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
+import type {
+  SelfHealingScanListQuery,
+  SelfHealingScanRequest,
+} from "../engine-client/self-healing.ts";
 import { EngineClient } from "../engine-client.ts";
 import { withCommandErrors } from "./command-runtime.ts";
+
+const SCAN_STATUSES = ["running", "succeeded", "failed"] as const satisfies readonly NonNullable<
+  SelfHealingScanListQuery["status"]
+>[];
+const SCAN_SOURCES = ["scheduler", "admin_http", "mcp"] as const satisfies readonly NonNullable<
+  SelfHealingScanListQuery["source"]
+>[];
+
+function oneOf<T extends string>(flag: string, allowed: readonly T[], value: string): T {
+  const match = allowed.find((candidate) => candidate === value);
+  if (!match) throw new Error(`--${flag} must be one of ${allowed.join(", ")}`);
+  return match;
+}
+
+export function scanListQuery(args: {
+  limit: string;
+  status?: string | undefined;
+  source?: string | undefined;
+}): SelfHealingScanListQuery {
+  const query: SelfHealingScanListQuery = { limit: Number(args.limit) };
+  if (args.status) query.status = oneOf("status", SCAN_STATUSES, String(args.status));
+  if (args.source) query.source = oneOf("source", SCAN_SOURCES, String(args.source));
+  return query;
+}
 
 const scanCommand = defineCommand({
   meta: {
@@ -25,7 +53,7 @@ const scanCommand = defineCommand({
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     return withCommandErrors(
       async () => {
-        const body: { workflow_id?: string; connector_id?: string } = {};
+        const body: SelfHealingScanRequest = {};
         if (args.workflow) body.workflow_id = String(args.workflow);
         if (args.connector) body.connector_id = String(args.connector);
         const opts: { idempotencyKey?: string } = {};
@@ -36,11 +64,11 @@ const scanCommand = defineCommand({
           printJson(result);
           return;
         }
-        const scanId = String(result.scan_id ?? "");
-        const signals = Number(result.signals_detected ?? 0);
-        const candidates = Number(result.candidates_created ?? 0);
-        const unanchored = Number(result.unanchored_detected ?? 0);
-        const duration = Number(result.duration_ms ?? 0);
+        const scanId = result.scan_id ?? "";
+        const signals = result.signals_detected ?? 0;
+        const candidates = result.candidates_created ?? 0;
+        const unanchored = result.unanchored_detected ?? 0;
+        const duration = result.duration_ms ?? 0;
         const replay = result.idempotent_replay === true;
         const unanchoredFragment =
           unanchored > 0 ? `, ${pc.yellow(`${unanchored} unanchored`)}` : "";
@@ -68,12 +96,7 @@ const listCommand = defineCommand({
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     return withCommandErrors(
       async () => {
-        const query: Record<string, string | number | undefined> = {
-          limit: Number(args.limit),
-        };
-        if (args.status) query.status = String(args.status);
-        if (args.source) query.source = String(args.source);
-        const { items } = await client.listSelfHealingScans(query);
+        const { items } = await client.listSelfHealingScans(scanListQuery(args));
         emitList(
           !!args.json,
           [
@@ -85,7 +108,7 @@ const listCommand = defineCommand({
             "unanchored_detected",
             "created_at",
           ],
-          items as Record<string, unknown>[],
+          items,
         );
       },
       { json: Boolean(args.json) },

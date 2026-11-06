@@ -1,14 +1,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { TextField } from "@/components/cockpit/form-field";
 import { FormDialog } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import {
   BUDGET_SETTING,
-  llmStatsEndpoint,
-  STATUS_ENDPOINT,
+  llmStatsQuery,
   type StatsWindow,
   type WindowBounds,
 } from "@/pages/operations-figures";
@@ -78,7 +77,7 @@ export function BudgetDialog({
     onSuccess: async () => {
       const expected = value && value > 0 ? value : null;
       const applied = await settle(async () => {
-        const status = await apiRequest<unknown>(STATUS_ENDPOINT);
+        const status = await apiCall("get", "/v1/status", {});
         return budgetSummary(status).budgetTokens === expected ? status : null;
       });
       if (applied) client.setQueryData(["usage-status"], applied);
@@ -170,7 +169,9 @@ export function PriceDialog({
     },
     onSuccess: async () => {
       await settle(async () => {
-        const window = await apiRequest<unknown>(llmStatsEndpoint(pricedBounds));
+        const window = await apiCall("get", "/v1/stats/llm", {
+          query: llmStatsQuery(pricedBounds),
+        });
         return unpricedModels(window).includes(model) ? null : window;
       });
       await client.invalidateQueries({ queryKey: ["usage-llm"] });
@@ -227,7 +228,9 @@ export function ExportDialog({
   const unit = bounds.window === "24h" ? "hour" : "day";
   const run = useMutation({
     mutationFn: async () => {
-      const envelope = await apiRequest<unknown>(llmStatsEndpoint(bounds, ["flow", "model"]));
+      const envelope = await apiCall("get", "/v1/stats/llm", {
+        query: llmStatsQuery(bounds, ["flow", "model"]),
+      });
       const csv = usageCsv(envelope, unit, {
         period: t(unit === "hour" ? "usage.chart.hour" : "usage.chart.day"),
         origin: t("usage.csv.origin"),

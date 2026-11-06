@@ -1,3 +1,4 @@
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { debugLog } from "../debug.ts";
 import type { EngineClient } from "../engine-client.ts";
 
@@ -6,9 +7,14 @@ const POLL_INTERVAL_MS = 2_000;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+export function connectorHasCredential(
+  connector: Pick<components["schemas"]["Connector"], "credential">,
+): boolean {
+  return connector.credential !== null && connector.credential !== undefined;
+}
+
 async function hasCredential(client: EngineClient, connectorId: string): Promise<boolean> {
-  const c = await client.getConnector(connectorId);
-  return ((c as Record<string, unknown>).credential_count as number) > 0;
+  return connectorHasCredential(await client.getConnector(connectorId));
 }
 
 export async function runEngineOAuthFlow(

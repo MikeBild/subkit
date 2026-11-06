@@ -44,7 +44,7 @@ function makeCtx(overrides?: { withPane?: boolean; importError?: Error }): {
     },
     listKnowledgeSources: async () => {
       calls.listed++;
-      return { items: [{ id: "ks_1", name: "Existing Source", kind: "bundle" }] };
+      return { items: [{ id: "ks_1", name: "Existing Source", source_type: "bundle" }] };
     },
   };
   const ctx = {
@@ -73,7 +73,7 @@ describe("/knowledge slash handler", () => {
     const { ctx, calls } = makeCtx();
     const banner = await dispatchKnowledgeSlash([], ctx);
     expect(calls.listed).toBe(1);
-    expect(String(banner)).toContain("Existing Source");
+    expect(String(banner)).toContain("ks_1  Existing Source  bundle");
   });
 
   test("import walks the directory, skips reserved files client-agnostically, posts the bundle", async () => {

@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { useSession } from "@/app/session";
 import {
   ActionMenu,
@@ -37,10 +37,9 @@ function GroupSheet({ group, onClose }: { group: GroupItem | null; onClose(): vo
   };
   const addMember = useMutation({
     mutationFn: () =>
-      apiRequest(
-        `/v1/rbac/groups/${encodeURIComponent(group?.id ?? "")}/members/${encodeURIComponent(userId)}`,
-        { method: "POST" },
-      ),
+      apiCall("post", "/v1/rbac/groups/{id}/members/{user_id}", {
+        path: { id: group?.id ?? "", user_id: userId },
+      }),
     onSuccess: async () => {
       closeDialog();
       await client.invalidateQueries({ queryKey: ["admin"] });
@@ -50,10 +49,9 @@ function GroupSheet({ group, onClose }: { group: GroupItem | null; onClose(): vo
   });
   const assignRole = useMutation({
     mutationFn: () =>
-      apiRequest(
-        `/v1/rbac/groups/${encodeURIComponent(group?.id ?? "")}/roles/${encodeURIComponent(roleId)}`,
-        { method: "POST" },
-      ),
+      apiCall("post", "/v1/rbac/groups/{id}/roles/{role_id}", {
+        path: { id: group?.id ?? "", role_id: roleId },
+      }),
     onSuccess: async () => {
       closeDialog();
       await client.invalidateQueries({ queryKey: ["admin"] });

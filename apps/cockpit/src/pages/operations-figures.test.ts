@@ -1,25 +1,27 @@
 import { describe, expect, test } from "bun:test";
+import { resolveApiPath } from "@/api/call";
 import { STATS_WINDOWS } from "@/lib/stats-window";
 import { auditFilterFromUrl } from "@/pages/audit-model";
 import { connectorHealthFilterFromUrl } from "@/pages/connectors-model";
 import {
   DECIDED_REPAIR_ACTIONS,
-  executionStatsEndpoint,
   llmStatsEndpoint,
+  llmStatsQuery,
   type OperatingCounts,
   type OperatingFigure,
   operatingCounts,
   operatingFigures,
-  operatingFiguresEndpoint,
+  operatingFiguresQuery,
   promptCacheFlows,
   promptCacheShare,
-  REPAIR_REQUIRED_ENDPOINT,
+  REPAIR_REQUIRED_QUERY,
   repairRequiredCount,
   usageWindowFromUrl,
   usageWindowSearch,
   windowBounds,
   windowBucket,
   windowSpend,
+  windowStatsQuery,
 } from "@/pages/operations-figures";
 import { filterFromUrl } from "@/pages/runs-model";
 import { budgetSummary, windowCost } from "@/pages/usage-model";
@@ -103,7 +105,11 @@ describe("the engine's operating figures", () => {
 
   test("are asked over the window's two fixed instants", () => {
     const bounds = windowBounds("lastMonth", NOW);
-    const endpoint = operatingFiguresEndpoint(bounds);
+    const endpoint = resolveApiPath(
+      "/v1/stats/operating-figures",
+      undefined,
+      operatingFiguresQuery(bounds),
+    );
     expect(endpoint.startsWith("/v1/stats/operating-figures?")).toBe(true);
     const query = new URLSearchParams(endpoint.slice(endpoint.indexOf("?")));
     expect([query.get("from"), query.get("to")]).toEqual([bounds.from, bounds.to]);
@@ -181,17 +187,17 @@ describe("the operations figures", () => {
       from: "2026-08-09T12:00:00.000Z",
       to: "2026-08-10T12:00:00.000Z",
     });
-    const day = stats(executionStatsEndpoint(windowBounds("24h", NOW)));
+    const day = new URLSearchParams(windowStatsQuery(windowBounds("24h", NOW)));
     expect([day.get("bucket"), day.get("from"), day.get("to")]).toEqual([
       "hour",
       "2026-08-09T12:00:00.000Z",
       "2026-08-10T12:00:00.000Z",
     ]);
-    expect(stats(executionStatsEndpoint(WEEK)).get("bucket")).toBe("day");
-    expect(stats(executionStatsEndpoint(WEEK)).get("from")).toBe(WEEK.from);
+    expect(new URLSearchParams(windowStatsQuery(WEEK)).get("bucket")).toBe("day");
+    expect(new URLSearchParams(windowStatsQuery(WEEK)).get("from")).toBe(WEEK.from);
     expect(windowBucket("24h")).toBe("hour");
     expect(windowBucket("lastMonth")).toBe("day");
-    const figures = stats(operatingFiguresEndpoint(WEEK));
+    const figures = new URLSearchParams(operatingFiguresQuery(WEEK));
     expect([figures.get("from"), figures.get("to")]).toEqual([WEEK.from, WEEK.to]);
   });
 
@@ -243,7 +249,7 @@ describe("the operations figures", () => {
     expect(value(lastMonth[5])?.href).toBe("/usage?window=lastMonth");
     const window = { startedFrom: WEEK.from, startedTo: WEEK.to };
     expect(filterFromUrl(query(runs?.href ?? null))).toMatchObject({ status: "all", ...window });
-    const statsQuery = stats(operatingFiguresEndpoint(WEEK));
+    const statsQuery = new URLSearchParams(operatingFiguresQuery(WEEK));
     expect([statsQuery.get("from"), statsQuery.get("to")]).toEqual([
       window.startedFrom,
       window.startedTo,
@@ -325,6 +331,30 @@ describe("the operations figures", () => {
       ["cost", "unreadable"],
       ["budget", "unreadable"],
     ]);
+  });
+
+  test("the typed stats query asks exactly what the shown endpoint names", () => {
+    const filter = {
+      results: ["error", "context_too_large"],
+      workflowId: "w-1",
+      userId: "u-1",
+      flows: ["converse", "suggest_next"],
+    };
+    const cases = [
+      llmStatsQuery(WEEK),
+      llmStatsQuery(WEEK, "model"),
+      llmStatsQuery(WEEK, ["workflow", "conversation"], filter),
+    ];
+    const endpoints = [
+      llmStatsEndpoint(WEEK),
+      llmStatsEndpoint(WEEK, "model"),
+      llmStatsEndpoint(WEEK, ["workflow", "conversation"], filter),
+    ];
+    cases.forEach((query, index) => {
+      expect([
+        ...new URLSearchParams(resolveApiPath("/v1/stats/llm", undefined, query).split("?")[1]),
+      ]).toEqual([...stats(endpoints[index] ?? "")]);
+    });
   });
 
   test("the cost is the window's money, read over the figures' own bounds", () => {
@@ -491,7 +521,9 @@ describe("the operations figures", () => {
 
 describe("the repair-required count", () => {
   test("reads the total of the filtered workflow list and refuses malformed answers", () => {
-    expect(REPAIR_REQUIRED_ENDPOINT).toBe("/v1/workflows?operating_status=repair_required&limit=1");
+    expect(resolveApiPath("/v1/workflows", undefined, REPAIR_REQUIRED_QUERY)).toBe(
+      "/v1/workflows?operating_status=repair_required&limit=1",
+    );
     expect(repairRequiredCount({ items: [], total: 13 })).toBe(13);
     expect(repairRequiredCount({ total: -1 })).toBeNull();
     expect(repairRequiredCount({ total: "13" })).toBeNull();

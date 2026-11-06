@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import * as prompts from "@clack/prompts";
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
@@ -14,6 +15,8 @@ import {
 import { planSync, SKILL_TARGET_DIRS, type SyncSkill } from "../lib/skill-sync.ts";
 import { AGENT_FILE_RELPATH, findAgentFile } from "./agent.ts";
 import { withCommandErrors } from "./command-runtime.ts";
+
+type Schemas = components["schemas"];
 
 const syncCommand = defineCommand({
   meta: {
@@ -50,9 +53,7 @@ const syncCommand = defineCommand({
         const { engine_url, api_key, active_tenant_id } = resolveProfile();
         const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
         const { items } = await client.listSkills({ status: "active", limit: 500 });
-        const skills = (items as unknown as SyncSkill[]).filter((s) =>
-          (s.tags ?? []).some((t) => wantedTags.has(t)),
-        );
+        const skills: SyncSkill[] = items.filter((s) => s.tags.some((t) => wantedTags.has(t)));
 
         const summary: Record<string, { written: string[]; pruned: string[]; unchanged: number }> =
           {};
@@ -112,7 +113,7 @@ const listCommand = defineCommand({
     return withCommandErrors(
       async () => {
         const { items } = await client.listSkills({ limit: Number(args.limit) });
-        const rows = (items as Record<string, unknown>[]).map((r) =>
+        const rows = items.map((r) =>
           args.json ? r : { ...r, description: shortDescription(r.description) },
         );
         emitList(!!args.json, ["id", "title", "category", "description", "status"], rows);
@@ -147,7 +148,9 @@ const createCommand = defineCommand({
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     return withCommandErrors(async () => {
-      const body = JSON.parse(readFileSync(String(args.file), "utf8")) as Record<string, unknown>;
+      const body = JSON.parse(
+        readFileSync(String(args.file), "utf8"),
+      ) as Schemas["CreateSkillBody"];
       const skill = await client.createSkill(body);
       printJson(skill);
     });
@@ -166,10 +169,10 @@ const patchCommand = defineCommand({
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     return withCommandErrors(async () => {
-      let body: Record<string, unknown> = {};
+      let body: Schemas["UpdateSkillBody"] = {};
       if (args.file) {
         const { readFileSync } = await import("node:fs");
-        body = JSON.parse(readFileSync(String(args.file), "utf8")) as Record<string, unknown>;
+        body = JSON.parse(readFileSync(String(args.file), "utf8")) as Schemas["UpdateSkillBody"];
       }
       if (args.title) body.title = args.title;
       Object.assign(body, catalogMetadataBody(args));
@@ -224,7 +227,7 @@ const historyCommand = defineCommand({
         emitList(
           !!args.json,
           ["audit_entry_id", "version", "title", "lifecycle", "updated_at", "has_snapshot"],
-          items as Record<string, unknown>[],
+          items,
         );
       },
       { json: Boolean(args.json) },

@@ -2,7 +2,7 @@ import { type UseQueryResult, useMutation, useQuery, useQueryClient } from "@tan
 import { useRouterState } from "@tanstack/react-router";
 import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { useActorDirectory } from "@/app/actor-directory";
 import { type ApiAccessSection, apiAccessSectionFromUrl } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
@@ -62,7 +62,6 @@ import {
   scopeRiskKey,
 } from "@/pages/api-access-model";
 
-type IssuedApiKey = ApiKeyItem & { plaintext_key: string };
 type Translate = ReturnType<typeof useI18n>["t"];
 
 const CLIENTS_QUERY = ["admin", "oauth-clients"] as const;
@@ -93,13 +92,13 @@ export function ApiAccessPage() {
 
   const keys = useQuery({
     queryKey: API_KEYS_QUERY,
-    queryFn: () => apiRequest<{ items: ApiKeyItem[] }>("/v1/identity/api-keys"),
+    queryFn: () => apiCall("get", "/v1/identity/api-keys", {}),
     enabled: canKeys,
     ...live,
   });
   const clients = useQuery({
     queryKey: CLIENTS_QUERY,
-    queryFn: () => apiRequest<{ items: ConnectedClientItem[] }>("/v1/oauth/clients"),
+    queryFn: () => apiCall("get", "/v1/oauth/clients", {}),
     enabled: canClients,
     ...live,
   });
@@ -220,10 +219,10 @@ function KeysSection({
 
   const rotate = useMutation({
     mutationFn: (id: string) =>
-      apiRequest<{ old: ApiKeyItem; new: IssuedApiKey }>(
-        `/v1/identity/api-keys/${encodeURIComponent(id)}/rotate`,
-        { method: "POST", body: JSON.stringify({ overlap_minutes: ROTATE_OVERLAP_MINUTES }) },
-      ),
+      apiCall("post", "/v1/identity/api-keys/{id}/rotate", {
+        path: { id },
+        body: { overlap_minutes: ROTATE_OVERLAP_MINUTES },
+      }),
     onSuccess: async (result) => {
       setRotating(null);
       setOpened(null);
@@ -235,8 +234,7 @@ function KeysSection({
     onError: () => toast.error(t("apiKeys.actionFailed")),
   });
   const revoke = useMutation({
-    mutationFn: (id: string) =>
-      apiRequest<void>(`/v1/identity/api-keys/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    mutationFn: (id: string) => apiCall("delete", "/v1/identity/api-keys/{id}", { path: { id } }),
     onSuccess: async () => {
       setRevoking(null);
       setOpened(null);
@@ -536,14 +534,13 @@ function CreateKeyDialog({
   );
   const issue = useMutation({
     mutationFn: () =>
-      apiRequest<IssuedApiKey>("/v1/identity/api-keys", {
-        method: "POST",
-        body: JSON.stringify({
+      apiCall("post", "/v1/identity/api-keys", {
+        body: {
           owner_kind: "user",
           owner_id: session.principal.id,
           name: name.trim(),
           scopes: picked,
-        }),
+        },
       }),
     onSuccess: async (result) => {
       setName("");
@@ -664,7 +661,7 @@ function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedCli
   const [groupBy, setGroupBy] = useState("all");
   const revoke = useMutation({
     mutationFn: (clientId: string) =>
-      apiRequest<void>(`/v1/oauth/clients/${encodeURIComponent(clientId)}`, { method: "DELETE" }),
+      apiCall("delete", "/v1/oauth/clients/{client_id}", { path: { client_id: clientId } }),
     onSuccess: async () => {
       const name = revoking?.client_name || t("connectedClients.unnamed");
       setRevoking(null);

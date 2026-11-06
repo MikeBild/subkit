@@ -1,11 +1,11 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ApiError } from "@/api/client";
 import type { IntakeProposal, IntakeProposalTarget } from "@/api/intake";
 import { translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
-import { ProposalCard } from "./intake";
+import { loadSkillBinding, ProposalCard } from "./intake";
 import type { ReferencedSkill } from "./intake-model";
 
 const value = {
@@ -444,5 +444,41 @@ describe("rejecting a proposal", () => {
       existing,
     );
     expect(untouched).not.toContain('data-testid="intake-proposal-proposal-rules"');
+  });
+});
+
+describe("loadSkillBinding", () => {
+  const mocks: { mockRestore(): void }[] = [];
+  afterEach(() => {
+    for (const mock of mocks.splice(0)) mock.mockRestore();
+  });
+
+  function answer(body: unknown): string[] {
+    const urls: string[] = [];
+    const preconnect = globalThis.fetch.preconnect;
+    mocks.push(
+      spyOn(globalThis, "fetch").mockImplementation(
+        Object.assign(
+          async (input: RequestInfo | URL) => {
+            urls.push(String(input));
+            return Response.json(body);
+          },
+          { preconnect },
+        ),
+      ),
+    );
+    return urls;
+  }
+
+  test("names a connector binding by its display_name", async () => {
+    const urls = answer({ id: SKILL, slug: "orders", display_name: "Orders API" });
+    expect(await loadSkillBinding({ connector_id: SKILL })).toEqual({ name: "Orders API" });
+    expect(urls[0]).toEndWith(`/v1/connectors/${SKILL}`);
+  });
+
+  test("names a workflow binding by its name", async () => {
+    const urls = answer({ id: OLD, slug: "nightly", name: "Nightly" });
+    expect(await loadSkillBinding({ workflow_id: OLD })).toEqual({ name: "Nightly" });
+    expect(urls[0]).toEndWith(`/v1/workflows/${OLD}`);
   });
 });

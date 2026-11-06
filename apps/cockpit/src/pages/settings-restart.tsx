@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ApiError, apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
+import { ApiError } from "@/api/client";
 import { absolute, auditHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { Button, ConfirmDialog, ContextHelp } from "@/components/cockpit/patterns";
@@ -9,9 +10,7 @@ import { useI18n } from "@/lib/i18n-context";
 import {
   isStillRestarting,
   RESTART_CONFIRM_TIMEOUT_MS,
-  RESTART_PATH,
   RESTART_POLL_MS,
-  RESTART_STATUS_PATH,
   type RestartAccepted,
   type RestartOffer,
   type RestartStatus,
@@ -27,7 +26,7 @@ export function useRestartOffer(): { offer: RestartOffer; status: RestartStatus 
   const session = useSession();
   const query = useQuery({
     queryKey: RESTART_STATUS_QUERY_KEY,
-    queryFn: () => apiRequest<RestartStatus>(RESTART_STATUS_PATH),
+    queryFn: () => apiCall("get", "/v1/system/restart-status", {}),
     enabled: session.permissions.includes("settings:read:global"),
     retry: false,
   });
@@ -82,7 +81,7 @@ function wait(ms: number): Promise<void> {
 
 async function pollStatus(): Promise<RestartStatus | null> {
   try {
-    return await apiRequest<RestartStatus>(RESTART_STATUS_PATH);
+    return await apiCall("get", "/v1/system/restart-status", {});
   } catch (error) {
     if (isStillRestarting(error)) return null;
     throw error;
@@ -106,7 +105,7 @@ export function SettingsRestartDialog({
   async function restart(): Promise<void> {
     let accepted: RestartAccepted;
     try {
-      accepted = await apiRequest<RestartAccepted>(RESTART_PATH, { method: "POST" });
+      accepted = await apiCall("post", "/v1/system/restart", {});
     } catch (refusal) {
       setError(t(restartRefusalKey(refusal instanceof ApiError ? refusal.code : null)));
       return;

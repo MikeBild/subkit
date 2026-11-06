@@ -1,141 +1,113 @@
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import type { EngineClient } from "../engine-client.ts";
 import type { ApiBody, ApiQuery } from "./http.ts";
+
+type Schemas = components["schemas"];
+
+export type SkillList = Schemas["SkillListResponse"] & { total: number };
 
 export const skillsMethods = {
   async listSkills(
     this: EngineClient,
-    query: Record<string, string | number | undefined> = {},
-  ): Promise<{ items: Array<{ id: string; title: string; scope: string }> }> {
-    const { data } = await this.api.GET("/v1/skills", {
-      params: { query: query as ApiQuery<"/v1/skills", "get"> },
-    });
-    return data as { items: Array<{ id: string; title: string; scope: string }> };
+    query: ApiQuery<"/v1/skills", "get"> = {},
+  ): Promise<SkillList> {
+    const { data } = await this.api.GET("/v1/skills", { params: { query } });
+    return data as SkillList;
   },
 
-  async listMcpPrompts(this: EngineClient): Promise<{
-    items: Array<{ name: string; description: string | null; scope: string; skill_id: string }>;
-  }> {
+  async listMcpPrompts(this: EngineClient): Promise<Schemas["McpPromptsResponse"]> {
     const { data } = await this.api.GET("/v1/mcp/prompts");
-    return data as {
-      items: Array<{ name: string; description: string | null; scope: string; skill_id: string }>;
-    };
+    return data as Schemas["McpPromptsResponse"];
   },
-  async listMcpResources(this: EngineClient): Promise<{
-    items: Array<{
-      uri: string;
-      name: string;
-      description: string | null;
-      mime_type: string | null;
-    }>;
-  }> {
+  async listMcpResources(this: EngineClient): Promise<Schemas["McpResourcesResponse"]> {
     const { data } = await this.api.GET("/v1/mcp/resources");
-    return data as {
-      items: Array<{
-        uri: string;
-        name: string;
-        description: string | null;
-        mime_type: string | null;
-      }>;
-    };
+    return data as Schemas["McpResourcesResponse"];
   },
-  async listMcpTools(this: EngineClient): Promise<{
-    items: Array<{ name: string; description: string; input_shape: unknown }>;
-  }> {
+  async listMcpTools(this: EngineClient): Promise<Schemas["McpToolsResponse"]> {
     const { data } = await this.api.GET("/v1/mcp/tools");
-    return data as {
-      items: Array<{ name: string; description: string; input_shape: unknown }>;
-    };
+    return data as Schemas["McpToolsResponse"];
   },
 
-  async getSkill(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+  async getSkill(this: EngineClient, id: string): Promise<Schemas["Skill"]> {
     const { data } = await this.api.GET("/v1/skills/{id}", { params: { path: { id } } });
-    return data as Record<string, unknown>;
+    return data as Schemas["Skill"];
   },
   async createSkill(
     this: EngineClient,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    const { data } = await this.api.POST("/v1/skills", {
-      body: body as ApiBody<"/v1/skills", "post">,
-    });
-    return data as Record<string, unknown>;
+    body: ApiBody<"/v1/skills", "post">,
+  ): Promise<Schemas["Skill"]> {
+    const { data } = await this.api.POST("/v1/skills", { body });
+    return data as Schemas["Skill"];
   },
   async patchSkill(
     this: EngineClient,
     id: string,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
+    body: ApiBody<"/v1/skills/{id}", "patch">,
+  ): Promise<Schemas["Skill"]> {
     const { data } = await this.api.PATCH("/v1/skills/{id}", {
       params: { path: { id } },
-      body: body as ApiBody<"/v1/skills/{id}", "patch">,
+      body,
     });
-    return data as Record<string, unknown>;
+    return data as Schemas["Skill"];
   },
-  async activateSkill(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+  async activateSkill(this: EngineClient, id: string): Promise<Schemas["Skill"]> {
     const { data } = await this.api.POST("/v1/skills/{id}/activate", { params: { path: { id } } });
-    return data as Record<string, unknown>;
+    return data as Schemas["Skill"];
   },
-  async archiveSkill(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+  async archiveSkill(this: EngineClient, id: string): Promise<Schemas["Skill"]> {
     const { data } = await this.api.POST("/v1/skills/{id}/archive", { params: { path: { id } } });
-    return data as Record<string, unknown>;
+    return data as Schemas["Skill"];
   },
   async deleteSkill(this: EngineClient, id: string): Promise<void> {
     await this.api.DELETE("/v1/skills/{id}", { params: { path: { id } } });
   },
-  async skillHistory(
-    this: EngineClient,
-    id: string,
-  ): Promise<{ items: Record<string, unknown>[] }> {
+  async skillHistory(this: EngineClient, id: string): Promise<Schemas["SkillHistoryResponse"]> {
     const { data } = await this.api.GET("/v1/skills/{id}/history", { params: { path: { id } } });
-    return data as { items: Record<string, unknown>[] };
+    return data as Schemas["SkillHistoryResponse"];
   },
   async restoreSkill(
     this: EngineClient,
     id: string,
     audit_entry_id: string,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<Schemas["Skill"]> {
     const { data } = await this.api.POST("/v1/skills/{id}/restore", {
       params: { path: { id } },
-      body: {
-        audit_entry_id,
-      } as ApiBody<"/v1/skills/{id}/restore", "post">,
+      body: { audit_entry_id },
     });
-    return data as Record<string, unknown>;
+    return data as Schemas["Skill"];
   },
 
   async listSkillCandidates(
     this: EngineClient,
-    query: Record<string, string | number | undefined> = {},
-  ): Promise<{ items: Record<string, unknown>[]; total: number }> {
-    const { data } = await this.api.GET("/v1/skill-candidates", {
-      params: { query: query as ApiQuery<"/v1/skill-candidates", "get"> },
-    });
-    return data as { items: Record<string, unknown>[]; total: number };
+    query: ApiQuery<"/v1/skill-candidates", "get"> = {},
+  ): Promise<Schemas["SkillCandidateListResponse"]> {
+    const { data } = await this.api.GET("/v1/skill-candidates", { params: { query } });
+    return data as Schemas["SkillCandidateListResponse"];
   },
-  async getSkillCandidate(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+  async getSkillCandidate(this: EngineClient, id: string): Promise<Schemas["SkillCandidate"]> {
     const { data } = await this.api.GET("/v1/skill-candidates/{id}", { params: { path: { id } } });
-    return data as Record<string, unknown>;
+    return data as Schemas["SkillCandidate"];
   },
   async approveSkillCandidate(
     this: EngineClient,
     id: string,
-    body: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> {
+    body: ApiBody<"/v1/skill-candidates/{id}/approve", "post"> = {},
+  ): Promise<Schemas["ApproveSkillCandidateResponse"]> {
     const { data } = await this.api.POST("/v1/skill-candidates/{id}/approve", {
       params: { path: { id } },
-      body: body as ApiBody<"/v1/skill-candidates/{id}/approve", "post">,
+      body,
     });
-    return data as Record<string, unknown>;
+    return data as Schemas["ApproveSkillCandidateResponse"];
   },
   async rejectSkillCandidate(
     this: EngineClient,
     id: string,
-    body: { reason?: string } = {},
-  ): Promise<Record<string, unknown>> {
+    body: ApiBody<"/v1/skill-candidates/{id}/reject", "post"> = {},
+  ): Promise<{ rejected: boolean }> {
     const { data } = await this.api.POST("/v1/skill-candidates/{id}/reject", {
       params: { path: { id } },
-      body: body as ApiBody<"/v1/skill-candidates/{id}/reject", "post">,
+      body,
     });
-    return data as Record<string, unknown>;
+    return data as { rejected: boolean };
   },
 };

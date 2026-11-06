@@ -1,66 +1,20 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import type { MiddlewareHandler } from "hono";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
+import { toHonoRoute } from "../../../api/operations/hono.ts";
 import {
-  ackInbox,
-  listInbox,
-  markInboxRead,
-  markInboxUnread,
-} from "../../../notifications/index.ts";
+  ackNotificationInboxOperation,
+  listNotificationInboxOperation,
+  PRINCIPAL_NOT_USER,
+  readerId,
+} from "../../../api/operations/notification-inbox.ts";
+import { markInboxRead, markInboxUnread } from "../../../notifications/index.ts";
 import { HttpError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 
-const INBOX_MAX_LIMIT = 500;
 const MARK_MAX_IDS = 500;
-
-const InboxItemSchema = z
-  .object({
-    id: z.number(),
-    severity: z.string(),
-    event_type: z.string(),
-    event_payload: z.unknown().nullable(),
-    actionable: z.boolean(),
-    resource_type: z.string().nullable(),
-    resource_id: z.string().nullable(),
-    read: z.boolean(),
-    read_at: z.string().nullable(),
-    created_at: z.string(),
-  })
-  .openapi("CliNotificationInboxItem");
-
-const InboxListResponse = z
-  .object({
-    items: z.array(InboxItemSchema),
-    cursor: z.number(),
-    unread_count: z.number().int().nonnegative(),
-    actionable_unread_count: z.number().int().nonnegative(),
-  })
-  .openapi("CliNotificationInboxListResponse");
-
-const BoolQuery = z
-  .enum(["true", "false"])
-  .transform((v) => v === "true")
-  .optional();
-
-const InboxQuery = z.object({
-  since: z.coerce.number().int().nonnegative().optional(),
-  limit: z.coerce.number().int().positive().max(INBOX_MAX_LIMIT).optional(),
-  unread_only: BoolQuery,
-  actionable_only: BoolQuery,
-});
-
-const AckBody = z
-  .object({
-    up_to_cursor: z.number().int().nonnegative(),
-  })
-  .openapi("CliNotificationInboxAckRequest");
-
-const AckResponse = z
-  .object({
-    acked: z.number().int().nonnegative(),
-  })
-  .openapi("CliNotificationInboxAckResponse");
 
 const IdsBody = z
   .object({
@@ -75,42 +29,6 @@ const MarkReadResponse = z
 const MarkUnreadResponse = z
   .object({ unmarked: z.number().int().nonnegative() })
   .openapi("CliNotificationInboxMarkUnreadResponse");
-
-const listRoute = createRoute({
-  method: "get",
-  path: "/v1/notifications/inbox",
-  tags: ["notifications"],
-  summary: "List inbox tasks with this caller's read state",
-  security: [{ bearerAuth: [] }],
-  request: { query: InboxQuery },
-  responses: {
-    200: {
-      description: "OK",
-      content: { "application/json": { schema: InboxListResponse } },
-    },
-  },
-});
-
-const ackRoute = createRoute({
-  method: "post",
-  path: "/v1/notifications/inbox/ack",
-  tags: ["notifications"],
-  summary: "Mark this caller's inbox tasks read up to a cursor",
-  security: [{ bearerAuth: [] }],
-  request: {
-    body: { content: { "application/json": { schema: AckBody } } },
-  },
-  responses: {
-    200: {
-      description: "OK",
-      content: { "application/json": { schema: AckResponse } },
-    },
-    400: {
-      description: "Principal is not a user",
-      content: { "application/json": { schema: ErrorSchema } },
-    },
-  },
-});
 
 const readRoute = createRoute({
   method: "post",
@@ -154,69 +72,33 @@ const unreadRoute = createRoute({
   },
 });
 
-function readerId(principal: { kind: string; id: string }): string | null {
-  return principal.kind === "user" ? principal.id : null;
-}
-
 function requireReader(principal: { kind: string; id: string }): string {
   const uid = readerId(principal);
-  if (!uid) {
-    throw new HttpError(
-      400,
-      "principal_not_user",
-      "read state is per user; this principal is a system account and has no inbox of its own",
-    );
-  }
+  if (!uid) throw new HttpError(400, "principal_not_user", PRINCIPAL_NOT_USER);
   return uid;
 }
 
+function gateOtherMethods(
+  methods: readonly string[],
+  gate: MiddlewareHandler<AppEnv>,
+): MiddlewareHandler<AppEnv> {
+  return (c, next) => (methods.includes(c.req.method) ? next() : gate(c, next));
+}
+
 export function registerInboxRoutes(app: OpenAPIHono<AppEnv>): void {
-  app.use("/v1/notifications/inbox", requirePermission("notification:read"));
-  app.use("/v1/notifications/inbox/ack", requirePermission("notification:read"));
+  app.use(
+    "/v1/notifications/inbox",
+    gateOtherMethods(["GET", "HEAD"], requirePermission("notification:read")),
+  );
+  app.use(
+    "/v1/notifications/inbox/ack",
+    gateOtherMethods(["POST"], requirePermission("notification:read")),
+  );
   app.use("/v1/notifications/inbox/read", requirePermission("notification:read"));
   app.use("/v1/notifications/inbox/unread", requirePermission("notification:read"));
 
-  app.openapi(listRoute, async (c) => {
-    const principal = requireAuth(c);
-    const q = c.req.valid("query");
-    const since = q.since ?? 0;
-    const page = await listInbox(c.get("db"), principal.tenant_id, readerId(principal), {
-      since,
-      limit: Math.min(q.limit ?? 100, INBOX_MAX_LIMIT),
-      unread_only: q.unread_only,
-      actionable_only: q.actionable_only,
-    });
-    const rows = page.rows;
-    const cursor = rows.length > 0 ? (rows[rows.length - 1]?.id ?? since) : since;
-    return c.json(
-      {
-        items: rows.map((r) => ({
-          id: r.id,
-          severity: r.severity,
-          event_type: r.event_type,
-          event_payload: r.event_payload ?? null,
-          actionable: r.actionable,
-          resource_type: r.resource_type,
-          resource_id: r.resource_id,
-          read: r.read_at !== null,
-          read_at: r.read_at?.toISOString() ?? null,
-          created_at: r.created_at.toISOString(),
-        })),
-        cursor,
-        unread_count: page.unread,
-        actionable_unread_count: page.actionable_unread,
-      },
-      200,
-    );
-  });
-
-  app.openapi(ackRoute, async (c) => {
-    const principal = requireAuth(c);
-    const { up_to_cursor } = c.req.valid("json");
-    const userId = requireReader(principal);
-    const acked = await ackInbox(c.get("db"), principal, userId, up_to_cursor);
-    return c.json({ acked }, 200);
-  });
+  toHonoRoute(app, listNotificationInboxOperation);
+  toHonoRoute(app, ackNotificationInboxOperation);
 
   app.openapi(readRoute, async (c) => {
     const principal = requireAuth(c);

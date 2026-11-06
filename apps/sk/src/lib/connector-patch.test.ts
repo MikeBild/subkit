@@ -75,6 +75,20 @@ describe("connectorPatchDraft", () => {
     });
   });
 
+  test("falls back to the slug, drops null fields and keeps a patched dsn", () => {
+    const draft = connectorPatchDraft(
+      { ...current, display_name: "", base_url: null, config: {} },
+      { auth_type: null, dsn: "postgres://db" },
+    );
+    expect(draft).toEqual({
+      name: "google-search-console",
+      driver: "http",
+      environment: "prod",
+      config: {},
+      dsn: "postgres://db",
+    });
+  });
+
   test("prefers a patched name and base_url", () => {
     const draft = connectorPatchDraft(current, { name: "Renamed", base_url: "https://x.test" });
     expect(draft.name).toBe("Renamed");
@@ -83,13 +97,13 @@ describe("connectorPatchDraft", () => {
 });
 
 describe("record helpers", () => {
-  test("unwraps a connector envelope", () => {
-    expect(unwrapConnectorRecord({ connector: current })).toBe(current);
+  test("returns the connector record as the engine sends it, without an envelope", () => {
     expect(unwrapConnectorRecord(current)).toBe(current);
   });
 
-  test("names the connector by display name, then slug", () => {
+  test("names the connector by display name, then slug, then id", () => {
     expect(connectorDisplayName(current)).toBe("Google Search Console");
-    expect(connectorDisplayName({ slug: "s" })).toBe("s");
+    expect(connectorDisplayName({ id: "c9", slug: "s", display_name: "" })).toBe("s");
+    expect(connectorDisplayName({ id: "c9", slug: "", display_name: "" })).toBe("c9");
   });
 });

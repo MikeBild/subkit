@@ -1,4 +1,3 @@
-import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   ArrowDown,
@@ -22,7 +21,7 @@ import {
   Workflow,
 } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useState } from "react";
-import { apiRequest } from "@/api/client";
+import { type ApiRequestBody, apiCall } from "@/api/call";
 import { absolute, connectorHref, workflowHref } from "@/app/links";
 import {
   type ConnectorRecord,
@@ -61,12 +60,10 @@ import {
   type BuildVersion,
   buildVersion,
   definitionKind,
-  type ExecutionStep,
   formatDuration,
   joinStepsWithLastRun,
   maskIdentifiers,
   previewSummary,
-  type SavedDraft,
   stepKindKey,
   stepResultPreview,
   stepWrites,
@@ -75,7 +72,7 @@ import {
 } from "@/lib/workflow-steps";
 import { stepWasHeld } from "@/pages/runs-model";
 
-type Execution = components["schemas"]["Execution"];
+type RunBody = ApiRequestBody<"/v1/executions", "post">;
 
 type PreviewResult =
   | { result: Record<string, unknown>; failure: null }
@@ -96,7 +93,7 @@ export function useBuildVersion(
   const draft = useQuery({
     queryKey: ["workflow-draft-version", workflowId, workflow.draft_version_id],
     enabled: waiting,
-    queryFn: () => apiRequest<SavedDraft>(`/v1/workflows/${encodeURIComponent(workflowId)}/draft`),
+    queryFn: () => apiCall("get", "/v1/workflows/{id}/draft", { path: { id: workflowId } }),
   });
   return buildVersion(workflow, { data: draft.data, settled: !draft.isPending });
 }
@@ -130,26 +127,18 @@ export function useWorkflowSteps({
   const lastExecution = useQuery({
     queryKey: ["workflow", workflowId, versionId, "last-execution"],
     queryFn: () =>
-      apiRequest<{ items: Execution[] }>(
-        `/v1/executions?workflow_id=${encodeURIComponent(workflowId)}&limit=1`,
-      ),
+      apiCall("get", "/v1/executions", { query: { workflow_id: workflowId, limit: 1 } }),
   });
   const lastRun = lastExecution.data?.items[0] ?? null;
   const executionId = versionId && lastRun?.workflow_version_id === versionId ? lastRun.id : null;
   const runSteps = useQuery({
     queryKey: ["execution", executionId, "steps"],
     enabled: Boolean(executionId),
-    queryFn: () =>
-      apiRequest<{ items: ExecutionStep[] }>(
-        `/v1/executions/${encodeURIComponent(executionId ?? "")}/steps`,
-      ),
+    queryFn: () => apiCall("get", "/v1/executions/{id}/steps", { path: { id: executionId ?? "" } }),
   });
   const preview = useMutation({
     mutationFn: (body: WorkflowPreviewSource) =>
-      apiRequest<Record<string, unknown>>("/v1/executions", {
-        method: "POST",
-        body: JSON.stringify(workflowPreviewRequest(body)),
-      }),
+      apiCall("post", "/v1/executions", { body: workflowPreviewRequest(body) as RunBody }),
   });
   async function runOne(key: string, body: WorkflowPreviewSource): Promise<void> {
     setRunning(key);

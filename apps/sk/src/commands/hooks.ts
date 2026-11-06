@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
+import type { CreateWebhookInboundBody } from "../engine-client/events.ts";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
 const listCommand = defineCommand({
@@ -13,11 +14,7 @@ const listCommand = defineCommand({
     return withCommandErrors(
       async () => {
         const { items } = await client.listHooksInbound();
-        emitList(
-          !!args.json,
-          ["id", "slug", "workflow_id", "verifier", "active"],
-          items as Record<string, unknown>[],
-        );
+        emitList(!!args.json, ["id", "slug", "workflow_id", "verifier", "active"], items);
       },
       { json: Boolean(args.json) },
     );
@@ -37,7 +34,16 @@ const getCommand = defineCommand({
   },
 });
 
-const VERIFIERS = ["standard", "github", "stripe", "hmac"] as const;
+const VERIFIERS = [
+  "standard",
+  "github",
+  "stripe",
+  "hmac",
+] as const satisfies readonly CreateWebhookInboundBody["verifier"][];
+
+function isVerifier(value: string): value is (typeof VERIFIERS)[number] {
+  return (VERIFIERS as readonly string[]).includes(value);
+}
 
 function readSource(path: string): string {
   return path === "-" ? readFileSync(0, "utf8") : readFileSync(path, "utf8");
@@ -72,12 +78,12 @@ const createCommand = defineCommand({
     const client = makeClient();
     return withCommandErrors(async () => {
       const verifier = String(args.verifier);
-      if (!(VERIFIERS as readonly string[]).includes(verifier)) {
+      if (!isVerifier(verifier)) {
         throw new Error(`--verifier must be one of ${VERIFIERS.join(", ")}`);
       }
       const secret = readSource(String(args["secret-file"])).trim();
       if (!secret) throw new Error("--secret-file is empty");
-      const body: Record<string, unknown> = {
+      const body: CreateWebhookInboundBody = {
         slug: args.slug,
         workflow_id: args["workflow-id"],
         verifier,

@@ -1,8 +1,8 @@
-import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ApiError, apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
+import { ApiError } from "@/api/client";
 import { TextAreaField, TextField } from "@/components/cockpit/form-field";
 import {
   ActionButton,
@@ -31,8 +31,6 @@ import {
   type WorkflowSpecOrigin,
 } from "@/lib/workflow-spec";
 
-type WorkflowDraft = components["schemas"]["WorkflowDraft"];
-
 const STATE_BADGE: Record<SpecState, { state: string; key: TranslationKey }> = {
   missing: { state: "neutral", key: "workflowSpec.state.missing" },
   unconfirmed: { state: "pending", key: "workflowSpec.state.unconfirmed" },
@@ -49,8 +47,7 @@ function useWorkflowSpecDraft(workflowId: string, draftVersionId: string | null)
   return useQuery({
     queryKey: ["workflow-draft-version", workflowId, draftVersionId, "spec"],
     enabled: draftVersionId !== null,
-    queryFn: () =>
-      apiRequest<WorkflowDraft>(`/v1/workflows/${encodeURIComponent(workflowId)}/draft`),
+    queryFn: () => apiCall("get", "/v1/workflows/{id}/draft", { path: { id: workflowId } }),
   });
 }
 
@@ -72,9 +69,9 @@ export function WorkflowSpecCard({
   const save = useMutation({
     mutationFn: (spec: WorkflowSpec) => {
       if (!draft) throw new Error("no draft");
-      return apiRequest<WorkflowDraft>(`/v1/workflows/${encodeURIComponent(workflowId)}/draft`, {
-        method: "PUT",
-        body: JSON.stringify(specSaveBody(draft, spec)),
+      return apiCall("put", "/v1/workflows/{id}/draft", {
+        path: { id: workflowId },
+        body: specSaveBody(draft, spec),
       });
     },
     onSuccess: async (saved) => {

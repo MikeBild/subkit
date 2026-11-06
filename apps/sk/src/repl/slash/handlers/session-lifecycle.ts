@@ -2,6 +2,21 @@ import fs from "node:fs";
 import { join } from "node:path";
 import { type PaneSpec, panify, type SlashHandlerContext } from "../handler.ts";
 
+function textFromParts(parts: readonly unknown[]): string {
+  return parts
+    .map((part) =>
+      part &&
+      typeof part === "object" &&
+      "type" in part &&
+      part.type === "text" &&
+      "text" in part &&
+      typeof part.text === "string"
+        ? part.text
+        : "",
+    )
+    .join("");
+}
+
 export async function dispatchSessionSlash(
   name: string,
   rawArgs: string[],
@@ -26,11 +41,11 @@ export async function dispatchSessionSlash(
       if (lastText === "" && ctx.session.conversationId) {
         try {
           const detail = await ctx.client.getConversation(ctx.session.conversationId);
-          const persisted = detail.messages as Array<{ role?: string; content?: unknown }>;
+          const persisted = detail.messages;
           for (let i = persisted.length - 1; i >= 0; i--) {
             const m = persisted[i];
             if (m && m.role === "assistant") {
-              lastText = typeof m.content === "string" ? m.content : "";
+              lastText = textFromParts(m.parts);
               break;
             }
           }
@@ -116,17 +131,12 @@ export async function dispatchSessionSlash(
           typeof ctx.prefs?.portalTokenTtlMin === "number" && ctx.prefs.portalTokenTtlMin > 0
             ? ctx.prefs.portalTokenTtlMin
             : 15;
-        const issued = (await ctx.client.issuePortalToken({
+        const issued = await ctx.client.issuePortalToken({
           user_id: me.id,
           allowed_workflows: [workflowId],
           ttl_minutes: ttlMinutes,
-        })) as {
-          id: string;
-          plaintext_token?: string;
-          prefix?: string;
-          expires_at: string;
-        };
-        const token = issued.plaintext_token ?? "";
+        });
+        const token = issued.plaintext_token;
         if (!token) return "/session: engine did not return a token";
         const url = `${ctx.profile.engine_url.replace(/\/$/, "")}/portal#token=${token}`;
         if (ctx.openPane) {
@@ -138,7 +148,7 @@ export async function dispatchSessionSlash(
             expires_at: issued.expires_at,
             workflow_id: workflowId,
           });
-          const prefix = issued.prefix ?? issued.id.slice(0, 8);
+          const prefix = issued.prefix || issued.id.slice(0, 8);
           return `portal token issued (token id ${prefix}, ${ttlMinutes} min, single-use) — pane opened with QR + URL; copy the URL there and dismiss on Esc.`;
         }
         return `/session: issued portal token (id ${issued.id}, expires ${issued.expires_at}) — open an interactive REPL to view the QR + URL.`;

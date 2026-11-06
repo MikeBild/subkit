@@ -90,3 +90,42 @@ describe("/logs slash", () => {
     expect(result).toContain("no errors matching trace_id missing-id");
   });
 });
+
+describe("/exec step list", () => {
+  function stepsClient(items: unknown[]): EngineClient {
+    return { executionSteps: async () => ({ items }) } as unknown as EngineClient;
+  }
+
+  test("renders step key, kind, status, duration and error message from the contract shape", async () => {
+    const client = stepsClient([
+      {
+        id: "s1",
+        step_key: "fetch",
+        kind: "http",
+        status: "succeeded",
+        duration_ms: 42,
+        error: null,
+      },
+      {
+        id: "s2",
+        step_key: "write",
+        kind: "postgres",
+        status: "failed",
+        duration_ms: null,
+        error: { message: "permission denied" },
+      },
+      { id: "s3", step_key: "", kind: "", status: "", duration_ms: null, error: "plain" },
+    ]);
+    const result = await handleSlash("exec", ["0123456789abcdef"], mkCtx(client));
+    expect(result).toContain("logs · 01234567");
+    expect(result).toContain("✓ fetch (http) · succeeded · 42ms");
+    expect(result).toContain("✗ write (postgres) · failed · — · permission denied");
+    expect(result).toContain("· ? (?) · ? · —");
+    expect(result).not.toContain("plain");
+  });
+
+  test("renders the empty message when the execution has no steps", async () => {
+    const result = await handleSlash("exec", ["0123456789abcdef"], mkCtx(stepsClient([])));
+    expect(result).toContain("no steps recorded for this execution");
+  });
+});

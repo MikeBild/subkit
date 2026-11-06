@@ -252,6 +252,10 @@ export function panify(
   return [subtitle !== undefined ? `${title} — ${subtitle}` : title, "", ...lines].join("\n");
 }
 
+function stepErrorMessage(error: unknown): unknown {
+  return error && typeof error === "object" && "message" in error ? error.message : null;
+}
+
 function pluralize(count: number, singular: string, plural = `${singular}s`): string {
   return `${count} ${count === 1 ? singular : plural}`;
 }
@@ -449,23 +453,18 @@ export async function handleSlash(
       }
       try {
         const stepsRes = await ctx.client.executionSteps(executionId);
-        const items = Array.isArray(stepsRes.items) ? stepsRes.items : [];
+        const items = stepsRes.items;
         if (items.length === 0) {
           return panify(ctx, `logs · ${executionId.slice(0, 8)}`, [
             "no steps recorded for this execution",
           ]);
         }
-        const lines = items.map((row) => {
-          const r = row as Record<string, unknown>;
-          const key = typeof r.step_key === "string" ? r.step_key : "?";
-          const kind = typeof r.kind === "string" ? r.kind : "?";
-          const status = typeof r.status === "string" ? r.status : "?";
+        const lines = items.map((r) => {
+          const key = r.step_key || "?";
+          const kind = r.kind || "?";
+          const status = r.status || "?";
           const dur = typeof r.duration_ms === "number" ? `${r.duration_ms}ms` : "—";
-          const errVal = r.error;
-          const errMsg =
-            errVal && typeof errVal === "object" && errVal !== null
-              ? (errVal as { message?: unknown }).message
-              : null;
+          const errMsg = stepErrorMessage(r.error);
           const glyph = status === "succeeded" ? "✓" : status === "failed" ? "✗" : "·";
           return `${glyph} ${key} (${kind}) · ${status} · ${dur}${
             typeof errMsg === "string" ? ` · ${errMsg}` : ""

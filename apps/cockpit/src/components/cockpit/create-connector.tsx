@@ -9,7 +9,7 @@ import {
   UserCheck,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { absolute, chatNewHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { ConnectionGraphic } from "@/components/cockpit/connector-graphic";
@@ -60,7 +60,7 @@ import { cn } from "@/lib/utils";
 import { credentialBody } from "@/pages/connector-detail-model";
 import { popularTemplates, serviceHost, signInChipKey } from "./connector-view-model";
 
-type Connector = components["schemas"]["Connector"];
+type CredentialBody = components["schemas"]["CredentialBody"];
 
 const POPULAR_IN_WIZARD = 12;
 
@@ -225,8 +225,7 @@ export function CreateConnectorDialog({
   const existing = useQuery({
     queryKey: ["connectors", "templates-in-use"],
     enabled: open,
-    queryFn: () =>
-      apiRequest<{ items: { template_slug?: string | null }[] }>("/v1/connectors?limit=1000"),
+    queryFn: () => apiCall("get", "/v1/connectors", { query: { limit: 1000 } }),
   });
   const sorted = useMemo(() => sortedTemplates(templates.data?.items ?? []), [templates.data]);
   const template =
@@ -266,9 +265,9 @@ export function CreateConnectorDialog({
       if (keyed) {
         const credential = credentialBody(picked.auth_type, secret, keyHeader ?? header);
         if (credential)
-          await apiRequest(`/v1/connectors/${encodeURIComponent(connector.id)}/credentials`, {
-            method: "POST",
-            body: JSON.stringify(credential),
+          await apiCall("post", "/v1/connectors/{id}/credentials", {
+            path: { id: connector.id },
+            body: credential as CredentialBody,
           });
       }
       return {
@@ -286,18 +285,18 @@ export function CreateConnectorDialog({
   });
   const connectManual = useMutation({
     mutationFn: async () => {
-      const connector = await apiRequest<Connector>("/v1/connectors", {
-        method: "POST",
-        body: JSON.stringify({
+      const connector = await apiCall("post", "/v1/connectors", {
+        body: {
           ...connectorCreateBody({ target, signIn, name, slug: slugify(name), address, oauth }),
           ...(description.trim() ? { description: description.trim() } : {}),
-        }),
+        },
       });
       if (needsSecret(signIn))
-        await apiRequest(`/v1/connectors/${encodeURIComponent(connector.id)}/credentials`, {
-          method: "POST",
-          body: JSON.stringify({ mode: "bearer", token: secret.trim() }),
+        await apiCall("post", "/v1/connectors/{id}/credentials", {
+          path: { id: connector.id },
+          body: { mode: "bearer", token: secret.trim() },
         });
+
       return connector;
     },
     onSuccess: async (connector) => {

@@ -329,8 +329,8 @@ describe("authoring slash panes", () => {
             driver: "http",
             auth_type: "oauth2",
             oauth: {
-              authorization_url: "https://github.com/login/oauth/authorize",
-              scopes: ["repo"],
+              authorization_endpoint: "https://github.com/login/oauth/authorize",
+              scopes: "repo  read:user",
             },
           },
         ],
@@ -344,9 +344,46 @@ describe("authoring slash panes", () => {
     const wizard = pane as Extract<PaneSpec, { kind: "onboarding-wizard" }>;
     expect(wizard.templates).toHaveLength(2);
     expect(wizard.templates[1]?.oauth?.authorization_url).toContain("github.com");
+    expect(wizard.templates[1]?.oauth?.scopes).toEqual(["repo", "read:user"]);
+    expect(wizard.templates[0]?.oauth).toBeUndefined();
     expect(typeof wizard.onProbe).toBe("function");
     expect(typeof wizard.onSave).toBe("function");
     expect(typeof wizard.onComplete).toBe("function");
+  });
+
+  test("/onboard probe reads the created connector id and the probe detail", async () => {
+    const created: Array<{ slug: string; body: unknown }> = [];
+    let probeOk = false;
+    const client = {
+      listConnectorTemplates: async () => ({
+        items: [{ slug: "stripe", name: "Stripe", driver: "http", auth_type: "bearer" }],
+      }),
+      createConnectorFromTemplate: async (slug: string, body: unknown) => {
+        created.push({ slug, body });
+        return { id: "conn-1", slug: "stripe" };
+      },
+      testConnector: async (id: string) =>
+        probeOk
+          ? { ok: true, latency_ms: 5 }
+          : { ok: false, latency_ms: 5, detail: `401 on ${id}` },
+    } as unknown as EngineClient;
+    const { ctx, panes } = mkCtx(client);
+    await handleSlash("onboard", [], ctx);
+    const wizard = panes[0] as Extract<PaneSpec, { kind: "onboarding-wizard" }>;
+    const template = wizard.templates[0];
+    if (!template) throw new Error("template missing");
+    expect(await wizard.onSave(template, "")).toEqual({
+      ok: false,
+      reason: "probe must succeed before save",
+    });
+    expect(await wizard.onProbe(template, "sk_test")).toEqual({
+      ok: false,
+      reason: "401 on conn-1",
+    });
+    expect(created).toEqual([{ slug: "stripe", body: {} }]);
+    probeOk = true;
+    expect(await wizard.onProbe(template, "sk_test")).toEqual({ ok: true });
+    expect(await wizard.onSave(template, "sk_test")).toEqual({ ok: true, connector_id: "conn-1" });
   });
 
   test("/status includes cached setup summary when available", async () => {
@@ -416,5 +453,24 @@ describe("authoring slash panes", () => {
     expect(
       rows.some(([label, value]) => label === "setup" && String(value).includes("blocked")),
     ).toBe(true);
+  });
+
+  test("/restore reports the restored workflow's current_version", async () => {
+    const restoreCalls: Array<[string, number]> = [];
+    const client = {
+      getConversation: async () => ({
+        conversation: { id: "conv-1", target_workflow_id: "wf-1" },
+        messages: [],
+        tool_calls: [],
+      }),
+      restoreWorkflowVersion: async (id: string, version: number) => {
+        restoreCalls.push([id, version]);
+        return { id, current_version: 5 };
+      },
+    } as unknown as EngineClient;
+    const { ctx } = mkCtx(client);
+    const result = await handleSlash("restore", ["3"], ctx);
+    expect(restoreCalls).toEqual([["wf-1", 3]]);
+    expect(result).toBe("restored workflow wf-1 to version 3 (new current version 5)");
   });
 });

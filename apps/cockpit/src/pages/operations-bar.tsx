@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { absolute, workflowsHref } from "@/app/links";
 import { ActionButton, KpiTile, TileSkeleton } from "@/components/cockpit/patterns";
 import type { TranslationKey } from "@/lib/i18n";
@@ -7,19 +7,18 @@ import { useI18n } from "@/lib/i18n-context";
 import {
   type BudgetHint,
   type FigureBasis,
-  llmStatsEndpoint,
+  llmStatsQuery,
   OPERATING_FIGURE_IDS,
   type OperatingFigure,
   type OperatingFigureId,
   operatingCounts,
   operatingFigures,
-  operatingFiguresEndpoint,
+  operatingFiguresQuery,
   type PromptCacheFlow,
   promptCacheFlows,
-  REPAIR_REQUIRED_ENDPOINT,
+  REPAIR_REQUIRED_QUERY,
   type Read,
   repairRequiredCount,
-  STATUS_ENDPOINT,
   type StatsWindow,
   type WindowBounds,
   windowSpend,
@@ -70,7 +69,7 @@ export function useRepairRequiredCount(permissions: readonly string[]): number |
   const query = useQuery({
     queryKey: ["repair-required-count"],
     enabled: permissions.includes("workflow:read"),
-    queryFn: () => apiRequest<unknown>(REPAIR_REQUIRED_ENDPOINT),
+    queryFn: () => apiCall("get", "/v1/workflows", { query: REPAIR_REQUIRED_QUERY }),
   });
   return query.isError ? null : repairRequiredCount(query.data);
 }
@@ -95,7 +94,8 @@ function useOperatingFiguresQuery(bounds: WindowBounds, enabled: boolean) {
   return useQuery({
     queryKey: ["operations-figures", bounds],
     enabled,
-    queryFn: () => apiRequest<unknown>(operatingFiguresEndpoint(bounds)),
+    queryFn: () =>
+      apiCall("get", "/v1/stats/operating-figures", { query: operatingFiguresQuery(bounds) }),
   });
 }
 
@@ -116,12 +116,12 @@ export function useOperationsFigures(bounds: WindowBounds, permissions: readonly
   const spend = useQuery({
     queryKey: ["operations-spend", bounds],
     enabled: allowed,
-    queryFn: () => apiRequest<unknown>(llmStatsEndpoint(bounds)),
+    queryFn: () => apiCall("get", "/v1/stats/llm", { query: llmStatsQuery(bounds) }),
   });
   const status = useQuery({
     queryKey: ["usage-status"],
     enabled: allowed,
-    queryFn: () => apiRequest<unknown>(STATUS_ENDPOINT),
+    queryFn: () => apiCall("get", "/v1/status", {}),
   });
 
   const read = <T,>(query: { isError: boolean }, value: T): Read<T> =>

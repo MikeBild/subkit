@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  auditIdentityOptions,
   auditInitiatingSource,
   auditRecordedAccess,
   groupLoadedAudit,
@@ -208,5 +209,25 @@ describe("Audit operation filter", () => {
     expect(validAuditCorrelationId("a".repeat(31))).toBe(false);
     expect(validAuditCorrelationId("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")).toBe(false);
     expect(validAuditCorrelationId("g".repeat(32))).toBe(false);
+  });
+});
+
+describe("auditIdentityOptions", () => {
+  test("labels people by display_name, then email, then id", () => {
+    expect(
+      auditIdentityOptions(
+        [
+          { id: "u-1", email: "ada@example.com", display_name: "Ada Lovelace" },
+          { id: "u-2", email: "grace@example.com", display_name: null },
+          { id: "u-3", email: "", display_name: null },
+        ],
+        [{ id: "s-1", name: "Nightly bot" }],
+      ),
+    ).toEqual([
+      { kind: "user", id: "u-1", label: "Ada Lovelace" },
+      { kind: "user", id: "u-2", label: "grace@example.com" },
+      { kind: "user", id: "u-3", label: "u-3" },
+      { kind: "system_account", id: "s-1", label: "Nightly bot" },
+    ]);
   });
 });

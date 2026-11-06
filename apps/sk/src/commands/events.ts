@@ -1,6 +1,21 @@
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
+import type { AuditLogQuery } from "../engine-client/diagnostics.ts";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
+
+export const AUDIT_EVENT_COLUMNS = ["id", "action", "actor_id", "ts"];
+
+export function auditEventsQuery(args: {
+  limit?: string | undefined;
+  since?: string | undefined;
+  action?: string | undefined;
+}): AuditLogQuery {
+  const query: AuditLogQuery = {};
+  if (args.limit) query.limit = Number(args.limit);
+  if (args.since) query.ts_from = args.since;
+  if (args.action) query.action = args.action;
+  return query;
+}
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List audit events" },
@@ -14,16 +29,8 @@ const listCommand = defineCommand({
     const client = makeClient();
     return withCommandErrors(
       async () => {
-        const { items } = await client.listEvents({
-          limit: args.limit ? Number(args.limit) : undefined,
-          since: args.since as string | undefined,
-          action: args.action as string | undefined,
-        });
-        emitList(
-          !!args.json,
-          ["id", "action", "actor", "created_at"],
-          items as Record<string, unknown>[],
-        );
+        const { items } = await client.queryAuditLog(auditEventsQuery(args));
+        emitList(!!args.json, AUDIT_EVENT_COLUMNS, items);
       },
       { json: Boolean(args.json) },
     );

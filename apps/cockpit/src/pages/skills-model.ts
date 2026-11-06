@@ -119,20 +119,12 @@ export function skillTemplateKeys(template: SkillTemplate): {
   };
 }
 
-export interface SkillHistoryEntry {
-  audit_entry_id: string;
-  version: number | null;
-  title: string | null;
-  lifecycle: string | null;
-  updated_at: string;
-  actor_id: string | null;
-  has_snapshot: boolean;
-}
+export type SkillHistoryEntry = components["schemas"]["SkillHistoryEntry"];
 
-export interface SkillVersionRow extends SkillHistoryEntry {
+export type SkillVersionRow = SkillHistoryEntry & {
   current: boolean;
   restorable: boolean;
-}
+};
 
 export function skillVersionRows(
   entries: readonly SkillHistoryEntry[],

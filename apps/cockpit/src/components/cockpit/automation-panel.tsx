@@ -3,7 +3,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { listProposedPatchCandidates } from "@/api/decisions";
 import {
   absolute,
@@ -30,7 +30,6 @@ import {
 } from "@/lib/automation-queries";
 import {
   type AutomationState,
-  type AutomationStatusLike,
   type AutomationWorkflow,
   automationEnvironment,
   automationEnvironmentUndecided,
@@ -46,7 +45,6 @@ import { reviewTarget } from "@/lib/review-target";
 import { liveRunEnvironment, type RunEnvironment } from "@/lib/run-availability";
 import { statusLabel } from "@/lib/status-label";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
-import type { WorkflowAuthorityList, WorkflowAuthorityPreview } from "@/lib/workflow-authorities";
 import {
   STRIP_STATE_KEYS,
   stripActionKey,
@@ -63,8 +61,6 @@ import {
 } from "@/pages/runs-model";
 
 const catalogText = (label: { text: string }) => label.text;
-
-type ScheduleList = components["schemas"]["ScheduleListResponse"];
 
 const REFRESH_MS = AUTOMATION_REFRESH_MS;
 
@@ -107,16 +103,16 @@ export function useWorkflowAutomation(
     queryKey: ["workflow-authorities", workflowId],
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) =>
-      apiRequest<WorkflowAuthorityList>(
-        `/v1/workflows/${encodeURIComponent(workflowId)}/execution-authorities?limit=20${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ""}`,
-      ),
+      apiCall("get", "/v1/workflows/{id}/execution-authorities", {
+        path: { id: workflowId },
+        query: { limit: 20, cursor: pageParam ?? undefined },
+      }),
     getNextPageParam: (page) => page.next_cursor,
     refetchInterval: REFRESH_MS,
   });
   const schedules = useQuery({
     queryKey: ["workflow", workflowId, "schedules"],
-    queryFn: () =>
-      apiRequest<ScheduleList>(`/v1/schedules?workflow_id=${encodeURIComponent(workflowId)}`),
+    queryFn: () => apiCall("get", "/v1/schedules", { query: { workflow_id: workflowId } }),
     refetchInterval: REFRESH_MS,
   });
   const mayReadStatus = permissions.includes("schedule:read");
@@ -124,9 +120,7 @@ export function useWorkflowAutomation(
     queryKey: ["workflow-automation-status", workflowId],
     enabled: mayReadStatus,
     queryFn: () =>
-      apiRequest<AutomationStatusLike>(
-        `/v1/workflows/${encodeURIComponent(workflowId)}/automation-status`,
-      ),
+      apiCall("get", "/v1/workflows/{id}/automation-status", { path: { id: workflowId } }),
     refetchInterval: REFRESH_MS,
     retry: false,
   });
@@ -136,10 +130,7 @@ export function useWorkflowAutomation(
   const draft = useQuery({
     queryKey: ["workflow-draft-version", workflowId, workflow.draft_version_id],
     enabled: prepared,
-    queryFn: () =>
-      apiRequest<{ version_id: string; version: number }>(
-        `/v1/workflows/${encodeURIComponent(workflowId)}/draft`,
-      ),
+    queryFn: () => apiCall("get", "/v1/workflows/{id}/draft", { path: { id: workflowId } }),
   });
 
   const now = Math.max(
@@ -184,9 +175,10 @@ export function useWorkflowAutomation(
     queryKey: ["workflow-connector-environment", workflowId, previewVersionId],
     enabled: undecided && mayPreview && previewVersionId !== null,
     queryFn: () =>
-      apiRequest<WorkflowAuthorityPreview>(
-        `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(previewVersionId ?? "")}/authority-preview?environment=dev`,
-      ),
+      apiCall("get", "/v1/workflows/{id}/versions/{version_id}/authority-preview", {
+        path: { id: workflowId, version_id: previewVersionId ?? "" },
+        query: { environment: "dev" },
+      }),
     retry: false,
   });
   const connectorEnvironment =
@@ -236,10 +228,7 @@ export function useWorkflowAutomation(
   const resume = useMutation({
     mutationFn: async (scheduleIds: readonly string[]) => {
       for (const id of scheduleIds)
-        await apiRequest(`/v1/schedules/${encodeURIComponent(id)}`, {
-          method: "PUT",
-          body: JSON.stringify({ paused: false }),
-        });
+        await apiCall("put", "/v1/schedules/{id}", { path: { id }, body: { paused: false } });
     },
     onSettled: refresh,
   });
@@ -276,7 +265,6 @@ export function useWorkflowAutomation(
   };
 }
 
-type ExecutionList = components["schemas"]["ExecutionListResponse"];
 type Execution = components["schemas"]["Execution"];
 
 function useEnvironmentWord() {
@@ -355,9 +343,14 @@ function useRunHealth(workflowId: string, health: string | null, permissions: re
     queryKey: ["workflow-week-failures", workflowId, weekFrom],
     enabled: permissions.includes("execution:read"),
     queryFn: () =>
-      apiRequest<ExecutionList>(
-        `/v1/executions?${new URLSearchParams({ workflow_id: workflowId, started_from: weekFrom, status: failedStatusesFor("all") ?? "failed", limit: "1" })}`,
-      ),
+      apiCall("get", "/v1/executions", {
+        query: {
+          workflow_id: workflowId,
+          started_from: weekFrom,
+          status: failedStatusesFor("all") ?? "failed",
+          limit: 1,
+        },
+      }),
     refetchInterval: REFRESH_MS,
   });
   const unhealthy = Boolean(health) && health !== "ok";
@@ -365,9 +358,7 @@ function useRunHealth(workflowId: string, health: string | null, permissions: re
     queryKey: ["workflow-latest-failed-run", workflowId],
     enabled: unhealthy && permissions.includes("execution:read"),
     queryFn: () =>
-      apiRequest<ExecutionList>(
-        `/v1/executions?workflow_id=${encodeURIComponent(workflowId)}&limit=20`,
-      ),
+      apiCall("get", "/v1/executions", { query: { workflow_id: workflowId, limit: 20 } }),
   });
   const patch = useQuery({
     queryKey: ["run-open-repair", workflowId],
@@ -457,10 +448,11 @@ export function WorkflowStatus({
   const enable = useOptimisticAction({
     queryKey: ["catalog-detail", "workflows", automation.workflowId],
     mutationFn: () =>
-      apiRequest(`/v1/workflows/${encodeURIComponent(automation.workflowId)}/metadata`, {
-        method: "PATCH",
-        body: JSON.stringify({ lifecycle: "active" }),
+      apiCall("patch", "/v1/workflows/{id}/metadata", {
+        path: { id: automation.workflowId },
+        body: { lifecycle: "active" },
       }),
+
     apply: (current: Record<string, unknown> | undefined) =>
       current ? { ...current, lifecycle: "active" } : current,
     onSuccess: () => {

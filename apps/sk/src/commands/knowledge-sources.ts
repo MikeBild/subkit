@@ -1,9 +1,11 @@
 import { readFileSync, statSync } from "node:fs";
 import { basename } from "node:path";
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
+import type { KnowledgeSourceMetadata } from "../engine-client/knowledge.ts";
 import { EngineClient } from "../engine-client.ts";
 import { collectBundleFiles, defaultBundleName } from "../lib/bundle-import.ts";
 import {
@@ -17,6 +19,32 @@ import type { KnowledgeSourceIntent, KnowledgeSourceSummary, PlanStep } from "..
 import { detectMime } from "../utils/mime.ts";
 import { withCommandErrors } from "./command-runtime.ts";
 import { uploadPath } from "./files.ts";
+
+type Schemas = components["schemas"];
+type KnowledgeScope = Schemas["KnowledgeSource"]["scope"];
+type KnowledgeStatus = NonNullable<Schemas["UpdateKnowledgeSourceBody"]["status"]>;
+
+const KNOWLEDGE_SCOPES: readonly KnowledgeScope[] = ["global", "workflow"];
+const KNOWLEDGE_STATUSES: readonly KnowledgeStatus[] = ["active", "inactive"];
+
+function knowledgeScope(value: string): KnowledgeScope {
+  const scope = KNOWLEDGE_SCOPES.find((candidate) => candidate === value);
+  if (!scope) throw new Error(`--scope must be one of: ${KNOWLEDGE_SCOPES.join(", ")}`);
+  return scope;
+}
+
+function knowledgeStatus(value: string): KnowledgeStatus {
+  const status = KNOWLEDGE_STATUSES.find((candidate) => candidate === value);
+  if (!status) throw new Error(`--status must be one of: ${KNOWLEDGE_STATUSES.join(", ")}`);
+  return status;
+}
+
+function tagList(value: string): string[] {
+  return value
+    .split(",")
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+}
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List knowledge sources" },
@@ -37,7 +65,7 @@ const listCommand = defineCommand({
         const rows = items.map((it) => ({
           ...it,
           description: shortDescription(it.description),
-          tags: Array.isArray(it.tags) ? (it.tags as string[]).join(", ") : (it.tags ?? ""),
+          tags: it.tags.join(", "),
         }));
         emitList(
           false,
@@ -82,7 +110,7 @@ const searchCommand = defineCommand({
           limit: Number(args.limit),
           ...(args.tags ? { tags: args.tags } : {}),
         });
-        emitList(!!args.json, ["source_name", "title", "rank"], hits as Record<string, unknown>[]);
+        emitList(!!args.json, ["source_name", "title", "rank"], hits);
       },
       { json: Boolean(args.json) },
     );
@@ -126,7 +154,7 @@ const createCommand = defineCommand({
         await renderIntent(intent, { jsonMode });
 
         let file: Awaited<ReturnType<typeof uploadPath>>;
-        let ks: Record<string, unknown>;
+        let ks: Schemas["KnowledgeSource"];
         try {
           file = await uploadPath(client, filePath, { quiet: true });
         } catch (err) {
@@ -143,24 +171,19 @@ const createCommand = defineCommand({
           await renderTaskList(phases, { jsonMode });
           throw err;
         }
-        const metadata: Record<string, unknown> = { name: title, ...catalogMetadataBody(args) };
-        if (args.tags) {
-          metadata.tags = args.tags
-            .split(",")
-            .map((t) => t.trim())
-            .filter((t) => t.length > 0);
-        }
-        if (args.scope) metadata.scope = args.scope;
+        const metadata: KnowledgeSourceMetadata = { name: title, ...catalogMetadataBody(args) };
+        if (args.tags) metadata.tags = tagList(args.tags);
+        if (args.scope) metadata.scope = knowledgeScope(args.scope);
         if (args["workflow-id"]) metadata.workflow_id = args["workflow-id"];
         try {
-          ks = (await client.createKnowledgeSource(
+          ks = await client.createKnowledgeSource(
             {
               name: title,
               content: fileBuffer,
               mime_type,
             },
             metadata,
-          )) as Record<string, unknown>;
+          );
         } catch (err) {
           const phases: PlanStep[] = [
             { id: "upload", label: "Upload", status: "succeeded" },
@@ -177,7 +200,7 @@ const createCommand = defineCommand({
         }
 
         let linkFailed = false;
-        const ksId = typeof ks.id === "string" ? ks.id : null;
+        const ksId = ks.id || null;
         if (ksId) {
           try {
             await client.linkFile(file.id, {
@@ -194,11 +217,11 @@ const createCommand = defineCommand({
         const summary: KnowledgeSourceSummary = {
           kind: "knowledge_source",
           id: ksId ?? "(unknown)",
-          name: typeof ks.name === "string" ? ks.name : title,
+          name: ks.name,
           mime_type,
           size_bytes,
           ...(typeof ks.description === "string" ? { description: ks.description } : {}),
-          ...(Array.isArray(ks.tags) ? { tags: ks.tags as string[] } : {}),
+          tags: ks.tags,
           ...(file.id ? { file_id: file.id } : {}),
           ...(linkFailed ? { link_failed: true } : {}),
         };
@@ -238,15 +261,8 @@ const importCommand = defineCommand({
           name,
           ...(args.slug ? { slug: args.slug } : {}),
           ...catalogMetadataBody(args),
-          ...(args.tags
-            ? {
-                tags: args.tags
-                  .split(",")
-                  .map((t) => t.trim())
-                  .filter((t) => t.length > 0),
-              }
-            : {}),
-          ...(args.scope ? { scope: args.scope } : {}),
+          ...(args.tags ? { tags: tagList(args.tags) } : {}),
+          ...(args.scope ? { scope: knowledgeScope(args.scope) } : {}),
           ...(args["workflow-id"] ? { workflow_id: args["workflow-id"] } : {}),
           files: bundle.files,
         });
@@ -254,12 +270,11 @@ const importCommand = defineCommand({
           printJson(result);
           return;
         }
-        const outcome = String(result.outcome ?? "unknown");
-        const ks = (result.knowledge_source ?? {}) as Record<string, unknown>;
+        const ks = result.knowledge_source;
         process.stdout.write(
-          `${pc.green(outcome)}: ${String(ks.name ?? name)} (${String(ks.slug ?? "")}) — ` +
-            `${bundle.files.length} files, ${String(result.ingested_count ?? 0)} chunks ingested, ` +
-            `${String(result.skipped_count ?? 0)} skipped` +
+          `${pc.green(result.outcome)}: ${ks.name} (${ks.slug}) — ` +
+            `${bundle.files.length} files, ${result.ingested_count} chunks ingested, ` +
+            `${result.skipped_count} skipped` +
             (bundle.skipped_non_markdown > 0
               ? `, ${bundle.skipped_non_markdown} non-markdown files left out`
               : "") +
@@ -283,21 +298,21 @@ const patchCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    const body: Record<string, unknown> = { ...catalogMetadataBody(args) };
-    if (args.name) body.name = args.name;
-    if (args.tags !== undefined) {
-      body.tags = args.tags
-        .split(",")
-        .map((t) => t.trim())
-        .filter((t) => t.length > 0);
-    }
-    if (args.status) body.status = args.status;
-    if (Object.keys(body).length === 0) {
+    if (
+      !args.name &&
+      args.tags === undefined &&
+      !args.status &&
+      Object.keys(catalogMetadataBody(args)).length === 0
+    ) {
       const msg = "at least one of --name, --description, --category, --tags, --status is required";
       process.stderr.write(`${pc.red("error")}: ${msg}\n`);
       throw new Error(msg);
     }
     return withCommandErrors(async () => {
+      const body: Schemas["UpdateKnowledgeSourceBody"] = { ...catalogMetadataBody(args) };
+      if (args.name) body.name = args.name;
+      if (args.tags !== undefined) body.tags = tagList(args.tags);
+      if (args.status) body.status = knowledgeStatus(args.status);
       const ks = await client.patchKnowledgeSource(args.id, body);
       printJson(ks);
     });
@@ -338,10 +353,8 @@ const deleteCommand = defineCommand({
   },
 });
 
-function authorLabel(author: unknown): string {
-  if (!author || typeof author !== "object") return "system";
-  const { kind, id } = author as { kind?: unknown; id?: unknown };
-  return typeof kind === "string" && typeof id === "string" ? `${kind}:${id}` : "system";
+function authorLabel(author: Schemas["KnowledgeSourceVersionAuthor"]): string {
+  return author ? `${author.kind}:${author.id}` : "system";
 }
 
 const historyCommand = defineCommand({

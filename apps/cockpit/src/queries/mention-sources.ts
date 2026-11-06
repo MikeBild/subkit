@@ -1,6 +1,7 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import type { ChatReferenceSeed } from "@/app/links";
 import {
   type ConversationReference,
@@ -25,42 +26,7 @@ const MENTION_SOURCE_KEYS = {
 
 const KNOWLEDGE_PAGE = 8;
 
-interface WorkflowItem {
-  id: string;
-  slug: string;
-  name: string;
-}
-interface ConnectorItem {
-  id: string;
-  slug: string;
-  display_name: string;
-}
-interface SourceItem {
-  id: string;
-  slug: string;
-  name: string;
-}
-interface SkillItem {
-  id: string;
-  slug: string | null;
-  title: string;
-}
-interface FileItem {
-  id: string;
-  filename: string;
-  size_bytes: number;
-  content_type: string | null;
-}
-interface IntakeMentionItem {
-  id: string;
-  title: string;
-  source_url: string | null;
-  category: string;
-  state: string;
-  version: number;
-}
-
-function skillLabel(skill: SkillItem): string {
+function skillLabel(skill: { slug: string | null; title: string }): string {
   return skill.slug ?? skill.title.trim().toLowerCase().replace(/\s+/g, "-");
 }
 
@@ -78,10 +44,7 @@ function mentionLabel(title: string, fallback: string): string {
   return isMentionableLabel(label) ? label : fallback;
 }
 
-interface WorkflowCategory {
-  category: string;
-  count: number;
-}
+type WorkflowCategory = components["schemas"]["WorkflowListResponse"]["categories"][number];
 
 export function useWorkflowCategories(enabled: boolean): {
   categories: WorkflowCategory[];
@@ -91,13 +54,52 @@ export function useWorkflowCategories(enabled: boolean): {
     queryKey: ["chat", "starter-catalog"],
     enabled,
     staleTime: 30_000,
-    queryFn: () => apiRequest<{ categories?: WorkflowCategory[] }>("/v1/workflows?limit=1"),
+    queryFn: () => apiCall("get", "/v1/workflows", { query: { limit: 1 } }),
   });
   return { categories: query.data?.categories ?? [], isLoading: enabled && query.isLoading };
 }
 
-function encode(q: string): string {
-  return q ? `&q=${encodeURIComponent(q)}` : "";
+function search(q: string): { q?: string } {
+  return q ? { q } : {};
+}
+
+async function seedReference(seed: ChatReferenceSeed): Promise<ConversationReference | null> {
+  const path = { id: seed.id };
+  switch (seed.type) {
+    case "intake_item": {
+      const response = await apiCall("get", "/v1/intake/items/mentions", {
+        query: { id: seed.id },
+      });
+      const item = response.items[0];
+      return item
+        ? { type: "intake_item", id: item.id, label: intakeMentionLabel(item.title) }
+        : null;
+    }
+    case "workflow": {
+      const item = await apiCall("get", "/v1/workflows/{id}", { path });
+      return { type: seed.type, id: item.id, label: mentionLabel(item.name, seed.type) };
+    }
+    case "connector": {
+      const item = await apiCall("get", "/v1/connectors/{id}", { path });
+      return { type: seed.type, id: item.id, label: mentionLabel(item.display_name, seed.type) };
+    }
+    case "skill": {
+      const item = await apiCall("get", "/v1/skills/{id}", { path });
+      return { type: seed.type, id: item.id, label: mentionLabel(item.title, seed.type) };
+    }
+    case "knowledge_source": {
+      const item = await apiCall("get", "/v1/knowledge-sources/{id}", { path });
+      return { type: seed.type, id: item.id, label: mentionLabel(item.name, seed.type) };
+    }
+    case "execution": {
+      const item = await apiCall("get", "/v1/executions/{id}", { path });
+      return {
+        type: seed.type,
+        id: item.id,
+        label: mentionLabel(item.workflow_name ?? "", "Ausführung"),
+      };
+    }
+  }
 }
 
 export function useMentionCandidates(
@@ -119,15 +121,14 @@ export function useMentionCandidates(
     enabled: active && canWorkflows,
     staleTime: 30_000,
     placeholderData: (previous) => previous,
-    queryFn: () => apiRequest<{ items: WorkflowItem[] }>(`/v1/workflows?limit=${PAGE}${encode(q)}`),
+    queryFn: () => apiCall("get", "/v1/workflows", { query: { limit: PAGE, ...search(q) } }),
   });
   const connectors = useQuery({
     queryKey: MENTION_SOURCE_KEYS.connectors(q),
     enabled: active && canConnectors,
     staleTime: 30_000,
     placeholderData: (previous) => previous,
-    queryFn: () =>
-      apiRequest<{ items: ConnectorItem[] }>(`/v1/connectors?limit=${PAGE}${encode(q)}`),
+    queryFn: () => apiCall("get", "/v1/connectors", { query: { limit: PAGE, ...search(q) } }),
   });
 
   const sources = useQuery({
@@ -136,9 +137,9 @@ export function useMentionCandidates(
     staleTime: 30_000,
     placeholderData: (previous) => previous,
     queryFn: () =>
-      apiRequest<{ items: SourceItem[] }>(
-        `/v1/knowledge-sources?limit=${KNOWLEDGE_PAGE}${encode(q)}`,
-      ),
+      apiCall("get", "/v1/knowledge-sources", {
+        query: { limit: KNOWLEDGE_PAGE, ...search(q) },
+      }),
   });
   const skills = useQuery({
     queryKey: MENTION_SOURCE_KEYS.skills(q),
@@ -146,27 +147,23 @@ export function useMentionCandidates(
     staleTime: 30_000,
     placeholderData: (previous) => previous,
     queryFn: () =>
-      apiRequest<{ items: SkillItem[] }>(
-        `/v1/skills?status=active&limit=${KNOWLEDGE_PAGE}${encode(q)}`,
-      ),
+      apiCall("get", "/v1/skills", {
+        query: { status: "active", limit: KNOWLEDGE_PAGE, ...search(q) },
+      }),
   });
   const files = useQuery({
     queryKey: MENTION_SOURCE_KEYS.files(q),
     enabled: active && canFiles,
     staleTime: 30_000,
     placeholderData: (previous) => previous,
-    queryFn: () =>
-      apiRequest<{ items: FileItem[] }>(`/v1/files?limit=${KNOWLEDGE_PAGE}${encode(q)}`),
+    queryFn: () => apiCall("get", "/v1/files", { query: { limit: KNOWLEDGE_PAGE, ...search(q) } }),
   });
   const intake = useQuery({
     queryKey: MENTION_SOURCE_KEYS.intake(q),
     enabled: active && canIntake,
     staleTime: 30_000,
     placeholderData: (previous) => previous,
-    queryFn: () =>
-      apiRequest<{ items: IntakeMentionItem[] }>(
-        `/v1/intake/items/mentions?${q ? `q=${encodeURIComponent(q)}` : ""}`,
-      ),
+    queryFn: () => apiCall("get", "/v1/intake/items/mentions", { query: search(q) }),
   });
 
   const candidates = useMemo(() => {
@@ -256,33 +253,7 @@ export function useSeedMentionReferences(seeds: readonly ChatReferenceSeed[]): {
     enabled: uniqueSeeds.length > 0,
     staleTime: 30_000,
     queryFn: async () => {
-      const resolved = await Promise.all(
-        uniqueSeeds.map(async (seed): Promise<ConversationReference | null> => {
-          if (seed.type === "intake_item") {
-            const response = await apiRequest<{ items: IntakeMentionItem[] }>(
-              `/v1/intake/items/mentions?id=${encodeURIComponent(seed.id)}`,
-            );
-            const item = response.items[0];
-            return item
-              ? { type: "intake_item", id: item.id, label: intakeMentionLabel(item.title) }
-              : null;
-          }
-          const endpoint = seed.type === "knowledge_source" ? "knowledge-sources" : `${seed.type}s`;
-          const item = await apiRequest<{
-            id: string;
-            name?: string | null;
-            title?: string | null;
-            display_name?: string | null;
-            workflow_name?: string | null;
-          }>(`/v1/${endpoint}/${encodeURIComponent(seed.id)}`);
-          const title = item.name ?? item.title ?? item.display_name ?? item.workflow_name ?? "";
-          return {
-            type: seed.type,
-            id: item.id,
-            label: mentionLabel(title, seed.type === "execution" ? "Ausführung" : seed.type),
-          };
-        }),
-      );
+      const resolved = await Promise.all(uniqueSeeds.map(seedReference));
       return resolved.filter((reference): reference is ConversationReference => reference !== null);
     },
   });

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import {
@@ -28,7 +28,6 @@ import {
   appReadiness,
   appUserLabel,
   appUserLastSeen,
-  eraseAppUserPath,
   mayEraseAppUsers,
   PRODUCTS_PATH,
   PROVIDERS_PATH,
@@ -137,7 +136,9 @@ function AppUsers({ app }: { app: AppView }) {
   const [target, setTarget] = useState<UserItem | null>(null);
   const erase = useMutation({
     mutationFn: (user: UserItem) =>
-      apiRequest<unknown>(eraseAppUserPath(app.id, user.id), { method: "DELETE" }),
+      apiCall("delete", "/v1/apps/{id}/users/{user_id}", {
+        path: { id: app.id, user_id: user.id },
+      }),
     onSettled: () =>
       Promise.all([
         client.invalidateQueries({ queryKey: ["admin", "apps"] }),

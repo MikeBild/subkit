@@ -4,7 +4,8 @@ import { useRouterState } from "@tanstack/react-router";
 import { Check, ChevronRight, Minus, X } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ApiError, apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
+import { ApiError } from "@/api/client";
 import { useActorDirectory } from "@/app/actor-directory";
 import { actorDirectoryName } from "@/app/actor-directory-model";
 import { absolute, RUNS_FILTER_PARAMS, runHref, workflowHref } from "@/app/links";
@@ -37,7 +38,7 @@ import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
 import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
 import { useCurrentVersionDag } from "@/components/cockpit/workflow-versions";
 import { causeClassLabel } from "@/lib/cause-class";
-import { type ConnectorAuthInput, connectorAuthState } from "@/lib/connector-auth-state";
+import { connectorAuthState } from "@/lib/connector-auth-state";
 import { pluralKey, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
@@ -46,7 +47,7 @@ import { remedyFor } from "@/lib/remedy";
 import { refusedSignIn } from "@/lib/run-availability";
 import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
-import { type CursorPage, listPagePath, useInfiniteList } from "@/lib/use-infinite-list";
+import { useInfiniteList } from "@/lib/use-infinite-list";
 import { cn } from "@/lib/utils";
 import { windowFilterLabel } from "@/lib/window-filter";
 import { definitionKind, stepDefinitionsOf, stepKindKey } from "@/lib/workflow-steps";
@@ -95,18 +96,7 @@ export { formatRunDuration, RUN_STATUSES, requestSourceLabel, runDurationMs, run
 type Execution = components["schemas"]["Execution"];
 type ExecutionDetail = components["schemas"]["ExecutionDetail"];
 type ExecutionListItem = components["schemas"]["ExecutionListItem"];
-type ExecutionStep = components["schemas"]["ExecutionStep"] & { credential_snapshots?: unknown };
-type ExecutionStepList = components["schemas"]["ExecutionStepListResponse"];
-type WorkflowExecutionAuthority = components["schemas"]["WorkflowExecutionAuthority"];
-
-type RerunSafety = {
-  mode: "repeat_safe" | "prepare_only" | "unavailable";
-  reason: string;
-};
-
-type ExecutionDetailWithRerunSafety = ExecutionDetail & {
-  outcome: ExecutionDetail["outcome"] & { rerun_safety?: RerunSafety };
-};
+type ExecutionStep = components["schemas"]["ExecutionStep"];
 
 const PAGE_SIZE = 25;
 
@@ -133,17 +123,16 @@ function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: string)
   const queryClient = useQueryClient();
   const detail = useQuery({
     queryKey: ["run", run.id, "rerun-safety"],
-    queryFn: () =>
-      apiRequest<ExecutionDetailWithRerunSafety>(`/v1/executions/${encodeURIComponent(run.id)}`),
+    queryFn: () => apiCall("get", "/v1/executions/{id}", { path: { id: run.id } }),
   });
   const safety = detail.data?.outcome.rerun_safety;
   const prepareOnly = safety?.mode === "prepare_only";
   const unavailable = !safety || safety.mode === "unavailable";
   const rerun = useMutation({
     mutationFn: () =>
-      apiRequest<{ execution_id: string }>(`/v1/executions/${encodeURIComponent(run.id)}/rerun`, {
-        method: "POST",
-        body: JSON.stringify({ async: true, ...(prepareOnly ? { hold_writes: true } : {}) }),
+      apiCall("post", "/v1/executions/{id}/rerun", {
+        path: { id: run.id },
+        body: { async: true, ...(prepareOnly ? { hold_writes: true } : {}) },
       }),
     onSuccess: async (result) => {
       toast.success(t("runs.rerun.started"));
@@ -181,16 +170,15 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
   const [openStep, setOpenStep] = useState<number | null>(null);
   const detail = useQuery({
     queryKey: ["run", run.id],
-    queryFn: () => apiRequest<ExecutionDetail>(`/v1/executions/${encodeURIComponent(run.id)}`),
+    queryFn: () => apiCall("get", "/v1/executions/{id}", { path: { id: run.id } }),
   });
   const steps = useQuery({
     queryKey: ["run-steps", run.id],
-    queryFn: () =>
-      apiRequest<ExecutionStepList>(`/v1/executions/${encodeURIComponent(run.id)}/steps`),
+    queryFn: () => apiCall("get", "/v1/executions/{id}/steps", { path: { id: run.id } }),
   });
   const cost = useQuery({
     queryKey: ["run-cost", run.id],
-    queryFn: () => apiRequest<unknown>(`/v1/executions/${encodeURIComponent(run.id)}/cost`),
+    queryFn: () => apiCall("get", "/v1/executions/{id}/cost", { path: { id: run.id } }),
   });
   const current: Execution = isExecutionRecord(detail.data) ? detail.data : run;
   const kindOf = useRunStepKind(current);
@@ -220,24 +208,26 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
     queryKey: ["run-authority", current.workflow_id, current.execution_authority_id],
     enabled: Boolean(canReadWorkflows && current.workflow_id && current.execution_authority_id),
     queryFn: () =>
-      apiRequest<WorkflowExecutionAuthority>(
-        `/v1/workflows/${encodeURIComponent(current.workflow_id ?? "")}/execution-authorities/${encodeURIComponent(current.execution_authority_id ?? "")}`,
-      ),
+      apiCall("get", "/v1/workflows/{id}/execution-authorities/{authority_id}", {
+        path: {
+          id: current.workflow_id ?? "",
+          authority_id: current.execution_authority_id ?? "",
+        },
+      }),
   });
   const patch = useQuery({
     queryKey: ["run-open-repair", current.workflow_id],
     enabled: failed && canReadWorkflows && Boolean(current.workflow_id),
     queryFn: () =>
-      apiRequest<{ items: { id: string }[] }>(
-        `/v1/patch-candidates?status=proposed&workflow_id=${encodeURIComponent(current.workflow_id ?? "")}&limit=1`,
-      ),
+      apiCall("get", "/v1/patch-candidates", {
+        query: { status: "proposed", workflow_id: current.workflow_id ?? "", limit: 1 },
+      }),
   });
   const connectorId = outcome?.cause_class === "auth_failed" ? stepConnectorId(failing) : null;
   const connector = useQuery({
     queryKey: ["connector", connectorId ?? ""],
     enabled: connectorId !== null && session.permissions.includes("connector:read"),
-    queryFn: () =>
-      apiRequest<ConnectorAuthInput>(`/v1/connectors/${encodeURIComponent(connectorId ?? "")}`),
+    queryFn: () => apiCall("get", "/v1/connectors/{id}", { path: { id: connectorId ?? "" } }),
   });
   const authState = connectorId
     ? {
@@ -787,9 +777,9 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
       const items: { id: string; name: string }[] = [];
       let total = 1;
       while (items.length < total) {
-        const page = await apiRequest<{ items: { id: string; name: string }[]; total: number }>(
-          `/v1/workflows?limit=200&offset=${items.length}`,
-        );
+        const page = await apiCall("get", "/v1/workflows", {
+          query: { limit: 200, offset: items.length },
+        });
         if (!page.items.length) break;
         items.push(...page.items);
         total = page.total;
@@ -826,10 +816,18 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
     queryKey: ["runs", "failed-total", narrowing, failedStatuses],
     enabled: failedStatuses !== null,
     queryFn: ({ signal }) =>
-      apiRequest<CursorPage<unknown>>(
-        listPagePath("/v1/executions", { ...narrowing, status: failedStatuses }, 1, null),
-        { signal },
-      ),
+      apiCall("get", "/v1/executions", {
+        query: {
+          request_source: narrowing.request_source || undefined,
+          workflow_id: narrowing.workflow_id || undefined,
+          q: narrowing.q || undefined,
+          started_from: narrowing.started_from || undefined,
+          started_to: narrowing.started_to || undefined,
+          status: failedStatuses || undefined,
+          limit: 1,
+        },
+        signal,
+      }),
   });
   const failedCount = failedStatuses === null ? 0 : (failedTotal.data?.total ?? null);
   const rows = useMemo(
@@ -1126,7 +1124,7 @@ function useRun(id: string | null, enabled: boolean) {
   const addressed = useQuery({
     queryKey: ["run", id ?? ""],
     enabled: enabled && id !== null,
-    queryFn: () => apiRequest<Execution>(`/v1/executions/${encodeURIComponent(id ?? "")}`),
+    queryFn: () => apiCall("get", "/v1/executions/{id}", { path: { id: id ?? "" } }),
   });
   const run = isExecutionRecord(addressed.data) && addressed.data.id === id ? addressed.data : null;
   return { run, failed: Boolean(addressed.error), retry: () => void addressed.refetch() };

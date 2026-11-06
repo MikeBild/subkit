@@ -106,10 +106,8 @@ describe("sk workflows create · preview warnings → commit proceeds", () => {
       JSON.stringify({
         name: "Stub Workflow",
         slug: "stub-workflow",
-        definition: {
-          trigger: { kind: "request" },
-          steps: [{ key: "s1", kind: "transform" }],
-        },
+        trigger: { kind: "request" },
+        steps: [{ key: "s1", kind: "transform" }],
       }),
     );
 

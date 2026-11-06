@@ -12,7 +12,9 @@ import {
 } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ApiError, apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
+import { ApiError } from "@/api/client";
+
 import {
   applyPackage,
   exportPackage,
@@ -146,7 +148,8 @@ function ExportDialogBody({
   const [downloading, setDownloading] = useState(false);
   const categories = useQuery({
     queryKey: ["catalog-categories"],
-    queryFn: () => apiRequest<{ categories: CategoryUsage[] }>("/v1/categories"),
+    queryFn: () => apiCall("get", "/v1/categories", {}),
+
     enabled: open,
   });
   const run = useMutation({

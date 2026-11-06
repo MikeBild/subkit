@@ -17,11 +17,7 @@ const listCommand = defineCommand({
     return withCommandErrors(
       async () => {
         const { items } = await client.listSkillCandidates({ limit: Number(args.limit) });
-        emitList(
-          !!args.json,
-          ["id", "title", "source", "status", "created_at"],
-          items as Record<string, unknown>[],
-        );
+        emitList(!!args.json, ["id", "title", "pattern_kind", "status", "created_at"], items);
       },
       { json: Boolean(args.json) },
     );

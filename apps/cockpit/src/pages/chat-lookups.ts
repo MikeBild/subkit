@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { apiRequest, type Conversation, type ConversationDetail } from "@/api/client";
+import { apiCall } from "@/api/call";
+import type { Conversation, ConversationDetail } from "@/api/client";
 import { absolute, conversationHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
@@ -83,10 +84,7 @@ export function useChatLookups({
   const workflowCatalogue = useQuery({
     queryKey: ["chat", "workflow-names"],
     enabled: session.permissions.includes("workflow:read"),
-    queryFn: () =>
-      apiRequest<{ items: { slug?: string | null; name?: string | null }[] }>(
-        "/v1/workflows?limit=200",
-      ),
+    queryFn: () => apiCall("get", "/v1/workflows", { query: { limit: 200 } }),
   });
   const workflowNameFor = useMemo(() => {
     const items = workflowCatalogue.data?.items ?? [];

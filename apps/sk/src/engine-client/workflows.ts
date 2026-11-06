@@ -1,39 +1,22 @@
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import type { EngineClient } from "../engine-client.ts";
-import type { ApiQuery } from "./http.ts";
+import type { ApiBody, ApiQuery } from "./http.ts";
 
-export interface ScheduleEntry {
-  id: string;
-  workflow_id: string;
-  workflow_slug: string | null;
-  workflow_name: string | null;
-  cron: string;
-  timezone: string;
-  execution_mode: "dev" | "prod";
-  paused: boolean;
-  input: unknown;
-  created_at: string;
-}
+type Schemas = components["schemas"];
 
-export interface ScheduleUpsertResponse extends ScheduleEntry {
-  upsert_status: "created" | "updated";
-}
-
-export type WorkflowVersionEntry = {
-  id: string;
-  version: number;
-  note: string | null;
-  created_at: string;
-  invalid: boolean;
-};
-
-export interface WorkflowInvocation {
-  workflow_id: string;
-  slug: string;
-  base_url: string | null;
-  http: {
-    snippets: Record<"dev" | "prod", Record<"curl" | "node" | "python", string>> | null;
-  };
-}
+export type ScheduleEntry = Schemas["ScheduleEntry"];
+export type ScheduleUpsertResponse = Schemas["ScheduleUpsertResponse"];
+export type ScheduleWriteResponse = Schemas["ScheduleWriteResponse"];
+export type ScheduleCreateBody = Schemas["ScheduleCreateBody"];
+export type ScheduleUpdateBody = Schemas["ScheduleUpdateBody"];
+export type WorkflowVersionEntry = Schemas["WorkflowVersion"];
+export type WorkflowInvocation = Schemas["WorkflowInvocation"];
+export type WorkflowDetail = Schemas["WorkflowDetail"];
+export type WorkflowSaveResponse = Schemas["WorkflowSaveResponse"];
+export type WorkflowListQuery = ApiQuery<"/v1/workflows", "get">;
+export type CreateWorkflowRequest = ApiBody<"/v1/workflows", "post">;
+export type UpdateWorkflowBody = ApiBody<"/v1/workflows/{id}", "put">;
+export type ValidateWorkflowBody = ApiBody<"/v1/workflows/validate", "post">;
 
 const VERSION_PAGE_SIZE = 200;
 
@@ -41,117 +24,104 @@ export const workflowsMethods = {
   async listWorkflowVersions(
     this: EngineClient,
     workflowId: string,
-  ): Promise<{ items: WorkflowVersionEntry[]; total: number }> {
-    const path = `/v1/workflows/${encodeURIComponent(workflowId)}/history`;
+  ): Promise<Schemas["WorkflowVersionListResponse"]> {
     const items: WorkflowVersionEntry[] = [];
     let total = 0;
     do {
-      const page = await this.request<{ items: WorkflowVersionEntry[]; total: number }>(
-        "GET",
-        path,
-        undefined,
-        { limit: VERSION_PAGE_SIZE, offset: items.length },
-      );
+      const { data } = await this.api.GET("/v1/workflows/{id}/history", {
+        params: {
+          path: { id: workflowId },
+          query: { limit: VERSION_PAGE_SIZE, offset: items.length },
+        },
+      });
+      const page = data as Schemas["WorkflowVersionListResponse"];
       total = page.total;
       if (page.items.length === 0) break;
       items.push(...page.items);
     } while (items.length < total);
     return { items, total };
   },
-  getWorkflowInvocation(this: EngineClient, workflowId: string): Promise<WorkflowInvocation> {
-    return this.request("GET", `/v1/workflows/${encodeURIComponent(workflowId)}/invocation`);
+  async getWorkflowInvocation(this: EngineClient, workflowId: string): Promise<WorkflowInvocation> {
+    const { data } = await this.api.GET("/v1/workflows/{id}/invocation", {
+      params: { path: { id: workflowId } },
+    });
+    return data as WorkflowInvocation;
   },
-  restoreWorkflowVersion(
+  async restoreWorkflowVersion(
     this: EngineClient,
     workflowId: string,
     version: number,
-  ): Promise<{ id: string; current_version_id: string; version: number }> {
-    return this.request(
-      "POST",
-      `/v1/workflows/${encodeURIComponent(workflowId)}/restore/${version}`,
-    );
+  ): Promise<WorkflowDetail> {
+    const { data } = await this.api.POST("/v1/workflows/{id}/restore/{version}", {
+      params: { path: { id: workflowId, version: String(version) } },
+    });
+    return data as WorkflowDetail;
   },
 
   async listWorkflows(
     this: EngineClient,
-    query: Record<string, string | number | undefined> = {},
-  ): Promise<{
-    items: Record<string, unknown>[];
-    total: number;
-    categories?: { category: string; count: number }[];
-  }> {
-    const { data } = await this.api.GET("/v1/workflows", {
-      params: { query: query as ApiQuery<"/v1/workflows", "get"> },
-    });
-    return data as { items: Record<string, unknown>[]; total: number };
+    query: WorkflowListQuery = {},
+  ): Promise<Schemas["WorkflowListResponse"]> {
+    const { data } = await this.api.GET("/v1/workflows", { params: { query } });
+    return data as Schemas["WorkflowListResponse"];
   },
-  async getWorkflow(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+  async getWorkflow(this: EngineClient, id: string): Promise<WorkflowDetail> {
     const { data } = await this.api.GET("/v1/workflows/{id}", { params: { path: { id } } });
-    return data as Record<string, unknown>;
+    return data as WorkflowDetail;
   },
-  createWorkflow(
+  async createWorkflow(
     this: EngineClient,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    return this.request("POST", "/v1/workflows", body);
+    body: CreateWorkflowRequest,
+  ): Promise<WorkflowSaveResponse> {
+    const { data } = await this.api.POST("/v1/workflows", { body });
+    return data as WorkflowSaveResponse;
   },
-  updateWorkflow(
+  async updateWorkflow(
     this: EngineClient,
     id: string,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    return this.request("PUT", `/v1/workflows/${encodeURIComponent(id)}`, body);
+    body: UpdateWorkflowBody,
+  ): Promise<WorkflowSaveResponse> {
+    const { data } = await this.api.PUT("/v1/workflows/{id}", { params: { path: { id } }, body });
+    return data as WorkflowSaveResponse;
   },
-  validateWorkflowDraft(
+  async validateWorkflowDraft(
     this: EngineClient,
-    body: Record<string, unknown>,
-  ): Promise<{ ok: boolean; errors?: Array<{ path: string; message: string }> }> {
-    return this.request("POST", "/v1/workflows/validate", body);
+    body: ValidateWorkflowBody,
+  ): Promise<Schemas["ValidateWorkflowResponse"]> {
+    const { data } = await this.api.POST("/v1/workflows/validate", { body });
+    return data as Schemas["ValidateWorkflowResponse"];
   },
-  deleteWorkflow(this: EngineClient, id: string): Promise<void> {
-    return this.request("DELETE", `/v1/workflows/${encodeURIComponent(id)}`);
+  async deleteWorkflow(this: EngineClient, id: string): Promise<void> {
+    await this.api.DELETE("/v1/workflows/{id}", { params: { path: { id } } });
   },
 
-  listSchedules(
+  async listSchedules(
     this: EngineClient,
-    query: { workflow_id?: string } = {},
-  ): Promise<{
-    schedules: ScheduleEntry[];
-    total: number;
-  }> {
-    const qs = query.workflow_id ? `?workflow_id=${encodeURIComponent(query.workflow_id)}` : "";
-    return this.request("GET", `/v1/schedules${qs}`);
+    query: ApiQuery<"/v1/schedules", "get"> = {},
+  ): Promise<Schemas["ScheduleListResponse"]> {
+    const { data } = await this.api.GET("/v1/schedules", { params: { query } });
+    return data as Schemas["ScheduleListResponse"];
   },
-
-  createSchedule(
+  async createSchedule(
     this: EngineClient,
-    body: {
-      workflow_id: string;
-      cron: string;
-      timezone?: string;
-      execution_mode?: "dev" | "prod";
-      paused?: boolean;
-      input?: unknown;
-    },
+    body: ScheduleCreateBody,
   ): Promise<ScheduleUpsertResponse> {
-    return this.request("POST", "/v1/schedules", body);
+    const { data } = await this.api.POST("/v1/schedules", { body });
+    return data as ScheduleUpsertResponse;
   },
-
-  updateSchedule(
+  async updateSchedule(
     this: EngineClient,
     id: string,
-    patch: {
-      cron?: string;
-      timezone?: string;
-      execution_mode?: "dev" | "prod";
-      paused?: boolean;
-      input?: unknown;
-    },
-  ): Promise<ScheduleEntry> {
-    return this.request("PUT", `/v1/schedules/${encodeURIComponent(id)}`, patch);
+    patch: ScheduleUpdateBody,
+  ): Promise<ScheduleWriteResponse> {
+    const { data } = await this.api.PUT("/v1/schedules/{id}", {
+      params: { path: { id } },
+      body: patch,
+    });
+    return data as ScheduleWriteResponse;
   },
-
-  deleteSchedule(this: EngineClient, id: string): Promise<{ id: string; deleted: boolean }> {
-    return this.request("DELETE", `/v1/schedules/${encodeURIComponent(id)}`);
+  async deleteSchedule(this: EngineClient, id: string): Promise<Schemas["ScheduleDeleteResponse"]> {
+    const { data } = await this.api.DELETE("/v1/schedules/{id}", { params: { path: { id } } });
+    return data as Schemas["ScheduleDeleteResponse"];
   },
 };

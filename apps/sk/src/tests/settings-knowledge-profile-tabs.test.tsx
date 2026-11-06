@@ -113,10 +113,11 @@ describe("KnowledgeTab — inline ingest (G8 closure)", () => {
       expect(createKnowledgeSource.mock.calls.length).toBe(1);
       const args0 = createKnowledgeSource.mock.calls[0] as unknown as [
         { name: string; mime_type: string; content: Buffer },
-        Record<string, unknown>,
+        ...unknown[],
       ];
       expect(args0[0].name).toBe("playbook.md");
       expect(args0[0].mime_type).toBe("text/markdown");
+      expect(args0).toHaveLength(1);
     } finally {
       ui.unmount();
     }
@@ -127,8 +128,8 @@ describe("KnowledgeTab (M7)", () => {
   test("renders knowledge sources from engine", async () => {
     const { client } = makeClient({
       knowledgeSources: [
-        { id: "k1", name: "playbook.md", status: "ready", updated_at: "2026-05-01T12:00:00Z" },
-        { id: "k2", name: "incidents.md", status: "indexing" },
+        { id: "k1", name: "playbook.md", status: "active", updated_at: "2026-05-01T12:00:00Z" },
+        { id: "k2", name: "incidents.md", status: "processing" },
       ],
     });
     const ui = await navigateTo(client, 4);
@@ -137,9 +138,40 @@ describe("KnowledgeTab (M7)", () => {
       await ui.waitFor((t) => t.includes("playbook.md"));
       const txt = ui.text();
       expect(txt).toContain("playbook.md");
-      expect(txt).toContain("[ready]");
+      expect(txt).toContain("[active]");
       expect(txt).toContain("incidents.md");
-      expect(txt).toContain("[indexing]");
+      expect(txt).toContain("[processing]");
+    } finally {
+      ui.unmount();
+    }
+  });
+
+  test("shows last_refreshed_at, falling back to updated_at", async () => {
+    const { client } = makeClient({
+      knowledgeSources: [
+        {
+          id: "k1",
+          name: "playbook.md",
+          status: "active",
+          last_refreshed_at: "2026-06-01T08:00:00Z",
+          updated_at: "2026-05-01T12:00:00Z",
+        },
+        {
+          id: "k2",
+          name: "incidents.md",
+          status: "active",
+          last_refreshed_at: null,
+          updated_at: "2026-04-01T12:00:00Z",
+        },
+      ],
+    });
+    const ui = await navigateTo(client, 4);
+    try {
+      await ui.waitFor((t) => t.includes("incidents.md"));
+      const txt = ui.text();
+      expect(txt).toContain("2026-06-01T08:00:00Z");
+      expect(txt).not.toContain("2026-05-01T12:00:00Z");
+      expect(txt).toContain("2026-04-01T12:00:00Z");
     } finally {
       ui.unmount();
     }
@@ -147,7 +179,7 @@ describe("KnowledgeTab (M7)", () => {
 
   test("`d` opens delete confirmation; `1` confirms and calls deleteKnowledgeSource", async () => {
     const { client, deleteKs } = makeClient({
-      knowledgeSources: [{ id: "k1", name: "playbook.md", status: "ready" }],
+      knowledgeSources: [{ id: "k1", name: "playbook.md", status: "active" }],
     });
     const ui = await navigateTo(client, 4);
     try {

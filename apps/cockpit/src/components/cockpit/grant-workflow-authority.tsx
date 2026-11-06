@@ -1,8 +1,11 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { approvalChoice } from "@shared/approval-choice.ts";
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ApiError, apiRequest } from "@/api/client";
+import { type ApiResponse, apiCall } from "@/api/call";
+import { ApiError } from "@/api/client";
 import { cockpitApiHref } from "@/app/installation-context";
 import { absolute, chatNewHref } from "@/app/links";
 import { useSession } from "@/app/session";
@@ -51,9 +54,14 @@ import {
   DEFAULT_GRANT_LIMIT,
   type GrantLimit,
   grantLimitBounds,
-  type WorkflowAuthority,
   type WorkflowAuthorityPreview,
 } from "@/lib/workflow-authorities";
+
+type WorkflowJsonValue = components["schemas"]["WorkflowJsonValue"];
+type PrepareOutcome = ApiResponse<
+  "/v1/workflows/{id}/versions/{version_id}/prepare-authority",
+  "post"
+>;
 
 const PREPARATION_REUSE_MS = 10 * 60_000;
 const recentPreparations = new Map<string, number>();
@@ -137,16 +145,14 @@ export function GrantWorkflowAuthority({
     queryKey: ["authority-title", workflowId, reviewVersionId],
     enabled: open && session.permissions.includes("workflow:read"),
     queryFn: async () => {
-      const workflow = await apiRequest<{ name: string }>(
-        `/v1/workflows/${encodeURIComponent(workflowId)}`,
-      );
+      const workflow = await apiCall("get", "/v1/workflows/{id}", { path: { id: workflowId } });
       let offset = 0;
       let latest = 0;
       for (;;) {
-        const history = await apiRequest<{
-          items: { id: string; version: number }[];
-          total: number;
-        }>(`/v1/workflows/${encodeURIComponent(workflowId)}/history?limit=200&offset=${offset}`);
+        const history = await apiCall("get", "/v1/workflows/{id}/history", {
+          path: { id: workflowId },
+          query: { limit: 200, offset },
+        });
         latest = Math.max(latest, ...history.items.map((entry) => entry.version));
         const version = history.items.find((entry) => entry.id === reviewVersionId);
         if (version) return { name: workflow.name, version: version.version, latest };
@@ -180,9 +186,9 @@ export function GrantWorkflowAuthority({
   async function sampleCall(): Promise<string> {
     if (session.permissions.includes("execution:read")) {
       try {
-        const newest = await apiRequest<{ items: { input?: unknown }[] }>(
-          `/v1/executions?workflow_id=${encodeURIComponent(workflowId)}&request_source=webhook&limit=1`,
-        );
+        const newest = await apiCall("get", "/v1/executions", {
+          query: { workflow_id: workflowId, request_source: "webhook", limit: 1 },
+        });
         const received = newest.items[0]?.input;
         if (received !== undefined && received !== null) return JSON.stringify(received, null, 2);
       } catch {}
@@ -204,7 +210,7 @@ export function GrantWorkflowAuthority({
       env: "dev" | "prod";
       token: number;
       version?: string;
-      input?: unknown;
+      input?: WorkflowJsonValue;
       pinned: boolean;
     }): Promise<{
       review: WorkflowAuthorityPreview | null;
@@ -217,9 +223,10 @@ export function GrantWorkflowAuthority({
       const superseded = () => new Error("authority_review_superseded");
       const targetVersion = version ?? versionId;
       const preview = (forEnvironment: "dev" | "prod") =>
-        apiRequest<WorkflowAuthorityPreview>(
-          `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(targetVersion)}/authority-preview?environment=${forEnvironment}`,
-        );
+        apiCall("get", "/v1/workflows/{id}/versions/{version_id}/authority-preview", {
+          path: { id: workflowId, version_id: targetVersion },
+          query: { environment: forEnvironment },
+        });
       let asked = env;
       let result = await preview(asked);
       if (!isLatest(token)) throw superseded();
@@ -247,16 +254,14 @@ export function GrantWorkflowAuthority({
       ) {
         notePreparation(preparationKey, Date.now());
         setTrialStartedAt(Date.now());
-        let outcome: { prepared: boolean; reason?: string; trigger?: { slug: string } };
+        let outcome: PrepareOutcome;
         try {
-          outcome = await apiRequest(
-            `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(targetVersion)}/prepare-authority`,
+          outcome = await apiCall(
+            "post",
+            "/v1/workflows/{id}/versions/{version_id}/prepare-authority",
             {
-              method: "POST",
-              body: JSON.stringify({
-                environment: asked,
-                ...(input !== undefined ? { input } : {}),
-              }),
+              path: { id: workflowId, version_id: targetVersion },
+              body: { environment: asked, ...(input !== undefined ? { input } : {}) },
             },
           );
           if (isLatest(token)) setTrialElsewhere(outcome.reason === "preparation_in_flight");
@@ -293,7 +298,12 @@ export function GrantWorkflowAuthority({
       };
     },
   });
-  function startReview(env: "dev" | "prod", version?: string, input?: unknown, pinned = true) {
+  function startReview(
+    env: "dev" | "prod",
+    version?: string,
+    input?: WorkflowJsonValue,
+    pinned = true,
+  ) {
     const token = latestReview.current + 1;
     latestReview.current = token;
     setReview(null);
@@ -350,18 +360,15 @@ export function GrantWorkflowAuthority({
         ? authorityGrantInput(review, expected, grantRuns, grantHours, Date.now())
         : null;
       if (!checked) throw new Error("authority_review_incomplete");
-      return apiRequest<WorkflowAuthority>(
-        `/v1/workflows/${encodeURIComponent(workflowId)}/execution-authorities`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            ...checked,
-            ...(activation ? { activation } : {}),
-            ...(conversationId ? { conversation_id: conversationId } : {}),
-            ...(runAfter ? { start_run: true } : {}),
-          }),
+      return apiCall("post", "/v1/workflows/{id}/execution-authorities", {
+        path: { id: workflowId },
+        body: {
+          ...checked,
+          ...(activation ? { activation } : {}),
+          ...(conversationId ? { conversation_id: conversationId } : {}),
+          ...(runAfter ? { start_run: true } : {}),
         },
-      );
+      });
     },
     onSuccess: (result) => {
       onCompleted?.();
@@ -374,16 +381,16 @@ export function GrantWorkflowAuthority({
   const activateOnly = useMutation({
     mutationFn: async (_then: "nothing" | "single_run") => {
       if (!review || !activation) throw new Error("activation_review_missing");
-      return apiRequest(`/v1/workflows/${encodeURIComponent(workflowId)}/activate-draft`, {
-        method: "POST",
-        body: JSON.stringify({
+      return apiCall("post", "/v1/workflows/{id}/activate-draft", {
+        path: { id: workflowId },
+        body: {
           ...(conversationId && _then !== "single_run" ? { conversation_id: conversationId } : {}),
           ...(runAfter && _then !== "single_run" ? { start_run: true } : {}),
           workflow_version_id: reviewVersionId,
           expected_current_version_id: activation.expected_current_version_id,
           expected_manifest_digest: review.digest,
           execution_environment: environment,
-        }),
+        },
       });
     },
     onSuccess: async (_result, then) => {
@@ -406,10 +413,9 @@ export function GrantWorkflowAuthority({
     queryKey: ["boundary-proposals", workflowId],
     enabled: open && Boolean(review) && !review?.eligible_for_repeated_runs,
     queryFn: async () => {
-      const body = await apiRequest<{
-        proposals?: Array<{ step_id: string }>;
-        unproposable?: Array<{ step_id: string; reason: string }>;
-      }>(`/v1/workflows/${encodeURIComponent(workflowId)}/boundary-proposals`);
+      const body = await apiCall("get", "/v1/workflows/{id}/boundary-proposals", {
+        path: { id: workflowId },
+      });
       return {
         proposals: Array.isArray(body?.proposals) ? body.proposals : [],
         unproposable: Array.isArray(body?.unproposable) ? body.unproposable : [],
@@ -419,15 +425,10 @@ export function GrantWorkflowAuthority({
   const repair = useMutation({
     mutationFn: async () => {
       const opening = latestReview.current;
-      const current = await apiRequest<{ draft_version_id: string | null }>(
-        `/v1/workflows/${encodeURIComponent(workflowId)}`,
-      );
-      const result = await apiRequest<{
-        draft: { version_id: string };
-        applied_step_ids: string[];
-      }>(`/v1/workflows/${encodeURIComponent(workflowId)}/boundary-proposals/apply`, {
-        method: "POST",
-        body: JSON.stringify({ expected_draft_version_id: current.draft_version_id ?? null }),
+      const current = await apiCall("get", "/v1/workflows/{id}", { path: { id: workflowId } });
+      const result = await apiCall("post", "/v1/workflows/{id}/boundary-proposals/apply", {
+        path: { id: workflowId },
+        body: { expected_draft_version_id: current.draft_version_id ?? null },
       });
       return { ...result, opening };
     },
@@ -1100,7 +1101,7 @@ export function GrantWorkflowAuthority({
                 disabled={busy}
                 data-testid="authority-sample-prepare"
                 onClick={() => {
-                  let parsed: unknown;
+                  let parsed: WorkflowJsonValue;
                   try {
                     parsed = JSON.parse(sampleText);
                   } catch {

@@ -1,18 +1,26 @@
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import type { MentionCandidate } from "./mention-picker.tsx";
 
 export type { MentionCandidate } from "./mention-picker.tsx";
 
+type WorkflowMentionSource = Partial<
+  Pick<components["schemas"]["WorkflowListItem"], "id" | "slug" | "name">
+>;
+type ExecutionMentionSource = Partial<
+  Pick<components["schemas"]["ExecutionListItem"], "id" | "workflow_name">
+>;
+
 interface MentionCatalogClient {
-  listWorkflows(query: { limit: number }): Promise<{ items: Record<string, unknown>[] }>;
-  listExecutions(query: { limit: number }): Promise<{ items: Record<string, unknown>[] }>;
+  listWorkflows(query: { limit: number }): Promise<{ items: readonly WorkflowMentionSource[] }>;
+  listExecutions(query: { limit: number }): Promise<{ items: readonly ExecutionMentionSource[] }>;
 }
 
-function nonEmptyString(value: unknown): string | null {
+function nonEmptyString(value: string | null | undefined): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
 
 export function workflowMentionCandidates(
-  items: readonly Record<string, unknown>[],
+  items: readonly WorkflowMentionSource[],
 ): MentionCandidate[] {
   return items.flatMap((item) => {
     const id = nonEmptyString(item.id);
@@ -29,7 +37,7 @@ export function workflowMentionCandidates(
 }
 
 export function executionMentionCandidates(
-  items: readonly Record<string, unknown>[],
+  items: readonly ExecutionMentionSource[],
 ): MentionCandidate[] {
   return items.flatMap((item) => {
     const id = nonEmptyString(item.id);
@@ -37,7 +45,7 @@ export function executionMentionCandidates(
     return [
       {
         value: `execution:${id}`,
-        label: nonEmptyString(item.workflow_name) ?? nonEmptyString(item.workflow_slug) ?? id,
+        label: nonEmptyString(item.workflow_name) ?? id,
         kind: "execution" as const,
       },
     ];

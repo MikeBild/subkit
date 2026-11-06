@@ -1,4 +1,5 @@
 import { osc52Copy } from "@cli-core/clipboard.ts";
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
@@ -18,21 +19,33 @@ interface TokenRow {
   expiresAt: string | null;
 }
 
-function pickName(raw: Record<string, unknown>): string {
-  for (const key of ["label", "name", "id"]) {
-    const v = raw[key];
-    if (typeof v === "string" && v.length > 0) return v;
-  }
-  return "(unnamed)";
+type Schemas = components["schemas"];
+type PortalToken = Schemas["PortalToken"];
+type IssuePortalTokenBody = Schemas["IssuePortalTokenBody"];
+
+function tokenRow(token: PortalToken, nowMs: number): TokenRow {
+  return {
+    id: token.id,
+    name: token.prefix || token.id,
+    status: token.revoked_at
+      ? "revoked"
+      : new Date(token.expires_at).getTime() < nowMs
+        ? "expired"
+        : "active",
+    expiresAt: token.expires_at,
+  };
 }
 
-function pickStatus(raw: Record<string, unknown>): string {
-  if (typeof raw.status === "string") return raw.status;
-  if (raw.revoked_at) return "revoked";
-  if (typeof raw.expires_at === "string") {
-    return new Date(raw.expires_at).getTime() < Date.now() ? "expired" : "active";
-  }
-  return "active";
+export function issuePortalTokenBody(vals: Record<string, string>): IssuePortalTokenBody {
+  const ttl = Number.parseInt(vals.ttl_minutes ?? "", 10);
+  return {
+    user_id: vals.user_id?.trim() ?? "",
+    allowed_workflows: (vals.allowed_workflows ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0),
+    ...(Number.isInteger(ttl) && ttl > 0 ? { ttl_minutes: ttl } : {}),
+  };
 }
 
 export const PortalTokensSubTab: React.FC<Props> = ({ client, onInnerEscape }) => {
@@ -58,13 +71,8 @@ export const PortalTokensSubTab: React.FC<Props> = ({ client, onInnerEscape }) =
       .listPortalTokens()
       .then((res) => {
         if (cancelled) return;
-        const next: TokenRow[] = res.items.map((it) => ({
-          id: typeof it.id === "string" ? it.id : "(unknown)",
-          name: pickName(it),
-          status: pickStatus(it),
-          expiresAt: typeof it.expires_at === "string" ? it.expires_at : null,
-        }));
-        setRows(next);
+        const nowMs = Date.now();
+        setRows(res.items.map((it) => tokenRow(it, nowMs)));
         setLoading(false);
       })
       .catch((err: unknown) => {
@@ -151,20 +159,7 @@ export const PortalTokensSubTab: React.FC<Props> = ({ client, onInnerEscape }) =
               { key: "ttl_minutes", label: "TTL minutes", placeholder: "15 (default)" },
             ]}
             onSubmit={async (vals) => {
-              const body: Record<string, unknown> = {
-                user_id: vals.user_id,
-                allowed_workflows: (vals.allowed_workflows ?? "")
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter((s) => s.length > 0),
-              };
-              const ttl = Number.parseInt(vals.ttl_minutes ?? "", 10);
-              if (Number.isInteger(ttl) && ttl > 0) body.ttl_minutes = ttl;
-              const issued = (await client.issuePortalToken(body)) as {
-                id: string;
-                plaintext_token?: string;
-                expires_at?: string;
-              };
+              const issued = await client.issuePortalToken(issuePortalTokenBody(vals));
               setCreateOpen(false);
               setRefreshKey((k) => k + 1);
               if (issued.plaintext_token) {

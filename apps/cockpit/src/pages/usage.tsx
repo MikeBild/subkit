@@ -3,7 +3,8 @@ import { useRouterState } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
 import { CircleAlert, Download, Gauge, MessageSquare, TrendingUp, Users } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { ApiError, apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
+import { ApiError } from "@/api/client";
 import { useActorDirectory } from "@/app/actor-directory";
 import { actorKey } from "@/app/actor-directory-model";
 import { absolute, chatNewHref } from "@/app/links";
@@ -36,13 +37,12 @@ import { useI18n } from "@/lib/i18n-context";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { usePromptCacheFlows } from "@/pages/operations-bar";
 import {
-  executionStatsEndpoint,
   isStatsWindow,
   llmStatsEndpoint,
+  llmStatsQuery,
   previousBounds,
   rollingDays,
   STATS_WINDOWS,
-  STATUS_ENDPOINT,
   type StatsWindow,
   type TimeSpan,
   usageWindowFromUrl,
@@ -50,9 +50,9 @@ import {
   type WindowBounds,
   windowBounds,
   windowBucket,
+  windowStatsQuery,
 } from "@/pages/operations-figures";
 import { PromptCacheSection, PromptCacheTile } from "@/pages/prompt-cache";
-import { workspaceSettingEndpoint } from "@/pages/settings-save";
 import { OriginChartSvg, OriginChartTable, OriginLegend } from "@/pages/usage-chart";
 import {
   BudgetDialog,
@@ -141,7 +141,7 @@ function useLlmQuery(
   return useQuery({
     queryKey: ["usage-llm", axis ?? "window", span],
     enabled,
-    queryFn: () => apiRequest<unknown>(llmStatsEndpoint(span, axis)),
+    queryFn: () => apiCall("get", "/v1/stats/llm", { query: llmStatsQuery(span, axis) }),
     ...live,
   });
 }
@@ -151,7 +151,10 @@ function useRunsQuery(enabled: boolean, span: TimeSpan & { window: StatsWindow }
   return useQuery({
     queryKey: ["usage", "runs-by-workflow", span],
     enabled,
-    queryFn: () => apiRequest<unknown>(`${executionStatsEndpoint(span)}&group_by=workflow_id`),
+    queryFn: () =>
+      apiCall("get", "/v1/stats/executions", {
+        query: { ...windowStatsQuery(span), group_by: "workflow_id" },
+      }),
     ...live,
   });
 }
@@ -233,7 +236,7 @@ export function UsagePage() {
   const status = useQuery({
     queryKey: ["usage-status"],
     enabled: allowed,
-    queryFn: () => apiRequest<unknown>(STATUS_ENDPOINT),
+    queryFn: () => apiCall("get", "/v1/status", {}),
     ...live,
   });
   const settings = useQuery({
@@ -241,9 +244,10 @@ export function UsagePage() {
     enabled: allowed && canWriteSettings,
     retry: false,
     queryFn: () =>
-      apiRequest<{ path: string; value: unknown }>(
-        workspaceSettingEndpoint(PRICE_SETTING, session.tenant.id),
-      ),
+      apiCall("get", "/v1/settings/{path}", {
+        path: { path: PRICE_SETTING },
+        query: { tenant: session.tenant.id },
+      }),
   });
   const priceSetting = settings.data;
   const directory = useActorDirectory(canAll);
@@ -323,10 +327,7 @@ export function UsagePage() {
       queryKey: ["usage-workflow", id],
       enabled: allowed,
       retry: false,
-      queryFn: () =>
-        apiRequest<{ name?: string | null; slug?: string | null }>(
-          `/v1/workflows/${encodeURIComponent(id)}`,
-        ),
+      queryFn: () => apiCall("get", "/v1/workflows/{id}", { path: { id } }),
     })),
   });
   const workflowLookup = useMemo(() => {

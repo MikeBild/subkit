@@ -129,10 +129,8 @@ describe("sk workflows create · --json contract", () => {
       JSON.stringify({
         name: "Stub Workflow",
         slug: "stub-workflow",
-        definition: {
-          trigger: { kind: "request" },
-          steps: [{ key: "s1", kind: "transform" }],
-        },
+        trigger: { kind: "request" },
+        steps: [{ key: "s1", kind: "transform" }],
       }),
     );
 
@@ -151,10 +149,8 @@ describe("sk workflows create · --json contract", () => {
       JSON.stringify({
         name: "Stub Workflow",
         slug: "stub-workflow",
-        definition: {
-          trigger: { kind: "request" },
-          steps: [{ key: "s1", kind: "transform" }],
-        },
+        trigger: { kind: "request" },
+        steps: [{ key: "s1", kind: "transform" }],
       }),
     );
 

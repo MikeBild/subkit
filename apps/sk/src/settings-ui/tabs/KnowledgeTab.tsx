@@ -1,5 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { extname, isAbsolute, resolve } from "node:path";
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -36,25 +37,15 @@ interface SourceRow {
   lastIndexed: string | null;
 }
 
-function pickName(raw: Record<string, unknown>): string {
-  if (typeof raw.name === "string") return raw.name;
-  if (typeof raw.title === "string") return raw.title;
-  if (typeof raw.uri === "string") return raw.uri;
-  return typeof raw.id === "string" ? raw.id : "(unnamed)";
-}
+type KnowledgeSource = components["schemas"]["KnowledgeSource"];
 
-function pickStatus(raw: Record<string, unknown>): string {
-  if (typeof raw.status === "string") return raw.status;
-  if (typeof raw.state === "string") return raw.state;
-  return "unknown";
-}
-
-function pickLastIndexed(raw: Record<string, unknown>): string | null {
-  for (const key of ["last_indexed_at", "indexed_at", "updated_at"]) {
-    const v = raw[key];
-    if (typeof v === "string") return v;
-  }
-  return null;
+function sourceRow(source: KnowledgeSource): SourceRow {
+  return {
+    id: source.id,
+    name: source.name || source.source_uri || source.id,
+    status: source.status,
+    lastIndexed: source.last_refreshed_at ?? source.updated_at,
+  };
 }
 
 export const KnowledgeTab: React.FC<Props> = ({ client, onInnerEscape }) => {
@@ -84,13 +75,7 @@ export const KnowledgeTab: React.FC<Props> = ({ client, onInnerEscape }) => {
       try {
         const res = await client.listKnowledgeSources();
         if (cancelled) return;
-        const next: SourceRow[] = res.items.map((it) => ({
-          id: typeof it.id === "string" ? it.id : "(unknown)",
-          name: pickName(it),
-          status: pickStatus(it),
-          lastIndexed: pickLastIndexed(it),
-        }));
-        setRows(next);
+        setRows(res.items.map(sourceRow));
         setLoading(false);
       } catch (err) {
         if (cancelled) return;
@@ -124,10 +109,7 @@ export const KnowledgeTab: React.FC<Props> = ({ client, onInnerEscape }) => {
       const content = await readFile(abs);
       const name = abs.split("/").pop() ?? ingestPath;
       const mime = mimeFor(name);
-      await client.createKnowledgeSource(
-        { name, content, mime_type: mime },
-        { source: "sk-cli /settings → Knowledge tab" },
-      );
+      await client.createKnowledgeSource({ name, content, mime_type: mime });
       setActionFlash(`ingested ${name} (${content.length} bytes, ${mime})`);
       setIngestPath("");
       setIngestOpen(false);

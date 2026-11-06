@@ -16,11 +16,6 @@ interface SkillRow {
   status: string;
 }
 
-function readStatus(item: { id: string; title: string; scope: string }): string {
-  const r = item as unknown as Record<string, unknown>;
-  return typeof r.status === "string" ? r.status : "draft";
-}
-
 export const SkillsTab: React.FC<Props> = ({ client, onInnerEscape }) => {
   const [rows, setRows] = useState<SkillRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +42,7 @@ export const SkillsTab: React.FC<Props> = ({ client, onInnerEscape }) => {
           id: it.id,
           title: it.title,
           scope: it.scope,
-          status: readStatus(it),
+          status: it.status,
         }));
         setRows(next);
         setLoading(false);

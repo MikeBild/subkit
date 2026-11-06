@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { CircleAlert, MessageSquare, Workflow } from "lucide-react";
 import type { ReactNode } from "react";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { absolute, conversationHref, runHref, settingsHref, workflowHref } from "@/app/links";
 import {
   ActionButton,
@@ -18,7 +18,7 @@ import { pluralKey, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import {
   type LlmStatsFilter,
-  llmStatsEndpoint,
+  llmStatsQuery,
   type StatsWindow,
   type TimeSpan,
   type WindowBounds,
@@ -86,7 +86,7 @@ function useLlm(
   return useQuery({
     queryKey: ["usage-llm", "sheet", span, axis, filter],
     enabled,
-    queryFn: () => apiRequest<unknown>(llmStatsEndpoint(span, axis, filter)),
+    queryFn: () => apiCall("get", "/v1/stats/llm", { query: llmStatsQuery(span, axis, filter) }),
   });
 }
 

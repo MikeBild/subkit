@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { emitList } from "@cli-core/format";
 import { defineCommand } from "citty";
+import type { CredentialBody } from "../engine-client/connectors.ts";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
 const listCommand = defineCommand({
@@ -13,11 +14,8 @@ const listCommand = defineCommand({
     const client = makeClient();
     return withCommandErrors(
       async () => {
-        const connector = (await client.getConnector(args["connector-id"])) as Record<
-          string,
-          unknown
-        >;
-        const credentials = (connector.credentials ?? []) as Record<string, unknown>[];
+        const connector = await client.getConnector(args["connector-id"]);
+        const credentials = connector.credentials ?? [];
         emitList(
           !!args.json,
           ["id", "mode", "environment", "has_oauth_refresh", "created_at"],
@@ -40,6 +38,56 @@ function parsePairs(raw: string): Record<string, string> {
     out[trimmed.slice(0, idx).trim()] = trimmed.slice(idx + 1).trim();
   }
   return out;
+}
+
+export interface CredentialArgs {
+  mode: string;
+  token?: string | undefined;
+  privateKey?: string | undefined;
+  header?: string | undefined;
+  query?: string | undefined;
+  username?: string | undefined;
+  password?: string | undefined;
+  accessKeyId?: string | undefined;
+  secretAccessKey?: string | undefined;
+  sessionToken?: string | undefined;
+}
+
+export function credentialBody(args: CredentialArgs): CredentialBody {
+  const mode = args.mode;
+  if (mode === "bearer") {
+    if (!args.token) throw new Error("bearer mode requires --token");
+    return { mode, token: args.token };
+  }
+  if (mode === "signed_jwt") {
+    if (args.privateKey === undefined) throw new Error("signed_jwt requires --private-key-file");
+    return { mode, private_key: args.privateKey };
+  }
+  if (mode === "header") {
+    if (!args.header) throw new Error('header mode requires --header "Name=Value"');
+    return { mode, headers: parsePairs(args.header) };
+  }
+  if (mode === "query") {
+    if (!args.query) throw new Error('query mode requires --query "key=Value"');
+    return { mode, query: parsePairs(args.query) };
+  }
+  if (mode === "basic") {
+    if (!args.username || !args.password)
+      throw new Error("basic mode requires --username and --password");
+    return { mode, username: args.username, password: args.password };
+  }
+  if (mode === "aws_sigv4") {
+    if (!args.accessKeyId || !args.secretAccessKey)
+      throw new Error("aws_sigv4 mode requires --access-key-id and --secret-access-key");
+    return {
+      mode,
+      access_key_id: args.accessKeyId,
+      secret_access_key: args.secretAccessKey,
+      ...(args.sessionToken ? { session_token: args.sessionToken } : {}),
+    };
+  }
+  if (mode === "none") return { mode };
+  throw new Error(`unknown --mode '${mode}' (bearer|header|query|basic|aws_sigv4|signed_jwt|none)`);
 }
 
 const setCommand = defineCommand({
@@ -76,43 +124,32 @@ const setCommand = defineCommand({
     const jsonMode = Boolean(args.json);
     const connectorId = String(args["connector-id"]);
     const mode = String(args.mode).replace(/-/g, "_");
-    const body: Record<string, unknown> = { mode };
     return withCommandErrors(
       async () => {
-        if (mode === "bearer") {
-          if (!args.token) throw new Error("bearer mode requires --token");
-          body.token = args.token;
-        } else if (mode === "signed_jwt") {
-          if (!args["private-key-file"]) throw new Error("signed_jwt requires --private-key-file");
-          body.private_key = await readFile(String(args["private-key-file"]), "utf8");
-        } else if (mode === "header") {
-          if (!args.header) throw new Error('header mode requires --header "Name=Value"');
-          body.headers = parsePairs(String(args.header));
-        } else if (mode === "query") {
-          if (!args.query) throw new Error('query mode requires --query "key=Value"');
-          body.query = parsePairs(String(args.query));
-        } else if (mode === "basic") {
-          if (!args.username || !args.password)
-            throw new Error("basic mode requires --username and --password");
-          body.username = args.username;
-          body.password = args.password;
-        } else if (mode === "aws_sigv4") {
-          if (!args["access-key-id"] || !args["secret-access-key"])
-            throw new Error("aws_sigv4 mode requires --access-key-id and --secret-access-key");
-          body.access_key_id = args["access-key-id"];
-          body.secret_access_key = args["secret-access-key"];
-          if (args["session-token"]) body.session_token = args["session-token"];
-        } else if (mode !== "none") {
-          throw new Error(
-            `unknown --mode '${mode}' (bearer|header|query|basic|aws_sigv4|signed_jwt|none)`,
-          );
+        if (mode === "signed_jwt" && !args["private-key-file"]) {
+          throw new Error("signed_jwt requires --private-key-file");
         }
+        const body = credentialBody({
+          mode,
+          token: args.token,
+          privateKey:
+            mode === "signed_jwt"
+              ? await readFile(String(args["private-key-file"]), "utf8")
+              : undefined,
+          header: args.header,
+          query: args.query,
+          username: args.username,
+          password: args.password,
+          accessKeyId: args["access-key-id"],
+          secretAccessKey: args["secret-access-key"],
+          sessionToken: args["session-token"],
+        });
 
-        const created = (await client.createCredential(connectorId, body)) as { id?: string };
+        const created = await client.createCredential(connectorId, body);
         let probe: { ok: boolean; error?: string } | undefined;
         if (!args["skip-checks"]) {
           try {
-            const result = (await client.testConnector(connectorId)) as { ok?: boolean };
+            const result = await client.testConnector(connectorId);
             probe = { ok: result.ok === true };
           } catch {
             probe = { ok: false, error: "probe_failed" };

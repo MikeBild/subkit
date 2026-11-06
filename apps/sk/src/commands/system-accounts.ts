@@ -11,7 +11,7 @@ const listCmd = defineCommand({
     return withCommandErrors(
       async () => {
         const { items } = await client.listSystemAccounts();
-        emitList(!!args.json, ["id", "name", "created_at"], items as Record<string, unknown>[]);
+        emitList(!!args.json, ["id", "name", "created_at"], items);
       },
       { json: Boolean(args.json) },
     );

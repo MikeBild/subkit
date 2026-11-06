@@ -1,117 +1,27 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import type { MiddlewareHandler } from "hono";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
+import { toHonoRoute } from "../../api/operations/hono.ts";
+import {
+  getPatchCandidateOperation,
+  listPatchCandidatesOperation,
+  preparePatchCandidateOperation,
+  previewPatchCandidateOperation,
+} from "../../api/operations/patch-candidates.ts";
 import {
   approveReviewedPatchCandidate,
   dryRunPatchCandidate,
   findPatchCandidate,
-  getPatchCandidateWithWorkflow,
-  listPatchCandidatesWithWorkflow,
-  type PatchCandidateRow,
   PatchDecisionError,
-  PatchProposalSchema,
-  PatchReadinessSchema,
-  preparePatchCandidate,
-  previewPatchCandidate,
-  readOpenPatchDecisions,
-  readPatchReadiness,
-  readPatchReadinessBatch,
   rejectPatchCandidate,
 } from "../../self-healing/index.ts";
-import {
-  GrantWorkflowAuthoritySchema,
-  ReportDeliveryBoundarySchema,
-} from "../../workflows/index.ts";
+import { GrantWorkflowAuthoritySchema } from "../../workflows/index.ts";
 import { HttpError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 
-const PatchCandidateSchema = z
-  .object({
-    id: z.string(),
-    tenant_id: z.string(),
-    workflow_id: z.string(),
-    workflow_name: z.string().nullable(),
-    connector_id: z.string().nullable(),
-    endpoint_key: z.string().nullable(),
-    classification: z.enum(["safe", "unsafe"]),
-    status: z.enum(["proposed", "applied", "rejected", "superseded", "inapplicable"]),
-    fixture_id: z.string().nullable(),
-    diff: z.unknown(),
-    closed_reason: z.string().nullable(),
-    closed_against_version_id: z.string().nullable(),
-    closed_at: z.string().nullable(),
-    created_at: z.string(),
-    updated_at: z.string(),
-    ...PatchReadinessSchema.partial().shape,
-  })
-  .openapi("PatchCandidate");
-
-const ListResponse = z
-  .object({
-    items: z.array(PatchCandidateSchema),
-    total: z.number().int().min(0),
-    reviewable_total: z.number().int().min(0),
-  })
-  .openapi("PatchCandidateListResponse");
-
-const ListQuery = z
-  .object({
-    status: z.enum(["proposed", "applied", "rejected", "superseded", "inapplicable"]).optional(),
-    workflow_id: z.string().uuid().optional(),
-    reviewable: z.enum(["true", "false"]).optional(),
-    offset: z.coerce.number().int().min(0).default(0),
-    limit: z.coerce.number().int().positive().max(200).optional(),
-    order: z.enum(["asc", "desc"]).optional(),
-  })
-  .openapi("ListPatchCandidatesQuery");
-
 const RejectBody = z.object({ reason: z.string().optional() }).openapi("RejectPatchCandidateBody");
-
-function serialize(row: PatchCandidateRow, workflowName: string | null) {
-  return {
-    id: row.id,
-    tenant_id: row.tenant_id,
-    workflow_id: row.workflow_id,
-    workflow_name: workflowName,
-    connector_id: row.connector_id ?? null,
-    endpoint_key: row.endpoint_key ?? null,
-    classification: row.classification,
-    status: row.status,
-    fixture_id: row.fixture_id ?? null,
-    diff: row.diff,
-    closed_reason: row.closed_reason ?? null,
-    closed_against_version_id: row.closed_against_version_id ?? null,
-    closed_at: row.closed_at?.toISOString() ?? null,
-    created_at: row.created_at.toISOString(),
-    updated_at: row.updated_at.toISOString(),
-  };
-}
-
-const listRoute = createRoute({
-  method: "get",
-  path: "/v1/patch-candidates",
-  tags: ["patch-candidates"],
-  summary: "List patch candidates",
-  security: [{ bearerAuth: [] }],
-  request: { query: ListQuery },
-  responses: {
-    200: { description: "OK", content: { "application/json": { schema: ListResponse } } },
-  },
-});
-
-const getRouteSpec = createRoute({
-  method: "get",
-  path: "/v1/patch-candidates/{id}",
-  tags: ["patch-candidates"],
-  summary: "Fetch a patch candidate",
-  security: [{ bearerAuth: [] }],
-  request: { params: IdParam },
-  responses: {
-    200: { description: "OK", content: { "application/json": { schema: PatchCandidateSchema } } },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
 
 const approveRoute = createRoute({
   method: "post",
@@ -145,46 +55,6 @@ const approveRoute = createRoute({
     },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
     409: { description: "Conflict", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
-
-const StepShapeSchema = z
-  .object({
-    id: z.string(),
-    kind: z.enum(["request", "transform"]),
-    data_selector: z.string().optional(),
-    expression: z.string().optional(),
-    report_delivery: ReportDeliveryBoundarySchema.optional(),
-  })
-  .openapi("PatchCandidateStepShape");
-
-const PreviewResponse = z
-  .object({
-    candidate_id: z.string(),
-    workflow_id: z.string(),
-    classification: z.enum(["safe", "unsafe"]),
-    status: z.enum(["proposed", "applied", "rejected", "superseded", "inapplicable"]),
-    drift_summary: z.string().nullable(),
-    proposal: PatchProposalSchema.nullable(),
-    fixture_available: z.boolean(),
-    proposal_dry_run: z.record(z.string(), z.unknown()).nullable(),
-    before_step: StepShapeSchema.nullable(),
-    after_step: StepShapeSchema.nullable(),
-    changed_paths: z.array(z.string()),
-    ...PatchReadinessSchema.shape,
-  })
-  .openapi("PatchCandidatePreview");
-
-const previewRoute = createRoute({
-  method: "get",
-  path: "/v1/patch-candidates/{id}/preview",
-  tags: ["patch-candidates"],
-  summary: "Human-readable before/after preview of a patch candidate",
-  security: [{ bearerAuth: [] }],
-  request: { params: IdParam },
-  responses: {
-    200: { description: "OK", content: { "application/json": { schema: PreviewResponse } } },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -239,142 +109,30 @@ const rejectRoute = createRoute({
   },
 });
 
-const prepareRoute = createRoute({
-  method: "post",
-  path: "/v1/patch-candidates/{id}/prepare",
-  tags: ["patch-candidates"],
-  summary: "Prepare an immutable repaired version without activation or execution authority",
-  security: [{ bearerAuth: [] }],
-  request: {
-    params: IdParam,
-    body: {
-      content: {
-        "application/json": {
-          schema: z.object({ expected_review_digest: z.string().regex(/^[a-f0-9]{64}$/) }),
-        },
-      },
-    },
-  },
-  responses: {
-    200: {
-      description: "Prepared",
-      content: {
-        "application/json": {
-          schema: z.object({ workflow_version_id: z.string(), review_digest: z.string() }),
-        },
-      },
-    },
-    409: {
-      description: "Review changed",
-      content: { "application/json": { schema: ErrorSchema } },
-    },
-  },
-});
+function gateOtherMethods(
+  methods: readonly string[],
+  gate: MiddlewareHandler<AppEnv>,
+): MiddlewareHandler<AppEnv> {
+  return (c, next) => (methods.includes(c.req.method) ? next() : gate(c, next));
+}
 
 export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
-  app.use("/v1/patch-candidates", async (c, next) => {
-    if (c.req.method === "GET") return requirePermission("workflow:read")(c, next);
-    return next();
-  });
-  app.use("/v1/patch-candidates/:id", async (c, next) => {
-    if (c.req.method === "GET") return requirePermission("workflow:read")(c, next);
-    return next();
-  });
-  app.use("/v1/patch-candidates/:id/approve", async (c, next) => {
-    return requirePermission("workflow:write")(c, next);
-  });
-  app.use("/v1/patch-candidates/:id/reject", async (c, next) => {
-    return requirePermission("workflow:write")(c, next);
-  });
-  app.use("/v1/patch-candidates/:id/prepare", requirePermission("workflow:write"));
-  app.openapi(prepareRoute, async (c) => {
-    const principal = requireAuth(c);
-    try {
-      return c.json(
-        await preparePatchCandidate(
-          {
-            tenant_id: principal.tenant_id,
-            actor_id: principal.id,
-            actor_type: principal.kind,
-            candidate_id: c.req.valid("param").id,
-            expected_review_digest: c.req.valid("json").expected_review_digest,
-          },
-          c.get("db"),
-        ),
-        200,
-      );
-    } catch (error) {
-      if (error instanceof PatchDecisionError)
-        throw new HttpError(409, error.code, "The repair preview is no longer applicable");
-      throw error;
-    }
-  });
-  app.use("/v1/patch-candidates/:id/preview", async (c, next) => {
-    return requirePermission("workflow:read")(c, next);
-  });
-  app.use("/v1/patch-candidates/:id/dry-run", async (c, next) => {
-    return requirePermission("workflow:read")(c, next);
-  });
+  app.use("/v1/patch-candidates/:id/approve", requirePermission("workflow:write"));
+  app.use("/v1/patch-candidates/:id/reject", requirePermission("workflow:write"));
+  app.use(
+    "/v1/patch-candidates/:id/prepare",
+    gateOtherMethods(["POST"], requirePermission("workflow:write")),
+  );
+  toHonoRoute(app, preparePatchCandidateOperation);
+  app.use(
+    "/v1/patch-candidates/:id/preview",
+    gateOtherMethods(["GET", "HEAD"], requirePermission("workflow:read")),
+  );
+  app.use("/v1/patch-candidates/:id/dry-run", requirePermission("workflow:read"));
 
-  app.openapi(listRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const q = c.req.valid("query");
-    const rows = await listPatchCandidatesWithWorkflow(db, principal.tenant_id, {
-      status: q.status,
-      workflow_id: q.workflow_id,
-      order: q.order,
-    });
-    const readiness = await readPatchReadinessBatch(
-      principal.tenant_id,
-      rows.map((row) => row.candidate),
-      db,
-    );
-    const items = rows.map((row, index) => ({
-      ...serialize(row.candidate, row.workflow_name),
-      ...readiness[index]!,
-    }));
-    const filtered =
-      q.reviewable === undefined
-        ? items
-        : items.filter((item) => item.reviewable === (q.reviewable === "true"));
-    const open = await readOpenPatchDecisions(db, principal.tenant_id, {
-      ...(q.workflow_id ? { workflow_id: q.workflow_id } : {}),
-      limit: 0,
-    });
-    return c.json(
-      {
-        items: filtered.slice(q.offset, q.offset + (q.limit ?? 50)),
-        total: filtered.length,
-        reviewable_total: open.open_total,
-      },
-      200,
-    );
-  });
-
-  app.openapi(getRouteSpec, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-    const row = await getPatchCandidateWithWorkflow(db, principal.tenant_id, id);
-    if (!row) throw new NotFoundError("patch_candidate");
-    return c.json(
-      {
-        ...serialize(row.candidate, row.workflow_name),
-        ...(await readPatchReadiness(principal.tenant_id, row.candidate, db)),
-      },
-      200,
-    );
-  });
-
-  app.openapi(previewRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-    const preview = await previewPatchCandidate(principal.tenant_id, id, db);
-    if (!preview) throw new NotFoundError("patch_candidate");
-    return c.json(preview, 200);
-  });
+  toHonoRoute(app, listPatchCandidatesOperation);
+  toHonoRoute(app, getPatchCandidateOperation);
+  toHonoRoute(app, previewPatchCandidateOperation);
 
   app.openapi(dryRunRoute, async (c) => {
     const principal = requireAuth(c);

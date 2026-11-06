@@ -1,25 +1,11 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { ApiError } from "@/api/client";
 import type { TranslationKey } from "@/lib/i18n";
 
-export interface RestartStatus {
-  boot_id: string;
-  started_at: string;
-  saved_revision: number;
-  active_revision: number;
-  activation_status: string;
-  restart_supervised: boolean;
-  pending_restart_fields: string[];
-}
+export type RestartStatus = components["schemas"]["EngineRestartStatus"];
 
-export interface RestartAccepted {
-  request_id: string;
-  audit_id: string;
-  boot_id: string;
-  expected_revision: number;
-}
+export type RestartAccepted = components["schemas"]["EngineRestartAccepted"];
 
-export const RESTART_STATUS_PATH = "/v1/system/restart-status";
-export const RESTART_PATH = "/v1/system/restart";
 export const RESTART_CONFIRM_TIMEOUT_MS = 240_000;
 export const RESTART_POLL_MS = 2_000;
 

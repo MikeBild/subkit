@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { apiRequest, type Conversation, getConversation, OWN_CONVERSATIONS } from "@/api/client";
+import { apiCall } from "@/api/call";
+import { type Conversation, getConversation, OWN_CONVERSATIONS } from "@/api/client";
 import { chatSeedFromUrl } from "@/app/links";
 import { useSession } from "@/app/session";
 import { useHeldSchedules } from "@/app/use-decisions";
@@ -75,10 +76,10 @@ export function ChatPage() {
   );
   const hiddenConversations = useQuery({
     queryKey: ["conversations", "hidden-presence"],
-    queryFn: () => {
-      const params = new URLSearchParams({ ...OWN_CONVERSATIONS, hidden: "only", limit: "1" });
-      return apiRequest<{ items: Conversation[] }>(`/v1/conversations?${params}`);
-    },
+    queryFn: () =>
+      apiCall("get", "/v1/conversations", {
+        query: { ...OWN_CONVERSATIONS, hidden: "only", limit: 1 },
+      }),
     retry: retryConversationRead,
   });
   const conversations = conversationList.query;
@@ -189,10 +190,9 @@ export function ChatPage() {
     queryKey: ["workflow-automation-status", targetWorkflowId],
     enabled: Boolean(targetWorkflowId && session.permissions.includes("schedule:read")),
     queryFn: () =>
-      apiRequest<{
-        schedules: { ready: boolean; next_run_at: string | null; timezone: string }[];
-        inbound_hooks?: { ready: boolean }[];
-      }>(`/v1/workflows/${encodeURIComponent(targetWorkflowId!)}/automation-status`),
+      apiCall("get", "/v1/workflows/{id}/automation-status", {
+        path: { id: targetWorkflowId ?? "" },
+      }),
     ...live,
   });
   const readySchedules =
@@ -317,7 +317,7 @@ export function ChatPage() {
   const monthStatus = useQuery({
     queryKey: ["usage-status"],
     enabled: canReadStats,
-    queryFn: () => apiRequest<unknown>("/v1/status"),
+    queryFn: () => apiCall("get", "/v1/status", {}),
   });
   const budget = budgetPill(budgetPressure(budgetSummary(monthStatus.data)));
   const busy = sendPending || decidePending;

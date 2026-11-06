@@ -15,7 +15,8 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ApiError, apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
+import { ApiError } from "@/api/client";
 import { listProposedSkillCandidates } from "@/api/decisions";
 import { listIntakeClips } from "@/api/intake";
 import { useActorDirectory } from "@/app/actor-directory";
@@ -99,8 +100,6 @@ import {
   SKILL_APPLIES_TO,
   SKILL_TEMPLATES,
   type SkillAppliesTo,
-  type SkillHistoryDetail,
-  type SkillHistoryEntry,
   type SkillTemplate,
   type SkillVersionRow,
   skillAppliesToOptionKey,
@@ -515,7 +514,7 @@ function useSkill(id: string, enabled: boolean) {
   const live = useLiveQueryOptions();
   return useQuery({
     queryKey: ["skill", id],
-    queryFn: () => apiRequest<Skill>(`${ENDPOINT}/${encodeURIComponent(id)}`),
+    queryFn: () => apiCall("get", "/v1/skills/{id}", { path: { id } }),
     enabled: enabled && Boolean(id) && id !== "new",
     ...live,
   });
@@ -554,8 +553,7 @@ function useSkillHistory(
 ) {
   return useQuery({
     queryKey: ["skill", id, "history"],
-    queryFn: () =>
-      apiRequest<{ items: SkillHistoryEntry[] }>(`${ENDPOINT}/${encodeURIComponent(id)}/history`),
+    queryFn: () => apiCall("get", "/v1/skills/{id}/history", { path: { id } }),
     enabled,
     ...live,
   });
@@ -585,7 +583,9 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
   const lifecycle = useOptimisticAction<"activate" | "archive", Skill, Skill>({
     queryKey: ["skill", id],
     mutationFn: (verb) =>
-      apiRequest(`${ENDPOINT}/${encodeURIComponent(id)}/${verb}`, { method: "POST" }),
+      verb === "activate"
+        ? apiCall("post", "/v1/skills/{id}/activate", { path: { id } })
+        : apiCall("post", "/v1/skills/{id}/archive", { path: { id } }),
     apply: (current, verb) =>
       current ? { ...current, status: verb === "activate" ? "active" : "archived" } : current,
     invalidate: [["catalog"]],
@@ -595,7 +595,7 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
       ),
   });
   const remove = useMutation({
-    mutationFn: () => apiRequest(`${ENDPOINT}/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    mutationFn: () => apiCall("delete", "/v1/skills/{id}", { path: { id } }),
     onSuccess: () => {
       toast.success(t("skills.deleted", { name: query.data?.title ?? "" }));
       void client.invalidateQueries({ queryKey: ["catalog"] });
@@ -820,6 +820,17 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
   );
 }
 
+export async function loadSkillBindingName(
+  skill: Pick<Skill, "scope" | "workflow_id" | "connector_id">,
+): Promise<string> {
+  if (skill.scope === "workflow" && skill.workflow_id)
+    return (await apiCall("get", "/v1/workflows/{id}", { path: { id: skill.workflow_id } })).name;
+  if (skill.scope === "connector" && skill.connector_id)
+    return (await apiCall("get", "/v1/connectors/{id}", { path: { id: skill.connector_id } }))
+      .display_name;
+  return "";
+}
+
 function SkillUsage({ skill, permissions }: { skill: Skill; permissions: readonly string[] }) {
   const { t } = useI18n();
   const boundPath =
@@ -830,7 +841,7 @@ function SkillUsage({ skill, permissions }: { skill: Skill; permissions: readonl
         : null;
   const bound = useQuery({
     queryKey: ["skill-binding", boundPath],
-    queryFn: () => apiRequest<{ name?: string | null }>(boundPath ?? ""),
+    queryFn: () => loadSkillBindingName(skill),
     enabled:
       Boolean(boundPath) &&
       permissions.includes(skill.scope === "workflow" ? "workflow:read" : "connector:read"),
@@ -850,7 +861,7 @@ function SkillUsage({ skill, permissions }: { skill: Skill; permissions: readonl
       ? [
           {
             id: skill.workflow_id,
-            title: bound.data?.name?.trim() || t("skills.scope.workflow"),
+            title: bound.data?.trim() || t("skills.scope.workflow"),
             line: t("skills.usage.workflowLine"),
             href: workflowHref(skill.workflow_id),
             icon: <Workflow />,
@@ -860,7 +871,7 @@ function SkillUsage({ skill, permissions }: { skill: Skill; permissions: readonl
         ? [
             {
               id: skill.connector_id,
-              title: bound.data?.name?.trim() || t("skills.scope.connector"),
+              title: bound.data?.trim() || t("skills.scope.connector"),
               line: t("skills.usage.connectorLine"),
               href: connectorHref(skill.connector_id),
               icon: <Cable />,
@@ -926,9 +937,9 @@ function SkillVersions({ skill, canWrite }: { skill: Skill; canWrite: boolean })
   const history = useSkillHistory(skill.id, true, live);
   const restore = useMutation({
     mutationFn: (entry: SkillVersionRow) =>
-      apiRequest<Skill>(`${ENDPOINT}/${encodeURIComponent(skill.id)}/restore`, {
-        method: "POST",
-        body: JSON.stringify({ audit_entry_id: entry.audit_entry_id }),
+      apiCall("post", "/v1/skills/{id}/restore", {
+        path: { id: skill.id },
+        body: { audit_entry_id: entry.audit_entry_id },
       }),
     onSuccess: (saved) => {
       toast.success(t("skills.versions.restored", { version: saved.version }));
@@ -1051,9 +1062,9 @@ function SkillVersionSheet({
   const detail = useQuery({
     queryKey: ["skill", skillId, "history", entryId],
     queryFn: () =>
-      apiRequest<SkillHistoryDetail>(
-        `${ENDPOINT}/${encodeURIComponent(skillId)}/history/${encodeURIComponent(entryId)}`,
-      ),
+      apiCall("get", "/v1/skills/{id}/history/{audit_entry_id}", {
+        path: { id: skillId, audit_entry_id: entryId },
+      }),
     enabled: row?.has_snapshot === true,
   });
   const change = detail.data ? skillVersionChange(detail.data) : null;
@@ -1197,25 +1208,24 @@ function SkillEditor({
   const save = useMutation({
     mutationFn: () =>
       isNew
-        ? apiRequest<Skill>(ENDPOINT, {
-            method: "POST",
-            body: JSON.stringify({
+        ? apiCall("post", "/v1/skills", {
+            body: {
               scope: "global",
               title: title.trim(),
               body,
               applies_to: appliesTo,
               status: "active",
               source: "manual",
-            }),
+            },
           })
-        : apiRequest<Skill>(`${ENDPOINT}/${encodeURIComponent(id)}`, {
-            method: "PATCH",
-            body: JSON.stringify({
+        : apiCall("patch", "/v1/skills/{id}", {
+            path: { id },
+            body: {
               title: title.trim(),
               body,
               applies_to: appliesTo,
               expected_version: skill?.version,
-            }),
+            },
           }),
     onSuccess: (saved) => {
       toast.success(t("skills.saved"));

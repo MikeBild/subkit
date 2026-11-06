@@ -2,7 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { CalendarDays, ChevronDown, ExternalLink, Filter, Search } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ApiError, apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
+import { ApiError } from "@/api/client";
 import { useLiveQueryOptions, useLiveStatus } from "@/app/live-events";
 import { useSession } from "@/app/session";
 import {
@@ -43,9 +44,11 @@ import {
 import {
   AUDIT_GROUPS,
   type AuditGroup,
+  auditIdentityOptions,
   auditInitiatingSource,
   auditRecordedAccess,
   groupLoadedAudit,
+  type IdentityOption,
   localDateTimeInput,
   localTimeZone,
   type TimelineEntry,
@@ -299,11 +302,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 const inputClass =
   "h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring";
-interface IdentityOption {
-  kind: "user" | "system_account";
-  id: string;
-  label: string;
-}
 type DraftSetter = React.Dispatch<React.SetStateAction<FilterState>>;
 function setDraftField(setDraft: DraftSetter, key: keyof FilterState, value: string) {
   setDraft((current) => ({
@@ -337,9 +335,7 @@ function FocusFields({
     queryKey: ["audit-resource-search", resourceSearch],
     enabled: resourceSearch.trim().length >= 2,
     queryFn: () =>
-      apiRequest<{
-        items: Array<{ resource_type: string; resource_id: string; resource_name: string | null }>;
-      }>(`/v1/audit-log/resources?search=${encodeURIComponent(resourceSearch.trim())}`),
+      apiCall("get", "/v1/audit-log/resources", { query: { search: resourceSearch.trim() } }),
     retry: false,
   });
   useEffect(() => {
@@ -911,7 +907,7 @@ function AuditDetail({
   const { t, dateTime } = useI18n();
   const detail = useQuery({
     queryKey: ["audit-entry", entry.id],
-    queryFn: () => apiRequest<TimelineEntry>(`/v1/audit-log/${encodeURIComponent(entry.id)}`),
+    queryFn: () => apiCall("get", "/v1/audit-log/{id}", { path: { id: entry.id } }),
     retry: false,
   });
   const current = detail.data && isAuditEntry(detail.data) ? detail.data : entry;
@@ -1101,32 +1097,17 @@ export function AuditTimelinePage() {
   const people = useQuery({
     queryKey: ["audit-directory", "people"],
     enabled: allowed && readable,
-    queryFn: () =>
-      apiRequest<{ items?: Array<{ id: string; email?: string; name?: string }> }>(
-        "/v1/identity/users?limit=200",
-      ),
+    queryFn: () => apiCall("get", "/v1/identity/users", { query: { limit: 200 } }),
     ...live,
   });
   const accounts = useQuery({
     queryKey: ["audit-directory", "system-accounts"],
     enabled: allowed && readable,
-    queryFn: () =>
-      apiRequest<{ items?: Array<{ id: string; name?: string }> }>("/v1/identity/system-accounts"),
+    queryFn: () => apiCall("get", "/v1/identity/system-accounts", {}),
     ...live,
   });
-  const identities = useMemo<IdentityOption[]>(
-    () => [
-      ...(people.data?.items ?? []).map((item) => ({
-        kind: "user" as const,
-        id: item.id,
-        label: item.name || item.email || item.id,
-      })),
-      ...(accounts.data?.items ?? []).map((item) => ({
-        kind: "system_account" as const,
-        id: item.id,
-        label: item.name || item.id,
-      })),
-    ],
+  const identities = useMemo(
+    () => auditIdentityOptions(people.data?.items ?? [], accounts.data?.items ?? []),
     [people.data, accounts.data],
   );
   const invalidAppliedCorrelation = !validAuditCorrelationId(filter.correlationId);
@@ -1203,7 +1184,7 @@ export function AuditTimelinePage() {
   const standalone = useQuery({
     queryKey: ["audit-entry", selectedId],
     enabled: allowed && Boolean(selectedId),
-    queryFn: () => apiRequest<TimelineEntry>(`/v1/audit-log/${encodeURIComponent(selectedId!)}`),
+    queryFn: () => apiCall("get", "/v1/audit-log/{id}", { path: { id: selectedId ?? "" } }),
     retry: false,
   });
   const detailUnavailable = standalone.error instanceof ApiError && standalone.error.status === 404;

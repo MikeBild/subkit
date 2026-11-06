@@ -1,7 +1,30 @@
+import { readFileSync } from "node:fs";
 import * as prompts from "@clack/prompts";
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
+
+type Schemas = components["schemas"];
+
+const GRANT_SUBJECT_TYPES: readonly Schemas["CreateRbacGrantRequest"]["subject_type"][] = [
+  "user",
+  "system_account",
+  "group",
+];
+
+function grantSubjectType(value: string): Schemas["CreateRbacGrantRequest"]["subject_type"] {
+  const match = GRANT_SUBJECT_TYPES.find((type) => type === value);
+  if (!match) throw new Error("--subject type must be one of user|system_account|group");
+  return match;
+}
+
+function nameAndDescription(
+  name: string,
+  description: string | undefined,
+): { name: string; description?: string } {
+  return description === undefined ? { name } : { name, description };
+}
 
 const permissionsListCmd = defineCommand({
   meta: { name: "list", description: "List the static permission catalog" },
@@ -56,11 +79,7 @@ const rolesListCmd = defineCommand({
     return withCommandErrors(
       async () => {
         const { items } = await client.listRoles();
-        emitList(
-          !!args.json,
-          ["id", "name", "description", "created_at"],
-          items as Record<string, unknown>[],
-        );
+        emitList(!!args.json, ["id", "name", "description", "created_at"], items);
       },
       { json: Boolean(args.json) },
     );
@@ -87,9 +106,7 @@ const rolesCreateCmd = defineCommand({
   async run({ args }) {
     const client = makeClient();
     return withCommandErrors(async () => {
-      printJson(
-        await client.createRole({ name: String(args.name), description: args.description }),
-      );
+      printJson(await client.createRole(nameAndDescription(String(args.name), args.description)));
     });
   },
 });
@@ -183,8 +200,16 @@ const grantsListCmd = defineCommand({
         const { items } = await client.listGrants();
         emitList(
           !!args.json,
-          ["id", "principal_id", "permission", "created_at"],
-          items as Record<string, unknown>[],
+          [
+            "id",
+            "subject_type",
+            "subject_id",
+            "resource_type",
+            "resource_id",
+            "permission",
+            "created_at",
+          ],
+          items,
         );
       },
       { json: Boolean(args.json) },
@@ -209,7 +234,7 @@ const grantsCreateCmd = defineCommand({
       }
       printJson(
         await client.createGrant({
-          subject_type,
+          subject_type: grantSubjectType(subject_type),
           subject_id,
           resource_type,
           resource_id,
@@ -252,11 +277,7 @@ const groupsListCmd = defineCommand({
     return withCommandErrors(
       async () => {
         const { items } = await client.listGroups();
-        emitList(
-          !!args.json,
-          ["id", "name", "member_count", "created_at"],
-          items as Record<string, unknown>[],
-        );
+        emitList(!!args.json, ["id", "name", "member_count", "created_at"], items);
       },
       { json: Boolean(args.json) },
     );
@@ -272,9 +293,7 @@ const groupsCreateCmd = defineCommand({
   async run({ args }) {
     const client = makeClient();
     return withCommandErrors(async () => {
-      printJson(
-        await client.createGroup({ name: String(args.name), description: args.description }),
-      );
+      printJson(await client.createGroup(nameAndDescription(String(args.name), args.description)));
     });
   },
 });
@@ -363,11 +382,7 @@ const requestHooksListCmd = defineCommand({
     return withCommandErrors(
       async () => {
         const { items } = await client.listRequestHooks();
-        emitList(
-          !!args.json,
-          ["id", "event_type", "url", "active"],
-          items as Record<string, unknown>[],
-        );
+        emitList(!!args.json, ["id", "role", "version", "enabled", "description"], items);
       },
       { json: Boolean(args.json) },
     );
@@ -377,15 +392,21 @@ const requestHooksListCmd = defineCommand({
 const requestHooksCreateCmd = defineCommand({
   meta: { name: "create", description: "Create a request hook" },
   args: {
-    url: { type: "string", required: true, description: "Webhook URL" },
-    event: { type: "string", required: true, description: "Event type" },
+    role: { type: "string", required: true, description: "Role whose requests the hook runs on" },
+    file: { type: "string", required: true, description: "Path to the hook source file" },
+    description: { type: "string", description: "Hook description" },
+    disabled: { type: "boolean", description: "Create the hook disabled" },
   },
   async run({ args }) {
     const client = makeClient();
     return withCommandErrors(async () => {
-      printJson(
-        await client.createRequestHook({ url: String(args.url), event_type: String(args.event) }),
-      );
+      const body: Schemas["CreateRequestHookBody"] = {
+        role: String(args.role),
+        code: readFileSync(String(args.file), "utf8"),
+      };
+      if (args.description) body.description = String(args.description);
+      if (args.disabled) body.enabled = false;
+      printJson(await client.createRequestHook(body));
     });
   },
 });

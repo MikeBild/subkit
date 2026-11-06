@@ -78,12 +78,20 @@ describe("/copy slash (M9)", () => {
     expect(out).toBe("/copy: last assistant message is empty");
   });
 
-  test("falls back to engine getConversation when in-memory transcript has no assistant turn (string content)", async () => {
+  test("falls back to engine getConversation when in-memory transcript has no assistant turn (text parts)", async () => {
     const getConversation = mock(async () => ({
       conversation: { id: "c-1" },
       messages: [
-        { role: "user", content: "hi" },
-        { role: "assistant", content: "persisted reply text" },
+        { id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] },
+        {
+          id: "m2",
+          role: "assistant",
+          parts: [
+            { type: "text", text: "persisted " },
+            { type: "tool-call", toolName: "x" },
+            { type: "text", text: "reply text" },
+          ],
+        },
       ],
       tool_calls: [],
       draft: null,
@@ -103,13 +111,14 @@ describe("/copy slash (M9)", () => {
     );
   });
 
-  test("structured (non-string) content collapses to empty and the no-assistant-turn hint fires", async () => {
+  test("assistant parts without text collapse to empty and the no-assistant-turn hint fires", async () => {
     const getConversation = mock(async () => ({
       conversation: { id: "c-2" },
       messages: [
         {
+          id: "m1",
           role: "assistant",
-          content: [{ type: "text", text: "structured" }],
+          parts: [{ type: "tool-call", toolName: "x" }, { type: "text", text: 7 }, null],
         },
       ],
       tool_calls: [],

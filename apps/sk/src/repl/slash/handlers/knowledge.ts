@@ -30,13 +30,12 @@ export async function dispatchKnowledgeSlash(
 
   try {
     const result = await ctx.client.importKnowledgeBundle({ name, files: files.files });
-    const ks = (result.knowledge_source ?? {}) as Record<string, unknown>;
-    const outcome = String(result.outcome ?? "unknown");
-    const skipped = Number(result.skipped_count ?? 0);
+    const ks = result.knowledge_source;
+    const skipped = result.skipped_count;
     const nonMd = files.skipped_non_markdown;
     return (
-      `${outcome}: "${String(ks.name ?? name)}" (${String(ks.slug ?? "")}) — ` +
-      `${files.files.length} files, ${String(result.ingested_count ?? 0)} chunks ingested` +
+      `${result.outcome}: "${ks.name || name}" (${ks.slug}) — ` +
+      `${files.files.length} files, ${result.ingested_count} chunks ingested` +
       (skipped > 0 ? `, ${skipped} skipped (index/log/duplicates)` : "") +
       (nonMd > 0 ? `, ${nonMd} non-markdown files left out` : "") +
       " — ask about it right away; search_knowledge grounds on it"

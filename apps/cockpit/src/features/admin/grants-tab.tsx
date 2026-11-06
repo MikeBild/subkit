@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
-import { ApiError, apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
+import { ApiError } from "@/api/client";
 import { useSession } from "@/app/session";
 import {
   ActionMenu,
@@ -29,7 +30,6 @@ import {
 } from "@/pages/admin-model";
 import { personEmailText } from "@/pages/apps-model";
 import {
-  type Envelope,
   type GrantItem,
   type RecordItem,
   refusalToast,
@@ -48,14 +48,14 @@ function useGrantNames(enabled = true) {
   const workflows = useQuery({
     queryKey: ["admin", "workflows"],
     enabled: can("workflow:read"),
-    queryFn: () => apiRequest<Envelope<RecordItem>>("/v1/workflows?limit=200"),
+    queryFn: () => apiCall("get", "/v1/workflows", { query: { limit: 200 } }),
   });
   const connectors = useQuery({
     queryKey: ["admin", "connectors"],
     enabled: can("connector:read"),
-    queryFn: () => apiRequest<Envelope<RecordItem>>("/v1/connectors?limit=200"),
+    queryFn: () => apiCall("get", "/v1/connectors", { query: { limit: 200 } }),
   });
-  const records = (type: GrantResourceType) =>
+  const records = (type: GrantResourceType): readonly RecordItem[] =>
     (type === "workflow" ? workflows.data?.items : connectors.data?.items) ?? [];
   const recordName = (item: RecordItem) => item.display_name || item.name || item.slug || null;
   const subjectName = (grant: Pick<GrantItem, "subject_type" | "subject_id">) => {
@@ -99,8 +99,7 @@ function GrantSheet({ grant, onClose }: { grant: GrantItem | null; onClose(): vo
   const names = useGrantNames();
   const [confirming, setConfirming] = useState(false);
   const revoke = useMutation({
-    mutationFn: (id: string) =>
-      apiRequest<void>(`/v1/rbac/grants/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    mutationFn: (id: string) => apiCall("delete", "/v1/rbac/grants/{id}", { path: { id } }),
     onSuccess: async () => {
       setConfirming(false);
       onClose();
@@ -280,6 +279,15 @@ export function GrantsTab({ action }: { action: ReactNode }) {
 
 const GRANT_RIGHTS = ["workflow:run", "workflow:write"] as const;
 
+function grantSubjectOf(
+  value: string,
+): { subject_type: "user" | "group"; subject_id: string } | null {
+  const [type, id] = value.split(":");
+  if (!id) return null;
+  if (type === "user" || type === "group") return { subject_type: type, subject_id: id };
+  return null;
+}
+
 export function GrantAccessDialog({
   open,
   onOpenChange,
@@ -293,19 +301,14 @@ export function GrantAccessDialog({
   const [subject, setSubject] = useState("");
   const [workflowId, setWorkflowId] = useState("");
   const [permission, setPermission] = useState<string>(GRANT_RIGHTS[0]);
-  const [subjectType, subjectId] = subject.split(":") as ["user" | "group" | "", string];
+  const grantSubject = grantSubjectOf(subject);
   const create = useMutation({
-    mutationFn: () =>
-      apiRequest("/v1/rbac/grants", {
-        method: "POST",
-        body: JSON.stringify({
-          subject_type: subjectType,
-          subject_id: subjectId,
-          resource_type: "workflow",
-          resource_id: workflowId,
-          permission,
-        }),
-      }),
+    mutationFn: () => {
+      if (!grantSubject) throw new Error("grant subject missing");
+      return apiCall("post", "/v1/rbac/grants", {
+        body: { ...grantSubject, resource_type: "workflow", resource_id: workflowId, permission },
+      });
+    },
     onSuccess: async () => {
       onOpenChange(false);
       setSubject("");
@@ -323,7 +326,7 @@ export function GrantAccessDialog({
       submit={{
         label: t("access.grantVerb"),
         pending: create.isPending,
-        disabled: !subjectId || !workflowId,
+        disabled: !grantSubject || !workflowId,
       }}
       onSubmit={() => create.mutate()}
       testId="grant-create-dialog"

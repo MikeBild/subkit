@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { useSession } from "@/app/session";
 import type { CredentialEvidence } from "@/lib/connector-auth-state";
 import { currentHost, type ServiceIdentity, serviceIdentity } from "@/lib/service-icons";
@@ -41,7 +41,7 @@ export function useConnectorRecords(enabled = true): readonly ConnectorRecord[] 
     queryKey: ["connectors", "lookup"],
     enabled: enabled && session.permissions.includes("connector:read"),
     staleTime: 300_000,
-    queryFn: () => apiRequest<{ items: ConnectorRecord[] }>("/v1/connectors?limit=200"),
+    queryFn: () => apiCall("get", "/v1/connectors", { query: { limit: 200 } }),
   });
   return connectors.data?.items ?? [];
 }

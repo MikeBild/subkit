@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import type { CatalogCategoryUsage } from "../engine-client/catalog.ts";
 import { EngineClient } from "../engine-client.ts";
 
@@ -9,7 +10,9 @@ const source: CatalogCategoryUsage = {
   aliases: ["Accounting"],
   revision: 3,
   total: 1,
-  counts: { workflow: 1, connector: 0, knowledge_source: 0, skill: 0, file: 0 },
+  counts: { workflow: 1, connector: 0, knowledge_source: 0, skill: 0, file: 0, intake: 0 },
+  llm_counts: { workflow: 1, connector: 0, knowledge_source: 0, skill: 0, file: 0, intake: 0 },
+  intake_open: { collected: 0, reviewing: 0 },
 };
 
 function clientFor(categories: CatalogCategoryUsage[], status = 200) {
@@ -55,14 +58,14 @@ describe("category rename revision contract", () => {
           expected_source_revision: 3,
           expected_target_revision: 7,
           preserve_purpose: true,
-        },
+        } satisfies components["schemas"]["RenameCategoryBody"],
       },
     ]);
   });
 
   test("historical absence stays explicit and does not request purpose generation", async () => {
     const { client, calls } = clientFor([
-      { ...source, purpose: null, purpose_source: null, revision: null, aliases: [] },
+      { ...source, purpose: null, revision: null, aliases: [] },
     ]);
     await client.renameCategory("finance", "accounts");
     expect(calls[1]?.body).toEqual({
@@ -72,7 +75,7 @@ describe("category rename revision contract", () => {
       expected_source_revision: null,
       expected_target_revision: null,
       preserve_purpose: true,
-    });
+    } satisfies components["schemas"]["RenameCategoryBody"]);
   });
 
   test("does not submit an unavailable source or retry a revision conflict", async () => {

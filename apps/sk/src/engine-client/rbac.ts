@@ -1,23 +1,19 @@
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import type { EngineClient } from "../engine-client.ts";
-import type { ApiBody, ApiQuery } from "./http.ts";
+import type { ApiQuery } from "./http.ts";
 
-export type PermissionCatalogEntry = components["schemas"]["PermissionCatalogEntry"];
-export type PermissionListResponse = components["schemas"]["RbacPermissionListResponse"];
+type Schemas = components["schemas"];
+
+export type PermissionCatalogEntry = Schemas["PermissionCatalogEntry"];
+export type PermissionListResponse = Schemas["RbacPermissionListResponse"];
 
 export const rbacMethods = {
   async rbacCan(
     this: EngineClient,
-    body: {
-      principal_id: string;
-      permission: string;
-      resource?: { type: string; id: string };
-    },
-  ): Promise<{ allow: boolean; source: string | null; reason: string | null }> {
-    const { data } = await this.api.POST("/v1/rbac/can", {
-      body: body as ApiBody<"/v1/rbac/can", "post">,
-    });
-    return data as { allow: boolean; source: string | null; reason: string | null };
+    body: Schemas["RbacCanRequest"],
+  ): Promise<Schemas["RbacCanResponse"]> {
+    const { data } = await this.api.POST("/v1/rbac/can", { body });
+    return data as Schemas["RbacCanResponse"];
   },
 
   async listPermissions(this: EngineClient): Promise<PermissionListResponse> {
@@ -26,58 +22,39 @@ export const rbacMethods = {
   },
   async getEffectivePermissions(
     this: EngineClient,
-    resource_type: string,
+    resource_type: ApiQuery<"/v1/identity/permissions", "get">["resource_type"],
     resource_id: string,
-  ): Promise<{
-    resource_type: string;
-    resource_id: string;
-    level: "none" | "read-only" | "read-write";
-    credential_scopes: unknown;
-  }> {
+  ): Promise<Schemas["EffectivePermissions"]> {
     const { data } = await this.api.GET("/v1/identity/permissions", {
-      params: {
-        query: {
-          resource_type,
-          resource_id,
-        } as ApiQuery<"/v1/identity/permissions", "get">,
-      },
+      params: { query: { resource_type, resource_id } },
     });
-    return data as {
-      resource_type: string;
-      resource_id: string;
-      level: "none" | "read-only" | "read-write";
-      credential_scopes: unknown;
-    };
+    return data as Schemas["EffectivePermissions"];
   },
-  listRoles(
-    this: EngineClient,
-    query: Record<string, string | undefined> = {},
-  ): Promise<{ items: Record<string, unknown>[] }> {
-    return this.request("GET", "/v1/rbac/roles", undefined, query);
+  async listRoles(this: EngineClient): Promise<Schemas["RbacRoleListResponse"]> {
+    const { data } = await this.api.GET("/v1/rbac/roles");
+    return data as Schemas["RbacRoleListResponse"];
   },
-  async getRole(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+  async getRole(this: EngineClient, id: string): Promise<Schemas["RbacRoleDetail"]> {
     const { data } = await this.api.GET("/v1/rbac/roles/{id}", { params: { path: { id } } });
-    return data as Record<string, unknown>;
+    return data as Schemas["RbacRoleDetail"];
   },
   async createRole(
     this: EngineClient,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    const { data } = await this.api.POST("/v1/rbac/roles", {
-      body: body as ApiBody<"/v1/rbac/roles", "post">,
-    });
-    return data as Record<string, unknown>;
+    body: Schemas["CreateRbacRoleRequest"],
+  ): Promise<Schemas["RbacRole"]> {
+    const { data } = await this.api.POST("/v1/rbac/roles", { body });
+    return data as Schemas["RbacRole"];
   },
   async patchRole(
     this: EngineClient,
     id: string,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
+    body: Schemas["UpdateRbacRoleRequest"],
+  ): Promise<Schemas["RbacRole"]> {
     const { data } = await this.api.PATCH("/v1/rbac/roles/{id}", {
       params: { path: { id } },
-      body: body as ApiBody<"/v1/rbac/roles/{id}", "patch">,
+      body,
     });
-    return data as Record<string, unknown>;
+    return data as Schemas["RbacRole"];
   },
   async deleteRole(this: EngineClient, id: string): Promise<void> {
     await this.api.DELETE("/v1/rbac/roles/{id}", { params: { path: { id } } });
@@ -86,14 +63,12 @@ export const rbacMethods = {
     this: EngineClient,
     roleId: string,
     permission: string,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<{ ok: true }> {
     const { data } = await this.api.POST("/v1/rbac/roles/{id}/permissions", {
       params: { path: { id: roleId } },
-      body: {
-        permission,
-      } as ApiBody<"/v1/rbac/roles/{id}/permissions", "post">,
+      body: { permission },
     });
-    return data as Record<string, unknown>;
+    return data as { ok: true };
   },
   async revokeRolePermission(
     this: EngineClient,
@@ -107,55 +82,49 @@ export const rbacMethods = {
   async assignUserRole(
     this: EngineClient,
     userId: string,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
+    body: Schemas["AssignUserRoleRequest"],
+  ): Promise<Schemas["AssignUserRoleResponse"]> {
     const { data } = await this.api.POST("/v1/rbac/users/{user_id}/role", {
       params: { path: { user_id: userId } },
-      body: body as ApiBody<"/v1/rbac/users/{user_id}/role", "post">,
+      body,
     });
-    return data as Record<string, unknown>;
+    return data as Schemas["AssignUserRoleResponse"];
   },
-  listGrants(
-    this: EngineClient,
-    query: Record<string, string | undefined> = {},
-  ): Promise<{ items: Record<string, unknown>[] }> {
-    return this.request("GET", "/v1/rbac/grants", undefined, query);
+  async listGrants(this: EngineClient): Promise<Schemas["RbacGrantListResponse"]> {
+    const { data } = await this.api.GET("/v1/rbac/grants");
+    return data as Schemas["RbacGrantListResponse"];
   },
   async createGrant(
     this: EngineClient,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    const { data } = await this.api.POST("/v1/rbac/grants", {
-      body: body as ApiBody<"/v1/rbac/grants", "post">,
-    });
-    return data as Record<string, unknown>;
+    body: Schemas["CreateRbacGrantRequest"],
+  ): Promise<Schemas["RbacGrant"]> {
+    const { data } = await this.api.POST("/v1/rbac/grants", { body });
+    return data as Schemas["RbacGrant"];
   },
   async deleteGrant(this: EngineClient, id: string): Promise<void> {
     await this.api.DELETE("/v1/rbac/grants/{id}", { params: { path: { id } } });
   },
-  async listGroups(this: EngineClient): Promise<{ items: Record<string, unknown>[] }> {
+  async listGroups(this: EngineClient): Promise<Schemas["RbacGroupListResponse"]> {
     const { data } = await this.api.GET("/v1/rbac/groups");
-    return data as { items: Record<string, unknown>[] };
+    return data as Schemas["RbacGroupListResponse"];
   },
   async createGroup(
     this: EngineClient,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    const { data } = await this.api.POST("/v1/rbac/groups", {
-      body: body as ApiBody<"/v1/rbac/groups", "post">,
-    });
-    return data as Record<string, unknown>;
+    body: Schemas["CreateRbacGroupRequest"],
+  ): Promise<Schemas["RbacGroup"]> {
+    const { data } = await this.api.POST("/v1/rbac/groups", { body });
+    return data as Schemas["RbacGroup"];
   },
   async patchGroup(
     this: EngineClient,
     id: string,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
+    body: Schemas["UpdateRbacGroupRequest"],
+  ): Promise<Schemas["RbacGroup"]> {
     const { data } = await this.api.PATCH("/v1/rbac/groups/{id}", {
       params: { path: { id } },
-      body: body as ApiBody<"/v1/rbac/groups/{id}", "patch">,
+      body,
     });
-    return data as Record<string, unknown>;
+    return data as Schemas["RbacGroup"];
   },
   async deleteGroup(this: EngineClient, id: string): Promise<void> {
     await this.api.DELETE("/v1/rbac/groups/{id}", { params: { path: { id } } });
@@ -181,29 +150,27 @@ export const rbacMethods = {
     });
   },
 
-  async listRequestHooks(this: EngineClient): Promise<{ items: Record<string, unknown>[] }> {
+  async listRequestHooks(this: EngineClient): Promise<Schemas["RequestHookListResponse"]> {
     const { data } = await this.api.GET("/v1/auth/request-hooks");
-    return data as { items: Record<string, unknown>[] };
+    return data as Schemas["RequestHookListResponse"];
   },
   async createRequestHook(
     this: EngineClient,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    const { data } = await this.api.POST("/v1/auth/request-hooks", {
-      body: body as ApiBody<"/v1/auth/request-hooks", "post">,
-    });
-    return data as Record<string, unknown>;
+    body: Schemas["CreateRequestHookBody"],
+  ): Promise<Schemas["RequestHook"]> {
+    const { data } = await this.api.POST("/v1/auth/request-hooks", { body });
+    return data as Schemas["RequestHook"];
   },
   async patchRequestHook(
     this: EngineClient,
     id: string,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
+    body: Schemas["UpdateRequestHookBody"],
+  ): Promise<Schemas["RequestHook"]> {
     const { data } = await this.api.PATCH("/v1/auth/request-hooks/{id}", {
       params: { path: { id } },
-      body: body as ApiBody<"/v1/auth/request-hooks/{id}", "patch">,
+      body,
     });
-    return data as Record<string, unknown>;
+    return data as Schemas["RequestHook"];
   },
   async deleteRequestHook(this: EngineClient, id: string): Promise<void> {
     await this.api.DELETE("/v1/auth/request-hooks/{id}", { params: { path: { id } } });

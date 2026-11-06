@@ -518,9 +518,9 @@ describe("the page's frame", () => {
     const source = readFileSync(resolve(import.meta.dir, "settings.tsx"), "utf8");
     const save = readFileSync(resolve(import.meta.dir, "settings-save.ts"), "utf8");
     expect(source).toContain("applySettingsPatch(");
-    expect(save).toContain('method: "PATCH"');
-    expect(source).not.toMatch(/method: "PUT"|saveWorkspaceSetting/);
-    expect(source).not.toMatch(/method: "PUT"/);
+    expect(save).toContain('apiCall("patch", "/v1/settings"');
+    expect(source).not.toMatch(/method: "PUT"|apiCall\("put"|saveWorkspaceSetting/);
+    expect(source).not.toMatch(/method: "PUT"|apiCall\("put"/);
     expect(source).not.toMatch(/setTimeout|autosave/i);
   });
 });

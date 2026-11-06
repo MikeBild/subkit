@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { type ApiResponse, apiCall } from "@/api/call";
 import { apiRequest } from "@/api/client";
 import { absolute, runHref } from "@/app/links";
 import { ActionButton, FormDialog, SchemaForm } from "@/components/cockpit/patterns";
@@ -21,17 +22,9 @@ import {
   type UnavailableConnector,
 } from "@/lib/run-availability";
 import { buildFormSchemaInput, formValuesFromInput, type SchemaValues } from "@/lib/schema-form";
-import { formFields, type InputSchemaSource, inputForm } from "@/lib/workflow-inputs";
+import { formFields, inputForm } from "@/lib/workflow-inputs";
 
-interface InputSchemaResponse {
-  source: InputSchemaSource;
-  schema: Record<string, unknown> | null;
-}
-
-interface RunOutcome {
-  execution_id?: string;
-  status?: string;
-}
+type RunOutcome = ApiResponse<"/v1/executions", "post">;
 
 type Failure =
   | { kind: "connector"; environment: RunEnvironment; connector: UnavailableConnector }
@@ -100,10 +93,7 @@ export function RunWorkflowDialog({
   const schema = useQuery({
     queryKey: ["workflow", workflowId, "input-schema"],
     enabled: open,
-    queryFn: () =>
-      apiRequest<InputSchemaResponse>(
-        `/v1/workflows/${encodeURIComponent(workflowId)}/input-schema`,
-      ),
+    queryFn: () => apiCall("get", "/v1/workflows/{id}/input-schema", { path: { id: workflowId } }),
   });
   const form = inputForm(schema.data?.schema ?? null);
   const fields = formFields(form).map((field) => {

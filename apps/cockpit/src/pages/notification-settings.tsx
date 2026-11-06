@@ -1,7 +1,9 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ApiError, apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
+import { ApiError } from "@/api/client";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
 import { ListTable } from "@/components/cockpit/list-table";
@@ -56,29 +58,25 @@ import {
 
 type Translate = ReturnType<typeof useI18n>["t"];
 
-type NotificationRuleItem = {
-  id: string;
-  name: string;
-  event_pattern: string;
-  workflow_pattern: string;
-  severity: string;
-  target_workspace_id?: string;
-  target_channel_id: string;
-  active: boolean;
-};
+type NotificationRuleItem = components["schemas"]["NotificationRule"];
+type NotificationChannelItem = components["schemas"]["NotificationChannel"];
+type NotificationRuleUpdate = components["schemas"]["UpdateNotificationRuleBody"];
 
-type NotificationChannelItem = {
-  id: string;
-  platform: string;
-  workspace_id?: string;
-  channel_id: string;
-  default_severity: string;
-  rate_limit_per_minute: number;
-  circuit_state: string;
-  circuit_open_until?: string | null;
-  consecutive_failures?: number;
-  active: boolean;
-};
+function isSeverity(value: string | undefined): value is Severity {
+  return SEVERITIES.some((severity) => severity === value);
+}
+
+function ruleUpdate(edit: Record<string, string>): NotificationRuleUpdate {
+  return {
+    ...(edit.name !== undefined ? { name: edit.name } : {}),
+    ...(edit.event_pattern !== undefined ? { event_pattern: edit.event_pattern } : {}),
+    ...(isSeverity(edit.severity) ? { severity: edit.severity } : {}),
+    ...(edit.target_workspace_id !== undefined
+      ? { target_workspace_id: edit.target_workspace_id }
+      : {}),
+    ...(edit.target_channel_id !== undefined ? { target_channel_id: edit.target_channel_id } : {}),
+  };
+}
 
 const RULES_QUERY = ["admin", "notification-rules"] as const;
 const CHANNELS_QUERY = ["admin", "notification-channels"] as const;
@@ -203,12 +201,12 @@ export function NotificationSettings({
   const live = useLiveQueryOptions();
   const rules = useQuery({
     queryKey: RULES_QUERY,
-    queryFn: () => apiRequest<{ items: NotificationRuleItem[] }>("/v1/notifications/rules"),
+    queryFn: () => apiCall("get", "/v1/notifications/rules", {}),
     ...live,
   });
   const channels = useQuery({
     queryKey: CHANNELS_QUERY,
-    queryFn: () => apiRequest<{ items: NotificationChannelItem[] }>("/v1/notifications/channels"),
+    queryFn: () => apiCall("get", "/v1/notifications/channels", {}),
     ...live,
   });
   const ruleItems = rules.data?.items ?? [];
@@ -483,7 +481,9 @@ function useNotificationDelete(
   const client = useQueryClient();
   const remove = useMutation({
     mutationFn: (id: string) =>
-      apiRequest(`/v1/notifications/${kind}/${encodeURIComponent(id)}`, { method: "DELETE" }),
+      kind === "rules"
+        ? apiCall("delete", "/v1/notifications/rules/{id}", { path: { id } })
+        : apiCall("delete", "/v1/notifications/channels/{id}", { path: { id } }),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: kind === "rules" ? RULES_QUERY : CHANNELS_QUERY });
       toast.success(
@@ -529,9 +529,9 @@ function RuleSheet({
   });
   const toggle = useMutation({
     mutationFn: (next: { id: string; active: boolean }) =>
-      apiRequest(`/v1/notifications/rules/${encodeURIComponent(next.id)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ active: next.active }),
+      apiCall("patch", "/v1/notifications/rules/{id}", {
+        path: { id: next.id },
+        body: { active: next.active },
       }),
     onSuccess: async (_result, next) => {
       await client.invalidateQueries({ queryKey: RULES_QUERY });
@@ -645,9 +645,9 @@ function ChannelSheet({
   });
   const resume = useMutation({
     mutationFn: (id: string) =>
-      apiRequest(`/v1/notifications/channels/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ active: true }),
+      apiCall("patch", "/v1/notifications/channels/{id}", {
+        path: { id },
+        body: { active: true },
       }),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: CHANNELS_QUERY });
@@ -782,18 +782,19 @@ function RuleDialog({
     mutationFn: () => {
       const after: RuleDraft = { name, event, severity, target };
       if (rule)
-        return apiRequest(`/v1/notifications/rules/${encodeURIComponent(rule.id)}`, {
-          method: "PATCH",
-          body: JSON.stringify(ruleEditBody(before, after, channels)),
+        return apiCall("patch", "/v1/notifications/rules/{id}", {
+          path: { id: rule.id },
+          body: ruleUpdate(ruleEditBody(before, after, channels)),
         });
-      return apiRequest("/v1/notifications/rules", {
-        method: "POST",
-        body: JSON.stringify({
+      const fields = ruleTargetFields(target, channels);
+      if (!fields) throw new Error("notification-rule-target-missing");
+      return apiCall("post", "/v1/notifications/rules", {
+        body: {
           name: name.trim(),
           event_pattern: event,
-          severity,
-          ...ruleTargetFields(target, channels),
-        }),
+          ...(isSeverity(severity) ? { severity } : {}),
+          ...fields,
+        },
       });
     },
     onSuccess: async () => {
@@ -940,14 +941,13 @@ function CreateChannelDialog({
   const [severity, setSeverity] = useState<Severity>("info");
   const create = useMutation({
     mutationFn: () =>
-      apiRequest("/v1/notifications/channels", {
-        method: "POST",
-        body: JSON.stringify({
+      apiCall("post", "/v1/notifications/channels", {
+        body: {
           platform,
           workspace_id: workspace.trim(),
           channel_id: channelId.trim(),
           default_severity: severity,
-        }),
+        },
       }),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: CHANNELS_QUERY });

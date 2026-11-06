@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { ActionButton, ConfirmDialog } from "@/components/cockpit/patterns";
 import type { AuthorityReviewModel } from "@/lib/authority-review-model";
 import { automationQueryKeys } from "@/lib/automation-queries";
@@ -64,13 +64,11 @@ export function MakeUntilRevoked({
   const change = useOptimisticAction({
     queryKey: ["workflow-authorities", authority.workflow_id],
     mutationFn: () =>
-      apiRequest<WorkflowAuthority>(
-        `/v1/workflows/${encodeURIComponent(authority.workflow_id)}/execution-authorities/${encodeURIComponent(authority.id)}/until-revoked`,
-        {
-          method: "POST",
-          body: JSON.stringify({ expected_manifest_digest: authority.effect_manifest_digest }),
-        },
-      ),
+      apiCall("post", "/v1/workflows/{id}/execution-authorities/{authority_id}/until-revoked", {
+        path: { id: authority.workflow_id, authority_id: authority.id },
+        body: { expected_manifest_digest: authority.effect_manifest_digest },
+      }),
+
     apply: (current: AuthorityPages | undefined) =>
       withAuthorityUntilRevoked(current, authority.id),
     invalidate: [

@@ -3,12 +3,16 @@ import { exitCodeFor, reportCommandError } from "@cli-core/errors";
 import { emitGroupedList, emitList, printJson, printTable } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
+import type {
+  ConnectorDocsIngestBody,
+  ConnectorProbeResult,
+  CreateConnectorBody,
+  CredentialBody,
+  ImportConnectorBody,
+  UpdateConnectorBody,
+} from "../engine-client/connectors.ts";
 import type { EngineClient } from "../engine-client.ts";
-import {
-  catalogMetadataArgs,
-  catalogMetadataBody,
-  shortDescription,
-} from "../lib/catalog-metadata.ts";
+import { catalogMetadataArgs, shortDescription } from "../lib/catalog-metadata.ts";
 import {
   connectorDisplayName,
   connectorPatchBody,
@@ -21,18 +25,37 @@ import type { ConnectorIntent, ConnectorSummary, PlanStep } from "../render/type
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
 import { CONNECTOR_LIST_COLUMNS } from "./list-columns.ts";
 
+type Json = Record<string, unknown>;
+
+const IMPORT_SOURCES = [
+  "openapi",
+  "google_discovery",
+  "postman",
+  "har",
+  "graphql",
+  "graphql_introspection",
+  "curl",
+] as const satisfies readonly ImportConnectorBody["source"][];
+
+const ENVIRONMENTS = [
+  "dev",
+  "prod",
+] as const satisfies readonly ImportConnectorBody["environment"][];
+
+const DOC_SOURCE_TYPES = [
+  "openapi",
+  "google_discovery",
+  "markdown",
+  "llms_txt",
+] as const satisfies readonly ConnectorDocsIngestBody["source_type"][];
+
+function oneOf<T extends string>(values: readonly T[], value: string): value is T {
+  return (values as readonly string[]).includes(value);
+}
+
 const fetchConnectorRows = async (client: EngineClient) => {
   const { items } = await client.listConnectors({ limit: 50 });
-  return (items as Record<string, unknown>[]).map((r) => ({
-    id: String(r.id),
-    name:
-      typeof r.display_name === "string"
-        ? r.display_name
-        : typeof r.name === "string"
-          ? r.name
-          : null,
-    detail: typeof r.slug === "string" ? r.slug : null,
-  }));
+  return items.map((r) => ({ id: r.id, name: r.display_name, detail: r.slug }));
 };
 
 const listCommand = defineCommand({
@@ -53,25 +76,20 @@ const listCommand = defineCommand({
           ...(args.category ? { category: args.category } : {}),
           ...(args.driver ? { driver: args.driver } : {}),
         });
-        const rows = (items as Record<string, unknown>[]).map((r) => ({
+        const rows = items.map((r) => ({
           ...r,
           description: args.json ? r.description : shortDescription(r.description),
-          name:
-            typeof r.name === "string" && r.name
-              ? r.name
-              : typeof r.display_name === "string"
-                ? r.display_name
-                : "",
+          name: r.display_name,
         }));
         const columns = CONNECTOR_LIST_COLUMNS;
-        if (args.flat || !categories?.length) {
+        if (args.flat || !categories.length) {
           emitList(!!args.json, columns, rows);
         } else {
           emitGroupedList(!!args.json, columns, rows, categories);
         }
         if (!args.json) {
           const blocks =
-            !args.flat && categories?.length
+            !args.flat && categories.length
               ? ` · ${categories.length} categor${categories.length === 1 ? "y" : "ies"}`
               : "";
           process.stdout.write(
@@ -116,10 +134,19 @@ export function probeWarnings(value: unknown): Array<{ code: string; message: st
   );
 }
 
-export function renderProbeOutcome(
-  result: Record<string, unknown> & { ok?: unknown },
-  jsonMode: boolean,
-): boolean {
+export function probeSummary(result: ConnectorProbeResult): NonNullable<ConnectorSummary["probe"]> {
+  return {
+    ok: result.ok,
+    ...(result.status !== undefined ? { status_code: result.status } : {}),
+    duration_ms: result.latency_ms,
+  };
+}
+
+export function probeFailureDetail(result: ConnectorProbeResult): string {
+  return result.detail ?? result.error_code ?? `status=${result.status ?? "?"}`;
+}
+
+export function renderProbeOutcome(result: ConnectorProbeResult, jsonMode: boolean): boolean {
   if (jsonMode) {
     printJson(result);
     return result.ok === true;
@@ -127,10 +154,8 @@ export function renderProbeOutcome(
   const ok = result.ok === true;
   process.stdout.write(`ok: ${ok}\n`);
   if (!ok) {
-    const code = typeof result.error_code === "string" ? result.error_code : null;
-    const detail = typeof result.detail === "string" ? result.detail : null;
-    if (code) process.stdout.write(`${pc.dim("reason:")} ${code}\n`);
-    if (detail) process.stdout.write(`${pc.dim("detail:")} ${detail}\n`);
+    if (result.error_code) process.stdout.write(`${pc.dim("reason:")} ${result.error_code}\n`);
+    if (result.detail) process.stdout.write(`${pc.dim("detail:")} ${result.detail}\n`);
     if (typeof result.provider_action_url === "string") {
       process.stdout.write(`${pc.dim("fix:")} ${result.provider_action_url}\n`);
     }
@@ -141,9 +166,35 @@ export function renderProbeOutcome(
   return ok;
 }
 
-async function readDefinitionFile(path: string): Promise<Record<string, unknown>> {
+async function readDefinitionFile<T>(path: string): Promise<T> {
   const { readFileSync } = await import("node:fs");
-  return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+  return JSON.parse(readFileSync(path, "utf8")) as T;
+}
+
+export function importConnectorBody(args: {
+  source: string;
+  content: string;
+  name?: string | undefined;
+  environment?: string | undefined;
+}): ImportConnectorBody {
+  if (!oneOf(IMPORT_SOURCES, args.source)) {
+    throw new Error(`--source must be one of: ${IMPORT_SOURCES.join(" | ")}`);
+  }
+  const environment = args.environment || "dev";
+  if (!oneOf(ENVIRONMENTS, environment)) throw new Error("--environment must be dev or prod");
+  return {
+    source: args.source,
+    content: args.content,
+    ...(args.name ? { name: args.name } : {}),
+    environment,
+  };
+}
+
+export function docsIngestBody(url: string, sourceType: string): ConnectorDocsIngestBody {
+  if (!oneOf(DOC_SOURCE_TYPES, sourceType)) {
+    throw new Error(`--source-type must be one of: ${DOC_SOURCE_TYPES.join(" | ")}`);
+  }
+  return { source_type: sourceType, url };
 }
 
 async function saveConnectorFromFile(
@@ -153,7 +204,7 @@ async function saveConnectorFromFile(
   const client = makeClient();
   const jsonMode = Boolean(args.json);
   try {
-    const file = await readDefinitionFile(String(args.file));
+    const file = await readDefinitionFile<Json>(String(args.file));
     const current =
       target.action === "patch"
         ? unwrapConnectorRecord(await client.getConnector(target.id))
@@ -179,7 +230,7 @@ async function saveConnectorFromFile(
     let probe: ConnectorSummary["probe"];
     if (!skip) {
       const verdict = await client.validateConnectorDraft(
-        current ? connectorPatchDraft(current, body) : body,
+        (current ? connectorPatchDraft(current, body) : body) as CreateConnectorBody,
       );
       if (!verdict.ok) {
         await renderTaskList(
@@ -215,13 +266,13 @@ async function saveConnectorFromFile(
         );
       } else if (target.action === "create") {
         const credential = args.credential
-          ? await readDefinitionFile(String(args.credential))
+          ? await readDefinitionFile<CredentialBody>(String(args.credential))
           : undefined;
         const result = await client.probeConnectorDraft({
-          connector: body,
+          connector: body as CreateConnectorBody,
           ...(credential ? { credential } : {}),
         });
-        probe = { ok: Boolean(result.ok) };
+        probe = { ok: result.ok };
         if (!result.ok) {
           await renderTaskList(
             [
@@ -230,7 +281,7 @@ async function saveConnectorFromFile(
                 id: "probe",
                 label: "Probe",
                 status: "failed",
-                detail: typeof result.detail === "string" ? result.detail : "probe returned not-ok",
+                detail: result.detail ?? "probe returned not-ok",
               },
               { id: "save", label: "Save", status: "pending" },
             ],
@@ -245,28 +296,26 @@ async function saveConnectorFromFile(
       );
     }
 
-    const saved = (
+    const saved =
       target.action === "create"
-        ? await client.createConnector(body)
-        : await client.patchConnector(target.id, body)
-    ) as Record<string, unknown> & { id?: string; slug?: string };
+        ? await client.createConnector(body as CreateConnectorBody)
+        : await client.patchConnector(target.id, body as UpdateConnectorBody);
     printJson(saved);
 
     await renderSummary(
       {
         kind: "connector",
         action: target.action === "patch" ? "Updated" : "Created",
-        id: typeof saved.id === "string" ? saved.id : "(unknown)",
-        slug: typeof saved.slug === "string" ? saved.slug : "(unknown)",
+        id: saved.id,
+        slug: saved.slug,
         ...(typeof saved.template_slug === "string" ? { template_slug: saved.template_slug } : {}),
         ...(probe ? { probe } : {}),
       },
       { jsonMode },
     );
 
-    if (!jsonMode && typeof saved.id === "string") {
-      const authType = typeof saved.auth_type === "string" ? saved.auth_type : "";
-      const next = authType.startsWith("oauth")
+    if (!jsonMode) {
+      const next = saved.auth_type.startsWith("oauth")
         ? `sk auth --connector-id ${saved.id}`
         : `sk connectors get ${saved.id}`;
       process.stderr.write(`\n${pc.dim("Next:")} ${next}\n`);
@@ -319,32 +368,18 @@ const createCommand = defineCommand({
         };
         await renderIntent(intent, { jsonMode });
 
-        const body: Record<string, unknown> = {};
-        if (args.name) body.name = args.name;
-        const created = (await client.createConnectorFromTemplate(
+        const created = await client.createConnectorFromTemplate(
           args.template as string,
-          body,
-        )) as Record<string, unknown> & { id?: string; slug?: string };
+          args.name ? { name: args.name } : {},
+        );
         printJson(created);
 
-        const skip = Boolean((args as Record<string, unknown>)["skip-checks"]);
+        const skip = Boolean(args["skip-checks"]);
         let probe: ConnectorSummary["probe"];
-        if (!skip && typeof created.id === "string") {
+        if (!skip) {
           try {
-            const result = (await client.testConnector(created.id)) as Record<string, unknown> & {
-              ok?: boolean;
-              status_code?: number;
-              duration_ms?: number;
-            };
-            probe = {
-              ok: Boolean(result.ok),
-              ...(typeof result.status_code === "number"
-                ? { status_code: result.status_code }
-                : {}),
-              ...(typeof result.duration_ms === "number"
-                ? { duration_ms: result.duration_ms }
-                : {}),
-            };
+            const result = await client.testConnector(created.id);
+            probe = probeSummary(result);
             if (!result.ok) {
               const phases: PlanStep[] = [
                 { id: "create", label: "Create", status: "succeeded" },
@@ -352,10 +387,7 @@ const createCommand = defineCommand({
                   id: "probe",
                   label: "Probe",
                   status: "failed",
-                  detail:
-                    typeof result.error === "string"
-                      ? result.error
-                      : `status=${result.status_code ?? "?"}`,
+                  detail: probeFailureDetail(result),
                 },
               ];
               await renderTaskList(phases, { jsonMode });
@@ -382,18 +414,17 @@ const createCommand = defineCommand({
 
         const summary: ConnectorSummary = {
           kind: "connector",
-          id: typeof created.id === "string" ? created.id : "(unknown)",
-          slug: typeof created.slug === "string" ? created.slug : (args.template as string),
+          id: created.id,
+          slug: created.slug,
           template_slug: args.template as string,
           ...(probe ? { probe } : {}),
         };
         await renderSummary(summary, { jsonMode });
 
-        if (!jsonMode && typeof created.id === "string") {
-          const authType = typeof created.auth_type === "string" ? created.auth_type : "";
-          const next = authType.startsWith("oauth")
+        if (!jsonMode) {
+          const next = created.auth_type.startsWith("oauth")
             ? `sk auth --connector-id ${created.id}`
-            : `sk "create a workflow using ${typeof created.slug === "string" ? created.slug : args.template}"`;
+            : `sk "create a workflow using ${created.slug}"`;
           process.stderr.write(`\n${pc.dim("Next:")} ${next}\n`);
         }
       },
@@ -427,9 +458,9 @@ const probeCommand = defineCommand({
     return withCommandErrors(
       async () => {
         if (args.file) {
-          const connector = await readDefinitionFile(String(args.file));
+          const connector = await readDefinitionFile<CreateConnectorBody>(String(args.file));
           const credential = args.credential
-            ? await readDefinitionFile(String(args.credential))
+            ? await readDefinitionFile<CredentialBody>(String(args.credential))
             : undefined;
           const result = await client.probeConnectorDraft({
             connector,
@@ -469,7 +500,7 @@ const validateCommand = defineCommand({
     return withCommandErrors(
       async () => {
         const verdict = await client.validateConnectorDraft(
-          await readDefinitionFile(String(args.file)),
+          await readDefinitionFile<CreateConnectorBody>(String(args.file)),
         );
         if (jsonMode) {
           printJson(verdict);
@@ -526,12 +557,14 @@ const importCommand = defineCommand({
           if (existsSync(specArg)) content = readFileSync(specArg, "utf8");
         } catch {}
 
-        const imported = await client.importConnectorFromSpec({
-          source: String(args.source),
-          content,
-          ...(args.name ? { name: args.name } : {}),
-          ...(args.environment ? { environment: String(args.environment) } : {}),
-        });
+        const imported = await client.importConnectorFromSpec(
+          importConnectorBody({
+            source: String(args.source),
+            content,
+            name: args.name,
+            environment: args.environment,
+          }),
+        );
 
         const draft = imported.draft;
         if (!draft) {
@@ -556,11 +589,9 @@ const importCommand = defineCommand({
           }
         }
 
-        const created = (await client.createConnector(draft)) as Record<string, unknown> & {
-          id?: string;
-        };
+        const created = await client.createConnector(draft as CreateConnectorBody);
         printJson(created);
-        if (!jsonMode && typeof created.id === "string") {
+        if (!jsonMode) {
           process.stderr.write(
             `\n${pc.dim("Next:")} sk credentials set --connector-id ${created.id} --mode <mode>\n`,
           );
@@ -697,8 +728,11 @@ const patchCommand = defineCommand({
     const jsonMode = Boolean(args.json);
     return withCommandErrors(
       async () => {
-        const body: Record<string, unknown> = { ...catalogMetadataBody(args) };
-        if (args.name) body.name = args.name;
+        const body: UpdateConnectorBody = {
+          ...(args.description !== undefined ? { description: args.description } : {}),
+          ...(args.category !== undefined ? { category: args.category } : {}),
+          ...(args.name ? { name: args.name } : {}),
+        };
         printJson(await client.patchConnector(args.id, body));
       },
       { json: jsonMode },
@@ -821,11 +855,18 @@ const docsIngestCommand = defineCommand({
   args: {
     id: { type: "positional", required: true, description: "Connector id" },
     url: { type: "string", required: true, description: "URL to ingest" },
+    "source-type": {
+      type: "string",
+      required: true,
+      description: "Document format: openapi | google_discovery | markdown | llms_txt",
+    },
   },
   async run({ args }) {
     const client = makeClient();
     return withCommandErrors(async () => {
-      printJson(await client.ingestConnectorDocs(args.id, { url: args.url }));
+      printJson(
+        await client.ingestConnectorDocs(args.id, docsIngestBody(args.url, args["source-type"])),
+      );
     });
   },
 });
@@ -841,7 +882,7 @@ const docsListCommand = defineCommand({
     return withCommandErrors(
       async () => {
         const { items } = await client.listConnectorDocs(args.id);
-        emitList(!!args.json, ["id", "title", "url"], items);
+        emitList(!!args.json, ["id", "source_type", "source_uri"], items);
       },
       { json: Boolean(args.json) },
     );
@@ -861,10 +902,7 @@ const docsSearchCommand = defineCommand({
       const { items } = await client.searchConnectorDocs(args.id, args.query, Number(args.limit));
       printTable(
         ["id", "title", "match_type", "score"],
-        items.map((item) => ({
-          ...item,
-          score: (item as Record<string, unknown>).rank,
-        })),
+        items.map((item) => ({ ...item, score: item.rank })),
       );
     });
   },

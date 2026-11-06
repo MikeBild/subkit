@@ -58,12 +58,9 @@ export async function dispatchInspectSlash(
       const res = await ctx.client.tailAuditLog({ limit: 20 });
       const rows = res.items.slice(0, 20);
       if (rows.length === 0) return "no audit rows visible to this principal";
-      const lines = rows.map((r) => {
-        const action = typeof r.action === "string" ? r.action : "";
-        const ts = typeof r.ts === "string" ? r.ts : "";
-        const rid = typeof r.resource_id === "string" ? r.resource_id.slice(0, 8) : "";
-        return `${ts}  ${action.padEnd(28)} ${rid}`;
-      });
+      const lines = rows.map(
+        (r) => `${r.ts}  ${r.action.padEnd(28)} ${(r.resource_id ?? "").slice(0, 8)}`,
+      );
       return panify(ctx, "audit log", lines, `latest ${rows.length}`);
     }
     case "knowledge": {
@@ -73,10 +70,7 @@ export async function dispatchInspectSlash(
       }
       const r = await ctx.client.listKnowledgeSources({ limit: 20 });
       if (r.items.length === 0) return "no knowledge sources";
-      const lines = r.items.map((ks) => {
-        const k = ks as Record<string, unknown>;
-        return `${String(k.id ?? "").slice(0, 8)}  ${String(k.title ?? k.name ?? "")}  ${String(k.kind ?? "")}`;
-      });
+      const lines = r.items.map((k) => `${k.id.slice(0, 8)}  ${k.name}  ${k.source_type}`);
       return panify(ctx, "knowledge sources", lines, `${r.items.length} found`);
     }
     default:

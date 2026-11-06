@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { SelectField, TextAreaField, TextField } from "@/components/cockpit/form-field";
 import {
   type ActionMenuItem,
@@ -13,11 +13,11 @@ import {
 import { useI18n } from "@/lib/i18n-context";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
+import { type CatalogMetadataBody, patchCatalogMetadata } from "./catalog-metadata-api";
 import {
   type CatalogKind,
   type CatalogMetadataRecord,
   categoryChoices,
-  metadataEndpoint,
   metadataPatch,
   normalizeCategoryInput,
   recordCategory,
@@ -58,10 +58,7 @@ export function useCatalogMetadataActions({
   const client = useQueryClient();
   const accept = useMutation({
     mutationFn: (description: string) =>
-      apiRequest(metadataEndpoint(kind, id), {
-        method: "PATCH",
-        body: JSON.stringify({ description, accept_description: true }),
-      }),
+      patchCatalogMetadata(kind, id, { description, accept_description: true }),
     onSuccess: async () => {
       toast.success(t("catalogMeta.saved"));
       await Promise.all([
@@ -171,7 +168,7 @@ export function CatalogMetadataDialog({
   const vocabulary = useQuery({
     queryKey: ["catalog-categories"],
     enabled: open,
-    queryFn: () => apiRequest<{ categories?: { category: string }[] }>("/v1/categories"),
+    queryFn: () => apiCall("get", "/v1/categories", {}),
   });
   const choices = categoryChoices(
     (vocabulary.data?.categories ?? []).map((entry) => entry.category),
@@ -188,8 +185,7 @@ export function CatalogMetadataDialog({
         ? { ...(metadata ?? {}), [nameKey]: renamed }
         : metadata;
   const save = useMutation({
-    mutationFn: (body: Record<string, string>) =>
-      apiRequest(metadataEndpoint(kind, id), { method: "PATCH", body: JSON.stringify(body) }),
+    mutationFn: (body: CatalogMetadataBody) => patchCatalogMetadata(kind, id, body),
     onSuccess: async () => {
       toast.success(t("catalogMeta.saved"));
       onOpenChange(false);
@@ -342,10 +338,7 @@ export function useCategoryFilter(kind: CatalogKind): {
   const [value, setValue] = useSearchParamState("category", "all");
   const vocabulary = useQuery({
     queryKey: ["catalog-categories"],
-    queryFn: () =>
-      apiRequest<{ categories?: { category: string; counts?: Record<string, number> }[] }>(
-        "/v1/categories",
-      ),
+    queryFn: () => apiCall("get", "/v1/categories", {}),
   });
   const options = (vocabulary.data?.categories ?? [])
     .map((entry) => ({ category: entry.category, count: entry.counts?.[kind] ?? 0 }))

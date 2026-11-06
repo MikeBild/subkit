@@ -9,6 +9,8 @@ export type SolutionConnector = components["schemas"]["RecipeConnectorBinding"];
 export type ConnectorTemplate =
   components["schemas"]["ConnectorTemplateListResponse"]["items"][number];
 type CreateConnectorBody = components["schemas"]["CreateConnectorBody"];
+type CreateWorkflowDraft = components["schemas"]["CreateWorkflowDraft"];
+type WorkflowDef = components["schemas"]["WorkflowDef"];
 
 export const SOLUTIONS_VERTICAL = "solutions";
 
@@ -223,13 +225,14 @@ export function solutionDraftBody(
   entry: SolutionEntry,
   plan: Pick<SolutionPlan, "slug" | "name">,
   mapping: Readonly<Record<string, string>>,
-): Record<string, unknown> {
+): CreateWorkflowDraft {
   return {
     definition: {
       ...record(swapConnectorIds(entry.workflow, mapping)),
       name: plan.name,
       slug: plan.slug,
-    },
+    } as WorkflowDef,
+
     recipe: { vertical: SOLUTIONS_VERTICAL, slug: entry.recipe_slug },
   };
 }

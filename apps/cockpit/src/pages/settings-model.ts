@@ -6,7 +6,7 @@ type Translate = (key: TranslationKey, values?: Record<string, string | number>)
 
 export interface SettingItem {
   path: string;
-  value: unknown;
+  value?: unknown;
   meta: {
     source: string;
     scope: string;

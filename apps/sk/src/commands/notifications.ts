@@ -2,7 +2,83 @@ import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import { getNotificationInboxCursor, setNotificationInboxCursor } from "../config.ts";
+import type {
+  CreateNotificationChannelBody,
+  CreateNotificationRuleBody,
+  NotificationInboxQuery,
+  NotificationSeverity,
+  UpdateNotificationChannelBody,
+  UpdateNotificationRuleBody,
+} from "../engine-client/events.ts";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
+
+export const NOTIFICATION_CHANNEL_COLUMNS = [
+  "id",
+  "platform",
+  "workspace_id",
+  "channel_id",
+  "active",
+];
+
+const SEVERITIES = [
+  "debug",
+  "info",
+  "warn",
+  "error",
+  "critical",
+] as const satisfies readonly NotificationSeverity[];
+
+export function notificationSeverity(value: string): NotificationSeverity {
+  const severity = SEVERITIES.find((candidate) => candidate === value);
+  if (!severity) throw new Error(`--severity must be one of ${SEVERITIES.join(", ")}`);
+  return severity;
+}
+
+export function buildCreateChannelBody(args: {
+  platform: string;
+  "workspace-id": string;
+  "channel-id": string;
+  severity?: string | undefined;
+  rateLimit?: number | undefined;
+}): CreateNotificationChannelBody {
+  return {
+    platform: args.platform,
+    workspace_id: args["workspace-id"],
+    channel_id: args["channel-id"],
+    ...(args.severity ? { default_severity: notificationSeverity(args.severity) } : {}),
+    ...(args.rateLimit !== undefined ? { rate_limit_per_minute: args.rateLimit } : {}),
+  };
+}
+
+export function buildCreateRuleBody(args: {
+  event: string;
+  "workspace-id": string;
+  "channel-id": string;
+  name?: string | undefined;
+  severity?: string | undefined;
+}): CreateNotificationRuleBody {
+  return {
+    name: args.name ?? args.event,
+    event_pattern: args.event,
+    target_workspace_id: args["workspace-id"],
+    target_channel_id: args["channel-id"],
+    ...(args.severity ? { severity: notificationSeverity(args.severity) } : {}),
+  };
+}
+
+export function buildInboxQuery(args: {
+  all?: boolean | undefined;
+  unread?: boolean | undefined;
+  actionable?: boolean | undefined;
+  limit?: string | undefined;
+}): NotificationInboxQuery {
+  const query: NotificationInboxQuery = {};
+  if (!args.all) query.since = getNotificationInboxCursor();
+  if (args.limit) query.limit = Number(args.limit);
+  if (args.unread) query.unread_only = "true";
+  if (args.actionable) query.actionable_only = "true";
+  return query;
+}
 
 const channelsListCmd = defineCommand({
   meta: { name: "list", description: "List notification channels" },
@@ -14,7 +90,7 @@ const channelsListCmd = defineCommand({
     return withCommandErrors(
       async () => {
         const { items } = await client.listNotificationChannels();
-        emitList(!!args.json, ["id", "name", "kind", "active"], items as Record<string, unknown>[]);
+        emitList(!!args.json, NOTIFICATION_CHANNEL_COLUMNS, items);
       },
       { json: Boolean(args.json) },
     );
@@ -32,7 +108,7 @@ const channelsGetCmd = defineCommand({
       printJson(
         await client.listNotificationChannels().then(
           ({ items }) =>
-            items.find((c) => (c as Record<string, unknown>).id === args.id) ??
+            items.find((c) => c.id === args.id) ??
             (() => {
               throw new Error(`channel ${args.id} not found`);
             })(),
@@ -74,13 +150,7 @@ const channelsCreateCmd = defineCommand({
     const client = makeClient();
     return withCommandErrors(async () => {
       printJson(
-        await client.createNotificationChannel({
-          platform: args.platform,
-          workspace_id: args["workspace-id"],
-          channel_id: args["channel-id"],
-          ...(args.severity ? { default_severity: args.severity } : {}),
-          ...(rateLimit !== undefined ? { rate_limit_per_minute: rateLimit } : {}),
-        }),
+        await client.createNotificationChannel(buildCreateChannelBody({ ...args, rateLimit })),
       );
     });
   },
@@ -94,9 +164,9 @@ const channelsUpdateCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    let body: Record<string, unknown>;
+    let body: UpdateNotificationChannelBody;
     try {
-      body = JSON.parse(args.config as string) as Record<string, unknown>;
+      body = JSON.parse(args.config as string);
     } catch {
       process.stderr.write("invalid JSON for --config\n");
       process.exit(1);
@@ -145,7 +215,7 @@ const rulesListCmd = defineCommand({
         emitList(
           !!args.json,
           ["id", "name", "event_pattern", "target_channel_id", "active"],
-          items as Record<string, unknown>[],
+          items,
         );
       },
       { json: Boolean(args.json) },
@@ -164,7 +234,7 @@ const rulesGetCmd = defineCommand({
       printJson(
         await client.listNotificationRules().then(
           ({ items }) =>
-            items.find((r) => (r as Record<string, unknown>).id === args.id) ??
+            items.find((r) => r.id === args.id) ??
             (() => {
               throw new Error(`rule ${args.id} not found`);
             })(),
@@ -198,15 +268,7 @@ const rulesCreateCmd = defineCommand({
   async run({ args }) {
     const client = makeClient();
     return withCommandErrors(async () => {
-      printJson(
-        await client.createNotificationRule({
-          name: args.name ?? args.event,
-          event_pattern: args.event,
-          target_workspace_id: args["workspace-id"],
-          target_channel_id: args["channel-id"],
-          ...(args.severity ? { severity: args.severity } : {}),
-        }),
-      );
+      printJson(await client.createNotificationRule(buildCreateRuleBody(args)));
     });
   },
 });
@@ -219,9 +281,9 @@ const rulesUpdateCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    let body: Record<string, unknown>;
+    let body: UpdateNotificationRuleBody;
     try {
-      body = JSON.parse(args.body as string) as Record<string, unknown>;
+      body = JSON.parse(args.body as string);
     } catch {
       process.stderr.write("invalid JSON for body\n");
       process.exit(1);
@@ -267,14 +329,10 @@ const deliveriesListCmd = defineCommand({
     const client = makeClient();
     return withCommandErrors(
       async () => {
-        const { items } = await client.listNotificationDeliveries({
-          limit: args.limit ? Number(args.limit) : undefined,
-        });
-        emitList(
-          !!args.json,
-          ["id", "channel_id", "event_type", "status", "created_at"],
-          items as Record<string, unknown>[],
+        const { items } = await client.listNotificationDeliveries(
+          args.limit ? { limit: Number(args.limit) } : {},
         );
+        emitList(!!args.json, ["id", "channel_id", "event_type", "status", "created_at"], items);
       },
       { json: Boolean(args.json) },
     );
@@ -303,22 +361,8 @@ async function runInboxList(args: {
 }): Promise<void> {
   const client = makeClient();
   try {
-    const query: {
-      since?: number;
-      limit?: number;
-      unread_only?: boolean;
-      actionable_only?: boolean;
-    } = {};
-    if (!args.all) query.since = getNotificationInboxCursor();
-    if (args.limit) query.limit = Number(args.limit);
-    if (args.unread) query.unread_only = true;
-    if (args.actionable) query.actionable_only = true;
-    const { items, cursor } = await client.getNotificationInbox(query);
-    emitList(
-      !!args.json,
-      ["id", "severity", "actionable", "event_type", "created_at"],
-      items as unknown as Record<string, unknown>[],
-    );
+    const { items, cursor } = await client.getNotificationInbox(buildInboxQuery(args));
+    emitList(!!args.json, ["id", "severity", "actionable", "event_type", "created_at"], items);
     setNotificationInboxCursor(cursor);
   } catch (err) {
     reportCommandError(err, { json: Boolean(args.json) });

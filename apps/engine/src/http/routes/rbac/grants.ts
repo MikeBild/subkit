@@ -1,30 +1,14 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
+import { ErrorSchema } from "../../../api/common-schemas.ts";
+import { toHonoRoute } from "../../../api/operations/hono.ts";
+import { deleteGrantOperation, listGrantsOperation } from "../../../api/operations/rbac.ts";
+import { RbacGrantSchema, serializeGrant } from "../../../api/operations/rbac-representation.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import * as grantsSvc from "../../../rbac/index.ts";
-import { BadRequestError, NotFoundError } from "../../errors.ts";
+import { BadRequestError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { RbacGrantSchema, serializeGrant } from "./shared.ts";
-
-const listGrantsRoute = createRoute({
-  method: "get",
-  path: "/v1/rbac/grants",
-  tags: ["rbac"],
-  summary: "List resource grants",
-  security: [{ bearerAuth: [] }],
-  responses: {
-    200: {
-      description: "OK",
-      content: {
-        "application/json": {
-          schema: z.object({ items: z.array(RbacGrantSchema) }).openapi("RbacGrantListResponse"),
-        },
-      },
-    },
-  },
-});
 
 const createGrantRoute = createRoute({
   method: "post",
@@ -60,37 +44,13 @@ const createGrantRoute = createRoute({
   },
 });
 
-const deleteGrantRoute = createRoute({
-  method: "delete",
-  path: "/v1/rbac/grants/{id}",
-  tags: ["rbac"],
-  summary: "Revoke a resource grant",
-  security: [{ bearerAuth: [] }],
-  request: { params: IdParam },
-  responses: {
-    204: { description: "Revoked" },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
-
 export function registerGrantsRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/rbac/grants", async (c, next) => {
-    if (c.req.method === "GET") return requirePermission("rbac:read")(c, next);
     if (c.req.method === "POST") return requirePermission("rbac:write")(c, next);
     return next();
   });
 
-  app.use("/v1/rbac/grants/:id", async (c, next) => {
-    if (c.req.method !== "DELETE") return next();
-    return requirePermission("rbac:write")(c, next);
-  });
-
-  app.openapi(listGrantsRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const items = await grantsSvc.listGrants(db, principal.tenant_id);
-    return c.json({ items: items.map(serializeGrant) }, 200);
-  });
+  toHonoRoute(app, listGrantsOperation);
 
   app.openapi(createGrantRoute, async (c) => {
     const principal = requireAuth(c);
@@ -135,25 +95,5 @@ export function registerGrantsRoutes(app: OpenAPIHono<AppEnv>): void {
     }
   });
 
-  app.openapi(deleteGrantRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-    const ok = await grantsSvc.revokeResource(db, principal.tenant_id, id);
-    if (!ok) throw new NotFoundError("grant");
-    await auditAwait(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: principal.kind,
-        actor_id: principal.id,
-        action: AuditAction.RBAC_GRANT_REVOKED,
-        resource_type: "resource_grant",
-        resource_id: id,
-        result: "success",
-        metadata: {},
-      },
-      db,
-    );
-    return c.body(null, 204);
-  });
+  toHonoRoute(app, deleteGrantOperation);
 }

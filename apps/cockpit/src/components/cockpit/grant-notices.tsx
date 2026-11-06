@@ -2,7 +2,7 @@ import type { components } from "@cli-core/engine-api/openapi";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, Wrench } from "lucide-react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { absolute } from "@/app/links";
 import { useSession } from "@/app/session";
 import {
@@ -22,25 +22,20 @@ import {
 } from "@/lib/grant-context";
 import { useI18n } from "@/lib/i18n-context";
 import type { ReviewEnvironment } from "@/lib/review-environment";
-import type { WorkflowAuthorityList } from "@/lib/workflow-authorities";
 
 type ScheduleList = components["schemas"]["ScheduleListResponse"];
 
 function grantScheduleQuery(workflowId: string) {
   return {
     queryKey: ["workflow", workflowId, "schedules"],
-    queryFn: () =>
-      apiRequest<ScheduleList>(`/v1/schedules?workflow_id=${encodeURIComponent(workflowId)}`),
+    queryFn: () => apiCall("get", "/v1/schedules", { query: { workflow_id: workflowId } }),
   };
 }
 
 function grantWorkflowQuery(workflowId: string) {
   return {
     queryKey: ["workflow-grant-context", workflowId],
-    queryFn: () =>
-      apiRequest<{ current_version: number | null; webhooks_active?: number | null }>(
-        `/v1/workflows/${encodeURIComponent(workflowId)}`,
-      ),
+    queryFn: () => apiCall("get", "/v1/workflows/{id}", { path: { id: workflowId } }),
   };
 }
 
@@ -52,12 +47,14 @@ function ownSchedules(workflowId: string, list: ScheduleList | undefined) {
 
 export function useGrantContext(workflowId: string, open: boolean) {
   const session = useSession();
-  const id = encodeURIComponent(workflowId);
   const authorities = useQuery({
     queryKey: ["workflow-authorities", workflowId, "newest"],
     enabled: open,
     queryFn: () =>
-      apiRequest<WorkflowAuthorityList>(`/v1/workflows/${id}/execution-authorities?limit=20`),
+      apiCall("get", "/v1/workflows/{id}/execution-authorities", {
+        path: { id: workflowId },
+        query: { limit: 20 },
+      }),
   });
   const schedules = useQuery({
     ...grantScheduleQuery(workflowId),

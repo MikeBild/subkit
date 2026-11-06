@@ -1,112 +1,61 @@
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import type { EngineClient } from "../engine-client.ts";
-import type { ApiBody, ApiQuery } from "./http.ts";
+import type { ApiQuery } from "./http.ts";
 
-export interface IdentityUserWire {
-  id: string;
-  tenant_id: string;
-  email: string;
-  role: "admin" | "member" | "enduser";
-  status: "invited" | "active" | "disabled";
-  created_at: string;
-  updated_at: string;
-}
+type Schemas = components["schemas"];
 
-export interface UserInviteWire {
-  id: string;
-  tenant_id: string;
-  user_id: string;
-  prefix: string;
-  scopes: string[];
-  allowed_workflows: string[] | null;
-  allowed_connectors: string[] | null;
-  expires_at: string;
-  redeemed_at: string | null;
-  revoked_at: string | null;
-  created_by: string | null;
-  created_at: string;
-}
-
-export interface UserInviteIssuedWire extends UserInviteWire {
-  plaintext_token: string;
-}
-
-export interface InviteRedeemedWire {
-  user_id: string;
-  tenant_id: string;
-  api_key: string;
-  api_key_prefix: string;
-}
+export type IdentityUserWire = Schemas["User"];
+export type UserInviteWire = Schemas["UserInvite"];
+export type UserInviteIssuedWire = Schemas["UserInviteIssued"];
+export type InviteRedeemedWire = Schemas["InviteRedeemed"];
 
 export const identityMethods = {
-  async whoami(this: EngineClient): Promise<{
-    id: string;
-    kind: "user" | "system_account";
-    tenant_id: string;
-    tenant_slug: string | null;
-    email: string | null;
-    role_name: string | null;
-    provider: string;
-    product_id: string | null;
-  }> {
+  async whoami(this: EngineClient): Promise<Schemas["Whoami"]> {
     const { data } = await this.api.GET("/v1/identity/whoami");
-    return data as {
-      id: string;
-      kind: "user" | "system_account";
-      tenant_id: string;
-      tenant_slug: string | null;
-      email: string | null;
-      role_name: string | null;
-      provider: string;
-      product_id: string | null;
-    };
+    return data as Schemas["Whoami"];
   },
 
-  async skBootstrap(this: EngineClient): Promise<components["schemas"]["SkBootstrap"]> {
+  async skBootstrap(this: EngineClient): Promise<Schemas["SkBootstrap"]> {
     const { data } = await this.api.GET("/v1/sk/bootstrap");
-    return data as components["schemas"]["SkBootstrap"];
+    return data as Schemas["SkBootstrap"];
   },
 
-  async listApiKeys(this: EngineClient): Promise<{ items: Record<string, unknown>[] }> {
+  async listApiKeys(this: EngineClient): Promise<Schemas["ApiKeyListResponse"]> {
     const { data } = await this.api.GET("/v1/identity/api-keys");
-    return data as { items: Record<string, unknown>[] };
+    return data as Schemas["ApiKeyListResponse"];
   },
   async issueApiKey(
     this: EngineClient,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    const { data } = await this.api.POST("/v1/identity/api-keys", {
-      body: body as ApiBody<"/v1/identity/api-keys", "post">,
-    });
-    return data as Record<string, unknown>;
+    body: Schemas["IssueApiKeyBody"],
+  ): Promise<Schemas["ApiKeyIssued"]> {
+    const { data } = await this.api.POST("/v1/identity/api-keys", { body });
+    return data as Schemas["ApiKeyIssued"];
   },
   async rotateApiKey(
     this: EngineClient,
     id: string,
-    body: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> {
+    body: Schemas["RotateApiKeyBody"] = {},
+  ): Promise<Schemas["RotateApiKeyResponse"]> {
     const { data } = await this.api.POST("/v1/identity/api-keys/{id}/rotate", {
       params: { path: { id } },
-      body: body as ApiBody<"/v1/identity/api-keys/{id}/rotate", "post">,
+      body,
     });
-    return data as Record<string, unknown>;
+    return data as Schemas["RotateApiKeyResponse"];
   },
   async revokeApiKey(this: EngineClient, id: string): Promise<void> {
     await this.api.DELETE("/v1/identity/api-keys/{id}", { params: { path: { id } } });
   },
 
-  async listPortalTokens(this: EngineClient): Promise<{ items: Record<string, unknown>[] }> {
+  async listPortalTokens(this: EngineClient): Promise<Schemas["PortalTokenListResponse"]> {
     const { data } = await this.api.GET("/v1/identity/portal-tokens");
-    return data as { items: Record<string, unknown>[] };
+    return data as Schemas["PortalTokenListResponse"];
   },
   async issuePortalToken(
     this: EngineClient,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    const { data } = await this.api.POST("/v1/identity/portal-tokens", {
-      body: body as ApiBody<"/v1/identity/portal-tokens", "post">,
-    });
-    return data as Record<string, unknown>;
+    body: Schemas["IssuePortalTokenBody"],
+  ): Promise<Schemas["PortalTokenIssued"]> {
+    const { data } = await this.api.POST("/v1/identity/portal-tokens", { body });
+    return data as Schemas["PortalTokenIssued"];
   },
   async revokePortalToken(this: EngineClient, id: string): Promise<void> {
     await this.api.DELETE("/v1/identity/portal-tokens/{id}", { params: { path: { id } } });
@@ -114,39 +63,29 @@ export const identityMethods = {
 
   async listIdentityUsers(
     this: EngineClient,
-    query: Record<string, string | number | undefined> = {},
-  ): Promise<{ items: Record<string, unknown>[] }> {
-    const { data } = await this.api.GET("/v1/identity/users", {
-      params: { query: query as ApiQuery<"/v1/identity/users", "get"> },
-    });
-    return data as { items: Record<string, unknown>[] };
+    query: ApiQuery<"/v1/identity/users", "get"> = {},
+  ): Promise<Schemas["UserListResponse"]> {
+    const { data } = await this.api.GET("/v1/identity/users", { params: { query } });
+    return data as Schemas["UserListResponse"];
   },
-  async getIdentityUser(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+  async getIdentityUser(this: EngineClient, id: string): Promise<Schemas["UserDetail"]> {
     const { data } = await this.api.GET("/v1/identity/users/{id}", { params: { path: { id } } });
-    return data as Record<string, unknown>;
+    return data as Schemas["UserDetail"];
   },
-  async createUser(
-    this: EngineClient,
-    body: {
-      email: string;
-      role?: "admin" | "member" | "enduser";
-    },
-  ): Promise<IdentityUserWire> {
-    const { data } = await this.api.POST("/v1/identity/users", {
-      body: body as ApiBody<"/v1/identity/users", "post">,
-    });
+  async createUser(this: EngineClient, body: Schemas["CreateUserBody"]): Promise<IdentityUserWire> {
+    const { data } = await this.api.POST("/v1/identity/users", { body });
     return data as IdentityUserWire;
   },
   async patchIdentityUser(
     this: EngineClient,
     id: string,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
+    body: Schemas["UpdateUserBody"],
+  ): Promise<IdentityUserWire> {
     const { data } = await this.api.PATCH("/v1/identity/users/{id}", {
       params: { path: { id } },
-      body: body as ApiBody<"/v1/identity/users/{id}", "patch">,
+      body,
     });
-    return data as Record<string, unknown>;
+    return data as IdentityUserWire;
   },
   async deleteIdentityUser(this: EngineClient, id: string): Promise<void> {
     await this.api.DELETE("/v1/identity/users/{id}", { params: { path: { id } } });
@@ -155,63 +94,53 @@ export const identityMethods = {
   async createInvite(
     this: EngineClient,
     userId: string,
-    body: {
-      scopes?: string[];
-      allowed_workflows?: string[];
-      allowed_connectors?: string[];
-      ttl_minutes?: number;
-    } = {},
+    body: Schemas["CreateInviteBody"] = {},
   ): Promise<UserInviteIssuedWire> {
     const { data } = await this.api.POST("/v1/identity/users/{id}/invites", {
       params: { path: { id: userId } },
-      body: body as ApiBody<"/v1/identity/users/{id}/invites", "post">,
+      body,
     });
     return data as UserInviteIssuedWire;
   },
   async listInvites(
     this: EngineClient,
-    query: { status?: "pending" | "redeemed" | "revoked" | "expired" } = {},
-  ): Promise<{ items: UserInviteWire[] }> {
-    const { data } = await this.api.GET("/v1/identity/invites", {
-      params: { query: query as ApiQuery<"/v1/identity/invites", "get"> },
-    });
-    return data as { items: UserInviteWire[] };
+    query: ApiQuery<"/v1/identity/invites", "get"> = {},
+  ): Promise<Schemas["UserInviteListResponse"]> {
+    const { data } = await this.api.GET("/v1/identity/invites", { params: { query } });
+    return data as Schemas["UserInviteListResponse"];
   },
   async revokeInvite(this: EngineClient, id: string): Promise<void> {
     await this.api.DELETE("/v1/identity/invites/{id}", { params: { path: { id } } });
   },
-  async redeemInvite(this: EngineClient, body: { token: string }): Promise<InviteRedeemedWire> {
-    const { data } = await this.api.POST("/v1/identity/invites/redeem", {
-      body: body as ApiBody<"/v1/identity/invites/redeem", "post">,
-    });
+  async redeemInvite(
+    this: EngineClient,
+    body: Schemas["RedeemInviteBody"],
+  ): Promise<InviteRedeemedWire> {
+    const { data } = await this.api.POST("/v1/identity/invites/redeem", { body });
     return data as InviteRedeemedWire;
   },
 
-  async listSystemAccounts(this: EngineClient): Promise<{ items: Record<string, unknown>[] }> {
+  async listSystemAccounts(this: EngineClient): Promise<Schemas["SystemAccountListResponse"]> {
     const { data } = await this.api.GET("/v1/identity/system-accounts");
-    return data as { items: Record<string, unknown>[] };
+    return data as Schemas["SystemAccountListResponse"];
   },
   async createSystemAccount(
     this: EngineClient,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    const { data } = await this.api.POST("/v1/identity/system-accounts", {
-      body: body as ApiBody<"/v1/identity/system-accounts", "post">,
-    });
-    return data as Record<string, unknown>;
+    body: Schemas["CreateSystemAccountBody"],
+  ): Promise<Schemas["SystemAccount"]> {
+    const { data } = await this.api.POST("/v1/identity/system-accounts", { body });
+    return data as Schemas["SystemAccount"];
   },
   async deleteSystemAccount(this: EngineClient, id: string): Promise<void> {
     await this.api.DELETE("/v1/identity/system-accounts/{id}", { params: { path: { id } } });
   },
 
-  listIdentityTenants(
-    this: EngineClient,
-    query: Record<string, string | undefined> = {},
-  ): Promise<{ items: Record<string, unknown>[] }> {
-    return this.request("GET", "/v1/identity/tenants", undefined, query);
+  async listIdentityTenants(this: EngineClient): Promise<Schemas["TenantListResponse"]> {
+    const { data } = await this.api.GET("/v1/identity/tenants");
+    return data as Schemas["TenantListResponse"];
   },
-  async getIdentityTenant(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+  async getIdentityTenant(this: EngineClient, id: string): Promise<Schemas["Tenant"]> {
     const { data } = await this.api.GET("/v1/identity/tenants/{id}", { params: { path: { id } } });
-    return data as Record<string, unknown>;
+    return data as Schemas["Tenant"];
   },
 };

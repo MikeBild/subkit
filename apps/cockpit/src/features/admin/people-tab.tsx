@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useRouterState } from "@tanstack/react-router";
 import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { PEOPLE_APP_PARAM, peopleAppFromUrl } from "@/app/links";
 import { useSession } from "@/app/session";
 import {
@@ -22,7 +22,14 @@ import { LabelText } from "@/lib/machine-label";
 import { statusLabel } from "@/lib/status-label";
 import { isPersonRole, PERSON_ROLES, type PersonRole, roleName } from "@/pages/admin-model";
 import { personApps, personEmailText, personNameText } from "@/pages/apps-model";
-import { INVITE_TTL_HOURS, refusalToast, type UserItem, usePeopleList, useRoles } from "./data";
+import {
+  INVITE_TTL_HOURS,
+  presentRoles,
+  refusalToast,
+  type UserItem,
+  usePeopleList,
+  useRoles,
+} from "./data";
 import { AdminTable, ChoiceField, SecretDialog, SectionList } from "./parts";
 import { PersonSheet } from "./person-sheet";
 
@@ -51,7 +58,7 @@ export function PeopleTab({ action }: { action: ReactNode }) {
         (item.display_name ?? "").toLowerCase().includes(needle) ||
         personEmailText(item, t).toLowerCase().includes(needle)),
   );
-  const roleOptions = [...new Set(items.map((item) => item.role))];
+  const roleOptions = presentRoles(items);
   const appOptions = [
     ...new Set([...items.flatMap((item) => personApps(item)), ...(appFilter ? [appFilter] : [])]),
   ].sort();
@@ -96,7 +103,7 @@ export function PeopleTab({ action }: { action: ReactNode }) {
         t("people.role"),
         (row, index) => (
           <span className="block truncate" data-testid={`people-role-badge-${index}`}>
-            <LabelText label={roleName(row.role, roleItems, t)} />
+            {row.role ? <LabelText label={roleName(row.role, roleItems, t)} /> : null}
           </span>
         ),
         { width: "w-[28%]" },
@@ -160,7 +167,7 @@ export function PeopleTab({ action }: { action: ReactNode }) {
               : {
                   getKey: (row) =>
                     groupMode === "role"
-                      ? roleName(row.role, roleItems, t).text
+                      ? roleName(row.role ?? "", roleItems, t).text
                       : statusLabel(t, row.status),
                 }
           }
@@ -169,7 +176,7 @@ export function PeopleTab({ action }: { action: ReactNode }) {
           rowLabel={(row) =>
             t("people.openRow", {
               email: personEmailText(row, t),
-              role: roleName(row.role, roleItems, t).text,
+              role: roleName(row.role ?? "", roleItems, t).text,
             })
           }
           filtered={Boolean(needle) || roleFilter !== "all" || appFilter !== null}
@@ -241,18 +248,17 @@ export function InvitePersonDialog({
   const [invite, setInvite] = useState<{ token: string; expiresAt: string } | null>(null);
   const create = useMutation({
     mutationFn: async () => {
-      const user = await apiRequest<UserItem>("/v1/identity/users", {
-        method: "POST",
-        body: JSON.stringify({
+      const user = await apiCall("post", "/v1/identity/users", {
+        body: {
           email: email.trim(),
           role,
           ...(displayName.trim() ? { display_name: displayName.trim() } : {}),
-        }),
+        },
       });
-      return apiRequest<{ plaintext_token: string; expires_at: string }>(
-        `/v1/identity/users/${encodeURIComponent(user.id)}/invites`,
-        { method: "POST", body: JSON.stringify({ ttl_minutes: INVITE_TTL_HOURS * 60 }) },
-      );
+      return apiCall("post", "/v1/identity/users/{id}/invites", {
+        path: { id: user.id },
+        body: { ttl_minutes: INVITE_TTL_HOURS * 60 },
+      });
     },
     onSuccess: async (result) => {
       onOpenChange(false);

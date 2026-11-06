@@ -1,7 +1,8 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { ListTable } from "@/components/cockpit/list-table";
 import { Button, type CockpitColumn, ContextHelp, Section } from "@/components/cockpit/patterns";
@@ -10,20 +11,7 @@ import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { settingLabel } from "@/pages/settings-model";
 
-type PreparedChange = {
-  name: string;
-  version: number;
-  reference: string;
-  prepared_by: string;
-  pending_since: string;
-  bindings: string[];
-};
-
-interface ApprovalOutcome {
-  name: string;
-  version: number;
-  bindings: Array<{ path: string; outcome: "rebound" | "failed"; detail: string | null }>;
-}
+type PreparedChange = components["schemas"]["PendingSecretVersion"];
 
 const QUERY_KEY = ["admin", "prepared-changes"] as const;
 
@@ -37,16 +25,15 @@ export function PreparedChanges({ canDecide }: { canDecide: boolean }) {
   const live = useLiveQueryOptions();
   const query = useQuery({
     queryKey: QUERY_KEY,
-    queryFn: () => apiRequest<{ items: PreparedChange[] }>("/v1/secret-approvals"),
+    queryFn: () => apiCall("get", "/v1/secret-approvals", {}),
     ...live,
   });
   const refresh = () => client.invalidateQueries({ queryKey: QUERY_KEY });
   const approve = useMutation({
     mutationFn: (change: PreparedChange) =>
-      apiRequest<ApprovalOutcome>(
-        `/v1/secret-approvals/${encodeURIComponent(change.name)}/${change.version}/approve`,
-        { method: "POST" },
-      ),
+      apiCall("post", "/v1/secret-approvals/{name}/{version}/approve", {
+        path: { name: change.name, version: change.version },
+      }),
     onSuccess: async (outcome) => {
       const failed = outcome.bindings.filter((b) => b.outcome === "failed");
       if (failed.length > 0) {
@@ -69,10 +56,10 @@ export function PreparedChanges({ canDecide }: { canDecide: boolean }) {
   });
   const reject = useMutation({
     mutationFn: (change: PreparedChange) =>
-      apiRequest(
-        `/v1/secret-approvals/${encodeURIComponent(change.name)}/${change.version}/reject`,
-        { method: "POST" },
-      ),
+      apiCall("post", "/v1/secret-approvals/{name}/{version}/reject", {
+        path: { name: change.name, version: change.version },
+      }),
+
     onSuccess: async (_result, change) => {
       toast.success(
         t("prepared.rejected", { target: settingLabel(preparedChangeTarget(change.name), t).text }),

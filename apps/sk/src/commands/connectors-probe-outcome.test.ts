@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { probeWarnings, renderProbeOutcome } from "./connectors.ts";
+
+type ConnectorProbeResult = components["schemas"]["ConnectorProbeResult"];
 
 const UNVERIFIED = {
   ok: false,
@@ -14,7 +17,7 @@ const UNVERIFIED = {
         "Fallback probe GET / returned 401: the root path requires sign-in, so the credential was not verified. Set config.probe_endpoint to a cheap authenticated read.",
     },
   ],
-};
+} satisfies ConnectorProbeResult;
 
 let restore: (() => void) | null = null;
 
@@ -52,6 +55,7 @@ describe("sk connectors test output", () => {
     const passed = renderProbeOutcome(
       {
         ok: true,
+        latency_ms: 8,
         warnings: [{ code: "PROBE_AMBIGUOUS", message: "Fallback probe GET / returned 404." }],
       },
       false,

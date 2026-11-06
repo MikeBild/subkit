@@ -39,10 +39,7 @@ const reviewCommand = defineCommand({
 
     const notes: string[] = [];
 
-    async function safeList(
-      label: string,
-      fn: () => Promise<{ items: Record<string, unknown>[] }>,
-    ): Promise<Record<string, unknown>[]> {
+    async function safeList<T>(label: string, fn: () => Promise<{ items: T[] }>): Promise<T[]> {
       try {
         const { items } = await fn();
         return Array.isArray(items) ? items : [];
@@ -63,7 +60,7 @@ const reviewCommand = defineCommand({
       return {
         kind: "patch_candidate" as const,
         id,
-        summary: str(it.summary) ?? str(it.workflow_id) ?? "(patch candidate)",
+        summary: str(it.workflow_id) ?? "(patch candidate)",
         status: str(it.status),
         created_at: str(it.created_at),
         action: `sk patch-candidates approve ${id}`,
@@ -75,7 +72,7 @@ const reviewCommand = defineCommand({
       return {
         kind: "skill_candidate" as const,
         id,
-        summary: str(it.title) ?? str(it.source) ?? "(skill candidate)",
+        summary: str(it.title) ?? "(skill candidate)",
         status: str(it.status),
         created_at: str(it.created_at),
         action: `sk skill-candidates approve ${id}`,

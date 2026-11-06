@@ -6,61 +6,17 @@ import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import type { EngineClient } from "../engine-client.ts";
 import type { ApiQuery } from "./http.ts";
 
-export type DiagnosticsRuntime = components["schemas"]["DiagnosticsRuntime"];
+type Schemas = components["schemas"];
 
-export interface EngineErrorEntry {
-  trace_id: string | null;
-  ts: string;
-  tenant_id: string | null;
-  method: string;
-  path: string;
-  status: number;
-  code: string;
-  message: string;
-  stack: string | null;
-  bucket: "unhandled" | "llm_provider" | "llm_no_object" | "llm_timeout" | "llm_quota" | "http";
-}
+export type DiagnosticsRuntime = Schemas["DiagnosticsRuntime"];
 
-export interface SetupValidationIssue {
-  id: string;
-  severity: "blocker" | "warning";
-  title: string;
-  detail: string;
-}
-
-export interface SetupValidationValue {
-  key: string;
-  value: string | null;
-  status_hint: string | null;
-}
-
-export interface SetupValidationSection {
-  title: string;
-  status: "ok" | "warn" | "blocked";
-  issues: SetupValidationIssue[];
-  recommendations: string[];
-  values: SetupValidationValue[];
-}
-
-export interface SetupValidationResponse {
-  overall_status: "ok" | "warn" | "blocked";
-  summary_counts: {
-    blockers: number;
-    warnings: number;
-    sections_blocked: number;
-    sections_warn: number;
-  };
-  sections: {
-    auth: SetupValidationSection;
-    llm: SetupValidationSection;
-    datastore: SetupValidationSection;
-    storage: SetupValidationSection;
-    crypto: SetupValidationSection;
-    public_urls: SetupValidationSection;
-  };
-  issues: SetupValidationIssue[];
-  recommendations: string[];
-}
+export type EngineErrorEntry = Schemas["ErrorRingEntry"];
+export type SetupValidationIssue = Schemas["DiagnosticsSetupIssue"];
+export type SetupValidationValue = Schemas["DiagnosticsSetupValue"];
+export type SetupValidationSection = Schemas["DiagnosticsSetupSection"];
+export type SetupValidationResponse = Schemas["DiagnosticsSetupResponse"];
+export type AuditLogQuery = ApiQuery<"/v1/audit-log", "get">;
+export type AuditEntry = Schemas["AuditEntry"];
 
 export interface StatusSummary {
   user: { id: string; email: string | null; kind: "user" | "system_account" };
@@ -84,25 +40,6 @@ type CheckState = "pass" | "fail" | "unknown";
 function checkState(value: unknown): CheckState {
   return value === "pass" || value === "fail" ? value : "unknown";
 }
-
-type DriftReport = {
-  engine_version: string;
-  embedded_migration_count: number;
-  db_migration_count: number;
-  unknown_in_db: Array<{
-    row_id: number;
-    hash: string;
-    created_at: number | null;
-    tag: string | null;
-  }>;
-  historical_in_db: Array<{
-    row_id: number;
-    hash: string;
-    created_at: number | null;
-    tag: string | null;
-  }>;
-  missing_in_db: Array<{ idx: number; tag: string; hash: string }>;
-};
 
 export const diagnosticsMethods = {
   async health(this: EngineClient): Promise<{
@@ -144,79 +81,21 @@ export const diagnosticsMethods = {
     };
   },
 
-  async diagnosticsVersion(this: EngineClient): Promise<{
-    engine_version: string;
-    latest_version?: string;
-    update_available: boolean;
-    schema_drift: boolean;
-    embedded_migrations_count: number;
-  }> {
+  async diagnosticsVersion(this: EngineClient): Promise<Schemas["DiagnosticsVersionResponse"]> {
     const { data } = await this.api.GET("/v1/diagnostics/version");
-    return data as {
-      engine_version: string;
-      latest_version?: string;
-      update_available: boolean;
-      schema_drift: boolean;
-      embedded_migrations_count: number;
-    };
+    return data as Schemas["DiagnosticsVersionResponse"];
   },
 
-  async integrationsHealth(this: EngineClient): Promise<{
-    connectors: Array<{
-      id: string;
-      slug: string;
-      environment: string;
-      effective_health: "ok" | "degraded" | "needs_update" | "needs_reauth";
-      health_reason: string | null;
-      health_error_code: string | null;
-      sunset_at: string | null;
-      successor_uri: string | null;
-      needs_reauth: boolean;
-      circuit_state: string;
-    }>;
-    workflows_attention: Array<{
-      id: string;
-      slug: string;
-      health_state: string;
-      health_reason: string | null;
-    }>;
-    summary: {
-      connectors_total: number;
-      connectors_attention: number;
-      workflows_attention: number;
-    };
-  }> {
+  async integrationsHealth(
+    this: EngineClient,
+  ): Promise<Schemas["DiagnosticsIntegrationsResponse"]> {
     const { data } = await this.api.GET("/v1/diagnostics/integrations");
-    return data as {
-      connectors: Array<{
-        id: string;
-        slug: string;
-        environment: string;
-        effective_health: "ok" | "degraded" | "needs_update" | "needs_reauth";
-        health_reason: string | null;
-        health_error_code: string | null;
-        sunset_at: string | null;
-        successor_uri: string | null;
-        needs_reauth: boolean;
-        circuit_state: string;
-      }>;
-      workflows_attention: Array<{
-        id: string;
-        slug: string;
-        health_state: string;
-        health_reason: string | null;
-      }>;
-      summary: {
-        connectors_total: number;
-        connectors_attention: number;
-        workflows_attention: number;
-      };
-    };
+    return data as Schemas["DiagnosticsIntegrationsResponse"];
   },
 
-  async driftReport(this: EngineClient): Promise<DriftReport> {
+  async driftReport(this: EngineClient): Promise<Schemas["DriftReport"]> {
     const { data } = await this.api.GET("/v1/diagnostics/drift");
-    return data as DriftReport;
+    return data as Schemas["DriftReport"];
   },
 
   logsTailWindow(
@@ -228,19 +107,7 @@ export const diagnosticsMethods = {
       action?: string;
       level?: string;
     },
-  ): Promise<{
-    entries: Array<{
-      ts: number;
-      level: string;
-      module?: string;
-      action?: string;
-      msg?: string;
-      fields?: Record<string, unknown>;
-    }>;
-    next_since_ms: number;
-    capacity: number;
-    size: number;
-  }> {
+  ): Promise<Schemas["LogTailResponse"]> {
     const params = new URLSearchParams();
     if (typeof opts.since_ms === "number") params.set("since", String(opts.since_ms));
     if (typeof opts.limit === "number") params.set("limit", String(opts.limit));
@@ -269,29 +136,25 @@ export const diagnosticsMethods = {
     return `${this.base}${DIAGNOSTICS_LOG_STREAM_PATH}${qs ? `?${qs}` : ""}`;
   },
 
-  async statusSummary(this: EngineClient): Promise<StatusSummary> {
+  async statusSummary(this: EngineClient): Promise<Schemas["StatusSummary"]> {
     const { data } = await this.api.GET("/v1/status");
-    return data as StatusSummary;
+    return data as Schemas["StatusSummary"];
   },
 
   async tailAuditLog(
     this: EngineClient,
-    query: { actor_id?: string; action?: string; limit?: number } = {},
-  ): Promise<{ items: Array<Record<string, unknown>> }> {
-    const { data } = await this.api.GET("/v1/audit-log", {
-      params: { query: query as ApiQuery<"/v1/audit-log", "get"> },
-    });
-    return data as { items: Array<Record<string, unknown>> };
+    query: Pick<AuditLogQuery, "actor_id" | "action" | "limit"> = {},
+  ): Promise<Schemas["AuditLogListResponse"]> {
+    const { data } = await this.api.GET("/v1/audit-log", { params: { query } });
+    return data as Schemas["AuditLogListResponse"];
   },
 
   async tailEngineErrors(
     this: EngineClient,
-    query: { limit?: number; since?: string; trace_id?: string } = {},
-  ): Promise<{ items: EngineErrorEntry[]; total_buffered: number }> {
-    const { data } = await this.api.GET("/v1/diagnostics/errors", {
-      params: { query: query as ApiQuery<"/v1/diagnostics/errors", "get"> },
-    });
-    return data as { items: EngineErrorEntry[]; total_buffered: number };
+    query: ApiQuery<"/v1/diagnostics/errors", "get"> = {},
+  ): Promise<Schemas["DiagnosticsErrorListResponse"]> {
+    const { data } = await this.api.GET("/v1/diagnostics/errors", { params: { query } });
+    return data as Schemas["DiagnosticsErrorListResponse"];
   },
 
   async setupValidation(this: EngineClient): Promise<SetupValidationResponse> {
@@ -304,23 +167,21 @@ export const diagnosticsMethods = {
     return data as DiagnosticsRuntime;
   },
 
-  async getDiagnosticsLlm(this: EngineClient): Promise<Record<string, unknown>> {
+  async getDiagnosticsLlm(this: EngineClient): Promise<Schemas["DiagnosticsLlmStatus"]> {
     const { data } = await this.api.GET("/v1/diagnostics/llm");
-    return data as Record<string, unknown>;
+    return data as Schemas["DiagnosticsLlmStatus"];
   },
 
   async queryAuditLog(
     this: EngineClient,
-    query: Record<string, string | number | undefined> = {},
-  ): Promise<{ items: Record<string, unknown>[]; next_cursor: string | null }> {
-    const { data } = await this.api.GET("/v1/audit-log", {
-      params: { query: query as ApiQuery<"/v1/audit-log", "get"> },
-    });
-    return data as { items: Record<string, unknown>[]; next_cursor: string | null };
+    query: AuditLogQuery = {},
+  ): Promise<Schemas["AuditLogListResponse"]> {
+    const { data } = await this.api.GET("/v1/audit-log", { params: { query } });
+    return data as Schemas["AuditLogListResponse"];
   },
-  async getAuditEvent(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+  async getAuditEvent(this: EngineClient, id: string): Promise<AuditEntry> {
     const { data } = await this.api.GET("/v1/audit-log/{id}", { params: { path: { id } } });
-    return data as Record<string, unknown>;
+    return data as AuditEntry;
   },
   exportAuditLog(
     this: EngineClient,

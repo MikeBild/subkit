@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
-import { ApiError, apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
+import { ApiError } from "@/api/client";
 import { useSession } from "@/app/session";
 import { TextAreaField, TextField } from "@/components/cockpit/form-field";
 import {
@@ -57,7 +58,7 @@ export function CatalogCategories({ kind }: { kind: CatalogCategoryKind }) {
   const [conflict, setConflict] = useState(false);
   const query = useQuery({
     queryKey: ["catalog-categories"],
-    queryFn: () => apiRequest<{ categories: CategoryUsage[] }>("/v1/categories"),
+    queryFn: () => apiCall("get", "/v1/categories", {}),
   });
   const canRename =
     WRITE_PERMISSIONS.every((permission) => permissions.includes(permission)) &&
@@ -86,13 +87,8 @@ export function CatalogCategories({ kind }: { kind: CatalogCategoryKind }) {
   };
   const save = useMutation({
     mutationFn: ({ from, body }: { from: string; body: ReturnType<typeof categoryEditPayload> }) =>
-      apiRequest<{ purpose_generation: "pending" | "not_requested" }>(
-        `/v1/categories/${encodeURIComponent(from)}/rename`,
-        {
-          method: "POST",
-          body: JSON.stringify(body),
-        },
-      ),
+      apiCall("post", "/v1/categories/{name}/rename", { path: { name: from }, body }),
+
     onSuccess: async (result) => {
       toast.success(
         t(
@@ -385,7 +381,7 @@ export function CatalogSummary({
   const { t } = useI18n();
   const query = useQuery({
     queryKey: ["catalog-categories"],
-    queryFn: () => apiRequest<{ categories: CategoryUsage[] }>("/v1/categories"),
+    queryFn: () => apiCall("get", "/v1/categories", {}),
   });
   const count = query.error ? null : catalogAICount(query.data?.categories, kind);
   return (

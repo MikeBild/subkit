@@ -139,8 +139,35 @@ function windowQuery(bounds: TimeSpan & { window: StatsWindow }): string {
   ].join("&");
 }
 
-export function executionStatsEndpoint(bounds: TimeSpan & { window: StatsWindow }): string {
-  return `/v1/stats/executions?${windowQuery(bounds)}`;
+export function windowStatsQuery(bounds: TimeSpan & { window: StatsWindow }): {
+  bucket: "hour" | "day";
+  from: string;
+  to: string;
+  tz: string;
+} {
+  return { bucket: windowBucket(bounds.window), from: bounds.from, to: bounds.to, tz: timeZone() };
+}
+
+export function llmStatsQuery(
+  bounds: TimeSpan & { window: StatsWindow },
+  axis?: ConsumptionAxis | readonly ConsumptionAxis[],
+  filter: LlmStatsFilter = {},
+): ReturnType<typeof windowStatsQuery> & {
+  group_by?: string;
+  user_id?: string;
+  flow?: string;
+  result?: string;
+  workflow_id?: string;
+} {
+  const axes = axis === undefined ? [] : typeof axis === "string" ? [axis] : axis;
+  return {
+    ...windowStatsQuery(bounds),
+    ...(axes.length > 0 ? { group_by: axes.join(",") } : {}),
+    ...(filter.userId ? { user_id: filter.userId } : {}),
+    ...(filter.flows && filter.flows.length > 0 ? { flow: filter.flows.join(",") } : {}),
+    ...(filter.results && filter.results.length > 0 ? { result: filter.results.join(",") } : {}),
+    ...(filter.workflowId ? { workflow_id: filter.workflowId } : {}),
+  };
 }
 
 export interface LlmStatsFilter {
@@ -166,13 +193,11 @@ export function llmStatsEndpoint(
   return `/v1/stats/llm?${parts.join("&")}`;
 }
 
-export const REPAIR_REQUIRED_ENDPOINT = "/v1/workflows?operating_status=repair_required&limit=1";
+export const REPAIR_REQUIRED_QUERY = { operating_status: "repair_required", limit: 1 } as const;
 
 export function repairRequiredCount(envelope: unknown): number | null {
   return isRecord(envelope) ? countOf(envelope.total) : null;
 }
-
-export const STATUS_ENDPOINT = "/v1/status";
 
 interface WindowSpend {
   calls: number | null;
@@ -185,8 +210,8 @@ export function windowSpend(envelope: unknown): WindowSpend {
   return { calls, cost: windowCost(envelope) };
 }
 
-export function operatingFiguresEndpoint(bounds: WindowBounds): string {
-  return `/v1/stats/operating-figures?from=${encodeURIComponent(bounds.from)}&to=${encodeURIComponent(bounds.to)}`;
+export function operatingFiguresQuery(bounds: WindowBounds): { from: string; to: string } {
+  return { from: bounds.from, to: bounds.to };
 }
 
 export interface OperatingCounts {

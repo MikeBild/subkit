@@ -2,7 +2,7 @@ import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { absolute, chatNewHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { SelectField, TextField } from "@/components/cockpit/form-field";
@@ -29,15 +29,10 @@ import {
   validTime,
 } from "@/lib/schedule-rhythm";
 import { buildFormSchemaInput, formValuesFromInput, type SchemaValues } from "@/lib/schema-form";
-import { formFields, type InputSchemaSource, inputForm } from "@/lib/workflow-inputs";
+import { formFields, inputForm } from "@/lib/workflow-inputs";
 
 type ScheduleEntry = components["schemas"]["ScheduleEntry"];
-type ScheduleList = components["schemas"]["ScheduleListResponse"];
-
-interface InputSchemaResponse {
-  source: InputSchemaSource;
-  schema: Record<string, unknown> | null;
-}
+type ScheduleInput = components["schemas"]["ScheduleCreateBody"]["input"];
 
 const localZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
@@ -45,8 +40,7 @@ function useWorkflowSchedule(workflowId: string) {
   const live = useLiveQueryOptions();
   const query = useQuery({
     queryKey: ["workflow", workflowId, "schedules"],
-    queryFn: () =>
-      apiRequest<ScheduleList>(`/v1/schedules?workflow_id=${encodeURIComponent(workflowId)}`),
+    queryFn: () => apiCall("get", "/v1/schedules", { query: { workflow_id: workflowId } }),
     ...live,
   });
   const schedule = Array.isArray(query.data?.schedules)
@@ -78,10 +72,7 @@ function ScheduleDialog({
   const schema = useQuery({
     queryKey: ["workflow", workflowId, "input-schema"],
     enabled: open,
-    queryFn: () =>
-      apiRequest<InputSchemaResponse>(
-        `/v1/workflows/${encodeURIComponent(workflowId)}/input-schema`,
-      ),
+    queryFn: () => apiCall("get", "/v1/workflows/{id}/input-schema", { path: { id: workflowId } }),
   });
   const form = inputForm(schema.data?.schema ?? null);
   const fields = formFields(form);
@@ -93,25 +84,20 @@ function ScheduleDialog({
     setChecked(false);
   }, [open, schedule?.id]);
   const save = useMutation({
-    mutationFn: ({ cron, input }: { cron: string; input: unknown }) =>
+    mutationFn: ({ cron, input }: { cron: string; input: ScheduleInput }) =>
       schedule
-        ? apiRequest(`/v1/schedules/${encodeURIComponent(schedule.id)}`, {
-            method: "PUT",
-            body: JSON.stringify({
-              cron,
-              timezone: zone,
-              ...(input === undefined ? {} : { input }),
-            }),
+        ? apiCall("put", "/v1/schedules/{id}", {
+            path: { id: schedule.id },
+            body: { cron, timezone: zone, ...(input === undefined ? {} : { input }) },
           })
-        : apiRequest("/v1/schedules", {
-            method: "POST",
-            body: JSON.stringify({
+        : apiCall("post", "/v1/schedules", {
+            body: {
               workflow_id: workflowId,
               cron,
               timezone: zone,
               execution_mode: "prod",
               ...(input === undefined ? {} : { input }),
-            }),
+            },
           }),
     onSuccess: async () => {
       toast.success(t(schedule ? "schedule.saved" : "schedule.created"));
@@ -133,7 +119,7 @@ function ScheduleDialog({
         setChecked(true);
         if (built.errors.length > 0) return setError(t("schedule.inputInvalid"));
         setError(null);
-        save.mutate({ cron: rhythmToCron(value), input: built.input });
+        save.mutate({ cron: rhythmToCron(value), input: built.input as ScheduleInput });
       }}
       error={error}
       testId="schedule-dialog"
@@ -238,10 +224,7 @@ export function WorkflowScheduleSection({
   };
   const pause = useMutation({
     mutationFn: (paused: boolean) =>
-      apiRequest(`/v1/schedules/${encodeURIComponent(schedule?.id ?? "")}`, {
-        method: "PUT",
-        body: JSON.stringify({ paused }),
-      }),
+      apiCall("put", "/v1/schedules/{id}", { path: { id: schedule?.id ?? "" }, body: { paused } }),
     onSuccess: async (_result, paused) => {
       toast.success(t(paused ? "schedule.paused" : "schedule.resumed"));
       await refresh();
@@ -249,8 +232,8 @@ export function WorkflowScheduleSection({
     onError: () => toast.error(t("common.actionFailed")),
   });
   const remove = useMutation({
-    mutationFn: () =>
-      apiRequest(`/v1/schedules/${encodeURIComponent(schedule?.id ?? "")}`, { method: "DELETE" }),
+    mutationFn: () => apiCall("delete", "/v1/schedules/{id}", { path: { id: schedule?.id ?? "" } }),
+
     onSuccess: async () => {
       toast.success(t("schedule.deleted"));
       setDeleting(false);

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { useActorDirectory } from "@/app/actor-directory";
 import { actorDirectoryName } from "@/app/actor-directory-model";
 import {
@@ -42,7 +42,6 @@ import {
   observedAuthorityState,
   untilRevokedOffer,
   type WorkflowAuthority,
-  type WorkflowAuthorityPreview,
 } from "@/lib/workflow-authorities";
 
 function badgeState(state: WorkflowAuthority["state"]): string {
@@ -215,10 +214,9 @@ function RevokeApproval({
   const revoke = useOptimisticAction({
     queryKey: ["workflow-authorities", authority.workflow_id],
     mutationFn: () =>
-      apiRequest<WorkflowAuthority>(
-        `/v1/workflows/${encodeURIComponent(authority.workflow_id)}/execution-authorities/${encodeURIComponent(authority.id)}/revoke`,
-        { method: "POST" },
-      ),
+      apiCall("post", "/v1/workflows/{id}/execution-authorities/{authority_id}/revoke", {
+        path: { id: authority.workflow_id, authority_id: authority.id },
+      }),
     apply: (current: AuthorityPages | undefined) =>
       withAuthorityRevoked(current, authority.id, new Date().toISOString()),
     invalidate: [
@@ -284,9 +282,10 @@ function PendingVersion({
     ],
     enabled: Boolean(target),
     queryFn: () =>
-      apiRequest<WorkflowAuthorityPreview>(
-        `/v1/workflows/${encodeURIComponent(automation.workflowId)}/versions/${encodeURIComponent(target?.version_id ?? "")}/authority-preview?environment=${environment}`,
-      ),
+      apiCall("get", "/v1/workflows/{id}/versions/{version_id}/authority-preview", {
+        path: { id: automation.workflowId, version_id: target?.version_id ?? "" },
+        query: { environment },
+      }),
   });
   const model = useAuthorityModel(preview.data ?? null, automation, true);
   if (!target) return null;

@@ -1,4 +1,5 @@
 import { osc52Copy } from "@cli-core/clipboard.ts";
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
@@ -18,23 +19,41 @@ interface KeyRow {
   lastUsed: string | null;
 }
 
-function pickName(raw: Record<string, unknown>): string {
-  for (const key of ["name", "label", "id"]) {
-    const v = raw[key];
-    if (typeof v === "string" && v.length > 0) return v;
-  }
-  return "(unnamed)";
+type Schemas = components["schemas"];
+type ApiKey = Schemas["ApiKey"];
+type IssueApiKeyBody = Schemas["IssueApiKeyBody"];
+type OwnerKind = IssueApiKeyBody["owner_kind"];
+
+const OWNER_KINDS: readonly OwnerKind[] = ["user", "system_account"];
+
+function keyRow(key: ApiKey): KeyRow {
+  return {
+    id: key.id,
+    name: key.name || key.id,
+    status: key.revoked_at ? "revoked" : "active",
+    lastUsed: key.last_used_at,
+  };
 }
 
-function pickStatus(raw: Record<string, unknown>): string {
-  if (typeof raw.status === "string") return raw.status;
-  if (raw.revoked_at) return "revoked";
-  return "active";
+function parseOwnerKind(raw: string | undefined): OwnerKind {
+  const value = (raw ?? "").trim();
+  const match = OWNER_KINDS.find((kind) => kind === value);
+  if (!match) throw new Error(`Owner kind must be ${OWNER_KINDS.join(" or ")}`);
+  return match;
 }
 
-function pickLastUsed(raw: Record<string, unknown>): string | null {
-  const v = raw.last_used_at ?? raw.used_at;
-  return typeof v === "string" ? v : null;
+export function issueApiKeyBody(vals: Record<string, string>): IssueApiKeyBody {
+  const scopes = (vals.scopes ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  const expiresAt = vals.expires_at?.trim();
+  return {
+    owner_id: vals.owner_id?.trim() ?? "",
+    owner_kind: parseOwnerKind(vals.owner_kind),
+    ...(scopes.length > 0 ? { scopes } : {}),
+    ...(expiresAt ? { expires_at: expiresAt } : {}),
+  };
 }
 
 export const ApiKeysSubTab: React.FC<Props> = ({ client, onInnerEscape }) => {
@@ -60,13 +79,7 @@ export const ApiKeysSubTab: React.FC<Props> = ({ client, onInnerEscape }) => {
       .listApiKeys()
       .then((res) => {
         if (cancelled) return;
-        const next: KeyRow[] = res.items.map((it) => ({
-          id: typeof it.id === "string" ? it.id : "(unknown)",
-          name: pickName(it),
-          status: pickStatus(it),
-          lastUsed: pickLastUsed(it),
-        }));
-        setRows(next);
+        setRows(res.items.map(keyRow));
         setLoading(false);
       })
       .catch((err: unknown) => {
@@ -152,28 +165,13 @@ export const ApiKeysSubTab: React.FC<Props> = ({ client, onInnerEscape }) => {
               { key: "expires_at", label: "Expires at", placeholder: "2026-12-31T00:00:00Z" },
             ]}
             onSubmit={async (vals) => {
-              const body: Record<string, unknown> = {
-                owner_id: vals.owner_id,
-                owner_kind: vals.owner_kind || "user",
-              };
-              if (vals.scopes?.trim()) {
-                body.scopes = vals.scopes
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter((s) => s.length > 0);
-              }
-              if (vals.expires_at?.trim()) body.expires_at = vals.expires_at.trim();
-              const issued = (await client.issueApiKey(body)) as {
-                id: string;
-                plaintext_token?: string;
-                prefix?: string;
-              };
+              const issued = await client.issueApiKey(issueApiKeyBody(vals));
               setCreateOpen(false);
               setRefreshKey((k) => k + 1);
-              if (issued.plaintext_token) {
-                setIssuedSecret({ id: issued.id, token: issued.plaintext_token });
+              if (issued.plaintext_key) {
+                setIssuedSecret({ id: issued.id, token: issued.plaintext_key });
               } else {
-                setActionFlash(`issued ${issued.id} — engine did not return plaintext_token`);
+                setActionFlash(`issued ${issued.id} — engine did not return plaintext_key`);
               }
             }}
             onCancel={() => setCreateOpen(false)}

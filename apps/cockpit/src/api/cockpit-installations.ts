@@ -1,53 +1,53 @@
-import { ApiError, apiRequest } from "./client";
+import type { paths } from "@cli-core/engine-api/openapi";
+import { apiCall } from "./call";
+import { ApiError } from "./client";
 
-export interface CockpitInstallation {
-  id: string;
-  start_url: string;
-  manifest_url: string;
-  created: boolean;
-}
+export type CockpitInstallation =
+  paths["/v1/cockpit/installations"]["post"]["responses"][200]["content"]["application/json"];
+type CurrentCockpitInstallation =
+  paths["/v1/cockpit/installations"]["get"]["responses"][200]["content"]["application/json"];
 
-export function getCurrentCockpitInstallation(): Promise<{
-  installation: Omit<CockpitInstallation, "created"> | null;
-}> {
-  return apiRequest("/v1/cockpit/installations");
+export function getCurrentCockpitInstallation(): Promise<CurrentCockpitInstallation> {
+  return apiCall("get", "/v1/cockpit/installations", {});
 }
 
 export function createCockpitInstallation(): Promise<CockpitInstallation> {
-  return apiRequest("/v1/cockpit/installations", { method: "POST", body: "{}" });
+  return apiCall("post", "/v1/cockpit/installations", { body: {} });
 }
 
-export function revokeCockpitInstallation(id: string): Promise<void> {
-  return apiRequest(`/v1/cockpit/installations/${encodeURIComponent(id)}`, { method: "DELETE" });
+export async function revokeCockpitInstallation(id: string): Promise<void> {
+  await apiCall("delete", "/v1/cockpit/installations/{installationId}", {
+    path: { installationId: id },
+  });
 }
 
 export function pushSubscriptionStatus(
   device?: string | null,
 ): Promise<{ subscribed: boolean; handled_by_app: boolean }> {
-  return apiRequest(
-    device
-      ? `/v1/cockpit/push-subscription?device=${encodeURIComponent(device)}`
-      : "/v1/cockpit/push-subscription",
-  );
+  return apiCall("get", "/v1/cockpit/push-subscription", {
+    query: device ? { device } : {},
+  });
 }
 
 export function preparePushSubscription(): Promise<{ public_key: string }> {
-  return apiRequest("/v1/cockpit/push-subscription/prepare", { method: "POST", body: "{}" });
+  return apiCall("post", "/v1/cockpit/push-subscription/prepare", {});
 }
 
-export function savePushSubscription(
+export async function savePushSubscription(
   subscription: PushSubscription,
   options: { rebind?: boolean; device?: string | null } = {},
 ): Promise<void> {
   const value = subscription.toJSON();
-  return apiRequest("/v1/cockpit/push-subscription", {
-    method: "PUT",
-    body: JSON.stringify({
+  const p256dh = value.keys?.p256dh;
+  const auth = value.keys?.auth;
+  if (!value.endpoint || !p256dh || !auth) throw new Error("push-subscription-incomplete");
+  await apiCall("put", "/v1/cockpit/push-subscription", {
+    body: {
       endpoint: value.endpoint,
-      keys: value.keys,
+      keys: { p256dh, auth },
       ...(options.rebind ? { rebind: true } : {}),
       ...(options.device ? { device: options.device } : {}),
-    }),
+    },
   });
 }
 
@@ -64,6 +64,6 @@ export async function rebindPushSubscriptionBinding(
   }
 }
 
-export function deletePushSubscription(): Promise<void> {
-  return apiRequest("/v1/cockpit/push-subscription", { method: "DELETE" });
+export async function deletePushSubscription(): Promise<void> {
+  await apiCall("delete", "/v1/cockpit/push-subscription", {});
 }

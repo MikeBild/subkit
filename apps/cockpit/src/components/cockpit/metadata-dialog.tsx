@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import {
   type CatalogMetadataRecord,
   categoryChoices,
+  type MetadataPatch,
   metadataPatch,
   normalizeCategoryInput,
   recordCategory,
@@ -20,10 +21,10 @@ const NEW_CATEGORY = "__new__";
 export function workflowEditPatch(
   record: CatalogMetadataRecord | undefined,
   draft: { name: string; description: string; category: string },
-): Record<string, string> | null {
+): (MetadataPatch & { name?: string }) | null {
   const name = draft.name.trim();
   if (!name) return null;
-  const patch: Record<string, string> = {
+  const patch: MetadataPatch & { name?: string } = {
     ...(metadataPatch(record, { description: draft.description, category: draft.category }) ?? {}),
   };
   if (name !== (typeof record?.name === "string" ? record.name : "")) patch.name = name;
@@ -57,7 +58,7 @@ export function MetadataDialog({
   const vocabulary = useQuery({
     queryKey: ["catalog-categories"],
     enabled: open,
-    queryFn: () => apiRequest<{ categories?: { category: string }[] }>("/v1/categories"),
+    queryFn: () => apiCall("get", "/v1/categories", {}),
   });
   const choices = categoryChoices(
     (vocabulary.data?.categories ?? []).map((entry) => entry.category),
@@ -67,11 +68,8 @@ export function MetadataDialog({
   const category = choice === NEW_CATEGORY ? (freshCategory ?? "") : choice;
   const patch = category ? workflowEditPatch(record, { name, description, category }) : null;
   const save = useMutation({
-    mutationFn: (body: Record<string, string>) =>
-      apiRequest(`/v1/workflows/${encodeURIComponent(id)}/metadata`, {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      }),
+    mutationFn: (body: MetadataPatch & { name?: string }) =>
+      apiCall("patch", "/v1/workflows/{id}/metadata", { path: { id }, body }),
     onSuccess: async () => {
       toast.success(t("detail.saved"));
       onOpenChange(false);

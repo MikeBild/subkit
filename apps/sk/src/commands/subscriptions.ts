@@ -1,5 +1,6 @@
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
+import type { CreateSubscriptionBody, UpdateSubscriptionBody } from "../engine-client/events.ts";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
 export const SUBSCRIPTION_LIST_COLUMNS = [
@@ -23,7 +24,7 @@ export function buildCreateSubscriptionBody(args: {
   "target-url": string;
   secret: string;
   active?: string | undefined;
-}): { event_pattern: string; target_url: string; secret: string; active?: boolean } {
+}): CreateSubscriptionBody {
   const active = parseActiveFlag(args.active);
   return {
     event_pattern: args["event-pattern"],
@@ -38,10 +39,9 @@ export function buildPatchSubscriptionBody(args: {
   "target-url"?: string | undefined;
   secret?: string | undefined;
   active?: string | undefined;
-}): { event_pattern?: string; target_url?: string; secret?: string; active?: boolean } {
+}): UpdateSubscriptionBody {
   const active = parseActiveFlag(args.active);
-  const body: { event_pattern?: string; target_url?: string; secret?: string; active?: boolean } =
-    {};
+  const body: UpdateSubscriptionBody = {};
   if (args["event-pattern"] !== undefined) body.event_pattern = args["event-pattern"];
   if (args["target-url"] !== undefined) body.target_url = args["target-url"];
   if (args.secret !== undefined) body.secret = args.secret;

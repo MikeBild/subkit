@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShieldAlert, ShieldCheck, UserCircle } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { SelectField, TextField } from "@/components/cockpit/form-field";
 import {
   ActionMenu,
@@ -26,23 +26,13 @@ import {
   signInLine,
 } from "@/pages/connector-detail-model";
 
-export type ConnectorCredentialSummary = NonNullable<
-  components["schemas"]["ConnectorCredentialSummary"]
-> & {
-  speaks_as?: {
-    issuer: string;
-    subject: string;
-    source: "token_endpoint" | "openid_claims";
-  } | null;
-};
+type CredentialBody = components["schemas"]["CredentialBody"];
 
 export function useConnectorCredential(connectorId: string | null) {
   return useQuery({
     queryKey: ["connector-credential", connectorId],
     queryFn: () =>
-      apiRequest<ConnectorCredentialSummary | null>(
-        `/v1/connectors/${encodeURIComponent(connectorId ?? "")}/credential`,
-      ),
+      apiCall("get", "/v1/connectors/{id}/credential", { path: { id: connectorId ?? "" } }),
     enabled: Boolean(connectorId),
   });
 }
@@ -50,7 +40,7 @@ export function useConnectorCredential(connectorId: string | null) {
 function useConnections(enabled: boolean) {
   return useQuery({
     queryKey: ["admin", "connections"],
-    queryFn: () => apiRequest<{ items: ConnectionItem[] }>("/v1/connections"),
+    queryFn: () => apiCall("get", "/v1/connections", {}),
     enabled,
   });
 }
@@ -92,11 +82,8 @@ function CredentialSheet({
     onOpenChange(false);
   };
   const save = useMutation({
-    mutationFn: (body: Record<string, unknown>) =>
-      apiRequest<{ id: string }>(`/v1/connectors/${encodeURIComponent(connectorId)}/credentials`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+    mutationFn: (body: CredentialBody) =>
+      apiCall("post", "/v1/connectors/{id}/credentials", { path: { id: connectorId }, body }),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["connector-credential", connectorId] });
       await client.invalidateQueries({ queryKey: ["catalog-detail", "connectors", connectorId] });
@@ -120,7 +107,7 @@ function CredentialSheet({
             : "create.connector.secretMissing",
         ),
       );
-    save.mutate(body);
+    save.mutate(body as CredentialBody);
   };
   return (
     <RecordSheet
@@ -371,8 +358,8 @@ export function ConnectorAccounts({
     item.used_by.some((user) => user.connector_id === connectorId),
   );
   const remove = useMutation({
-    mutationFn: (id: string) =>
-      apiRequest<void>(`/v1/connections/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    mutationFn: (id: string) => apiCall("delete", "/v1/connections/{id}", { path: { id } }),
+
     onSuccess: async () => {
       const name = disconnect?.name ?? "";
       setDisconnect(null);

@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { peopleHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { useDirtyGuard } from "@/app/version-notice";
@@ -44,6 +44,7 @@ import {
   type UserItem,
   useGrants,
   useRoleDetail,
+  withCurrentRole,
 } from "./data";
 import { PermissionGroups, RoleChangeConsequence, SecretDialog } from "./parts";
 
@@ -78,7 +79,7 @@ export function PersonSheet({
     const all = assignableRoles(roles ?? []);
     const offered = canAssignCustom ? all : all.filter((item) => isPersonRole(item.name));
     const names = offered.length > 0 ? offered.map((item) => item.name) : [...PERSON_ROLES];
-    return user && !names.includes(user.role) ? [user.role, ...names] : names;
+    return user ? withCurrentRole(names, user.role) : names;
   }, [roles, canAssignCustom, user]);
   const refresh = () => client.invalidateQueries({ queryKey: ["admin"] });
   const close = () => {
@@ -86,17 +87,17 @@ export function PersonSheet({
     onClose();
   };
   const update = useMutation({
-    mutationFn: ({ target, to }: { target: UserItem; to: string }) => {
+    mutationFn: async ({ target, to }: { target: UserItem; to: string }) => {
       if (isPersonRole(to))
-        return apiRequest<unknown>(`/v1/identity/users/${encodeURIComponent(target.id)}`, {
-          method: "PATCH",
-          body: JSON.stringify({ role: to }),
+        return await apiCall("patch", "/v1/identity/users/{id}", {
+          path: { id: target.id },
+          body: { role: to },
         });
       const next = roles?.find((item) => item.name === to);
       if (!next) throw new Error("role not found");
-      return apiRequest<unknown>(`/v1/rbac/users/${encodeURIComponent(target.id)}/role`, {
-        method: "POST",
-        body: JSON.stringify({ role_id: next.id }),
+      return await apiCall("post", "/v1/rbac/users/{user_id}/role", {
+        path: { user_id: target.id },
+        body: { role_id: next.id },
       });
     },
     onSuccess: async () => {
@@ -109,9 +110,9 @@ export function PersonSheet({
   });
   const updateDisplayName = useMutation({
     mutationFn: (target: UserItem) =>
-      apiRequest<UserItem>(`/v1/identity/users/${encodeURIComponent(target.id)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ display_name: displayName.trim() || null }),
+      apiCall("patch", "/v1/identity/users/{id}", {
+        path: { id: target.id },
+        body: { display_name: displayName.trim() || null },
       }),
     onSuccess: async () => {
       await refresh();
@@ -120,8 +121,7 @@ export function PersonSheet({
     onError: (error) => refusalToast(error, t),
   });
   const remove = useMutation({
-    mutationFn: (id: string) =>
-      apiRequest<void>(`/v1/identity/users/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    mutationFn: (id: string) => apiCall("delete", "/v1/identity/users/{id}", { path: { id } }),
     onSuccess: async () => {
       setConfirm(null);
       close();
@@ -132,8 +132,7 @@ export function PersonSheet({
   });
   const revokeGrants = useMutation({
     mutationFn: async (ids: readonly string[]) => {
-      for (const id of ids)
-        await apiRequest<void>(`/v1/rbac/grants/${encodeURIComponent(id)}`, { method: "DELETE" });
+      for (const id of ids) await apiCall("delete", "/v1/rbac/grants/{id}", { path: { id } });
     },
     onSettled: () => client.invalidateQueries({ queryKey: ["admin", "grants"] }),
     onSuccess: () => {
@@ -144,10 +143,10 @@ export function PersonSheet({
   });
   const issueInvite = useMutation({
     mutationFn: (id: string) =>
-      apiRequest<{ plaintext_token: string; expires_at: string }>(
-        `/v1/identity/users/${encodeURIComponent(id)}/invites`,
-        { method: "POST", body: JSON.stringify({ ttl_minutes: INVITE_TTL_HOURS * 60 }) },
-      ),
+      apiCall("post", "/v1/identity/users/{id}/invites", {
+        path: { id },
+        body: { ttl_minutes: INVITE_TTL_HOURS * 60 },
+      }),
     onSuccess: (result) => {
       setConfirm(null);
       setInvite({ token: result.plaintext_token, expiresAt: result.expires_at });
@@ -156,7 +155,7 @@ export function PersonSheet({
   });
 
   const changed = user && picked && picked !== user.role ? picked : null;
-  const label = user ? roleName(user.role, roles, t) : null;
+  const label = user?.role ? roleName(user.role, roles, t) : null;
   const purpose = shownRoleName
     ? builtinRoleDescription(shownRoleName, role?.description ?? null, t)
     : null;
@@ -266,7 +265,7 @@ export function PersonSheet({
                 help: purpose ?? undefined,
                 testId: "people-sheet-role",
                 value: canWrite ? (
-                  <Select value={picked ?? user.role} onValueChange={setPicked}>
+                  <Select value={picked ?? user.role ?? undefined} onValueChange={setPicked}>
                     <SelectTrigger
                       className="w-full"
                       aria-label={t("people.role")}

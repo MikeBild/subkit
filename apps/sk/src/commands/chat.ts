@@ -1,13 +1,20 @@
 import * as prompts from "@clack/prompts";
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
-import type {
-  ChatPlatform,
-  InstallChatWorkspaceBody,
-  PendingChatSpaceWire,
-} from "../engine-client/chat.ts";
 import { pickId } from "../lib/pick.ts";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
+
+type Schemas = components["schemas"];
+type ChatPlatform = Schemas["ChatPlatform"];
+
+const CHAT_PLATFORMS: readonly ChatPlatform[] = ["slack", "teams", "google_chat"];
+
+function chatPlatform(value: string): ChatPlatform {
+  const platform = CHAT_PLATFORMS.find((candidate) => candidate === value);
+  if (!platform) throw new Error(`platform must be one of: ${CHAT_PLATFORMS.join(", ")}`);
+  return platform;
+}
 
 const spacesCommand = defineCommand({
   meta: { name: "spaces", description: "List chat spaces installed in this tenant" },
@@ -24,7 +31,7 @@ const spacesCommand = defineCommand({
         emitList(
           false,
           ["id", "platform", "workspace_id", "default_channel", "created_at"],
-          items as unknown as Record<string, unknown>[],
+          items.map((item) => ({ ...item })),
         );
       },
       { json: Boolean(args.json) },
@@ -56,7 +63,7 @@ const installSpaceCommand = defineCommand({
     const client = makeClient();
     return withCommandErrors(
       async () => {
-        let pending: PendingChatSpaceWire[] = [];
+        let pending: Schemas["PendingChatSpace"][] = [];
         try {
           pending = (await client.listPendingChatSpaces()).items;
         } catch {
@@ -85,7 +92,8 @@ const installSpaceCommand = defineCommand({
 
         const candidate = byWorkspace.get(workspaceId);
 
-        let platform = candidate?.platform ?? (args.platform as ChatPlatform | undefined);
+        let platform =
+          candidate?.platform ?? (args.platform ? chatPlatform(args.platform) : undefined);
         if (!platform) {
           const picked = await prompts.select({
             message: "Which platform?",
@@ -116,7 +124,7 @@ const installSpaceCommand = defineCommand({
           botToken = entered;
         }
 
-        const body: InstallChatWorkspaceBody = {
+        const body: Schemas["InstallChatWorkspace"] = {
           platform,
           workspace_id: workspaceId,
           installer_platform_user_id: installer,

@@ -23,7 +23,9 @@ test("loads the whole document beyond the first chunk page", async () => {
           new URL(String(input), "https://example.com").searchParams.get("offset") ?? "0";
         offsets.push(offset);
         return Response.json({
-          total: 201,
+          knowledge_source_id: "source",
+          name: "Document",
+          chunk_count: 201,
           items: Array.from({ length: offset === "0" ? 200 : 1 }, (_, index) => ({
             ordinal: Number(offset) + index,
             title: "Document",
@@ -47,10 +49,38 @@ test("refuses an incomplete snapshot when the source changes between pages", asy
     spyOn(globalThis, "fetch").mockImplementation(
       fetchWithPreconnect(async () =>
         Response.json(
-          ++page === 1 ? { total: 2, items: [{ ordinal: 0 }] } : { total: 1, items: [] },
+          ++page === 1
+            ? { chunk_count: 2, items: [{ ordinal: 0 }] }
+            : { chunk_count: 1, items: [] },
         ),
       ),
     ),
   );
   await expect(loadKnowledgeChunks("source")).rejects.toThrow("knowledge-chunks-changed");
+});
+
+test("pages by the contract's chunk_count and ignores a stray total", async () => {
+  const urls: string[] = [];
+  mocks.push(
+    spyOn(globalThis, "fetch").mockImplementation(
+      fetchWithPreconnect(async (input) => {
+        urls.push(String(input));
+        const offset =
+          new URL(String(input), "https://example.com").searchParams.get("offset") ?? "0";
+        return Response.json({
+          knowledge_source_id: "source",
+          name: "Document",
+          chunk_count: 2,
+          total: 1,
+          items: [{ ordinal: Number(offset), title: null, path: null, content: "x", byte_size: 1 }],
+        });
+      }),
+    ),
+  );
+  const result = await loadKnowledgeChunks("source");
+  expect(result.items).toHaveLength(2);
+  expect(urls.map((url) => new URL(url, "https://example.com").search)).toEqual([
+    "?limit=200",
+    "?limit=200&offset=1",
+  ]);
 });

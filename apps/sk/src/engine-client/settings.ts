@@ -1,54 +1,25 @@
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { AUDIT_SOURCE_HEADER, type AuditSource } from "@shared/audit-source.ts";
 import type { EngineClient } from "../engine-client.ts";
+import type { ApiBody } from "./http.ts";
+
+type Schemas = components["schemas"];
 
 const SK_CLI_AUDIT_SOURCE = "sk_cli" satisfies AuditSource;
 
-export type SettingSource = "override" | "tenant" | "global" | "default";
+export type SettingLeafMeta = Schemas["SettingLeafMeta"];
 
-export interface SettingLeafMeta {
-  source: SettingSource;
-  scope: "global" | "tenant";
-  sensitive: boolean;
-  requiresRestart: boolean;
-  description?: string;
-  kind: string;
-}
+export type SettingSource = SettingLeafMeta["source"];
 
-export interface SettingLeafEntry {
-  path: string;
-  value: unknown;
-  meta: SettingLeafMeta;
-}
+export type SettingLeafEntry = Schemas["SettingLeafEntry"];
 
-export interface SettingsListResponse {
-  items: SettingLeafEntry[];
-  diagnostics: {
-    pending_restart_keys: string[];
-    override_keys: string[];
-  };
-}
+export type SettingsListResponse = Pick<Schemas["SettingsListResponse"], "items" | "diagnostics">;
 
-export interface SettingPutResult {
-  value: unknown;
-  requiresRestart: boolean;
-}
+export type SettingPutResult = Schemas["SettingPutResult"];
 
-export interface EngineRestartStatus {
-  boot_id: string;
-  started_at: string;
-  saved_revision: number;
-  active_revision: number;
-  activation_status: string;
-  restart_supervised: boolean;
-  pending_restart_fields: string[];
-}
+export type EngineRestartStatus = Schemas["EngineRestartStatus"];
 
-export interface EngineRestartAccepted {
-  request_id: string;
-  audit_id: string;
-  boot_id: string;
-  expected_revision: number;
-}
+export type EngineRestartAccepted = Schemas["EngineRestartAccepted"];
 
 export const settingsMethods = {
   async requestEngineRestart(this: EngineClient): Promise<EngineRestartAccepted> {
@@ -64,11 +35,11 @@ export const settingsMethods = {
   async listSettings(
     this: EngineClient,
     opts: { tenant?: string } = {},
-  ): Promise<SettingsListResponse> {
+  ): Promise<Schemas["SettingsListResponse"]> {
     const { data } = await this.api.GET("/v1/settings", {
       params: { query: opts.tenant ? { tenant: opts.tenant } : {} },
     });
-    return data as SettingsListResponse;
+    return data as Schemas["SettingsListResponse"];
   },
 
   async getSetting(
@@ -89,8 +60,9 @@ export const settingsMethods = {
     opts: { tenant?: string; force?: boolean } = {},
   ): Promise<SettingPutResult> {
     const qs = opts.tenant ? `?tenant=${encodeURIComponent(opts.tenant)}` : "";
-    const body: Record<string, unknown> = { value };
-    if (opts.force) body.force = true;
+    const body: ApiBody<"/v1/settings/{path}", "put"> = opts.force
+      ? { value, force: true }
+      : { value };
     return this.request(
       "PUT",
       `/v1/settings/${encodeURIComponent(path)}${qs}`,

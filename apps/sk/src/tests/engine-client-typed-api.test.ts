@@ -70,9 +70,9 @@ describe("EngineClient typed api transport", () => {
     expect(seen[0]?.url).toBe("http://engine.test/v1/subscriptions/s/deliveries/d/replay");
   });
 
-  test("sends query params like the request pipeline and drops undefined values", async () => {
+  test("sends query params like the request pipeline", async () => {
     const { client: c, seen } = client(() => json({ items: [], total: 0, next_cursor: null }));
-    await c.listExecutions({ limit: 5, status: undefined, workflow_id: "w 1" });
+    await c.listExecutions({ limit: 5, workflow_id: "w 1" });
     expect(seen[0]?.url).toBe("http://engine.test/v1/executions?limit=5&workflow_id=w+1");
   });
 

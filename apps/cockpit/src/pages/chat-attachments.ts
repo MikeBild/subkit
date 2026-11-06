@@ -1,5 +1,7 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { toast } from "sonner";
-import { apiRequest, type Conversation, type ConversationTarget } from "@/api/client";
+import { apiCall } from "@/api/call";
+import type { Conversation, ConversationTarget } from "@/api/client";
 import { tenantContentHref } from "@/api/tenant-context";
 import { absolute, settingsHref } from "@/app/links";
 import { fileRefusal, formatBytes } from "@/components/cockpit/patterns";
@@ -19,13 +21,10 @@ export type PendingAttachment =
       contentType?: string | null;
     };
 
-export interface ConversationAttachment {
-  id: string;
-  slug: string;
-  filename: string;
-  content_type: string | null;
-  size_bytes: number;
-}
+export type ConversationAttachment = Pick<
+  components["schemas"]["ConversationAttachment"],
+  "id" | "slug" | "filename" | "content_type" | "size_bytes"
+>;
 
 export function attachmentName(attachment: PendingAttachment): string {
   return attachment.kind === "upload" ? attachment.file.name : attachment.name;
@@ -143,10 +142,10 @@ export async function linkAttachment(
           ...(attachment.file.type ? { content_type: attachment.file.type } : {}),
           content_base64: await base64(attachment.file),
         };
-  const linked = await apiRequest<{ slug: string }>(
-    `/v1/conversations/${encodeURIComponent(conversationId)}/attachments`,
-    { method: "POST", body: JSON.stringify(body) },
-  );
+  const linked = await apiCall("post", "/v1/conversations/{id}/attachments", {
+    path: { id: conversationId },
+    body,
+  });
   return linked.slug;
 }
 
@@ -155,13 +154,12 @@ export async function createEmptyConversation(input: {
   permissionMode?: "auto" | "ask" | "plan";
   intakeItemIds?: readonly string[];
 }): Promise<Conversation> {
-  const created = await apiRequest<{ conversation: Conversation }>("/v1/conversations", {
-    method: "POST",
-    body: JSON.stringify({
+  const created = await apiCall("post", "/v1/conversations", {
+    body: {
       ...(input.target ?? {}),
       ...(input.permissionMode ? { permission_mode: input.permissionMode } : {}),
-      ...(input.intakeItemIds?.length ? { intake_item_ids: input.intakeItemIds } : {}),
-    }),
+      ...(input.intakeItemIds?.length ? { intake_item_ids: [...input.intakeItemIds] } : {}),
+    },
   });
   return created.conversation;
 }
@@ -169,7 +167,7 @@ export async function createEmptyConversation(input: {
 export function listConversationAttachments(
   conversationId: string,
 ): Promise<{ attachments: ConversationAttachment[] }> {
-  return apiRequest(`/v1/conversations/${encodeURIComponent(conversationId)}/attachments`);
+  return apiCall("get", "/v1/conversations/{id}/attachments", { path: { id: conversationId } });
 }
 
 export function fileContentHref(fileId: string): string {

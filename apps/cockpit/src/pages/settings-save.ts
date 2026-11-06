@@ -1,25 +1,19 @@
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import {
   type SettingsPatch,
   type SettingsResponse,
   sameSettingValue,
-  settingsActivationPath,
 } from "@/pages/settings-model";
 
-const SETTINGS_ENDPOINT = "/v1/settings";
-
 export async function applySettingsPatch(patch: SettingsPatch): Promise<void> {
-  const saved = await apiRequest<Parameters<typeof settingsActivationPath>[0]>(SETTINGS_ENDPOINT, {
-    method: "PATCH",
-    body: JSON.stringify(patch),
+  const saved = await apiCall("patch", "/v1/settings", { body: patch });
+  await apiCall("post", "/v1/settings/revisions/{revision}/activate", {
+    path: { revision: saved.saved_revision },
   });
-  await apiRequest(settingsActivationPath(saved), { method: "POST" });
 }
 
-export function settingsPatchEndpoint(patch: SettingsPatch): string {
-  return patch.scope === "tenant"
-    ? `${SETTINGS_ENDPOINT}?tenant=${encodeURIComponent(patch.tenant_id)}`
-    : SETTINGS_ENDPOINT;
+export function settingsReadQuery(patch: SettingsPatch): { tenant?: string } {
+  return patch.scope === "tenant" ? { tenant: patch.tenant_id } : {};
 }
 
 function settingsReflect(
@@ -46,17 +40,14 @@ export async function settleSettings(
   return null;
 }
 
-export function workspaceSettingEndpoint(path: string, tenantId: string): string {
-  return `${SETTINGS_ENDPOINT}/${encodeURIComponent(path)}?tenant=${encodeURIComponent(tenantId)}`;
-}
-
 export async function saveWorkspaceSetting(
   path: string,
   tenantId: string,
   value: unknown,
 ): Promise<void> {
-  await apiRequest(workspaceSettingEndpoint(path, tenantId), {
-    method: "PUT",
-    body: JSON.stringify({ value }),
+  await apiCall("put", "/v1/settings/{path}", {
+    path: { path },
+    query: { tenant: tenantId },
+    body: { value },
   });
 }

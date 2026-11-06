@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ApiError, apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
+import { ApiError } from "@/api/client";
 import { useActorDirectory } from "@/app/actor-directory";
 import {
   Button,
@@ -57,9 +58,10 @@ export function useCurrentVersionDag(
     queryFn: () =>
       fetchCurrentVersionDag(
         (limit, offset) =>
-          apiRequest<{ items: WorkflowVersion[]; total: number }>(
-            `/v1/workflows/${encodeURIComponent(workflowId)}/history?limit=${limit}&offset=${offset}`,
-          ),
+          apiCall("get", "/v1/workflows/{id}/history", {
+            path: { id: workflowId },
+            query: { limit, offset },
+          }),
         currentVersionId,
         currentVersion,
       ),
@@ -226,10 +228,10 @@ function WorkflowVersionSheet({
   const next = view.nextVersion === null ? MISSING : `v${view.nextVersion}`;
   const restore = useMutation({
     mutationFn: () =>
-      apiRequest<{ current_version?: number | null }>(
-        `/v1/workflows/${encodeURIComponent(workflowId)}/restore/${version.version}`,
-        { method: "POST" },
-      ),
+      apiCall("post", "/v1/workflows/{id}/restore/{version}", {
+        path: { id: workflowId, version: String(version.version) },
+      }),
+
     onSuccess: async (result) => {
       toast.success(
         t("workflowVersions.restored", {

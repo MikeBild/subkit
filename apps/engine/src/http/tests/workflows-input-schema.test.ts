@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { workflowsSchedules } from "../../db/schema/index.ts";
+import { users, workflowsSchedules } from "../../db/schema/index.ts";
+import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
+import { emptyRoleId } from "../../test-helpers/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -144,6 +147,68 @@ describe("GET /v1/workflows/:id/input-schema", () => {
     });
     const res = await fetch(`${ctx.baseUrl}/v1/workflows/${wf.id}/input-schema`);
     expect(res.status).toBe(401);
+  });
+});
+
+describe("GET /v1/workflows/:id/input-schema permission", () => {
+  async function restrictedCaller(): Promise<{ id: string; key: string }> {
+    const [user] = await ctx.db
+      .insert(users)
+      .values({
+        tenant_id: ctx.tenantId,
+        email: "input-schema-restricted@test.local",
+        role_id: await emptyRoleId(ctx.db, ctx.tenantId),
+      })
+      .returning();
+    if (!user) throw new Error("restricted user insert returned no row");
+    const key = `wf_live_${createDeterministicHexFactory(0x15_c4)(16)}`;
+    await ctx.testDb.pool.query(
+      "INSERT INTO subkit.api_keys (tenant_id, user_id, prefix, token_sha256, scopes) VALUES ($1, $2, $3, $4, $5::jsonb)",
+      [
+        ctx.tenantId,
+        user.id,
+        key.slice(0, 12),
+        createHash("sha256").update(key).digest("hex"),
+        JSON.stringify(["*"]),
+      ],
+    );
+    return { id: user.id, key };
+  }
+
+  test("needs workflow:read or workflow:run on that workflow", async () => {
+    const granted = await createWorkflow({
+      name: "input-schema-granted",
+      steps: [{ kind: "transform", id: "out", expression: "return { city: input.input.city };" }],
+    });
+    const other = await createWorkflow({
+      name: "input-schema-other",
+      steps: [{ kind: "transform", id: "out", expression: "return 1;" }],
+    });
+    const caller = await restrictedCaller();
+    const schemaOf = (id: string) =>
+      fetch(`${ctx.baseUrl}/v1/workflows/${id}/input-schema`, {
+        headers: { authorization: `Bearer ${caller.key}` },
+      });
+
+    expect((await schemaOf(granted.id)).status).toBe(403);
+
+    const grant = await fetch(`${ctx.baseUrl}/v1/rbac/grants`, {
+      method: "POST",
+      headers: headers(ctx.apiKey),
+      body: JSON.stringify({
+        subject_type: "user",
+        subject_id: caller.id,
+        resource_type: "workflow",
+        resource_id: granted.id,
+        permission: "workflow:run",
+      }),
+    });
+    expect(grant.status).toBe(201);
+
+    const allowed = await schemaOf(granted.id);
+    expect(allowed.status).toBe(200);
+    expect(((await allowed.json()) as { source: string }).source).toBe("synthesized");
+    expect((await schemaOf(other.id)).status).toBe(403);
   });
 });
 

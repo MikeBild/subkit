@@ -9,6 +9,8 @@ import {
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
+import type { ExecutionRunDraftDefinition } from "../engine-client/executions.ts";
+import type { CreateWorkflowRequest, ValidateWorkflowBody } from "../engine-client/workflows.ts";
 import {
   EngineClient,
   type RunExecutionBody,
@@ -19,7 +21,7 @@ import {
   catalogMetadataBody,
   shortDescription,
 } from "../lib/catalog-metadata.ts";
-import { effectiveTriggerLabel, type TriggerFields } from "../lib/effective-trigger.ts";
+import { effectiveTriggerLabel } from "../lib/effective-trigger.ts";
 import { heldRunBlockForExecution } from "../lib/held-run.ts";
 import {
   INVOCATION_LOOKUP_TIMEOUT_MS,
@@ -42,10 +44,7 @@ import {
 } from "../lib/run-environment.ts";
 import { printRunResult } from "../lib/run-result.ts";
 import { exitCodeForTerminalStatus, tailExecution } from "../lib/tail-execution.ts";
-import {
-  type AutomationReadiness,
-  formatAutomationReadiness,
-} from "../render/automation-readiness.ts";
+import { formatAutomationReadiness } from "../render/automation-readiness.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
 import type {
   PlanStep,
@@ -54,6 +53,7 @@ import type {
   WorkflowTrigger,
 } from "../render/types.ts";
 import { formatFileRef } from "../utils/file-ref.ts";
+import { makeClient } from "./command-runtime.ts";
 import { uploadPath } from "./files.ts";
 import { WORKFLOW_LIST_COLUMNS } from "./list-columns.ts";
 
@@ -100,22 +100,18 @@ function intentFromBody(body: Record<string, unknown>): WorkflowIntent {
   };
 }
 
-function makeClient() {
-  const profile = resolveProfile();
-  return new EngineClient({
-    engine_url: profile.engine_url,
-    api_key: profile.api_key,
-    tenant: profile.active_tenant_id,
-  });
+function isWorkflowDefinition(body: Record<string, unknown>): body is CreateWorkflowRequest {
+  return typeof body.name === "string" && Array.isArray(body.steps);
+}
+
+export function workflowDefinition(body: Record<string, unknown>): CreateWorkflowRequest {
+  if (isWorkflowDefinition(body)) return body;
+  throw new Error("the workflow definition needs a name and a steps array");
 }
 
 const fetchWorkflowRows = async (client: EngineClient) => {
   const { items } = await client.listWorkflows({ limit: 50 });
-  return (items as Record<string, unknown>[]).map((r) => ({
-    id: String(r.id),
-    name: typeof r.name === "string" ? r.name : null,
-    detail: typeof r.slug === "string" ? r.slug : null,
-  }));
+  return items.map((r) => ({ id: r.id, name: r.name, detail: r.slug }));
 };
 
 const WORKFLOW_UUID_RE =
@@ -127,9 +123,7 @@ export async function resolveWorkflowIdOrSlug(
 ): Promise<string> {
   if (WORKFLOW_UUID_RE.test(idOrSlug)) return idOrSlug;
   const { items } = await client.listWorkflows({ limit: 200 });
-  const matches = (items as Record<string, unknown>[]).filter(
-    (r) => r.slug === idOrSlug || r.name === idOrSlug,
-  );
+  const matches = items.filter((r) => r.slug === idOrSlug || r.name === idOrSlug);
   if (matches.length === 1) return String(matches[0]?.id);
   if (matches.length > 1) {
     throw new Error(
@@ -264,8 +258,8 @@ const listCommand = defineCommand({
         ? items
         : items.map((item) => ({
             ...item,
-            description: shortDescription((item as Record<string, unknown>).description),
-            runs_on: effectiveTriggerLabel(item as TriggerFields),
+            description: shortDescription(item.description),
+            runs_on: effectiveTriggerLabel(item),
           }));
       if (args.flat || !categories?.length) {
         emitList(!!args.json, columns, rows);
@@ -304,9 +298,7 @@ const getCommand = defineCommand({
       });
       const workflow = await client.getWorkflow(id);
       printJson(workflow);
-      process.stderr.write(
-        `\n${pc.dim("trigger:")} ${effectiveTriggerLabel(workflow as TriggerFields)}\n`,
-      );
+      process.stderr.write(`\n${pc.dim("trigger:")} ${effectiveTriggerLabel(workflow)}\n`);
     } catch (err) {
       reportCommandError(err);
     }
@@ -431,7 +423,9 @@ const runCommand = defineCommand({
 
     try {
       if (args.step) {
-        const step = JSON.parse(readFileSync(String(args.step), "utf8")) as Record<string, unknown>;
+        const step: Extract<RunExecutionBody, { source: "step" }>["step"] = JSON.parse(
+          readFileSync(String(args.step), "utf8"),
+        );
         const body = {
           source: "step" as const,
           step,
@@ -444,10 +438,9 @@ const runCommand = defineCommand({
       }
 
       if (args.draft) {
-        const definition = JSON.parse(readFileSync(String(args.draft), "utf8")) as Record<
-          string,
-          unknown
-        >;
+        const definition: ExecutionRunDraftDefinition = JSON.parse(
+          readFileSync(String(args.draft), "utf8"),
+        );
         const body = {
           source: "draft" as const,
           definition,
@@ -531,7 +524,7 @@ const validateCommand = defineCommand({
     const { readFileSync } = await import("node:fs");
     const client = makeClient();
     try {
-      const body = JSON.parse(readFileSync(String(args.file), "utf8")) as Record<string, unknown>;
+      const body: ValidateWorkflowBody = JSON.parse(readFileSync(String(args.file), "utf8"));
       const res = await client.validateWorkflowDraft(body);
       if (res.ok) {
         process.stdout.write(`${pc.green("ok")}  workflow draft validates cleanly\n`);
@@ -578,10 +571,9 @@ const previewCommand = defineCommand({
       }
     }
     try {
-      const definition = JSON.parse(readFileSync(String(args.file), "utf8")) as Record<
-        string,
-        unknown
-      >;
+      const definition: ExecutionRunDraftDefinition = JSON.parse(
+        readFileSync(String(args.file), "utf8"),
+      );
       const body = {
         source: "draft" as const,
         definition,
@@ -627,11 +619,7 @@ const historyCommand = defineCommand({
     const client = makeClient();
     try {
       const { items } = await client.listWorkflowVersions(args.id);
-      emitList(
-        !!args.json,
-        ["version", "created_at", "note", "invalid"],
-        items as Record<string, unknown>[],
-      );
+      emitList(!!args.json, ["version", "created_at", "note", "invalid"], items);
     } catch (err) {
       reportCommandError(err, { json: Boolean(args.json) });
     }
@@ -690,7 +678,7 @@ async function saveWorkflow(
   try {
     {
       const source = await loadWorkflowSource(client, args);
-      const body = source.body;
+      const body = workflowDefinition(source.body);
       const skip = Boolean(args["skip-checks"]);
       const intent = intentFromBody(body);
       intent.action = target.kind === "create" ? "Create" : "Update";
@@ -785,38 +773,22 @@ async function saveWorkflow(
         );
       }
 
-      const created = (await (target.kind === "create"
-        ? client.createWorkflow(createBodyFor(source))
-        : client.updateWorkflow(target.id, body))) as Record<string, unknown> & {
-        id?: string;
-        version?: number;
-        current_version?: number;
-        name?: string;
-      };
+      const created = await (target.kind === "create"
+        ? client.createWorkflow(workflowDefinition(createBodyFor(source)))
+        : client.updateWorkflow(target.id, body));
       printJson(created);
 
-      const version =
-        typeof created.current_version === "number"
-          ? created.current_version
-          : typeof created.version === "number"
-            ? created.version
-            : 1;
       const summary: WorkflowSummary = {
         kind: "workflow",
-        id: typeof created.id === "string" ? created.id : "(unknown)",
-        version,
-        name: typeof created.name === "string" ? created.name : intent.name,
+        id: created.id ?? "(unknown)",
+        version: created.current_version ?? 1,
+        name: created.name ?? intent.name,
         trigger: intent.trigger,
         action: target.kind === "create" ? "Created" : "Updated",
         ...(previewExecutionId ? { preview_execution_id: previewExecutionId } : {}),
       };
       await renderSummary(summary, { jsonMode });
-      if (!jsonMode)
-        process.stderr.write(
-          formatAutomationReadiness(
-            created.automation_readiness as AutomationReadiness | undefined,
-          ),
-        );
+      if (!jsonMode) process.stderr.write(formatAutomationReadiness(created.automation_readiness));
 
       if (!jsonMode && summary.id !== "(unknown)") {
         process.stderr.write(

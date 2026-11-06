@@ -13,7 +13,7 @@ import {
   Webhook,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { useActorDirectory } from "@/app/actor-directory";
 import { actorDirectoryName } from "@/app/actor-directory-model";
 import { absolute, apiAccessHref } from "@/app/links";
@@ -53,7 +53,7 @@ import {
   verifierName,
 } from "@/lib/workflow-invocation";
 import { roleLabel } from "@/pages/admin-model";
-import { API_KEYS_QUERY, type ApiKeyItem, groupApiKeys } from "@/pages/api-access-model";
+import { API_KEYS_QUERY, groupApiKeys } from "@/pages/api-access-model";
 
 type Environment = "dev" | "prod";
 
@@ -98,9 +98,9 @@ export function useWorkflowInvocation(workflowId: string, enabled = true) {
     queryKey: ["workflow-invocation", workflowId],
     enabled,
     queryFn: async (): Promise<Invocation> => {
-      const answer = await apiRequest<unknown>(
-        `/v1/workflows/${encodeURIComponent(workflowId)}/invocation`,
-      );
+      const answer = await apiCall("get", "/v1/workflows/{id}/invocation", {
+        path: { id: workflowId },
+      });
       if (!isWorkflowInvocation(answer)) throw new Error("not an invocation answer");
       return answer;
     },
@@ -123,7 +123,7 @@ function useMissingKey(): boolean {
   const keys = useQuery({
     queryKey: API_KEYS_QUERY,
     enabled: canRead,
-    queryFn: () => apiRequest<{ items: ApiKeyItem[] }>("/v1/identity/api-keys"),
+    queryFn: () => apiCall("get", "/v1/identity/api-keys", {}),
   });
   return (
     canRead &&
@@ -424,7 +424,7 @@ function StartAccess({ access }: { access: NonNullable<Invocation["start_access"
   const groups = useQuery({
     queryKey: ["workflow-start-access-groups"],
     enabled: access.visibility.rules && permissions.includes("rbac:read"),
-    queryFn: () => apiRequest<{ items: { id: string; name: string }[] }>("/v1/rbac/groups"),
+    queryFn: () => apiCall("get", "/v1/rbac/groups", {}),
   });
   const chips = access.rules
     ? [

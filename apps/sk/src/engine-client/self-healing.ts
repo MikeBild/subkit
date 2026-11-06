@@ -1,6 +1,18 @@
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { EngineError } from "@cli-core/errors.ts";
 import type { EngineClient } from "../engine-client.ts";
 import type { ApiBody, ApiQuery } from "./http.ts";
+
+type Schemas = components["schemas"];
+
+export type PatchCandidate = Schemas["PatchCandidate"];
+export type PatchCandidateListQuery = ApiQuery<"/v1/patch-candidates", "get">;
+export type SelfHealingScanListQuery = ApiQuery<"/v1/self-healing/scans", "get">;
+export type SelfHealingScanRequest = ApiBody<"/v1/self-healing/scans", "post">;
+export type SelfHealingScanResponse = Schemas["SelfHealingScanResponse"];
+export type SelfHealingScanRecord = Schemas["SelfHealingScanRecord"];
+type PatchApproval = { applied: boolean; workflow_version_id: string | null };
+type AppliedPatch = { applied: true; workflow_version_id: string };
 
 export type FailureOrigin = "authoring" | "manual" | "scheduled" | "mixed";
 export interface DigestFailureGroup {
@@ -67,82 +79,88 @@ export interface OperatorHealthDigest {
 export const selfHealingMethods = {
   async getOperatorHealthDigest(
     this: EngineClient,
-    query: { window_hours?: number } = {},
+    query: ApiQuery<"/v1/operator/health-digest", "get"> = {},
   ): Promise<OperatorHealthDigest> {
-    const { data } = await this.api.GET("/v1/operator/health-digest", {
-      params: { query: query as ApiQuery<"/v1/operator/health-digest", "get"> },
-    });
+    const { data } = await this.api.GET("/v1/operator/health-digest", { params: { query } });
     return data as OperatorHealthDigest;
   },
 
   async listPatchCandidates(
     this: EngineClient,
-    query: Record<string, string | number | undefined> = {},
-  ): Promise<{ items: Record<string, unknown>[] }> {
-    const { data } = await this.api.GET("/v1/patch-candidates", {
-      params: { query: query as ApiQuery<"/v1/patch-candidates", "get"> },
-    });
-    return data as { items: Record<string, unknown>[] };
+    query: PatchCandidateListQuery = {},
+  ): Promise<Schemas["PatchCandidateListResponse"]> {
+    const { data } = await this.api.GET("/v1/patch-candidates", { params: { query } });
+    return data as Schemas["PatchCandidateListResponse"];
   },
-  async getPatchCandidate(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+  async getPatchCandidate(this: EngineClient, id: string): Promise<PatchCandidate> {
     const { data } = await this.api.GET("/v1/patch-candidates/{id}", { params: { path: { id } } });
-    return data as Record<string, unknown>;
+    return data as PatchCandidate;
+  },
+  async previewPatchCandidate(
+    this: EngineClient,
+    id: string,
+  ): Promise<Schemas["PatchCandidatePreview"]> {
+    const { data } = await this.api.GET("/v1/patch-candidates/{id}/preview", {
+      params: { path: { id } },
+    });
+    return data as Schemas["PatchCandidatePreview"];
   },
   async approvePatchCandidate(
     this: EngineClient,
     id: string,
     expected_review_digest: string,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<AppliedPatch> {
     const { data } = await this.api.POST("/v1/patch-candidates/{id}/approve", {
       params: { path: { id } },
-      body: { expected_review_digest } as ApiBody<"/v1/patch-candidates/{id}/approve", "post">,
+      body: { expected_review_digest },
     });
-    const result = data as Record<string, unknown>;
-    if (
-      result.applied !== true ||
-      typeof result.workflow_version_id !== "string" ||
-      !result.workflow_version_id
-    ) {
+    const result = data as PatchApproval;
+    if (result.applied !== true || !result.workflow_version_id) {
       throw new EngineError(409, {
         code: "patch_not_applicable",
         message: "The repair was not applied. Reload the candidate preview before approving.",
       });
     }
-    return result;
+    return { ...result, applied: true, workflow_version_id: result.workflow_version_id };
   },
   async rejectPatchCandidate(
     this: EngineClient,
     id: string,
-    body: { reason?: string } = {},
-  ): Promise<Record<string, unknown>> {
+    body: ApiBody<"/v1/patch-candidates/{id}/reject", "post"> = {},
+  ): Promise<{ rejected: boolean }> {
     const { data } = await this.api.POST("/v1/patch-candidates/{id}/reject", {
       params: { path: { id } },
-      body: body as ApiBody<"/v1/patch-candidates/{id}/reject", "post">,
+      body,
     });
-    return data as Record<string, unknown>;
+    return data as { rejected: boolean };
   },
 
   triggerSelfHealingScan(
     this: EngineClient,
-    body: { workflow_id?: string; connector_id?: string } = {},
+    body: SelfHealingScanRequest = {},
     opts: { idempotencyKey?: string } = {},
-  ): Promise<Record<string, unknown>> {
+  ): Promise<SelfHealingScanResponse> {
     const extraHeaders = opts.idempotencyKey ? { "idempotency-key": opts.idempotencyKey } : {};
-    return this.request("POST", "/v1/self-healing/scans", body, undefined, undefined, extraHeaders);
+    return this.request<SelfHealingScanResponse>(
+      "POST",
+      "/v1/self-healing/scans",
+      body,
+      undefined,
+      undefined,
+      extraHeaders,
+    );
   },
   async listSelfHealingScans(
     this: EngineClient,
-    query: Record<string, string | number | undefined> = {},
-  ): Promise<{ items: Record<string, unknown>[] }> {
-    const { data } = await this.api.GET("/v1/self-healing/scans", {
-      params: { query: query as ApiQuery<"/v1/self-healing/scans", "get"> },
-    });
-    return data as { items: Record<string, unknown>[] };
+    query: SelfHealingScanListQuery = {},
+  ): Promise<Schemas["SelfHealingScanListResponse"]> {
+    const { data } = await this.api.GET("/v1/self-healing/scans", { params: { query } });
+    return data as Schemas["SelfHealingScanListResponse"];
   },
-  async getSelfHealingScan(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+  async getSelfHealingScan(this: EngineClient, id: string): Promise<SelfHealingScanRecord> {
     const { data } = await this.api.GET("/v1/self-healing/scans/{id}", {
       params: { path: { id } },
     });
-    return data as Record<string, unknown>;
+    return data as SelfHealingScanRecord;
   },
 };

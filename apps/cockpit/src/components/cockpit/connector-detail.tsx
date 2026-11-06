@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Hand, RefreshCw, Workflow, Wrench } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { absolute, chatNewHref, workflowAutomationHref, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { CreateAction } from "@/components/cockpit/create-choice";
@@ -444,15 +444,15 @@ export function ConnectorMcpTools({
   }, [canTest, inspect.data, inspect.pending, onInspect]);
   const runtime = useQuery({
     queryKey: ["connector-runtime", connectorId],
-    queryFn: () => apiRequest<unknown>(`/v1/connectors/${encodeURIComponent(connectorId)}/runtime`),
+    queryFn: () => apiCall("get", "/v1/connectors/{id}/runtime", { path: { id: connectorId } }),
   });
   const session = asRuntime(runtime.data)?.mcp_session ?? null;
   const setAsk = useMutation({
     mutationFn: (body: { tool: string; confirm: boolean }) =>
-      apiRequest<unknown>(
-        `/v1/connectors/${encodeURIComponent(connectorId)}/mcp/tool-confirmation`,
-        { method: "PUT", body: JSON.stringify(body) },
-      ),
+      apiCall("put", "/v1/connectors/{id}/mcp/tool-confirmation", {
+        path: { id: connectorId },
+        body,
+      }),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["catalog-detail", "connectors", connectorId] });
     },
@@ -635,24 +635,13 @@ export function ConnectorMcpTools({
   );
 }
 
-type WorkflowListItem = components["schemas"]["WorkflowListItem"];
-
-interface WorkflowItem {
-  id: string;
-  name?: string | null;
-  effective_trigger?: WorkflowListItem["effective_trigger"];
-  operating_status?: unknown;
-  last_executed_at?: string | null;
-  authority_environments?: WorkflowListItem["authority_environments"];
-}
+type WorkflowItem = components["schemas"]["WorkflowListItem"];
 
 export function useConnectorWorkflows(slug: string | null) {
   return useQuery({
     queryKey: ["connector-workflows", slug],
-    queryFn: () =>
-      apiRequest<{ items?: WorkflowItem[]; total?: number }>(
-        `/v1/workflows?connector=${encodeURIComponent(slug ?? "")}&limit=50`,
-      ),
+    queryFn: () => apiCall("get", "/v1/workflows", { query: { connector: slug ?? "", limit: 50 } }),
+
     enabled: slug !== null,
   });
 }

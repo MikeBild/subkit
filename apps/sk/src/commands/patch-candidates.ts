@@ -5,6 +5,15 @@ import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 import { withCommandErrors } from "./command-runtime.ts";
 
+export const PATCH_CANDIDATE_COLUMNS = [
+  "id",
+  "workflow_id",
+  "workflow_name",
+  "classification",
+  "status",
+  "created_at",
+];
+
 const listCommand = defineCommand({
   meta: { name: "list", description: "List patch candidates" },
   args: {
@@ -17,11 +26,7 @@ const listCommand = defineCommand({
     return withCommandErrors(
       async () => {
         const { items } = await client.listPatchCandidates({ limit: Number(args.limit) });
-        emitList(
-          !!args.json,
-          ["id", "workflow_id", "summary", "status", "created_at"],
-          items as Record<string, unknown>[],
-        );
+        emitList(!!args.json, PATCH_CANDIDATE_COLUMNS, items);
       },
       { json: Boolean(args.json) },
     );
@@ -50,9 +55,7 @@ const previewCommand = defineCommand({
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     return withCommandErrors(async () => {
-      printJson(
-        await client.request("GET", `/v1/patch-candidates/${encodeURIComponent(args.id)}/preview`),
-      );
+      printJson(await client.previewPatchCandidate(args.id));
     });
   },
 });

@@ -85,7 +85,8 @@ async function auditTrail(resource_id: string) {
     .from(auditLog)
     .where(and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.resource_id, resource_id)))
     .orderBy(asc(auditLog.ts), asc(auditLog.action));
-  const key = (row: (typeof rows)[number]) => `${row.action} ${JSON.stringify(row.metadata)}`;
+  const key = (row: (typeof rows)[number]) =>
+    `${row.action} ${JSON.stringify(row.metadata).replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{32}/g, "")}`;
   return rows.toSorted((a, b) => key(a).localeCompare(key(b)));
 }
 

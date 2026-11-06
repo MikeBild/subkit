@@ -1,24 +1,30 @@
 import type { components } from "@cli-core/engine-api/openapi";
 
-export type TimelineEntry = components["schemas"]["AuditEntry"] & {
-  request_source?: string | null;
-  origin_source?: string | null;
-  execution_source?: string | null;
-  correlation_id?: string | null;
-  changes?: Array<{
-    field: string;
-    before: string | number | boolean | null;
-    after: string | number | boolean | null;
-  }>;
-  api_key_id?: string | null;
-  session_id?: string | null;
-  recorded_api_key_id?: string | null;
-  recorded_session_id?: string | null;
-  access_type?: string | null;
-  oauth_client_id?: string | null;
-  credential_origin?: string | null;
-  reason_redacted?: boolean;
-};
+export type TimelineEntry = components["schemas"]["AuditEntry"];
+
+export interface IdentityOption {
+  kind: "user" | "system_account";
+  id: string;
+  label: string;
+}
+
+export function auditIdentityOptions(
+  people: readonly Pick<components["schemas"]["User"], "id" | "email" | "display_name">[],
+  accounts: readonly Pick<components["schemas"]["SystemAccount"], "id" | "name">[],
+): IdentityOption[] {
+  return [
+    ...people.map((item) => ({
+      kind: "user" as const,
+      id: item.id,
+      label: item.display_name || item.email || item.id,
+    })),
+    ...accounts.map((item) => ({
+      kind: "system_account" as const,
+      id: item.id,
+      label: item.name || item.id,
+    })),
+  ];
+}
 
 export type AuditGroup =
   | "day"

@@ -24,10 +24,6 @@ function draftRecord(value: unknown): Record<string, unknown> | null {
   return asRecord(value);
 }
 
-function conversationDetailRecord(value: unknown): ConversationDetail {
-  return value as ConversationDetail;
-}
-
 function workflowStepsFromDraft(
   draft: Record<string, unknown> | null,
 ): Array<Record<string, unknown>> {
@@ -617,7 +613,7 @@ export async function dispatchAuthoringDraftSlash(
     case "versions": {
       if (!ctx.session.conversationId) return "no active conversation";
       const detail = await ctx.client.getConversation(ctx.session.conversationId);
-      const conv = detail.conversation as { target_workflow_id?: string | null };
+      const conv = detail.conversation;
       if (!conv.target_workflow_id) {
         return panify(ctx, "versions", ["no committed workflow bound to this conversation yet."]);
       }
@@ -649,7 +645,7 @@ export async function dispatchAuthoringDraftSlash(
     case "restore": {
       if (!ctx.session.conversationId) return "no active conversation";
       const detail = await ctx.client.getConversation(ctx.session.conversationId);
-      const conv = detail.conversation as { target_workflow_id?: string | null };
+      const conv = detail.conversation;
       if (!conv.target_workflow_id) {
         return "no committed workflow bound to this conversation — nothing to restore";
       }
@@ -659,7 +655,7 @@ export async function dispatchAuthoringDraftSlash(
         return "usage: /restore <version-number>";
       }
       const restored = await ctx.client.restoreWorkflowVersion(conv.target_workflow_id, version);
-      return `restored workflow ${restored.id} to version ${version} (new current version ${restored.version})`;
+      return `restored workflow ${restored.id} to version ${version} (new current version ${restored.current_version ?? "—"})`;
     }
     case "context": {
       if (!ctx.session.conversationId) return "no active conversation";
@@ -733,9 +729,7 @@ export async function dispatchAuthoringDraftSlash(
     }
     case "approvals": {
       if (!ctx.session.conversationId) return "no active conversation";
-      const detail = conversationDetailRecord(
-        await ctx.client.getConversation(ctx.session.conversationId),
-      );
+      const detail = await ctx.client.getConversation(ctx.session.conversationId);
       const items = approvalHistoryFromDetail(detail);
       if (items.length === 0) {
         return panify(ctx, "approval history", ["no approval requests recorded yet."]);

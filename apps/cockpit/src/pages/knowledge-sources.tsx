@@ -5,6 +5,7 @@ import type { SortingState } from "@tanstack/react-table";
 import { AlignLeft, ChevronRight, Inbox, Link, Plus, Upload, Workflow } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { apiCall } from "@/api/call";
 import { ApiError, apiRequest } from "@/api/client";
 import { listIntakeClips } from "@/api/intake";
 import { loadKnowledgeChunks } from "@/api/knowledge";
@@ -98,6 +99,18 @@ import {
 import { keptVersionCount } from "@/pages/knowledge-versions-model";
 
 type KnowledgeSource = components["schemas"]["KnowledgeSource"];
+
+export function urlSourceBody(
+  url: string,
+  rhythm: Exclude<RefreshRhythm, "custom">,
+): { url: string; refresh_strategy: "manual" | "scheduled"; refresh_cron?: string } {
+  const refresh = refreshFields(rhythm);
+  return {
+    url: url.trim(),
+    refresh_strategy: refresh.refresh_strategy,
+    ...(refresh.refresh_cron ? { refresh_cron: refresh.refresh_cron } : {}),
+  };
+}
 
 const ENDPOINT = "/v1/knowledge-sources";
 const ENDPOINT_PAGE = 200;
@@ -547,12 +560,11 @@ function AddSourceDialog({
       if (mode === "url")
         return apiRequest(`${ENDPOINT}/url`, {
           method: "POST",
-          body: JSON.stringify({ url: url.trim(), ...refreshFields(rhythm) }),
+          body: JSON.stringify(urlSourceBody(url, rhythm)),
         });
       if (mode === "text")
-        return apiRequest(`${ENDPOINT}/inline`, {
-          method: "POST",
-          body: JSON.stringify({ name: name.trim(), content: text, mime_type: "text/markdown" }),
+        return apiCall("post", "/v1/knowledge-sources/inline", {
+          body: { name: name.trim(), content: text, mime_type: "text/markdown" },
         });
       const form = new FormData();
       form.set("file", file as File);
@@ -668,12 +680,6 @@ function AddSourceDialog({
   );
 }
 
-interface SourceContent {
-  version: string;
-  editable: boolean;
-  documents: { path: string; content: string }[];
-}
-
 type EditMode = "address" | "text";
 
 export function KnowledgeSourcePage({ permissions }: { permissions: readonly string[] }) {
@@ -689,7 +695,7 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
   const queryKey = ["knowledge-source", id];
   const query = useQuery({
     queryKey,
-    queryFn: () => apiRequest<KnowledgeSource>(`${ENDPOINT}/${encodeURIComponent(id)}`),
+    queryFn: () => apiCall("get", "/v1/knowledge-sources/{id}", { path: { id } }),
     enabled: canRead && Boolean(id),
     ...live,
   });
@@ -713,10 +719,7 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
   const [section, setSection] = useSearchParamState("section", "");
 
   const refresh = useMutation({
-    mutationFn: () =>
-      apiRequest<KnowledgeSource>(`${ENDPOINT}/${encodeURIComponent(id)}/refresh`, {
-        method: "POST",
-      }),
+    mutationFn: () => apiCall("post", "/v1/knowledge-sources/{id}/refresh", { path: { id } }),
     onSuccess: (source) => {
       client.setQueryData(queryKey, source);
       void client.invalidateQueries({ queryKey: [...queryKey, "chunks"] });
@@ -738,14 +741,11 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
   const setStatus = useOptimisticAction<"active" | "inactive", KnowledgeSource, KnowledgeSource>({
     queryKey,
     mutationFn: (status) =>
-      apiRequest(`${ENDPOINT}/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status }),
-      }),
+      apiCall("patch", "/v1/knowledge-sources/{id}", { path: { id }, body: { status } }),
     apply: (current, status) => (current ? { ...current, status } : current),
   });
   const remove = useMutation({
-    mutationFn: () => apiRequest(`${ENDPOINT}/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    mutationFn: () => apiCall("delete", "/v1/knowledge-sources/{id}", { path: { id } }),
     onSuccess: () => {
       toast.success(t("knowledge.deleted", { name: query.data?.name ?? "" }));
       void client.invalidateQueries({ queryKey: ["catalog"] });
@@ -1252,10 +1252,7 @@ function SourceUsageTab({
   const workflowId = knowledgeWorkflowId(source.scope, source.workflow_id);
   const workflow = useQuery({
     queryKey: ["knowledge-source-workflow", workflowId],
-    queryFn: () =>
-      apiRequest<{ id: string; name?: string | null; slug?: string | null }>(
-        `/v1/workflows/${encodeURIComponent(workflowId ?? "")}`,
-      ),
+    queryFn: () => apiCall("get", "/v1/workflows/{id}", { path: { id: workflowId ?? "" } }),
     enabled: Boolean(workflowId) && permissions.includes("workflow:read"),
     retry: false,
   });
@@ -1335,7 +1332,7 @@ function EditSourceDialog({
   const content = useQuery({
     queryKey: ["knowledge-source", source.id, "content"],
     queryFn: () =>
-      apiRequest<SourceContent>(`${ENDPOINT}/${encodeURIComponent(source.id)}/content`),
+      apiCall("get", "/v1/knowledge-sources/{id}/content", { path: { id: source.id } }),
     enabled: mode === "text",
   });
   const document =
@@ -1364,24 +1361,24 @@ function EditSourceDialog({
         const rhythmChanged = rhythm !== null && rhythm !== savedRhythm;
         const addressChanged = address.trim() !== source.source_uri;
         if (rhythmChanged || addressChanged)
-          await apiRequest(`${ENDPOINT}/${encodeURIComponent(source.id)}`, {
-            method: "PATCH",
-            body: JSON.stringify({
+          await apiCall("patch", "/v1/knowledge-sources/{id}", {
+            path: { id: source.id },
+            body: {
               ...(rhythmChanged && rhythm ? refreshFields(rhythm) : {}),
               ...(addressChanged ? { source_uri: address.trim() } : {}),
-            }),
+            },
           });
         return;
       }
       if (document && content.data && text !== document.content)
-        await apiRequest(`${ENDPOINT}/${encodeURIComponent(source.id)}/content`, {
-          method: "PUT",
-          body: JSON.stringify({
+        await apiCall("put", "/v1/knowledge-sources/{id}/content", {
+          path: { id: source.id },
+          body: {
             expected_version: content.data.version,
             path: document.path,
             content: text,
             ...(note.trim() ? { note: note.trim() } : {}),
-          }),
+          },
         });
     },
     onSuccess: async () => {

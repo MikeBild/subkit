@@ -1,7 +1,7 @@
 import type { components } from "@cli-core/engine-api/openapi";
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useMemo, useState } from "react";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { useActorDirectory } from "@/app/actor-directory";
 import {
   DataState,
@@ -37,7 +37,6 @@ import {
   runDurationMs,
 } from "@/pages/runs-model";
 
-type ExecutionList = components["schemas"]["ExecutionListResponse"];
 type ExecutionListItem = components["schemas"]["ExecutionListItem"];
 
 const PAGE_SIZE = 25;
@@ -52,32 +51,32 @@ function useWeek(workflowId: string): {
 } {
   const { t } = useI18n();
   const [from] = useState(() => new Date(Date.now() - WEEK_MS).toISOString());
-  const scope = `workflow_id=${encodeURIComponent(workflowId)}&started_from=${encodeURIComponent(from)}`;
+  const scope = { workflow_id: workflowId, started_from: from };
   const week = useQuery({
     queryKey: ["workflow-runs-week", workflowId, from],
-    queryFn: () => apiRequest<ExecutionList>(`/v1/executions?${scope}&limit=1`),
+    queryFn: () => apiCall("get", "/v1/executions", { query: { ...scope, limit: 1 } }),
   });
   const failedStatuses = failedStatusesFor("all");
   const failed = useQuery({
     queryKey: ["workflow-runs-week", workflowId, from, failedStatuses],
     queryFn: () =>
-      apiRequest<ExecutionList>(
-        `/v1/executions?${scope}&status=${encodeURIComponent(failedStatuses ?? "")}&limit=1`,
-      ),
+      apiCall("get", "/v1/executions", {
+        query: { ...scope, status: failedStatuses ?? "", limit: 1 },
+      }),
   });
   const finished = useQuery({
     queryKey: ["workflow-runs-week", workflowId, from, "finished"],
     queryFn: () =>
-      apiRequest<ExecutionList>(
-        `/v1/executions?${scope}&status=succeeded,failed,aborted,timed_out&limit=1`,
-      ),
+      apiCall("get", "/v1/executions", {
+        query: { ...scope, status: "succeeded,failed,aborted,timed_out", limit: 1 },
+      }),
   });
   const held = useQuery({
     queryKey: ["workflow-runs-week", workflowId, from, "held"],
     queryFn: () =>
-      apiRequest<ExecutionList>(
-        `/v1/executions?${scope}&status=succeeded&held_effects=true&limit=1`,
-      ),
+      apiCall("get", "/v1/executions", {
+        query: { ...scope, status: "succeeded", held_effects: "true", limit: 1 },
+      }),
   });
   const summary = weekSummary(week.data?.total, failed.data?.total);
   return {

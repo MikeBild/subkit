@@ -1,4 +1,3 @@
-import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
@@ -13,7 +12,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ApiError, apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
+import { ApiError } from "@/api/client";
 import {
   type CreateIntakeClipInput,
   createIntakeClip,
@@ -539,7 +539,21 @@ function IntakeDefaultCategoryDialog({
   );
 }
 
-type Skill = components["schemas"]["Skill"];
+export async function loadSkillBinding(created: {
+  connector_id?: string;
+  workflow_id?: string;
+}): Promise<{ name: string }> {
+  if (created.connector_id) {
+    const connector = await apiCall("get", "/v1/connectors/{id}", {
+      path: { id: created.connector_id },
+    });
+    return { name: connector.display_name };
+  }
+  const workflow = await apiCall("get", "/v1/workflows/{id}", {
+    path: { id: created.workflow_id ?? "" },
+  });
+  return { name: workflow.name };
+}
 
 function SkillChange({
   proposalId,
@@ -598,16 +612,14 @@ export function ProposalCard({
   const knowledge = useQuery({
     queryKey: ["knowledge-source", "intake-target", knowledgeId],
     queryFn: () =>
-      apiRequest<{ name: string; category: string; tags: string[] }>(
-        `/v1/knowledge-sources/${encodeURIComponent(knowledgeId ?? "")}`,
-      ),
+      apiCall("get", "/v1/knowledge-sources/{id}", { path: { id: knowledgeId ?? "" } }),
     enabled: Boolean(knowledgeId),
   });
   const skillIds = skillTarget ? skillTargetIds(skillTarget) : [];
   const skillQueries = useQueries({
     queries: skillIds.map((id) => ({
       queryKey: ["skill", "intake-target", id],
-      queryFn: () => apiRequest<Skill>(`/v1/skills/${encodeURIComponent(id)}`),
+      queryFn: () => apiCall("get", "/v1/skills/{id}", { path: { id } }),
     })),
   });
   const skills = new Map<string, ReferencedSkill | undefined>(
@@ -621,7 +633,7 @@ export function ProposalCard({
       : null;
   const binding = useQuery({
     queryKey: ["intake-target-binding", bindingPath],
-    queryFn: () => apiRequest<{ name: string }>(bindingPath ?? ""),
+    queryFn: () => loadSkillBinding(created ?? {}),
     enabled: Boolean(bindingPath) && (proposal.status === "draft" || proposal.status === "stale"),
     retry: false,
     retryOnMount: false,

@@ -1,24 +1,22 @@
 import { emitList, emitOne } from "@cli-core/format";
 import { defineCommand } from "citty";
-import type { EngineClient, ScheduleEntry } from "../engine-client.ts";
-import {
-  type AutomationReadiness,
-  formatAutomationReadiness,
-} from "../render/automation-readiness.ts";
+import type {
+  ScheduleCreateBody,
+  ScheduleUpdateBody,
+  ScheduleWriteResponse,
+} from "../engine-client/workflows.ts";
+import { formatAutomationReadiness } from "../render/automation-readiness.ts";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
 const SCHEDULE_COLUMNS = ["workflow_slug", "cron", "timezone", "execution_mode", "paused", "id"];
 
-function emitSchedule(
-  json: boolean,
-  row: ScheduleEntry & { automation_readiness?: AutomationReadiness },
-): void {
+function emitSchedule(json: boolean, row: ScheduleWriteResponse): void {
   if (json) {
-    emitOne(json, row as unknown as Record<string, unknown>);
+    emitOne(json, row);
     return;
   }
   const { automation_readiness, ...rest } = row;
-  emitOne(json, rest as unknown as Record<string, unknown>);
+  emitOne(json, rest);
   process.stderr.write(formatAutomationReadiness(automation_readiness));
 }
 
@@ -34,7 +32,7 @@ const listCommand = defineCommand({
         const { schedules, total } = await makeClient().listSchedules(
           args.workflow ? { workflow_id: args.workflow } : {},
         );
-        emitList(!!args.json, SCHEDULE_COLUMNS, schedules as unknown as Record<string, unknown>[]);
+        emitList(!!args.json, SCHEDULE_COLUMNS, schedules);
         if (!args.json) {
           process.stdout.write(`${total} schedule${total === 1 ? "" : "s"} total\n`);
         }
@@ -73,7 +71,7 @@ const createCommand = defineCommand({
         if (args.executionMode !== "dev" && args.executionMode !== "prod") {
           throw new Error("--execution-mode must be dev or prod");
         }
-        const body: Parameters<EngineClient["createSchedule"]>[0] = {
+        const body: ScheduleCreateBody = {
           workflow_id: args.workflow,
           cron: args.cron,
         };
@@ -114,7 +112,7 @@ const updateCommand = defineCommand({
         ) {
           throw new Error("--execution-mode must be dev or prod");
         }
-        const patch: Parameters<EngineClient["updateSchedule"]>[1] = {};
+        const patch: ScheduleUpdateBody = {};
         if (args.cron) patch.cron = args.cron;
         if (args.timezone) patch.timezone = args.timezone;
         if (args.executionMode === "dev" || args.executionMode === "prod") {

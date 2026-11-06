@@ -1,4 +1,3 @@
-import type { components } from "@cli-core/engine-api/openapi";
 import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
@@ -12,7 +11,7 @@ import {
   Workflow,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { useSession } from "@/app/session";
 import { useAttention } from "@/app/use-attention";
 import {
@@ -31,12 +30,6 @@ import {
   type StarterIcon,
   starterGates,
 } from "./chat-start-model";
-
-type RecipePack = components["schemas"]["RecipePackResponse"];
-type IntakeCategoryUsage = {
-  category: string;
-  intake_open: { collected: number; reviewing: number };
-};
 
 const ICONS: Record<StarterIcon, ReactNode> = {
   failing: <Activity />,
@@ -61,7 +54,8 @@ export function ChatStart({ onPick }: { onPick(prompt: string): void }) {
     enabled: gates.solutions,
     staleTime: 300_000,
     retry: retryStarterQuery,
-    queryFn: () => apiRequest<RecipePack>("/v1/recipe-packs/solutions"),
+    queryFn: () =>
+      apiCall("get", "/v1/recipe-packs/{vertical}", { path: { vertical: "solutions" } }),
   });
   const intake = useQuery({
     queryKey: ["chat", "starter-intake"],
@@ -70,8 +64,8 @@ export function ChatStart({ onPick }: { onPick(prompt: string): void }) {
     retry: retryStarterQuery,
     queryFn: async () => {
       const [defaultCategory, catalog] = await Promise.all([
-        apiRequest<{ category: string }>("/v1/intake/default-category"),
-        apiRequest<{ categories: IntakeCategoryUsage[] }>("/v1/categories"),
+        apiCall("get", "/v1/intake/default-category", {}),
+        apiCall("get", "/v1/categories", {}),
       ]);
       const usage = catalog.categories.find((entry) => entry.category === defaultCategory.category);
       return { category: defaultCategory.category, collected: usage?.intake_open.collected ?? 0 };
@@ -82,8 +76,7 @@ export function ChatStart({ onPick }: { onPick(prompt: string): void }) {
     enabled: gates.knowledge,
     staleTime: 300_000,
     retry: retryStarterQuery,
-    queryFn: () =>
-      apiRequest<{ items: { slug: string; name: string }[] }>("/v1/knowledge-sources?limit=20"),
+    queryFn: () => apiCall("get", "/v1/knowledge-sources", { query: { limit: 20 } }),
   });
   if ((attention.enabled && attention.query.isLoading) || catalog.isLoading || intake.isLoading)
     return null;

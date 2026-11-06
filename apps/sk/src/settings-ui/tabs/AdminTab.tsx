@@ -1,3 +1,4 @@
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
@@ -29,6 +30,39 @@ const SUB_TABS: SubTabName[] = [
   "Notifications",
   "Portal Tokens",
 ];
+
+type Schemas = components["schemas"];
+type HookVerifier = Schemas["CreateWebhookInboundBody"]["verifier"];
+
+const HOOK_VERIFIERS: readonly HookVerifier[] = ["standard", "github", "stripe", "hmac", "custom"];
+
+function parseHookVerifier(raw: string | undefined): HookVerifier {
+  const value = (raw ?? "").trim();
+  const match = HOOK_VERIFIERS.find((v) => v === value);
+  if (!match) throw new Error(`Verifier must be one of ${HOOK_VERIFIERS.join(" | ")}`);
+  return match;
+}
+
+export function roleCreateBody(vals: Record<string, string>): Schemas["CreateRbacRoleRequest"] {
+  const description = vals.description?.trim();
+  return { name: vals.name ?? "", ...(description ? { description } : {}) };
+}
+
+export function systemAccountCreateBody(
+  vals: Record<string, string>,
+): Schemas["CreateSystemAccountBody"] {
+  const description = vals.description?.trim();
+  return { name: vals.name ?? "", ...(description ? { description } : {}) };
+}
+
+export function hookCreateBody(vals: Record<string, string>): Schemas["CreateWebhookInboundBody"] {
+  return {
+    slug: vals.slug ?? "",
+    workflow_id: vals.workflow_id?.trim() ?? "",
+    verifier: parseHookVerifier(vals.verifier),
+    secret: vals.secret?.trim() ?? "",
+  };
+}
 
 export const AdminTab: React.FC<Props> = ({ client, onInnerEscape }) => {
   const [idx, setIdx] = useState(0);
@@ -63,7 +97,7 @@ export const AdminTab: React.FC<Props> = ({ client, onInnerEscape }) => {
           <GenericListSubTab
             onInnerEscape={setSubInner}
             title="Roles"
-            fetcher={() => client.listRoles({})}
+            fetcher={() => client.listRoles()}
             createForm={{
               title: "Create role",
               fields: [
@@ -75,9 +109,7 @@ export const AdminTab: React.FC<Props> = ({ client, onInnerEscape }) => {
                 },
               ],
               submit: async (vals) => {
-                const body: Record<string, unknown> = { name: vals.name };
-                if (vals.description?.trim()) body.description = vals.description.trim();
-                await client.createRole(body);
+                await client.createRole(roleCreateBody(vals));
               },
             }}
           />
@@ -125,12 +157,14 @@ export const AdminTab: React.FC<Props> = ({ client, onInnerEscape }) => {
               title: "Create system account",
               fields: [
                 { key: "name", label: "Name", required: true, placeholder: "ci-deployer" },
-                { key: "role_id", label: "Role id", placeholder: "(optional uuid)" },
+                {
+                  key: "description",
+                  label: "Description",
+                  placeholder: "(optional, free-form)",
+                },
               ],
               submit: async (vals) => {
-                const body: Record<string, unknown> = { name: vals.name };
-                if (vals.role_id?.trim()) body.role_id = vals.role_id.trim();
-                await client.createSystemAccount(body);
+                await client.createSystemAccount(systemAccountCreateBody(vals));
               },
             }}
           />
@@ -145,12 +179,22 @@ export const AdminTab: React.FC<Props> = ({ client, onInnerEscape }) => {
               title: "Create inbound hook",
               fields: [
                 { key: "slug", label: "Slug", required: true, placeholder: "stripe-webhook" },
-                { key: "secret", label: "HMAC secret", placeholder: "(optional)" },
+                {
+                  key: "workflow_id",
+                  label: "Workflow id",
+                  required: true,
+                  placeholder: "workflow uuid",
+                },
+                {
+                  key: "verifier",
+                  label: "Verifier",
+                  required: true,
+                  placeholder: HOOK_VERIFIERS.join(" | "),
+                },
+                { key: "secret", label: "HMAC secret", required: true },
               ],
               submit: async (vals) => {
-                const body: Record<string, unknown> = { slug: vals.slug };
-                if (vals.secret?.trim()) body.secret = vals.secret.trim();
-                await client.createHookInbound(body);
+                await client.createHookInbound(hookCreateBody(vals));
               },
             }}
           />
@@ -185,9 +229,9 @@ export const AdminTab: React.FC<Props> = ({ client, onInnerEscape }) => {
               ],
               submit: async (vals) => {
                 await client.createNotificationChannel({
-                  platform: vals.platform,
-                  workspace_id: vals.workspace_id,
-                  channel_id: vals.channel_id,
+                  platform: vals.platform ?? "",
+                  workspace_id: vals.workspace_id ?? "",
+                  channel_id: vals.channel_id ?? "",
                 });
               },
             }}

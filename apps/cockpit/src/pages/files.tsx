@@ -17,7 +17,8 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ApiError, apiRequest, apiText, apiUpload } from "@/api/client";
+import { apiCall } from "@/api/call";
+import { ApiError, apiText, apiUpload } from "@/api/client";
 import { tenantContentHref } from "@/api/tenant-context";
 import { useActorDirectory } from "@/app/actor-directory";
 import { cockpitApiHref } from "@/app/installation-context";
@@ -86,9 +87,7 @@ import {
   hasEarlierVersions,
 } from "@/pages/file-versions-model";
 
-type StoredFile = components["schemas"]["File"] & {
-  creator?: { kind: "user" | "system_account"; id: string } | null;
-};
+type StoredFile = components["schemas"]["File"];
 type ListedFile = components["schemas"]["FileListItem"];
 type FileUsage = components["schemas"]["FileUsage"];
 
@@ -720,7 +719,7 @@ export function FilePage() {
   const [exporting, setExporting] = useState(false);
   const fileQuery = useQuery({
     queryKey: ["file", id],
-    queryFn: () => apiRequest<StoredFile>(`/v1/files/${encodeURIComponent(id)}`),
+    queryFn: () => apiCall("get", "/v1/files/{id}", { path: { id } }),
     ...live,
   });
   const metadataActions = useCatalogMetadataActions({
@@ -734,7 +733,7 @@ export function FilePage() {
   const versionsQuery = useFileVersions(id);
   const usageQuery = useQuery({
     queryKey: ["file", id, "usage"],
-    queryFn: () => apiRequest<FileUsage>(`/v1/files/${encodeURIComponent(id)}/usage`),
+    queryFn: () => apiCall("get", "/v1/files/{id}/usage", { path: { id } }),
     ...live,
   });
   const file = fileQuery.data;
@@ -748,7 +747,7 @@ export function FilePage() {
   });
 
   const remove = useMutation({
-    mutationFn: () => apiRequest(`/v1/files/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    mutationFn: () => apiCall("delete", "/v1/files/{id}", { path: { id } }),
     onSuccess: () => {
       toast.success(t("files.deleted", { name: file?.filename ?? "" }));
       void client.invalidateQueries({ queryKey: ["catalog"] });

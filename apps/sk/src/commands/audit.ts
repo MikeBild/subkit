@@ -1,8 +1,78 @@
 import { createWriteStream } from "node:fs";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
+import type { AuditLogQuery } from "../engine-client/diagnostics.ts";
 import { auditFilterQuery } from "./audit-filter.ts";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
+
+type Enumerated<K extends keyof AuditLogQuery> = readonly NonNullable<AuditLogQuery[K]>[];
+
+const ACTOR_TYPES = [
+  "user",
+  "system_account",
+  "system",
+  "unknown",
+] as const satisfies Enumerated<"actor_type">;
+const ACCESS_TYPES = [
+  "api_key",
+  "browser_session",
+  "mcp_oauth",
+  "token_exchange",
+  "external_bearer",
+  "portal_token",
+] as const satisfies Enumerated<"access_type">;
+const SOURCES = [
+  "api",
+  "cli",
+  "scheduler",
+  "mcp",
+  "webhook",
+  "tool-chain",
+  "ui",
+  "chat",
+  "queue",
+] as const satisfies Enumerated<"request_source">;
+const RESULTS = ["success", "denied", "error"] as const satisfies Enumerated<"result">;
+const TEXT_FILTERS = [
+  "action",
+  "actor_id",
+  "api_key_id",
+  "session_id",
+  "oauth_client_id",
+  "correlation_id",
+  "resource_type",
+  "resource_types",
+  "resource_id",
+  "trace_id",
+  "execution_id",
+  "conversation_id",
+  "workflow_id",
+] as const satisfies readonly (keyof AuditLogQuery)[];
+
+function oneOf<T extends string>(flag: string, allowed: readonly T[], value: string): T {
+  const match = allowed.find((candidate) => candidate === value);
+  if (!match) throw new Error(`--${flag} must be one of ${allowed.join(", ")}`);
+  return match;
+}
+
+export function auditLogQuery(filters: Record<string, string>): AuditLogQuery {
+  const query: AuditLogQuery = {};
+  for (const key of TEXT_FILTERS) {
+    const value = filters[key];
+    if (value) query[key] = value;
+  }
+  if (filters.actor_type) query.actor_type = oneOf("actor-type", ACTOR_TYPES, filters.actor_type);
+  if (filters.access_type)
+    query.access_type = oneOf("access-type", ACCESS_TYPES, filters.access_type);
+  if (filters.request_source)
+    query.request_source = oneOf("request-source", SOURCES, filters.request_source);
+  if (filters.origin_source)
+    query.origin_source = oneOf("origin-source", SOURCES, filters.origin_source);
+  if (filters.execution_source)
+    query.execution_source = oneOf("execution-source", SOURCES, filters.execution_source);
+  if (filters.result) query.result = oneOf("result", RESULTS, filters.result);
+  return query;
+}
 
 const queryCmd = defineCommand({
   meta: { name: "query", description: "Filter the audit log" },
@@ -39,7 +109,7 @@ const queryCmd = defineCommand({
     const client = makeClient();
     return withCommandErrors(
       async () => {
-        const q: Record<string, string | number | undefined> = auditFilterQuery(args);
+        const q = auditLogQuery(auditFilterQuery(args));
         if (args.limit) q.limit = Number(args.limit);
         if (args.since) {
           const raw = String(args.since);
@@ -71,7 +141,7 @@ const queryCmd = defineCommand({
             "execution_source",
             "result",
           ],
-          result.items as Record<string, unknown>[],
+          result.items,
         );
       },
       { json: Boolean(args.json) },

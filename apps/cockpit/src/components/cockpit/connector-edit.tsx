@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { apiCall } from "@/api/call";
 import { ApiError, apiRequest } from "@/api/client";
 import { useSession } from "@/app/session";
 import {
@@ -37,9 +38,8 @@ import { authLabel, offersKeyReplacement } from "@/pages/connector-detail-model"
 
 const NEW_CATEGORY = "__new__";
 
-type Connector = components["schemas"]["Connector"];
-
 type RecordValue = Record<string, unknown>;
+type CredentialBody = components["schemas"]["CredentialBody"];
 
 const text = (record: RecordValue, key: string): string =>
   typeof record[key] === "string" ? (record[key] as string) : "";
@@ -94,7 +94,7 @@ export function ConnectorEditDialog({
   const vocabulary = useQuery({
     queryKey: ["catalog-categories"],
     enabled: open,
-    queryFn: () => apiRequest<{ categories?: { category: string }[] }>("/v1/categories"),
+    queryFn: () => apiCall("get", "/v1/categories", {}),
   });
   const choices = categoryChoices(
     (vocabulary.data?.categories ?? []).map((entry) => entry.category),
@@ -104,9 +104,9 @@ export function ConnectorEditDialog({
   const category = choice === NEW_CATEGORY ? (freshCategory ?? "") : choice;
   const accept = useMutation({
     mutationFn: () =>
-      apiRequest(`/v1/connectors/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ description: recordDescription(record), accept_description: true }),
+      apiCall("patch", "/v1/connectors/{id}", {
+        path: { id },
+        body: { description: recordDescription(record), accept_description: true },
       }),
     onSuccess: async () => {
       toast.success(t("catalogMeta.saved"));
@@ -129,16 +129,15 @@ export function ConnectorEditDialog({
   const save = useMutation({
     mutationFn: async () => {
       const plan = connectorEditPlan(prior, draft);
-      const path = `/v1/connectors/${encodeURIComponent(id)}`;
       const metadata = category ? metadataPatch(record, { description, category }) : null;
-      const connector = await apiRequest<Connector>(path, {
-        method: "PATCH",
-        body: JSON.stringify({ ...plan.patch, ...metadata }),
+      const connector = await apiCall("patch", "/v1/connectors/{id}", {
+        path: { id },
+        body: { ...plan.patch, ...metadata },
       });
       if (plan.credential)
-        await apiRequest(`${path}/credentials`, {
-          method: "POST",
-          body: JSON.stringify(plan.credential),
+        await apiCall("post", "/v1/connectors/{id}/credentials", {
+          path: { id },
+          body: plan.credential as CredentialBody,
         });
       return {
         replaced: Boolean(plan.credential),
@@ -372,7 +371,8 @@ export function ConnectorDeleteDialog({
   const navigate = useNavigate();
   const client = useQueryClient();
   const remove = useMutation({
-    mutationFn: () => apiRequest(`/v1/connectors/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    mutationFn: () => apiCall("delete", "/v1/connectors/{id}", { path: { id } }),
+
     onSuccess: async () => {
       toast.success(t("connectorEdit.deleted", { name }));
       onOpenChange(false);

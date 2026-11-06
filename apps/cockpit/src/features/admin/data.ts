@@ -1,6 +1,8 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ApiError, apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
+import { ApiError } from "@/api/client";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { isAppUserEmail } from "@/lib/app-user";
 import type { TranslationKey } from "@/lib/i18n";
@@ -15,43 +17,13 @@ export type Translate = ReturnType<typeof useI18n>["t"];
 
 export const INVITE_TTL_HOURS = 24;
 
-export interface UserItem {
-  id: string;
-  email: string;
-  display_name: string | null;
-  role: string;
-  status: string;
-  oauth_connections?: number;
-  groups?: { id: string; name: string }[] | null;
-  identities?: { provider_id: string; product_id: string | null; last_seen_at: string }[];
-}
+export type UserItem = components["schemas"]["UserDetail"];
 
-export interface RoleItem {
-  id: string;
-  name: string;
-  description: string | null;
-  is_builtin: boolean;
-  permissions?: string[];
-  member_count?: number;
-}
+export type RoleItem = components["schemas"]["RbacRoleDetail"];
 
-export interface GroupItem {
-  member_count?: number;
-  member_ids?: string[];
-  id: string;
-  name: string;
-  description: string | null;
-}
+export type GroupItem = components["schemas"]["RbacGroupDetail"];
 
-export interface GrantItem {
-  id: string;
-  subject_type: string;
-  subject_id: string;
-  resource_type: string;
-  resource_id: string;
-  permission: string;
-  expires_at: string | null;
-}
+export type GrantItem = components["schemas"]["RbacGrant"];
 
 export interface RecordItem {
   id: string;
@@ -62,23 +34,13 @@ export interface RecordItem {
   current_version?: number | null;
 }
 
-interface RoleDetail extends RoleItem {
-  permissions: string[];
-}
+const fetchPeople = () => apiCall("get", "/v1/identity/users", { query: { limit: 200 } });
 
-export interface PermissionItem {
-  name: string;
-  description: string;
-  resource_type: string;
-}
+const fetchRoles = () => apiCall("get", "/v1/rbac/roles", {});
 
-const fetchPeople = () => apiRequest<Envelope<UserItem>>("/v1/identity/users?limit=200");
+const fetchGroups = () => apiCall("get", "/v1/rbac/groups", {});
 
-const fetchRoles = () => apiRequest<Envelope<RoleItem>>("/v1/rbac/roles");
-
-const fetchGroups = () => apiRequest<Envelope<GroupItem>>("/v1/rbac/groups");
-
-const fetchGrants = () => apiRequest<Envelope<GrantItem>>("/v1/rbac/grants");
+const fetchGrants = () => apiCall("get", "/v1/rbac/grants", {});
 
 export function usePeople(enabled = true) {
   const live = useLiveQueryOptions();
@@ -121,9 +83,17 @@ export function useGrants(enabled = true) {
 export function useRoleDetail(role: RoleItem | null) {
   return useQuery({
     queryKey: ["admin", "role", role?.id],
-    queryFn: () => apiRequest<RoleDetail>(`/v1/rbac/roles/${encodeURIComponent(role?.id ?? "")}`),
+    queryFn: () => apiCall("get", "/v1/rbac/roles/{id}", { path: { id: role?.id ?? "" } }),
     enabled: Boolean(role),
   });
+}
+
+export function withCurrentRole(names: readonly string[], current: string | null): string[] {
+  return current && !names.includes(current) ? [current, ...names] : [...names];
+}
+
+export function presentRoles(users: readonly Pick<UserItem, "role">[]): string[] {
+  return [...new Set(users.flatMap((user) => (user.role ? [user.role] : [])))];
 }
 
 export function builtinRoleDescription(role: string, fallback: string | null, t: Translate) {

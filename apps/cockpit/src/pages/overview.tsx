@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ApiError, apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
+import { ApiError } from "@/api/client";
 import {
   approvePatchCandidate,
   approveSkillCandidate,
@@ -85,7 +86,6 @@ import {
 } from "./overview-model";
 import { isExecutionRecord, latestFailedRun, runName } from "./runs-model";
 
-type ExecutionList = components["schemas"]["ExecutionListResponse"];
 type ExecutionListItem = components["schemas"]["ExecutionListItem"];
 
 const KPI_IDS = ["runs", "successRate", "connectorHealth", "budget"] as const;
@@ -118,18 +118,15 @@ function CompletingVerb({
     mutationFn: async (): Promise<{ authorization_url: string } | null> => {
       const subject = item.subject;
       if (subject?.kind === "connection")
-        return apiRequest<{ authorization_url: string }>(
-          `/v1/connections/${encodeURIComponent(subject.id)}/renew`,
-          { method: "POST" },
-        );
+        return apiCall("post", "/v1/connections/{id}/renew", { path: { id: subject.id } });
       if (subject?.kind !== "connector") return null;
       const route = connectorSignIn(
-        await apiRequest<Record<string, unknown>>(
-          `/v1/connectors/${encodeURIComponent(subject.id)}`,
-        ),
+        await apiCall("get", "/v1/connectors/{id}", { path: { id: subject.id } }),
       );
       if (!route) return null;
-      return apiRequest<{ authorization_url: string }>(route.start, { method: "POST" });
+      return route.kind === "mcp"
+        ? apiCall("post", "/v1/connectors/{id}/mcp/authorize", { path: { id: subject.id } })
+        : apiCall("post", "/v1/connectors/{id}/oauth/start", { path: { id: subject.id } });
     },
     onSuccess: (result) => {
       if (result?.authorization_url) window.location.assign(result.authorization_url);
@@ -142,9 +139,9 @@ function CompletingVerb({
   });
   const cause = useMutation({
     mutationFn: () =>
-      apiRequest<ExecutionList>(
-        `/v1/executions?workflow_id=${encodeURIComponent(item.subject?.id ?? "")}&limit=20`,
-      ),
+      apiCall("get", "/v1/executions", {
+        query: { workflow_id: item.subject?.id ?? "", limit: 20 },
+      }),
     onSuccess: (list) => {
       const failed = latestFailedRun((list.items ?? []).filter(isExecutionRecord));
       if (failed) sheets.run(failed.id);
@@ -325,7 +322,7 @@ function LastFailures() {
   const sheets = useOpenRunSheet();
   const query = useQuery({
     queryKey: ["runs", "overview-failures"],
-    queryFn: () => apiRequest<ExecutionList>("/v1/executions?status=failed&limit=3"),
+    queryFn: () => apiCall("get", "/v1/executions", { query: { status: "failed", limit: 3 } }),
   });
   const rows = (query.data?.items ?? []).filter((item): item is ExecutionListItem =>
     isExecutionRecord(item),

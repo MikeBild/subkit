@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { useSession } from "@/app/session";
 import {
   Button,
@@ -32,7 +32,6 @@ import {
   useAppSettingsSave,
   useSettingsSnapshot,
 } from "./apps-data";
-import type { Envelope, RecordItem } from "./data";
 import { ChoiceField } from "./parts";
 
 export function AppSettingsDialog({
@@ -50,7 +49,7 @@ export function AppSettingsDialog({
   const workflows = useQuery({
     queryKey: ["admin", "workflows"],
     enabled: open && session.permissions.includes("workflow:read"),
-    queryFn: () => apiRequest<Envelope<RecordItem>>("/v1/workflows?limit=200"),
+    queryFn: () => apiCall("get", "/v1/workflows", { query: { limit: 200 } }),
   });
   const save = useAppSettingsSave();
   const entry = productsFrom(settingValue(settings.data, PRODUCTS_PATH))[app.id] ?? null;

@@ -21,15 +21,6 @@ interface CatalogMetadataDraft {
 const CATEGORY_MAX_LENGTH = 40;
 const CATEGORY_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
-export function metadataEndpoint(kind: CatalogKind, id: string): string {
-  const ref = encodeURIComponent(id);
-  if (kind === "workflow") return `/v1/workflows/${ref}/metadata`;
-  if (kind === "connector") return `/v1/connectors/${ref}`;
-  if (kind === "knowledge_source") return `/v1/knowledge-sources/${ref}`;
-  if (kind === "skill") return `/v1/skills/${ref}`;
-  return `/v1/files/${ref}`;
-}
-
 export function normalizeCategoryInput(raw: string): string | null {
   const slug = raw
     .normalize("NFKD")
@@ -54,11 +45,17 @@ export function writtenByAssistant(record: CatalogMetadataRecord | undefined): b
   return record?.description_source === "llm" && recordDescription(record).trim() !== "";
 }
 
+export interface MetadataPatch {
+  description?: string;
+  category?: string;
+}
+
 export function metadataPatch(
   record: CatalogMetadataRecord | undefined,
   draft: CatalogMetadataDraft,
-): Record<string, string> | null {
-  const patch: Record<string, string> = {};
+): MetadataPatch | null {
+  const patch: MetadataPatch = {};
+
   const description = draft.description.trim();
   if (description !== recordDescription(record).trim()) patch.description = description;
   const category = draft.category === UNCATEGORIZED ? "" : draft.category;

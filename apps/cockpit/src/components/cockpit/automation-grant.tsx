@@ -1,7 +1,6 @@
-import type { components } from "@cli-core/engine-api/openapi";
 import { useQuery } from "@tanstack/react-query";
 import { Play } from "lucide-react";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { useSession } from "@/app/session";
 import type { ToolPart } from "@/components/ai-elements/tool";
 import { useWorkflowAutomation } from "@/components/cockpit/automation-panel";
@@ -18,23 +17,17 @@ import { grantOpeningNotice, hookStartedOnly } from "@/lib/grant-context";
 import { useI18n } from "@/lib/i18n-context";
 import { chatAutomationTool } from "@/pages/chat-automation-tool";
 
-type AutomationRecord = AutomationWorkflow & { steps?: unknown[]; trigger?: unknown };
-
 function useAutomationWorkflow(workflowId: string) {
   return useQuery({
     queryKey: ["chat-automation-workflow", workflowId],
     enabled: workflowId !== "",
     queryFn: async () => {
-      const current = await apiRequest<AutomationRecord>(
-        `/v1/workflows/${encodeURIComponent(workflowId)}`,
-      );
+      const current = await apiCall("get", "/v1/workflows/{id}", { path: { id: workflowId } });
       const pending =
         typeof current.draft_version_id === "string" &&
         current.draft_version_id !== current.current_version_id;
       const draft = pending
-        ? await apiRequest<components["schemas"]["WorkflowDraft"]>(
-            `/v1/workflows/${encodeURIComponent(workflowId)}/draft`,
-          )
+        ? await apiCall("get", "/v1/workflows/{id}/draft", { path: { id: workflowId } })
         : null;
       if (
         draft &&

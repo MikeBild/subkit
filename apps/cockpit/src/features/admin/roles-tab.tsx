@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { useSession } from "@/app/session";
 import {
   Checkbox,
@@ -22,8 +22,6 @@ import { LabelText } from "@/lib/machine-label";
 import { permissionLabel, roleName } from "@/pages/admin-model";
 import {
   builtinRoleDescription,
-  type Envelope,
-  type PermissionItem,
   type RoleItem,
   refusalToast,
   useRoleDetail,
@@ -40,18 +38,19 @@ function RoleSheet({ role, onClose }: { role: RoleItem | null; onClose(): void }
   const editable = Boolean(role && !role.is_builtin && session.permissions.includes("rbac:write"));
   const permissions = useQuery({
     queryKey: ["admin", "permissions"],
-    queryFn: () => apiRequest<Envelope<PermissionItem>>("/v1/rbac/permissions"),
+    queryFn: () => apiCall("get", "/v1/rbac/permissions", {}),
     enabled: editable,
   });
   const change = useMutation({
     mutationFn: ({ permission, enabled }: { permission: string; enabled: boolean }) =>
-      apiRequest(
-        `/v1/rbac/roles/${encodeURIComponent(role?.id ?? "")}/permissions${enabled ? "" : `/${encodeURIComponent(permission)}`}`,
-        {
-          method: enabled ? "POST" : "DELETE",
-          ...(enabled ? { body: JSON.stringify({ permission }) } : {}),
-        },
-      ),
+      enabled
+        ? apiCall("post", "/v1/rbac/roles/{id}/permissions", {
+            path: { id: role?.id ?? "" },
+            body: { permission },
+          })
+        : apiCall("delete", "/v1/rbac/roles/{id}/permissions/{permission}", {
+            path: { id: role?.id ?? "", permission },
+          }),
     onSuccess: () => client.invalidateQueries({ queryKey: ["admin", "role", role?.id] }),
     onError: (error) => refusalToast(error, t),
   });
@@ -192,11 +191,14 @@ export function CreateRecordDialog({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const create = useMutation({
-    mutationFn: () =>
-      apiRequest(kind === "role" ? "/v1/rbac/roles" : "/v1/rbac/groups", {
-        method: "POST",
-        body: JSON.stringify({ name: name.trim(), description: description.trim() || undefined }),
-      }),
+    mutationFn: async () => {
+      const body = {
+        name: name.trim(),
+        ...(description.trim() ? { description: description.trim() } : {}),
+      };
+      if (kind === "role") return await apiCall("post", "/v1/rbac/roles", { body });
+      return await apiCall("post", "/v1/rbac/groups", { body });
+    },
     onSuccess: async () => {
       const created = kind;
       onOpenChange(false);

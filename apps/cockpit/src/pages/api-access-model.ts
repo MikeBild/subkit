@@ -38,9 +38,7 @@ export function apiKeyCreatorLabel(
     t(creator.kind === "user" ? "audit.actor.user" : "audit.actor.systemAccount")
   );
 }
-export type ConnectedClientItem = components["schemas"]["OAuthClient"] & {
-  last_used_at?: string | null;
-};
+export type ConnectedClientItem = components["schemas"]["OAuthClient"];
 
 interface ConnectedClientHistoryLine {
   person: string;

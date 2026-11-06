@@ -1,8 +1,8 @@
-import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { apiCall } from "@/api/call";
 import { apiRequest } from "@/api/client";
 import { absolute, chatNewHref } from "@/app/links";
 import { useSession } from "@/app/session";
@@ -54,7 +54,6 @@ import {
   asInspect,
   connectorFigures,
   connectorNotice,
-  connectorStatsEndpoint,
   connectorStatsWindow,
   type McpInspect,
   renewalWay,
@@ -63,7 +62,6 @@ import {
 } from "@/pages/connector-detail-model";
 
 type RecordValue = Record<string, unknown>;
-type ProbeResult = components["schemas"]["ConnectorProbeResult"];
 
 const text = (record: RecordValue, key: string): string | null => {
   const value = record[key];
@@ -112,15 +110,16 @@ export function ConnectorPage({
     queryFn: async () => {
       const bounds = connectorStatsWindow();
       return connectorFigures(
-        await apiRequest<unknown>(connectorStatsEndpoint(id, bounds)),
+        await apiCall("get", "/v1/stats/connectors", {
+          query: { bucket: "day", from: bounds.from, to: bounds.to, connector_id: id },
+        }),
         bounds,
       );
     },
   });
 
   const probe = useMutation({
-    mutationFn: () =>
-      apiRequest<ProbeResult>(`/v1/connectors/${encodeURIComponent(id)}/test`, { method: "POST" }),
+    mutationFn: () => apiCall("post", "/v1/connectors/{id}/test", { path: { id } }),
     onSuccess: async () => {
       await Promise.all([
         client.invalidateQueries({ queryKey: ["catalog-detail", "connectors", id] }),
@@ -134,9 +133,7 @@ export function ConnectorPage({
   const inspect = useMutation({
     mutationFn: async (): Promise<McpInspect> => {
       const body = asInspect(
-        await apiRequest<unknown>(`/v1/connectors/${encodeURIComponent(id)}/mcp/inspect`, {
-          method: "POST",
-        }),
+        await apiCall("post", "/v1/connectors/{id}/mcp/inspect", { path: { id } }),
       );
       if (!body) throw new Error("not an inspect answer");
       return body;
@@ -149,10 +146,7 @@ export function ConnectorPage({
   };
   const enable = useOptimisticAction({
     queryKey: ["catalog-detail", "connectors", id],
-    mutationFn: () =>
-      apiRequest<RecordValue>(`/v1/connectors/${encodeURIComponent(id)}/enable`, {
-        method: "POST",
-      }),
+    mutationFn: () => apiCall("post", "/v1/connectors/{id}/enable", { path: { id } }),
     apply: (current: RecordValue | undefined) =>
       current ? { ...current, enabled: true } : current,
     fromResult: (result) => result,
@@ -161,10 +155,7 @@ export function ConnectorPage({
   });
   const disable = useOptimisticAction({
     queryKey: ["catalog-detail", "connectors", id],
-    mutationFn: () =>
-      apiRequest<RecordValue>(`/v1/connectors/${encodeURIComponent(id)}/disable`, {
-        method: "POST",
-      }),
+    mutationFn: () => apiCall("post", "/v1/connectors/{id}/disable", { path: { id } }),
     apply: (current: RecordValue | undefined) =>
       current ? { ...current, enabled: false } : current,
     fromResult: (result) => result,
@@ -187,10 +178,8 @@ export function ConnectorPage({
   const credential = useConnectorCredential(id);
   const connectionRenew = useMutation({
     mutationFn: (connectionId: string) =>
-      apiRequest<{ authorization_url: string }>(
-        `/v1/connections/${encodeURIComponent(connectionId)}/renew`,
-        { method: "POST" },
-      ),
+      apiCall("post", "/v1/connections/{id}/renew", { path: { id: connectionId } }),
+
     onSuccess: (result) => window.location.assign(result.authorization_url),
     onError: () => toast.error(t("connectorCredentials.renewFailed")),
   });

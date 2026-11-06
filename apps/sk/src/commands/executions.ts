@@ -3,6 +3,12 @@ import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
+import type {
+  ExecutionDetail,
+  ExecutionListItem,
+  ExecutionListQuery,
+  ExecutionStep,
+} from "../engine-client/executions.ts";
 import { EngineClient, type ExecutionCost } from "../engine-client.ts";
 import { executionOutcomeLine } from "../lib/execution-outcome.ts";
 import { heldRunBlock } from "../lib/held-run.ts";
@@ -20,19 +26,49 @@ import { resolveTime } from "./stats.ts";
 
 const fetchExecutionRows = async (client: EngineClient) => {
   const { items } = await client.listExecutions({ limit: 20 });
-  return (items as Record<string, unknown>[]).map((r) => ({
-    id: String(r.id),
-    name: typeof r.workflow_id === "string" ? r.workflow_id : null,
-    detail: typeof r.status === "string" ? r.status : null,
+  return items.map((r) => ({
+    id: r.id,
+    name: r.workflow_id,
+    detail: r.status,
   }));
 };
 
-function originOf(row: Record<string, unknown>): string {
-  const sourceKind = typeof row.source_kind === "string" ? row.source_kind : "saved";
-  const reqSource = typeof row.request_source === "string" ? row.request_source : "";
-  if (sourceKind === "draft" || sourceKind === "step") return "authoring";
-  if (reqSource === "scheduler") return "scheduled";
+export function originOf(row: Pick<ExecutionListItem, "source_kind" | "request_source">): string {
+  if (row.source_kind === "draft" || row.source_kind === "step") return "authoring";
+  if (row.request_source === "scheduler") return "scheduled";
   return "manual";
+}
+
+function fieldOf(value: unknown, key: string): unknown {
+  if (value === null || typeof value !== "object") return undefined;
+  return Object.getOwnPropertyDescriptor(value, key)?.value;
+}
+
+function stringField(value: unknown, key: string): string | null {
+  const field = fieldOf(value, key);
+  return typeof field === "string" ? field : null;
+}
+
+export function executionListQuery(
+  args: {
+    limit: string;
+    status?: string | undefined;
+    source?: string | undefined;
+    parent?: string | undefined;
+    cursor?: string | undefined;
+    from?: string | undefined;
+    to?: string | undefined;
+  },
+  nowMs: number,
+): ExecutionListQuery {
+  const query: ExecutionListQuery = { limit: Number(args.limit) };
+  if (args.status) query.status = args.status;
+  if (args.source) query.request_source = String(args.source);
+  if (args.parent) query.parent_execution_id = String(args.parent);
+  if (args.cursor) query.cursor = String(args.cursor);
+  if (args.from) query.started_from = resolveTime(String(args.from), nowMs).toISOString();
+  if (args.to) query.started_to = resolveTime(String(args.to), nowMs).toISOString();
+  return query;
 }
 
 function humanBytes(n: number): string {
@@ -50,7 +86,7 @@ function humanBytes(n: number): string {
 
 async function maybePrintOutputFiles(
   client: EngineClient,
-  execution: Record<string, unknown>,
+  execution: ExecutionDetail,
 ): Promise<void> {
   const fids = new Set<string>();
   for (const ref of collectFileRefs(execution)) fids.add(ref);
@@ -101,16 +137,10 @@ const listCommand = defineCommand({
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     return withCommandErrors(
       async () => {
-        const query: Record<string, string | number | undefined> = { limit: Number(args.limit) };
-        if (args.status) query.status = args.status;
-        if (args.source) query.request_source = String(args.source);
-        if (args.parent) query.parent_execution_id = String(args.parent);
-        if (args.cursor) query.cursor = String(args.cursor);
-        const nowMs = Date.now();
-        if (args.from) query.started_from = resolveTime(String(args.from), nowMs).toISOString();
-        if (args.to) query.started_to = resolveTime(String(args.to), nowMs).toISOString();
-        const { items, total, next_cursor } = await client.listExecutions(query);
-        const rows = (items as Record<string, unknown>[]).map((r) => {
+        const { items, total, next_cursor } = await client.listExecutions(
+          executionListQuery(args, Date.now()),
+        );
+        const rows = items.map((r) => {
           const ms = executionDurationMs(r.started_at, r.finished_at);
           const running = r.finished_at == null && r.started_at != null;
           return {
@@ -156,26 +186,24 @@ const getCommand = defineCommand({
         const execution = await client.getExecution(id);
         printJson(execution);
         if (!args.json) {
-          let steps: Record<string, unknown>[] = [];
+          let steps: ExecutionStep[] = [];
           try {
             const res = await client.executionSteps(id);
-            steps = res.items as Record<string, unknown>[];
+            steps = res.items;
           } catch {}
           try {
             const cost = await client.executionCost(id);
             printExecutionCostCard(cost);
           } catch {}
           printStepBottlenecks(steps);
-          const outcomeLine = executionOutcomeLine(
-            (execution as { outcome: Parameters<typeof executionOutcomeLine>[0] }).outcome,
-          );
+          const outcomeLine = executionOutcomeLine(execution.outcome);
           if (outcomeLine) process.stderr.write(`\n${pc.dim("outcome:")} ${outcomeLine}\n`);
-          const held = heldRunBlock(client, execution as Parameters<typeof heldRunBlock>[1], steps);
+          const held = heldRunBlock(client, execution, steps);
           if (held) process.stderr.write(`\n${pc.bold(pc.yellow(held))}\n`);
           if (execution.status === "failed") {
             printFailedStepErrors(steps);
           }
-          await maybePrintOutputFiles(client, execution as Record<string, unknown>);
+          await maybePrintOutputFiles(client, execution);
         }
       },
       { json: Boolean(args.json) },
@@ -202,26 +230,20 @@ const resultCommand = defineCommand({
           argValue: args.id,
           fetch: () => fetchExecutionRows(client),
         });
-        const execution = (await client.getExecution(id)) as Record<string, unknown>;
-        const { items } = await client.executionSteps(id);
-        const steps = items as Record<string, unknown>[];
+        const execution = await client.getExecution(id);
+        const { items: steps } = await client.executionSteps(id);
         const last = steps.length > 0 ? steps[steps.length - 1] : undefined;
         const output = last?.output_preview ?? last?.result_preview ?? null;
         if (args.json) {
           printJson(output);
           return;
         }
-        const held = heldRunBlock(client, execution as Parameters<typeof heldRunBlock>[1], steps);
-        const status = typeof execution.status === "string" ? execution.status : "unknown";
-        process.stdout.write(`execution ${id} · ${status}\n`);
+        const held = heldRunBlock(client, execution, steps);
+        process.stdout.write(`execution ${id} · ${execution.status}\n`);
         if (held) process.stderr.write(`\n${pc.bold(pc.yellow(held))}\n`);
         if (output === null || output === undefined) {
           const uri = last?.result_storage_uri;
-          process.stdout.write(
-            typeof uri === "string" && uri
-              ? `  result offloaded to ${uri}\n`
-              : "  (no output recorded)\n",
-          );
+          process.stdout.write(uri ? `  result offloaded to ${uri}\n` : "  (no output recorded)\n");
           return;
         }
         printJson(output);
@@ -248,26 +270,21 @@ const stepsCommand = defineCommand({
           fetch: () => fetchExecutionRows(client),
         });
         const { items } = await client.executionSteps(id);
-        const rows = (items as Record<string, unknown>[]).map((s) => {
-          const rm = (s.request_meta ?? null) as Record<string, unknown> | null;
-          const conn = (rm?.connector ?? null) as Record<string, unknown> | null;
-          const err = (s.error ?? null) as Record<string, unknown> | null;
-          return {
-            ...s,
-            url: (rm?.url as string | undefined) ?? "—",
-            status_code: (rm?.status as number | undefined) ?? "—",
-            bytes_in: (rm?.bytes_in as number | undefined) ?? "—",
-            auth_method: (conn?.auth_method as string | undefined) ?? "—",
-            error: (err?.code as string | undefined) ?? "—",
-          };
-        });
+        const rows = items.map((s) => ({
+          ...s,
+          url: fieldOf(s.request_meta, "url") ?? "—",
+          status_code: fieldOf(s.request_meta, "status") ?? "—",
+          bytes_in: fieldOf(s.request_meta, "bytes_in") ?? "—",
+          auth_method: fieldOf(fieldOf(s.request_meta, "connector"), "auth_method") ?? "—",
+          error: fieldOf(s.error, "code") ?? "—",
+        }));
         emitList(
           !!args.json,
           ["step_key", "status", "duration_ms", "url", "status_code", "error", "auth_method"],
           rows,
         );
         if (!args.json) {
-          printFailedStepErrors(items as Record<string, unknown>[]);
+          printFailedStepErrors(items);
         }
       },
       { json: Boolean(args.json) },
@@ -304,7 +321,7 @@ function printExecutionCostCard(cost: ExecutionCost): void {
   }
 }
 
-function printStepBottlenecks(steps: Record<string, unknown>[]): void {
+function printStepBottlenecks(steps: readonly ExecutionStep[]): void {
   const ranked = computeStepBottlenecks(steps);
   if (ranked.length === 0) return;
   process.stdout.write(`\n${pc.bold("Bottlenecks:")} ${pc.dim("(share of total step time)")}\n`);
@@ -318,17 +335,16 @@ function printStepBottlenecks(steps: Record<string, unknown>[]): void {
   }
 }
 
-function printFailedStepErrors(steps: Record<string, unknown>[]): void {
+function printFailedStepErrors(steps: readonly ExecutionStep[]): void {
   const failed = steps.filter((s) => s.status === "failed" && s.error);
   if (failed.length === 0) return;
   process.stdout.write(`\n${pc.bold(pc.red("Failures:"))}\n`);
   for (const s of failed) {
-    const err = s.error as Record<string, unknown>;
-    const stepKey = typeof s.step_key === "string" ? s.step_key : "(step)";
-    const code = typeof err.code === "string" ? err.code : "error";
-    const message = typeof err.message === "string" ? err.message : "";
-    const guidance = typeof err.guidance === "string" ? err.guidance : null;
-    const resolvedUrl = typeof err.resolved_url === "string" ? err.resolved_url : null;
+    const stepKey = s.step_key;
+    const code = stringField(s.error, "code") ?? "error";
+    const message = stringField(s.error, "message") ?? "";
+    const guidance = stringField(s.error, "guidance");
+    const resolvedUrl = stringField(s.error, "resolved_url");
     process.stdout.write(`  ${pc.red("●")} ${pc.bold(stepKey)} — ${pc.red(code)}: ${message}\n`);
     if (resolvedUrl) process.stdout.write(`      ${pc.dim(`url: ${resolvedUrl}`)}\n`);
     if (guidance) process.stdout.write(`      ${pc.yellow(guidance)}\n`);

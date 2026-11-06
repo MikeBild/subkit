@@ -1,11 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { render } from "ink-testing-library";
-import type {
-  EngineClient,
-  SettingLeafEntry,
-  SettingPutResult,
-  SettingsListResponse,
-} from "../../engine-client.ts";
+import type { EngineClient, SettingLeafEntry, SettingPutResult } from "../../engine-client.ts";
 import { ConfirmModal } from "../components/ConfirmModal.tsx";
 import { SearchInput } from "../components/SearchInput.tsx";
 import { SettingItem } from "../components/SettingItem.tsx";
@@ -70,7 +66,13 @@ function buildStubClient(state: StubState): EngineClient {
       });
       return state.putResult;
     },
-    listSettings: async (): Promise<SettingsListResponse> => ({
+    listSettings: async (): Promise<components["schemas"]["SettingsListResponse"]> => ({
+      view: "engine",
+      tenant_id: null,
+      saved_revision: null,
+      active_revision: null,
+      activation_status: null,
+      pending_restart_fields: [],
       items: FIXTURE_LEAVES,
       diagnostics: { pending_restart_keys: [], override_keys: [] },
     }),

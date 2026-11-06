@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { SettingsPatch } from "@/pages/settings-model";
-import { applySettingsPatch, settingsPatchEndpoint, settleSettings } from "@/pages/settings-save";
+import { applySettingsPatch, settingsReadQuery, settleSettings } from "@/pages/settings-save";
 
 const originalFetch = globalThis.fetch;
 const tenant = "5870ae6d-e542-48ca-bbcc-108b5ae73f5f";
@@ -107,9 +107,7 @@ describe("after a save", () => {
   });
 
   test("reads back the scope it saved", () => {
-    expect(settingsPatchEndpoint(patch)).toBe(`/v1/settings?tenant=${tenant}`);
-    expect(settingsPatchEndpoint({ expected_revision: 1, scope: "global", changes: {} })).toBe(
-      "/v1/settings",
-    );
+    expect(settingsReadQuery(patch)).toEqual({ tenant });
+    expect(settingsReadQuery({ expected_revision: 1, scope: "global", changes: {} })).toEqual({});
   });
 });

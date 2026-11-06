@@ -4,6 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Zap } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 import { toast } from "sonner";
+import { apiCall } from "@/api/call";
 import { apiRequest } from "@/api/client";
 import { connectorHref, workflowHref } from "@/app/links";
 import { connectorService, useConnectorRecords } from "@/components/cockpit/connector-names";
@@ -46,9 +47,6 @@ import {
 } from "./create-template-model";
 
 type Connector = components["schemas"]["Connector"];
-type WorkflowDraft = components["schemas"]["WorkflowDraft"];
-type RecipePack = components["schemas"]["RecipePackResponse"];
-type TemplateList = components["schemas"]["ConnectorTemplateListResponse"];
 
 interface TemplateDetail {
   title: string;
@@ -73,18 +71,17 @@ const TRIGGER_LABEL: Record<SolutionTrigger, TranslationKey> = {
 const SOLUTIONS_KEY = ["recipe-packs", "solutions"] as const;
 export const TEMPLATES_KEY = ["connector-templates"] as const;
 
-const fetchSolutions = () => apiRequest<RecipePack>("/v1/recipe-packs/solutions");
-export const fetchTemplates = () => apiRequest<TemplateList>("/v1/connector-templates");
+const fetchSolutions = () =>
+  apiCall("get", "/v1/recipe-packs/{vertical}", { path: { vertical: "solutions" } });
+export const fetchTemplates = () => apiCall("get", "/v1/connector-templates", {});
 
 async function takenWorkflowSlugs(base: string): Promise<Set<string>> {
-  const { items } = await apiRequest<{ items: { slug: string }[] }>(
-    `/v1/workflows?limit=200&q=${encodeURIComponent(base)}`,
-  );
+  const { items } = await apiCall("get", "/v1/workflows", { query: { limit: 200, q: base } });
   return new Set(items.map((item) => item.slug));
 }
 
 export async function takenConnectorSlugs(): Promise<Set<string>> {
-  const { items } = await apiRequest<{ items: { slug: string }[] }>("/v1/connectors?limit=1000");
+  const { items } = await apiCall("get", "/v1/connectors", { query: { limit: 1000 } });
   return new Set(items.map((item) => item.slug));
 }
 
@@ -95,7 +92,7 @@ export async function createTemplateConnector(
 ): Promise<Connector> {
   const body = templateConnectorBody(template, taken, address);
   taken.add(body.slug ?? template.slug);
-  return apiRequest<Connector>("/v1/connectors", { method: "POST", body: JSON.stringify(body) });
+  return apiCall("post", "/v1/connectors", { body });
 }
 
 async function refreshLookups(client: QueryClient): Promise<void> {
@@ -260,10 +257,10 @@ export function useSolutionFlow(
           mapping[binding.placeholder] = connector.id;
         }
       }
-      const draft = await apiRequest<WorkflowDraft>("/v1/workflows/drafts", {
-        method: "POST",
-        body: JSON.stringify(solutionDraftBody(entry, plan, mapping)),
+      const draft = await apiCall("post", "/v1/workflows/drafts", {
+        body: solutionDraftBody(entry, plan, mapping),
       });
+
       return { draft, title: solutionText(entry, t).title };
     },
     onSuccess: async ({ draft, title }) => {

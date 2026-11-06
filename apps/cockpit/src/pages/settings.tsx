@@ -3,7 +3,7 @@ import { useRouter, useRouterState } from "@tanstack/react-router";
 import { RotateCw } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { absolute, settingsHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
@@ -28,7 +28,6 @@ import { ForbiddenState, LoadFailed, queryView } from "@/components/failure-stat
 import { useI18n } from "@/lib/i18n-context";
 import { NotificationSettings, useNotificationActions } from "@/pages/notification-settings";
 import { canReadOperations } from "@/pages/operations-bar";
-import { STATUS_ENDPOINT } from "@/pages/operations-figures";
 import { AiArea, providerName } from "@/pages/settings-ai";
 import { AreaList } from "@/pages/settings-area-list";
 import {
@@ -47,7 +46,6 @@ import {
 import {
   catalogModelName,
   type ModelCatalog,
-  modelCatalogEndpoint,
   modelCatalogQueryKey,
 } from "@/pages/settings-catalog";
 import { CostsArea } from "@/pages/settings-costs";
@@ -92,7 +90,7 @@ import {
   SettingsSectionNav,
   SettingsSummary,
 } from "@/pages/settings-rows";
-import { applySettingsPatch, settingsPatchEndpoint, settleSettings } from "@/pages/settings-save";
+import { applySettingsPatch, settingsReadQuery, settleSettings } from "@/pages/settings-save";
 import { type BudgetSummary, budgetSummary } from "@/pages/usage-model";
 import { BrandingSettings } from "./branding";
 
@@ -190,13 +188,12 @@ function SettingsWorkspace() {
   const live = useLiveQueryOptions();
   const query = useQuery({
     queryKey: SETTINGS_QUERY_KEY,
-    queryFn: () => apiRequest<SettingsResponse>("/v1/settings"),
+    queryFn: () => apiCall("get", "/v1/settings", {}),
     ...live,
   });
   const tenantQuery = useQuery({
     queryKey: [...SETTINGS_QUERY_KEY, "tenant", tenantId],
-    queryFn: () =>
-      apiRequest<SettingsResponse>(`/v1/settings?tenant=${encodeURIComponent(tenantId)}`),
+    queryFn: () => apiCall("get", "/v1/settings", { query: { tenant: tenantId } }),
     enabled: tenantReadable,
     ...live,
   });
@@ -204,7 +201,7 @@ function SettingsWorkspace() {
   const status = useQuery({
     queryKey: ["usage-status"],
     enabled: statusAllowed,
-    queryFn: () => apiRequest<unknown>(STATUS_ENDPOINT),
+    queryFn: () => apiCall("get", "/v1/status", {}),
   });
   const usage: BudgetSummary | null = status.data ? budgetSummary(status.data) : null;
   const globalItems = query.data?.items ?? [];
@@ -220,7 +217,10 @@ function SettingsWorkspace() {
   const catalogTenant = scope === "tenant" ? tenantId : null;
   const catalog = useQuery({
     queryKey: modelCatalogQueryKey(catalogTenant),
-    queryFn: () => apiRequest<ModelCatalog>(modelCatalogEndpoint(catalogTenant)),
+    queryFn: () =>
+      apiCall("get", "/v1/settings/catalog/models", {
+        query: catalogTenant ? { tenant: catalogTenant } : {},
+      }),
   });
   const draftState = useSettingsDrafts(globalItems);
   const { pending } = draftState;
@@ -264,19 +264,18 @@ function SettingsWorkspace() {
       };
       for (const entry of savingNow.filter((candidate) => candidate.item.meta.sensitive)) {
         const target = entry.scope === "tenant" ? patchTenant : null;
-        const created = await apiRequest<{ reference: string }>(
-          `/v1/secrets/${encodeURIComponent(settingSecretName(entry.item.path, target))}/versions`,
-          { method: "POST", body: JSON.stringify({ value: entry.text }) },
-        );
+        const created = await apiCall("post", "/v1/secrets/{name}/versions", {
+          path: { name: settingSecretName(entry.item.path, target) },
+          body: { value: entry.text },
+        });
         references[entry.scope][entry.item.path] = created.reference;
       }
       const scoped = { ...NO_SETTING_DRAFTS, [savingScope]: pending[savingScope] };
       const next = nextSettingsSave(settingsPatches(query.data, scoped, references, patchTenant));
       if (next) {
         await applySettingsPatch(next.patch);
-        const endpoint = settingsPatchEndpoint(next.patch);
         const fresh = await settleSettings(
-          () => apiRequest<SettingsResponse>(endpoint),
+          () => apiCall("get", "/v1/settings", { query: settingsReadQuery(next.patch) }),
           next.patch.changes,
         );
         if (fresh)

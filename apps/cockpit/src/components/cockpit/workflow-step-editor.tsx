@@ -3,7 +3,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Clock, GitBranch, type LucideIcon, Plug, Shuffle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ApiError, apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
+import { ApiError } from "@/api/client";
 import { useDirtyGuard } from "@/app/version-notice";
 import { connectorService, useConnectorRecords } from "@/components/cockpit/connector-names";
 import {
@@ -44,7 +45,7 @@ import { type Phrase, stepPhrase } from "@/lib/workflow-flow";
 import { workflowStepChanges } from "@/lib/workflow-step-changes";
 import { readStepDefinition } from "@/lib/workflow-steps";
 
-type WorkflowDraft = components["schemas"]["WorkflowDraft"];
+type DraftUpdate = components["schemas"]["UpdateWorkflowDraft"];
 type RecordValue = Record<string, unknown>;
 
 export function definitionFromRecord(record: RecordValue, steps: readonly unknown[]): RecordValue {
@@ -678,16 +679,17 @@ export function StepSaveBar({
       const expected = typeof record.draft_version_id === "string" ? record.draft_version_id : null;
       let waitingDefinition: RecordValue | undefined;
       if (expected && expected !== record.current_version_id) {
-        const waiting = await apiRequest<WorkflowDraft>(
-          `/v1/workflows/${encodeURIComponent(workflowId)}/draft`,
-        );
-        waitingDefinition = waiting.definition as unknown as RecordValue;
+        const waiting = await apiCall("get", "/v1/workflows/{id}/draft", {
+          path: { id: workflowId },
+        });
+        waitingDefinition = waiting.definition;
       }
       const { base, body } = stepSaveRequest(record, draft.steps, waitingDefinition);
-      const saved = await apiRequest<WorkflowDraft>(
-        `/v1/workflows/${encodeURIComponent(workflowId)}/draft`,
-        { method: "PUT", body: JSON.stringify(body) },
-      );
+      const saved = await apiCall("put", "/v1/workflows/{id}/draft", {
+        path: { id: workflowId },
+        body: body as DraftUpdate,
+      });
+
       return {
         saved,
         changes: workflowStepChanges(

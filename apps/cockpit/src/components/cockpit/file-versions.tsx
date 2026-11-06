@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ApiError, apiRequest, apiText } from "@/api/client";
+import { apiCall } from "@/api/call";
+import { ApiError, apiText } from "@/api/client";
 import { tenantContentHref } from "@/api/tenant-context";
 import { useActorDirectory } from "@/app/actor-directory";
 import type { ActorDirectory } from "@/app/actor-directory-model";
@@ -30,13 +31,11 @@ import {
   hasEarlierVersions,
 } from "@/pages/file-versions-model";
 
-type Versions = { items: FileVersion[] };
-
 export function useFileVersions(fileId: string) {
   const live = useLiveQueryOptions();
   return useQuery({
     queryKey: ["file", fileId, "versions"],
-    queryFn: () => apiRequest<Versions>(`/v1/files/${encodeURIComponent(fileId)}/versions`),
+    queryFn: () => apiCall("get", "/v1/files/{id}/versions", { path: { id: fileId } }),
     enabled: fileId !== "",
     ...live,
   });
@@ -164,10 +163,10 @@ function FileVersionSheet({
   });
   const restore = useMutation({
     mutationFn: () =>
-      apiRequest<{ version: number }>(
-        `/v1/files/${encodeURIComponent(fileId)}/versions/${number}/restore`,
-        { method: "POST" },
-      ),
+      apiCall("post", "/v1/files/{id}/versions/{version}/restore", {
+        path: { id: fileId, version: number },
+      }),
+
     onSuccess: (result) => {
       toast.success(t("files.versions.restored", { from: number, to: result.version }));
       void client.invalidateQueries({ queryKey: ["file", fileId] });

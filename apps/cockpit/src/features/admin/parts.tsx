@@ -298,10 +298,10 @@ export function RoleChangeConsequence({
   roles: readonly RoleItem[] | undefined;
 }) {
   const { t } = useI18n();
-  const byName = (name: string) => roles?.find((item) => item.name === name) ?? null;
+  const byName = (name: string | null) => roles?.find((item) => item.name === name) ?? null;
   const before = useRoleDetail(byName(user.role));
   const after = useRoleDetail(byName(to));
-  const notes = roleChangeNotes({ from: user.role, to, isSelf });
+  const notes = roleChangeNotes({ from: user.role ?? "", to, isSelf });
   const toName = roleName(to, roles, t).text;
   const change =
     Array.isArray(before.data?.permissions) && Array.isArray(after.data?.permissions)

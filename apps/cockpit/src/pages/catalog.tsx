@@ -4,7 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
 import { Bot, Workflow } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
 import { absolute, chatNewHref, recordHref, runsHref } from "@/app/links";
 import { CatalogSummary, useCatalogCreatedBy } from "@/components/cockpit/catalog-categories";
 import {
@@ -407,8 +407,7 @@ export function CatalogPage({
   const workflowIndex = useQuery({
     queryKey: ["catalog-workflow-index"],
     enabled: resource === "connectors" && canReadWorkflows,
-    queryFn: () =>
-      apiRequest<{ items: WorkflowListItem[] }>(`/v1/workflows?limit=${RELATION_INDEX_LIMIT}`),
+    queryFn: () => apiCall("get", "/v1/workflows", { query: { limit: RELATION_INDEX_LIMIT } }),
   });
   const workflowsByConnectorSlug = useMemo(
     () =>

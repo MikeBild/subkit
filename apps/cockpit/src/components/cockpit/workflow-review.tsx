@@ -1,7 +1,8 @@
 import type { components } from "@cli-core/engine-api/openapi";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
+import { ApiError } from "@/api/client";
 import { useI18n } from "@/lib/i18n-context";
 import {
   type ReviewBlockedMessageKey,
@@ -17,7 +18,6 @@ import {
 
 type Receipt = components["schemas"]["WorkflowReviewReceipt"];
 type Actions = Receipt["actions"];
-type Policies = components["schemas"]["ToolPoliciesResponse"];
 const saveActions: Actions = { activate: false, grant: null, schedule: null };
 
 export function WorkflowReview({
@@ -45,8 +45,6 @@ export function WorkflowReview({
   const initialized = useRef(false);
   const finalizing = useRef(false);
   const storageKey = workflowReviewStorageKey(conversationId, elicitationId);
-  const path = `/v1/conversations/${encodeURIComponent(conversationId)}/workflow-reviews`;
-  const policyPath = `/v1/conversations/${encodeURIComponent(conversationId)}/tool-policies`;
   const store = useCallback(
     (id: string | null) => {
       try {
@@ -78,11 +76,11 @@ export function WorkflowReview({
       setState("preparing");
       setMessage(undefined);
       try {
-        const value = await apiRequest<Receipt>(
-          path,
-          { method: "POST", body: JSON.stringify({ elicitation_id: elicitationId, ...actions }) },
-          { timeoutMs: 30_000 },
-        );
+        const value = await apiCall("post", "/v1/conversations/{id}/workflow-reviews", {
+          path: { id: conversationId },
+          body: { elicitation_id: elicitationId, ...actions },
+          limits: { timeoutMs: 30_000 },
+        });
         if (current === generation.current) accept(value);
       } catch (error) {
         if (current !== generation.current) return;
@@ -94,25 +92,24 @@ export function WorkflowReview({
         }
       }
     },
-    [accept, elicitationId, path],
+    [accept, elicitationId, conversationId],
   );
   const checkResult = useCallback(
     async (receiptId: string) => {
       if (finalizing.current) return;
       setState("preparing");
       try {
-        const value = await apiRequest<Receipt>(
-          `${path}/${encodeURIComponent(receiptId)}`,
-          {},
-          { timeoutMs: 15_000 },
-        );
+        const value = await apiCall("get", "/v1/conversations/{id}/workflow-reviews/{receipt_id}", {
+          path: { id: conversationId, receipt_id: receiptId },
+          limits: { timeoutMs: 15_000 },
+        });
         accept(value);
       } catch (error) {
         const failure = workflowReviewFailure(error, true);
         setState(failure === "failed" ? "uncertain" : failure);
       }
     },
-    [accept, path],
+    [accept, conversationId],
   );
   useEffect(() => {
     if (!open || initialized.current) return;
@@ -123,13 +120,13 @@ export function WorkflowReview({
     } catch {}
     if (previous) void checkResult(previous);
     else void prepare();
-    void apiRequest<Policies>(policyPath)
+    void apiCall("get", "/v1/conversations/{id}/tool-policies", { path: { id: conversationId } })
       .then((value) => {
         setRemember(value.policies.save_workflow_draft === "no_confirm");
         setPolicyAvailable(value.eligible_no_confirm_tools.includes("save_workflow_draft"));
       })
       .catch(() => setMessage(t("reviewWorkflow.policyLoadFailed")));
-  }, [checkResult, open, policyPath, prepare, storageKey, t]);
+  }, [checkResult, open, conversationId, prepare, storageKey, t]);
   useEffect(() => {
     if (state !== "ready" || !receipt) return;
     const delay = Math.max(0, Date.parse(receipt.expires_at) - Date.now());
@@ -151,16 +148,17 @@ export function WorkflowReview({
     setState("completing");
     setMessage(undefined);
     try {
-      const result = await apiRequest<Receipt>(
-        `${path}/${encodeURIComponent(receipt.receipt_id)}/finalize`,
+      const result = await apiCall(
+        "post",
+        "/v1/conversations/{id}/workflow-reviews/{receipt_id}/finalize",
         {
-          method: "POST",
-          body: JSON.stringify({
+          path: { id: conversationId, receipt_id: receipt.receipt_id },
+          body: {
             expected_snapshot_digest: receipt.snapshot_digest,
             ...(saveOnly ? { save_only: true } : {}),
-          }),
+          },
+          limits: { timeoutMs: 30_000 },
         },
-        { timeoutMs: 30_000 },
       );
       accept(result);
     } catch (error) {
@@ -179,20 +177,19 @@ export function WorkflowReview({
     setPolicyBusy(true);
     setMessage(undefined);
     try {
-      const value = await apiRequest<Policies>(
-        policyPath,
-        {
-          method: "PUT",
-          body: JSON.stringify({
-            policies: { save_workflow_draft: checked ? "no_confirm" : null },
-          }),
-        },
-        { timeoutMs: 15_000 },
-      );
+      const value = await apiCall("put", "/v1/conversations/{id}/tool-policies", {
+        path: { id: conversationId },
+        body: { policies: { save_workflow_draft: checked ? "no_confirm" : null } },
+        limits: { timeoutMs: 15_000 },
+      });
       setRemember(value.policies.save_workflow_draft === "no_confirm");
     } catch {
       try {
-        const value = await apiRequest<Policies>(policyPath, {}, { timeoutMs: 15_000 });
+        const value = await apiCall("get", "/v1/conversations/{id}/tool-policies", {
+          path: { id: conversationId },
+          limits: { timeoutMs: 15_000 },
+        });
+
         setRemember(value.policies.save_workflow_draft === "no_confirm");
         setPolicyAvailable(value.eligible_no_confirm_tools.includes("save_workflow_draft"));
       } catch {
