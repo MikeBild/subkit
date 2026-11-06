@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import { getOperationalOverview, type OperationalOverview } from "./operational-overview.ts";
 
 let testDb: TestDb;
@@ -8,10 +8,10 @@ let overview: OperationalOverview;
 
 beforeAll(async () => {
   testDb = await createTestDb("incidents_drilldown");
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "t-incidents-drilldown", display_name: "Incidents" })
-    .returning();
+  const tenant = await seedTenant(testDb.db, {
+    slug: "t-incidents-drilldown",
+    display_name: "Incidents",
+  });
   overview = await getOperationalOverview(testDb.db, tenant!.id);
 });
 

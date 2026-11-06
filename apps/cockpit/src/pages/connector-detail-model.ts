@@ -1,4 +1,4 @@
-import type { components } from "@/api/schema";
+import type { components } from "@cli-core/engine-api/openapi";
 import { auditHref } from "@/app/links";
 import { type ConnectorAuthState, needsRenewal } from "@/lib/connector-auth-state";
 import type { TranslationKey } from "@/lib/i18n";

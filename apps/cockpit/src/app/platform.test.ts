@@ -85,7 +85,7 @@ describe("live invalidation table", () => {
   test("every key in the table is a key the Cockpit reads", () => {
     const sources = readdirSync(SRC, { recursive: true, encoding: "utf8" })
       .filter((file) => /\.(ts|tsx)$/.test(file) && !file.includes(".test."))
-      .filter((file) => !file.endsWith("live-invalidation.ts") && !file.endsWith("schema.d.ts"))
+      .filter((file) => !file.endsWith("live-invalidation.ts"))
       .map((file) => readFileSync(join(SRC, file), "utf8"))
       .join("\n");
     for (const rule of LIVE_RULES)

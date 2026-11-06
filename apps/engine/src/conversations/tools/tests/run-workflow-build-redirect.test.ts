@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { tenants, workflows, workflowVersions } from "../../../db/schema/index.ts";
+import { workflows, workflowVersions } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { adminPrincipal } from "../../../test-helpers/principals.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import { runWorkflowTool } from "../engine-api/writes/run-workflow.ts";
 import type { ToolContext } from "../index.ts";
 
@@ -12,11 +13,7 @@ let tenant_id: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("run_workflow_build_redirect");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-rwbr", display_name: "T" })
-    .returning();
-  tenant_id = t!.id;
+  tenant_id = (await seedTenant(ctx.db, { slug: "t-rwbr", display_name: "T" })).id;
 });
 
 afterAll(async () => {

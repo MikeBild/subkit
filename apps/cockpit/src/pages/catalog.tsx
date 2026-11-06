@@ -1,10 +1,10 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
 import { Bot, Workflow } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/api/client";
-import type { components } from "@/api/schema";
 import { absolute, chatNewHref, recordHref, runsHref } from "@/app/links";
 import { CatalogSummary, useCatalogCreatedBy } from "@/components/cockpit/catalog-categories";
 import {

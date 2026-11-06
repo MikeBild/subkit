@@ -3,7 +3,7 @@
 @import "shadcn/tailwind.css";
 
 @source "../node_modules/streamdown/dist/*.js";
-@source not "./app/docs.generated.ts";
+@source not "../../engine/src/http/llms/docs.json";
 
 @custom-variant dark (&:is(.dark *));
 @custom-variant sk-nav (@media (width >= 68.75rem));

@@ -1,8 +1,8 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { executions } from "../db/schema/executions.ts";
-import { tenants } from "../db/schema/identity.ts";
 import { workflows } from "../db/schema/workflows.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import { aggregateExecutions } from "./aggregate-executions.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
@@ -21,19 +21,13 @@ beforeAll(async () => {
 
   testDb = await createTestDb("stats-agg-exec");
 
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "stats-exec-tenant", display_name: "Stats Exec Tenant" })
-    .returning();
-  if (!tenant) throw new Error("seed tenant failed");
-  tenantId = tenant.id;
+  tenantId = (
+    await seedTenant(testDb.db, { slug: "stats-exec-tenant", display_name: "Stats Exec Tenant" })
+  ).id;
 
-  const [otherTenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "stats-exec-other", display_name: "Stats Exec Other" })
-    .returning();
-  if (!otherTenant) throw new Error("seed other tenant failed");
-  otherTenantId = otherTenant.id;
+  otherTenantId = (
+    await seedTenant(testDb.db, { slug: "stats-exec-other", display_name: "Stats Exec Other" })
+  ).id;
 
   const [wf] = await testDb.db
     .insert(workflows)

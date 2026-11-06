@@ -1,0 +1,29 @@
+# Burndown allowlist for the audit-invariants `pure_core` check.
+# Rule: core.ts or core/** importing db/, llm/, audit/, queue/ or drizzle-orm, or reading Date.now, new Date(), Math.random, randomUUID, process.env.
+# Format: <path from repo root>  <budget in hits>. A listed file fails once it exceeds its budget;
+# an unlisted file fails at the first hit. Budgets only shrink: fix the file, then run
+# `bun run apps/engine/scripts/audit-invariants.ts --update-baseline` (lowers budgets, drops fixed files).
+# `--accept-new` also admits new offenders; use it only for a reviewed baseline reset.
+
+apps/engine/src/llm/core/access-probe.ts                      3
+apps/engine/src/llm/core/ai-sdk-model.ts                      8
+apps/engine/src/llm/core/base-types.ts                        2
+apps/engine/src/llm/core/cache-blocks.ts                      2
+apps/engine/src/llm/core/capabilities.ts                      1
+apps/engine/src/llm/core/context-assembler.ts                 18
+apps/engine/src/llm/core/context-assembler/base-prompts.ts    1
+apps/engine/src/llm/core/context-assembler/formatters.ts      3
+apps/engine/src/llm/core/context-assembler/loaded-skills.ts   1
+apps/engine/src/llm/core/context-assembler/loaders.ts         6
+apps/engine/src/llm/core/context-assembler/skill-audience.ts  1
+apps/engine/src/llm/core/context-assembler/skill-picker.ts    1
+apps/engine/src/llm/core/devtools-wrap.ts                     1
+apps/engine/src/llm/core/file-context.ts                      3
+apps/engine/src/llm/core/hosted-billing-policy.ts             1
+apps/engine/src/llm/core/hosted-budget-middleware.ts          6
+apps/engine/src/llm/core/invoke.ts                            22
+apps/engine/src/llm/core/model-init.ts                        5
+apps/engine/src/llm/core/repair-tool-call.ts                  7
+apps/engine/src/llm/core/step-router.ts                       4
+apps/engine/src/llm/core/suggestion-prompt.ts                 1
+apps/engine/src/llm/core/tenant-summary.ts                    3

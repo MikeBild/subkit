@@ -2,13 +2,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { SkCliAdapter } from "../../chat/sk-cli/adapter.ts";
-import { tenants } from "../../db/schema/index.ts";
 import {
   cliNotificationInbox,
   notificationChannels,
   notificationDeliveries,
   notificationRules,
 } from "../../db/schema/notifications.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { fanoutEvent } from "../../webhooks/outbound/fanout.ts";
 import { __resetBreakers } from "../circuit-breaker.ts";
 import { __resetRateLimiter } from "../rate-limit.ts";
@@ -25,11 +25,7 @@ const fakeBoss = {
 beforeAll(async () => {
   ctx = await createNotificationCtx("fanout_cli_inbox");
 
-  const [tB] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "fanout-cli-b", display_name: "Fanout CLI B" })
-    .returning();
-  if (!tB) throw new Error("seed tenant B failed");
+  const tB = await seedTenant(ctx.db, { slug: "fanout-cli-b", display_name: "Fanout CLI B" });
   tenantBId = tB.id;
 }, 60_000);
 

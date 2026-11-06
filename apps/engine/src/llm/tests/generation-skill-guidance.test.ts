@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { skills, tenants } from "../../db/schema/index.ts";
+import { skills } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { assembleEnhancedPrompt } from "../core/context-assembler.ts";
 
 let fixture: TestDb;
@@ -9,11 +10,10 @@ const requiredGuidance = `${"Preserve the reviewed execution boundary. ".repeat(
 
 beforeAll(async () => {
   fixture = await createTestDb("generation_skill_guidance");
-  const [tenant] = await fixture.db
-    .insert(tenants)
-    .values({ slug: "generation-guidance", display_name: "Generation guidance" })
-    .returning();
-  if (!tenant) throw new Error("missing tenant fixture");
+  const tenant = await seedTenant(fixture.db, {
+    slug: "generation-guidance",
+    display_name: "Generation guidance",
+  });
   tenantId = tenant.id;
   await fixture.db.insert(skills).values([
     {

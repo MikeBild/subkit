@@ -1,5 +1,6 @@
-import { tenants, workflows } from "../../db/schema/index.ts";
+import { workflows } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 
 export interface KnowledgeTestCtx {
   testDb: TestDb;
@@ -10,11 +11,10 @@ export interface KnowledgeTestCtx {
 
 export async function createKnowledgeTestCtx(label: string): Promise<KnowledgeTestCtx> {
   const testDb = await createTestDb(`knowledge-${label}`);
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: `t-${label}`, display_name: `Knowledge ${label}` })
-    .returning();
-  if (!tenant) throw new Error("seed tenant failed");
+  const tenant = await seedTenant(testDb.db, {
+    slug: `t-${label}`,
+    display_name: `Knowledge ${label}`,
+  });
 
   const [workflow] = await testDb.db
     .insert(workflows)

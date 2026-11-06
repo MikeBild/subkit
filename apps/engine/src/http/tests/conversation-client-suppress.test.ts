@@ -3,6 +3,7 @@ import type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-re
 import { eq } from "drizzle-orm";
 import { tenants } from "../../db/schema/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
+import { adminHeaders } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -28,19 +29,12 @@ interface NextSuggestionEvent {
   kind: SuggestNextKind | null;
 }
 
-function adminHeaders(): Record<string, string> {
-  return {
-    Authorization: `Bearer ${srv.apiKey}`,
-    "Content-Type": "application/json",
-  };
-}
-
 describe("POST /v1/conversations/:id/messages — client_suppress wire round-trip", () => {
   test("client_suppress: true → next_suggestion frame with reason: client-suppress", async () => {
     resetMockProvider();
     const createRes = await fetch(`${srv.baseUrl}/v1/conversations`, {
       method: "POST",
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
       body: JSON.stringify({ initial_message: "hello" }),
     });
     expect([200, 201]).toContain(createRes.status);
@@ -50,7 +44,7 @@ describe("POST /v1/conversations/:id/messages — client_suppress wire round-tri
 
     const res = await fetch(`${srv.baseUrl}/v1/conversations/${conversationId}/messages`, {
       method: "POST",
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
       body: JSON.stringify({
         message: "say hi",
         client_suppress: true,
@@ -74,7 +68,7 @@ describe("POST /v1/conversations/:id/messages — client_suppress wire round-tri
     resetMockProvider();
     const createRes = await fetch(`${srv.baseUrl}/v1/conversations`, {
       method: "POST",
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
       body: JSON.stringify({ initial_message: "kick off" }),
     });
     const created = (await createRes.json()) as { conversation: { id: string } };
@@ -83,7 +77,7 @@ describe("POST /v1/conversations/:id/messages — client_suppress wire round-tri
 
     const res = await fetch(`${srv.baseUrl}/v1/conversations/${conversationId}/messages`, {
       method: "POST",
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
       body: JSON.stringify({
         message: "do the thing",
       }),
@@ -101,7 +95,7 @@ describe("POST /v1/conversations/:id/messages — client_suppress wire round-tri
     resetMockProvider();
     const createRes = await fetch(`${srv.baseUrl}/v1/conversations`, {
       method: "POST",
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
       body: JSON.stringify({ initial_message: "boot" }),
     });
     const created = (await createRes.json()) as { conversation: { id: string } };
@@ -109,7 +103,7 @@ describe("POST /v1/conversations/:id/messages — client_suppress wire round-tri
 
     const res = await fetch(`${srv.baseUrl}/v1/conversations/${conversationId}/messages`, {
       method: "POST",
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
       body: JSON.stringify({
         message: "x",
         client_suppress: "yes",

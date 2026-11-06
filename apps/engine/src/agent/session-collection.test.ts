@@ -9,7 +9,6 @@ import {
   intakeItems,
   skillCandidates,
   systemAccounts,
-  tenants,
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { listIntakeItemEvidence } from "../knowledge/intake-session.ts";
@@ -21,6 +20,7 @@ import {
 } from "../queue/handlers/agent-session-analyze.ts";
 import { loadActiveConventions, NO_CONVENTIONS } from "../skills/conventions.ts";
 import { listSkills } from "../skills/service.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import { buildAgentBriefing } from "./briefing.ts";
 import { collectSessionLearning } from "./sessions.ts";
 
@@ -56,12 +56,9 @@ async function itemById(id: string) {
 
 beforeAll(async () => {
   testDb = await createTestDb("session-collection");
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "session-collection", display_name: "Session collection" })
-    .returning();
-  if (!tenant) throw new Error("seed tenant failed");
-  tenantId = tenant.id;
+  tenantId = (
+    await seedTenant(testDb.db, { slug: "session-collection", display_name: "Session collection" })
+  ).id;
   await testDb.db.insert(catalogCategories).values({ tenant_id: tenantId, name: "blog-de" });
 }, 60_000);
 

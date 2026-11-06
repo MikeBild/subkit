@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { writeEvent } from "../../db/events.ts";
-import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { PubSubEmitter } from "../emitter.ts";
 import { getListener, PubSubListener, startListener, stopListener } from "../listener.ts";
 import type { OutboxChannel } from "../types.ts";
@@ -12,12 +12,9 @@ let tenantId: string;
 
 beforeAll(async () => {
   tdb = await createTestDb("pubsub-lifecycle");
-  const [tenant] = await tdb.db
-    .insert(tenants)
-    .values({ slug: "listener-lifecycle", display_name: "Listener lifecycle" })
-    .returning();
-  if (!tenant) throw new Error("tenant fixture missing");
-  tenantId = tenant.id;
+  tenantId = (
+    await seedTenant(tdb.db, { slug: "listener-lifecycle", display_name: "Listener lifecycle" })
+  ).id;
 });
 
 afterAll(async () => {

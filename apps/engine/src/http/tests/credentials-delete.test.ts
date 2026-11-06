@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { upsertCredential } from "../../credentials/index.ts";
-import { connectors, credentials, tenants } from "../../db/schema/index.ts";
+import { connectors, credentials } from "../../db/schema/index.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -63,11 +64,8 @@ describe("http DELETE /v1/credentials/:id", () => {
   });
 
   test("cannot delete another tenant's credential", async () => {
-    const [other] = await ctx.db
-      .insert(tenants)
-      .values({ slug: "t-cred-del-other", display_name: "Other" })
-      .returning();
-    const foreignId = await seedCredential(other!.id);
+    const other = await seedTenant(ctx.db, { slug: "t-cred-del-other", display_name: "Other" });
+    const foreignId = await seedCredential(other.id);
 
     const res = await fetch(`${ctx.baseUrl}/v1/credentials/${foreignId}`, {
       method: "DELETE",

@@ -1,11 +1,16 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { recordExecutionCrashRecovered } from "../audit/recorders/index.ts";
 import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { executionSteps, executions, workflowVersions } from "../db/schema/index.ts";
 import { errorFields, logger } from "../logging/logger.ts";
-import type { ExecutionStatus } from "./types.ts";
+import {
+  crashRecoveryOutcome,
+  TERMINAL_EXECUTION_STATUSES,
+  type TerminalExecutionStatus,
+} from "./core/status.ts";
+import { terminalizeExecutionRow } from "./state.ts";
 
 const DEFAULT_WORKFLOW_TIMEOUT_MS = 6 * 60 * 60 * 1000;
 const CRASH_GRACE_MULTIPLIER = 1.5;
@@ -37,8 +42,6 @@ interface CandidateRow {
   abort_requested_at: Date | null;
   workflow_timeout_ms: number | null;
 }
-
-type TerminalExecutionStatus = Exclude<ExecutionStatus, "queued" | "running">;
 
 interface TerminalExecutionWithRunningStepRow {
   id: string;
@@ -75,36 +78,41 @@ export async function recoverCrashedExecutions(
 
   let recovered = 0;
   for (const row of candidates) {
-    const abortRequested = row.abort_requested_at !== null;
-    if (!abortRequested && !row.started_at) continue;
-    const baseTimeout = row.workflow_timeout_ms ?? DEFAULT_WORKFLOW_TIMEOUT_MS;
-    const thresholdMs = opts.overrideThresholdMs ?? baseTimeout * CRASH_GRACE_MULTIPLIER;
-    const ageMs = row.started_at ? now.getTime() - row.started_at.getTime() : null;
-    if (!abortRequested && (ageMs === null || ageMs < thresholdMs)) continue;
-    const terminalStatus = abortRequested ? "aborted" : "timed_out";
-    const recoveryReason = abortRequested
-      ? "engine_crash_recovery_abort_requested"
-      : "engine_crash_recovery";
+    const outcome = crashRecoveryOutcome(
+      {
+        abort_requested: row.abort_requested_at !== null,
+        started_at_ms: row.started_at ? row.started_at.getTime() : null,
+        workflow_timeout_ms: row.workflow_timeout_ms,
+      },
+      {
+        now_ms: now.getTime(),
+        default_timeout_ms: DEFAULT_WORKFLOW_TIMEOUT_MS,
+        grace_multiplier: CRASH_GRACE_MULTIPLIER,
+        override_threshold_ms: opts.overrideThresholdMs,
+      },
+    );
+    if (!outcome) continue;
+    const terminalStatus = outcome.status;
+    const recoveryReason = outcome.reason;
+    const thresholdMs = outcome.threshold_ms;
+    const ageMs = outcome.age_ms;
 
     try {
       const flipped = await db.transaction(async (tx) => {
-        const updated = await tx
-          .update(executions)
-          .set({
-            status: terminalStatus,
-            finished_at: now,
-            failure: {
-              step_id: null,
-              error_code: recoveryReason,
-              error_message: abortRequested
-                ? "execution abort recovered after worker restart"
-                : "execution timeout recovered after worker restart",
-            },
-            output_contract: "none",
-          })
-          .where(sql`${executions.id} = ${row.id} AND ${executions.status} = 'running'`)
-          .returning({ id: executions.id });
-        if (updated.length === 0) return false;
+        const updated = await terminalizeExecutionRow(tx, {
+          tenant_id: row.tenant_id,
+          execution_id: row.id,
+          status: terminalStatus,
+          finished_at: now,
+          failure: {
+            step_id: null,
+            error_code: recoveryReason,
+            error_message: outcome.message,
+          },
+          expected_statuses: ["running"],
+          output_contract: "none",
+        });
+        if (!updated) return false;
 
         const terminalizedSteps = await tx
           .update(executionSteps)
@@ -123,9 +131,7 @@ export async function recoverCrashedExecutions(
             END`,
             error: {
               code: terminalStatus,
-              message: abortRequested
-                ? "execution abort recovered after worker restart"
-                : "execution timeout recovered after worker restart",
+              message: outcome.message,
             },
           })
           .where(
@@ -228,8 +234,10 @@ export async function recoverCrashedExecutions(
     .from(executionSteps)
     .innerJoin(executions, eq(executions.id, executionSteps.execution_id))
     .where(
-      sql`${executionSteps.status} = 'running'
-        AND ${executions.status} IN ('succeeded', 'failed', 'aborted', 'timed_out')`,
+      and(
+        eq(executionSteps.status, "running"),
+        inArray(executions.status, [...TERMINAL_EXECUTION_STATUSES]),
+      ),
     )
     .limit(MAX_RECOVER_PER_PASS)) as TerminalExecutionWithRunningStepRow[];
 

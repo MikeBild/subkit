@@ -1,8 +1,7 @@
-import { reportCommandError } from "@cli-core/errors";
 import { printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
-import { resolveProfile } from "../config.ts";
-import { EngineClient, type TenantBrandingUpdate } from "../engine-client.ts";
+import type { TenantBrandingUpdate } from "../engine-client.ts";
+import { makeClientFromArgs, withCommandErrors } from "./command-runtime.ts";
 
 const commonArgs = {
   "engine-url": { type: "string" as const },
@@ -10,18 +9,6 @@ const commonArgs = {
   profile: { type: "string" as const },
   json: { type: "boolean" as const },
 };
-function client(args: Record<string, unknown>) {
-  const p = resolveProfile({
-    engine_url: args["engine-url"] as string | undefined,
-    api_key: args["api-key"] as string | undefined,
-    profile: args.profile as string | undefined,
-  });
-  return new EngineClient({
-    engine_url: p.engine_url,
-    api_key: p.api_key,
-    tenant: p.active_tenant_id,
-  });
-}
 async function readInput(path: string): Promise<TenantBrandingUpdate> {
   const text = path === "-" ? await Bun.stdin.text() : await Bun.file(path).text();
   return JSON.parse(text) as TenantBrandingUpdate;
@@ -30,11 +17,12 @@ const getCommand = defineCommand({
   meta: { name: "get", description: "Read tenant branding" },
   args: commonArgs,
   async run({ args }) {
-    try {
-      printJson(await client(args).getTenantBranding());
-    } catch (e) {
-      reportCommandError(e, { json: true });
-    }
+    return withCommandErrors(
+      async () => {
+        printJson(await makeClientFromArgs(args).getTenantBranding());
+      },
+      { json: true },
+    );
   },
 });
 const updateCommand = defineCommand({
@@ -47,22 +35,28 @@ const updateCommand = defineCommand({
     ...commonArgs,
   },
   async run({ args }) {
-    try {
-      printJson(await client(args).updateTenantBranding(await readInput(args.input as string)));
-    } catch (e) {
-      reportCommandError(e, { json: true });
-    }
+    return withCommandErrors(
+      async () => {
+        printJson(
+          await makeClientFromArgs(args).updateTenantBranding(
+            await readInput(args.input as string),
+          ),
+        );
+      },
+      { json: true },
+    );
   },
 });
 const resetCommand = defineCommand({
   meta: { name: "reset", description: "Reset branding at an expected revision" },
   args: { revision: { type: "positional" as const, required: true }, ...commonArgs },
   async run({ args }) {
-    try {
-      printJson(await client(args).resetTenantBranding(Number(args.revision)));
-    } catch (e) {
-      reportCommandError(e, { json: true });
-    }
+    return withCommandErrors(
+      async () => {
+        printJson(await makeClientFromArgs(args).resetTenantBranding(Number(args.revision)));
+      },
+      { json: true },
+    );
   },
 });
 const logoCommand = defineCommand({
@@ -74,22 +68,23 @@ const logoCommand = defineCommand({
     ...commonArgs,
   },
   async run({ args }) {
-    try {
-      const theme =
-        args.theme === "light" || args.theme === "dark"
-          ? args.theme
-          : (() => {
-              throw new Error("theme must be light or dark");
-            })();
-      const bytes = await client(args).getTenantBrandingLogo({
-        theme,
-        ...(args.revision ? { revision: Number(args.revision) } : {}),
-      });
-      if (args.output) await Bun.write(args.output as string, bytes);
-      else process.stdout.write(bytes);
-    } catch (e) {
-      reportCommandError(e, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const theme =
+          args.theme === "light" || args.theme === "dark"
+            ? args.theme
+            : (() => {
+                throw new Error("theme must be light or dark");
+              })();
+        const bytes = await makeClientFromArgs(args).getTenantBrandingLogo({
+          theme,
+          ...(args.revision ? { revision: Number(args.revision) } : {}),
+        });
+        if (args.output) await Bun.write(args.output as string, bytes);
+        else process.stdout.write(bytes);
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 export const brandingCommand = defineCommand({

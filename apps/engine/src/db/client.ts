@@ -10,9 +10,6 @@ import * as schema from "./schema/index.ts";
 const { Pool } = pg;
 export const EXPECTED_SCHEMA = "subkit";
 
-export const MIGRATION_SEARCH_PATH_SQL = "SET LOCAL search_path = public, pg_catalog";
-export const ISOLATION_MIGRATION_TAG = "0041_isolated_schema";
-
 let _pool: pg.Pool | null = null;
 let _db: NodePgDatabase<typeof schema> | null = null;
 

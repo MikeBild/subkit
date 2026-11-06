@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, inArray } from "drizzle-orm";
-import { auditLog, tenants } from "../../db/schema/index.ts";
+import { auditLog } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   approveDiscoveryArtifact,
   createDiscoveryRun,
@@ -17,12 +18,8 @@ let tenantId: string;
 beforeAll(async () => {
   if (skip) return;
   testDb = await createTestDb("disc-edge");
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "disc-edge", display_name: "Discovery Edge" })
-    .returning();
-  if (!tenant) throw new Error("seed tenant failed");
-  tenantId = tenant.id;
+  tenantId = (await seedTenant(testDb.db, { slug: "disc-edge", display_name: "Discovery Edge" }))
+    .id;
 }, 60_000);
 
 afterAll(async () => {
@@ -116,10 +113,7 @@ describe.skipIf(skip)("discovery/edge-cases", () => {
   });
 
   test("approve artifact from different tenant returns null", async () => {
-    const [other] = await testDb.db
-      .insert(tenants)
-      .values({ slug: "disc-other", display_name: "Other" })
-      .returning();
+    const other = await seedTenant(testDb.db, { slug: "disc-other", display_name: "Other" });
     const result = await approveDiscoveryArtifact(
       { tenant_id: other!.id, artifact_id: crypto.randomUUID(), actor_id: null }, // allow-random: legacy; review before changing
       testDb.db,

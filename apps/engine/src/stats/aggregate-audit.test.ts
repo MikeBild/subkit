@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { auditLog } from "../db/schema/audit.ts";
-import { tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import { aggregateAudit } from "./aggregate-audit.ts";
 
 const nextUuid = createDeterministicUuidFactory(0xdeadbeef);
@@ -18,12 +18,9 @@ const TO = new Date(REF_MS + 60 * 1000);
 beforeAll(async () => {
   testDb = await createTestDb("stats-aggregate-audit");
 
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "stats-agg-audit", display_name: "Stats Aggregate Audit" })
-    .returning();
-  if (!tenant) throw new Error("seed tenant failed");
-  tenantId = tenant.id;
+  tenantId = (
+    await seedTenant(testDb.db, { slug: "stats-agg-audit", display_name: "Stats Aggregate Audit" })
+  ).id;
 });
 
 afterAll(async () => {
@@ -84,11 +81,10 @@ describe("aggregateAudit — endpoint-axis cardinality cap", () => {
   });
 
   test("does NOT set truncated_endpoints when ≤200 distinct path templates", async () => {
-    const [tenant2] = await testDb.db
-      .insert(tenants)
-      .values({ slug: "stats-agg-audit-small", display_name: "Stats Aggregate Audit Small" })
-      .returning();
-    if (!tenant2) throw new Error("seed tenant2 failed");
+    const tenant2 = await seedTenant(testDb.db, {
+      slug: "stats-agg-audit-small",
+      display_name: "Stats Aggregate Audit Small",
+    });
     const tenant2Id = tenant2.id;
 
     const midpoint = new Date(REF_MS - 30 * 60 * 1000);
@@ -126,11 +122,10 @@ describe("aggregateAudit — endpoint-axis cardinality cap", () => {
   });
 
   test("tenant isolation — results for one tenant do not include rows from another", async () => {
-    const [tenant3] = await testDb.db
-      .insert(tenants)
-      .values({ slug: "stats-agg-audit-iso", display_name: "Stats Aggregate Audit Iso" })
-      .returning();
-    if (!tenant3) throw new Error("seed tenant3 failed");
+    const tenant3 = await seedTenant(testDb.db, {
+      slug: "stats-agg-audit-iso",
+      display_name: "Stats Aggregate Audit Iso",
+    });
 
     const result = await aggregateAudit(testDb.db, {
       tenantId: tenant3.id,
@@ -149,11 +144,10 @@ describe("aggregateAudit — endpoint-axis cardinality cap", () => {
   });
 
   test("aggregates legacy egress aliases without classifying successful calls as network errors", async () => {
-    const [legacyTenant] = await testDb.db
-      .insert(tenants)
-      .values({ slug: "stats-agg-audit-legacy", display_name: "Stats Audit Legacy" })
-      .returning();
-    if (!legacyTenant) throw new Error("seed legacy tenant failed");
+    const legacyTenant = await seedTenant(testDb.db, {
+      slug: "stats-agg-audit-legacy",
+      display_name: "Stats Audit Legacy",
+    });
     const connectorId = nextUuid();
     await testDb.db.insert(auditLog).values({
       id: nextUuid(),

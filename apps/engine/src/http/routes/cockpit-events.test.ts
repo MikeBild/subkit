@@ -3,9 +3,10 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { and, asc } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { writeEvent } from "../../db/events.ts";
-import { events, tenants } from "../../db/schema/index.ts";
+import { events } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { adminPrincipal } from "../../test-helpers/principals.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
 import {
   cockpitStreamConds,
@@ -101,16 +102,10 @@ async function emit(
 
 beforeAll(async () => {
   ctx = await createTestDb("cockpit_events_stream");
-  const [a] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "cockpit-stream-a", display_name: "A" })
-    .returning();
-  const [b] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "cockpit-stream-b", display_name: "B" })
-    .returning();
-  tenantA = a!.id;
-  tenantB = b!.id;
+  const a = await seedTenant(ctx.db, { slug: "cockpit-stream-a", display_name: "A" });
+  const b = await seedTenant(ctx.db, { slug: "cockpit-stream-b", display_name: "B" });
+  tenantA = a.id;
+  tenantB = b.id;
 });
 
 afterAll(async () => {

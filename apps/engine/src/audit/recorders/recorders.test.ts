@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
-import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { _drainAuditWritesForTests } from "../audit.ts";
 import { AuditAction, SYSTEM_TENANT_ID } from "../types.ts";
 import {
@@ -35,12 +35,9 @@ let tenantId = "";
 
 beforeAll(async () => {
   testDb = await createTestDb("audit-recorders");
-  const [row] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "recorder-tenant", display_name: "Recorder Tenant" })
-    .returning();
-  if (!row) throw new Error("seed failed");
-  tenantId = row.id;
+  tenantId = (
+    await seedTenant(testDb.db, { slug: "recorder-tenant", display_name: "Recorder Tenant" })
+  ).id;
 });
 
 afterAll(async () => {

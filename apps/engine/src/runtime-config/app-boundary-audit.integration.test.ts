@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { and, eq, like } from "drizzle-orm";
 import { _resetConfigForTests, getConfig, loadConfig } from "../config/loader.ts";
-import { auditLog, tenants } from "../db/schema/index.ts";
+import { auditLog } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import { RuntimeConfigCoordinator } from "./coordinator.ts";
 import {
   activateRuntimeRevision,
@@ -41,14 +42,11 @@ beforeAll(async () => {
     configPathOverride: join(configDir, "seed.json"),
   });
   await initializeRuntimeConfig(tdb.db, getConfig());
-  const [actor] = await tdb.db
-    .insert(tenants)
-    .values({ slug: "boundary-actor", display_name: "Actor" })
-    .returning();
-  const [provider] = await tdb.db
-    .insert(tenants)
-    .values({ slug: "boundary-provider", display_name: "Provider" })
-    .returning();
+  const actor = await seedTenant(tdb.db, { slug: "boundary-actor", display_name: "Actor" });
+  const provider = await seedTenant(tdb.db, {
+    slug: "boundary-provider",
+    display_name: "Provider",
+  });
   if (!actor || !provider) throw new Error("tenant insert failed");
   actorTenant = actor.id;
   providerTenant = provider.id;

@@ -8,10 +8,11 @@ import { and, eq } from "drizzle-orm";
 import { _resetConfigForTests, loadConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { auditLog } from "../../db/schema/audit.ts";
-import { apiKeys, tenants, users } from "../../db/schema/index.ts";
+import { apiKeys, users } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { createSeededRandom } from "../../test-helpers/determinism/random.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { buildDefaultRegistry, createApp } from "../server.ts";
 
 const seededRand = createSeededRandom(0xb0_07ac7);
@@ -67,14 +68,14 @@ async function seedPrincipal(
 
 async function buildBoundaryCtx(): Promise<BoundaryCtx> {
   const testDb = await createTestDb("route-boundary");
-  const [tenantARow] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "boundary-a", display_name: "Boundary A" })
-    .returning();
-  const [tenantBRow] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "boundary-b", display_name: "Boundary B" })
-    .returning();
+  const tenantARow = await seedTenant(testDb.db, {
+    slug: "boundary-a",
+    display_name: "Boundary A",
+  });
+  const tenantBRow = await seedTenant(testDb.db, {
+    slug: "boundary-b",
+    display_name: "Boundary B",
+  });
   if (!tenantARow || !tenantBRow) throw new Error("seed tenants failed");
 
   const tenantA = {

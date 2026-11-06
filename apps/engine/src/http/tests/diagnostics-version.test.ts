@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq, gte } from "drizzle-orm";
 import { apiKeys, auditLog, users } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { adminHeaders } from "../../test-helpers/seed.ts";
 import { resetUpdateState, setUpdateState } from "../../update-state.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -47,19 +48,14 @@ afterAll(async () => {
   await srv.cleanup();
 });
 
-function adminHeaders() {
-  return {
-    authorization: `Bearer ${srv.apiKey}`,
-    "content-type": "application/json",
-  } as const;
-}
-
 describe("/v1/diagnostics/version", () => {
   test("returns engine snapshot and writes a DIAGNOSTICS_VERSION_READ audit row", async () => {
     resetUpdateState();
     // allow-wall-clock: bounded predicate for the audit_log SELECT, not a determinism axis
     const before = new Date();
-    const res = await fetch(`${srv.baseUrl}/v1/diagnostics/version`, { headers: adminHeaders() });
+    const res = await fetch(`${srv.baseUrl}/v1/diagnostics/version`, {
+      headers: adminHeaders(srv.apiKey),
+    });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       engine_version: string;
@@ -104,7 +100,9 @@ describe("/v1/diagnostics/version", () => {
   test("surfaces update_available + latest_version when set by the boot probe", async () => {
     setUpdateState({ update_available: true, latest_version: "9.9.9" });
     try {
-      const res = await fetch(`${srv.baseUrl}/v1/diagnostics/version`, { headers: adminHeaders() });
+      const res = await fetch(`${srv.baseUrl}/v1/diagnostics/version`, {
+        headers: adminHeaders(srv.apiKey),
+      });
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
         update_available: boolean;

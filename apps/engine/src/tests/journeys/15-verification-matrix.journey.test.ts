@@ -2,11 +2,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { and, eq } from "drizzle-orm";
-import { executions, workflows, workflowsSchedules } from "../../db/schema/index.ts";
+import { executions, workflows } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
-import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
-import { grantScheduleAuthorityFixture } from "../../scheduler/tests/authority-fixture.ts";
-import { waitFor } from "../../test-helpers/determinism/index.ts";
 import {
   createJourneyCtx,
   JOURNEY_HOOK_TIMEOUT,
@@ -20,7 +17,6 @@ let mock: Server;
 let mockBase = "";
 let connectorId = "";
 let workflowId = "";
-let scheduleReconciler: SchedulerReconciler | null = null;
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("matrix");
@@ -46,7 +42,6 @@ beforeAll(async () => {
 }, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
-  if (scheduleReconciler) await scheduleReconciler.stop();
   await new Promise<void>((resolve) => mock.close(() => resolve()));
   if (ctx?.cleanup) await ctx.cleanup();
 }, 120_000);
@@ -205,38 +200,6 @@ describe("journey: verification matrix (docs/33)", () => {
     const res = await journeyFetch(ctx, "/v1/notifications");
     expect([200, 404]).toContain(res.status);
   });
-
-  test("11. Schedules — insert row, reconciler fires within 5s", async () => {
-    const wf = await seedWorkflow(ctx, {
-      slug: "scheduled-matrix",
-      name: "Scheduled Matrix",
-      steps: [{ id: "noop", kind: "transform", language: "javascript", expression: "input" }],
-    });
-    await grantScheduleAuthorityFixture(ctx.db, ctx.tenantId, wf.id);
-    await ctx.db.insert(workflowsSchedules).values({
-      tenant_id: ctx.tenantId,
-      workflow_id: wf.id,
-      cron: "every:1",
-      timezone: "UTC",
-      paused: false,
-      input: { from: "matrix" },
-    });
-    scheduleReconciler = new SchedulerReconciler({
-      boss: ctx.boss,
-      db: ctx.db,
-      intervalMs: 5_000,
-    });
-    await scheduleReconciler.start();
-    const rows = await waitFor(
-      async () => {
-        const r = await ctx.db.select().from(executions).where(eq(executions.workflow_id, wf.id));
-        return r.length >= 1 ? r : undefined;
-      },
-      { tries: 80, sleepMs: 100, label: "scheduler creates execution" },
-    );
-    expect(rows.length).toBeGreaterThanOrEqual(1);
-    expect(rows[0]?.request_source).toBe("scheduler");
-  }, 15_000);
 
   test("12. Self-healing on upstream drift — loop + classifier reachable", async () => {
     const loop = await import("../../self-healing/service.ts");

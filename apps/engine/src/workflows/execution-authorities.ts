@@ -32,6 +32,12 @@ import {
   type ContentPublicationBoundaries,
   contentBoundariesFromManifest,
 } from "./content-publication-proposal.ts";
+import {
+  AUTHORITY_WINDOW_MAX_DAYS,
+  replacementFor,
+  sameBoundary,
+  windowValid,
+} from "./core/authority.ts";
 import { resolveWorkflowEffectManifest } from "./effect-resolution.ts";
 import type { WorkflowReadFacts } from "./read-facts.ts";
 import {
@@ -293,6 +299,7 @@ export async function activateWorkflowDraftLocked(
     input.expected_current_version_id,
     principal.id,
     true,
+    { manifestDigestMatches: preview.digest === input.expected_manifest_digest },
   );
   await carryApprovalsForward(tx, {
     tenant_id: principal.tenant_id,
@@ -355,13 +362,11 @@ export async function grantWorkflowAuthority(
     const from = new Date(input.valid_from);
     const until = input.valid_until ? new Date(input.valid_until) : null;
     const maxRuns = input.max_runs ?? null;
-    if (
-      until &&
-      (until <= from ||
-        until <= new Date(now) ||
-        until.getTime() - from.getTime() > 31 * 24 * 60 * 60_000)
-    )
-      fail("authority_window_invalid", "choose a non-expired authority window of at most 31 days");
+    if (!windowValid(from, until, new Date(now)))
+      fail(
+        "authority_window_invalid",
+        `choose a non-expired authority window of at most ${AUTHORITY_WINDOW_MAX_DAYS} days`,
+      );
     const preview = await previewWorkflowAuthority(
       {
         tenant_id: principal.tenant_id,
@@ -413,6 +418,7 @@ export async function grantWorkflowAuthority(
         input.activation.expected_current_version_id,
         principal.id,
         Boolean(existing),
+        { manifestDigestMatches: preview.digest === input.expected_manifest_digest },
       );
       workflow.current_version_id = input.workflow_version_id;
       workflow.lifecycle = "active";
@@ -549,20 +555,6 @@ export const MakeWorkflowAuthorityUntilRevokedSchema = z
   .object({ expected_manifest_digest: z.string().regex(/^[a-f0-9]{64}$/) })
   .strict();
 
-type AuthorityRow = typeof workflowExecutionAuthorities.$inferSelect;
-
-function sameBoundary(next: AuthorityRow, origin: AuthorityRow): boolean {
-  return (
-    next.workflow_id === origin.workflow_id &&
-    next.workflow_version_id === origin.workflow_version_id &&
-    next.execution_environment === origin.execution_environment &&
-    next.effect_manifest_digest === origin.effect_manifest_digest &&
-    next.max_runs === origin.max_runs &&
-    next.inherited_from === null &&
-    workflowJsonDigest(next.target_constraints) === workflowJsonDigest(origin.target_constraints)
-  );
-}
-
 async function authorityRow(db: Executor, tenant_id: string, id: string) {
   const [row] = await db
     .select()
@@ -584,13 +576,18 @@ export async function sameBoundaryReplacement(
 ): Promise<string> {
   const origin = await authorityRow(db, tenant_id, authority_id);
   if (!origin) return authority_id;
-  let current = origin;
-  for (let hop = 0; hop < 32 && current.superseded_by; hop++) {
-    const next = await authorityRow(db, tenant_id, current.superseded_by);
-    if (!next || !sameBoundary(next, origin)) break;
-    current = next;
-  }
-  return current.id;
+  const chain = await db
+    .select()
+    .from(workflowExecutionAuthorities)
+    .where(
+      and(
+        eq(workflowExecutionAuthorities.tenant_id, tenant_id),
+        eq(workflowExecutionAuthorities.workflow_id, origin.workflow_id),
+        eq(workflowExecutionAuthorities.workflow_version_id, origin.workflow_version_id),
+        eq(workflowExecutionAuthorities.execution_environment, origin.execution_environment),
+      ),
+    );
+  return replacementFor([origin, ...chain.filter((row) => row.id !== origin.id)], authority_id);
 }
 
 export async function makeWorkflowAuthorityUntilRevoked(

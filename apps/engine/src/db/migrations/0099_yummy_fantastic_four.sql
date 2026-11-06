@@ -1,1 +1,0 @@
-ALTER TABLE "workflows_schedules" ADD COLUMN "input_error" jsonb;

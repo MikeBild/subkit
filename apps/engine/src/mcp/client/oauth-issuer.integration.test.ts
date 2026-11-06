@@ -5,8 +5,8 @@ import {
   rotateOAuth2Tokens,
   upsertCredential,
 } from "../../credentials/service.ts";
-import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { makeMcpOAuthProvider } from "./oauth-provider.ts";
 import { getMcpConnector, type McpAuthConfig } from "./registry.ts";
 import { resolveAuthProvider } from "./session-auth.ts";
@@ -19,11 +19,7 @@ const serverUrl = "https://mcp.example.test/mcp";
 
 beforeAll(async () => {
   ctx = await createTestDb("mcp-issuer");
-  const [tenant] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "issuer", display_name: "Issuer" })
-    .returning();
-  if (!tenant) throw new Error("fixture tenant missing");
+  const tenant = await seedTenant(ctx.db, { slug: "issuer", display_name: "Issuer" });
   tenantId = tenant.id;
 });
 afterAll(async () => {

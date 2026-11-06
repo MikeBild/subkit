@@ -1,10 +1,13 @@
 #!/usr/bin/env bun
 
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { COMMENT_EXEMPT, COMMENT_SCOPE, findComments } from "./audit/comments.ts";
+import { parseFloorFile } from "./audit/coverage-floor.ts";
+import { listFiles } from "./audit/files.ts";
+import { createCache, evaluateRatchet, RATCHETS, writeRatchetBaseline } from "./audit/ratchets.ts";
 import { auditTenantFilter } from "./audit/tenant-filter-ast.ts";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -12,37 +15,6 @@ const REPO = resolve(dirname(__filename), "..", "..", "..");
 const ENGINE_SRC = join(REPO, "apps/engine/src");
 
 type Result = { id: string; status: "PASS" | "FAIL" | "SKIP"; message: string };
-
-function listFiles(root: string, predicate: (p: string) => boolean): string[] {
-  const out: string[] = [];
-  const stack = [root];
-  while (stack.length) {
-    const dir = stack.pop()!;
-    let entries: string[];
-    try {
-      entries = readdirSync(dir);
-    } catch {
-      continue;
-    }
-    for (const name of entries) {
-      const p = join(dir, name);
-      let s: ReturnType<typeof statSync>;
-      try {
-        s = statSync(p);
-      } catch {
-        continue;
-      }
-      if (s.isDirectory()) {
-        if (name === "node_modules" || name === "dist" || name === ".turbo") continue;
-        if (name === "worktrees" && basename(dir) === ".claude") continue;
-        stack.push(p);
-      } else if (predicate(p)) {
-        out.push(p);
-      }
-    }
-  }
-  return out;
-}
 
 function readAllowlist(filename: string): Set<string> {
   const path = join(REPO, "apps/engine", filename);
@@ -284,33 +256,6 @@ function checkFileSize(): Result {
   };
 }
 
-function checkRouteSize(): Result {
-  const allowlist = readAllowlist(".size-allowlist.txt");
-  const violations: string[] = [];
-  for (const f of listFiles(
-    join(ENGINE_SRC, "http/routes"),
-    (p) => p.endsWith(".ts") && !p.endsWith(".test.ts"),
-  )) {
-    const rel = relative(REPO, f);
-    const lines = readFileSync(f, "utf8").split("\n").length;
-    if (lines > 600 && !allowlist.has(rel)) {
-      violations.push(`${rel} (${lines} LOC)`);
-    }
-  }
-  if (violations.length === 0) {
-    return {
-      id: "route_size",
-      status: "PASS",
-      message: "no http/routes/**/*.ts > 600 LOC outside .size-allowlist.txt",
-    };
-  }
-  return {
-    id: "route_size",
-    status: "PASS",
-    message: `ADVISORY: ${violations.length} route files >600 LOC not allowlisted\n  ${violations.join("\n  ")}`,
-  };
-}
-
 function checkTenantFilter(): Result {
   // marker `// tenant-filter:exempt — <reason>` (leading or
   // trailing-on-same-line). The table allowlist
@@ -388,60 +333,37 @@ function checkNoLiveLlm(): Result {
 }
 
 function checkCoverageFloor(): Result {
-  const path = join(REPO, "apps/engine/.coverage-floor.json");
-  let text: string;
+  let raw: unknown;
   try {
-    text = readFileSync(path, "utf8");
-  } catch {
+    raw = JSON.parse(readFileSync(join(REPO, "apps/engine/.coverage-floor.json"), "utf8"));
+  } catch (err) {
     return {
       id: "coverage_floor",
       status: "FAIL",
-      message: ".coverage-floor.json missing",
+      message: `.coverage-floor.json missing or not JSON: ${(err as Error).message}`,
     };
   }
-  const parsed = JSON.parse(text) as {
-    subsystems?: Record<string, { line_min?: number; branch_min?: number }>;
-  };
-  const entries = Object.entries(parsed.subsystems ?? {});
-  if (entries.length === 0) {
+  const parsed = parseFloorFile(raw);
+  if ("errors" in parsed) {
     return {
       id: "coverage_floor",
       status: "FAIL",
-      message: ".coverage-floor.json has no subsystems declared",
+      message: `.coverage-floor.json invalid:\n  ${parsed.errors.join("\n  ")}`,
     };
   }
-  const malformed: string[] = [];
-  for (const [name, entry] of entries) {
-    if (typeof entry.line_min !== "number" || typeof entry.branch_min !== "number") {
-      malformed.push(name);
-    }
-  }
-  if (malformed.length > 0) {
-    return {
-      id: "coverage_floor",
-      status: "FAIL",
-      message: `entries missing line_min/branch_min:\n  ${malformed.join("\n  ")}`,
-    };
-  }
+  const { subsystems, files, core_default } = parsed.floors;
   return {
     id: "coverage_floor",
     status: "PASS",
-    message: `floors declared for ${entries.length} subsystems (numeric enforcement via \`bun run check:coverage-floor\`)`,
+    message: `floors declared for ${Object.keys(subsystems).length} subsystems and ${Object.keys(files).length} files${core_default ? `, core default ${core_default.line_min}/${core_default.branch_min}` : ""} (numeric enforcement via \`bun run check:coverage-floor\`)`,
   };
 }
 
 function checkRegressionIsolation(): Result {
-  const journeysDir = join(REPO, "apps/engine/src/tests/journeys");
-  let regressionFiles: string[] = [];
-  try {
-    regressionFiles = readdirSync(journeysDir).filter((n) => /regression.*\.test\.ts$/.test(n));
-  } catch {
-    return {
-      id: "regression_isolation",
-      status: "PASS",
-      message: "no journeys directory yet",
-    };
-  }
+  const regressionFiles = ["apps", "packages", "tests"]
+    .flatMap((root) => listFiles(join(REPO, root), (p) => /\.regression\.test\.tsx?$/.test(p)))
+    .map((f) => relative(REPO, f))
+    .sort();
   let pkg: { scripts?: Record<string, string> };
   try {
     pkg = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8"));
@@ -458,7 +380,7 @@ function checkRegressionIsolation(): Result {
     return {
       id: "regression_isolation",
       status: "PASS",
-      message: `${regressionFiles.length} regression journey file(s); none in test:unit inner loop`,
+      message: `${regressionFiles.length} *.regression.test.ts(x) file(s); none named in the test:unit inner loop`,
     };
   }
   return {
@@ -794,7 +716,6 @@ const CHECKS: Array<() => Result> = [
   checkRouteLayering,
   checkInternalLayering,
   checkFileSize,
-  checkRouteSize,
   checkTenantFilter,
   checkNoSnapshots,
   checkNoLiveLlm,
@@ -810,8 +731,24 @@ const CHECKS: Array<() => Result> = [
   checkNoComments,
 ];
 
+const cache = createCache(REPO);
+
+if (process.argv.includes("--update-baseline")) {
+  for (const ratchet of RATCHETS) {
+    const count = writeRatchetBaseline(REPO, ratchet, cache, process.argv.includes("--accept-new"));
+    console.log(`${ratchet.id.padEnd(28)} ${count} allowlisted`);
+  }
+  process.exit(0);
+}
+
+const ratchetChecks = RATCHETS.map((ratchet) => {
+  const run = (): Result => evaluateRatchet(REPO, ratchet, cache);
+  Object.defineProperty(run, "name", { value: ratchet.id });
+  return run;
+});
+
 const results: Result[] = [];
-for (const check of CHECKS) {
+for (const check of [...CHECKS, ...ratchetChecks]) {
   try {
     results.push(check());
   } catch (err) {

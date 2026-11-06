@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { tenantDlpRules, tenants } from "../../db/schema/index.ts";
+import { tenantDlpRules } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   applyDlpFilters,
   DEFAULT_DLP_RULES,
@@ -13,11 +14,8 @@ let tenant_id: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("dlp_filters");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-dlp", display_name: "DLP" })
-    .returning();
-  tenant_id = t!.id;
+  const t = await seedTenant(ctx.db, { slug: "t-dlp", display_name: "DLP" });
+  tenant_id = t.id;
 });
 
 afterAll(async () => {
@@ -174,18 +172,15 @@ describe("loadDlpRules — DB + cache", () => {
 
   test("disabled rules are filtered out", async () => {
     resetDlpCache();
-    const [fresh] = await ctx.db
-      .insert(tenants)
-      .values({ slug: "t-dlp-disabled", display_name: "x" })
-      .returning();
+    const fresh = await seedTenant(ctx.db, { slug: "t-dlp-disabled", display_name: "x" });
     await ctx.db.insert(tenantDlpRules).values({
-      tenant_id: fresh!.id,
+      tenant_id: fresh.id,
       path_match: "**.off",
       action: "mask",
       reason: "off",
       enabled: false,
     });
-    const rules = await loadDlpRules(fresh!.id, ctx.db);
+    const rules = await loadDlpRules(fresh.id, ctx.db);
     expect(rules.some((r) => r.path_match === "**.off")).toBe(false);
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { originLine } from "@/features/chat";
 import { formatShortRelativeTime } from "@/lib/i18n";
-import { originLine } from "./chat";
 
 const t = ((key: string) =>
   ({

@@ -36,10 +36,6 @@ const CHECKPOINT_KEYS: readonly AuthoringCheckpointKey[] = [
   "workflow_diagnosed",
 ];
 
-function nowIso(): string {
-  return new Date().toISOString();
-}
-
 export function createEmptyWorkflowDraft(): WorkflowDraftDocument {
   return {
     name: "new-workflow",
@@ -322,7 +318,10 @@ export function parseCheckpointRecord(
   };
 }
 
-export function normalizePersistedResource(value: unknown): PersistedResourceRef | null {
+export function normalizePersistedResource(
+  value: unknown,
+  now: () => string,
+): PersistedResourceRef | null {
   if (!isRecord(value) || typeof value.kind !== "string" || typeof value.id !== "string") {
     return null;
   }
@@ -335,7 +334,7 @@ export function normalizePersistedResource(value: unknown): PersistedResourceRef
     version: typeof value.version === "number" ? value.version : null,
     environment:
       value.environment === "dev" || value.environment === "prod" ? value.environment : null,
-    saved_at: typeof value.saved_at === "string" ? value.saved_at : nowIso(),
+    saved_at: typeof value.saved_at === "string" ? value.saved_at : now(),
     ...(value.draft_version_id === null || typeof value.draft_version_id === "string"
       ? { draft_version_id: value.draft_version_id }
       : {}),
@@ -348,7 +347,10 @@ export function normalizePersistedResource(value: unknown): PersistedResourceRef
   };
 }
 
-export function normalizeLatestExecution(value: unknown): LatestExecutionSummary | null {
+export function normalizeLatestExecution(
+  value: unknown,
+  now: () => string,
+): LatestExecutionSummary | null {
   if (
     !isRecord(value) ||
     typeof value.execution_id !== "string" ||
@@ -367,13 +369,16 @@ export function normalizeLatestExecution(value: unknown): LatestExecutionSummary
         ? (value.environment as LatestExecutionSummary["environment"])
         : "dev",
     warnings_count: typeof value.warnings_count === "number" ? value.warnings_count : 0,
-    recorded_at: typeof value.recorded_at === "string" ? value.recorded_at : nowIso(),
+    recorded_at: typeof value.recorded_at === "string" ? value.recorded_at : now(),
     diagnosis_available: value.diagnosis_available === true,
     ...(value.requires_repair === true ? { requires_repair: true } : {}),
   };
 }
 
-export function normalizeLatestDiagnosis(value: unknown): LatestDiagnosisSummary | null {
+export function normalizeLatestDiagnosis(
+  value: unknown,
+  now: () => string,
+): LatestDiagnosisSummary | null {
   if (
     !isRecord(value) ||
     typeof value.execution_id !== "string" ||
@@ -383,7 +388,7 @@ export function normalizeLatestDiagnosis(value: unknown): LatestDiagnosisSummary
   }
   return {
     execution_id: value.execution_id,
-    recorded_at: typeof value.recorded_at === "string" ? value.recorded_at : nowIso(),
+    recorded_at: typeof value.recorded_at === "string" ? value.recorded_at : now(),
     reason: value.reason,
     warning_sources: Array.isArray(value.warning_sources)
       ? value.warning_sources
@@ -471,15 +476,20 @@ function normalizeJudgeBreaker(value: unknown): JudgeBreakerState | null {
 
 function normalizeLastDeniedIntent(
   value: unknown,
+  now: () => string,
 ): { fingerprint: string; timestamp: string } | null {
   if (!isRecord(value) || typeof value.fingerprint !== "string") return null;
   return {
     fingerprint: value.fingerprint,
-    timestamp: typeof value.timestamp === "string" ? value.timestamp : nowIso(),
+    timestamp: typeof value.timestamp === "string" ? value.timestamp : now(),
   };
 }
 
-export function normalizeState(raw: unknown, draftMode: AuthoringMode | undefined): AuthoringState {
+export function normalizeState(
+  raw: unknown,
+  draftMode: AuthoringMode | undefined,
+  now: () => string,
+): AuthoringState {
   const fallback = createEmptyState(surfaceModeFor(draftMode));
   if (!isRecord(raw) || !isRecord(raw.state)) return fallback;
   const state = raw.state;
@@ -499,18 +509,18 @@ export function normalizeState(raw: unknown, draftMode: AuthoringMode | undefine
     checkpoints: {},
     persisted_resources: Array.isArray(state.persisted_resources)
       ? state.persisted_resources
-          .map(normalizePersistedResource)
+          .map((item) => normalizePersistedResource(item, now))
           .filter((item): item is PersistedResourceRef => item !== null)
       : [],
-    latest_execution: normalizeLatestExecution(state.latest_execution),
-    latest_diagnosis: normalizeLatestDiagnosis(state.latest_diagnosis),
+    latest_execution: normalizeLatestExecution(state.latest_execution, now),
+    latest_diagnosis: normalizeLatestDiagnosis(state.latest_diagnosis, now),
     judge_breaker: normalizeJudgeBreaker(state.judge_breaker),
     grounding_fingerprint:
       typeof state.grounding_fingerprint === "string" ? state.grounding_fingerprint : null,
     grounding_connector_ids: Array.isArray(state.grounding_connector_ids)
       ? state.grounding_connector_ids.filter((id): id is string => typeof id === "string")
       : null,
-    last_denied_intent: normalizeLastDeniedIntent(state.last_denied_intent),
+    last_denied_intent: normalizeLastDeniedIntent(state.last_denied_intent, now),
     latest_workflow_save_error: normalizeWorkflowSaveError(state.latest_workflow_save_error),
     authoring_focus: state.authoring_focus === "connector" ? "connector" : null,
   };
@@ -523,7 +533,7 @@ export function normalizeState(raw: unknown, draftMode: AuthoringMode | undefine
   return next;
 }
 
-export function normalizeSummary(raw: unknown): AuthoringSummary | undefined {
+export function normalizeSummary(raw: unknown, now: () => string): AuthoringSummary | undefined {
   if (!isRecord(raw) || !isRecord(raw.summary)) return undefined;
   const summary = raw.summary;
   return {
@@ -619,12 +629,12 @@ export function normalizeSummary(raw: unknown): AuthoringSummary | undefined {
       : [],
     persisted_resources: Array.isArray(summary.persisted_resources)
       ? summary.persisted_resources
-          .map(normalizePersistedResource)
+          .map((item) => normalizePersistedResource(item, now))
           .filter((item): item is PersistedResourceRef => item !== null)
       : [],
-    latest_execution: normalizeLatestExecution(summary.latest_execution),
-    latest_diagnosis: normalizeLatestDiagnosis(summary.latest_diagnosis),
+    latest_execution: normalizeLatestExecution(summary.latest_execution, now),
+    latest_diagnosis: normalizeLatestDiagnosis(summary.latest_diagnosis, now),
   };
 }
 
-export { CHECKPOINT_KEYS, nowIso };
+export { CHECKPOINT_KEYS };

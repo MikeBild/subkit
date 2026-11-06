@@ -1,12 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
-import { getConfig, loadConfig } from "../../config/loader.ts";
 import { deriveConversationOutcome } from "../../conversations/lifecycle-view.ts";
 import * as svc from "../../conversations/service.ts";
-import { auditLog, conversations, systemAccounts, tenants, users } from "../../db/schema/index.ts";
+import { auditLog, conversations, systemAccounts, users } from "../../db/schema/index.ts";
 import {
   getMcpTask,
   insertMcpTask,
@@ -16,8 +12,10 @@ import {
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { CONVERSATION_RUN_TURN_DLQ } from "../queues.ts";
 import { createQueueCtx, type QueueTestCtx } from "../tests/setup.ts";
+import { ensureTestConfig } from "../tests/test-config.ts";
 import { registerConversationRunTurnDlqHandler } from "./conversation-run-turn-dlq.ts";
 
 let queue: QueueTestCtx;
@@ -25,27 +23,14 @@ let tenantId: string;
 let userId: string;
 const nextUuid = createDeterministicUuidFactory(0xd1e2026);
 
-async function ensureConfig(): Promise<void> {
-  try {
-    getConfig();
-    return;
-  } catch {}
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-runturn-dlq-test-"));
-  await loadConfig({
-    env: { DATABASE_URL: "postgres://placeholder/runturn-dlq-test", NODE_ENV: "test" },
-    configPathOverride: join(dir, "subkit.config.json"),
-  });
-}
-
 beforeAll(async () => {
   process.env.LLM_PROVIDER = "mock";
-  await ensureConfig();
+  await ensureTestConfig();
   queue = await createQueueCtx("conversation_run_turn_dlq");
-  const [t] = await queue.testDb.db
-    .insert(tenants)
-    .values({ slug: "t-runturn-dlq", display_name: "RunTurnDLQ" })
-    .returning();
-  if (!t) throw new Error("seed tenant failed");
+  const t = await seedTenant(queue.testDb.db, {
+    slug: "t-runturn-dlq",
+    display_name: "RunTurnDLQ",
+  });
   tenantId = t.id;
   const [u] = await queue.testDb.db
     .insert(users)

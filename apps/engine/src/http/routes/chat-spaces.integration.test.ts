@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../../audit/index.ts";
-import { apiKeys, chatIdentities, tenants, users } from "../../db/schema/index.ts";
+import { apiKeys, chatIdentities, users } from "../../db/schema/index.ts";
 import { builtinRoleId, createRole } from "../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
 
 const hex = createDeterministicHexFactory(0xc4a57_5eed);
@@ -87,11 +88,7 @@ beforeAll(async () => {
   if (!memberUser) throw new Error("seed member user failed");
   memberApiKey = await mintApiKey(ctx.db, ctx.tenantId, memberUser.id);
 
-  const [tenant2] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-chat-spaces-b", display_name: "Tenant B" })
-    .returning();
-  if (!tenant2) throw new Error("seed tenant B failed");
+  const tenant2 = await seedTenant(ctx.db, { slug: "t-chat-spaces-b", display_name: "Tenant B" });
   const [admin2] = await ctx.db
     .insert(users)
     .values({

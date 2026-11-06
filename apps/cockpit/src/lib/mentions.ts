@@ -1,4 +1,4 @@
-import type { components } from "@/api/schema";
+import type { components } from "@cli-core/engine-api/openapi";
 
 export type ConversationReference = components["schemas"]["ConversationReference"];
 export type ConversationReferenceType = ConversationReference["type"];

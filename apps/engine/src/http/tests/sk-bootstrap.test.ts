@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
-import { apiKeys, conversations, systemAccounts, tenants, users } from "../../db/schema/index.ts";
+import { apiKeys, conversations, systemAccounts, users } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -16,11 +17,7 @@ let systemAccountId: string;
 beforeAll(async () => {
   ctx = await createHttpTestServer("sk-bootstrap");
 
-  const [t2] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-foreign", display_name: "Foreign tenant" })
-    .returning();
-  if (!t2) throw new Error("seed foreign tenant failed");
+  const t2 = await seedTenant(ctx.db, { slug: "t-foreign", display_name: "Foreign tenant" });
   foreignTenantId = t2.id;
   const [u2] = await ctx.db
     .insert(users)

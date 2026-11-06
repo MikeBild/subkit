@@ -1,16 +1,15 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
-import { runMigrations } from "../../db/migrate.ts";
 import {
   events,
   executions,
-  tenants,
   workflowExecutionAuthorities,
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { type CreateExecutionParams, createExecution } from "../state.ts";
 
 let ctx: TestDb;
@@ -25,8 +24,7 @@ afterAll(async () => {
 
 async function fixture(patch: Partial<typeof workflowExecutionAuthorities.$inferInsert> = {}) {
   const slug = `authority-reservation-${++counter}`;
-  const [tenant] = await ctx.db.insert(tenants).values({ slug, display_name: slug }).returning();
-  if (!tenant) throw new Error("missing tenant fixture");
+  const tenant = await seedTenant(ctx.db, { slug, display_name: slug });
   const [workflow] = await ctx.db
     .insert(workflows)
     .values({ tenant_id: tenant.id, slug, name: slug, lifecycle: "active" })
@@ -219,32 +217,4 @@ test("an admitted execution cannot change authority or input but can progress no
       .execute(),
   ).rejects.toThrow();
   expect(await reserved(f.authority.id)).toBe(1);
-});
-
-test("upgrading preserves executions created before authorities without assigning or consuming an authority", async () => {
-  const upgraded = await createTestDb("authority_reservation_upgrade", { upToIdx: 54 });
-  try {
-    const owner = await upgraded.pool.query<{ id: string }>(
-      "INSERT INTO subkit.tenants (slug,display_name) VALUES ('upgraded-run','Upgraded run') RETURNING id",
-    );
-    const tenant = owner.rows[0]?.id;
-    if (!tenant) throw new Error("missing upgraded tenant fixture");
-    const inserted = await upgraded.pool.query<{ id: string }>(
-      "INSERT INTO subkit.executions (tenant_id,source_kind,status,request_source,execution_mode,input) VALUES ($1,'draft','queued','api','dev','{\"original\":true}') RETURNING id",
-      [tenant],
-    );
-    await runMigrations(upgraded.db);
-    const [row] = await upgraded.db
-      .select()
-      .from(executions)
-      .where(eq(executions.id, inserted.rows[0]!.id));
-    expect(row).toMatchObject({
-      execution_authority_id: null,
-      status: "queued",
-      input: { original: true },
-    });
-    expect(await upgraded.db.select().from(workflowExecutionAuthorities)).toHaveLength(0);
-  } finally {
-    await upgraded.cleanup();
-  }
 });

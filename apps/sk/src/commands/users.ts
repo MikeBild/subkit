@@ -1,18 +1,8 @@
 import * as prompts from "@clack/prompts";
-import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
-import { resolveProfile } from "../config.ts";
-import { EngineClient, type UserInviteIssuedWire } from "../engine-client.ts";
-
-function makeClient() {
-  const profile = resolveProfile();
-  return new EngineClient({
-    engine_url: profile.engine_url,
-    api_key: profile.api_key,
-    tenant: profile.active_tenant_id,
-  });
-}
+import type { UserInviteIssuedWire } from "../engine-client.ts";
+import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
 function csv(value: unknown): string[] | undefined {
   if (typeof value !== "string" || value.length === 0) return undefined;
@@ -70,16 +60,17 @@ const listCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const { items } = await client.listIdentityUsers(userListQuery(args));
-      if (args.json) {
-        printJson(items);
-        return;
-      }
-      emitList(false, USER_LIST_COLUMNS, userListRows(items));
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { items } = await client.listIdentityUsers(userListQuery(args));
+        if (args.json) {
+          printJson(items);
+          return;
+        }
+        emitList(false, USER_LIST_COLUMNS, userListRows(items));
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -92,32 +83,33 @@ const createCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const body: { email: string; role?: "admin" | "member" | "enduser" } = {
-        email: String(args.email),
-      };
-      if (args.role) {
-        const role = String(args.role);
-        if (role !== "admin" && role !== "member" && role !== "enduser") {
-          process.stderr.write("sk users create: --role must be one of admin|member|enduser\n");
-          process.exit(2);
+    return withCommandErrors(
+      async () => {
+        const body: { email: string; role?: "admin" | "member" | "enduser" } = {
+          email: String(args.email),
+        };
+        if (args.role) {
+          const role = String(args.role);
+          if (role !== "admin" && role !== "member" && role !== "enduser") {
+            process.stderr.write("sk users create: --role must be one of admin|member|enduser\n");
+            process.exit(2);
+          }
+          body.role = role;
         }
-        body.role = role;
-      }
-      const user = await client.createUser(body);
-      if (args.json) {
-        printJson(user);
-        return;
-      }
-      process.stdout.write(
-        `created user\n` +
-          `  id     ${user.id}\n` +
-          `  email  ${user.email}\n` +
-          `  role   ${user.role}\n`,
-      );
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+        const user = await client.createUser(body);
+        if (args.json) {
+          printJson(user);
+          return;
+        }
+        process.stdout.write(
+          `created user\n` +
+            `  id     ${user.id}\n` +
+            `  email  ${user.email}\n` +
+            `  role   ${user.role}\n`,
+        );
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -140,39 +132,40 @@ const inviteCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const body: {
-        scopes?: string[];
-        allowed_workflows?: string[];
-        allowed_connectors?: string[];
-        ttl_minutes?: number;
-      } = {};
-      const scopes = csv(args.scopes);
-      if (scopes) body.scopes = scopes;
-      const aw = csv(args["allowed-workflows"]);
-      if (aw) body.allowed_workflows = aw;
-      const ac = csv(args["allowed-connectors"]);
-      if (ac) body.allowed_connectors = ac;
-      if (args.ttl) {
-        const ttl = Number(args.ttl);
-        if (!Number.isInteger(ttl) || ttl <= 0) {
-          process.stderr.write("sk users invite: --ttl must be a positive integer (minutes)\n");
-          process.exit(2);
+    return withCommandErrors(
+      async () => {
+        const body: {
+          scopes?: string[];
+          allowed_workflows?: string[];
+          allowed_connectors?: string[];
+          ttl_minutes?: number;
+        } = {};
+        const scopes = csv(args.scopes);
+        if (scopes) body.scopes = scopes;
+        const aw = csv(args["allowed-workflows"]);
+        if (aw) body.allowed_workflows = aw;
+        const ac = csv(args["allowed-connectors"]);
+        if (ac) body.allowed_connectors = ac;
+        if (args.ttl) {
+          const ttl = Number(args.ttl);
+          if (!Number.isInteger(ttl) || ttl <= 0) {
+            process.stderr.write("sk users invite: --ttl must be a positive integer (minutes)\n");
+            process.exit(2);
+          }
+          body.ttl_minutes = ttl;
         }
-        body.ttl_minutes = ttl;
-      }
-      const invite = await client.createInvite(String(args.id), body);
-      if (args.json) {
-        printJson(invite);
-        return;
-      }
-      process.stderr.write(
-        "warning: the invite token is shown only once — hand it to the invited user securely\n",
-      );
-      process.stdout.write(formatInviteIssued(invite));
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+        const invite = await client.createInvite(String(args.id), body);
+        if (args.json) {
+          printJson(invite);
+          return;
+        }
+        process.stderr.write(
+          "warning: the invite token is shown only once — hand it to the invited user securely\n",
+        );
+        process.stdout.write(formatInviteIssued(invite));
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -181,11 +174,9 @@ const getCmd = defineCommand({
   args: { id: { type: "positional", required: true, description: "User id" } },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       printJson(await client.getIdentityUser(String(args.id)));
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -201,16 +192,14 @@ const patchCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       const role = String(args.role);
       if (role !== "admin" && role !== "member" && role !== "enduser") {
         process.stderr.write("sk users patch: --role must be one of admin|member|enduser\n");
         process.exit(2);
       }
       printJson(await client.patchIdentityUser(String(args.id), { role }));
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -219,14 +208,12 @@ const deleteCmd = defineCommand({
   args: { id: { type: "positional", required: true, description: "User id" } },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       const confirmed = await prompts.confirm({ message: `Delete user "${args.id}"?` });
       if (!confirmed || prompts.isCancel(confirmed)) return;
       await client.deleteIdentityUser(String(args.id));
       process.stdout.write("deleted\n");
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 

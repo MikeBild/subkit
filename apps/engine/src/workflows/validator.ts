@@ -12,6 +12,7 @@ import { compileJsonSchemaContract } from "../execution/index.ts";
 import { compileOutputContractSchema } from "../execution/output-contract.ts";
 import { compileSelector } from "../execution/selectors.ts";
 import { parsePlaceholders } from "../llm/substitution/parser.ts";
+import { cycleIssues } from "./core/definition.ts";
 import {
   type DestinationPlaceholderViolation,
   detectPlaceholderDestinations,
@@ -122,6 +123,7 @@ export function validateWorkflowDef(
     }
     ids.add(step.id);
   }
+  errors.push(...cycleIssues(wf));
   for (const step of wf.steps) {
     if (typeof step.for_each === "string") {
       const selector = step.for_each.trim();

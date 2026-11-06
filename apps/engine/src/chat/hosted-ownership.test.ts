@@ -16,6 +16,7 @@ import {
 } from "../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../http/tests/setup.ts";
 import { FROZEN_NOW } from "../test-helpers/determinism/clock.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import type { ChatAdapter } from "./adapter.ts";
 import { handleChatEvent } from "./dispatcher.ts";
 import { ensureDmAutoRegistration } from "./dm-autoregister.ts";
@@ -173,11 +174,10 @@ test("tenant-local email linking cannot bypass the hosted global identity member
   ).toHaveLength(0);
 });
 test("self-hosted tenants retain their existing chat installation policy", async () => {
-  const [selfhost] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "hosted-chat-selfhost-control", display_name: "Selfhost" })
-    .returning();
-  if (!selfhost) throw new Error("missing tenant");
+  const selfhost = await seedTenant(ctx.db, {
+    slug: "hosted-chat-selfhost-control",
+    display_name: "Selfhost",
+  });
   await expect(assertChatWorkspaceOwnershipAvailable(ctx.db, selfhost.id)).resolves.toBeUndefined();
   await expect(assertChatWorkspaceOwnershipAvailable(ctx.db, ctx.tenantId)).rejects.toBeInstanceOf(
     HostedChatOwnershipRequired,

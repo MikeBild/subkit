@@ -1,1 +1,0 @@
-ALTER TABLE "oidc_login_states" ADD COLUMN "membership_invite_id" uuid;

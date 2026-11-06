@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { connectors, tenants } from "../db/schema/index.ts";
+import { connectors } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import {
   applyMigration,
   diffShapesDeep,
@@ -15,11 +16,7 @@ let connectorId: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("schema_migration");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-mig", display_name: "T mig" })
-    .returning();
-  tenantId = t!.id;
+  tenantId = (await seedTenant(ctx.db, { slug: "t-mig", display_name: "T mig" })).id;
   const [c] = await ctx.db
     .insert(connectors)
     .values({

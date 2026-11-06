@@ -1,14 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import {
-  connectorEndpointSchemas,
-  connectors,
-  conversations,
-  tenants,
-} from "../../../db/schema/index.ts";
+import { connectorEndpointSchemas, connectors, conversations } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { attachInlineForTest } from "../../../files/test-helpers.ts";
 import { createDeterministicHexFactory } from "../../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import { analyzeConversationAttachments } from "../analyze-conversation-attachments.ts";
 
 const nextHex = createDeterministicHexFactory(0xa11ac0);
@@ -40,11 +36,8 @@ const STRIPE_OPENAPI = JSON.stringify({
 
 beforeAll(async () => {
   ctx = await createTestDb("analyze_attachments");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-aca", display_name: "T-ACA" })
-    .returning();
-  tenant_id = t!.id;
+  const t = await seedTenant(ctx.db, { slug: "t-aca", display_name: "T-ACA" });
+  tenant_id = t.id;
   const [conv] = await ctx.db
     .insert(conversations)
     .values({ tenant_id, status: "active" })

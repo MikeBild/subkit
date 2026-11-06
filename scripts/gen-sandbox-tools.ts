@@ -40,17 +40,10 @@ for (const name of names) {
     return "";
   });
   const destination = resolve(root, `apps/engine/src/sandboxes/quickjs/stdlib/helpers/${name}.js`);
-  const declaration = "declare const source: string;\nexport default source;\n";
-  const declarationPath = `${destination.slice(0, -3)}.d.ts`;
   if (process.argv.includes("--check")) {
     if ((await Bun.file(destination).text()) !== source)
       throw new Error(`Sandbox ${name} helper bundle drift; run bun run gen:sandbox-tools`);
-    if ((await Bun.file(declarationPath).text()) !== declaration)
-      throw new Error(`Sandbox ${name} helper declaration drift`);
-  } else {
-    await Bun.write(destination, source);
-    await Bun.write(declarationPath, declaration);
-  }
+  } else await Bun.write(destination, source);
   sources[name] = source;
 }
 
@@ -63,16 +56,10 @@ const coreBuild = await Bun.build({
 if (!coreBuild.success || !coreBuild.outputs[0]) throw new Error(coreBuild.logs.join("\n"));
 const coreSource = await coreBuild.outputs[0].text();
 const corePath = resolve(root, "apps/engine/src/sandboxes/quickjs/stdlib/helpers/core.js");
-const coreDeclaration = "declare const source: string;\nexport default source;\n";
 if (process.argv.includes("--check")) {
   if ((await Bun.file(corePath).text()) !== coreSource)
     throw new Error("Sandbox core bundle drift; run bun run gen:sandbox-tools");
-  if ((await Bun.file(corePath.replace(/\.js$/, ".d.ts")).text()) !== coreDeclaration)
-    throw new Error("Sandbox core declaration drift");
-} else {
-  await Bun.write(corePath, coreSource);
-  await Bun.write(corePath.replace(/\.js$/, ".d.ts"), coreDeclaration);
-}
+} else await Bun.write(corePath, coreSource);
 sources.core = coreSource;
 const bundleNames = [...names, "core"];
 

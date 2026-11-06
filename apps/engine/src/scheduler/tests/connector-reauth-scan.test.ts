@@ -7,13 +7,13 @@ import {
   events,
   executionSteps,
   executions,
-  tenants,
   workflows,
   workflowsSchedules,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { logRing } from "../../observability/log-ring.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { runConnectorReauthScanForTenant } from "../connector-reauth-scan-runner.ts";
 
 const NOW = new Date("2026-06-01T00:00:00.000Z");
@@ -30,17 +30,11 @@ let okBaseUrl: string;
 beforeAll(async () => {
   db = await createTestDb("reauth-scan");
 
-  const [t] = await db.db
-    .insert(tenants)
-    .values({ slug: "t-scan", display_name: "Scan Tenant" })
-    .returning();
-  tenantId = t!.id;
+  const t = await seedTenant(db.db, { slug: "t-scan", display_name: "Scan Tenant" });
+  tenantId = t.id;
 
-  const [t2] = await db.db
-    .insert(tenants)
-    .values({ slug: "t-scan-other", display_name: "Other Tenant" })
-    .returning();
-  otherTenantId = t2!.id;
+  const t2 = await seedTenant(db.db, { slug: "t-scan-other", display_name: "Other Tenant" });
+  otherTenantId = t2.id;
 
   mockServer401 = await createMockServer((_req, res) => {
     jsonResponse(res, 401, { error: "unauthorized" });

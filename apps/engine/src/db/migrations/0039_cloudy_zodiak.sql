@@ -1,1 +1,0 @@
-CREATE INDEX "execution_steps_running_execution_idx" ON "execution_steps" USING btree ("execution_id") WHERE "execution_steps"."status" = 'running';

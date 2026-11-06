@@ -1,1 +1,0 @@
-ALTER TABLE "conversation_elicitations" ADD COLUMN "playbook_context_fingerprint" text;

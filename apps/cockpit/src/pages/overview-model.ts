@@ -1,4 +1,4 @@
-import type { components } from "@/api/schema";
+import type { components } from "@cli-core/engine-api/openapi";
 import { reviewFromUrl } from "@/app/links";
 import { growthLine } from "@/lib/authority-growth";
 import { causeClassKey } from "@/lib/cause-class";

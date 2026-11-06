@@ -3,12 +3,12 @@ import { eq } from "drizzle-orm";
 import { upsertCredential } from "../../credentials/service.ts";
 import {
   connectors,
-  tenants,
   workflows,
   workflowsSchedules,
   workflowVersions,
 } from "../../db/schema/index.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { buildDefaultRegistry, createApp } from "../server.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -443,11 +443,10 @@ test("workflows that call each other do not loop", async () => {
 test("a same-slug connector of another tenant never makes Production possible", async () => {
   const slug = `tenant-${suffix(6)}`;
   const devConnector = await connector(slug, "dev");
-  const [other] = await ctx.db
-    .insert(tenants)
-    .values({ slug: `other-${suffix(6)}`, display_name: "Other tenant" })
-    .returning();
-  if (!other) throw new Error("missing second tenant");
+  const other = await seedTenant(ctx.db, {
+    slug: `other-${suffix(6)}`,
+    display_name: "Other tenant",
+  });
   await connector(slug, "prod", { tenant_id: other.id });
   const direct = await both(await workflow(devConnector.id));
   expect(direct.dev.environments.prod.possible).toBe(false);

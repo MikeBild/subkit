@@ -10,7 +10,6 @@ import {
   intakeItems,
   knowledgeSources,
   skills,
-  tenants,
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
@@ -22,6 +21,7 @@ import {
   restoreClock,
 } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { saveWorkflowDraft } from "../../workflows/drafts.ts";
 import { updateWorkflow } from "../../workflows/service.ts";
 import { CORRECTION_AGENT, collectCorrectionIntake } from "../correction-intake.ts";
@@ -39,15 +39,6 @@ let tenantId: string;
 let otherTenantId: string;
 let workflowId: string;
 let otherWorkflowId: string;
-
-async function seedTenant(slug: string): Promise<string> {
-  const [row] = await testDb.db
-    .insert(tenants)
-    .values({ slug, display_name: slug })
-    .returning({ id: tenants.id });
-  if (!row) throw new Error("tenant seed failed");
-  return row.id;
-}
 
 async function seedWorkflow(tenant_id: string, slug: string, name: string): Promise<string> {
   const [row] = await testDb.db
@@ -168,8 +159,12 @@ beforeEach(async () => {
   if (skip) return;
   installClock(createDeterministicClock(FROZEN_NOW));
   const suffix = uuid().slice(0, 8);
-  tenantId = await seedTenant(`corr-a-${suffix}`);
-  otherTenantId = await seedTenant(`corr-b-${suffix}`);
+  tenantId = (
+    await seedTenant(testDb.db, { slug: `corr-a-${suffix}`, display_name: `corr-a-${suffix}` })
+  ).id;
+  otherTenantId = (
+    await seedTenant(testDb.db, { slug: `corr-b-${suffix}`, display_name: `corr-b-${suffix}` })
+  ).id;
   workflowId = await seedWorkflow(tenantId, "orders-digest", "Orders digest");
   otherWorkflowId = await seedWorkflow(otherTenantId, "orders-digest", "Orders digest");
 });

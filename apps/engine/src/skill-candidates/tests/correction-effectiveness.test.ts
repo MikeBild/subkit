@@ -8,7 +8,6 @@ import {
   intakeItems,
   intakeProposals,
   skillEffectiveness,
-  tenants,
   workflows,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -24,6 +23,7 @@ import {
   restoreClock,
 } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { measureCorrectionEffectiveness } from "../correction-effectiveness.ts";
 import { collectCorrectionIntake } from "../correction-intake.ts";
 
@@ -49,13 +49,9 @@ afterEach(() => {
   restoreClock(null);
 });
 
-async function seedTenant(): Promise<{ tenant_id: string; workflow_id: string }> {
+async function seedTenantWithWorkflow(): Promise<{ tenant_id: string; workflow_id: string }> {
   const slug = `corr-eff-${uuid().slice(0, 8)}`;
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug, display_name: slug })
-    .returning({ id: tenants.id });
-  if (!tenant) throw new Error("tenant seed failed");
+  const tenant = await seedTenant(testDb.db, { slug, display_name: slug });
   await testDb.db.insert(catalogCategories).values({ tenant_id: tenant.id, name: "orders" });
   const [workflow] = await testDb.db
     .insert(workflows)
@@ -142,8 +138,8 @@ async function admitAsSkill(tenant_id: string, workflow_id: string): Promise<str
 describe.skipIf(skip)("measureCorrectionEffectiveness", () => {
   test("an admitted correction records executions and recurrences before and after", async () => {
     installClock(createDeterministicClock(FROZEN_NOW));
-    const { tenant_id, workflow_id } = await seedTenant();
-    const other = await seedTenant();
+    const { tenant_id, workflow_id } = await seedTenantWithWorkflow();
+    const other = await seedTenantWithWorkflow();
     await seedJudgeFailure(tenant_id, workflow_id, new Date(FROZEN_NOW - 5 * DAY));
     await collectCorrectionIntake(tenant_id, testDb.db);
     const proposalId = await admitAsSkill(tenant_id, workflow_id);
@@ -184,7 +180,7 @@ describe.skipIf(skip)("measureCorrectionEffectiveness", () => {
 
   test("a confirmed proposal without correction items is not measured", async () => {
     installClock(createDeterministicClock(FROZEN_NOW));
-    const { tenant_id, workflow_id } = await seedTenant();
+    const { tenant_id, workflow_id } = await seedTenantWithWorkflow();
     await createSessionIntakeItem(
       {
         tenant_id,

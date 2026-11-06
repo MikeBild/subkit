@@ -6,8 +6,9 @@ import { and, eq } from "drizzle-orm";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import { closeDb } from "../../db/client.ts";
-import { auditLog, connectors, tenants } from "../../db/schema/index.ts";
+import { auditLog, connectors } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   __resetMcpClientPoolForTests,
   __setMcpPoolFactoriesForTests,
@@ -67,11 +68,8 @@ beforeAll(async () => {
     force: true,
   });
 
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-m2m-oauth", display_name: "M2M OAuth Tenant" })
-    .returning();
-  tenantId = t!.id;
+  const t = await seedTenant(ctx.db, { slug: "t-m2m-oauth", display_name: "M2M OAuth Tenant" });
+  tenantId = t.id;
 }, 30_000);
 
 afterAll(async () => {
@@ -332,11 +330,8 @@ describe("pool: tenant isolation for M2M credential resolution", () => {
   test("tenant B cannot access tenant A's oauth2_client_credentials server", async () => {
     __resetMcpClientPoolForTests();
 
-    const [tB] = await ctx.db
-      .insert(tenants)
-      .values({ slug: "t-m2m-b", display_name: "M2M Tenant B" })
-      .returning();
-    const tenantBId = tB!.id;
+    const tB = await seedTenant(ctx.db, { slug: "t-m2m-b", display_name: "M2M Tenant B" });
+    const tenantBId = tB.id;
 
     const serverA = await seedMcpConnector(ctx.db, {
       tenant_id: tenantId,

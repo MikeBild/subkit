@@ -1,15 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { count } from "drizzle-orm";
-import {
-  auditLog,
-  executions,
-  tenants,
-  workflows,
-  workflowWaits,
-} from "../../../db/schema/index.ts";
+import { auditLog, executions, workflows, workflowWaits } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { RunLlmBudget } from "../../../llm/accounting/enforce.ts";
 import { FROZEN_NOW } from "../../../test-helpers/determinism/clock.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import type { WaitStep } from "../../../workflows/types.ts";
 import type { StepRunContext } from "../../types.ts";
 import { runWaitStep } from "../wait.ts";
@@ -21,11 +16,8 @@ let executionId: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("wait_checkpoint");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "wait-cp", display_name: "wait cp" })
-    .returning();
-  tenantId = t!.id;
+  const t = await seedTenant(ctx.db, { slug: "wait-cp", display_name: "wait cp" });
+  tenantId = t.id;
   const [w] = await ctx.db
     .insert(workflows)
     .values({ tenant_id: tenantId, slug: "wf-wait", name: "wait workflow", lifecycle: "active" })

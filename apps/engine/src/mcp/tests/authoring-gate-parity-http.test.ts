@@ -9,11 +9,11 @@ import { getTool, type ToolContext } from "../../conversations/tools/index.ts";
 import { wrapOne } from "../../conversations/tools/sdk-wrap/invoke.ts";
 import type { TurnSignals } from "../../conversations/tools/sdk-wrap/state.ts";
 import type { DraftDocument, TurnEvent } from "../../conversations/types.ts";
-import { conversations, conversationToolCalls, tenants, users } from "../../db/schema/index.ts";
-import { EngineClient } from "../../engine-client/index.ts";
+import { conversations, conversationToolCalls, users } from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
+import { makeToolCtx, seedTenant } from "../../test-helpers/seed.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 type Surface = NonNullable<ToolContext["surface"]>;
@@ -91,24 +91,16 @@ async function newConversation(draft: DraftDocument | null): Promise<string> {
 }
 
 function toolCtx(conversation_id: string, surface: Surface, draft: DraftDocument): ToolContext {
-  return {
+  return makeToolCtx({
     db: suite.http.db,
     tenant_id: suite.http.tenantId,
     conversation_id,
     actor_id: suite.http.userId,
     principal,
-    connector_id: null,
-    workflow_id: null,
-    engineClient: new EngineClient({
-      tenant_id: suite.http.tenantId,
-      actor_id: suite.http.userId,
-      actor_type: "user",
-      db: suite.http.db,
-    }),
     getDraft: () => draft,
     setDraft: async () => {},
     surface,
-  };
+  });
 }
 
 async function runWrappedTool(
@@ -430,11 +422,10 @@ describe("unknown JSONata function check answers identically on every authoring 
 
 describe("tenant isolation of the gate", () => {
   test("another tenant's admin cannot drive a conversation of this tenant and no output is recorded", async () => {
-    const [otherTenant] = await suite.http.db
-      .insert(tenants)
-      .values({ slug: "gate-parity-other-tenant", display_name: "Gate parity other" })
-      .returning({ id: tenants.id });
-    if (!otherTenant) throw new Error("other tenant seed failed");
+    const otherTenant = await seedTenant(suite.http.db, {
+      slug: "gate-parity-other-tenant",
+      display_name: "Gate parity other",
+    });
     const [otherUser] = await suite.http.db
       .insert(users)
       .values({

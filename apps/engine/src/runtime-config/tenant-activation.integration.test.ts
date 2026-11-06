@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SYSTEM_TENANT_ID } from "../audit/types.ts";
 import { _resetConfigForTests, getConfig, loadConfig } from "../config/loader.ts";
-import { tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import { RuntimeConfigCoordinator } from "./coordinator.ts";
 import {
   activateRuntimeRevision,
@@ -39,10 +39,8 @@ let coordinator: RuntimeConfigCoordinator;
 beforeAll(async () => {
   process.env.MASTER_KEY = "55".repeat(32);
   tdb = await createTestDb("runtime_tenant_activation");
-  await tdb.db.insert(tenants).values([
-    { id: tenantA, slug: "activation-a", display_name: "Activation A" },
-    { id: tenantB, slug: "activation-b", display_name: "Activation B" },
-  ]);
+  await seedTenant(tdb.db, { id: tenantA, slug: "activation-a", display_name: "Activation A" });
+  await seedTenant(tdb.db, { id: tenantB, slug: "activation-b", display_name: "Activation B" });
   configDir = mkdtempSync(join(tmpdir(), "sk-runtime-tenant-activation-"));
   _resetConfigForTests();
   await loadConfig({

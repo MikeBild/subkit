@@ -6,8 +6,9 @@ import {
   createConversationTestCtx,
 } from "../../conversations/tests/setup.ts";
 import { decryptSecret } from "../../crypto/aes-gcm.ts";
-import { auditLog, chatIdentities, chatWorkspaces, tenants, users } from "../../db/schema/index.ts";
+import { auditLog, chatIdentities, chatWorkspaces, users } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { chatWorkspaceAad } from "../api.ts";
 import { ensureDmAutoRegistration } from "../dm-autoregister.ts";
 import type { ChatEvent } from "../types.ts";
@@ -69,11 +70,10 @@ beforeAll(async () => {
     platform_user_id: LINKED_USER,
   });
 
-  const [tenantB] = await ctx.testDb.db
-    .insert(tenants)
-    .values({ slug: "t-dm-autoreg-b", display_name: "DM Autoreg B" })
-    .returning();
-  if (!tenantB) throw new Error("seed tenant B failed");
+  const tenantB = await seedTenant(ctx.testDb.db, {
+    slug: "t-dm-autoreg-b",
+    display_name: "DM Autoreg B",
+  });
   tenantBId = tenantB.id;
   const [userB] = await ctx.testDb.db
     .insert(users)

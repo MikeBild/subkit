@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { auditAwait } from "../../audit/audit.ts";
-import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { getMetrics, METRIC_NAMES, resetMetricsRegistryForTests } from "../metrics.ts";
 
 let testDb: TestDb;
@@ -9,12 +9,8 @@ let tenantId = "";
 
 beforeAll(async () => {
   testDb = await createTestDb("audit-metrics");
-  const [row] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "audit-metrics", display_name: "Audit Metrics" })
-    .returning();
-  if (!row) throw new Error("seed tenant failed");
-  tenantId = row.id;
+  tenantId = (await seedTenant(testDb.db, { slug: "audit-metrics", display_name: "Audit Metrics" }))
+    .id;
 });
 
 afterAll(async () => {

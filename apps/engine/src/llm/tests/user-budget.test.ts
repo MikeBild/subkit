@@ -2,9 +2,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
-import { EMBEDDED_MIGRATIONS } from "../../db/migrations/embedded.ts";
 import { llmUsage, tenants, userLlmSettings } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import {
@@ -586,32 +585,5 @@ describe.skipIf(skip)("recordUsage — a call the provider did not process is no
       testDb.db,
     );
     expect(await monthlyUsage(tenantId, testDb.db)).toBe(900);
-  });
-
-  test("the migration clears the estimate from rows written before the rule", async () => {
-    const row = {
-      tenant_id: tenantId,
-      flow: "converse",
-      model: "mock",
-      latency_ms: 1,
-      month_bucket: currentMonthBucket(),
-      cache_read_tokens: 0,
-      cache_creation_tokens: 0,
-    };
-    await testDb.db.insert(llmUsage).values([
-      {
-        ...row,
-        result: "error",
-        prompt_tokens: 15_191,
-        completion_tokens: 0,
-        total_tokens: 15_191,
-      },
-      { ...row, result: "error", prompt_tokens: 500, completion_tokens: 20, total_tokens: 520 },
-      { ...row, result: "success", prompt_tokens: 300, completion_tokens: 0, total_tokens: 300 },
-    ]);
-    const migration = EMBEDDED_MIGRATIONS.find((m) => m.tag === "0069_unbilled_refused_llm_calls");
-    if (!migration) throw new Error("migration 0069 is not embedded");
-    for (const statement of migration.statements) await testDb.db.execute(sql.raw(statement));
-    expect(await monthlyUsage(tenantId, testDb.db)).toBe(820);
   });
 });

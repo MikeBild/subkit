@@ -2,9 +2,10 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
-import { auditLog, tenants, toolApprovals } from "../db/schema/index.ts";
+import { auditLog, toolApprovals } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import {
   type ApprovalExecutionMode,
   consumeApproval,
@@ -22,11 +23,8 @@ let tenant_id: string;
 
 beforeAll(async () => {
   testDb = await createTestDb("tool-approvals");
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "t-approvals", display_name: "Approvals" })
-    .returning();
-  tenant_id = tenant!.id;
+  const tenant = await seedTenant(testDb.db, { slug: "t-approvals", display_name: "Approvals" });
+  tenant_id = tenant.id;
 }, 120_000);
 
 afterAll(async () => {

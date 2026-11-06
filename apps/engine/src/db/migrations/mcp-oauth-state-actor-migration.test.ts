@@ -1,21 +1,14 @@
 import { expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
-import { runMigrations } from "../migrate.ts";
 import { connectors } from "../schema/index.ts";
 import { mcpOauthStates } from "../schema/mcp_oauth_states.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT } from "../tests/setup.ts";
-import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
-
-const migration = EMBEDDED_MIGRATIONS.find((item) => item.tag === "0106_chubby_wolf_cub");
 
 test(
-  "keeps historical MCP OAuth actors unknown and stores typed actors on new states",
+  "an MCP OAuth state without actor stays unattributed and a typed actor is stored",
   async () => {
-    if (!migration) throw new Error("MCP OAuth state actor migration is not embedded");
-    const ctx = await createTestDb("mcp_oauth_state_actor_migration", {
-      upToIdx: migration.idx - 1,
-    });
+    const ctx = await createTestDb("mcp_oauth_state_actor_migration");
     try {
       const {
         rows: [tenant],
@@ -45,7 +38,6 @@ test(
       const legacy = legacyRows[0] as { id: string } | undefined;
       if (!legacy) throw new Error("legacy OAuth state was not created");
 
-      expect((await runMigrations(ctx.db, [migration], true)).applied).toBe(1);
       const [historical] = await ctx.db
         .select({
           started_by_actor_id: mcpOauthStates.started_by_actor_id,
@@ -68,7 +60,6 @@ test(
         .from(mcpOauthStates)
         .where(eq(mcpOauthStates.state, "typed-state"));
       expect(typed).toEqual({ started_by_actor_type: "system_account" });
-      expect((await runMigrations(ctx.db, [migration], true)).applied).toBe(0);
     } finally {
       await ctx.cleanup();
     }

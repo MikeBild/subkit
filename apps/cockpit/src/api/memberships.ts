@@ -1,5 +1,5 @@
+import type { paths } from "@cli-core/engine-api/openapi";
 import { apiRequest } from "./client";
-import type { paths } from "./schema";
 
 type MembershipList =
   paths["/v1/identity/memberships"]["get"]["responses"][200]["content"]["application/json"];

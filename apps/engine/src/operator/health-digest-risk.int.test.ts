@@ -6,12 +6,13 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { _drainAuditWritesForTests, AuditAction } from "../audit/index.ts";
 import { SYSTEM_TENANT_ID } from "../audit/types.ts";
 import { _resetConfigForTests, loadConfig } from "../config/loader.ts";
-import { auditLog, riskSignalEdges, tenants } from "../db/schema/index.ts";
+import { auditLog, riskSignalEdges } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { _resetRssHighWaterForTests, setDlqJobCount } from "../observability/instrumentation.ts";
 import { resetMetricsRegistryForTests } from "../observability/metrics.ts";
 import { runRiskSignalEdges } from "../scheduler/risk-signal-edges-runner.ts";
 import { adminPrincipal } from "../test-helpers/principals.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import { buildAttention, invalidateAttention } from "./attention.ts";
 import { buildOperatorHealthDigest, buildOperatorHealthSummary } from "./health-digest.ts";
 import { invalidateOperationalOverview } from "./operational-overview.ts";
@@ -23,11 +24,8 @@ let tenant_id: string;
 beforeAll(async () => {
   testDb = await createTestDb("operator-risk");
 
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "t-risk-digest", display_name: "Risk Digest" })
-    .returning();
-  tenant_id = tenant!.id;
+  tenant_id = (await seedTenant(testDb.db, { slug: "t-risk-digest", display_name: "Risk Digest" }))
+    .id;
 
   const dir = mkdtempSync(join(tmpdir(), "sk-cfg-risk-digest-"));
   await loadConfig({
@@ -91,10 +89,7 @@ describe("buildOperatorHealthDigest — risk[] from metrics", () => {
 
   test("risk signals are host-scoped; every tenant's list names them", async () => {
     setDlqJobCount("execution.dlq", 5);
-    const [other] = await testDb.db
-      .insert(tenants)
-      .values({ slug: "t-risk-other", display_name: "Other" })
-      .returning();
+    const other = await seedTenant(testDb.db, { slug: "t-risk-other", display_name: "Other" });
     const digestOther = await buildOperatorHealthDigest(testDb.db, adminPrincipal(other!.id));
     expect(digestOther.failure_groups).toHaveLength(0);
     expect(digestOther.patch_candidates.open).toBe(0);

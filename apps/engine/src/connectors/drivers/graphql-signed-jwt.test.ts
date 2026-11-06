@@ -1,11 +1,12 @@
 import { expect, spyOn, test } from "bun:test";
 import { exportPKCS8, generateKeyPair } from "jose";
 import { createDbFromUrl } from "../../db/client.ts";
-import { authIdentities, tenants } from "../../db/schema/index.ts";
+import { authIdentities } from "../../db/schema/index.ts";
 import { createTestDb } from "../../db/tests/setup.ts";
 import { logger } from "../../logging/logger.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { _withEgressTenantOriginForTests } from "../egress-guard.ts";
 import type { ConnectorView } from "../types.ts";
 import { query } from "./graphql.ts";
@@ -116,14 +117,10 @@ test("signed transports retain the supplied tenant database for egress checks", 
   });
   try {
     const baseUrl = `http://127.0.0.1:${server.port}/graphql`;
-    const [tenant] = await database.db
-      .insert(tenants)
-      .values({
-        slug: "signed-transport-self-hosted",
-        display_name: "Signed transport fixture",
-      })
-      .returning();
-    if (!tenant) throw new Error("missing fixture tenant");
+    const tenant = await seedTenant(database.db, {
+      slug: "signed-transport-self-hosted",
+      display_name: "Signed transport fixture",
+    });
     const fixture = { ...connector(baseUrl), tenant_id: tenant.id };
     const credential = { mode: "signed_jwt" as const, private_key: privateKey };
     const response = await query({
@@ -135,14 +132,10 @@ test("signed transports retain the supplied tenant database for egress checks", 
     });
     expect(response.status).toBe(200);
     await database.db.transaction(async (tx) => {
-      const [uncommitted] = await tx
-        .insert(tenants)
-        .values({
-          slug: "signed-transport-transaction",
-          display_name: "Uncommitted transport fixture",
-        })
-        .returning();
-      if (!uncommitted) throw new Error("missing transaction fixture tenant");
+      const uncommitted = await seedTenant(tx, {
+        slug: "signed-transport-transaction",
+        display_name: "Uncommitted transport fixture",
+      });
       const http = await executePlannedHttpRequest({
         exec: tx,
         tenant_id: uncommitted.id,
@@ -167,16 +160,12 @@ test("signed transports retain the supplied tenant database for egress checks", 
       })
       .returning();
     if (!owner) throw new Error("missing Hosted fixture owner");
-    const [hosted] = await database.db
-      .insert(tenants)
-      .values({
-        slug: "signed-transport-hosted",
-        display_name: "Hosted transport fixture",
-        origin: "self_service",
-        owner_identity_id: owner.id,
-      })
-      .returning();
-    if (!hosted) throw new Error("missing Hosted fixture tenant");
+    const hosted = await seedTenant(database.db, {
+      slug: "signed-transport-hosted",
+      display_name: "Hosted transport fixture",
+      origin: "self_service",
+      owner_identity_id: owner.id,
+    });
     await expect(
       query({
         db: database.db,

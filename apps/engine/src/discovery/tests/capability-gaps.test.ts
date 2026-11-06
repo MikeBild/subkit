@@ -2,8 +2,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
 import { discoveryArtifacts } from "../../db/schema/discovery.ts";
-import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   listCapabilityGaps,
   recordGapCandidate,
@@ -20,12 +20,8 @@ let tenantId: string;
 beforeAll(async () => {
   if (skip) return;
   testDb = await createTestDb("cap-gaps");
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "cap-gaps", display_name: "Capability Gaps" })
-    .returning();
-  if (!tenant) throw new Error("seed tenant failed");
-  tenantId = tenant.id;
+  tenantId = (await seedTenant(testDb.db, { slug: "cap-gaps", display_name: "Capability Gaps" }))
+    .id;
 }, 60_000);
 
 afterAll(async () => {

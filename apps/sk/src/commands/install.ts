@@ -1,7 +1,7 @@
-import { reportCommandError } from "@cli-core/errors";
 import { defineCommand } from "citty";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
+import { withCommandErrors } from "./command-runtime.ts";
 
 function makeWizardCommand(name: string, description: string, wizardModule: string) {
   return defineCommand({
@@ -13,12 +13,10 @@ function makeWizardCommand(name: string, description: string, wizardModule: stri
         api_key: profile.api_key,
         tenant: profile.active_tenant_id,
       });
-      try {
+      return withCommandErrors(async () => {
         const mod = await import(wizardModule);
         await mod.run(client);
-      } catch (err) {
-        reportCommandError(err);
-      }
+      });
     },
   });
 }

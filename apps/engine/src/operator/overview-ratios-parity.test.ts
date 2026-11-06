@@ -6,7 +6,6 @@ import {
   connectors,
   executionSteps,
   executions,
-  tenants,
   workflows,
   workflowVersions,
 } from "../db/schema/index.ts";
@@ -14,6 +13,7 @@ import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { getMetrics } from "../observability/metrics.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import { readOperatingFigures, resolveOperatingBounds } from "./operating-figures.ts";
 import {
   getOperationalOverview,
@@ -31,16 +31,8 @@ const hoursAgo = (hours: number): Date => new Date(getTestNow() - hours * 3_600_
 beforeAll(async () => {
   testDb = await createTestDb("overview_ratios_parity");
   const db = testDb.db;
-  const [tenant] = await db
-    .insert(tenants)
-    .values({ slug: "t-ratios", display_name: "Ratios" })
-    .returning();
-  tenant_id = tenant!.id;
-  const [quiet] = await db
-    .insert(tenants)
-    .values({ slug: "t-ratios-quiet", display_name: "Quiet" })
-    .returning();
-  quiet_tenant_id = quiet!.id;
+  tenant_id = (await seedTenant(db, { slug: "t-ratios", display_name: "Ratios" })).id;
+  quiet_tenant_id = (await seedTenant(db, { slug: "t-ratios-quiet", display_name: "Quiet" })).id;
   const [wf] = await db
     .insert(workflows)
     .values({ tenant_id, slug: "nightly", name: "Nightly", lifecycle: "active" })

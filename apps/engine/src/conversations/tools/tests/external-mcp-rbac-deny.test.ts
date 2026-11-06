@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import { closeDb, type Db } from "../../../db/client.ts";
-import { conversations, conversationToolCalls, tenants } from "../../../db/schema/index.ts";
+import { conversations, conversationToolCalls } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import {
@@ -13,6 +13,7 @@ import {
 import { seedMcpConnector } from "../../../mcp/client/test-fixtures.ts";
 import { seedBuiltinRolesAndPermissions } from "../../../rbac/seed.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import { buildExternalMcpTools } from "../sdk-wrap/external-mcp-tools.ts";
@@ -75,11 +76,8 @@ beforeAll(async () => {
   ctx = await createTestDb("external-mcp-rbac-deny");
   await closeDb();
   process.env.DATABASE_URL = ctx.url;
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-mcp-rbac-deny", display_name: "MCP RBAC Deny" })
-    .returning();
-  tenant_id = t!.id;
+  tenant_id = (await seedTenant(ctx.db, { slug: "t-mcp-rbac-deny", display_name: "MCP RBAC Deny" }))
+    .id;
   actor_id = createDeterministicUuidFactory(322)();
   const [conv] = await ctx.db
     .insert(conversations)

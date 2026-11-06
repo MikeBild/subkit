@@ -6,11 +6,11 @@ import {
   connectors,
   conversationElicitations,
   conversations,
-  tenants,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   withConnectorInspection,
   withConnectorProbe,
@@ -28,11 +28,7 @@ let tenant_id: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("auto_persist_force_cooldown");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-fsc", display_name: "T-FSC" })
-    .returning();
-  tenant_id = t!.id;
+  tenant_id = (await seedTenant(ctx.db, { slug: "t-fsc", display_name: "T-FSC" })).id;
 });
 
 afterAll(async () => {

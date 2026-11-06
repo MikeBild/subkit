@@ -4,23 +4,14 @@ import { builtinRoleId } from "../../rbac/roles.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import type { Db } from "../client.ts";
-import { runMigrations } from "../migrate.ts";
 import { conversationElicitations, mcpTasks } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "../tests/setup.ts";
-import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
-
-const migration = EMBEDDED_MIGRATIONS.find((m) => m.tag === "0089_decider_kind");
 
 let ctx: TestDb;
 let tenantId: string;
 let userId: string;
 let conversationId: string;
-const seeded = {
-  decidedByUser: "",
-  undecided: "",
-  taskByUser: "",
-  taskWithoutActor: "",
-};
+const seeded = { taskByUser: "" };
 
 async function failureOf(query: PromiseLike<unknown>): Promise<string> {
   try {
@@ -42,31 +33,17 @@ async function constraintNames(db: Db, table: string): Promise<string[]> {
   return res.rows.map((r) => r.conname).sort();
 }
 
-async function seedElicitation(decidedBy: string | null): Promise<string> {
+async function seedTask(turnSeq: number, actorId: string): Promise<string> {
   const id = nextUuid();
   await ctx.db.execute(sql`
-    INSERT INTO conversation_elicitations
-      (id, tenant_id, conversation_id, tool_name, summary, input, status, decided_by, decided_at)
-    VALUES
-      (${id}, ${tenantId}, ${conversationId}, 'ask_user_confirm', 'seeded', '{}'::jsonb,
-       ${decidedBy ? "resolved" : "pending"}::elicitation_status, ${decidedBy},
-       ${decidedBy ? sql`now()` : sql`NULL`})
-  `);
-  return id;
-}
-
-async function seedTask(turnSeq: number, actorId: string | null): Promise<string> {
-  const id = nextUuid();
-  await ctx.db.execute(sql`
-    INSERT INTO mcp_tasks (id, tenant_id, conversation_id, turn_seq, kind, request_source, actor_id)
-    VALUES (${id}, ${tenantId}, ${conversationId}, ${turnSeq}, 'start', 'mcp', ${actorId})
+    INSERT INTO mcp_tasks (id, tenant_id, conversation_id, turn_seq, kind, request_source, actor_id, actor_kind)
+    VALUES (${id}, ${tenantId}, ${conversationId}, ${turnSeq}, 'start', 'mcp', ${actorId}, 'user')
   `);
   return id;
 }
 
 beforeAll(async () => {
-  if (!migration) throw new Error("migration 0089_decider_kind is not embedded");
-  ctx = await createTestDb("decider_kind", { upToIdx: migration.idx - 1 });
+  ctx = await createTestDb("decider_kind");
   const {
     rows: [tenant],
   } = await ctx.db.execute<{ id: string }>(sql`
@@ -91,10 +68,7 @@ beforeAll(async () => {
   `);
   if (!conversation) throw new Error("seed conversation failed");
   conversationId = conversation.id;
-  seeded.decidedByUser = await seedElicitation(userId);
-  seeded.undecided = await seedElicitation(null);
   seeded.taskByUser = await seedTask(1, userId);
-  seeded.taskWithoutActor = await seedTask(2, null);
 });
 
 afterAll(async () => {
@@ -103,26 +77,8 @@ afterAll(async () => {
 
 const nextUuid = createDeterministicUuidFactory(89);
 
-describe("0089_decider_kind", () => {
-  test("before the migration both columns are foreign keys onto users and carry no kind", async () => {
-    expect(await constraintNames(ctx.db, "conversation_elicitations")).toContain(
-      "conversation_elicitations_decided_by_users_id_fk",
-    );
-    expect(await constraintNames(ctx.db, "mcp_tasks")).toContain("mcp_tasks_actor_id_users_id_fk");
-    expect(
-      await failureOf(
-        ctx.db.execute(sql`
-          INSERT INTO conversation_elicitations
-            (tenant_id, conversation_id, tool_name, summary, input, decided_by)
-          VALUES (${tenantId}, ${conversationId}, 'ask_user_confirm', 'bot', '{}'::jsonb, ${nextUuid()})
-        `),
-      ),
-    ).toMatch(/conversation_elicitations_decided_by_users_id_fk/);
-  });
-
-  test("the migration drops the user FKs, backfills kind='user' and installs the CHECKs", async () => {
-    await runMigrations(ctx.db);
-
+describe("decider kind", () => {
+  test("decider columns carry no user foreign key and a kind CHECK", async () => {
     const elicitationConstraints = await constraintNames(ctx.db, "conversation_elicitations");
     expect(elicitationConstraints).not.toContain(
       "conversation_elicitations_decided_by_users_id_fk",
@@ -131,42 +87,6 @@ describe("0089_decider_kind", () => {
     const taskConstraints = await constraintNames(ctx.db, "mcp_tasks");
     expect(taskConstraints).not.toContain("mcp_tasks_actor_id_users_id_fk");
     expect(taskConstraints).toContain("mcp_tasks_actor_kind_check");
-
-    const elicitations = await ctx.db
-      .select({
-        id: conversationElicitations.id,
-        decided_by: conversationElicitations.decided_by,
-        decided_by_kind: conversationElicitations.decided_by_kind,
-      })
-      .from(conversationElicitations)
-      .where(eq(conversationElicitations.tenant_id, tenantId));
-    const byId = new Map(elicitations.map((r) => [r.id, r]));
-    expect(byId.get(seeded.decidedByUser)).toEqual({
-      id: seeded.decidedByUser,
-      decided_by: userId,
-      decided_by_kind: "user",
-    });
-    expect(byId.get(seeded.undecided)).toEqual({
-      id: seeded.undecided,
-      decided_by: null,
-      decided_by_kind: null,
-    });
-
-    const tasks = await ctx.db
-      .select({ id: mcpTasks.id, actor_id: mcpTasks.actor_id, actor_kind: mcpTasks.actor_kind })
-      .from(mcpTasks)
-      .where(eq(mcpTasks.tenant_id, tenantId));
-    const taskById = new Map(tasks.map((r) => [r.id, r]));
-    expect(taskById.get(seeded.taskByUser)).toEqual({
-      id: seeded.taskByUser,
-      actor_id: userId,
-      actor_kind: "user",
-    });
-    expect(taskById.get(seeded.taskWithoutActor)).toEqual({
-      id: seeded.taskWithoutActor,
-      actor_id: null,
-      actor_kind: null,
-    });
   });
 
   test("a system account that is no user may now decide, and the CHECK keeps id and kind paired", async () => {

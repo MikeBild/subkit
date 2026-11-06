@@ -1,10 +1,6 @@
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { getConfig, loadConfig } from "../../config/loader.ts";
 import { createElicitation } from "../../conversations/elicitations.ts";
 import { deriveConversationOutcome } from "../../conversations/lifecycle-view.ts";
 import { _setConverseFirstChunkTimeoutMsForTests } from "../../conversations/loop.ts";
@@ -36,7 +32,9 @@ import { builtinRoleId } from "../../rbac/roles.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { flush, waitFor } from "../../test-helpers/determinism/wait.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createQueueCtx, type QueueTestCtx } from "../tests/setup.ts";
+import { ensureTestConfig } from "../tests/test-config.ts";
 import {
   enqueueConversationRunTurn as enqueueRawConversationRunTurn,
   registerConversationRunTurnHandler,
@@ -70,18 +68,6 @@ function enqueueConversationRunTurn(
   );
 }
 
-async function ensureConfig(): Promise<void> {
-  try {
-    getConfig();
-    return;
-  } catch {}
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-runturn-test-"));
-  await loadConfig({
-    env: { DATABASE_URL: "postgres://placeholder/runturn-test", NODE_ENV: "test" },
-    configPathOverride: join(dir, "subkit.config.json"),
-  });
-}
-
 async function waitForTerminal(taskId: string): Promise<void> {
   await waitFor(
     async () => {
@@ -94,14 +80,10 @@ async function waitForTerminal(taskId: string): Promise<void> {
 
 beforeAll(async () => {
   process.env.LLM_PROVIDER = "mock";
-  await ensureConfig();
+  await ensureTestConfig();
   resetMockProvider();
   queue = await createQueueCtx("conversation_run_turn");
-  const [t] = await queue.testDb.db
-    .insert(tenants)
-    .values({ slug: "t-runturn", display_name: "RunTurn" })
-    .returning();
-  if (!t) throw new Error("seed tenant failed");
+  const t = await seedTenant(queue.testDb.db, { slug: "t-runturn", display_name: "RunTurn" });
   tenantId = t.id;
   const [u] = await queue.testDb.db
     .insert(users)

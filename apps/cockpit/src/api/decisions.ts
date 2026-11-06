@@ -1,5 +1,5 @@
+import type { components, paths } from "@cli-core/engine-api/openapi";
 import { ApiError, apiRequest } from "./client";
-import type { components, paths } from "./schema";
 
 export type PatchCandidate = components["schemas"]["PatchCandidate"];
 export type PatchCandidateList = components["schemas"]["PatchCandidateListResponse"];

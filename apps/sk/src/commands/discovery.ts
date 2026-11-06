@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
-import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 import { detectMime } from "../utils/mime.ts";
+import { withCommandErrors } from "./command-runtime.ts";
 import { uploadPath } from "./files.ts";
 
 const listCommand = defineCommand({
@@ -18,16 +18,17 @@ const listCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
-      const { items } = await client.listDiscoveryRuns({ limit: Number(args.limit) });
-      emitList(
-        !!args.json,
-        ["id", "label", "status", "created_at"],
-        items as Record<string, unknown>[],
-      );
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { items } = await client.listDiscoveryRuns({ limit: Number(args.limit) });
+        emitList(
+          !!args.json,
+          ["id", "label", "status", "created_at"],
+          items as Record<string, unknown>[],
+        );
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -39,12 +40,10 @@ const getCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
+    return withCommandErrors(async () => {
       const run = await client.getDiscoveryRun(args["run-id"]);
       printJson(run);
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -57,12 +56,17 @@ const artifactsCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
-      const { items } = await client.listDiscoveryArtifacts(args["run-id"]);
-      emitList(!!args.json, ["id", "kind", "title", "status"], items as Record<string, unknown>[]);
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { items } = await client.listDiscoveryArtifacts(args["run-id"]);
+        emitList(
+          !!args.json,
+          ["id", "kind", "title", "status"],
+          items as Record<string, unknown>[],
+        );
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -74,12 +78,10 @@ const approveCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
+    return withCommandErrors(async () => {
       await client.approveDiscoveryArtifact(args["artifact-id"]);
       process.stdout.write(`${pc.green("approved")}\n`);
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -92,14 +94,12 @@ const rejectCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
+    return withCommandErrors(async () => {
       const body: { reason?: string } = {};
       if (args.reason) body.reason = args.reason;
       await client.rejectDiscoveryArtifact(args["artifact-id"], body);
       process.stdout.write(`${pc.green("rejected")}\n`);
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -112,7 +112,7 @@ const createCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
+    return withCommandErrors(async () => {
       const paths = args.file
         .split(",")
         .map((p: string) => p.trim())
@@ -136,9 +136,7 @@ const createCommand = defineCommand({
         }
       }
       printJson(run);
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 

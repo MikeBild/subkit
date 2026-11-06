@@ -1,3 +1,4 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   ArrowDown,
@@ -22,7 +23,6 @@ import {
 } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useState } from "react";
 import { apiRequest } from "@/api/client";
-import type { components } from "@/api/schema";
 import { absolute, connectorHref, workflowHref } from "@/app/links";
 import {
   type ConnectorRecord,

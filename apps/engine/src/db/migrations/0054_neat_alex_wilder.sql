@@ -1,2 +1,0 @@
-ALTER TABLE "outbound_connections" ADD COLUMN "authority_revision" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
-ALTER TABLE "outbound_connections" ADD CONSTRAINT "outbound_connections_authority_revision_positive" CHECK ("outbound_connections"."authority_revision" > 0);

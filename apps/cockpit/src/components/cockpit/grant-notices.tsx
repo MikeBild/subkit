@@ -1,8 +1,8 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
-import type { components } from "@/api/schema";
 import { absolute } from "@/app/links";
 import { useSession } from "@/app/session";
 import {

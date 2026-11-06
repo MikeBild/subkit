@@ -1,10 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createConnector, getConnectorForEnvironment, setConnectorEnabled } from "../service.ts";
-
-const nextHex = createDeterministicHexFactory(0xe7fa11);
 
 let ctx: TestDb;
 
@@ -15,17 +12,9 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-async function seedTenant(): Promise<string> {
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: `t-${nextHex(4)}`, display_name: "T" })
-    .returning();
-  return t!.id;
-}
-
 describe("getConnectorForEnvironment", () => {
   test("prod request with only a dev binding falls back to dev (signal fires)", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const dev = await createConnector(
       {
         tenant_id,
@@ -49,7 +38,7 @@ describe("getConnectorForEnvironment", () => {
   });
 
   test("prod request with a prod sibling resolves to prod (no fallback, no signal)", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const dev = await createConnector(
       {
         tenant_id,
@@ -87,7 +76,7 @@ describe("getConnectorForEnvironment", () => {
   });
 
   test("matching-environment request returns the connector as-is", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const dev = await createConnector(
       {
         tenant_id,
@@ -110,7 +99,7 @@ describe("getConnectorForEnvironment", () => {
   });
 
   test("a disabled twin is still the one resolved — never skipped for the connector the step names", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const prod = await createConnector(
       {
         tenant_id,

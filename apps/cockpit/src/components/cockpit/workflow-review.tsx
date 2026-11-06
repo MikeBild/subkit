@@ -1,7 +1,7 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, apiRequest } from "@/api/client";
-import type { components } from "@/api/schema";
 import { useI18n } from "@/lib/i18n-context";
 import {
   type ReviewBlockedMessageKey,

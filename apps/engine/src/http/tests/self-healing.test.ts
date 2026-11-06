@@ -6,6 +6,7 @@ import { auditLog } from "../../db/schema/audit.ts";
 import { apiKeys, selfHealingScans, systemAccounts, users } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
+import { adminHeaders } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -66,14 +67,6 @@ afterAll(async () => {
   await srv.cleanup();
 });
 
-function adminHeaders(extra: Record<string, string> = {}) {
-  return {
-    authorization: `Bearer ${srv.apiKey}`,
-    "content-type": "application/json",
-    ...extra,
-  } as const;
-}
-
 function memberHeaders() {
   return {
     authorization: `Bearer ${memberKey}`,
@@ -85,7 +78,7 @@ describe("/v1/self-healing/scans", () => {
   test("admin POST triggers a scan and persists a self_healing_scans row", async () => {
     const res = await fetch(`${srv.baseUrl}/v1/self-healing/scans`, {
       method: "POST",
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
       body: JSON.stringify({}),
     });
     expect(res.status).toBe(200);
@@ -131,7 +124,7 @@ describe("/v1/self-healing/scans", () => {
   test("system-account scan preserves its actor kind in both audit entries", async () => {
     const res = await fetch(`${srv.baseUrl}/v1/self-healing/scans`, {
       method: "POST",
-      headers: { ...adminHeaders(), authorization: `Bearer ${systemKey}` },
+      headers: { ...adminHeaders(srv.apiKey), authorization: `Bearer ${systemKey}` },
       body: JSON.stringify({}),
     });
     expect(res.status).toBe(200);
@@ -166,7 +159,7 @@ describe("/v1/self-healing/scans", () => {
     const key = `test-key-${idemHex(8)}`;
     const first = await fetch(`${srv.baseUrl}/v1/self-healing/scans`, {
       method: "POST",
-      headers: adminHeaders({ "idempotency-key": key }),
+      headers: adminHeaders(srv.apiKey, { "idempotency-key": key }),
       body: JSON.stringify({}),
     });
     expect(first.status).toBe(200);
@@ -174,7 +167,7 @@ describe("/v1/self-healing/scans", () => {
 
     const replay = await fetch(`${srv.baseUrl}/v1/self-healing/scans`, {
       method: "POST",
-      headers: adminHeaders({ "idempotency-key": key }),
+      headers: adminHeaders(srv.apiKey, { "idempotency-key": key }),
       body: JSON.stringify({}),
     });
     expect(replay.status).toBe(202);
@@ -199,7 +192,7 @@ describe("/v1/self-healing/scans", () => {
 
   test("GET /v1/self-healing/scans lists rows for the tenant", async () => {
     const res = await fetch(`${srv.baseUrl}/v1/self-healing/scans?limit=50`, {
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
@@ -211,14 +204,14 @@ describe("/v1/self-healing/scans", () => {
 
   test("GET /v1/self-healing/scans/{id} returns one row", async () => {
     const list = await fetch(`${srv.baseUrl}/v1/self-healing/scans?limit=1`, {
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
     });
     const listBody = (await list.json()) as { items: Array<{ id: string }> };
     const id = listBody.items[0]?.id;
     if (!id) throw new Error("expected at least one scan row");
 
     const res = await fetch(`${srv.baseUrl}/v1/self-healing/scans/${id}`, {
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
     });
     expect(res.status).toBe(200);
     const row = (await res.json()) as { id: string; tenant_id: string; source: string };
@@ -238,12 +231,12 @@ describe("/v1/self-healing/scans", () => {
     const [a, b] = await Promise.all([
       fetch(`${srv.baseUrl}/v1/self-healing/scans`, {
         method: "POST",
-        headers: adminHeaders({ "idempotency-key": key }),
+        headers: adminHeaders(srv.apiKey, { "idempotency-key": key }),
         body: JSON.stringify({}),
       }),
       fetch(`${srv.baseUrl}/v1/self-healing/scans`, {
         method: "POST",
-        headers: adminHeaders({ "idempotency-key": key }),
+        headers: adminHeaders(srv.apiKey, { "idempotency-key": key }),
         body: JSON.stringify({}),
       }),
     ]);
@@ -268,7 +261,7 @@ describe("/v1/self-healing/scans", () => {
   test("response includes unanchored_detected count", async () => {
     const res = await fetch(`${srv.baseUrl}/v1/self-healing/scans`, {
       method: "POST",
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
       body: JSON.stringify({}),
     });
     expect(res.status).toBe(200);

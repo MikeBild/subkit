@@ -1,6 +1,4 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { sql } from "drizzle-orm";
-import { EMBEDDED_MIGRATIONS } from "../../../db/migrations/embedded.ts";
 import {
   groupMembers,
   groupRoleAssignments,
@@ -23,12 +21,7 @@ let roleId: string;
 let emptyRoleId: string;
 
 beforeAll(async () => {
-  const migration = EMBEDDED_MIGRATIONS.find((item) => item.tag.endsWith("_rbac_tenant_boundary"));
-  if (!migration) throw new Error("missing RBAC boundary migration");
-  server = await createHttpTestServer("membership-read", {
-    testDbOptions: { upToIdx: migration.idx - 1 },
-  });
-  await server.db.execute(sql`ALTER TABLE subkit.api_keys ADD COLUMN credential_origin text`);
+  server = await createHttpTestServer("membership-read");
   const [foreignTenant] = await server.db
     .insert(tenants)
     .values({ slug: "membership-foreign", display_name: "Foreign" })
@@ -74,15 +67,11 @@ beforeAll(async () => {
     { group_id: local.id, user_id: memberId },
     { group_id: duplicate.id, user_id: memberId },
     { group_id: duplicate.id, user_id: inheritedId },
-    { group_id: local.id, user_id: outsiderId },
-    { group_id: local.id, user_id: "10000000-0000-4000-8000-000000000099" },
-    { group_id: foreign.id, user_id: memberId },
     { group_id: foreign.id, user_id: outsiderId },
   ]);
   await server.db.insert(groupRoleAssignments).values([
     { group_id: local.id, role_id: roleId },
     { group_id: duplicate.id, role_id: roleId },
-    { group_id: foreign.id, role_id: emptyRoleId },
   ]);
 });
 

@@ -4,6 +4,7 @@ import { apiKeys, users } from "../../db/schema/index.ts";
 import { errorRing } from "../../observability/error-ring.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import { adminHeaders } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 const TEST_NOW_MS = getTestNow();
@@ -99,17 +100,10 @@ afterAll(async () => {
   await srv.cleanup();
 });
 
-function adminHeaders() {
-  return {
-    authorization: `Bearer ${srv.apiKey}`,
-    "content-type": "application/json",
-  } as const;
-}
-
 describe("/v1/diagnostics/errors", () => {
   test("returns only the caller-tenant ring entries", async () => {
     const res = await fetch(`${srv.baseUrl}/v1/diagnostics/errors?limit=20`, {
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
@@ -125,7 +119,7 @@ describe("/v1/diagnostics/errors", () => {
 
   test("trace_id query narrows", async () => {
     const res = await fetch(`${srv.baseUrl}/v1/diagnostics/errors?trace_id=trace-self`, {
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { items: Array<{ trace_id: string }> };
@@ -156,7 +150,7 @@ describe("/v1/diagnostics/setup", () => {
     await setConfigKey("server.public_base_url", "", { force: true });
     try {
       const res = await fetch(`${srv.baseUrl}/v1/diagnostics/setup`, {
-        headers: adminHeaders(),
+        headers: adminHeaders(srv.apiKey),
       });
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
@@ -257,7 +251,7 @@ describe("/v1/diagnostics/setup", () => {
     expect(secretPaths.length).toBeGreaterThan(0);
 
     const res = await fetch(`${srv.baseUrl}/v1/diagnostics/setup`, {
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {

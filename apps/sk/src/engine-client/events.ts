@@ -1,4 +1,10 @@
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import type { EngineClient } from "../engine-client.ts";
+
+export type Subscription = components["schemas"]["Subscription"];
+export type SubscriptionList = components["schemas"]["SubscriptionListResponse"];
+export type CreateSubscriptionBody = components["schemas"]["CreateSubscriptionBody"];
+export type UpdateSubscriptionBody = components["schemas"]["UpdateSubscriptionBody"];
 
 export const eventsMethods = {
   listHooksInbound(this: EngineClient): Promise<{ items: Record<string, unknown>[] }> {
@@ -17,37 +23,44 @@ export const eventsMethods = {
     return this.request("DELETE", `/v1/webhooks/inbound/${encodeURIComponent(id)}`);
   },
 
-  listSubscriptions(this: EngineClient): Promise<{ items: Record<string, unknown>[] }> {
-    return this.request("GET", "/v1/subscriptions");
+  async listSubscriptions(this: EngineClient): Promise<SubscriptionList> {
+    const { data } = await this.api.GET("/v1/subscriptions");
+    return data as SubscriptionList;
   },
-  getSubscription(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("GET", `/v1/subscriptions/${encodeURIComponent(id)}`);
+  async getSubscription(this: EngineClient, id: string): Promise<Subscription> {
+    const { data } = await this.api.GET("/v1/subscriptions/{id}", { params: { path: { id } } });
+    return data as Subscription;
   },
-  createSubscription(
+  async createSubscription(
     this: EngineClient,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    return this.request("POST", "/v1/subscriptions", body);
+    body: CreateSubscriptionBody,
+  ): Promise<Subscription> {
+    const { data } = await this.api.POST("/v1/subscriptions", { body });
+    return data as Subscription;
   },
-  patchSubscription(
+  async patchSubscription(
     this: EngineClient,
     id: string,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    return this.request("PATCH", `/v1/subscriptions/${encodeURIComponent(id)}`, body);
+    body: UpdateSubscriptionBody,
+  ): Promise<Subscription> {
+    const { data } = await this.api.PATCH("/v1/subscriptions/{id}", {
+      params: { path: { id } },
+      body,
+    });
+    return data as Subscription;
   },
-  deleteSubscription(this: EngineClient, id: string): Promise<void> {
-    return this.request("DELETE", `/v1/subscriptions/${encodeURIComponent(id)}`);
+  async deleteSubscription(this: EngineClient, id: string): Promise<void> {
+    await this.api.DELETE("/v1/subscriptions/{id}", { params: { path: { id } } });
   },
-  replaySubscriptionDelivery(
+  async replaySubscriptionDelivery(
     this: EngineClient,
     id: string,
     deliveryId: string,
-  ): Promise<Record<string, unknown>> {
-    return this.request(
-      "POST",
-      `/v1/subscriptions/${encodeURIComponent(id)}/deliveries/${encodeURIComponent(deliveryId)}/replay`,
-    );
+  ): Promise<{ replayed: boolean }> {
+    const { data } = await this.api.POST("/v1/subscriptions/{id}/deliveries/{delivery_id}/replay", {
+      params: { path: { id, delivery_id: deliveryId } },
+    });
+    return data as { replayed: boolean };
   },
 
   listEvents(

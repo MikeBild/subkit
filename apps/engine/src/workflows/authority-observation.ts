@@ -1,8 +1,8 @@
 import type { WorkflowAuthority } from "@shared/workflow-automation.ts";
 import type { Executor } from "../db/client.ts";
 import type { workflowExecutionAuthorities } from "../db/schema/index.ts";
-import { isOpenEnded, remainingRuns } from "./authority-live.ts";
 import { contentBoundariesFromManifest } from "./content-publication-proposal.ts";
+import { isOpenEnded, remainingRuns } from "./core/authority.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
 import type { WorkflowReadFacts } from "./read-facts.ts";
 import { reportBoundariesFromManifest } from "./report-delivery-proposal.ts";

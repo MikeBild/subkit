@@ -22,7 +22,8 @@ import { withHostedWork } from "../queue/hosted-work.ts";
 import { runJs } from "../sandboxes/quickjs/runtime.ts";
 import { SANDBOX_TOOL_MANIFEST, STDLIB_VERSION } from "../sandboxes/quickjs/stdlib/index.ts";
 import { recordExecutionOutcome } from "../self-healing/outcome-tracker.ts";
-import { buildStepDag, type StepDag, topoSort } from "../workflows/dag.ts";
+import { now } from "../utils/clock.ts";
+import { buildStepDag, topoSort } from "../workflows/dag.ts";
 import { WorkflowEffectManifestSchema } from "../workflows/effect-manifest.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import {
@@ -47,6 +48,15 @@ import {
 } from "./caller-context.ts";
 import { resolveExecutionCallerActor, resolveExecutionCallerOrigin } from "./caller-origin.ts";
 import { connectorStepRefusal, refusedConnectorOf } from "./connector-availability.ts";
+import {
+  branchArmStepIds,
+  continuedStepWarning,
+  decideStepFailure,
+  findHeldDependency,
+  skippedAfterFailure,
+  stopsRunOnFailure,
+  untakenArmStepIds,
+} from "./core/run.ts";
 import { rollupConnectorResolutions } from "./engine/connector-rollup.ts";
 import {
   bodyEnvelopeForLoopAccumulator,
@@ -117,19 +127,6 @@ export function resolveForEachConcurrency(
   return 1;
 }
 
-function findHeldDependency(
-  dag: StepDag,
-  stepId: string,
-  isMissing: (id: string) => boolean,
-): string | null {
-  for (const e of dag.edges) {
-    if (e.from !== stepId) continue;
-    if (e.to === stepId) continue;
-    if (isMissing(e.to)) return e.to;
-  }
-  return null;
-}
-
 export interface RunExecutionParams {
   db: Db;
   tenant_id: string;
@@ -137,7 +134,14 @@ export interface RunExecutionParams {
   input: unknown;
   options?: RunOptions;
   refusal_answered_to_caller?: boolean;
+  clock?: Clock;
 }
+
+export interface Clock {
+  now(): number;
+}
+
+const SYSTEM_CLOCK: Clock = { now };
 
 export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   return withTenantWork(p.tenant_id, () =>
@@ -246,6 +250,7 @@ async function runProtectedExecution(p: RunExecutionParams): Promise<RunResult> 
 
 async function executeRun(p: RunExecutionParams): Promise<RunResult> {
   const { db, tenant_id } = p;
+  const clock = p.clock ?? SYSTEM_CLOCK;
   const bound = await bindExistingRun(db, tenant_id, p.source, p.input, p.options ?? {});
   const opts = bound.options;
   const depth = opts.depth ?? 0;
@@ -348,7 +353,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     );
   }
 
-  const execution_started_at_date = new Date();
+  const execution_started_at_date = new Date(clock.now());
   const preparedClock =
     opts.tool_approval_id && resolved.source_kind === "saved"
       ? await preparedApprovalClock(
@@ -483,9 +488,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
   const skippedStepIds = new Set<string>();
   const heldOrSkippedStepIds = new Set<string>();
   const skipUntakenArm = (branchStep: BranchStep, output: unknown): void => {
-    const arm = (output as { arm?: string } | null | undefined)?.arm;
-    const skip = arm === "then" ? (branchStep.else_steps ?? []) : (branchStep.then_steps ?? []);
-    for (const skipId of skip) skippedStepIds.add(skipId);
+    for (const skipId of untakenArmStepIds(branchStep, output)) skippedStepIds.add(skipId);
   };
   const warningsAccum: NonNullable<RunResult["warnings"]> = [];
 
@@ -539,8 +542,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     }
     if (skippedStepIds.has(step.id) || containerChildIds.has(step.id)) {
       if (step.kind === "branch" && skippedStepIds.has(step.id)) {
-        const nested = step as BranchStep;
-        for (const id of [...(nested.then_steps ?? []), ...(nested.else_steps ?? [])]) {
+        for (const id of branchArmStepIds(step as BranchStep)) {
           skippedStepIds.add(id);
         }
       }
@@ -654,7 +656,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     };
 
     if (step.for_each) {
-      const forEachStart = Date.now();
+      const forEachStart = clock.now();
       const collectionResult = await resolveForEachCollection(
         step.for_each,
         step.id,
@@ -681,7 +683,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
           fanOutCircuitFailure = {
             status: "failed",
             retry_count: 0,
-            duration_ms: Date.now() - forEachStart,
+            duration_ms: clock.now() - forEachStart,
             error: refusal,
           };
         } else if (target && isCircuitOpenBlocking(target)) {
@@ -699,7 +701,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
           fanOutCircuitFailure = {
             status: "failed",
             retry_count: 0,
-            duration_ms: Date.now() - forEachStart,
+            duration_ms: clock.now() - forEachStart,
             error: {
               code: "circuit_open",
               message: `connector circuit breaker is open — ${collectionResult.items.length} for_each iteration(s) not scheduled`,
@@ -744,44 +746,17 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
           request_meta: null,
         });
         if (failedResult.status !== "succeeded") {
-          const onError = step.on_error ?? "fail";
-          const stepError = failedResult.error ?? {
-            code: "step_failed",
-            message: "step failed",
-          };
-          if (onError === "fail") {
-            lastError = stepError;
+          const decision = decideStepFailure(step, failedResult.status, failedResult.error);
+          if (decision.kind === "fail") {
+            lastError = decision.error;
             failedStepId = step.id;
-            finalStatus = "failed";
-            for (let j = topoIdx + 1; j < executionOrder.length; j++) {
-              const remainingId = executionOrder[j]!;
-              const remainingIdx = stepIndexById.get(remainingId) ?? j;
-              const s = def.steps[remainingIdx] as StepDef;
-              stepSummaries.push({
-                step_key: s.id,
-                step_index: remainingIdx,
-                kind: s.kind,
-                status: "skipped",
-                duration_ms: 0,
-                retry_count: 0,
-                error: {
-                  code: "skipped",
-                  message: "skipped due to upstream failure",
-                },
-                request_meta: null,
-              });
-            }
+            finalStatus = decision.status;
+            stepSummaries.push(
+              ...skippedAfterFailure(executionOrder, topoIdx, stepIndexById, def.steps),
+            );
             break;
           }
-          warningsAccum.push({
-            code: "step_failed_continued",
-            step_key: step.id,
-            message: `step "${step.id}" ${failedResult.status} (${stepError.code}: ${stepError.message}) but declares on_error:"continue" — the run continued`,
-            details: {
-              step_status: failedResult.status,
-              error_code: stepError.code,
-            },
-          });
+          warningsAccum.push(decision.warning);
         }
         continue;
       }
@@ -922,11 +897,11 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         items: items.length,
         concurrency,
         explicit: (step as { for_each_concurrency?: number }).for_each_concurrency != null,
-        duration_ms: Date.now() - forEachStart,
+        duration_ms: clock.now() - forEachStart,
       });
       scope[step.id] = wrapEnvelope({
         data: iterationResults,
-        duration_ms: Date.now() - forEachStart,
+        duration_ms: clock.now() - forEachStart,
         error: null,
       });
       lastOutput = iterationResults;
@@ -957,7 +932,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
           });
         }
       }
-      const forEachDurationMs = Date.now() - forEachStart;
+      const forEachDurationMs = clock.now() - forEachStart;
       const failedOutcome = forEachFailure as import("./step-runner.ts").RunStepOutcome | null;
       const forEachStatus: "succeeded" | "failed" | "aborted" | "timed_out" = failedOutcome
         ? (failedOutcome.result.status as "failed" | "aborted" | "timed_out")
@@ -997,43 +972,17 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         output_preview: previewOffloadRefs(iterationResults),
       });
       if (forEachStatus !== "succeeded") {
-        const onError = step.on_error ?? "fail";
-        const stepError = forEachError ?? {
-          code: "step_failed",
-          message: "step failed",
-        };
-        if (onError === "fail") {
-          lastError = stepError;
+        const decision = decideStepFailure(step, forEachStatus, forEachError);
+        if (decision.kind === "fail") {
+          lastError = decision.error;
           failedStepId = step.id;
-          if (forEachStatus === "aborted") finalStatus = "aborted";
-          else if (forEachStatus === "timed_out") finalStatus = "timed_out";
-          else finalStatus = "failed";
-          for (let j = topoIdx + 1; j < executionOrder.length; j++) {
-            const remainingId = executionOrder[j]!;
-            const remainingIdx = stepIndexById.get(remainingId) ?? j;
-            const s = def.steps[remainingIdx] as StepDef;
-            stepSummaries.push({
-              step_key: s.id,
-              step_index: remainingIdx,
-              kind: s.kind,
-              status: "skipped",
-              duration_ms: 0,
-              retry_count: 0,
-              error: {
-                code: "skipped",
-                message: "skipped due to upstream failure",
-              },
-              request_meta: null,
-            });
-          }
+          finalStatus = decision.status;
+          stepSummaries.push(
+            ...skippedAfterFailure(executionOrder, topoIdx, stepIndexById, def.steps),
+          );
           break;
         }
-        warningsAccum.push({
-          code: "step_failed_continued",
-          step_key: step.id,
-          message: `step "${step.id}" ${forEachStatus} (${stepError.code}: ${stepError.message}) but declares on_error:"continue" — the run continued`,
-          details: { step_status: forEachStatus, error_code: stepError.code },
-        });
+        warningsAccum.push(decision.warning);
       }
       continue;
     }
@@ -1200,7 +1149,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
               bodyOutcome.result.status === "failed" ||
               bodyOutcome.result.status === "aborted" ||
               bodyOutcome.result.status === "timed_out";
-            if (bodyFailed && (bodyStep.on_error ?? "fail") === "fail") {
+            if (bodyFailed && stopsRunOnFailure(bodyStep)) {
               if (loopBodyFailure === null) {
                 loopBodyFailure = {
                   step_id: bodyStep.id,
@@ -1209,24 +1158,18 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
               }
               if (loopStep.fail_fast === true) break;
             } else if (bodyFailed) {
-              const bodyError = bodyOutcome.result.error ?? {
-                code: "step_failed",
-                message: "step failed",
-              };
               if (
                 !warningsAccum.some(
                   (w) => w.code === "step_failed_continued" && w.step_key === bodyStep.id,
                 )
               ) {
-                warningsAccum.push({
-                  code: "step_failed_continued",
-                  step_key: bodyStep.id,
-                  message: `step "${bodyStep.id}" ${bodyOutcome.result.status} (${bodyError.code}: ${bodyError.message}) but declares on_error:"continue" — the run continued`,
-                  details: {
-                    step_status: bodyOutcome.result.status,
-                    error_code: bodyError.code,
-                  },
-                });
+                warningsAccum.push(
+                  continuedStepWarning(
+                    bodyStep.id,
+                    bodyOutcome.result.status,
+                    bodyOutcome.result.error,
+                  ),
+                );
               }
             }
           }
@@ -1402,7 +1345,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
                 }
                 if (
                   branchOutcome.result.status !== "succeeded" &&
-                  (branchStepDef.on_error ?? "fail") === "fail"
+                  stopsRunOnFailure(branchStepDef)
                 ) {
                   branchFailure ??= branchOutcome;
                   break;
@@ -1460,46 +1403,17 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       ...(outcome.raw_output !== undefined ? { raw_preview: outcome.raw_output } : {}),
     });
     if (outcome.result.status !== "succeeded") {
-      const onError = step.on_error ?? "fail";
-      const stepError = outcome.result.error ?? {
-        code: "step_failed",
-        message: "step failed",
-      };
-      if (onError === "fail") {
-        lastError = stepError;
+      const decision = decideStepFailure(step, outcome.result.status, outcome.result.error);
+      if (decision.kind === "fail") {
+        lastError = decision.error;
         failedStepId = step.id;
-        if (outcome.result.status === "aborted") finalStatus = "aborted";
-        else if (outcome.result.status === "timed_out") finalStatus = "timed_out";
-        else finalStatus = "failed";
-        for (let j = topoIdx + 1; j < executionOrder.length; j++) {
-          const remainingId = executionOrder[j]!;
-          const remainingIdx = stepIndexById.get(remainingId) ?? j;
-          const s = def.steps[remainingIdx] as StepDef;
-          stepSummaries.push({
-            step_key: s.id,
-            step_index: remainingIdx,
-            kind: s.kind,
-            status: "skipped",
-            duration_ms: 0,
-            retry_count: 0,
-            error: {
-              code: "skipped",
-              message: "skipped due to upstream failure",
-            },
-            request_meta: null,
-          });
-        }
+        finalStatus = decision.status;
+        stepSummaries.push(
+          ...skippedAfterFailure(executionOrder, topoIdx, stepIndexById, def.steps),
+        );
         break;
       }
-      warningsAccum.push({
-        code: "step_failed_continued",
-        step_key: step.id,
-        message: `step "${step.id}" ${outcome.result.status} (${stepError.code}: ${stepError.message}) but declares on_error:"continue" — the run continued`,
-        details: {
-          step_status: outcome.result.status,
-          error_code: stepError.code,
-        },
-      });
+      warningsAccum.push(decision.warning);
     }
   }
 
@@ -1830,7 +1744,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     try {
       await db
         .update(workflows)
-        .set({ last_executed_at: new Date() })
+        .set({ last_executed_at: new Date(clock.now()) })
         .where(and(eq(workflows.tenant_id, tenant_id), eq(workflows.id, workflow_id)));
     } catch (err) {
       logger.warn({

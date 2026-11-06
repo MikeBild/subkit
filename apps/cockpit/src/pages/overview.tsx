@@ -1,3 +1,4 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -9,7 +10,6 @@ import {
   rejectPatchCandidate,
   rejectSkillCandidate,
 } from "@/api/decisions";
-import type { components } from "@/api/schema";
 import { markAttentionSeen } from "@/app/attention-seen";
 import {
   absolute,

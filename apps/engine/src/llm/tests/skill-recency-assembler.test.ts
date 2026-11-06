@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { connectors, skills, tenants } from "../../db/schema/index.ts";
+import { connectors, skills } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { assembleEnhancedPrompt } from "../core/context-assembler.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
@@ -15,11 +16,8 @@ beforeAll(async () => {
   if (skip) return;
   db = await createTestDb("skill_recency_assembler");
 
-  const [t] = await db.db
-    .insert(tenants)
-    .values({ slug: "t-recency-asm", display_name: "Recency Asm Test" })
-    .returning();
-  tenant_id = t!.id;
+  const t = await seedTenant(db.db, { slug: "t-recency-asm", display_name: "Recency Asm Test" });
+  tenant_id = t.id;
 
   const [conn] = await db.db
     .insert(connectors)
@@ -158,15 +156,12 @@ describe.skipIf(skip)("assembler — recency-aware full-body vs index rendering"
   });
 
   test("wrong-tenant loaded_skill_slugs resolve to nothing (no body injected, no cross-tenant leak)", async () => {
-    const [otherTenant] = await db.db
-      .insert(tenants)
-      .values({ slug: "t-other-recency", display_name: "Other" })
-      .returning();
+    const otherTenant = await seedTenant(db.db, { slug: "t-other-recency", display_name: "Other" });
 
     const [otherConn] = await db.db
       .insert(connectors)
       .values({
-        tenant_id: otherTenant!.id,
+        tenant_id: otherTenant.id,
         slug: "other-conn",
         display_name: "Other Conn",
         driver: "http",
@@ -178,7 +173,7 @@ describe.skipIf(skip)("assembler — recency-aware full-body vs index rendering"
     const [otherSkill] = await db.db
       .insert(skills)
       .values({
-        tenant_id: otherTenant!.id,
+        tenant_id: otherTenant.id,
         slug: "other-tenant-skill",
         title: "Cross Tenant Skill",
         body: "CROSS_TENANT_BODY: must not leak.",

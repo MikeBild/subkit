@@ -1,5 +1,5 @@
+import type { paths } from "@cli-core/engine-api/openapi";
 import { Clock, Loader2, RotateCcw, ShieldCheck } from "lucide-react";
-import type { paths } from "@/api/schema";
 import type { readRecovery } from "@/api/tenant-lifecycle";
 import { loginHref } from "@/app/session";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";

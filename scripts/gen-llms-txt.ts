@@ -37,8 +37,6 @@ const OUT_DIR = "apps/engine/src/http/llms";
 
 const REFERENCE_DIR = "apps/engine/src/http/reference";
 
-const COCKPIT_DOCS = "apps/cockpit/src/app/docs.generated.ts";
-
 const SEED_DIR = "apps/engine/src/conversations/seed/knowledge";
 
 const EMBEDDED_SEEDS = "apps/engine/src/knowledge/embedded-seeds.ts";
@@ -300,10 +298,6 @@ function writeSeeds(): void {
   );
 }
 
-function renderCockpitDocs(bundle: string): string {
-  return `import type { DocsBundle } from "@shared/llms-index.ts";\n\nexport const DOCS: DocsBundle = ${bundle};\n`;
-}
-
 function references(markdown: string): string {
   return rewriteImages(repositoryReferences(markdown, LLMS_PAGE_PATHS), docsImages());
 }
@@ -487,7 +481,6 @@ function main(): void {
     { stdout: "pipe", stderr: "pipe" },
   );
   if (format.exitCode !== 0) throw new Error(`biome could not format ${DOCS_IMAGES_MODULE}`);
-  writeFileSync(COCKPIT_DOCS, renderCockpitDocs(bundle));
   writeSeeds();
 }
 

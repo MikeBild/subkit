@@ -5,7 +5,6 @@ import {
   auditLog,
   executions,
   llmUsage,
-  tenants,
   users,
   workflows,
   workflowVersions,
@@ -14,6 +13,7 @@ import { builtinRoleId } from "../../rbac/roles.ts";
 import { seedBuiltinRolesAndPermissions } from "../../rbac/seed.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 const uuid = createDeterministicUuidFactory(0x04);
@@ -135,11 +135,11 @@ beforeAll(async () => {
     created_at: SEED_TS,
   });
 
-  const [tenantB] = await db
-    .insert(tenants)
-    .values({ slug: "tenant-b-iso", display_name: "Tenant B Isolation" })
-    .returning();
-  tenantBId = tenantB!.id;
+  const tenantB = await seedTenant(db, {
+    slug: "tenant-b-iso",
+    display_name: "Tenant B Isolation",
+  });
+  tenantBId = tenantB.id;
 
   await seedBuiltinRolesAndPermissions(db);
 

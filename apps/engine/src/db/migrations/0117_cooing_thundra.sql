@@ -1,2 +1,0 @@
-ALTER TABLE "sessions" ADD COLUMN "auth_identity_id" uuid;--> statement-breakpoint
-ALTER TABLE "sessions" ADD CONSTRAINT "sessions_auth_identity_id_auth_identities_id_fk" FOREIGN KEY ("auth_identity_id") REFERENCES "subkit"."auth_identities"("id") ON DELETE no action ON UPDATE no action;

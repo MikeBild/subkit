@@ -138,6 +138,7 @@ describe("a person's workflow description survives every version writer", () => 
         locked!.current_version_id,
         "00000000-0000-4000-8000-000000000001",
         false,
+        { manifestDigestMatches: true },
       );
     });
     await expectPersonsText("draft activation");
@@ -176,6 +177,7 @@ describe("a person's workflow description survives every version writer", () => 
         locked!.current_version_id,
         "00000000-0000-4000-8000-000000000001",
         false,
+        { manifestDigestMatches: true },
       );
     });
     const live = await getWorkflow(tenant_id, workflow_id, ctx.db);

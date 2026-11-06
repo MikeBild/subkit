@@ -1,3 +1,7 @@
+import {
+  createEngineClient,
+  type EngineClient as TypedEngineApi,
+} from "@cli-core/engine-api/client.ts";
 import { EngineError, TransportError } from "@cli-core/errors.ts";
 import {
   type DebugCorrelationFields,
@@ -152,6 +156,7 @@ export class EngineClient {
   private readonly userAgent: string;
   private readonly debugMode: DebugMode;
   private readonly language: "de" | "en" | null;
+  private typedApi: TypedEngineApi | null = null;
 
   constructor(opts: ClientOptions) {
     this.base = opts.engine_url.replace(/\/+$/, "");
@@ -175,6 +180,29 @@ export class EngineClient {
     if (this.tenant) h["x-subkit-tenant"] = this.tenant;
     if (opts?.traceId) h["x-sk-trace-id"] = opts.traceId;
     return h;
+  }
+
+  get api(): TypedEngineApi {
+    this.typedApi ??= createEngineClient({
+      baseUrl: this.base,
+      fetch: (input) => this.dispatchTyped(input),
+    });
+    return this.typedApi;
+  }
+
+  private async dispatchTyped(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const basePath = new URL(this.base).pathname.replace(/\/+$/, "");
+    const path = url.pathname.slice(basePath.length);
+    const query = url.searchParams.size > 0 ? Object.fromEntries(url.searchParams) : undefined;
+    const text = request.body ? await request.text() : "";
+    const body = text ? JSON.parse(text) : undefined;
+    const data = await this.request(request.method, path, body, query);
+    if (data === undefined) return new Response(null, { status: 204 });
+    return new Response(JSON.stringify(data), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
   }
 
   newClientTraceId(): string {

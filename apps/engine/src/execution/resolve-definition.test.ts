@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { tenants, workflows, workflowVersions } from "../db/schema/index.ts";
+import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import { resolveDefinition } from "./resolve-definition.ts";
 
 let testDb: TestDb;
@@ -12,11 +13,8 @@ let versionBId = "";
 
 beforeAll(async () => {
   testDb = await createTestDb("resolve-definition");
-  const [t] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "resolve-def", display_name: "Resolve Def" })
-    .returning();
-  tenantId = t!.id;
+  const t = await seedTenant(testDb.db, { slug: "resolve-def", display_name: "Resolve Def" });
+  tenantId = t.id;
 
   const [a] = await testDb.db
     .insert(workflows)

@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { callConnectorTool } from "../../conversations/tools/call-connector.ts";
 import type { ToolContext } from "../../conversations/tools/index.ts";
-import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedConnector, seedTenant } from "../../test-helpers/seed.ts";
 import { callConnector, callConnectorDriverRefusal } from "./call-connector.ts";
 
 let testDb: TestDb;
@@ -11,25 +11,17 @@ let mcpConnectorId: string;
 
 beforeAll(async () => {
   testDb = await createTestDb("svc_call_connector_mcp_refusal");
-  const [t] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "t-call-mcp", display_name: "T-CALL-MCP" })
-    .returning();
-  tenant_id = t!.id;
-  const [c] = await testDb.db
-    .insert(connectors)
-    .values({
+  tenant_id = (await seedTenant(testDb.db, { slug: "t-call-mcp", display_name: "T-CALL-MCP" })).id;
+  mcpConnectorId = (
+    await seedConnector(testDb.db, {
       tenant_id,
       slug: "remote-mcp",
       display_name: "Remote MCP",
       driver: "mcp",
-      environment: "dev",
-      auth_type: "none",
       base_url: "https://mcp.example.test/mcp",
       config: { mcp: { transport: "http" } },
     })
-    .returning({ id: connectors.id });
-  mcpConnectorId = c!.id;
+  ).id;
 });
 
 afterAll(async () => {

@@ -5,12 +5,13 @@ import { join } from "node:path";
 import { and, desc, eq } from "drizzle-orm";
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { reviewDraftWithCritic } from "../../conversations/authoring-critic/critic-agent.ts";
-import { auditLog, skillCandidates, skills, tenants } from "../../db/schema/index.ts";
+import { auditLog, skillCandidates, skills } from "../../db/schema/index.ts";
 import { CONVENTIONS_HEADING } from "../../llm/core/context-assembler/formatters.ts";
 import { assembleEnhancedPrompt } from "../../llm/core/context-assembler.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { loadActiveConventions } from "../../skills/conventions.ts";
 import { getSkill, listSkillHistory, restoreSkill } from "../../skills/service.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { browserSessionHeaders, createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 const COLLECTED_ZONE = "America/New_York";
@@ -304,11 +305,11 @@ describe("typed skill rules published through intake", () => {
   });
 
   test("another tenant never sees the rules", async () => {
-    const [other] = await ctx.db
-      .insert(tenants)
-      .values({ slug: "t-conventions-other", display_name: "Other tenant" })
-      .returning();
-    const active = await loadActiveConventions(other?.id ?? "", {}, ctx.db);
+    const other = await seedTenant(ctx.db, {
+      slug: "t-conventions-other",
+      display_name: "Other tenant",
+    });
+    const active = await loadActiveConventions(other.id, {}, ctx.db);
     expect(active.conventions).toEqual([]);
     const own = await loadActiveConventions(ctx.tenantId, {}, ctx.db);
     expect(own.conventions.map((entry) => entry.rule.rule_id)).toEqual(["tenant-timezone"]);

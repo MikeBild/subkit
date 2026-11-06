@@ -2,11 +2,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { auditLog } from "../db/schema/audit.ts";
-import { tenants } from "../db/schema/identity.ts";
 import { executions, workflows } from "../db/schema/index.ts";
 import { workflowWaits } from "../db/schema/workflow_waits.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { FROZEN_NOW, setTestNow } from "../test-helpers/determinism/clock.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import { reapOrphanedWaits } from "./wait-reaper.ts";
 
 let tdb: TestDb;
@@ -27,11 +27,8 @@ function recordingBoss(): { boss: PgBoss; sends: unknown[] } {
 beforeAll(async () => {
   setTestNow(() => FROZEN_NOW);
   tdb = await createTestDb("execution-wait-reaper");
-  const [tenant] = await tdb.db
-    .insert(tenants)
-    .values({ slug: "reaper-test", display_name: "Reaper Test" })
-    .returning({ id: tenants.id });
-  tenantId = tenant!.id;
+  const tenant = await seedTenant(tdb.db, { slug: "reaper-test", display_name: "Reaper Test" });
+  tenantId = tenant.id;
   const [wf] = await tdb.db
     .insert(workflows)
     .values({ tenant_id: tenantId, slug: "reaper-wf", name: "Reaper WF", lifecycle: "active" })

@@ -65,7 +65,7 @@ export const DOCS_QUERY_KEY = ["docs-bundle"] as const;
 function useDocsBundle() {
   return useQuery({
     queryKey: DOCS_QUERY_KEY,
-    queryFn: async (): Promise<DocsBundle> => (await import("@/app/docs.generated")).DOCS,
+    queryFn: async (): Promise<DocsBundle> => (await import("@/app/docs-bundle")).DOCS,
     staleTime: Number.POSITIVE_INFINITY,
     gcTime: Number.POSITIVE_INFINITY,
   });

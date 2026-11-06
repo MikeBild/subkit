@@ -6,17 +6,10 @@ import { loadDraft } from "../../conversations/draft.ts";
 import type { ToolContext } from "../../conversations/tools/index.ts";
 import { inspectExecutionTool } from "../../conversations/tools/inspect-execution.ts";
 import type { DraftDocument } from "../../conversations/types.ts";
-import {
-  apiKeys,
-  executionSteps,
-  executions,
-  roles,
-  users,
-  workflows,
-  workflowVersions,
-} from "../../db/schema/index.ts";
+import { apiKeys, executionSteps, executions, roles, users } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { renderAuthoringContextBlock } from "../../llm/core/authoring-context-block.ts";
+import { seedWorkflow } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -26,31 +19,18 @@ let growthFailedRun = "";
 let growthNewerRun = "";
 let triageNewestRun = "";
 
-async function seedWorkflow(slug: string): Promise<string> {
-  const [wf] = await srv.db
-    .insert(workflows)
-    .values({ tenant_id: srv.tenantId, slug, name: slug, lifecycle: "active" })
-    .returning();
-  if (!wf) throw new Error("seed workflow failed");
-  const [version] = await srv.db
-    .insert(workflowVersions)
-    .values({
-      tenant_id: srv.tenantId,
-      workflow_id: wf.id,
-      version: 1,
-      dag: {
-        name: slug,
-        slug,
-        steps: [{ id: "t1", kind: "transform", language: "javascript", expression: "return 1;" }],
-      },
-    })
-    .returning();
-  if (!version) throw new Error("seed version failed");
-  await srv.db
-    .update(workflows)
-    .set({ current_version_id: version.id })
-    .where(eq(workflows.id, wf.id));
-  return wf.id;
+async function seedSlugWorkflow(slug: string): Promise<string> {
+  const { workflow } = await seedWorkflow(srv.db, {
+    tenant_id: srv.tenantId,
+    slug,
+    name: slug,
+    dag: {
+      name: slug,
+      slug,
+      steps: [{ id: "t1", kind: "transform", language: "javascript", expression: "return 1;" }],
+    },
+  });
+  return workflow.id;
 }
 
 async function seedRun(
@@ -110,8 +90,8 @@ async function toolContextFor(conversationId: string, workflowId: string | null)
 
 beforeAll(async () => {
   srv = await createHttpTestServer("conv-run-focus");
-  growthId = await seedWorkflow("mission-control-growth-weekly");
-  triageId = await seedWorkflow("watchkit-finding-triage");
+  growthId = await seedSlugWorkflow("mission-control-growth-weekly");
+  triageId = await seedSlugWorkflow("watchkit-finding-triage");
   growthFailedRun = await seedRun(growthId, "failed", "2026-09-01T08:00:00.000Z");
   growthNewerRun = await seedRun(growthId, "succeeded", "2026-09-02T08:00:00.000Z");
   triageNewestRun = await seedRun(triageId, "failed", "2026-09-03T08:00:00.000Z");

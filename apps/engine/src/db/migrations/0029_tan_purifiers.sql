@@ -1,1 +1,0 @@
-ALTER TABLE "mcp_oauth_refresh_tokens" ADD COLUMN "resource" text;

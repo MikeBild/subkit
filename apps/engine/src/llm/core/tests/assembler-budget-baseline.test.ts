@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { connectors, skillCandidates, tenants } from "../../../db/schema/index.ts";
+import { connectors, skillCandidates } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { logger } from "../../../logging/logger.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import { contextCapFor } from "../../accounting/index.ts";
 import { resetMockProvider } from "../../mock-provider.ts";
 import { assembleEnhancedPrompt } from "../context-assembler.ts";
@@ -90,11 +91,8 @@ beforeAll(async () => {
   resetMockProvider();
 
   ctx = await createTestDb("assembler_budget_baseline");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-budget", display_name: "Budget Baseline Test" })
-    .returning();
-  tenant_id = t!.id;
+  const t = await seedTenant(ctx.db, { slug: "t-budget", display_name: "Budget Baseline Test" });
+  tenant_id = t.id;
 
   const stripeSnapshot: Record<string, unknown> = {
     slug: "stripe",

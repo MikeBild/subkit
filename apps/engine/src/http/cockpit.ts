@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { logger } from "../logging/logger.ts";
-import { EMBEDDED_COCKPIT } from "./cockpit-embedded.ts";
 import type { AppEnv } from "./openapi.ts";
 import {
   NEGOTIATED_VARY,
@@ -88,6 +87,21 @@ interface Asset {
   etag: string;
 }
 
+export type CockpitFiles = (relativePath: string) => Uint8Array | null;
+
+function embeddedCockpit(): Readonly<Record<string, string>> {
+  try {
+    const embedded: {
+      EMBEDDED_COCKPIT?: Record<string, string>;
+    } = require("./cockpit-embedded.ts");
+    return embedded.EMBEDDED_COCKPIT ?? {};
+  } catch {
+    return {};
+  }
+}
+
+const EMBEDDED_COCKPIT = embeddedCockpit();
+
 export function cockpitCsp(inlineScriptHashes: readonly string[] = []): string {
   const script = ["script-src 'self'", ...inlineScriptHashes.map((hash) => `'${hash}'`)].join(" ");
   return [
@@ -114,37 +128,40 @@ export function inlineScriptHashes(html: string): string[] {
 }
 
 const HASHED_ASSET_PREFIX = "assets/";
-const assetCache = new Map<string, Asset>();
 
-export function cachedCockpitAsset(relativePath: string): Asset | null {
-  const cached = assetCache.get(relativePath);
-  if (cached) return cached;
-  const asset = readAsset(relativePath);
-  if (asset && normalize(relativePath) === relativePath) assetCache.set(relativePath, asset);
-  return asset;
-}
-
-function readAsset(relativePath: string): Asset | null {
-  let source: Uint8Array | null = null;
+function bundledCockpitFile(relativePath: string): Uint8Array | null {
   const target = normalize(join(COCKPIT_DIR, relativePath));
   if (target === COCKPIT_DIR || target.startsWith(`${COCKPIT_DIR}${sep}`)) {
     try {
-      if (statSync(target).isFile()) source = readFileSync(target);
-    } catch {
-      source = null;
-    }
+      if (statSync(target).isFile()) return readFileSync(target);
+    } catch {}
   }
-  if (!source) {
-    const encoded = EMBEDDED_COCKPIT[relativePath];
-    if (encoded) source = Buffer.from(encoded, "base64");
-  }
-  if (!source) return null;
-  const body = Uint8Array.from(source);
-  return {
-    body,
-    contentType: MIME[extname(relativePath)] ?? "application/octet-stream",
-    etag: `"${createHash("sha256").update(body).digest("hex").slice(0, 32)}"`,
+  const encoded = EMBEDDED_COCKPIT[relativePath];
+  return encoded ? Buffer.from(encoded, "base64") : null;
+}
+
+function cockpitAssetReader(files: CockpitFiles): (relativePath: string) => Asset | null {
+  const cache = new Map<string, Asset>();
+  return (relativePath) => {
+    const cached = cache.get(relativePath);
+    if (cached) return cached;
+    const source = files(normalize(relativePath));
+    if (!source) return null;
+    const body = Uint8Array.from(source);
+    const asset = {
+      body,
+      contentType: MIME[extname(relativePath)] ?? "application/octet-stream",
+      etag: `"${createHash("sha256").update(body).digest("hex").slice(0, 32)}"`,
+    };
+    if (normalize(relativePath) === relativePath) cache.set(relativePath, asset);
+    return asset;
   };
+}
+
+const bundledCockpitAsset = cockpitAssetReader(bundledCockpitFile);
+
+export function cachedCockpitAsset(relativePath: string): Asset | null {
+  return bundledCockpitAsset(relativePath);
 }
 
 export function cockpitSecurityHeaders(csp: string) {
@@ -171,7 +188,12 @@ export function cockpitBundleMissing(c: Context<AppEnv>): Response {
 }
 
 export function registerCockpitRoutes(app: OpenAPIHono<AppEnv>): void {
-  const shell = readAsset("index.html");
+  registerCockpitRoutesWith(app, bundledCockpitFile);
+}
+
+export function registerCockpitRoutesWith(app: OpenAPIHono<AppEnv>, files: CockpitFiles): void {
+  const asset = files === bundledCockpitFile ? bundledCockpitAsset : cockpitAssetReader(files);
+  const shell = asset("index.html");
   if (!shell) {
     logger.warn({
       module: "http",
@@ -187,27 +209,27 @@ export function registerCockpitRoutes(app: OpenAPIHono<AppEnv>): void {
   const serve = (c: Context<AppEnv>) => {
     if (!shell) return cockpitBundleMissing(c);
     const relative = c.req.path.slice(COCKPIT_PREFIX.length).replace(/^\/+/, "");
-    const requested = relative ? cachedCockpitAsset(relative) : null;
+    const requested = relative ? asset(relative) : null;
     const hashed = relative.startsWith(HASHED_ASSET_PREFIX);
     if (hashed && !requested)
       return c.text("cockpit asset not found\n", 404, {
         ...securityHeaders,
         "cache-control": NEVER,
       });
-    const asset = requested ?? shell;
+    const served = requested ?? shell;
     const headers = {
       ...securityHeaders,
       "cache-control": requested && hashed ? IMMUTABLE : NEVER,
-      "content-type": asset.contentType,
-      etag: asset.etag,
+      "content-type": served.contentType,
+      etag: served.etag,
     };
-    if (c.req.header("if-none-match") === asset.etag)
+    if (c.req.header("if-none-match") === served.etag)
       return new Response(null, { status: 304, headers });
-    return new Response(c.req.method === "HEAD" ? null : asset.body, { status: 200, headers });
+    return new Response(c.req.method === "HEAD" ? null : served.body, { status: 200, headers });
   };
 
   app.on(["GET", "HEAD"], `${COCKPIT_PREFIX}/sw.js`, (c) => {
-    const worker = cachedCockpitAsset("browser-worker.js");
+    const worker = asset("browser-worker.js");
     if (!worker) return cockpitBundleMissing(c);
     return new Response(c.req.method === "HEAD" ? null : worker.body, {
       status: 200,

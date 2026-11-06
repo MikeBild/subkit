@@ -1,0 +1,16 @@
+# Burndown allowlist for the audit-invariants `route_size` check.
+# Rule: http/routes/**/*.ts above 600 lines; split per resource.
+# Format: <path from repo root>  <budget in lines>. A listed file fails once it exceeds its budget;
+# an unlisted file fails at the first hit. Budgets only shrink: fix the file, then run
+# `bun run apps/engine/scripts/audit-invariants.ts --update-baseline` (lowers budgets, drops fixed files).
+# `--accept-new` also admits new offenders; use it only for a reviewed baseline reset.
+
+apps/engine/src/http/routes/connectors/credentials-setup.ts  634
+apps/engine/src/http/routes/connectors/mcp.ts                692
+apps/engine/src/http/routes/discovery.ts                     678
+apps/engine/src/http/routes/intake.ts                        713
+apps/engine/src/http/routes/knowledge-sources.ts             975
+apps/engine/src/http/routes/oauth/consent.ts                 645
+apps/engine/src/http/routes/settings.ts                      619
+apps/engine/src/http/routes/workflow-authorities.ts          911
+apps/engine/src/http/routes/workflows.ts                     887

@@ -1,3 +1,4 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
@@ -25,7 +26,6 @@ import {
   listIntakeClips,
   setIntakeDefaultCategory,
 } from "@/api/intake";
-import type { components } from "@/api/schema";
 import { absolute, chatNewHref, docsHref, recordHref } from "@/app/links";
 import { CatalogCategories } from "@/components/cockpit/catalog-categories";
 import {

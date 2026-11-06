@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { connectors, tenants } from "../db/schema/index.ts";
+import { connectors } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { seedConnector, seedTenant } from "../test-helpers/seed.ts";
 import { buildReauthUrl, clearConnectorReauth, markConnectorNeedsReauth } from "./reauth.ts";
 
 let db: TestDb;
@@ -11,47 +12,33 @@ let otherTenantId: string;
 beforeAll(async () => {
   db = await createTestDb("reauth-unit");
 
-  const [t] = await db.db
-    .insert(tenants)
-    .values({ slug: "t-reauth", display_name: "Reauth Tenant" })
-    .returning();
-  tenantId = t!.id;
-
-  const [t2] = await db.db
-    .insert(tenants)
-    .values({ slug: "t-reauth-other", display_name: "Other Tenant" })
-    .returning();
-  otherTenantId = t2!.id;
+  tenantId = (await seedTenant(db.db, { slug: "t-reauth", display_name: "Reauth Tenant" })).id;
+  otherTenantId = (
+    await seedTenant(db.db, { slug: "t-reauth-other", display_name: "Other Tenant" })
+  ).id;
 });
 
 afterAll(async () => {
   await db.cleanup();
 });
 
-async function seedConnector(opts: {
+async function seedReauthConnector(opts: {
   slug: string;
   tenantIdOverride?: string;
   authType?: string;
 }): Promise<string> {
-  const [c] = await db.db
-    .insert(connectors)
-    .values({
-      tenant_id: opts.tenantIdOverride ?? tenantId,
-      slug: opts.slug,
-      display_name: opts.slug,
-      driver: "http",
-      environment: "dev",
-      auth_type: (opts.authType ?? "bearer") as "bearer",
-      base_url: "https://example.test",
-      config: {},
-    })
-    .returning();
-  return c!.id;
+  const row = await seedConnector(db.db, {
+    tenant_id: opts.tenantIdOverride ?? tenantId,
+    slug: opts.slug,
+    display_name: opts.slug,
+    auth_type: (opts.authType ?? "bearer") as "bearer",
+  });
+  return row.id;
 }
 
 describe("markConnectorNeedsReauth", () => {
   test("first call on a healthy connector transitions to needs_reauth=true", async () => {
-    const connectorId = await seedConnector({ slug: "mark-first" });
+    const connectorId = await seedReauthConnector({ slug: "mark-first" });
 
     const { transitioned } = await markConnectorNeedsReauth(
       db.db,
@@ -70,7 +57,7 @@ describe("markConnectorNeedsReauth", () => {
   });
 
   test("second call on an already-flagged connector returns transitioned=false and does not update auth_failed_at", async () => {
-    const connectorId = await seedConnector({ slug: "mark-dedup" });
+    const connectorId = await seedReauthConnector({ slug: "mark-dedup" });
 
     await markConnectorNeedsReauth(db.db, tenantId, connectorId, "first_reason");
 
@@ -92,7 +79,7 @@ describe("markConnectorNeedsReauth", () => {
   });
 
   test("calling with a different tenant_id returns transitioned=false and leaves the row unmodified", async () => {
-    const connectorId = await seedConnector({ slug: "mark-tenant-isolation" });
+    const connectorId = await seedReauthConnector({ slug: "mark-tenant-isolation" });
 
     const { transitioned } = await markConnectorNeedsReauth(
       db.db,
@@ -112,7 +99,7 @@ describe("markConnectorNeedsReauth", () => {
 
 describe("clearConnectorReauth", () => {
   test("clears needs_reauth + auth_failed_at + reason after a flag", async () => {
-    const connectorId = await seedConnector({ slug: "clear-after-flag" });
+    const connectorId = await seedReauthConnector({ slug: "clear-after-flag" });
 
     await markConnectorNeedsReauth(db.db, tenantId, connectorId, "bad_token");
 
@@ -126,7 +113,7 @@ describe("clearConnectorReauth", () => {
   });
 
   test("idempotent on an already-clear row (no error)", async () => {
-    const connectorId = await seedConnector({ slug: "clear-idempotent" });
+    const connectorId = await seedReauthConnector({ slug: "clear-idempotent" });
 
     await expect(clearConnectorReauth(db.db, tenantId, connectorId)).resolves.toBeUndefined();
 
@@ -135,7 +122,7 @@ describe("clearConnectorReauth", () => {
   });
 
   test("clear is tenant-scoped — different tenant cannot clear another tenant's flag", async () => {
-    const connectorId = await seedConnector({ slug: "clear-tenant-scope" });
+    const connectorId = await seedReauthConnector({ slug: "clear-tenant-scope" });
 
     await markConnectorNeedsReauth(db.db, tenantId, connectorId, "original");
 
@@ -148,7 +135,7 @@ describe("clearConnectorReauth", () => {
 
 describe("buildReauthUrl", () => {
   test("basic auth connector without a public origin → method=portal_setup, reauth_url=null, instructions non-empty", async () => {
-    const connectorId = await seedConnector({ slug: "reauth-basic", authType: "basic" });
+    const connectorId = await seedReauthConnector({ slug: "reauth-basic", authType: "basic" });
 
     const rows = await db.db.select().from(connectors).where(eq(connectors.id, connectorId));
     const row = rows[0]!;
@@ -191,7 +178,10 @@ describe("buildReauthUrl", () => {
   });
 
   test("bearer auth connector without a public origin → method=portal_setup", async () => {
-    const connectorId = await seedConnector({ slug: "reauth-bearer-noorigin", authType: "bearer" });
+    const connectorId = await seedReauthConnector({
+      slug: "reauth-bearer-noorigin",
+      authType: "bearer",
+    });
 
     const rows = await db.db.select().from(connectors).where(eq(connectors.id, connectorId));
     const row = rows[0]!;

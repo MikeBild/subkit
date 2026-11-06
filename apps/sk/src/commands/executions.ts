@@ -1,4 +1,4 @@
-import { exitCodeFor, reportCommandError } from "@cli-core/errors";
+import { exitCodeFor } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
@@ -15,6 +15,7 @@ import {
   humanMs,
 } from "../render/format.ts";
 import { collectFileRefs } from "../utils/file-ref.ts";
+import { withCommandErrors } from "./command-runtime.ts";
 import { resolveTime } from "./stats.ts";
 
 const fetchExecutionRows = async (client: EngineClient) => {
@@ -98,40 +99,41 @@ const listCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
-      const query: Record<string, string | number | undefined> = { limit: Number(args.limit) };
-      if (args.status) query.status = args.status;
-      if (args.source) query.request_source = String(args.source);
-      if (args.parent) query.parent_execution_id = String(args.parent);
-      if (args.cursor) query.cursor = String(args.cursor);
-      const nowMs = Date.now();
-      if (args.from) query.started_from = resolveTime(String(args.from), nowMs).toISOString();
-      if (args.to) query.started_to = resolveTime(String(args.to), nowMs).toISOString();
-      const { items, total, next_cursor } = await client.listExecutions(query);
-      const rows = (items as Record<string, unknown>[]).map((r) => {
-        const ms = executionDurationMs(r.started_at, r.finished_at);
-        const running = r.finished_at == null && r.started_at != null;
-        return {
-          ...r,
-          origin: originOf(r),
-          duration: ms != null ? humanMs(ms) : running ? "running" : "—",
-        };
-      });
-      emitList(
-        !!args.json,
-        ["id", "workflow_id", "origin", "status", "duration", "started_at"],
-        rows,
-      );
-      if (!args.json) {
-        process.stdout.write(
-          next_cursor
-            ? `${pc.dim(`showing ${items.length} of ${total} executions — next page: --cursor ${next_cursor}`)}\n`
-            : `${pc.dim(`${total} execution${total === 1 ? "" : "s"} total`)}\n`,
+    return withCommandErrors(
+      async () => {
+        const query: Record<string, string | number | undefined> = { limit: Number(args.limit) };
+        if (args.status) query.status = args.status;
+        if (args.source) query.request_source = String(args.source);
+        if (args.parent) query.parent_execution_id = String(args.parent);
+        if (args.cursor) query.cursor = String(args.cursor);
+        const nowMs = Date.now();
+        if (args.from) query.started_from = resolveTime(String(args.from), nowMs).toISOString();
+        if (args.to) query.started_to = resolveTime(String(args.to), nowMs).toISOString();
+        const { items, total, next_cursor } = await client.listExecutions(query);
+        const rows = (items as Record<string, unknown>[]).map((r) => {
+          const ms = executionDurationMs(r.started_at, r.finished_at);
+          const running = r.finished_at == null && r.started_at != null;
+          return {
+            ...r,
+            origin: originOf(r),
+            duration: ms != null ? humanMs(ms) : running ? "running" : "—",
+          };
+        });
+        emitList(
+          !!args.json,
+          ["id", "workflow_id", "origin", "status", "duration", "started_at"],
+          rows,
         );
-      }
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+        if (!args.json) {
+          process.stdout.write(
+            next_cursor
+              ? `${pc.dim(`showing ${items.length} of ${total} executions — next page: --cursor ${next_cursor}`)}\n`
+              : `${pc.dim(`${total} execution${total === 1 ? "" : "s"} total`)}\n`,
+          );
+        }
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -144,39 +146,40 @@ const getCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
-      const id = await pickId({
-        label: "execution id",
-        argValue: args.id,
-        fetch: () => fetchExecutionRows(client),
-      });
-      const execution = await client.getExecution(id);
-      printJson(execution);
-      if (!args.json) {
-        let steps: Record<string, unknown>[] = [];
-        try {
-          const res = await client.executionSteps(id);
-          steps = res.items as Record<string, unknown>[];
-        } catch {}
-        try {
-          const cost = await client.executionCost(id);
-          printExecutionCostCard(cost);
-        } catch {}
-        printStepBottlenecks(steps);
-        const outcomeLine = executionOutcomeLine(
-          (execution as { outcome: Parameters<typeof executionOutcomeLine>[0] }).outcome,
-        );
-        if (outcomeLine) process.stderr.write(`\n${pc.dim("outcome:")} ${outcomeLine}\n`);
-        const held = heldRunBlock(client, execution as Parameters<typeof heldRunBlock>[1], steps);
-        if (held) process.stderr.write(`\n${pc.bold(pc.yellow(held))}\n`);
-        if (execution.status === "failed") {
-          printFailedStepErrors(steps);
+    return withCommandErrors(
+      async () => {
+        const id = await pickId({
+          label: "execution id",
+          argValue: args.id,
+          fetch: () => fetchExecutionRows(client),
+        });
+        const execution = await client.getExecution(id);
+        printJson(execution);
+        if (!args.json) {
+          let steps: Record<string, unknown>[] = [];
+          try {
+            const res = await client.executionSteps(id);
+            steps = res.items as Record<string, unknown>[];
+          } catch {}
+          try {
+            const cost = await client.executionCost(id);
+            printExecutionCostCard(cost);
+          } catch {}
+          printStepBottlenecks(steps);
+          const outcomeLine = executionOutcomeLine(
+            (execution as { outcome: Parameters<typeof executionOutcomeLine>[0] }).outcome,
+          );
+          if (outcomeLine) process.stderr.write(`\n${pc.dim("outcome:")} ${outcomeLine}\n`);
+          const held = heldRunBlock(client, execution as Parameters<typeof heldRunBlock>[1], steps);
+          if (held) process.stderr.write(`\n${pc.bold(pc.yellow(held))}\n`);
+          if (execution.status === "failed") {
+            printFailedStepErrors(steps);
+          }
+          await maybePrintOutputFiles(client, execution as Record<string, unknown>);
         }
-        await maybePrintOutputFiles(client, execution as Record<string, unknown>);
-      }
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -192,38 +195,39 @@ const resultCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
-      const id = await pickId({
-        label: "execution id",
-        argValue: args.id,
-        fetch: () => fetchExecutionRows(client),
-      });
-      const execution = (await client.getExecution(id)) as Record<string, unknown>;
-      const { items } = await client.executionSteps(id);
-      const steps = items as Record<string, unknown>[];
-      const last = steps.length > 0 ? steps[steps.length - 1] : undefined;
-      const output = last?.output_preview ?? last?.result_preview ?? null;
-      if (args.json) {
+    return withCommandErrors(
+      async () => {
+        const id = await pickId({
+          label: "execution id",
+          argValue: args.id,
+          fetch: () => fetchExecutionRows(client),
+        });
+        const execution = (await client.getExecution(id)) as Record<string, unknown>;
+        const { items } = await client.executionSteps(id);
+        const steps = items as Record<string, unknown>[];
+        const last = steps.length > 0 ? steps[steps.length - 1] : undefined;
+        const output = last?.output_preview ?? last?.result_preview ?? null;
+        if (args.json) {
+          printJson(output);
+          return;
+        }
+        const held = heldRunBlock(client, execution as Parameters<typeof heldRunBlock>[1], steps);
+        const status = typeof execution.status === "string" ? execution.status : "unknown";
+        process.stdout.write(`execution ${id} · ${status}\n`);
+        if (held) process.stderr.write(`\n${pc.bold(pc.yellow(held))}\n`);
+        if (output === null || output === undefined) {
+          const uri = last?.result_storage_uri;
+          process.stdout.write(
+            typeof uri === "string" && uri
+              ? `  result offloaded to ${uri}\n`
+              : "  (no output recorded)\n",
+          );
+          return;
+        }
         printJson(output);
-        return;
-      }
-      const held = heldRunBlock(client, execution as Parameters<typeof heldRunBlock>[1], steps);
-      const status = typeof execution.status === "string" ? execution.status : "unknown";
-      process.stdout.write(`execution ${id} · ${status}\n`);
-      if (held) process.stderr.write(`\n${pc.bold(pc.yellow(held))}\n`);
-      if (output === null || output === undefined) {
-        const uri = last?.result_storage_uri;
-        process.stdout.write(
-          typeof uri === "string" && uri
-            ? `  result offloaded to ${uri}\n`
-            : "  (no output recorded)\n",
-        );
-        return;
-      }
-      printJson(output);
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -236,37 +240,38 @@ const stepsCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
-      const id = await pickId({
-        label: "execution id",
-        argValue: args.id,
-        fetch: () => fetchExecutionRows(client),
-      });
-      const { items } = await client.executionSteps(id);
-      const rows = (items as Record<string, unknown>[]).map((s) => {
-        const rm = (s.request_meta ?? null) as Record<string, unknown> | null;
-        const conn = (rm?.connector ?? null) as Record<string, unknown> | null;
-        const err = (s.error ?? null) as Record<string, unknown> | null;
-        return {
-          ...s,
-          url: (rm?.url as string | undefined) ?? "—",
-          status_code: (rm?.status as number | undefined) ?? "—",
-          bytes_in: (rm?.bytes_in as number | undefined) ?? "—",
-          auth_method: (conn?.auth_method as string | undefined) ?? "—",
-          error: (err?.code as string | undefined) ?? "—",
-        };
-      });
-      emitList(
-        !!args.json,
-        ["step_key", "status", "duration_ms", "url", "status_code", "error", "auth_method"],
-        rows,
-      );
-      if (!args.json) {
-        printFailedStepErrors(items as Record<string, unknown>[]);
-      }
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const id = await pickId({
+          label: "execution id",
+          argValue: args.id,
+          fetch: () => fetchExecutionRows(client),
+        });
+        const { items } = await client.executionSteps(id);
+        const rows = (items as Record<string, unknown>[]).map((s) => {
+          const rm = (s.request_meta ?? null) as Record<string, unknown> | null;
+          const conn = (rm?.connector ?? null) as Record<string, unknown> | null;
+          const err = (s.error ?? null) as Record<string, unknown> | null;
+          return {
+            ...s,
+            url: (rm?.url as string | undefined) ?? "—",
+            status_code: (rm?.status as number | undefined) ?? "—",
+            bytes_in: (rm?.bytes_in as number | undefined) ?? "—",
+            auth_method: (conn?.auth_method as string | undefined) ?? "—",
+            error: (err?.code as string | undefined) ?? "—",
+          };
+        });
+        emitList(
+          !!args.json,
+          ["step_key", "status", "duration_ms", "url", "status_code", "error", "auth_method"],
+          rows,
+        );
+        if (!args.json) {
+          printFailedStepErrors(items as Record<string, unknown>[]);
+        }
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -338,7 +343,7 @@ const abortCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
+    return withCommandErrors(async () => {
       const id = await pickId({
         label: "execution id",
         argValue: args.id,
@@ -346,9 +351,7 @@ const abortCommand = defineCommand({
       });
       await client.abortExecution(id);
       process.stdout.write(`${pc.green("aborted")}\n`);
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -383,7 +386,7 @@ const rerunCommand = defineCommand({
         process.exit(1);
       }
     }
-    try {
+    return withCommandErrors(async () => {
       const id = await pickId({
         label: "execution id",
         argValue: args.id,
@@ -404,9 +407,7 @@ const rerunCommand = defineCommand({
       process.stderr.write(
         `\n${pc.dim("Tip:")} sk executions list --parent ${id} shows this rerun lineage\n`,
       );
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 

@@ -78,8 +78,7 @@ function userTenantConds(tenantId: string, productId: string | undefined) {
   );
 }
 
-export async function listUsers(tenantId: string, opts: ListOptions = {}, exec?: Executor) {
-  const db = exec ?? getDb();
+export async function listUsers(tenantId: string, opts: ListOptions = {}, db: Executor) {
   return db
     .select()
     .from(users)
@@ -91,10 +90,9 @@ export async function listUsers(tenantId: string, opts: ListOptions = {}, exec?:
 
 export async function countUsers(
   tenantId: string,
-  exec?: Executor,
+  db: Executor,
   opts: Pick<ListOptions, "productId"> = {},
 ): Promise<number> {
-  const db = exec ?? getDb();
   const [row] = await db
     .select({ total: count() })
     .from(users)
@@ -120,8 +118,7 @@ export async function listIdentitiesByUser(
     .orderBy(desc(userIdentities.last_seen_at));
 }
 
-export async function getUser(tenantId: string, id: string, exec?: Executor) {
-  const db = exec ?? getDb();
+export async function getUser(tenantId: string, id: string, db: Executor) {
   const rows = await db
     .select()
     .from(users)
@@ -143,8 +140,7 @@ export interface UpdateUserInput {
   actor_kind?: PrincipalKind | "system";
 }
 
-export async function updateUser(input: UpdateUserInput, exec?: Executor) {
-  const db = exec ?? getDb();
+export async function updateUser(input: UpdateUserInput, db: Executor) {
   return db.transaction(async (tx) => {
     const current = await tx
       .select()
@@ -228,12 +224,7 @@ export async function updateUser(input: UpdateUserInput, exec?: Executor) {
   });
 }
 
-export async function listSystemAccounts(
-  tenantId: string,
-  opts: ListOptions = {},
-  exec?: Executor,
-) {
-  const db = exec ?? getDb();
+export async function listSystemAccounts(tenantId: string, opts: ListOptions = {}, db: Executor) {
   return db
     .select()
     .from(systemAccounts)
@@ -251,8 +242,7 @@ export interface CreateSystemAccountInput {
   actor_id: string | null;
 }
 
-export async function createSystemAccount(input: CreateSystemAccountInput, exec?: Executor) {
-  const db = exec ?? getDb();
+export async function createSystemAccount(input: CreateSystemAccountInput, db: Executor) {
   return db.transaction(async (tx) => {
     const [row] = await tx
       .insert(systemAccounts)
@@ -281,9 +271,8 @@ export async function createSystemAccount(input: CreateSystemAccountInput, exec?
 
 export async function ensureNamedSystemAccount(
   input: { tenant_id: string; name: string; description: string },
-  exec?: Executor,
+  db: Executor,
 ): Promise<{ id: string }> {
-  const db = exec ?? getDb();
   return db.transaction(async (tx) => {
     const lookup = () =>
       tx
@@ -328,8 +317,7 @@ export interface DeleteSystemAccountInput {
   actor_id: string | null;
 }
 
-export async function deleteSystemAccount(input: DeleteSystemAccountInput, exec?: Executor) {
-  const db = exec ?? getDb();
+export async function deleteSystemAccount(input: DeleteSystemAccountInput, db: Executor) {
   return db.transaction(async (tx) => {
     const [row] = await tx
       .update(systemAccounts)
@@ -427,8 +415,7 @@ function toApiKeyView(row: typeof apiKeys.$inferSelect): ApiKeyView {
   };
 }
 
-export async function listApiKeys(tenantId: string, exec?: Executor): Promise<ApiKeyView[]> {
-  const db = exec ?? getDb();
+export async function listApiKeys(tenantId: string, db: Executor): Promise<ApiKeyView[]> {
   const rows = await db
     .select()
     .from(apiKeys)
@@ -440,9 +427,8 @@ export async function listApiKeys(tenantId: string, exec?: Executor): Promise<Ap
 export async function getApiKey(
   tenantId: string,
   id: string,
-  exec?: Executor,
+  db: Executor,
 ): Promise<ApiKeyView | null> {
-  const db = exec ?? getDb();
   const rows = await db
     .select()
     .from(apiKeys)
@@ -566,9 +552,8 @@ export interface RotateApiKeyResult {
 
 export async function rotateApiKey(
   input: RotateApiKeyInput,
-  exec?: Executor,
+  db: Executor,
 ): Promise<RotateApiKeyResult | null> {
-  const db = exec ?? getDb();
   const actor = resolveApiKeyCreator(input.actor, input.actor_id);
   const actorId = apiKeyActorId(input.actor);
   const overlapMs = (input.overlap_minutes ?? 60) * 60_000;
@@ -679,9 +664,8 @@ export interface RevokeApiKeyInput {
 
 export async function revokeApiKey(
   input: RevokeApiKeyInput,
-  exec?: Executor,
+  db: Executor,
 ): Promise<ApiKeyView | null> {
-  const db = exec ?? getDb();
   return db.transaction(async (tx) => {
     const [row] = await tx
       .update(apiKeys)
@@ -741,8 +725,7 @@ function toPortalTokenView(row: typeof portalTokens.$inferSelect): PortalTokenVi
   };
 }
 
-export async function listPortalTokens(tenantId: string, exec?: Executor) {
-  const db = exec ?? getDb();
+export async function listPortalTokens(tenantId: string, db: Executor) {
   const rows = await db
     .select()
     .from(portalTokens)
@@ -767,9 +750,8 @@ export interface IssuePortalTokenResult {
 
 export async function issuePortalToken(
   input: IssuePortalTokenInput,
-  exec?: Executor,
+  db: Executor,
 ): Promise<IssuePortalTokenResult> {
-  const db = exec ?? getDb();
   const ttlMs = (input.ttl_minutes ?? 24 * 60) * 60_000;
   return db.transaction(async (tx) => {
     const key = generatePortalToken();
@@ -819,8 +801,7 @@ export interface RevokePortalTokenInput {
   actor_kind?: AuditActorType;
 }
 
-export async function revokePortalToken(input: RevokePortalTokenInput, exec?: Executor) {
-  const db = exec ?? getDb();
+export async function revokePortalToken(input: RevokePortalTokenInput, db: Executor) {
   return db.transaction(async (tx) => {
     const [row] = await tx
       .update(portalTokens)
@@ -888,11 +869,7 @@ export interface CreateSessionInput {
   actor_id?: string | null;
 }
 
-export async function createSession(
-  input: CreateSessionInput,
-  exec?: Executor,
-): Promise<SessionView> {
-  const db = exec ?? getDb();
+export async function createSession(input: CreateSessionInput, db: Executor): Promise<SessionView> {
   return db.transaction(async (tx) => {
     await assertTenantActive(input.tenant_id, tx);
     const issuedAt = new Date(now());
@@ -937,9 +914,8 @@ export interface ResolveSessionResult {
 
 export async function resolveSession(
   sessionId: string,
-  exec?: Executor,
+  db: Executor,
 ): Promise<ResolveSessionResult> {
-  const db = exec ?? getDb();
   // tenant-filter:exempt — pre-tenant session resolution; tenant_id is read out of the resolved row to *establish* tenant context for downstream code
   const rows = await db.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1);
   const row = rows[0];

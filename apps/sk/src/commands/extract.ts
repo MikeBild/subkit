@@ -1,8 +1,8 @@
-import { reportCommandError } from "@cli-core/errors";
 import { printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
+import { withCommandErrors } from "./command-runtime.ts";
 
 const BINARY_EXT_TO_MIME: Record<string, string> = {
   ".pdf": "application/pdf",
@@ -38,7 +38,7 @@ export const extractCommand = defineCommand({
       api_key: profile.api_key,
       tenant: profile.active_tenant_id,
     });
-    try {
+    return withCommandErrors(async () => {
       const path = String(args.file);
       statSync(path);
       const filename = basename(path);
@@ -58,8 +58,6 @@ export const extractCommand = defineCommand({
       if (args.hint) extractBody.hint = String(args.hint);
       const result = await client.extract(extractBody);
       printJson(result);
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });

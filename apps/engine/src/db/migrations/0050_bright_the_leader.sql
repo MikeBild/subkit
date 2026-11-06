@@ -1,1 +1,0 @@
-ALTER TABLE "workflows" ADD COLUMN "draft_version_id" uuid;

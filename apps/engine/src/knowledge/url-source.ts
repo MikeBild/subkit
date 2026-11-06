@@ -102,7 +102,7 @@ export async function createKnowledgeSourceFromUrl(
     url: string;
     input: Omit<CreateKnowledgeSourceInput, "name"> & { name?: string | undefined };
   },
-  exec?: Executor,
+  exec: Executor,
 ): Promise<KnowledgeSourceView> {
   const document = await fetchUrlDocument(p.url, p.tenant_id, exec);
   return createKnowledgeSource(
@@ -128,7 +128,7 @@ export async function refreshKnowledgeSource(
     actor: Actor | null;
     id: string;
   },
-  exec?: Executor,
+  exec: Executor,
 ): Promise<KnowledgeSourceView | null> {
   const source = await getKnowledgeSource(p.tenant_id, p.id, exec);
   if (!source) return null;

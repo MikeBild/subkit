@@ -1,1 +1,0 @@
-ALTER TABLE "workflows_schedules" ADD COLUMN "execution_mode" "execution_mode" DEFAULT 'prod' NOT NULL;

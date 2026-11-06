@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { hostedWorkAdmissions, tenants } from "../../db/schema/index.ts";
+import { hostedWorkAdmissions } from "../../db/schema/index.ts";
 import { tenantWorkSnapshot } from "../../execution/tenant-work.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   browserSessionHeaders,
   createHttpTestServer,
@@ -18,11 +19,7 @@ const evidence =
 
 beforeAll(async () => {
   ctx = await createHttpTestServer("hosted-work-review");
-  const [tenant] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "work-review-target", display_name: "Target" })
-    .returning();
-  if (!tenant) throw new Error("missing tenant");
+  const tenant = await seedTenant(ctx.db, { slug: "work-review-target", display_name: "Target" });
   tenantId = tenant.id;
   headers = await browserSessionHeaders(ctx, ctx.userId);
 }, 30_000);

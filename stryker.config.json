@@ -1,0 +1,58 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "bun run apps/engine/scripts/run-core-tests.ts"
+  },
+  "coverageAnalysis": "off",
+  "mutate": [
+    "apps/engine/src/**/core.ts",
+    "apps/engine/src/**/core/**/*.ts",
+    "!apps/engine/src/llm/core/**",
+    "!**/*.test.ts",
+    "!**/tests/**",
+    "!**/__tests__/**",
+    "!**/*.d.ts"
+  ],
+  "ignorePatterns": [
+    "/.artifacts",
+    "/.tmp",
+    "/.devtools",
+    "/.superdesign",
+    "/.claude",
+    "/.sk",
+    "/dist",
+    "/docs",
+    "/benchmarks",
+    "/reports",
+    "/coverage",
+    "/assets",
+    "/apps/cockpit",
+    "/apps/clipper",
+    "/apps/engine/assets/embeddings",
+    "/apps/engine/eval/out",
+    "/subkit.config.json",
+    "/creds.txt",
+    "apps/engine/.devtools",
+    "*.log",
+    "*-key.txt",
+    ".env*",
+    "*.pem",
+    "*.key",
+    "apps/engine/subkit.config.json"
+  ],
+  "thresholds": {
+    "high": 100,
+    "low": 99,
+    "break": 99
+  },
+  "incremental": false,
+  "reporters": ["clear-text", "json"],
+  "jsonReporter": {
+    "fileName": "reports/mutation/mutation.json"
+  },
+  "tempDirName": ".stryker-tmp",
+  "cleanTempDir": "always",
+  "concurrency": 2,
+  "timeoutMS": 30000
+}

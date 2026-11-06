@@ -20,6 +20,7 @@ import { debugLog } from "../debug.ts";
 import { EngineClient, type FetchLike } from "../engine-client.ts";
 import { cockpitIntakeUrl } from "../lib/intake-review.ts";
 import { wireClaudeHooks, wireCodexHooks, writeJsonFilesAtomically } from "./agent-hook-config.ts";
+import { withCommandErrors } from "./command-runtime.ts";
 
 export { wireClaudeHooks, wireCodexHooks } from "./agent-hook-config.ts";
 
@@ -562,63 +563,64 @@ const briefingCommand = defineCommand({
     json: { type: "boolean", description: "JSON output", default: false },
   },
   async run({ args }) {
-    try {
-      const payload = args.hook ? readHookPayload() : null;
-      if (args.hook) {
-        const output = await getBriefingHookOutput(
-          payload ?? {
-            hook_event_name: null,
-            cwd: null,
-            session_id: null,
-            transcript_path: null,
-            prompt: null,
-          },
-        );
-        if (output) process.stdout.write(`${JSON.stringify(output)}\n`);
-        return;
-      }
-      const startDir = payload?.cwd ?? process.cwd();
-      const fromFile = args.domains ? null : findAgentFile(startDir);
-      const budget = args.budget ? Number(args.budget) : fromFile?.config.budget_tokens;
-      const plan = planBriefing({
-        explicit: args.domains
-          ? args.domains
-              .split(",")
-              .map((d) => d.trim())
-              .filter(Boolean)
-          : null,
-        declared: fromFile?.config.domains ?? [],
-        hook: false,
-        prompt: payload?.prompt ?? null,
-      });
-      const client = plan.kind === "none" ? null : agentEngineClient(resolveProfile(), false);
-      if (plan.kind !== "none" && !client) return;
-      let domains: string[] = [];
-      if (plan.kind === "explicit" || plan.kind === "declared") {
-        domains = plan.domains;
-      } else if (plan.kind === "repo" && client) {
-        domains = (await client.resolveAgentDomains({ repo: basename(startDir) })).from_repo;
-      }
-      if (domains.length === 0) {
-        process.stdout.write(
-          `sk agent briefing: no domains — pass --domains or declare ${AGENT_FILE_RELPATH} (sk agent init)\n`,
-        );
-        process.exitCode = 2;
-        return;
-      }
-      if (!client) return;
-      const briefing = await client.getAgentBriefing({
-        domains,
-        ...(budget !== undefined && Number.isFinite(budget) ? { budget_tokens: budget } : {}),
-      });
-      if (args.json) {
-        printJson(briefing);
-        return;
-      }
-      process.stdout.write(`${briefing.markdown}\n`);
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const payload = args.hook ? readHookPayload() : null;
+        if (args.hook) {
+          const output = await getBriefingHookOutput(
+            payload ?? {
+              hook_event_name: null,
+              cwd: null,
+              session_id: null,
+              transcript_path: null,
+              prompt: null,
+            },
+          );
+          if (output) process.stdout.write(`${JSON.stringify(output)}\n`);
+          return;
+        }
+        const startDir = payload?.cwd ?? process.cwd();
+        const fromFile = args.domains ? null : findAgentFile(startDir);
+        const budget = args.budget ? Number(args.budget) : fromFile?.config.budget_tokens;
+        const plan = planBriefing({
+          explicit: args.domains
+            ? args.domains
+                .split(",")
+                .map((d) => d.trim())
+                .filter(Boolean)
+            : null,
+          declared: fromFile?.config.domains ?? [],
+          hook: false,
+          prompt: payload?.prompt ?? null,
+        });
+        const client = plan.kind === "none" ? null : agentEngineClient(resolveProfile(), false);
+        if (plan.kind !== "none" && !client) return;
+        let domains: string[] = [];
+        if (plan.kind === "explicit" || plan.kind === "declared") {
+          domains = plan.domains;
+        } else if (plan.kind === "repo" && client) {
+          domains = (await client.resolveAgentDomains({ repo: basename(startDir) })).from_repo;
+        }
+        if (domains.length === 0) {
+          process.stdout.write(
+            `sk agent briefing: no domains — pass --domains or declare ${AGENT_FILE_RELPATH} (sk agent init)\n`,
+          );
+          process.exitCode = 2;
+          return;
+        }
+        if (!client) return;
+        const briefing = await client.getAgentBriefing({
+          domains,
+          ...(budget !== undefined && Number.isFinite(budget) ? { budget_tokens: budget } : {}),
+        });
+        if (args.json) {
+          printJson(briefing);
+          return;
+        }
+        process.stdout.write(`${briefing.markdown}\n`);
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -779,141 +781,142 @@ const initCommand = defineCommand({
   },
   async run({ args }) {
     const out = (line: string) => process.stdout.write(`${line}\n`);
-    try {
-      const domains = [
-        ...new Set(
-          args.domains
-            .split(",")
-            .map((d) => d.trim())
-            .filter(Boolean),
-        ),
-      ];
-      if (domains.length === 0) {
-        process.stderr.write("sk agent init: --domains must name at least one domain\n");
-        process.exitCode = 2;
-        return;
-      }
-      const budget = args.budget === undefined ? undefined : Number(args.budget);
-      if (
-        budget !== undefined &&
-        (!Number.isInteger(budget) ||
-          budget < MIN_BRIEFING_BUDGET_TOKENS ||
-          budget > MAX_BRIEFING_BUDGET_TOKENS)
-      ) {
-        process.stderr.write(
-          `sk agent init: --budget must be an integer from ${MIN_BRIEFING_BUDGET_TOKENS} to ${MAX_BRIEFING_BUDGET_TOKENS}\n`,
-        );
-        process.exitCode = 2;
-        return;
-      }
-
-      const agentPath = join(process.cwd(), AGENT_FILE_RELPATH);
-      let existingAgent: Record<string, unknown> = {};
-      if (existsSync(agentPath)) {
-        const parsed = JSON.parse(readFileSync(agentPath, "utf8")) as unknown;
+    return withCommandErrors(
+      async () => {
+        const domains = [
+          ...new Set(
+            args.domains
+              .split(",")
+              .map((d) => d.trim())
+              .filter(Boolean),
+          ),
+        ];
+        if (domains.length === 0) {
+          process.stderr.write("sk agent init: --domains must name at least one domain\n");
+          process.exitCode = 2;
+          return;
+        }
+        const budget = args.budget === undefined ? undefined : Number(args.budget);
         if (
-          !parsed ||
-          typeof parsed !== "object" ||
-          Array.isArray(parsed) ||
-          !Array.isArray((parsed as Record<string, unknown>).domains) ||
-          !(parsed as { domains: unknown[] }).domains.every(
-            (domain) => typeof domain === "string" && domain.trim().length > 0,
-          )
+          budget !== undefined &&
+          (!Number.isInteger(budget) ||
+            budget < MIN_BRIEFING_BUDGET_TOKENS ||
+            budget > MAX_BRIEFING_BUDGET_TOKENS)
+        ) {
+          process.stderr.write(
+            `sk agent init: --budget must be an integer from ${MIN_BRIEFING_BUDGET_TOKENS} to ${MAX_BRIEFING_BUDGET_TOKENS}\n`,
+          );
+          process.exitCode = 2;
+          return;
+        }
+
+        const agentPath = join(process.cwd(), AGENT_FILE_RELPATH);
+        let existingAgent: Record<string, unknown> = {};
+        if (existsSync(agentPath)) {
+          const parsed = JSON.parse(readFileSync(agentPath, "utf8")) as unknown;
+          if (
+            !parsed ||
+            typeof parsed !== "object" ||
+            Array.isArray(parsed) ||
+            !Array.isArray((parsed as Record<string, unknown>).domains) ||
+            !(parsed as { domains: unknown[] }).domains.every(
+              (domain) => typeof domain === "string" && domain.trim().length > 0,
+            )
+          ) {
+            throw new Error(
+              `${AGENT_FILE_RELPATH} must be valid JSON with a non-empty domains array`,
+            );
+          }
+          existingAgent = parsed as Record<string, unknown>;
+        }
+        const existingDomains = Array.isArray(existingAgent.domains)
+          ? existingAgent.domains.filter((domain): domain is string => typeof domain === "string")
+          : [];
+        if (
+          budget === undefined &&
+          existingAgent.budget_tokens !== undefined &&
+          (typeof existingAgent.budget_tokens !== "number" ||
+            !Number.isInteger(existingAgent.budget_tokens) ||
+            existingAgent.budget_tokens < MIN_BRIEFING_BUDGET_TOKENS ||
+            existingAgent.budget_tokens > MAX_BRIEFING_BUDGET_TOKENS)
         ) {
           throw new Error(
-            `${AGENT_FILE_RELPATH} must be valid JSON with a non-empty domains array`,
+            `${AGENT_FILE_RELPATH}.budget_tokens must be an integer from ${MIN_BRIEFING_BUDGET_TOKENS} to ${MAX_BRIEFING_BUDGET_TOKENS}`,
           );
         }
-        existingAgent = parsed as Record<string, unknown>;
-      }
-      const existingDomains = Array.isArray(existingAgent.domains)
-        ? existingAgent.domains.filter((domain): domain is string => typeof domain === "string")
-        : [];
-      if (
-        budget === undefined &&
-        existingAgent.budget_tokens !== undefined &&
-        (typeof existingAgent.budget_tokens !== "number" ||
-          !Number.isInteger(existingAgent.budget_tokens) ||
-          existingAgent.budget_tokens < MIN_BRIEFING_BUDGET_TOKENS ||
-          existingAgent.budget_tokens > MAX_BRIEFING_BUDGET_TOKENS)
-      ) {
-        throw new Error(
-          `${AGENT_FILE_RELPATH}.budget_tokens must be an integer from ${MIN_BRIEFING_BUDGET_TOKENS} to ${MAX_BRIEFING_BUDGET_TOKENS}`,
+        const agentFile: Record<string, unknown> = {
+          ...existingAgent,
+          domains: [...new Set([...existingDomains, ...domains])],
+        };
+        delete agentFile.inferred;
+        delete agentFile.inferred_folder_domain;
+        if (budget !== undefined) agentFile.budget_tokens = budget;
+
+        const claudeSettingsPath = join(userHome(), CLAUDE_SETTINGS_RELPATH);
+        const codexHooksPath = join(userHome(), CODEX_HOOKS_RELPATH);
+        const claudeHooks = args["skip-claude"]
+          ? null
+          : wireClaudeHooks(readJsonFile(claudeSettingsPath));
+        const codexHooks = args["skip-codex"] ? null : wireCodexHooks(readJsonFile(codexHooksPath));
+        const { engine_url } = resolveProfile();
+
+        const writes = [{ path: agentPath, value: agentFile }];
+        if (claudeHooks) writes.push({ path: claudeSettingsPath, value: claudeHooks });
+        if (codexHooks) writes.push({ path: codexHooksPath, value: codexHooks });
+        writeJsonFilesAtomically(writes);
+        out(`${pc.green("✓")} updated ${agentPath}; existing domains and settings were preserved`);
+
+        if (!args["skip-claude"]) {
+          if (claudeHooks) {
+            out(
+              `${pc.green("✓")} wired SessionStart + UserPromptSubmit + SessionEnd hooks in ${claudeSettingsPath}`,
+            );
+          } else {
+            out(`${pc.dim("•")} Claude Code hooks already wired`);
+          }
+        }
+
+        if (!args["skip-codex"]) {
+          if (codexHooks) {
+            out(
+              `${pc.green("✓")} wired SessionStart + UserPromptSubmit briefing and SessionEnd learning hooks in ${codexHooksPath}`,
+            );
+          } else {
+            out(`${pc.dim("•")} Codex hooks already wired`);
+          }
+        }
+
+        out("");
+        out(pc.bold("Codex (finish by hand):"));
+        out(codexHookSnippet());
+        out("");
+        out(pc.bold("Hermes (manual):"));
+        out(hermesSnippet(engine_url));
+        out("");
+        out(pc.bold("MCP registration (once per machine):"));
+        out(
+          `  claude mcp add --transport http --scope user sk ${engine_url}/mcp --header "Authorization: Bearer \${SK_API_KEY}"`,
         );
-      }
-      const agentFile: Record<string, unknown> = {
-        ...existingAgent,
-        domains: [...new Set([...existingDomains, ...domains])],
-      };
-      delete agentFile.inferred;
-      delete agentFile.inferred_folder_domain;
-      if (budget !== undefined) agentFile.budget_tokens = budget;
-
-      const claudeSettingsPath = join(userHome(), CLAUDE_SETTINGS_RELPATH);
-      const codexHooksPath = join(userHome(), CODEX_HOOKS_RELPATH);
-      const claudeHooks = args["skip-claude"]
-        ? null
-        : wireClaudeHooks(readJsonFile(claudeSettingsPath));
-      const codexHooks = args["skip-codex"] ? null : wireCodexHooks(readJsonFile(codexHooksPath));
-      const { engine_url } = resolveProfile();
-
-      const writes = [{ path: agentPath, value: agentFile }];
-      if (claudeHooks) writes.push({ path: claudeSettingsPath, value: claudeHooks });
-      if (codexHooks) writes.push({ path: codexHooksPath, value: codexHooks });
-      writeJsonFilesAtomically(writes);
-      out(`${pc.green("✓")} updated ${agentPath}; existing domains and settings were preserved`);
-
-      if (!args["skip-claude"]) {
-        if (claudeHooks) {
-          out(
-            `${pc.green("✓")} wired SessionStart + UserPromptSubmit + SessionEnd hooks in ${claudeSettingsPath}`,
-          );
-        } else {
-          out(`${pc.dim("•")} Claude Code hooks already wired`);
-        }
-      }
-
-      if (!args["skip-codex"]) {
-        if (codexHooks) {
-          out(
-            `${pc.green("✓")} wired SessionStart + UserPromptSubmit briefing and SessionEnd learning hooks in ${codexHooksPath}`,
-          );
-        } else {
-          out(`${pc.dim("•")} Codex hooks already wired`);
-        }
-      }
-
-      out("");
-      out(pc.bold("Codex (finish by hand):"));
-      out(codexHookSnippet());
-      out("");
-      out(pc.bold("Hermes (manual):"));
-      out(hermesSnippet(engine_url));
-      out("");
-      out(pc.bold("MCP registration (once per machine):"));
-      out(
-        `  claude mcp add --transport http --scope user sk ${engine_url}/mcp --header "Authorization: Bearer \${SK_API_KEY}"`,
-      );
-      out(`  codex mcp add sk --url ${engine_url}/mcp --bearer-token-env-var SK_API_KEY`);
-      out("");
-      out(
-        "The agent receives the relevant briefing. Hook status stays brief; review suggestions and collected material are described in context when useful.",
-      );
-      out("If SubKit cannot be reached, the agent continues and the client shows a warning.");
-      out(
-        "Start Claude Code or Codex in this repository (or a subdirectory) to receive its briefing.",
-      );
-      out(
-        "When a folder name matches exactly one SubKit project area, the first session creates its folder declaration. Otherwise the agent asks which project knowledge and workflows belong there when setup is relevant.",
-      );
-      out("Verify setup: `sk status`, then `sk agent briefing --json`.");
-      out(
-        "If no status appears, inspect `/hooks` in the client; Codex hooks must be allowed by policy and their current definitions trusted.",
-      );
-      out("Optionally run `sk skills sync` to materialize domain skills as SKILL.md.");
-    } catch (err) {
-      reportCommandError(err, { json: false });
-    }
+        out(`  codex mcp add sk --url ${engine_url}/mcp --bearer-token-env-var SK_API_KEY`);
+        out("");
+        out(
+          "The agent receives the relevant briefing. Hook status stays brief; review suggestions and collected material are described in context when useful.",
+        );
+        out("If SubKit cannot be reached, the agent continues and the client shows a warning.");
+        out(
+          "Start Claude Code or Codex in this repository (or a subdirectory) to receive its briefing.",
+        );
+        out(
+          "When a folder name matches exactly one SubKit project area, the first session creates its folder declaration. Otherwise the agent asks which project knowledge and workflows belong there when setup is relevant.",
+        );
+        out("Verify setup: `sk status`, then `sk agent briefing --json`.");
+        out(
+          "If no status appears, inspect `/hooks` in the client; Codex hooks must be allowed by policy and their current definitions trusted.",
+        );
+        out("Optionally run `sk skills sync` to materialize domain skills as SKILL.md.");
+      },
+      { json: false },
+    );
   },
 });
 

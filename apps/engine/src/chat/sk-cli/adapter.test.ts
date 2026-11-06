@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { tenants } from "../../db/schema/index.ts";
 import { cliNotificationInbox } from "../../db/schema/notifications.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { classifyEvent } from "../../webhooks/events/catalog.ts";
 import type { ChatDelivery, OutboundSendResult } from "../types.ts";
 import { SkCliAdapter } from "./adapter.ts";
@@ -13,18 +13,10 @@ let tenantBId: string;
 
 beforeAll(async () => {
   testDb = await createTestDb("sk_cli_adapter");
-  const [tA] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "sk-cli-a", display_name: "SK CLI A" })
-    .returning();
-  if (!tA) throw new Error("seed tenant A failed");
+  const tA = await seedTenant(testDb.db, { slug: "sk-cli-a", display_name: "SK CLI A" });
   tenantAId = tA.id;
 
-  const [tB] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "sk-cli-b", display_name: "SK CLI B" })
-    .returning();
-  if (!tB) throw new Error("seed tenant B failed");
+  const tB = await seedTenant(testDb.db, { slug: "sk-cli-b", display_name: "SK CLI B" });
   tenantBId = tB.id;
 }, 30_000);
 

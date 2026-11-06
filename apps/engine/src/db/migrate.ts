@@ -5,19 +5,13 @@ import { z } from "zod";
 import { errorFields, logger } from "../logging/logger.ts";
 import { resetSecretColumnDetection } from "../runtime-config/secret-columns.ts";
 import { cutOverLearningCandidates } from "../skill-candidates/learning-cutover.ts";
-import {
-  createMigrationDbFromUrl,
-  type Db,
-  ISOLATION_MIGRATION_TAG,
-  MIGRATION_SEARCH_PATH_SQL,
-} from "./client.ts";
+import { createMigrationDbFromUrl, type Db } from "./client.ts";
 import { runContextNoteFactsBackfill } from "./migrations/context-note-facts-backfill.ts";
 import { runConversationTitleBackfill } from "./migrations/conversation-title-backfill.ts";
 import { EMBEDDED_MIGRATIONS, type EmbeddedMigration } from "./migrations/embedded.ts";
 import { runInboxNonActionablePurge } from "./migrations/inbox-nonactionable-purge.ts";
 import { runLoopToForEachBackfill } from "./migrations/loop-to-for-each-backfill.ts";
 import { runMetricsScopeBackfill } from "./migrations/metrics-scope-backfill.ts";
-import { normalizeMcpTaskActorConstraint } from "./normalize-mcp-task-actor-constraint.ts";
 import * as schema from "./schema/index.ts";
 
 export interface MigrationReport {
@@ -99,14 +93,15 @@ async function readAppliedHashes(db: Db): Promise<AppliedState> {
 
 const MIGRATION_LOCK_KEY = 776_644_2026;
 
+export const SQUASHED_CHAIN_HEAD_TAG = "0151_package_installs";
+
 export async function runMigrations(
   db: Db,
   migrations: readonly EmbeddedMigration[] = EMBEDDED_MIGRATIONS,
-  replayFromScratch = false,
 ): Promise<MigrationReport> {
   const pool = (db as unknown as { $client?: pg.Pool }).$client;
   if (!pool || typeof pool.connect !== "function") {
-    const report = await applyMigrations(db, migrations, replayFromScratch);
+    const report = await applyMigrations(db, migrations);
     resetSecretColumnDetection();
     return report;
   }
@@ -114,7 +109,7 @@ export async function runMigrations(
   try {
     await lockClient.query("SELECT pg_advisory_lock($1)", [MIGRATION_LOCK_KEY]);
     const lockedDb = drizzle(lockClient, { schema }) as Db;
-    const report = await applyMigrations(lockedDb, migrations, replayFromScratch);
+    const report = await applyMigrations(lockedDb, migrations);
     resetSecretColumnDetection();
     return report;
   } finally {
@@ -131,7 +126,7 @@ export async function runMigrationsFromUrl(
 ): Promise<MigrationReport> {
   const { pool, db } = createMigrationDbFromUrl(url);
   try {
-    return await runMigrations(db, migrations, true);
+    return await runMigrations(db, migrations);
   } finally {
     await pool.end();
   }
@@ -140,7 +135,6 @@ export async function runMigrationsFromUrl(
 async function applyMigrations(
   db: Db,
   migrations: readonly EmbeddedMigration[] = EMBEDDED_MIGRATIONS,
-  replayFromScratch = false,
 ): Promise<MigrationReport> {
   logger.info({
     module: "db",
@@ -185,6 +179,19 @@ async function applyMigrations(
       continue;
     }
     if (m.idx === 0 && applied.count > 0) {
+      if (!applied.tags.has(SQUASHED_CHAIN_HEAD_TAG)) {
+        logger.error({
+          module: "db",
+          action: "migrate.baseline_stamp_refused",
+          msg: "database carries migration history that stops before the squashed chain head — upgrade through a release that still ships that chain first",
+          tag: m.tag,
+          required_tag: SQUASHED_CHAIN_HEAD_TAG,
+          applied_rows: applied.count,
+        });
+        throw new Error(
+          `migration baseline ${m.tag} cannot be stamped: database history does not include ${SQUASHED_CHAIN_HEAD_TAG}`,
+        );
+      }
       hashDriftCount++;
       logger.warn({
         module: "db",
@@ -211,14 +218,7 @@ async function applyMigrations(
     });
     const migStartedAt = Date.now();
     await db.transaction(async (tx) => {
-      if (replayFromScratch && m.tag <= ISOLATION_MIGRATION_TAG) {
-        await tx.execute(sql.raw(MIGRATION_SEARCH_PATH_SQL));
-      } else if (m.tag > ISOLATION_MIGRATION_TAG) {
-        await tx.execute(sql`SET LOCAL search_path = subkit, pg_catalog, public`);
-      }
-      if (m.tag === "0089_decider_kind") {
-        await normalizeMcpTaskActorConstraint(tx);
-      }
+      await tx.execute(sql`SET LOCAL search_path = subkit, pg_catalog, public`);
       for (const stmt of m.statements) {
         await tx.execute(sql.raw(stmt));
       }
@@ -345,10 +345,17 @@ export async function detectDrift(db: Db): Promise<DriftReport> {
 
   const embeddedByTag = new Map(EMBEDDED_MIGRATIONS.map((m) => [m.tag, m.hash]));
   const embeddedByHash = new Map(EMBEDDED_MIGRATIONS.map((m) => [m.hash, m.tag]));
+  const baselineTag = EMBEDDED_MIGRATIONS.find((m) => m.idx === 0)?.tag;
+  const baselineRowId = dbRows.find((r) => r.tag === baselineTag)?.id;
+  const isSquashedHistory = (r: { id: number; tag: string | null }): boolean =>
+    r.tag !== null &&
+    !embeddedByTag.has(r.tag) &&
+    baselineRowId !== undefined &&
+    r.id < baselineRowId;
 
   const unknown_in_db = dbRows
     .filter((r) => {
-      if (r.tag === null) return false;
+      if (r.tag === null || isSquashedHistory(r)) return false;
       return embeddedByTag.get(r.tag) !== r.hash || embeddedByHash.get(r.hash) !== r.tag;
     })
     .map((r) => ({
@@ -359,7 +366,7 @@ export async function detectDrift(db: Db): Promise<DriftReport> {
     }));
 
   const historical_in_db = dbRows
-    .filter((r) => r.tag === null && !embeddedByHash.has(r.hash))
+    .filter((r) => (r.tag === null && !embeddedByHash.has(r.hash)) || isSquashedHistory(r))
     .map((r) => ({
       row_id: r.id,
       hash: r.hash,

@@ -2,19 +2,10 @@ import * as prompts from "@clack/prompts";
 import { exitCodeFor, isEngineError, reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
-import { resolveProfile } from "../config.ts";
-import { type AppSummary, type AppView, EngineClient } from "../engine-client.ts";
+import type { AppSummary, AppView, EngineClient } from "../engine-client.ts";
+import { makeClient } from "./command-runtime.ts";
 
 export const APP_LIST_COLUMNS = ["app", "environment", "users", "budget_today", "readiness"];
-
-function makeClient() {
-  const profile = resolveProfile();
-  return new EngineClient({
-    engine_url: profile.engine_url,
-    api_key: profile.api_key,
-    tenant: profile.active_tenant_id,
-  });
-}
 
 function readiness(app: Pick<AppSummary, "configured" | "ready">, failing: string[]): string {
   if (!app.configured)

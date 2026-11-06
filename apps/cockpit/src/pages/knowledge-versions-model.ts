@@ -1,4 +1,4 @@
-import type { components } from "@/api/schema";
+import type { components } from "@cli-core/engine-api/openapi";
 import { type ActorDirectory, actorDirectoryName } from "@/app/actor-directory-model";
 import type { TranslationKey } from "@/lib/i18n";
 import { computeLineDiff, type FocusedRow, focusDiff } from "@/lib/line-diff";

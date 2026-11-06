@@ -6,7 +6,6 @@ import {
   conversationElicitations,
   conversations,
   conversationToolCalls,
-  tenants,
   users,
 } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
@@ -18,6 +17,7 @@ import {
 } from "../../../mcp/client/pool.ts";
 import { seedMcpConnector } from "../../../mcp/client/test-fixtures.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import { resolveElicitationAndReactivate } from "../../elicitations.ts";
 import { buildMessages } from "../../parts.ts";
 import { maybeAutoPersistFromElicitation } from "../../persistence/auto-persist.ts";
@@ -89,11 +89,9 @@ beforeAll(async () => {
   ctx = await createTestDb("external-mcp-approval-lifecycle");
   await closeDb();
   process.env.DATABASE_URL = ctx.url;
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-mcp-lifecycle", display_name: "MCP Approval Lifecycle" })
-    .returning();
-  tenant_id = t!.id;
+  tenant_id = (
+    await seedTenant(ctx.db, { slug: "t-mcp-lifecycle", display_name: "MCP Approval Lifecycle" })
+  ).id;
   const [person] = await ctx.db
     .insert(users)
     .values({

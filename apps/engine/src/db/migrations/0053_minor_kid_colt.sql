@@ -1,2 +1,0 @@
-ALTER TABLE "credentials" ADD COLUMN "authority_revision" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
-ALTER TABLE "credentials" ADD CONSTRAINT "credentials_authority_revision_positive" CHECK ("credentials"."authority_revision" > 0);

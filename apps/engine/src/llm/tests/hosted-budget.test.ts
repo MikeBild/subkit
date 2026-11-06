@@ -1,10 +1,11 @@
 import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { hostedBudgetReservations, llmUsage, tenants } from "../../db/schema/index.ts";
+import { hostedBudgetReservations, llmUsage } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { provisionSelfServiceTenant } from "../../identity/self-service.ts";
 import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { recordUsage } from "../accounting/budget.ts";
 import { reserveHostedBudget, settleHostedBudget } from "../accounting/hosted-budget.ts";
 
@@ -152,12 +153,12 @@ test("external reservation keys are opaque at rest while retries remain exactly 
 });
 
 test("Hosted usage errors retain only a technical code while selfhost diagnostics remain", async () => {
-  const [selfhost] = await fixture.db
-    .insert(tenants)
-    .values({ slug: "usage-selfhost", display_name: "Usage selfhost" })
-    .returning();
+  const selfhost = await seedTenant(fixture.db, {
+    slug: "usage-selfhost",
+    display_name: "Usage selfhost",
+  });
   const error = "provider echoed private conversation input";
-  for (const tenant_id of [firstTenant, selfhost!.id]) {
+  for (const tenant_id of [firstTenant, selfhost.id]) {
     await recordUsage(
       {
         tenant_id,
@@ -181,7 +182,7 @@ test("Hosted usage errors retain only a technical code while selfhost diagnostic
   const [local] = await fixture.db
     .select()
     .from(llmUsage)
-    .where(eq(llmUsage.tenant_id, selfhost!.id));
+    .where(eq(llmUsage.tenant_id, selfhost.id));
   expect(local?.error).toBe(error);
   await expect(
     recordUsage(

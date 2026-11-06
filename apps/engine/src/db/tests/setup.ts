@@ -8,7 +8,6 @@ import { seedBuiltinRolesAndPermissions } from "../../rbac/seed.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { createMigrationDbFromUrl } from "../client.ts";
 import { runMigrations } from "../migrate.ts";
-import { EMBEDDED_MIGRATIONS } from "../migrations/embedded.ts";
 import * as schema from "../schema/index.ts";
 
 const { Client, Pool } = pg;
@@ -95,10 +94,6 @@ function rewriteDbName(url: string, newName: string): string {
   return parsed.toString();
 }
 
-export interface CreateTestDbOptions {
-  upToIdx?: number;
-}
-
 export type TestDb = {
   dbName: string;
   url: string;
@@ -107,10 +102,7 @@ export type TestDb = {
   cleanup: () => Promise<void>;
 };
 
-export async function createTestDb(
-  label: string,
-  options: CreateTestDbOptions = {},
-): Promise<TestDb> {
+export async function createTestDb(label: string): Promise<TestDb> {
   const rand = randomBytes(6).toString("hex");
   const dbName = `test_${label}_${process.pid}_${rand}`.toLowerCase().replace(/[^a-z0-9_]/g, "_");
 
@@ -127,16 +119,9 @@ export async function createTestDb(
   }
 
   const url = rewriteDbName(adminUrl, dbName);
-  const upToIdx = options.upToIdx;
   const migration = createMigrationDbFromUrl(url);
   try {
-    await runMigrations(
-      migration.db,
-      upToIdx === undefined
-        ? EMBEDDED_MIGRATIONS
-        : EMBEDDED_MIGRATIONS.filter((m) => m.idx <= upToIdx),
-      true,
-    );
+    await runMigrations(migration.db);
   } finally {
     await migration.pool.end();
   }

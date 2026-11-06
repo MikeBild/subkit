@@ -1,5 +1,5 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { apiRequest } from "./client";
-import type { components } from "./schema";
 
 export type TenantBranding = components["schemas"]["TenantBrandingResponse"];
 export type TenantBrandingUpdate = components["schemas"]["TenantBrandingUpdate"];

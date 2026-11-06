@@ -1,5 +1,5 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { ApiError } from "@/api/client";
-import type { components } from "@/api/schema";
 import type { TranslationKey } from "@/lib/i18n";
 
 export type SignInRoute = NonNullable<components["schemas"]["Connector"]["sign_in"]>;

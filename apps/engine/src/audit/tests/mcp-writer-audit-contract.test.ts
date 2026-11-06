@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { auditLog, tenants } from "../../db/schema/index.ts";
+import { auditLog } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { bucketSize } from "../buckets.ts";
 import {
   AuditAction,
@@ -24,12 +25,7 @@ let actor_id: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("mcp-writer-audit-contract");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "mcp-audit-t", display_name: "MCP Audit" })
-    .returning();
-  if (!t) throw new Error("seed tenant");
-  tenant_id = t.id;
+  tenant_id = (await seedTenant(ctx.db, { slug: "mcp-audit-t", display_name: "MCP Audit" })).id;
   actor_id = uuid();
 }, 60_000);
 

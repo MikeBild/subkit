@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { auditLog, events, tenants } from "../../db/schema/index.ts";
+import { auditLog, events } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   createConnector,
   deleteConnector,
@@ -21,17 +22,9 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-async function seedTenant(): Promise<string> {
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: `t-${Math.random().toString(36).slice(2, 8)}`, display_name: "T" }) // allow-random: legacy; review before changing
-    .returning();
-  return t!.id;
-}
-
 describe("connectors/service", () => {
   test("persists trusted user and system-account actor provenance", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const user_id = "10000000-0000-4000-8000-000000000001";
     const system_account_id = "10000000-0000-4000-8000-000000000002";
     const userConnector = await createConnector(
@@ -115,7 +108,7 @@ describe("connectors/service", () => {
   });
 
   test("create + get + list + patch + delete", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const created = await createConnector(
       {
         tenant_id,
@@ -184,7 +177,7 @@ describe("connectors/service", () => {
   });
 
   test("every connector change reaches the live feed as ids only", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const input = {
       name: "Live One",
       driver: "http" as const,
@@ -215,7 +208,7 @@ describe("connectors/service", () => {
   });
 
   test("operator_quirks round-trip through create + patch + clear", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const created = await createConnector(
       {
         tenant_id,
@@ -253,7 +246,7 @@ describe("connectors/service", () => {
   });
 
   test("createConnector persists template binding metadata and snapshot", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const created = await createConnector(
       {
         tenant_id,
@@ -277,7 +270,7 @@ describe("connectors/service", () => {
   });
 
   test("a bound signed-JWT template fixes its static policy until the binding is cleared", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const created = await createConnector(
       {
         tenant_id,
@@ -318,7 +311,7 @@ describe("connectors/service", () => {
   });
 
   test("signed-JWT authentication requires its policy on create and update", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const ordinary = await createConnector(
       {
         tenant_id,
@@ -359,7 +352,7 @@ describe("connectors/service", () => {
   });
 
   test("signed-JWT authentication rejects OAuth token exchange configuration", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     await expect(
       createConnector(
         {
@@ -386,7 +379,7 @@ describe("connectors/service", () => {
   });
 
   test("a person's description and category survive the template enrichment", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const created = await createConnector(
       {
         tenant_id,
@@ -413,7 +406,7 @@ describe("connectors/service", () => {
 
 describe("connectors/service — sorted by name", () => {
   test("names sort without regard to case", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     for (const name of ["cherry", "Banana", "apple"])
       await createConnector(
         {

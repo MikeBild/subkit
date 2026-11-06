@@ -4,7 +4,6 @@ import {
   executionSteps,
   executions,
   patchCandidates,
-  tenants,
   workflows,
   workflowVersions,
 } from "../db/schema/index.ts";
@@ -17,6 +16,7 @@ import {
   seedPatchableWorkflow,
 } from "../test-helpers/patch-candidates.ts";
 import { adminPrincipal } from "../test-helpers/principals.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import {
   buildOperatorHealthDigest,
   collectFailureGroups,
@@ -31,11 +31,7 @@ beforeAll(async () => {
   testDb = await createTestDb("operator_digest");
   const db = testDb.db;
 
-  const [tenant] = await db
-    .insert(tenants)
-    .values({ slug: "t-digest", display_name: "Digest" })
-    .returning();
-  tenant_id = tenant!.id;
+  tenant_id = (await seedTenant(db, { slug: "t-digest", display_name: "Digest" })).id;
 
   const [wf] = await db
     .insert(workflows)
@@ -167,10 +163,7 @@ describe("buildOperatorHealthDigest", () => {
   });
 
   test("a tenant with no failures or pending patches reports all-clear", async () => {
-    const [empty] = await testDb.db
-      .insert(tenants)
-      .values({ slug: "t-digest-empty", display_name: "Empty" })
-      .returning();
+    const empty = await seedTenant(testDb.db, { slug: "t-digest-empty", display_name: "Empty" });
     const digest = await buildOperatorHealthDigest(testDb.db, adminPrincipal(empty!.id));
     expect(digest.all_clear).toBe(true);
     expect(digest.failure_groups.length).toBe(0);
@@ -196,10 +189,7 @@ describe("buildOperatorHealthDigest", () => {
   });
 
   test("ranks a stuck proposed patch first, flags its age, and dates the item from it", async () => {
-    const [t] = await testDb.db
-      .insert(tenants)
-      .values({ slug: "t-digest-stuck", display_name: "Stuck" })
-      .returning();
+    const t = await seedTenant(testDb.db, { slug: "t-digest-stuck", display_name: "Stuck" });
     const wf = { id: (await seedPatchableWorkflow(testDb.db, t!.id, "sync", "Sync")).workflow_id };
     const [conn] = await testDb.db
       .insert(connectors)
@@ -256,10 +246,7 @@ describe("buildOperatorHealthDigest", () => {
   });
 
   test("every count reports the exact total when the backlog exceeds the item cap", async () => {
-    const [t] = await testDb.db
-      .insert(tenants)
-      .values({ slug: "t-digest-backlog", display_name: "Backlog" })
-      .returning();
+    const t = await seedTenant(testDb.db, { slug: "t-digest-backlog", display_name: "Backlog" });
     const wf = { id: (await seedPatchableWorkflow(testDb.db, t!.id, "bulk", "Bulk")).workflow_id };
 
     const now = getTestNow();

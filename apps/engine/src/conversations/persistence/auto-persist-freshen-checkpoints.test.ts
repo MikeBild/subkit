@@ -5,10 +5,10 @@ import {
   conversationElicitations,
   conversations,
   credentials,
-  tenants,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { withConnectorProbe } from "../authoring-state.ts";
 import { appendSnapshot } from "../draft.ts";
 import type { DraftDocument } from "../types.ts";
@@ -20,12 +20,7 @@ let tenant_id: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("auto_persist_freshen_checkpoints");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-freshen", display_name: "T-FRESHEN" })
-    .returning();
-  if (!t) throw new Error("seed tenant failed");
-  tenant_id = t.id;
+  tenant_id = (await seedTenant(ctx.db, { slug: "t-freshen", display_name: "T-FRESHEN" })).id;
 });
 
 afterAll(async () => {

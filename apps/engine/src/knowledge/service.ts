@@ -6,7 +6,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
-import { type Db, type Executor, getDb } from "../db/client.ts";
+import type { Db, Executor } from "../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../db/schema/knowledge_sources.ts";
 import { retryTransient } from "../db/transient.ts";
 import { fingerprintChunks } from "../docs-ingestion/chunker.ts";
@@ -308,9 +308,8 @@ const KNOWLEDGE_WRITE_RETRY = {
 
 export async function createKnowledgeSource(
   p: CreateKnowledgeSourceParams,
-  exec?: Executor,
+  db: Executor,
 ): Promise<KnowledgeSourceView> {
-  const db = exec ?? getDb();
   return withTenantWork(p.tenant_id, async () => {
     await assertTenantActive(p.tenant_id, db);
     const parsed = parseKnowledgeCreate(p);
@@ -336,9 +335,8 @@ export async function createKnowledgeSource(
 export async function getKnowledgeSourceBySlug(
   tenant_id: string,
   slug: string,
-  exec?: Executor,
+  db: Executor,
 ): Promise<KnowledgeSourceView | null> {
-  const db = exec ?? getDb();
   const rows = await db
     .select()
     .from(knowledgeSources)
@@ -355,10 +353,8 @@ export async function getKnowledgeSourceBySlug(
 
 export async function updateKnowledgeSource(
   p: UpdateKnowledgeSourceParams,
-  exec?: Executor,
+  db: Executor,
 ): Promise<KnowledgeSourceView | null> {
-  const db = exec ?? getDb();
-
   return await (db as Db).transaction(async (tx) => {
     await lockCatalogVocabulary(tx, p.tenant_id);
     await lockActiveTenant(p.tenant_id, tx);
@@ -444,10 +440,8 @@ const AnalysisSchema = z.object({
 
 export async function analyzeKnowledgeSource(
   p: AnalyzeKnowledgeSourceParams,
-  exec?: Executor,
+  db: Executor,
 ): Promise<KnowledgeSourceView | null> {
-  const db = exec ?? getDb();
-
   const sources = await db
     .select()
     .from(knowledgeSources)
@@ -567,11 +561,9 @@ export async function deleteKnowledgeSource(
   tenant_id: string,
   id: string,
   actor_id: string | null,
-  exec?: Executor,
+  db: Executor,
   actor?: Actor | { kind: "unknown" } | null,
 ): Promise<boolean> {
-  const db = exec ?? getDb();
-
   return await (db as Db).transaction(async (tx) => {
     const existing = await tx
       .select()
@@ -859,9 +851,8 @@ export async function applyKnowledgeIngest(
 
 export async function ingestKnowledgeSource(
   p: IngestKnowledgeSourceParams,
-  exec?: Executor,
+  db: Executor,
 ): Promise<KnowledgeIngestResult> {
-  const db = exec ?? getDb();
   return withTenantWork(p.tenant_id, async () => {
     await assertTenantActive(p.tenant_id, db);
     const parsed = await parseKnowledgeIngest(p);
@@ -934,9 +925,8 @@ export function getKnowledgeSearchCacheStats(): { hits: number; misses: number; 
 
 export async function searchKnowledge(
   p: SearchKnowledgeParams,
-  exec?: Executor,
+  db: Executor,
 ): Promise<KnowledgeSearchHit[]> {
-  const db = exec ?? getDb();
   const limit = Math.min(Math.max(1, p.limit ?? 10), 50);
 
   const cacheKey = knowledgeSearchCacheKey(p);

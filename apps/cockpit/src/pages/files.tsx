@@ -1,3 +1,4 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import {
@@ -17,7 +18,6 @@ import {
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest, apiText, apiUpload } from "@/api/client";
-import type { components } from "@/api/schema";
 import { tenantContentHref } from "@/api/tenant-context";
 import { useActorDirectory } from "@/app/actor-directory";
 import { cockpitApiHref } from "@/app/installation-context";

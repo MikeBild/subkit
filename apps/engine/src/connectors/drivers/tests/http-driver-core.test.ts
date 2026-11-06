@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { upsertCredential } from "../../../credentials/service.ts";
-import { tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { withSelfHostedDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import {
@@ -9,6 +8,7 @@ import {
   jsonResponse,
   type MockServer,
 } from "../../../test-helpers/mock-http.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import { createConnector, getConnector } from "../../service.ts";
 import type { ConnectorView } from "../../types.ts";
 import {
@@ -25,11 +25,10 @@ let lastRequest: { method: string; url: string; headers: Record<string, string> 
 
 beforeAll(async () => {
   ctx = await createTestDb("http-driver-core");
-  const [tenant] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "http-driver-core", display_name: "HTTP driver core" })
-    .returning();
-  if (!tenant) throw new Error("seed tenant failed");
+  const tenant = await seedTenant(ctx.db, {
+    slug: "http-driver-core",
+    display_name: "HTTP driver core",
+  });
   tenantId = tenant.id;
   mock = await createMockServer((req: IncomingMessage, res: ServerResponse) => {
     lastRequest = {

@@ -55,3 +55,53 @@ export const ScheduleEntry = z
     created_at: z.string(),
   })
   .openapi("ScheduleEntry");
+
+export const ScheduleUpsertResponse = ScheduleEntry.extend({
+  upsert_status: z.enum(["created", "updated"]),
+  automation_readiness: AutomationReadinessSchema.optional(),
+}).openapi("ScheduleUpsertResponse");
+
+export const ScheduleWriteResponse = ScheduleEntry.extend({
+  automation_readiness: AutomationReadinessSchema.optional(),
+}).openapi("ScheduleWriteResponse");
+
+const ScheduleInputSchema = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.null(),
+  z.array(z.unknown()),
+  z.record(z.string(), z.unknown()),
+]);
+
+export const ScheduleListResponse = z
+  .object({
+    schedules: z.array(ScheduleEntry),
+    total: z.number().int().nonnegative(),
+  })
+  .openapi("ScheduleListResponse");
+
+export const ScheduleCreateBody = z
+  .object({
+    workflow_id: z.string().uuid(),
+    cron: z.string().min(1),
+    timezone: z.string().optional(),
+    execution_mode: z.enum(["dev", "prod"]).optional(),
+    paused: z.boolean().optional(),
+    input: ScheduleInputSchema.optional(),
+  })
+  .openapi("ScheduleCreateBody");
+
+export const ScheduleUpdateBody = z
+  .object({
+    cron: z.string().min(1).optional(),
+    timezone: z.string().optional(),
+    execution_mode: z.enum(["dev", "prod"]).optional(),
+    paused: z.boolean().optional(),
+    input: ScheduleInputSchema.optional(),
+  })
+  .openapi("ScheduleUpdateBody");
+
+export const ScheduleDeleteResponse = z
+  .object({ id: z.string(), deleted: z.boolean() })
+  .openapi("ScheduleDeleteResponse");

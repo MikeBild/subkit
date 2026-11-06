@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { PENDING_QUESTION_MAX } from "../../conversations/service/lifecycle.ts";
-import { conversationElicitations, conversations, tenants } from "../../db/schema/index.ts";
+import { conversationElicitations, conversations } from "../../db/schema/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 interface ListedConversation {
@@ -169,11 +170,10 @@ describe("GET /v1/conversations — pending_elicitation_*", () => {
   });
 
   test("cross-tenant: a pending elicitation on another tenant's conversation never surfaces", async () => {
-    const [otherTenant] = await srv.db
-      .insert(tenants)
-      .values({ slug: "t-conv-elicit-other", display_name: "other" })
-      .returning();
-    if (!otherTenant) throw new Error("seed other tenant failed");
+    const otherTenant = await seedTenant(srv.db, {
+      slug: "t-conv-elicit-other",
+      display_name: "other",
+    });
     const [otherConv] = await srv.db
       .insert(conversations)
       .values({ tenant_id: otherTenant.id, status: "awaiting_input", title: "foreign" })

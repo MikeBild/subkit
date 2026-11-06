@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { tenants, users } from "../../db/schema/index.ts";
+import { users } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 const MCP_PROTOCOL_VERSION = "2025-11-25";
@@ -65,11 +66,10 @@ describe("streamable-http transport — session ↔ principal binding", () => {
     const owned = await pingWithKey(sessionId, suite.http.apiKey);
     expect(owned.status).toBe(200);
 
-    const [tenant] = await suite.http.db
-      .insert(tenants)
-      .values({ slug: "t-attacker", display_name: "Attacker Tenant" })
-      .returning();
-    if (!tenant) throw new Error("seed attacker tenant failed");
+    const tenant = await seedTenant(suite.http.db, {
+      slug: "t-attacker",
+      display_name: "Attacker Tenant",
+    });
     const [user] = await suite.http.db
       .insert(users)
       .values({

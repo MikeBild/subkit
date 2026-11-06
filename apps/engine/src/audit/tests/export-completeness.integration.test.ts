@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { queryAuditLog, streamAuditLog } from "../query.ts";
 
 const uuid = createDeterministicUuidFactory(0x5ec7e7);
@@ -15,12 +15,9 @@ const TIED_TS = "2026-07-01T09:00:00.000000Z";
 describe("audit export — completeness against the table snapshot", () => {
   beforeAll(async () => {
     testDb = await createTestDb("audit-export-completeness");
-    const [row] = await testDb.db
-      .insert(tenants)
-      .values({ slug: "export-tenant", display_name: "Export Tenant" })
-      .returning();
-    if (!row) throw new Error("seed failed");
-    tenantId = row.id;
+    tenantId = (
+      await seedTenant(testDb.db, { slug: "export-tenant", display_name: "Export Tenant" })
+    ).id;
   });
 
   afterAll(async () => {
@@ -82,11 +79,10 @@ describe("audit export — completeness against the table snapshot", () => {
   });
 
   test("a full paged walk returns every row, with ties and sub-ms spacing", async () => {
-    const [walkTenant] = await testDb.db
-      .insert(tenants)
-      .values({ slug: "list-walk-tenant", display_name: "List Walk" })
-      .returning();
-    if (!walkTenant) throw new Error("seed failed");
+    const walkTenant = await seedTenant(testDb.db, {
+      slug: "list-walk-tenant",
+      display_name: "List Walk",
+    });
 
     for (let i = 0; i < 10; i++) {
       await testDb.pool.query(

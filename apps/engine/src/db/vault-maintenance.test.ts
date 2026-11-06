@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
@@ -10,8 +9,6 @@ import { rewrapRegistryWithMaintenance } from "../preflight/rewrap-maintenance.t
 import { createVaultOps } from "../preflight/vault-ops.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
-import { createMigrationDbFromUrl } from "./client.ts";
-import { runMigrations } from "./migrate.ts";
 import { EMBEDDED_MIGRATIONS } from "./migrations/embedded.ts";
 import * as schema from "./schema/index.ts";
 import {
@@ -21,7 +18,6 @@ import {
   runtimeSecretVersions,
 } from "./schema/index.ts";
 import { createTestDb, type TestDb } from "./tests/setup.ts";
-import { renderVaultMaintenanceSql } from "./vault-maintenance-sql.ts";
 import { VAULT_STOCK_TABLES } from "./vault-stock-sql.ts";
 
 let fixture: TestDb;
@@ -273,17 +269,19 @@ async function failure(operation: () => Promise<unknown>) {
   }
 }
 
-test("generated maintenance SQL is embedded without automatic role creation or grants", () => {
-  const migration = EMBEDDED_MIGRATIONS.find((item) => item.tag.endsWith("_vault_maintenance"));
-  if (!migration) throw new Error("migration missing");
-  const source = readFileSync(
-    new URL(`./migrations/${migration.tag}.sql`, import.meta.url),
-    "utf8",
-  );
-  expect(source).toBe(renderVaultMaintenanceSql());
-  expect(digest(Buffer.from(source))).toBe(migration.hash);
+test("embedded migrations create no role and grant no maintenance execution", async () => {
+  const source = EMBEDDED_MIGRATIONS.flatMap((migration) => migration.statements).join("\n");
+  expect(source).toContain("REVOKE ALL ON FUNCTION subkit.vault_maintenance_status() FROM PUBLIC");
   expect(source).not.toContain("CREATE ROLE");
   expect(source).not.toContain("GRANT EXECUTE");
+  expect(
+    (
+      await fixture.pool.query(
+        "SELECT EXISTS(SELECT 1 FROM pg_proc p CROSS JOIN LATERAL aclexplode(p.proacl) a WHERE p.oid=$1::regprocedure AND a.grantee=0 AND a.privilege_type='EXECUTE') AS allowed",
+        [snapshotSignature],
+      )
+    ).rows[0].allowed,
+  ).toBe(false);
 });
 test("distinct authenticated runtime cannot execute maintenance or forge private binding/context", async () => {
   const auth = await runtime.query("SELECT session_user,current_user");
@@ -844,56 +842,5 @@ test("execute-only client audit failure rolls back envelopes and returns no raw 
     await fixture.pool.query(
       "DROP TRIGGER test_client_audit_failure ON subkit.audit_log; DROP FUNCTION subkit.test_client_audit_failure()",
     );
-  }
-});
-
-test("forward migration preserves existing registry bytes and initializes an unbound key marker", async () => {
-  const maintenanceMigration = EMBEDDED_MIGRATIONS.find((entry) =>
-    entry.tag.endsWith("_vault_maintenance"),
-  );
-  if (!maintenanceMigration) throw new Error("maintenance migration missing");
-  const historical = await createTestDb("vault-maintenance-forward", {
-    upToIdx: maintenanceMigration.idx - 1,
-  });
-  const migration = createMigrationDbFromUrl(historical.url);
-  try {
-    await historical.pool.query("INSERT INTO subkit.runtime_config_state(key) VALUES('runtime')");
-    const encrypted = encryptSecretBytesWithKey(
-      oldKey,
-      Buffer.from([0, 255, 128]),
-      "runtime-secret:platform.fixture:1",
-    );
-    await historical.pool.query(
-      "INSERT INTO subkit.runtime_secret_versions(name,version,ciphertext,iv,auth_tag) VALUES('platform.fixture',1,$1,$2,$3)",
-      [encrypted.ciphertext, encrypted.iv, encrypted.auth_tag],
-    );
-    const before = (await historical.pool.query("SELECT * FROM subkit.runtime_secret_versions"))
-      .rows;
-    await runMigrations(migration.db, EMBEDDED_MIGRATIONS, true);
-    expect(
-      (await historical.pool.query("SELECT * FROM subkit.runtime_secret_versions")).rows,
-    ).toEqual(before);
-    const marker = (
-      await historical.pool.query(
-        "SELECT master_key_epoch,master_key_digest,vault_maintenance_binding,vault_maintenance_context FROM subkit.runtime_config_state WHERE key='runtime'",
-      )
-    ).rows[0];
-    expect(marker).toEqual({
-      master_key_epoch: "0",
-      master_key_digest: null,
-      vault_maintenance_binding: null,
-      vault_maintenance_context: null,
-    });
-    expect(
-      (
-        await historical.pool.query(
-          "SELECT EXISTS(SELECT 1 FROM pg_proc p CROSS JOIN LATERAL aclexplode(p.proacl) a WHERE p.oid=$1::regprocedure AND a.grantee=0 AND a.privilege_type='EXECUTE') AS allowed",
-          [snapshotSignature],
-        )
-      ).rows[0].allowed,
-    ).toBe(false);
-  } finally {
-    await migration.pool.end();
-    await historical.cleanup();
   }
 });

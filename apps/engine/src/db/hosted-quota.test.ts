@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { errorMiddleware, mapKnownErrorResponse } from "../http/middleware/error.ts";
@@ -11,20 +10,9 @@ import { logRing } from "../observability/log-ring.ts";
 import { waitFor } from "../test-helpers/determinism/wait.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
 import { createDbFromUrl } from "./client.ts";
-import { renderHostedAuditProvenanceMigrationSql } from "./hosted-audit-provenance-sql.ts";
-import baselineColumns from "./hosted-quota-baseline-columns.json" with { type: "json" };
-import {
-  assertHostedQuotaCatalog,
-  hostedColumnBytes,
-  hostedQuotaResources,
-  hostedRowBytes,
-} from "./hosted-quota-catalog.ts";
 import { hostedQuotaError } from "./hosted-quota-errors.ts";
-import { renderHostedQuotaSql } from "./hosted-quota-sql.ts";
-import { runMigrations } from "./migrate.ts";
 import { EMBEDDED_MIGRATIONS } from "./migrations/embedded.ts";
 import { catalogCategories, hostedTenantUsage, tenants } from "./schema/index.ts";
-import { createTestDb } from "./tests/setup.ts";
 
 let ctx: HttpTestServer;
 beforeAll(async () => {
@@ -55,10 +43,6 @@ async function policy(bytes: string, rows = 1000) {
     sql`UPDATE subkit.runtime_config_revisions SET document=jsonb_set(jsonb_set(document,'{storage,hosted,tenant_bytes}',to_jsonb(${bytes}::text)),'{storage,hosted,retained_rows_per_resource}',to_jsonb(${rows}::int)) WHERE revision=(SELECT active_revision FROM subkit.runtime_config_state WHERE key='runtime')`,
   );
 }
-
-test("quota catalog covers every current column", () => {
-  expect(() => assertHostedQuotaCatalog()).not.toThrow();
-});
 
 test("retained content shares logical bytes and failed growth rolls back", async () => {
   await policy("50000000");
@@ -192,27 +176,13 @@ test("content-bearing audit cannot bypass quota and fixed lifecycle audit surviv
   await policy("50000000");
 });
 
-test("generated quota migration matches the reviewed catalog renderer", () => {
-  const journal = JSON.parse(
-    readFileSync(new URL("./migrations/meta/_journal.json", import.meta.url), "utf8"),
-  ) as { entries: { tag: string }[] };
-  const entry = journal.entries.find((value) => value.tag.endsWith("_hosted_resource_quota"));
-  expect(entry).toBeDefined();
-  expect(readFileSync(new URL(`./migrations/${entry!.tag}.sql`, import.meta.url), "utf8")).toBe(
-    renderHostedQuotaSql({ cockpitControls: false }),
-  );
-});
-
-test("current generated quota SQL retains cockpit revocation receipt controls", () => {
-  const current = renderHostedQuotaSql();
+test("embedded quota SQL retains cockpit revocation receipt controls", () => {
+  const current = EMBEDDED_MIGRATIONS.flatMap((migration) => migration.statements).join("\n");
   expect(current).toContain("IF kind='session' THEN");
   expect(current).toContain("IF kind='cockpit_installation' THEN");
 });
 
-test("forward audit quota SQL matches its migration and rejects malformed provenance", async () => {
-  expect(
-    readFileSync(new URL("./migrations/0137_hosted_audit_provenance.sql", import.meta.url), "utf8"),
-  ).toBe(renderHostedAuditProvenanceMigrationSql());
+test("audit quota SQL rejects malformed provenance", async () => {
   const result = await ctx.db.execute<{
     valid: string;
     legacy: string;
@@ -252,62 +222,6 @@ test("forward audit quota SQL matches its migration and rejects malformed proven
         '{"via":"verified_identity_recovery","origin_source":"ui","unexpected":"content"}'::jsonb)`);
     })(),
   ).rejects.toThrow();
-});
-
-test("forward audit quota migration refunds only previously charged control provenance", async () => {
-  const migration = EMBEDDED_MIGRATIONS.find((item) =>
-    item.tag.endsWith("_hosted_audit_provenance"),
-  );
-  if (!migration) throw new Error("audit provenance migration missing");
-  const fixture = await createTestDb("hosted-audit-provenance-upgrade", {
-    upToIdx: migration.idx - 1,
-  });
-  try {
-    await configureHostedPolicyForTests(fixture.db, fixture.url);
-    const owner = await provisionSelfServiceTenant(
-      {
-        issuer_url: "https://identity.example.test",
-        subject: "audit-provenance-upgrade",
-        email: "audit-provenance-upgrade@example.test",
-        email_verified: true,
-      },
-      fixture.db,
-    );
-    const tenantId = owner.tenant.id;
-    await fixture.db.execute(sql`INSERT INTO subkit.audit_log(id,tenant_id,actor_type,action,resource_type,resource_id,result,metadata)
-      VALUES(gen_random_uuid(),${tenantId},'system','tenant.restored','tenant',${tenantId},'success','{"via":"verified_identity_recovery"}'::jsonb),
-      (gen_random_uuid(),${tenantId},'system','tenant.restored','tenant',${tenantId},'success','{"via":"verified_identity_recovery","request_source":"api","origin_source":"ui","execution_source":"api","audit_trace_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}'::jsonb),
-      (gen_random_uuid(),${tenantId},'system','tenant.restored','tenant',${tenantId},'success','{"via":"verified_identity_recovery","request_source":"api","unexpected":"content"}'::jsonb)`);
-    const [before] = await fixture.db
-      .select()
-      .from(hostedTenantUsage)
-      .where(eq(hostedTenantUsage.tenant_id, tenantId));
-    const auditTable = hostedQuotaResources(baselineColumns).find(
-      (table) => table.table === "audit_log",
-    );
-    if (!auditTable || !before) throw new Error("audit quota fixture missing");
-    const expected = await fixture.db.execute<{ bytes: string }>(
-      sql`SELECT (${sql.raw(hostedRowBytes(auditTable, "a"))})::text AS bytes FROM subkit.audit_log a WHERE a.tenant_id=${tenantId} AND a.metadata->>'audit_trace_id'='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'`,
-    );
-    await runMigrations(fixture.db, EMBEDDED_MIGRATIONS, true);
-    const [after] = await fixture.db
-      .select()
-      .from(hostedTenantUsage)
-      .where(eq(hostedTenantUsage.tenant_id, tenantId));
-    expect(after?.resource_counts.audit_log).toBe(
-      String(Number(before.resource_counts.audit_log) - 1),
-    );
-    expect(after?.logical_bytes).toBe(before.logical_bytes - BigInt(expected.rows[0]!.bytes));
-    await runMigrations(fixture.db, EMBEDDED_MIGRATIONS, true);
-    const [replayed] = await fixture.db
-      .select()
-      .from(hostedTenantUsage)
-      .where(eq(hostedTenantUsage.tenant_id, tenantId));
-    expect(replayed?.logical_bytes).toBe(after?.logical_bytes);
-    expect(replayed?.resource_counts.audit_log).toBe(after?.resource_counts.audit_log);
-  } finally {
-    await fixture.cleanup();
-  }
 });
 
 test("trusted transaction and HTTP quota boundaries never expose private query parameters", async () => {
@@ -492,13 +406,6 @@ test("kept file versions count their content bytes and release them when removed
     .where(eq(hostedTenantUsage.tenant_id, tenantId));
   expect(after?.resource_counts.file_versions).toBe("0");
   expect((after?.logical_bytes ?? 0n) < (before?.logical_bytes ?? 0n)).toBe(true);
-});
-
-test("unknown persisted content column types fail closed", () => {
-  expect(() => hostedColumnBytes("unclassified_payload", "payload")).toThrow(
-    "hosted_quota_column_type_unclassified",
-  );
-  expect(hostedColumnBytes("tsvector", "payload")).toContain("octet_length");
 });
 
 test("missing or zero canonical policy cannot be replaced by a positive live config cache", async () => {

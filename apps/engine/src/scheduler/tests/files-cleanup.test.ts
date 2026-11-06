@@ -7,7 +7,6 @@ import {
   executions,
   fileLinks,
   files,
-  tenants,
   workflows,
   workflowsSchedules,
 } from "../../db/schema/index.ts";
@@ -17,6 +16,7 @@ import { logRing } from "../../observability/log-ring.ts";
 import { EXECUTION_RUN_QUEUE } from "../../queue/queues.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { runFilesCleanup } from "../files-cleanup-runner.ts";
 import { createFilesCleanupBoss, disposeBoss } from "./pgboss-bootstrap.ts";
 
@@ -272,11 +272,7 @@ test("persisted queued input and workflow schedule input guard files without que
 
 test("neighbor-tenant SDK references and mismatched product parent rows do not guard another tenant", async () => {
   const id = await seedUnlinked();
-  const [foreign] = await srv.db
-    .insert(tenants)
-    .values({ slug: "cleanup-foreign", display_name: "Foreign" })
-    .returning();
-  if (!foreign) throw new Error("missing foreign tenant fixture");
+  const foreign = await seedTenant(srv.db, { slug: "cleanup-foreign", display_name: "Foreign" });
   const executionId = uuid();
   await srv.db.insert(executions).values({
     id: executionId,

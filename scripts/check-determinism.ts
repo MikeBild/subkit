@@ -1,45 +1,10 @@
 #!/usr/bin/env bun
-//      → block. Whitelisted via a trailing `// allow-wall-clock` comment
-//      on (or immediately above) the offending line.
-//   2. `Math.random()`, `randomUUID(`, `randomBytes(` in test files →
-//      block. Use seeded factories from `test-helpers/determinism`.
-//   3. `.only(` / `.skip(` / `test.only(` / `describe.only(` /
-//      `describe.skip(` → block. Intentional skips must be gated by
-//      `.skipIf` with an env condition.
-//   4. `Date.now()` / `new Date()` in test files → warn. Allowed with
-//      a trailing `// allow-wall-clock` comment.
-//
-// Exit codes:
-//   0  — clean (or improvement vs baseline)
-//   1  — rule violation, or warning regression vs baseline (fail CI)
-//
-// Usage:
-//   bun run scripts/check-determinism.ts
-//   bun run scripts/check-determinism.ts --update-baseline
-//     (regenerate the warning baseline after a cleanup)
-//   SUBKIT_DETERMINISM_WARN=1 bun run scripts/check-determinism.ts
-//     (downgrade error-level violations to warnings — for incremental adoption)
-//
-// Baseline ratchet:
-//   `scripts/determinism.baseline.json` maps test file → tolerated warning
-//   count. Existing warnings stay tolerated; any new warning in any file
-//   (or a brand new file with any warnings) fails CI. Decreasing counts
-//   are rewarded — the run prints which files improved and exits 0; run
-//   `--update-baseline` to lock the improvement in.
-//
-//   The baseline was drained from 53 files / 56 tolerated warnings to
-//   {}. A regression that re-introduces 30+ warnings is a real regression,
-//   not a fresh "0 → 30" shock — read the file's git log if a sudden
-//   spike surprises you (`git log scripts/determinism.baseline.json`).
-//   The aggregate-sum check below blocks any net growth from {}, so a
-//   single warning failing CI is the intended ratchet behaviour, not
-//   a lost-context surprise.
 
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Glob } from "bun";
 
-interface Violation {
+export interface Violation {
   file: string;
   line: number;
   col: number;
@@ -68,9 +33,7 @@ interface Rule {
   pattern: RegExp;
   severity: "error" | "warn";
   reason: string;
-  /** Allow with a `// allow-wall-clock` on the same or previous line. */
   allowWallClock?: boolean;
-  /** Allow with a `// allow-random` on the same or previous line. */
   allowRandom?: boolean;
 }
 
@@ -152,10 +115,100 @@ async function listTestFiles(): Promise<string[]> {
   return [...new Set(out)].sort();
 }
 
-function checkFile(relPath: string): Violation[] {
-  if (SLEEP_WHITELIST.has(relPath)) return [];
-  const abs = resolve(ROOT, relPath);
-  const src = readFileSync(abs, "utf8");
+const PROPERTY_RUN = /\bfc\.(?:assert|check)\s*\(/g;
+const UNSEEDED_SOURCE = /\b(?:Date\.now|Math\.random|performance\.now)\b|\bnew\s+Date\s*\(/;
+
+function callArguments(src: string, open: number): string[] {
+  const args: string[] = [];
+  let depth = 0;
+  let quote: string | null = null;
+  let start = open + 1;
+  for (let k = open; k < src.length; k++) {
+    const ch = src[k] as string;
+    if (quote) {
+      if (ch === "\\") k++;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") quote = ch;
+    else if ("([{".includes(ch)) depth++;
+    else if (")]}".includes(ch)) {
+      depth--;
+      if (depth === 0) {
+        args.push(src.slice(start, k));
+        return args;
+      }
+    } else if (ch === "," && depth === 1) {
+      args.push(src.slice(start, k));
+      start = k + 1;
+    }
+  }
+  args.push(src.slice(start));
+  return args;
+}
+
+function hasFixedSeed(text: string): boolean {
+  const seed = /\bseed\s*:\s*([^,}\n]+)/.exec(text);
+  return seed !== null && !UNSEEDED_SOURCE.test(seed[1] ?? "");
+}
+
+function referencesName(text: string, name: string): boolean {
+  let from = text.indexOf(name);
+  while (from !== -1) {
+    const before = text[from - 1] ?? " ";
+    const after = text[from + name.length] ?? " ";
+    const spread = text.slice(Math.max(0, from - 3), from) === "...";
+    if ((spread || !/[\w$.]/.test(before)) && !/[\w$]/.test(after)) return true;
+    from = text.indexOf(name, from + 1);
+  }
+  return false;
+}
+
+function seededConstants(src: string): Set<string> {
+  const out = new Set<string>();
+  for (const m of src.matchAll(/\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*\{/g)) {
+    const open = (m.index ?? 0) + m[0].length - 1;
+    let depth = 0;
+    for (let k = open; k < src.length; k++) {
+      if (src[k] === "{") depth++;
+      else if (src[k] === "}" && --depth === 0) {
+        if (hasFixedSeed(src.slice(open, k + 1))) out.add(m[1] as string);
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+export function propertySeedViolations(relPath: string, src: string): Violation[] {
+  const violations: Violation[] = [];
+  const lines = src.split("\n");
+  const seeded = [...seededConstants(src)];
+  for (const m of src.matchAll(PROPERTY_RUN)) {
+    const lineIndex = src.slice(0, m.index).split("\n").length - 1;
+    const line = lines[lineIndex] ?? "";
+    if (/^\s*(?:\/\/|\*|\/\*)/.test(line)) continue;
+    const options = callArguments(src, (m.index ?? 0) + m[0].length - 1)
+      .slice(1)
+      .join(",");
+    const code = options.replace(/(["'`])(?:\\.|(?!\1)[^\\])*\1/g, '""');
+    if (hasFixedSeed(code)) continue;
+    if (seeded.some((name) => referencesName(code, name))) continue;
+    violations.push({
+      file: relPath,
+      line: lineIndex + 1,
+      col: line.indexOf("fc.") + 1,
+      rule: "fc-assert-requires-seed",
+      severity: "error",
+      snippet: line.trim(),
+      reason:
+        "Pass a fixed seed to every fast-check run: fc.assert(fc.property(...), { seed: 20261106, numRuns: 200 }).",
+    });
+  }
+  return violations;
+}
+
+export function checkSource(relPath: string, src: string): Violation[] {
   const lines = src.split("\n");
   const violations: Violation[] = [];
   for (let i = 0; i < lines.length; i++) {
@@ -177,7 +230,13 @@ function checkFile(relPath: string): Violation[] {
       });
     }
   }
-  return violations;
+  violations.push(...propertySeedViolations(relPath, src));
+  return violations.sort((x, y) => x.line - y.line || x.col - y.col);
+}
+
+function checkFile(relPath: string): Violation[] {
+  if (SLEEP_WHITELIST.has(relPath)) return [];
+  return checkSource(relPath, readFileSync(resolve(ROOT, relPath), "utf8"));
 }
 
 const BASELINE_PATH = resolve(ROOT, "scripts/determinism.baseline.json");
@@ -304,5 +363,6 @@ async function main(): Promise<number> {
   return 0;
 }
 
-const code = await main();
-process.exit(code);
+if (import.meta.main) {
+  process.exit(await main());
+}

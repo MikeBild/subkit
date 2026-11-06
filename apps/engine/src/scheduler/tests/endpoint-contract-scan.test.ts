@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { connectors, events, tenants, workflows, workflowVersions } from "../../db/schema/index.ts";
+import { connectors, events, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
+import { seedConnector as seedConnectorRow, seedTenant } from "../../test-helpers/seed.ts";
 import { runEndpointContractScanForTenant } from "../endpoint-contract-scan-runner.ts";
 
 const NOW = new Date("2026-06-01T00:00:00.000Z");
@@ -17,16 +18,10 @@ let requestedPaths: string[] = [];
 beforeAll(async () => {
   db = await createTestDb("contract-scan");
 
-  const [t] = await db.db
-    .insert(tenants)
-    .values({ slug: "t-contract", display_name: "Contract Tenant" })
-    .returning();
-  tenantId = t!.id;
-  const [t2] = await db.db
-    .insert(tenants)
-    .values({ slug: "t-contract-other", display_name: "Other Tenant" })
-    .returning();
-  otherTenantId = t2!.id;
+  const t = await seedTenant(db.db, { slug: "t-contract", display_name: "Contract Tenant" });
+  tenantId = t.id;
+  const t2 = await seedTenant(db.db, { slug: "t-contract-other", display_name: "Other Tenant" });
+  otherTenantId = t2.id;
 
   mock = await createMockServer((req, res) => {
     requestedPaths.push(req.url ?? "");
@@ -55,20 +50,13 @@ afterAll(async () => {
 });
 
 async function seedConnector(tenant: string, slug: string): Promise<string> {
-  const [c] = await db.db
-    .insert(connectors)
-    .values({
-      tenant_id: tenant,
-      slug,
-      display_name: slug,
-      driver: "http",
-      environment: "dev",
-      auth_type: "none",
-      base_url: mock.baseUrl,
-      config: {},
-    })
-    .returning();
-  return c!.id;
+  const row = await seedConnectorRow(db.db, {
+    tenant_id: tenant,
+    slug,
+    display_name: slug,
+    base_url: mock.baseUrl,
+  });
+  return row.id;
 }
 
 async function seedCommittedWorkflow(

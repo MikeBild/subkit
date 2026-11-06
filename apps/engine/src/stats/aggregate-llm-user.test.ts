@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { tenants } from "../db/schema/identity.ts";
 import { llmUsage } from "../db/schema/llm.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import { aggregateLlm } from "./aggregate-llm.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
@@ -44,19 +44,16 @@ beforeAll(async () => {
 
   testDb = await createTestDb("stats-agg-llm-user");
 
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "agg-llm-user-tenant", display_name: "Agg LLM User Tenant" })
-    .returning();
-  if (!tenant) throw new Error("seed tenant failed");
-  tenantId = tenant.id;
+  tenantId = (
+    await seedTenant(testDb.db, {
+      slug: "agg-llm-user-tenant",
+      display_name: "Agg LLM User Tenant",
+    })
+  ).id;
 
-  const [otherTenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "agg-llm-user-other", display_name: "Agg LLM User Other" })
-    .returning();
-  if (!otherTenant) throw new Error("seed other tenant failed");
-  otherTenantId = otherTenant.id;
+  otherTenantId = (
+    await seedTenant(testDb.db, { slug: "agg-llm-user-other", display_name: "Agg LLM User Other" })
+  ).id;
 }, 60_000);
 
 afterAll(async () => {

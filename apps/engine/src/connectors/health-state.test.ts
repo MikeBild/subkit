@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { auditLog, connectors, events, tenants, workflows } from "../db/schema/index.ts";
+import { auditLog, connectors, events, workflows } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { seedConnector, seedTenant } from "../test-helpers/seed.ts";
 import {
   clearConnectorHealthOnSuccess,
   effectiveConnectorHealth,
@@ -15,34 +16,18 @@ let tenantId: string;
 
 beforeAll(async () => {
   db = await createTestDb("health-state-unit");
-  const [t] = await db.db
-    .insert(tenants)
-    .values({ slug: "t-health", display_name: "Health Tenant" })
-    .returning();
-  tenantId = t!.id;
+  tenantId = (await seedTenant(db.db, { slug: "t-health", display_name: "Health Tenant" })).id;
 });
 
 afterAll(async () => {
   await db.cleanup();
 });
 
-async function seedConnector(
+async function seedHealthConnector(
   slug: string,
 ): Promise<{ id: string; tenant_id: string; slug: string }> {
-  const [c] = await db.db
-    .insert(connectors)
-    .values({
-      tenant_id: tenantId,
-      slug,
-      display_name: slug,
-      driver: "http",
-      environment: "dev",
-      auth_type: "none",
-      base_url: "https://example.test",
-      config: {},
-    })
-    .returning();
-  return { id: c!.id, tenant_id: tenantId, slug };
+  const c = await seedConnector(db.db, { tenant_id: tenantId, slug, display_name: slug });
+  return { id: c.id, tenant_id: tenantId, slug };
 }
 
 async function connectorRow(id: string) {
@@ -59,7 +44,7 @@ async function healthChangedEvents() {
 
 describe("setConnectorHealth", () => {
   test("transition edge writes state + emits one notification event + one audit row", async () => {
-    const c = await seedConnector("hs-basic");
+    const c = await seedHealthConnector("hs-basic");
     const before = (await healthChangedEvents()).length;
 
     const r1 = await setConnectorHealth(db.db, c, {
@@ -98,7 +83,7 @@ describe("setConnectorHealth", () => {
   });
 
   test("recovery to ok transitions but does NOT notify", async () => {
-    const c = await seedConnector("hs-recover");
+    const c = await seedHealthConnector("hs-recover");
     await setConnectorHealth(db.db, c, { state: "degraded", reason: "5xx" });
     const before = (await healthChangedEvents()).length;
 
@@ -111,7 +96,7 @@ describe("setConnectorHealth", () => {
 
 describe("flagConnectorContractFailure", () => {
   test("removed endpoint flips to needs_update with severity error + successor URI", async () => {
-    const c = await seedConnector("hs-contract");
+    const c = await seedHealthConnector("hs-contract");
     const before = (await healthChangedEvents()).length;
 
     const r = await flagConnectorContractFailure(db.db, c, {
@@ -149,14 +134,14 @@ describe("flagConnectorContractFailure", () => {
 
 describe("clearConnectorHealthOnSuccess", () => {
   test("clears degraded back to ok", async () => {
-    const c = await seedConnector("hs-clear-degraded");
+    const c = await seedHealthConnector("hs-clear-degraded");
     await setConnectorHealth(db.db, c, { state: "degraded", reason: "5xx" });
     await clearConnectorHealthOnSuccess(db.db, c);
     expect((await connectorRow(c.id)).health_state).toBe("ok");
   });
 
   test("does NOT clear needs_update — a removed endpoint stays broken", async () => {
-    const c = await seedConnector("hs-clear-update");
+    const c = await seedHealthConnector("hs-clear-update");
     await flagConnectorContractFailure(db.db, c, {
       error_code: "endpoint_removed",
       reason: "410",

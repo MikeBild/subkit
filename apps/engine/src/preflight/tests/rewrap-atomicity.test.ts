@@ -20,6 +20,7 @@ import {
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../db/tests/setup.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { syntheticVaultStopAcknowledgement } from "../../test-helpers/vault-maintenance.ts";
 import { secretAad } from "../environment.ts";
 import {
@@ -243,11 +244,10 @@ test("direct domain rewrap refuses a healthy replica without the CLI wrapper", a
 
 test("inactive owners remain refused and earlier global replacements are rolled back", async () => {
   await seed("a-global");
-  const [owner] = await ctx.db
-    .insert(tenants)
-    .values({ slug: `rewrap-inactive-${++sequence}`, display_name: "Inactive owner" })
-    .returning();
-  if (!owner) throw new Error("missing owner fixture");
+  const owner = await seedTenant(ctx.db, {
+    slug: `rewrap-inactive-${++sequence}`,
+    display_name: "Inactive owner",
+  });
   await seed(`connection.${owner.id}.fixture.access_token`);
   await ctx.db.update(tenants).set({ status: "suspended" }).where(eq(tenants.id, owner.id));
   const before = await inventory();
@@ -259,11 +259,10 @@ test("inactive owners remain refused and earlier global replacements are rolled 
 });
 
 test("active self-hosted owned secrets retain the existing UTF-8 string API", async () => {
-  const [owner] = await ctx.db
-    .insert(tenants)
-    .values({ slug: `rewrap-active-${++sequence}`, display_name: "Active owner" })
-    .returning();
-  if (!owner) throw new Error("missing owner fixture");
+  const owner = await seedTenant(ctx.db, {
+    slug: `rewrap-active-${++sequence}`,
+    display_name: "Active owner",
+  });
   const name = `connection.${owner.id}.fixture.access_token`;
   const value = "synthetic-UTF8-🔐";
   const payload = encryptSecretWithKey(previousKey, value, secretAad(name, 1));
@@ -293,11 +292,10 @@ test("domain acknowledgement and evidence validation refuse before key parsing o
 
 test("retained credential ciphertext refuses settings-only rewrite and key promotion without exposing stock", async () => {
   await seed("settings.unsupported-stock");
-  const [owner] = await ctx.db
-    .insert(tenants)
-    .values({ slug: `rewrap-stock-${++sequence}`, display_name: "Synthetic stock owner" })
-    .returning();
-  if (!owner) throw new Error("missing stock owner");
+  const owner = await seedTenant(ctx.db, {
+    slug: `rewrap-stock-${++sequence}`,
+    display_name: "Synthetic stock owner",
+  });
   const [connector] = await ctx.db
     .insert(connectors)
     .values({

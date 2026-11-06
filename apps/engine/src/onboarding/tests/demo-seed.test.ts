@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { auditLog, tenants, workflows, workflowVersions } from "../../db/schema/index.ts";
+import { auditLog, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { DEMO_WORKFLOWS, seedOnboardingDemo } from "../demo-seed.ts";
 
@@ -11,12 +12,8 @@ const seedAuthor = "10000000-0000-4000-8000-000000000001";
 
 beforeAll(async () => {
   tdb = await createTestDb("onboarding-demo-seed");
-  const [t] = await tdb.db
-    .insert(tenants)
-    .values({ slug: "demo-seed-test", display_name: "Demo Seed Test" })
-    .returning();
-  if (!t) throw new Error("seed tenant failed");
-  tenantId = t.id;
+  tenantId = (await seedTenant(tdb.db, { slug: "demo-seed-test", display_name: "Demo Seed Test" }))
+    .id;
 });
 
 afterAll(async () => {
@@ -64,11 +61,10 @@ describe("onboarding demo seed", () => {
   });
 
   test("an actor ID without a type stays unknown and does not become a version author", async () => {
-    const [tenant] = await tdb.db
-      .insert(tenants)
-      .values({ slug: "demo-seed-unknown-actor", display_name: "Unknown Actor Seed" })
-      .returning();
-    if (!tenant) throw new Error("unknown actor tenant insert failed");
+    const tenant = await seedTenant(tdb.db, {
+      slug: "demo-seed-unknown-actor",
+      display_name: "Unknown Actor Seed",
+    });
 
     const actorId = "20000000-0000-4000-8000-000000000002";
     const result = await seedOnboardingDemo({ tenant_id: tenant.id, actor_id: actorId }, tdb.db);

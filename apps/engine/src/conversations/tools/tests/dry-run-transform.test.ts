@@ -4,11 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { getConfig, loadConfig } from "../../../config/loader.ts";
-import { auditLog, tenants } from "../../../db/schema/index.ts";
+import { auditLog } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { getMockProvider, resetMockProvider } from "../../../llm/mock-provider.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import { dryRunTransformTool } from "../dry-run-transform.ts";
 import type { ToolContext } from "../index.ts";
 import { __resetLastPreviewStoreForTest, recordLastPreview } from "../last-preview-store.ts";
@@ -37,8 +38,7 @@ async function ensureConfigLoaded(): Promise<void> {
 beforeAll(async () => {
   await ensureConfigLoaded();
   ctx = await createTestDb("dry_run_transform");
-  const [t] = await ctx.db.insert(tenants).values({ slug: "t-drt", display_name: "T" }).returning();
-  tenant_id = t!.id;
+  tenant_id = (await seedTenant(ctx.db, { slug: "t-drt", display_name: "T" })).id;
 });
 
 afterAll(async () => {

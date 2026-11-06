@@ -1,12 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { runMigrations } from "../../db/migrate.ts";
 import { auditLog } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import {
-  hasCredentialAuthorityRevisionColumn,
-  resetSecretColumnDetection,
-} from "../../runtime-config/secret-columns.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { getCredentialAuthorityMetadata } from "../authority-metadata.ts";
 import { sameAuthorityScopes } from "../authority-scopes.ts";
@@ -266,32 +261,6 @@ test("a failed audit rolls token, permission metadata and authority revision bac
     await ctx.pool.query(
       "DROP TRIGGER reject_rotation_audit ON subkit.audit_log; DROP FUNCTION subkit.reject_rotation_audit()",
     );
-  }
-});
-
-test("an old schema remains writable and upgrades without granting any execution authority", async () => {
-  const legacy = await createTestDb("credential_authority_upgrade", { upToIdx: 52 });
-  try {
-    await legacy.pool.query("CREATE TABLE public.credentials (authority_revision integer)");
-    expect(await hasCredentialAuthorityRevisionColumn(legacy.db)).toBe(false);
-    const f = await fixture(legacy);
-    await upsertCredential(
-      { ...f.input, value: { ...f.input.value, access_token: "legacy-replacement" } },
-      legacy.db,
-    );
-    await runMigrations(legacy.db);
-    resetSecretColumnDetection();
-    expect(await hasCredentialAuthorityRevisionColumn(legacy.db)).toBe(true);
-    expect(await revision(f.credential.id, legacy)).toBe(1);
-    const read = await getCredentialForConnector(f.tenant, f.connector, "dev", legacy.db);
-    if (read?.value.mode !== "oauth2") throw new Error("missing upgraded credential");
-    expect(read.value.access_token).toBe("legacy-replacement");
-    const authorities = await legacy.pool.query(
-      "SELECT id FROM subkit.workflow_execution_authorities",
-    );
-    expect(authorities.rows).toHaveLength(0);
-  } finally {
-    await legacy.cleanup();
   }
 });
 

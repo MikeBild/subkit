@@ -1,13 +1,9 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
 import { actorOf } from "../../audit/actor.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { getConfig, loadConfig } from "../../config/loader.ts";
 import { createElicitation, stageElicitationAnswer } from "../../conversations/elicitations.ts";
 import * as svc from "../../conversations/service.ts";
 import {
@@ -24,25 +20,14 @@ import { insertMcpTask } from "../../mcp/tasks/store.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { registerConversationRunTurnHandler } from "../handlers/conversation-run-turn.ts";
 import type { ConversationRunTurnJob } from "../queues.ts";
+import { ensureTestConfig } from "./test-config.ts";
 
 let ctx: EngineTestCtx;
 let run: (jobs: Job<ConversationRunTurnJob>[]) => Promise<void>;
 
-async function ensureConfig(): Promise<void> {
-  try {
-    getConfig();
-    return;
-  } catch {}
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-respond-bot-test-"));
-  await loadConfig({
-    env: { DATABASE_URL: "postgres://placeholder/respond-bot-test", NODE_ENV: "test" },
-    configPathOverride: join(dir, "subkit.config.json"),
-  });
-}
-
 beforeAll(async () => {
   process.env.LLM_PROVIDER = "mock";
-  await ensureConfig();
+  await ensureTestConfig();
   resetMockProvider();
   ctx = await createEngineCtx("conversation-respond-bot");
   const boss = {

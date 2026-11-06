@@ -2,10 +2,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { parseFileIdOrThrow } from "../../api/files-schemas.ts";
-import { apiKeys, auditLog, files, roles, tenants, users } from "../../db/schema/index.ts";
+import { apiKeys, auditLog, files, roles, users } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 
 const nextHex = createDeterministicHexFactory(0xf117e7);
 
@@ -27,11 +28,7 @@ let portalKey: string;
 beforeAll(async () => {
   srv = await createHttpTestServer("files-http");
 
-  const [tB] = await srv.db
-    .insert(tenants)
-    .values({ slug: "fhttp-b", display_name: "Files HTTP B" })
-    .returning();
-  if (!tB) throw new Error("seed tenant B");
+  const tB = await seedTenant(srv.db, { slug: "fhttp-b", display_name: "Files HTTP B" });
   tenantBId = tB.id;
 
   const [uB] = await srv.db

@@ -2,8 +2,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { ElicitationResult } from "../../conversations/elicitation-bridge.ts";
 import { getElicitation } from "../../conversations/elicitations.ts";
-import { conversationElicitations, conversations, tenants } from "../../db/schema/index.ts";
+import { conversationElicitations, conversations } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   deliverPendingNativeElicitationCore,
   type NativeDeliveryResult,
@@ -20,11 +21,8 @@ const uuid = (): string => `00000000-0000-4000-8000-${String(++uuidSeq).padStart
 
 beforeAll(async () => {
   ctx = await createTestDb("confirm_url_mode_selection");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-cums", display_name: "T-CUMS" })
-    .returning();
-  tenant_id = t!.id;
+  const t = await seedTenant(ctx.db, { slug: "t-cums", display_name: "T-CUMS" });
+  tenant_id = t.id;
 });
 
 afterAll(async () => {

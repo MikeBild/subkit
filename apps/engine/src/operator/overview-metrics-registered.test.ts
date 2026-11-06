@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { getMetrics } from "../observability/metrics.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import {
   getOperationalOverview,
   invalidateOperationalOverview,
@@ -13,12 +13,9 @@ let tenant_id: string;
 
 beforeAll(async () => {
   testDb = await createTestDb("overview_metrics_registered");
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "t-overview-metrics", display_name: "Overview metrics" })
-    .returning();
-  if (!tenant) throw new Error("tenant fixture missing");
-  tenant_id = tenant.id;
+  tenant_id = (
+    await seedTenant(testDb.db, { slug: "t-overview-metrics", display_name: "Overview metrics" })
+  ).id;
 });
 
 afterAll(async () => {

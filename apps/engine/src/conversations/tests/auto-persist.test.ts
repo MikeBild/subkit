@@ -10,7 +10,6 @@ import {
   conversations,
   conversationToolCalls,
   credentials,
-  tenants,
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
@@ -18,6 +17,7 @@ import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   withConnectorInspection,
   withConnectorProbe,
@@ -38,11 +38,7 @@ const principal_id = createDeterministicUuidFactory(314)();
 
 beforeAll(async () => {
   ctx = await createTestDb("auto_persist");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-ap", display_name: "T-AP" })
-    .returning();
-  tenant_id = t!.id;
+  tenant_id = (await seedTenant(ctx.db, { slug: "t-ap", display_name: "T-AP" })).id;
 });
 
 afterAll(async () => {

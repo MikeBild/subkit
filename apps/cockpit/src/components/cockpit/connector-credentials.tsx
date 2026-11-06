@@ -1,9 +1,9 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShieldAlert, ShieldCheck, UserCircle } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
-import type { components } from "@/api/schema";
 import { SelectField, TextField } from "@/components/cockpit/form-field";
 import {
   ActionMenu,

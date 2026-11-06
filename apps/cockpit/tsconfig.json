@@ -20,7 +20,9 @@
     "types": ["vite/client", "bun-types"],
     "paths": {
       "@/*": ["./src/*"],
-      "@shared/*": ["../../packages/shared/src/*"]
+      "@shared/*": ["../../packages/shared/src/*"],
+      "@cli-core/*": ["../../packages/cli-core/src/*"],
+      "@engine/http/llms/*": ["../../apps/engine/src/http/llms/*"]
     }
   },
   "include": ["src", "vite.config.ts"]

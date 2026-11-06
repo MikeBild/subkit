@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { type Executor, getDb } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { workflowAutohealPolicies } from "../db/schema/workflows.ts";
 import { log } from "../logging/logger.ts";
 
@@ -10,9 +10,8 @@ export const DEFAULT_AUTOHEAL_POLICY: AutohealPolicy = "safe-patches";
 export async function resolvePolicy(
   tenant_id: string,
   workflow_id: string,
-  exec?: Executor,
+  db: Executor,
 ): Promise<AutohealPolicy> {
-  const db: Executor = exec ?? getDb();
   const rows = await db
     .select()
     .from(workflowAutohealPolicies)

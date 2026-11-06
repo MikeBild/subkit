@@ -4,6 +4,7 @@ import type { PgBoss } from "pg-boss";
 import { tenants } from "../db/schema/index.ts";
 import { createEngineCtx, type EngineTestCtx } from "../execution/tests/setup.ts";
 import { SchedulerReconciler } from "./reconciler.ts";
+import { createStubBoss, type SendCall } from "./tests/stub-boss.ts";
 
 let ctx: EngineTestCtx;
 
@@ -14,25 +15,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await ctx.cleanup();
 }, 30_000);
-
-interface SendCall {
-  queue: string;
-  payload: unknown;
-}
-
-function createStubBoss(calls: SendCall[]): PgBoss {
-  return {
-    send: async (queue: string, payload: unknown) => {
-      calls.push({ queue, payload });
-      return "stub-job-id";
-    },
-    schedule: async () => undefined,
-    unschedule: async () => undefined,
-    getQueues: async () => [],
-    createQueue: async () => undefined,
-    on: () => undefined,
-  } as unknown as PgBoss;
-}
 
 function createThrowingBoss(): PgBoss {
   return {

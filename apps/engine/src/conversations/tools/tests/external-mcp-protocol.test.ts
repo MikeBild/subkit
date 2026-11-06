@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import { closeDb, type Db } from "../../../db/client.ts";
-import { conversations, tenants } from "../../../db/schema/index.ts";
+import { conversations } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import {
@@ -12,6 +12,7 @@ import {
 } from "../../../mcp/client/pool.ts";
 import { seedMcpConnector } from "../../../mcp/client/test-fixtures.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import { readOnlyPaletteSpecs } from "../sdk-wrap/external-mcp-readonly.ts";
@@ -85,11 +86,9 @@ beforeAll(async () => {
   ctx = await createTestDb("external-mcp-protocol");
   await closeDb();
   process.env.DATABASE_URL = ctx.url;
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-mcp-protocol", display_name: "MCP Protocol Palette" })
-    .returning();
-  tenant_id = t!.id;
+  tenant_id = (
+    await seedTenant(ctx.db, { slug: "t-mcp-protocol", display_name: "MCP Protocol Palette" })
+  ).id;
   actor_id = createDeterministicUuidFactory(320)();
   const [conv] = await ctx.db
     .insert(conversations)

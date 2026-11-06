@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import type { ConnectorView } from "../types.ts";
 import {
   closeAllPools,
@@ -40,11 +40,7 @@ function makeConnector(overrides: Partial<ConnectorView> = {}): ConnectorView {
 beforeAll(async () => {
   if (skip) return;
   ctx = await createTestDb("pg-driver-unit");
-  const [tenant] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "pg-driver-test", display_name: "PG driver" })
-    .returning();
-  if (!tenant) throw new Error("tenant fixture missing");
+  const tenant = await seedTenant(ctx.db, { slug: "pg-driver-test", display_name: "PG driver" });
   tenantId = tenant.id;
   await ctx.pool.query(
     "CREATE TABLE public.scratch_items (id serial primary key, name text not null)",

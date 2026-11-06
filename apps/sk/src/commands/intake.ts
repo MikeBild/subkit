@@ -1,4 +1,3 @@
-import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import { resolveProfile } from "../config.ts";
@@ -10,6 +9,7 @@ import {
   SELECTED_ITEMS_LABEL,
   terminalText,
 } from "../lib/intake-review.ts";
+import { withCommandErrors } from "./command-runtime.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_REVIEW_ITEMS = 100;
@@ -83,27 +83,28 @@ const listCommand = defineCommand({
   },
   async run({ args }) {
     const jsonMode = Boolean(args.json);
-    try {
-      const client = makeClient();
-      const category = await selectedCategory(client, args.category);
-      const items = await collectedItems(client, category);
-      if (jsonMode) {
-        printJson({ category, items: items.map(clipMetadata) });
-        return;
-      }
-      emitList(
-        false,
-        ["title", "origin", "source_url", "captured_at"],
-        items.map((item) => ({
-          title: terminalText(item.title),
-          origin: item.original_snapshot.origin,
-          source_url: terminalText(item.original_snapshot.source_url ?? ""),
-          captured_at: item.original_snapshot.captured_at,
-        })),
-      );
-    } catch (error) {
-      reportCommandError(error, { json: jsonMode });
-    }
+    return withCommandErrors(
+      async () => {
+        const client = makeClient();
+        const category = await selectedCategory(client, args.category);
+        const items = await collectedItems(client, category);
+        if (jsonMode) {
+          printJson({ category, items: items.map(clipMetadata) });
+          return;
+        }
+        emitList(
+          false,
+          ["title", "origin", "source_url", "captured_at"],
+          items.map((item) => ({
+            title: terminalText(item.title),
+            origin: item.original_snapshot.origin,
+            source_url: terminalText(item.original_snapshot.source_url ?? ""),
+            captured_at: item.original_snapshot.captured_at,
+          })),
+        );
+      },
+      { json: jsonMode },
+    );
   },
 });
 
@@ -120,57 +121,58 @@ const reviewCommand = defineCommand({
   },
   async run({ args }) {
     const jsonMode = Boolean(args.json);
-    try {
-      if (args.category !== undefined && args.items !== undefined)
-        throw new Error("use either --category or --items, not both");
-      const locale = cliLocale(process.env, args.lang);
-      const client = makeClient(args.lang);
-      if (args.items !== undefined) {
-        const selectedIds = intakeItemIds(args.items);
+    return withCommandErrors(
+      async () => {
+        if (args.category !== undefined && args.items !== undefined)
+          throw new Error("use either --category or --items, not both");
+        const locale = cliLocale(process.env, args.lang);
+        const client = makeClient(args.lang);
+        if (args.items !== undefined) {
+          const selectedIds = intakeItemIds(args.items);
+          const outcome = await client.createConversation({
+            initial_message: intakeReviewPrompt(SELECTED_ITEMS_LABEL, locale),
+            intake_item_ids: selectedIds,
+          });
+          const url = cockpitConversationUrl(client, outcome.conversation.id);
+          if (jsonMode) {
+            printJson({
+              conversation_url: url,
+              category: null,
+              items: selectedIds.map((id) => ({ id })),
+            });
+            return;
+          }
+          process.stdout.write(
+            `Review started for ${selectedIds.length} collected item${selectedIds.length === 1 ? "" : "s"}.\n`,
+          );
+          process.stdout.write(`Continue in authenticated Cockpit: ${url}\n`);
+          return;
+        }
+        const category = await selectedCategory(client, args.category);
+        const items = await collectedItems(client, category);
+        if (items.length > MAX_REVIEW_ITEMS)
+          throw new Error(
+            `category “${terminalText(category)}” has more than ${MAX_REVIEW_ITEMS} collected items; choose --items`,
+          );
+        const selectedIds = items.map((item) => item.id);
+        if (selectedIds.length === 0)
+          throw new Error(`category “${terminalText(category)}” has no collected items to review`);
         const outcome = await client.createConversation({
-          initial_message: intakeReviewPrompt(SELECTED_ITEMS_LABEL, locale),
+          initial_message: intakeReviewPrompt(category, locale),
           intake_item_ids: selectedIds,
         });
         const url = cockpitConversationUrl(client, outcome.conversation.id);
         if (jsonMode) {
-          printJson({
-            conversation_url: url,
-            category: null,
-            items: selectedIds.map((id) => ({ id })),
-          });
+          printJson({ conversation_url: url, category, items: items.map(clipMetadata) });
           return;
         }
         process.stdout.write(
           `Review started for ${selectedIds.length} collected item${selectedIds.length === 1 ? "" : "s"}.\n`,
         );
         process.stdout.write(`Continue in authenticated Cockpit: ${url}\n`);
-        return;
-      }
-      const category = await selectedCategory(client, args.category);
-      const items = await collectedItems(client, category);
-      if (items.length > MAX_REVIEW_ITEMS)
-        throw new Error(
-          `category “${terminalText(category)}” has more than ${MAX_REVIEW_ITEMS} collected items; choose --items`,
-        );
-      const selectedIds = items.map((item) => item.id);
-      if (selectedIds.length === 0)
-        throw new Error(`category “${terminalText(category)}” has no collected items to review`);
-      const outcome = await client.createConversation({
-        initial_message: intakeReviewPrompt(category, locale),
-        intake_item_ids: selectedIds,
-      });
-      const url = cockpitConversationUrl(client, outcome.conversation.id);
-      if (jsonMode) {
-        printJson({ conversation_url: url, category, items: items.map(clipMetadata) });
-        return;
-      }
-      process.stdout.write(
-        `Review started for ${selectedIds.length} collected item${selectedIds.length === 1 ? "" : "s"}.\n`,
-      );
-      process.stdout.write(`Continue in authenticated Cockpit: ${url}\n`);
-    } catch (error) {
-      reportCommandError(error, { json: jsonMode });
-    }
+      },
+      { json: jsonMode },
+    );
   },
 });
 
@@ -195,14 +197,15 @@ const defaultCommand = defineCommand({
   },
   async run({ args }) {
     const jsonMode = Boolean(args.json);
-    try {
-      const category = intakeCategory(args.category);
-      const result = await makeClient().setDefaultIntakeCategory(category);
-      if (jsonMode) printJson(result);
-      else process.stdout.write(`Default intake category: ${terminalText(result.category)}\n`);
-    } catch (error) {
-      reportCommandError(error, { json: jsonMode });
-    }
+    return withCommandErrors(
+      async () => {
+        const category = intakeCategory(args.category);
+        const result = await makeClient().setDefaultIntakeCategory(category);
+        if (jsonMode) printJson(result);
+        else process.stdout.write(`Default intake category: ${terminalText(result.category)}\n`);
+      },
+      { json: jsonMode },
+    );
   },
 });
 
@@ -223,15 +226,16 @@ function itemMutationCommand(
     },
     async run({ args }) {
       const jsonMode = Boolean(args.json);
-      try {
-        const itemId = intakeItemId(args.item);
-        const result = await mutateItem(makeClient(), itemId, input(args));
-        const output = mutationResult(result);
-        if (jsonMode) printJson(output);
-        else process.stdout.write(`${name}: ${terminalText(result.title)}\n`);
-      } catch (error) {
-        reportCommandError(error, { json: jsonMode });
-      }
+      return withCommandErrors(
+        async () => {
+          const itemId = intakeItemId(args.item);
+          const result = await mutateItem(makeClient(), itemId, input(args));
+          const output = mutationResult(result);
+          if (jsonMode) printJson(output);
+          else process.stdout.write(`${name}: ${terminalText(result.title)}\n`);
+        },
+        { json: jsonMode },
+      );
     },
   });
 }

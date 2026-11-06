@@ -17,8 +17,6 @@ export async function normalizeNewMigrations(): Promise<void> {
   ) as {
     entries: Array<{ tag: string }>;
   };
-  const boundary = journal.entries.findIndex((entry) => entry.tag === "0041_isolated_schema");
-  if (boundary < 0) throw new Error("Product schema isolation migration is missing");
   const generated = new Set(
     execFileSync("git", ["ls-files", "--others", "--exclude-standard", "--", relativeDirectory], {
       cwd: root,
@@ -37,7 +35,7 @@ export async function normalizeNewMigrations(): Promise<void> {
     cwd: root,
     stdio: "pipe",
   });
-  for (const entry of journal.entries.slice(boundary + 1)) {
+  for (const entry of journal.entries) {
     const relative = `${relativeDirectory}/${entry.tag}.sql`;
     if (!generated.has(relative)) continue;
     const filename = path.join(root, relative);

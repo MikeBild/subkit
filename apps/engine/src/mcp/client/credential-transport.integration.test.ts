@@ -13,9 +13,10 @@ import {
   recordCredentialProviderIdentity,
 } from "../../credentials/index.ts";
 import { upsertCredential } from "../../credentials/service.ts";
-import { credentials, mcpOauthStates, tenants } from "../../db/schema/index.ts";
+import { credentials, mcpOauthStates } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { withMcpCredentialObserver } from "./credential-observation.ts";
 import { makeMcpOAuthProvider } from "./oauth-provider.ts";
 import { getMcpConnector } from "./registry.ts";
@@ -158,11 +159,10 @@ beforeAll(async () => {
           : { content: [{ type: "text", text: "ok" }] };
     jsonResponse(res, 200, { jsonrpc: "2.0", id: message.id, result });
   });
-  const [tenant] = await db.db
-    .insert(tenants)
-    .values({ slug: "credential-transport", display_name: "Credential transport" })
-    .returning();
-  if (!tenant) throw new Error("tenant fixture missing");
+  const tenant = await seedTenant(db.db, {
+    slug: "credential-transport",
+    display_name: "Credential transport",
+  });
   tenantId = tenant.id;
   const connector = await seedMcpConnector(db.db, {
     tenant_id: tenantId,

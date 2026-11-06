@@ -1,1 +1,0 @@
-CREATE UNIQUE INDEX "skill_candidate_evidence_identity_idx" ON "skill_candidate_evidence" USING btree ("skill_candidate_id","evidence_type",coalesce("execution_id"::text, ''),coalesce("patch_candidate_id"::text, ''),(CASE WHEN "execution_id" IS NULL AND "patch_candidate_id" IS NULL THEN "summary" ELSE '' END));

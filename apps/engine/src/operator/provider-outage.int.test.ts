@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { llmUsage, tenants } from "../db/schema/index.ts";
+import { llmUsage } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { currentMonthBucket } from "../llm/accounting/budget.ts";
 import { FROZEN_NOW } from "../test-helpers/determinism/clock.ts";
 import { adminPrincipal } from "../test-helpers/principals.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import { buildAttention, invalidateAttention } from "./attention.ts";
 import { providerOutageFrom } from "./provider-outage.ts";
 
@@ -11,15 +12,6 @@ const QUOTA_MESSAGE =
   "You exceeded your current quota, please check your plan and billing details. insufficient_quota";
 
 let testDb: TestDb;
-
-async function seedTenant(slug: string): Promise<string> {
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug, display_name: slug })
-    .returning({ id: tenants.id });
-  if (!tenant) throw new Error("seed tenant failed");
-  return tenant.id;
-}
 
 async function seedCalls(
   tenant_id: string,
@@ -61,7 +53,12 @@ afterAll(async () => {
 
 describe("provider outage in the attention feed", () => {
   test("consecutive quota refusals stop the tenant and name the cause", async () => {
-    const tenant_id = await seedTenant("provider-outage-quota");
+    const tenant_id = (
+      await seedTenant(testDb.db, {
+        slug: "provider-outage-quota",
+        display_name: "provider-outage-quota",
+      })
+    ).id;
     await seedCalls(tenant_id, [
       { result: "success", minutesAgo: 30 },
       { result: "error", error: QUOTA_MESSAGE, minutesAgo: 20 },
@@ -80,7 +77,12 @@ describe("provider outage in the attention feed", () => {
   });
 
   test("a success after the failures clears the outage", async () => {
-    const tenant_id = await seedTenant("provider-outage-recovered");
+    const tenant_id = (
+      await seedTenant(testDb.db, {
+        slug: "provider-outage-recovered",
+        display_name: "provider-outage-recovered",
+      })
+    ).id;
     await seedCalls(tenant_id, [
       { result: "error", error: "503 service unavailable", minutesAgo: 20 },
       { result: "error", error: "503 service unavailable", minutesAgo: 15 },
@@ -90,11 +92,21 @@ describe("provider outage in the attention feed", () => {
   });
 
   test("a single failure or failures outside the window raise nothing", async () => {
-    const single = await seedTenant("provider-outage-single");
+    const single = (
+      await seedTenant(testDb.db, {
+        slug: "provider-outage-single",
+        display_name: "provider-outage-single",
+      })
+    ).id;
     await seedCalls(single, [{ result: "error", error: "503 service unavailable", minutesAgo: 5 }]);
     expect(await providerItems(single)).toHaveLength(0);
 
-    const old = await seedTenant("provider-outage-old");
+    const old = (
+      await seedTenant(testDb.db, {
+        slug: "provider-outage-old",
+        display_name: "provider-outage-old",
+      })
+    ).id;
     await seedCalls(old, [
       { result: "error", error: "503 service unavailable", minutesAgo: 120 },
       { result: "error", error: "503 service unavailable", minutesAgo: 90 },

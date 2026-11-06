@@ -2,8 +2,8 @@ import { isEngineError, isTransportError, reportCommandError } from "@cli-core/e
 import { printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
-import { resolveProfile } from "../config.ts";
-import { EngineClient, type EngineRestartStatus } from "../engine-client.ts";
+import type { EngineClient, EngineRestartStatus } from "../engine-client.ts";
+import { makeClientFromArgs, withCommandErrors } from "./command-runtime.ts";
 
 export const RESTART_WAIT_TIMEOUT_MS = 240_000;
 const POLL_INTERVAL_MS = 2_000;
@@ -59,19 +59,6 @@ export async function waitForRestart(args: {
   return { kind: "timeout" };
 }
 
-function makeClient(args: Record<string, unknown>): EngineClient {
-  const profile = resolveProfile({
-    engine_url: args["engine-url"] as string | undefined,
-    api_key: args["api-key"] as string | undefined,
-    profile: args.profile as string | undefined,
-  });
-  return new EngineClient({
-    engine_url: profile.engine_url,
-    api_key: profile.api_key,
-    tenant: profile.active_tenant_id,
-  });
-}
-
 const restartCommand = defineCommand({
   meta: {
     name: "restart",
@@ -89,7 +76,7 @@ const restartCommand = defineCommand({
     json: { type: "boolean" as const, description: "JSON output" },
   },
   async run({ args }) {
-    const client = makeClient(args);
+    const client = makeClientFromArgs(args);
     const json = Boolean(args.json);
     let accepted: Awaited<ReturnType<EngineClient["requestEngineRestart"]>>;
     try {
@@ -112,30 +99,31 @@ const restartCommand = defineCommand({
       return;
     }
     if (!json) process.stdout.write("Restarting…\n");
-    try {
-      const outcome = await waitForRestart({
-        fromBootId: accepted.boot_id,
-        fetchStatus: () => client.getEngineRestartStatus(),
-      });
-      if (json) {
-        printJson({ accepted: true, ...accepted, outcome: outcome.kind });
-      } else if (outcome.kind === "restarted") {
-        process.stdout.write(
-          `${pc.green("Restarted.")} Revision ${outcome.status.active_revision} is active. Audit entry: ${accepted.audit_id}\n`,
-        );
-      } else if (outcome.kind === "not_activated") {
-        process.stderr.write(
-          `${pc.red("Restarted, but the saved settings are not active:")} saved ${outcome.status.saved_revision}, active ${outcome.status.active_revision} (${outcome.status.activation_status}). See \`sk logs\` and the audit entry ${accepted.audit_id}.\n`,
-        );
-      } else {
-        process.stderr.write(
-          `${pc.red("Restart not confirmed after 240 s.")} ${MANUAL_RESTART} Check the engine log for exit code 75 and the supervisor's start limit.\n`,
-        );
-      }
-      if (outcome.kind !== "restarted") process.exitCode = 1;
-    } catch (error) {
-      reportCommandError(error, { json });
-    }
+    return withCommandErrors(
+      async () => {
+        const outcome = await waitForRestart({
+          fromBootId: accepted.boot_id,
+          fetchStatus: () => client.getEngineRestartStatus(),
+        });
+        if (json) {
+          printJson({ accepted: true, ...accepted, outcome: outcome.kind });
+        } else if (outcome.kind === "restarted") {
+          process.stdout.write(
+            `${pc.green("Restarted.")} Revision ${outcome.status.active_revision} is active. Audit entry: ${accepted.audit_id}\n`,
+          );
+        } else if (outcome.kind === "not_activated") {
+          process.stderr.write(
+            `${pc.red("Restarted, but the saved settings are not active:")} saved ${outcome.status.saved_revision}, active ${outcome.status.active_revision} (${outcome.status.activation_status}). See \`sk logs\` and the audit entry ${accepted.audit_id}.\n`,
+          );
+        } else {
+          process.stderr.write(
+            `${pc.red("Restart not confirmed after 240 s.")} ${MANUAL_RESTART} Check the engine log for exit code 75 and the supervisor's start limit.\n`,
+          );
+        }
+        if (outcome.kind !== "restarted") process.exitCode = 1;
+      },
+      { json },
+    );
   },
 });
 

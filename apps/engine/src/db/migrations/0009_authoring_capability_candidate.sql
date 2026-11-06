@@ -1,1 +1,0 @@
-ALTER TYPE "public"."skill_candidate_pattern" ADD VALUE 'authoring_capability';

@@ -1,18 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import * as discoveryService from "../../connectors/discovery/service.ts";
-import {
-  auditLog,
-  connectors,
-  conversations,
-  credentials,
-  tenants,
-} from "../../db/schema/index.ts";
+import { auditLog, connectors, conversations, credentials } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { tenantWorkSnapshot } from "../../execution/tenant-work.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   withConnectorInspection,
   withConnectorProbe,
@@ -33,11 +28,7 @@ let tenant_id: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("save_connector_cache_fallback");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-cache", display_name: "T-CACHE" })
-    .returning();
-  tenant_id = t!.id;
+  tenant_id = (await seedTenant(ctx.db, { slug: "t-cache", display_name: "T-CACHE" })).id;
 });
 
 beforeEach(() => {

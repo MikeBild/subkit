@@ -1,5 +1,6 @@
-import { tenants, workflows, workflowVersions } from "../../db/schema/index.ts";
+import { workflows, workflowVersions } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "../../workflows/types.ts";
 
 export {
@@ -17,11 +18,10 @@ export interface EngineTestCtx {
 
 export async function createEngineCtx(label: string): Promise<EngineTestCtx> {
   const testDb = await createTestDb(`engine-${label}`);
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: `et-${label}`, display_name: `Engine ${label}` })
-    .returning();
-  if (!tenant) throw new Error("seed tenant failed");
+  const tenant = await seedTenant(testDb.db, {
+    slug: `et-${label}`,
+    display_name: `Engine ${label}`,
+  });
   return {
     testDb,
     tenantId: tenant.id,

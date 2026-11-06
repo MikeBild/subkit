@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { probeConnector } from "../drivers/index.ts";
 import { closeAllPools, pgQueryWithCount, probePgConnector } from "../drivers/postgres.ts";
 import { createConnector, getConnector } from "../service.ts";
@@ -10,11 +10,7 @@ let tenantId: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("pg_driver");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "pg-t", display_name: "pg tenant" })
-    .returning();
-  tenantId = t!.id;
+  tenantId = (await seedTenant(ctx.db, { slug: "pg-t", display_name: "pg tenant" })).id;
 });
 
 afterAll(async () => {

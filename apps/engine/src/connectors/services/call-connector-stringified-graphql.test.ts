@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
-import { connectors, tenants } from "../../db/schema/index.ts";
+import { connectors } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import * as graphqlDriver from "../drivers/graphql.ts";
 import { type CallConnectorRequest, callConnector } from "./call-connector.ts";
 
@@ -10,11 +11,9 @@ let tenant_id: string;
 beforeAll(async () => {
   testDb = await createTestDb("svc_call_connector_gql_str");
 
-  const [t] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "t-svc-gql-str", display_name: "T-SVC-GQL-STR" })
-    .returning();
-  tenant_id = t!.id;
+  tenant_id = (
+    await seedTenant(testDb.db, { slug: "t-svc-gql-str", display_name: "T-SVC-GQL-STR" })
+  ).id;
 });
 
 afterAll(async () => {

@@ -1,7 +1,7 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useMemo, useState } from "react";
 import { apiRequest } from "@/api/client";
-import type { components } from "@/api/schema";
 import { useActorDirectory } from "@/app/actor-directory";
 import {
   DataState,

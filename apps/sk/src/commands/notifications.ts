@@ -1,21 +1,8 @@
 import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
-import {
-  getNotificationInboxCursor,
-  resolveProfile,
-  setNotificationInboxCursor,
-} from "../config.ts";
-import { EngineClient } from "../engine-client.ts";
-
-function makeClient() {
-  const profile = resolveProfile();
-  return new EngineClient({
-    engine_url: profile.engine_url,
-    api_key: profile.api_key,
-    tenant: profile.active_tenant_id,
-  });
-}
+import { getNotificationInboxCursor, setNotificationInboxCursor } from "../config.ts";
+import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
 const channelsListCmd = defineCommand({
   meta: { name: "list", description: "List notification channels" },
@@ -24,12 +11,13 @@ const channelsListCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const { items } = await client.listNotificationChannels();
-      emitList(!!args.json, ["id", "name", "kind", "active"], items as Record<string, unknown>[]);
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { items } = await client.listNotificationChannels();
+        emitList(!!args.json, ["id", "name", "kind", "active"], items as Record<string, unknown>[]);
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -40,7 +28,7 @@ const channelsGetCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       printJson(
         await client.listNotificationChannels().then(
           ({ items }) =>
@@ -50,9 +38,7 @@ const channelsGetCmd = defineCommand({
             })(),
         ),
       );
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -86,7 +72,7 @@ const channelsCreateCmd = defineCommand({
       process.exit(1);
     }
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       printJson(
         await client.createNotificationChannel({
           platform: args.platform,
@@ -96,9 +82,7 @@ const channelsCreateCmd = defineCommand({
           ...(rateLimit !== undefined ? { rate_limit_per_minute: rateLimit } : {}),
         }),
       );
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -117,11 +101,9 @@ const channelsUpdateCmd = defineCommand({
       process.stderr.write("invalid JSON for --config\n");
       process.exit(1);
     }
-    try {
+    return withCommandErrors(async () => {
       printJson(await client.patchNotificationChannel(args.id, body));
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -132,12 +114,10 @@ const channelsDeleteCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       await client.deleteNotificationChannel(args.id);
       process.stdout.write("deleted\n");
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -159,16 +139,17 @@ const rulesListCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const { items } = await client.listNotificationRules();
-      emitList(
-        !!args.json,
-        ["id", "name", "event_pattern", "target_channel_id", "active"],
-        items as Record<string, unknown>[],
-      );
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { items } = await client.listNotificationRules();
+        emitList(
+          !!args.json,
+          ["id", "name", "event_pattern", "target_channel_id", "active"],
+          items as Record<string, unknown>[],
+        );
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -179,7 +160,7 @@ const rulesGetCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       printJson(
         await client.listNotificationRules().then(
           ({ items }) =>
@@ -189,9 +170,7 @@ const rulesGetCmd = defineCommand({
             })(),
         ),
       );
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -218,7 +197,7 @@ const rulesCreateCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       printJson(
         await client.createNotificationRule({
           name: args.name ?? args.event,
@@ -228,9 +207,7 @@ const rulesCreateCmd = defineCommand({
           ...(args.severity ? { severity: args.severity } : {}),
         }),
       );
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -249,11 +226,9 @@ const rulesUpdateCmd = defineCommand({
       process.stderr.write("invalid JSON for body\n");
       process.exit(1);
     }
-    try {
+    return withCommandErrors(async () => {
       printJson(await client.patchNotificationRule(args.id, body));
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -264,12 +239,10 @@ const rulesDeleteCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       await client.deleteNotificationRule(args.id);
       process.stdout.write("deleted\n");
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -292,18 +265,19 @@ const deliveriesListCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const { items } = await client.listNotificationDeliveries({
-        limit: args.limit ? Number(args.limit) : undefined,
-      });
-      emitList(
-        !!args.json,
-        ["id", "channel_id", "event_type", "status", "created_at"],
-        items as Record<string, unknown>[],
-      );
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { items } = await client.listNotificationDeliveries({
+          limit: args.limit ? Number(args.limit) : undefined,
+        });
+        emitList(
+          !!args.json,
+          ["id", "channel_id", "event_type", "status", "created_at"],
+          items as Record<string, unknown>[],
+        );
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -378,16 +352,17 @@ const inboxAckCmd = defineCommand({
     } else {
       upToCursor = getNotificationInboxCursor();
     }
-    try {
-      const result = await client.ackNotificationInbox(upToCursor);
-      if (args.json) {
-        printJson(result);
-      } else {
-        process.stdout.write(`acked ${result.acked}\n`);
-      }
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const result = await client.ackNotificationInbox(upToCursor);
+        if (args.json) {
+          printJson(result);
+        } else {
+          process.stdout.write(`acked ${result.acked}\n`);
+        }
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 

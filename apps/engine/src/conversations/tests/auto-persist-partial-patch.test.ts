@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { conversationElicitations, conversations, tenants } from "../../db/schema/index.ts";
+import { conversationElicitations, conversations } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { appendSnapshot, loadDraft } from "../draft.ts";
 import { maybeAutoPersistFromElicitation } from "../persistence/auto-persist.ts";
 import type { DraftDocument } from "../types.ts";
@@ -11,11 +12,7 @@ let tenant_id: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("auto_persist_partial_patch");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-app", display_name: "T-APP" })
-    .returning();
-  tenant_id = t!.id;
+  tenant_id = (await seedTenant(ctx.db, { slug: "t-app", display_name: "T-APP" })).id;
 });
 
 afterAll(async () => {

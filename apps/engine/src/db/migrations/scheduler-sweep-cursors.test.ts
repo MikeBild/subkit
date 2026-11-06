@@ -3,15 +3,12 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
-import { renderSchedulerSweepSeedSql } from "../../../../../scripts/gen-scheduler-sweep-cursors.ts";
 import { PLATFORM_TABLES } from "../../identity/tenant-erasure-tables.ts";
-import { assertHostedQuotaCatalog, HOSTED_PLATFORM_TABLES } from "../hosted-quota-catalog.ts";
-import { runMigrations } from "../migrate.ts";
-import { schedulerSweepCursors, schedulerSweepProducerEnum, tenants } from "../schema/index.ts";
+import { schedulerSweepCursors, schedulerSweepProducerEnum } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "../tests/setup.ts";
 import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
 
-const migration = EMBEDDED_MIGRATIONS.find((item) => item.tag.endsWith("_scheduler_sweep_cursors"));
+const migration = EMBEDDED_MIGRATIONS.find((item) => item.idx === 0);
 const expected: typeof schedulerSweepProducerEnum.enumValues = [
   "catalog",
   "docs",
@@ -46,7 +43,6 @@ test("migration stays embedded and seeds precisely the closed producer set", asy
   const values = snapshot.enums["public.scheduler_sweep_producer"]?.values;
   if (!values) throw new Error("scheduler_sweep_producers_missing");
   expect(values).toEqual(expected);
-  expect(body.endsWith(renderSchedulerSweepSeedSql(values))).toBe(true);
   const rows = await ctx.db.select().from(schedulerSweepCursors);
   expect(rows.map((row) => row.producer).sort()).toEqual([...expected].sort());
   for (const row of rows) {
@@ -73,9 +69,7 @@ test("migration stays embedded and seeds precisely the closed producer set", asy
   ).rejects.toMatchObject({ code: "22P02" });
 });
 
-test("cursor state is fixed operational platform metadata", () => {
-  expect(() => assertHostedQuotaCatalog()).not.toThrow();
-  expect(HOSTED_PLATFORM_TABLES.has("scheduler_sweep_cursors")).toBe(true);
+test("cursor state is fixed platform metadata", () => {
   expect(PLATFORM_TABLES).toContain("scheduler_sweep_cursors");
 });
 
@@ -148,24 +142,4 @@ test("active, released and idle states preserve millisecond positions", async ()
         .where(eq(schedulerSweepCursors.producer, "docs"))
     )[0],
   ).toMatchObject({ epoch: 1, revision: 3, epoch_upper_id: null });
-});
-
-test("forward upgrade adds only cursor state and is repeatable", async () => {
-  if (!migration) throw new Error("scheduler_sweep_migration_missing");
-  const prior = await createTestDb("scheduler-cursor-forward", { upToIdx: migration.idx - 1 });
-  try {
-    const [tenant] = await prior.db
-      .insert(tenants)
-      .values({ slug: "cursor-forward", display_name: "Retained owner" })
-      .returning();
-    if (!tenant) throw new Error("tenant_fixture_missing");
-    expect((await runMigrations(prior.db, [migration], true)).applied).toBe(1);
-    expect(await prior.db.select().from(tenants).where(eq(tenants.id, tenant.id))).toEqual([
-      tenant,
-    ]);
-    expect(await prior.db.select().from(schedulerSweepCursors)).toHaveLength(8);
-    expect((await runMigrations(prior.db, [migration], true)).applied).toBe(0);
-  } finally {
-    await prior.cleanup();
-  }
 });

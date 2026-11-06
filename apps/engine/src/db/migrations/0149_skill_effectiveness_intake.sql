@@ -1,5 +1,0 @@
-ALTER TABLE "skill_effectiveness" ALTER COLUMN "skill_candidate_id" DROP NOT NULL;--> statement-breakpoint
-ALTER TABLE "skill_effectiveness" ADD COLUMN "intake_proposal_id" uuid;--> statement-breakpoint
-ALTER TABLE "skill_effectiveness" ADD CONSTRAINT "skill_effectiveness_intake_proposal_id_intake_proposals_id_fk" FOREIGN KEY ("intake_proposal_id") REFERENCES "subkit"."intake_proposals"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE UNIQUE INDEX "skill_effectiveness_tenant_skill_proposal_key" ON "skill_effectiveness" USING btree ("tenant_id","skill_id","intake_proposal_id");--> statement-breakpoint
-ALTER TABLE "skill_effectiveness" ADD CONSTRAINT "skill_effectiveness_origin_check" CHECK (("skill_effectiveness"."skill_candidate_id" IS NULL) <> ("skill_effectiveness"."intake_proposal_id" IS NULL));

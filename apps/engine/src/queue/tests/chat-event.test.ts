@@ -11,17 +11,12 @@ import type {
   VerifiedEvent,
 } from "../../chat/types.ts";
 import { auditLog } from "../../db/schema/audit.ts";
-import {
-  chatEventsSeen,
-  chatIdentities,
-  chatWorkspaces,
-  tenants,
-  users,
-} from "../../db/schema/index.ts";
+import { chatEventsSeen, chatIdentities, chatWorkspaces, users } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createBoss, disposeBoss } from "../boss.ts";
 import { registerChatEventHandler } from "../handlers/chat-event.ts";
 import { CHAT_EVENT_QUEUE, type ChatEventJob } from "../queues.ts";
@@ -61,11 +56,7 @@ beforeAll(async () => {
   process.env.LLM_PROVIDER = "mock";
   resetMockProvider();
   testDb = await createTestDb("chat-event-handler");
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "t-ce", display_name: "ChatEvent" })
-    .returning();
-  if (!tenant) throw new Error("seed tenant");
+  const tenant = await seedTenant(testDb.db, { slug: "t-ce", display_name: "ChatEvent" });
   tenantId = tenant.id;
   const [user] = await testDb.db
     .insert(users)

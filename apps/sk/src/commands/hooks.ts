@@ -1,18 +1,7 @@
 import { readFileSync } from "node:fs";
-import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
-import { resolveProfile } from "../config.ts";
-import { EngineClient } from "../engine-client.ts";
-
-function makeClient() {
-  const profile = resolveProfile();
-  return new EngineClient({
-    engine_url: profile.engine_url,
-    api_key: profile.api_key,
-    tenant: profile.active_tenant_id,
-  });
-}
+import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List inbound webhook bindings" },
@@ -21,16 +10,17 @@ const listCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const { items } = await client.listHooksInbound();
-      emitList(
-        !!args.json,
-        ["id", "slug", "workflow_id", "verifier", "active"],
-        items as Record<string, unknown>[],
-      );
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { items } = await client.listHooksInbound();
+        emitList(
+          !!args.json,
+          ["id", "slug", "workflow_id", "verifier", "active"],
+          items as Record<string, unknown>[],
+        );
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -41,11 +31,9 @@ const getCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       printJson(await client.getHookInbound(args.id));
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -82,7 +70,7 @@ const createCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       const verifier = String(args.verifier);
       if (!(VERIFIERS as readonly string[]).includes(verifier)) {
         throw new Error(`--verifier must be one of ${VERIFIERS.join(", ")}`);
@@ -99,9 +87,7 @@ const createCommand = defineCommand({
         body.native_verifier_config = JSON.parse(readSource(String(args["config-file"])));
       }
       printJson(await client.createHookInbound(body));
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -112,12 +98,10 @@ const deleteCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       await client.deleteHookInbound(args.id);
       process.stdout.write("deleted\n");
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 

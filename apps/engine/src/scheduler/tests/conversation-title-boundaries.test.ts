@@ -6,17 +6,13 @@ import {
   isConversationTitleOpening,
   readConversationTitleRequests,
 } from "../../conversations/title.ts";
-import {
-  conversationMessages,
-  conversations,
-  dataMigrations,
-  tenants,
-} from "../../db/schema/index.ts";
+import { conversationMessages, conversations, dataMigrations } from "../../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../db/tests/setup.ts";
 import { tenantWorkSnapshot } from "../../execution/tenant-work.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   CONVERSATION_TITLE_SWEEP_NAME,
   resetConversationTitleSweep,
@@ -40,7 +36,7 @@ afterAll(async () => {
 
 async function tenant() {
   const id = nextUuid();
-  await ctx.db.insert(tenants).values({ id, slug: id, display_name: "Title boundary fixture" });
+  await seedTenant(ctx.db, { id, slug: id, display_name: "Title boundary fixture" });
   return id;
 }
 

@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import type { Executor } from "../../db/client.ts";
-import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { _drainAuditWritesForTests, audit, auditAwait } from "../audit.ts";
 
 let dbA: TestDb;
@@ -15,14 +15,8 @@ describe("audit writer — pool isolation", () => {
     dbA = await createTestDb("audit-pool-a");
     dbB = await createTestDb("audit-pool-b");
 
-    const [rowA] = await dbA.db
-      .insert(tenants)
-      .values({ slug: "pool-a", display_name: "Pool A" })
-      .returning();
-    const [rowB] = await dbB.db
-      .insert(tenants)
-      .values({ slug: "pool-b", display_name: "Pool B" })
-      .returning();
+    const rowA = await seedTenant(dbA.db, { slug: "pool-a", display_name: "Pool A" });
+    const rowB = await seedTenant(dbB.db, { slug: "pool-b", display_name: "Pool B" });
     if (!rowA || !rowB) throw new Error("seed failed");
     tenantA = rowA.id;
     tenantB = rowB.id;

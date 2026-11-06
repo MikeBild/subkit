@@ -1,10 +1,10 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
-import type { components } from "@/api/schema";
 import { useActorDirectory } from "@/app/actor-directory";
 import {
   absolute,

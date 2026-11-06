@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { DOCS_SECTIONS, type DocsBundle, type DocsSectionId } from "@shared/llms-index";
-import { DOCS } from "@/app/docs.generated";
+import { DOCS } from "@/app/docs-bundle";
 import { docsHref } from "@/app/links";
 import {
   activeHeading,

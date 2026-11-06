@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { tenants, vendorRecipeOverrides } from "../../../db/schema/index.ts";
+import { vendorRecipeOverrides } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import { getVendorRecipe, getVendorRecipeForTenant } from "../vendor-recipes.ts";
 
 let tdb: TestDb;
@@ -8,11 +9,7 @@ let tenantId: string;
 
 beforeAll(async () => {
   tdb = await createTestDb("vendor-recipe-overrides");
-  const [t] = await tdb.db
-    .insert(tenants)
-    .values({ slug: "vro-test", display_name: "VRO Test" })
-    .returning();
-  if (!t) throw new Error("seed tenant failed");
+  const t = await seedTenant(tdb.db, { slug: "vro-test", display_name: "VRO Test" });
   tenantId = t.id;
 });
 

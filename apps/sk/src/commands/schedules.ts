@@ -1,17 +1,11 @@
-import { reportCommandError } from "@cli-core/errors";
 import { emitList, emitOne } from "@cli-core/format";
 import { defineCommand } from "citty";
-import { resolveProfile } from "../config.ts";
-import { EngineClient, type ScheduleEntry } from "../engine-client.ts";
+import type { EngineClient, ScheduleEntry } from "../engine-client.ts";
 import {
   type AutomationReadiness,
   formatAutomationReadiness,
 } from "../render/automation-readiness.ts";
-
-function makeClient(): EngineClient {
-  const { engine_url, api_key, active_tenant_id } = resolveProfile();
-  return new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-}
+import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
 const SCHEDULE_COLUMNS = ["workflow_slug", "cron", "timezone", "execution_mode", "paused", "id"];
 
@@ -35,17 +29,18 @@ const listCommand = defineCommand({
     json: { type: "boolean", description: "JSON output", default: false },
   },
   async run({ args }) {
-    try {
-      const { schedules, total } = await makeClient().listSchedules(
-        args.workflow ? { workflow_id: args.workflow } : {},
-      );
-      emitList(!!args.json, SCHEDULE_COLUMNS, schedules as unknown as Record<string, unknown>[]);
-      if (!args.json) {
-        process.stdout.write(`${total} schedule${total === 1 ? "" : "s"} total\n`);
-      }
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { schedules, total } = await makeClient().listSchedules(
+          args.workflow ? { workflow_id: args.workflow } : {},
+        );
+        emitList(!!args.json, SCHEDULE_COLUMNS, schedules as unknown as Record<string, unknown>[]);
+        if (!args.json) {
+          process.stdout.write(`${total} schedule${total === 1 ? "" : "s"} total\n`);
+        }
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -73,25 +68,26 @@ const createCommand = defineCommand({
     json: { type: "boolean", description: "JSON output", default: false },
   },
   async run({ args }) {
-    try {
-      if (args.executionMode !== "dev" && args.executionMode !== "prod") {
-        throw new Error("--execution-mode must be dev or prod");
-      }
-      const body: Parameters<EngineClient["createSchedule"]>[0] = {
-        workflow_id: args.workflow,
-        cron: args.cron,
-      };
-      if (args.timezone) body.timezone = args.timezone;
-      if (args.executionMode === "dev" || args.executionMode === "prod") {
-        body.execution_mode = args.executionMode;
-      }
-      if (args.paused) body.paused = true;
-      if (args.input) body.input = JSON.parse(args.input);
-      const row = await makeClient().createSchedule(body);
-      emitSchedule(!!args.json, row);
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        if (args.executionMode !== "dev" && args.executionMode !== "prod") {
+          throw new Error("--execution-mode must be dev or prod");
+        }
+        const body: Parameters<EngineClient["createSchedule"]>[0] = {
+          workflow_id: args.workflow,
+          cron: args.cron,
+        };
+        if (args.timezone) body.timezone = args.timezone;
+        if (args.executionMode === "dev" || args.executionMode === "prod") {
+          body.execution_mode = args.executionMode;
+        }
+        if (args.paused) body.paused = true;
+        if (args.input) body.input = JSON.parse(args.input);
+        const row = await makeClient().createSchedule(body);
+        emitSchedule(!!args.json, row);
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -109,26 +105,27 @@ const updateCommand = defineCommand({
     json: { type: "boolean", description: "JSON output", default: false },
   },
   async run({ args }) {
-    try {
-      if (
-        args.executionMode !== undefined &&
-        args.executionMode !== "dev" &&
-        args.executionMode !== "prod"
-      ) {
-        throw new Error("--execution-mode must be dev or prod");
-      }
-      const patch: Parameters<EngineClient["updateSchedule"]>[1] = {};
-      if (args.cron) patch.cron = args.cron;
-      if (args.timezone) patch.timezone = args.timezone;
-      if (args.executionMode === "dev" || args.executionMode === "prod") {
-        patch.execution_mode = args.executionMode;
-      }
-      if (args.input) patch.input = JSON.parse(args.input);
-      const row = await makeClient().updateSchedule(String(args.id), patch);
-      emitSchedule(!!args.json, row);
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        if (
+          args.executionMode !== undefined &&
+          args.executionMode !== "dev" &&
+          args.executionMode !== "prod"
+        ) {
+          throw new Error("--execution-mode must be dev or prod");
+        }
+        const patch: Parameters<EngineClient["updateSchedule"]>[1] = {};
+        if (args.cron) patch.cron = args.cron;
+        if (args.timezone) patch.timezone = args.timezone;
+        if (args.executionMode === "dev" || args.executionMode === "prod") {
+          patch.execution_mode = args.executionMode;
+        }
+        if (args.input) patch.input = JSON.parse(args.input);
+        const row = await makeClient().updateSchedule(String(args.id), patch);
+        emitSchedule(!!args.json, row);
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -144,12 +141,13 @@ function pauseResumeCommand(paused: boolean) {
       json: { type: "boolean", description: "JSON output", default: false },
     },
     async run({ args }) {
-      try {
-        const row = await makeClient().updateSchedule(String(args.id), { paused });
-        emitSchedule(!!args.json, row);
-      } catch (err) {
-        reportCommandError(err, { json: Boolean(args.json) });
-      }
+      return withCommandErrors(
+        async () => {
+          const row = await makeClient().updateSchedule(String(args.id), { paused });
+          emitSchedule(!!args.json, row);
+        },
+        { json: Boolean(args.json) },
+      );
     },
   });
 }
@@ -161,13 +159,14 @@ const deleteCommand = defineCommand({
     json: { type: "boolean", description: "JSON output", default: false },
   },
   async run({ args }) {
-    try {
-      const out = await makeClient().deleteSchedule(String(args.id));
-      if (args.json) process.stdout.write(`${JSON.stringify(out)}\n`);
-      else process.stdout.write(`deleted ${out.id}\n`);
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const out = await makeClient().deleteSchedule(String(args.id));
+        if (args.json) process.stdout.write(`${JSON.stringify(out)}\n`);
+        else process.stdout.write(`deleted ${out.id}\n`);
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 

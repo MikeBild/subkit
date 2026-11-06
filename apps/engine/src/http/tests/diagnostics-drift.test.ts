@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { apiKeys, auditLog, users } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { adminHeaders } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -45,18 +46,13 @@ afterAll(async () => {
   await srv.cleanup();
 });
 
-function adminHeaders() {
-  return {
-    authorization: `Bearer ${srv.apiKey}`,
-    "content-type": "application/json",
-  } as const;
-}
-
 describe("/v1/diagnostics/drift", () => {
   test("clean DB reports no drift and writes a DIAGNOSTICS_DRIFT_READ audit row", async () => {
     // allow-wall-clock: bound for the audit_log SELECT predicate; not a determinism axis
     const before = new Date();
-    const res = await fetch(`${srv.baseUrl}/v1/diagnostics/drift`, { headers: adminHeaders() });
+    const res = await fetch(`${srv.baseUrl}/v1/diagnostics/drift`, {
+      headers: adminHeaders(srv.apiKey),
+    });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       embedded_migration_count: number;
@@ -107,7 +103,9 @@ describe("/v1/diagnostics/drift", () => {
           VALUES (${fakeHash}, ${999_999_999_999}, ${"9999_foreign_lineage"})`,
     );
     try {
-      const res = await fetch(`${srv.baseUrl}/v1/diagnostics/drift`, { headers: adminHeaders() });
+      const res = await fetch(`${srv.baseUrl}/v1/diagnostics/drift`, {
+        headers: adminHeaders(srv.apiKey),
+      });
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
         unknown_in_db: Array<{ hash: string }>;
@@ -131,7 +129,9 @@ describe("/v1/diagnostics/drift", () => {
           VALUES (${historicalHash}, ${999_999_999_998}, NULL)`,
     );
     try {
-      const res = await fetch(`${srv.baseUrl}/v1/diagnostics/drift`, { headers: adminHeaders() });
+      const res = await fetch(`${srv.baseUrl}/v1/diagnostics/drift`, {
+        headers: adminHeaders(srv.apiKey),
+      });
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
         unknown_in_db: unknown[];

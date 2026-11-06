@@ -1,25 +1,17 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { builtinRoleId, createRole } from "../../rbac/roles.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
-import { runMigrations } from "../migrate.ts";
-import { renderRbacTenantBoundarySql } from "../rbac-tenant-sql.ts";
 import {
   groupMembers,
   groupRoleAssignments,
   groups,
-  roles,
   systemAccounts,
   tenants,
   users,
 } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "../tests/setup.ts";
-import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
 
-const migration = EMBEDDED_MIGRATIONS.find((item) => item.tag.endsWith("_rbac_tenant_boundary"));
 let ctx: TestDb;
 let localTenant: string;
 let foreignTenant: string;
@@ -33,8 +25,7 @@ let globalRole: string;
 let machineId: string;
 
 beforeAll(async () => {
-  if (!migration) throw new Error("missing RBAC boundary migration");
-  ctx = await createTestDb("rbac-tenant-upgrade", { upToIdx: migration.idx - 1 });
+  ctx = await createTestDb("rbac-tenant-boundary");
   const [local, foreign] = await ctx.db
     .insert(tenants)
     .values([
@@ -75,55 +66,17 @@ beforeAll(async () => {
   machineId = machine.id;
   await ctx.db.insert(groupMembers).values([
     { group_id: localGroup, user_id: localUser },
-    { group_id: localGroup, user_id: foreignUser },
     { group_id: foreignGroup, user_id: foreignUser },
-    { group_id: localGroup, user_id: machineId },
   ]);
   await ctx.db.insert(groupRoleAssignments).values([
     { group_id: localGroup, role_id: localRole },
     { group_id: localGroup, role_id: globalRole },
-    { group_id: localGroup, role_id: foreignRole },
     { group_id: foreignGroup, role_id: foreignRole },
   ]);
-  expect((await runMigrations(ctx.db, [migration], true)).applied).toBe(1);
 });
 
 afterAll(async () => {
   await ctx.cleanup();
-});
-
-test("migration SQL stays generated and embedded", () => {
-  if (!migration) throw new Error("missing RBAC boundary migration");
-  expect(readFileSync(join(import.meta.dir, `${migration.tag}.sql`), "utf8")).toBe(
-    renderRbacTenantBoundarySql(),
-  );
-  expect(migration.hash).toBe(
-    createHash("sha256").update(renderRbacTenantBoundarySql()).digest("hex"),
-  );
-});
-
-test("upgrade removes only invalid junctions and preserves valid tenant and global bindings", async () => {
-  const members = await ctx.db.select().from(groupMembers);
-  expect(members.map((row) => [row.group_id, row.user_id]).sort()).toEqual(
-    [
-      [localGroup, localUser],
-      [foreignGroup, foreignUser],
-    ].sort(),
-  );
-  const assignments = await ctx.db.select().from(groupRoleAssignments);
-  expect(assignments.map((row) => [row.group_id, row.role_id]).sort()).toEqual(
-    [
-      [localGroup, localRole],
-      [localGroup, globalRole],
-      [foreignGroup, foreignRole],
-    ].sort(),
-  );
-  expect(
-    await ctx.db
-      .select()
-      .from(roles)
-      .where(and(eq(roles.tenant_id, foreignTenant), eq(roles.id, foreignRole))),
-  ).toHaveLength(1);
 });
 
 test("database rejects foreign, missing and system-account members and foreign roles on insert and update", async () => {

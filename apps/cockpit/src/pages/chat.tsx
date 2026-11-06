@@ -1,13 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, FileText, Info, PanelRight, Paperclip, SendHorizontal, X } from "lucide-react";
-import { Fragment, type MutableRefObject, useEffect, useMemo, useRef, useState } from "react";
+import { BookOpen, PanelRight, X } from "lucide-react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import {
   ApiError,
   apiRequest,
   type Conversation,
-  type ConversationDetail,
   type ConversationReference,
   cancelConversation,
   deleteConversation,
@@ -19,62 +18,27 @@ import {
   respondToChatForm,
   respondToToolCall,
   sendConversationTurn,
-  type UiMessage,
 } from "@/api/client";
-import { dryRunPatchCandidate, getPatchCandidatePreview } from "@/api/decisions";
 import {
   absolute,
-  chatNewHref,
   chatSeedFromUrl,
   chatTargetFromUrl,
-  connectorHref,
   conversationHref,
-  recordHref,
   runHref,
-  usageHref,
-  workflowHref,
 } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
 import { CHAT_COLUMN } from "@/app/shell-header";
 import { useHeldSchedules } from "@/app/use-decisions";
-import { useDirtyGuard } from "@/app/version-notice";
-import { BackgroundTools } from "@/components/ai-elements/background-tools";
-import {
-  Confirmation,
-  ConfirmationAction,
-  ConfirmationActions,
-  ConfirmationRequest,
-  ConfirmationTitle,
-} from "@/components/ai-elements/confirmation";
 import { MessageResponse } from "@/components/ai-elements/message";
-import {
-  PromptInput,
-  PromptInputBody,
-  PromptInputFooter,
-  PromptInputHeader,
-  PromptInputProvider,
-  PromptInputSubmit,
-  PromptInputTextarea,
-  usePromptInputController,
-} from "@/components/ai-elements/prompt-input";
-import {
-  Tool,
-  ToolContent,
-  ToolHeader,
-  ToolInput,
-  ToolOutput,
-} from "@/components/ai-elements/tool";
-import { AutomationToolCard } from "@/components/cockpit/automation-grant";
+import { PromptInputProvider } from "@/components/ai-elements/prompt-input";
 import { DiffCard } from "@/components/cockpit/diff-card";
 import { IconButton } from "@/components/cockpit/icon-button";
-import { MentionChips, MentionPicker, useMentionInput } from "@/components/cockpit/mention-picker";
 import {
   ActionMenu,
   Bubble,
   BubbleContent,
   Button,
-  buttonVariants,
   ChatCard,
   CodeBlock,
   ConfirmDialog,
@@ -83,14 +47,10 @@ import {
   FactList,
   Field,
   FieldLabel,
-  FilePreview,
   FormDialog,
-  formatBytes,
   Input,
   Message,
   MessageContent,
-  MessageFooter,
-  MessageHeader,
   MessageScroller,
   MessageScrollerButton,
   MessageScrollerContent,
@@ -99,92 +59,69 @@ import {
   MessageScrollerViewport,
   Page,
   PageHeader,
-  Popover,
-  PopoverAnchor,
-  PopoverContent,
-  PopoverTrigger,
-  previewKind,
   RecordSheet,
   SectionHeading,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   Spinner,
   StatusBadge,
   StatusStrip,
-  useMessageScroller,
 } from "@/components/cockpit/patterns";
 import { queryView } from "@/components/failure-state";
-import { formatDateTime, formatRelativeTime, LOCALE_TAGS } from "@/lib/i18n";
+import {
+  type AttachmentPreview,
+  AttachmentPreviewSheet,
+  actionLabel,
+  asStreamedDiff,
+  ChatComposer,
+  ChatMessage,
+  catalogHref,
+  FollowSubmittedTurn,
+  localizedTarget,
+  ModePill,
+  NO_LIVE_REVIEWS,
+  originLine,
+  ReadingColumn,
+  type RestoreComposer,
+  type StreamedDiff,
+  selectionFromPath,
+  setChatPath,
+  UsagePills,
+} from "@/features/chat";
+import { formatDateTime, formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { nameIdentifiers, type ResolvedIdentifier } from "@/lib/identifiers";
-import type { DiffLine } from "@/lib/line-diff";
-import { dedupeReferences, mentionTokenText, reconcileReferences } from "@/lib/mentions";
+import type { ResolvedIdentifier } from "@/lib/identifiers";
 import { resolveWorkflowNameBySlug } from "@/lib/name-index";
 import { conversationExcerpt, hideTechnicalIdentifiers, humanFacingText } from "@/lib/presentation";
-import { patchCandidateId, toolNameOf, toolPartVerdict } from "@/lib/tool-parts";
-import {
-  isStaleCall,
-  isWorkflowRunTool,
-  toolLabel,
-  toolOutcomeKey,
-  type WorkflowResultLink,
-  type WorkflowRunKind,
-  workflowRefusalKey,
-  workflowResultLink,
-  workflowRunKind,
-  workflowRunTitleKey,
-} from "@/lib/tool-presentation";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import { cn } from "@/lib/utils";
-import { useMentionCandidates, useSeedMentionReferences } from "@/queries/mention-sources";
 import {
   approvalLine,
-  type ChatApproval,
   chatApproval,
   conversationRefreshInterval,
   pendingApprovalSubject,
-  recordedDecisionKey,
   waitsForPerson,
-  withWorkflowName,
 } from "./chat-approval";
 import { ChatApprovalCard } from "./chat-approval-card";
 import {
   addAttachments,
   attachmentName,
   attachmentSize,
-  type ConversationAttachment,
   createEmptyConversation,
-  fileContentHref,
   linkAttachment,
   listConversationAttachments,
   messageWithAttachments,
   type PendingAttachment,
-  pendingKey,
-  splitFileSentinels,
   takeAttachmentFiles,
 } from "./chat-attachments";
 import { liveAutomationReviews } from "./chat-automation-tool";
-import { type ChatChoice, chatChoice } from "./chat-choice";
+import { chatChoice } from "./chat-choice";
 import { ChatChoiceCard } from "./chat-choice-card";
 import { ConversationList } from "./chat-conversation-list";
-import { type ChatForm, chatForm } from "./chat-form";
+import { chatForm } from "./chat-form";
 import { ChatFormCard } from "./chat-form-card";
 import { HeldScheduleAction, heldScheduleCopy } from "./chat-held-schedule";
-import { ChatJudgeFindingsCard } from "./chat-judge-findings-card";
 import { applyLiveCall, elapsedMs, type LiveCall, reduceLiveCall } from "./chat-live-calls";
 import { conversationFailureKind, retryConversationRead } from "./chat-load-failure";
-import { CHAT_MARKDOWN_COMPONENTS } from "./chat-message-link";
-import {
-  AUTHORING_MODES,
-  DEFAULT_AUTHORING_MODE,
-  modeDescriptionKey,
-  modeGates,
-  modeLabelKey,
-  modeSuffixKey,
-} from "./chat-mode";
+import { DEFAULT_AUTHORING_MODE, modeLabelKey } from "./chat-mode";
 import { type AuthoringMode, storedAuthoringMode } from "./chat-permission";
 import {
   type PlaybookAction,
@@ -193,17 +130,8 @@ import {
   playbookSummaryVisible,
 } from "./chat-playbook";
 import { ChatPlaybookPanel, ChatPlaybookSummary } from "./chat-playbook-panel";
-import {
-  type ChatInstruction,
-  type ChatWorkflowRef,
-  chatJudgeFindings,
-  chatSensitivePreview,
-  latestDryRunCallId,
-  savedSensitivePreviews,
-} from "./chat-preview-cards";
-import { type ChatReauth, chatReauth } from "./chat-reauth";
-import { ChatReauthCard } from "./chat-reauth-card";
-import { collectReferencedResources, namedResources, referencesFromPart } from "./chat-references";
+import { latestDryRunCallId, savedSensitivePreviews } from "./chat-preview-cards";
+import { collectReferencedResources, namedResources } from "./chat-references";
 import {
   liveTestState,
   resumeNextAction,
@@ -215,1230 +143,25 @@ import {
   type ConversationSelection,
   pinSelectionForSend,
 } from "./chat-selection";
-import { ChatSensitivePreviewCard } from "./chat-sensitive-preview-card";
 import {
   budgetPill,
   type ChatNavigation,
   chatHeaderTitle,
   conversationOpenedByFailedSend,
-  costPill,
-  messageAuthor,
   nextSessionKey,
   type OptimisticMessage,
   optimisticUiMessage,
   optimisticVisible,
   ownsChatOperation,
   recoverFailedSend,
-  tokenPill,
   turnFailureCause,
   userMessageCount,
 } from "./chat-session";
 import { ChatStart } from "./chat-start";
-import { chatSensitiveTestRun } from "./chat-test-run";
-import { ChatTestRunCard } from "./chat-test-run-card";
-import { type ChatText, chatText, composerAnswerAccepted, questionExcerpt } from "./chat-text";
-import { dedupeBackground, groupMessageParts } from "./chat-transcript";
+import { chatText, questionExcerpt } from "./chat-text";
+import { groupMessageParts } from "./chat-transcript";
 import { chatContextControlsTarget, useChatWorkspace } from "./chat-workspace";
 import { budgetPressure, budgetSummary } from "./usage-model";
-
-type Translate = ReturnType<typeof useI18n>["t"];
-type ConversationUsage = ConversationDetail["usage"];
-
-const NO_SAVED_PREVIEWS: ReadonlyMap<string, ChatWorkflowRef> = new Map();
-
-function localizedTarget(value: string | null | undefined, t: Translate): string {
-  if (!value || value.toLowerCase() === "none") return t("chat.context.noTarget");
-  return hideTechnicalIdentifiers(value, t("tool.referenceHiddenInline"));
-}
-
-const CHAT_PLATFORM_LABELS = {
-  "chat:slack": "chat.origin.slack",
-  "chat:teams": "chat.origin.teams",
-  "chat:google_chat": "chat.origin.google_chat",
-} as const;
-
-function surfaceLabel(
-  t: Translate,
-  surface: string | null | undefined,
-  client?: string | null,
-): string | null {
-  if (surface === "chat" && client && client in CHAT_PLATFORM_LABELS)
-    return t(CHAT_PLATFORM_LABELS[client as keyof typeof CHAT_PLATFORM_LABELS]);
-  switch (surface) {
-    case "web":
-      return t("chat.origin.web");
-    case "sk_interactive":
-      return t("chat.origin.sk_interactive");
-    case "sk_headless":
-      return t("chat.origin.sk_headless");
-    case "mcp":
-      return t("chat.origin.mcp");
-    case "chat":
-      return t("chat.origin.chat");
-    case "api":
-      return t("chat.origin.api");
-    default:
-      return null;
-  }
-}
-
-export function originLine(
-  t: Translate,
-  locale: Parameters<typeof formatRelativeTime>[0],
-  input: {
-    surface?: string | null;
-    client?: string | null;
-    owner?: { id: string; name: string } | null;
-    viewerId: string | null;
-    at?: string | null;
-  },
-): string {
-  const who =
-    input.owner && input.owner.id !== input.viewerId && input.owner.name ? input.owner.name : null;
-  return [
-    surfaceLabel(t, input.surface, input.client),
-    who,
-    input.at ? formatRelativeTime(locale, input.at) : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-}
-
-function ReadingColumn({
-  testId,
-  className,
-  children,
-}: {
-  testId?: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      className={cn(
-        "scrollbar-thin overflow-hidden px-4 sm:px-6 [scrollbar-gutter:stable]",
-        className,
-      )}
-      data-testid={testId}
-    >
-      <div className={CHAT_COLUMN}>{children}</div>
-    </div>
-  );
-}
-
-const NO_LIVE_REVIEWS: ReadonlySet<string> = new Set();
-
-function catalogHref(kind: string, id: string): string {
-  if (kind === "execution") return absolute(runHref(id));
-  if (kind === "skill") return absolute(recordHref("skills", id));
-  if (kind === "knowledge_source") return absolute(recordHref("knowledge", id));
-  if (kind === "intake_item") return absolute(recordHref("intake", id));
-  return absolute(kind === "workflow" ? workflowHref(id) : connectorHref(id));
-}
-
-export interface StreamedDiff {
-  title: string;
-  lines: DiffLine[];
-}
-
-const HUNK_TYPE: Record<string, DiffLine["type"]> = {
-  "+": "added",
-  "-": "removed",
-  " ": "context",
-};
-
-export function asStreamedDiff(event: {
-  type: string;
-  [key: string]: unknown;
-}): StreamedDiff | null {
-  if (event.type !== "diff" || !Array.isArray(event.hunks)) return null;
-  const lines: DiffLine[] = [];
-  for (const hunk of event.hunks) {
-    if (!hunk || typeof hunk !== "object") continue;
-    const { kind, text } = hunk as { kind?: unknown; text?: unknown };
-    if (typeof text !== "string") continue;
-    lines.push({ type: HUNK_TYPE[typeof kind === "string" ? kind : " "] ?? "context", text });
-  }
-  if (lines.length === 0) return null;
-  return { title: typeof event.title === "string" ? event.title : "", lines };
-}
-
-function textFromPart(part: unknown): string | null {
-  if (typeof part === "string") return part;
-  if (!part || typeof part !== "object") return null;
-  const record = part as Record<string, unknown>;
-  return typeof record.text === "string" ? record.text : null;
-}
-
-function PatchProposalDiff({ candidateId, testId }: { candidateId: string; testId: string }) {
-  const { t } = useI18n();
-  const preview = useQuery({
-    queryKey: ["patch-candidate", "preview", candidateId],
-    queryFn: () => getPatchCandidatePreview(candidateId),
-  });
-  const dryRun = useQuery({
-    queryKey: ["patch-candidate", "dry-run", candidateId],
-    enabled: preview.data?.fixture_available === true,
-    retry: false,
-    queryFn: () => dryRunPatchCandidate(candidateId),
-  });
-
-  if (preview.isPending)
-    return (
-      <p className="text-sm text-muted-foreground" data-testid={`${testId}-loading`}>
-        {t("decisions.diffLoading")}
-      </p>
-    );
-  if (preview.error || !preview.data)
-    return (
-      <p className="text-sm text-destructive" data-testid={`${testId}-error`}>
-        {t("decisions.diffFailed")}
-      </p>
-    );
-  return (
-    <DiffCard
-      testId={testId}
-      embedded
-      targetLabel={preview.data.proposal?.description ?? t("decisions.kind.patch")}
-      before={preview.data.before_step}
-      after={preview.data.after_step}
-      changedPaths={preview.data.changed_paths}
-      driftSummary={preview.data.drift_summary}
-      patch={preview.data.proposal?.patch}
-      fixtureAvailable={preview.data.fixture_available}
-      dryRun={dryRun.data ?? null}
-      dryRunPending={preview.data.fixture_available === true && dryRun.isPending}
-    />
-  );
-}
-
-function actionLabel(
-  t: Translate,
-  toolName: string,
-  notRun = false,
-  workflowNameFor: (slug: string) => string | null = () => null,
-  run: WorkflowRunKind | null = null,
-  unfinished = false,
-  output?: unknown,
-): string {
-  const label = toolLabel(toolName, output);
-  if (label.kind === "literal") return label.text;
-  if (label.kind === "background") return t(label.words.past);
-  const runTitle = workflowRunTitleKey(label, notRun, run);
-  if (!runTitle && label.kind === "key" && (notRun || unfinished)) return t("tool.action");
-  const name = label.kind === "workflow" ? (workflowNameFor(label.slug) ?? label.slug) : "";
-  if (runTitle) return t(runTitle, { name });
-  return label.kind === "key" ? t(label.key) : name;
-}
-
-function didNotRun(verdict: { confirmationState: string | null; outcome: string | null }): boolean {
-  return (
-    verdict.outcome === "denied" ||
-    verdict.outcome === "expired" ||
-    verdict.confirmationState === "declined" ||
-    verdict.confirmationState === "auto_declined" ||
-    verdict.confirmationState === "expired"
-  );
-}
-
-function backgroundLabel(t: Translate, toolName: string, running: boolean): string {
-  const label = toolLabel(toolName);
-  if (label.kind === "background") return t(running ? label.words.active : label.words.past);
-  return actionLabel(t, toolName);
-}
-
-function AttachmentChip({
-  name,
-  size,
-  icon: Icon,
-  onOpen,
-  onRemove,
-  testId,
-}: {
-  name: string;
-  size?: number;
-  icon: typeof FileText;
-  onOpen: () => void;
-  onRemove?: () => void;
-  testId: string;
-}) {
-  const { t, locale } = useI18n();
-  return (
-    <span
-      className="inline-flex min-w-0 items-center overflow-hidden rounded-md border bg-muted/40 text-xs"
-      data-testid={testId}
-    >
-      <button
-        type="button"
-        onClick={onOpen}
-        className="inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded-md px-2 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        data-testid={`${testId}-open`}
-      >
-        <Icon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="truncate">
-          {name}
-          {size !== undefined ? ` · ${formatBytes(size, LOCALE_TAGS[locale])}` : ""}
-        </span>
-      </button>
-      {onRemove ? (
-        <IconButton
-          label={t("chat.attachment.remove", { name })}
-          size="icon-xs"
-          onClick={onRemove}
-          data-testid={`${testId}-remove`}
-        >
-          <X />
-        </IconButton>
-      ) : null}
-    </span>
-  );
-}
-
-type RestoreComposer = (text: string, references: ConversationReference[]) => void;
-
-function ChatComposer({
-  disabled,
-  locked,
-  status,
-  placeholder,
-  describedBy,
-  attachments,
-  onAttach,
-  onRemoveAttachment,
-  onOpenAttachment,
-  onSend,
-  onStop,
-  restoreRef,
-  answer,
-}: {
-  disabled: boolean;
-  locked: boolean;
-  status: React.ComponentProps<typeof PromptInputSubmit>["status"];
-  placeholder: string;
-  describedBy?: string;
-  attachments: readonly PendingAttachment[];
-  onAttach: (attachments: PendingAttachment[]) => void;
-  onRemoveAttachment: (key: string) => void;
-  onOpenAttachment: (attachment: PendingAttachment) => void;
-  onSend: (message: string, references: ConversationReference[]) => Promise<boolean>;
-  onStop: () => void;
-  restoreRef: MutableRefObject<RestoreComposer | null>;
-  answer: ChatText | null;
-}) {
-  const { t } = useI18n();
-  const session = useSession();
-  const controller = usePromptInputController();
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [references, setReferences] = useState<ConversationReference[]>([]);
-  const seedReferences = useMemo(() => chatSeedFromUrl(window.location.search).references, []);
-  const seeded = useSeedMentionReferences(seedReferences);
-  const seededKey = useMemo(
-    () => seeded.references.map((reference) => `${reference.type}:${reference.id}`).join(","),
-    [seeded.references],
-  );
-  const seedsApplied = seedReferences.every((seed) =>
-    references.some((reference) => reference.type === seed.type && reference.id === seed.id),
-  );
-  const seedPending = seeded.isBlocked || !seedsApplied;
-  const appliedSeed = useRef<string | null>(null);
-  const setInput = controller.textInput.setInput;
-  const [answerRejected, setAnswerRejected] = useState(false);
-  const answerId = answer?.id ?? null;
-  const answerDefault = answer?.initialValue ?? null;
-  const currentInput = useRef(controller.textInput.value);
-  currentInput.current = controller.textInput.value;
-  useEffect(() => {
-    setAnswerRejected(false);
-    if (answerId && answerDefault && !currentInput.current.trim()) setInput(answerDefault);
-  }, [answerId, answerDefault, setInput]);
-  useEffect(() => {
-    if (!seededKey || appliedSeed.current === seededKey) return;
-    appliedSeed.current = seededKey;
-    setReferences((current) => dedupeReferences([...seeded.references, ...current]));
-    const tokens = seeded.references.map(mentionTokenText).join(" ");
-    const text = controller.textInput.value;
-    setInput(text ? `${tokens} ${text}` : tokens);
-  }, [controller.textInput.value, seeded.references, seededKey, setInput]);
-  useEffect(() => {
-    restoreRef.current = (text, restored) => {
-      setInput(text);
-      setReferences(restored);
-    };
-    return () => {
-      restoreRef.current = null;
-    };
-  }, [restoreRef, setInput]);
-  const [query, setQuery] = useState<string | null>(null);
-  const { candidates, isLoading } = useMentionCandidates(query, session.permissions);
-  const mentions = useMentionInput({
-    value: controller.textInput.value,
-    setValue: controller.textInput.setInput,
-    textareaRef,
-    references,
-    setReferences,
-    candidates,
-    onQueryChange: setQuery,
-    onPickFile: (candidate) =>
-      onAttach([
-        {
-          key: pendingKey(),
-          kind: "file",
-          id: candidate.id,
-          name: candidate.title,
-          size: candidate.size,
-          contentType: candidate.contentType,
-        },
-      ]),
-  });
-  const take = (files: readonly File[]) => {
-    const taken = takeAttachmentFiles(files, t);
-    if (taken.length > 0) onAttach(taken);
-  };
-  const streaming = status === "streaming";
-  useDirtyGuard(controller.textInput.value.trim().length > 0 || attachments.length > 0);
-  return (
-    <Popover open={mentions.open} onOpenChange={(open) => !open && mentions.close()}>
-      <PopoverAnchor asChild>
-        <div className="relative">
-          <MentionPicker
-            open={mentions.open}
-            groups={mentions.groups}
-            highlighted={mentions.highlighted}
-            loading={isLoading}
-            onHighlight={mentions.setHighlighted}
-            onSelect={mentions.select}
-          />
-          <PromptInput
-            data-testid="chat-composer"
-            inputGroupClassName="h-auto gap-1.5 rounded-xl p-2 has-[[data-slot=input-group-control]:focus-visible]:ring-2 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/30"
-            onSubmit={async ({ text }) => {
-              if (seedPending) return;
-              const trimmed = text.trim();
-              if (!trimmed && attachments.length === 0) return;
-              if (!composerAnswerAccepted(answer, trimmed)) {
-                setAnswerRejected(true);
-                throw new Error("answer rejected");
-              }
-              setAnswerRejected(false);
-              const sent = reconcileReferences(trimmed, references);
-              controller.textInput.clear();
-              setReferences([]);
-              if (!(await onSend(trimmed, sent))) throw new Error("request handed back");
-            }}
-          >
-            {attachments.length > 0 ? (
-              <PromptInputHeader className="p-0" data-testid="chat-attachments">
-                {attachments.map((attachment, index) => (
-                  <AttachmentChip
-                    key={attachment.key}
-                    name={attachmentName(attachment)}
-                    size={attachmentSize(attachment)}
-                    icon={FileText}
-                    onOpen={() => onOpenAttachment(attachment)}
-                    onRemove={() => onRemoveAttachment(attachment.key)}
-                    testId={`chat-attachment-${index}`}
-                  />
-                ))}
-              </PromptInputHeader>
-            ) : null}
-            <PromptInputBody>
-              <PromptInputTextarea
-                ref={textareaRef}
-                name="message"
-                className="min-h-10 px-2 py-1 leading-6"
-                placeholder={placeholder}
-                aria-label={t("chat.composer.label")}
-                aria-describedby={describedBy}
-                aria-invalid={answerRejected || undefined}
-                disabled={disabled || seedPending}
-                onKeyDown={(event) => {
-                  mentions.onKeyDown(event);
-                }}
-                onChange={(event) => {
-                  setAnswerRejected(false);
-                  mentions.onChange(event.currentTarget.value, event.currentTarget.selectionStart);
-                }}
-                onClick={(event) => mentions.onCaretMove(event.currentTarget.selectionStart)}
-                onKeyUp={(event) => {
-                  if (event.key.startsWith("Arrow") || event.key === "Home" || event.key === "End")
-                    mentions.onCaretMove(event.currentTarget.selectionStart);
-                }}
-                onPaste={(event) => {
-                  const files = [...(event.clipboardData?.files ?? [])];
-                  if (files.length === 0) return;
-                  event.preventDefault();
-                  take(files);
-                }}
-                onBlur={mentions.close}
-                data-testid="chat-composer-input"
-              />
-            </PromptInputBody>
-            <PromptInputFooter className="p-0" data-testid="chat-composer-tools">
-              <IconButton
-                label={t("chat.attach")}
-                disabled={disabled || locked}
-                onClick={() => fileInputRef.current?.click()}
-                data-testid="chat-attach"
-              >
-                <Paperclip />
-              </IconButton>
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                className="sr-only"
-                tabIndex={-1}
-                aria-hidden="true"
-                onChange={(event) => {
-                  take([...(event.currentTarget.files ?? [])]);
-                  event.currentTarget.value = "";
-                }}
-                data-testid="chat-attach-input"
-              />
-              <PromptInputSubmit
-                variant="outline"
-                status={status}
-                onStop={onStop}
-                disabled={streaming ? false : disabled || locked || seedPending}
-                aria-label={t(streaming ? "chat.stop" : "chat.submit")}
-                tooltip={t(streaming ? "chat.stop" : "chat.submit")}
-                data-testid="chat-composer-submit"
-              >
-                {streaming ? undefined : <SendHorizontal className="size-4" />}
-              </PromptInputSubmit>
-            </PromptInputFooter>
-          </PromptInput>
-          {answerRejected ? (
-            <p
-              role="alert"
-              className="mt-1 text-sm text-destructive"
-              data-testid="chat-composer-invalid"
-            >
-              {t("chat.text.invalid")}
-            </p>
-          ) : null}
-          {seeded.isBlocked ? (
-            <div
-              className="mt-1 flex items-center gap-2 text-sm text-muted-foreground"
-              data-testid="chat-reference-seed-pending"
-            >
-              <span>{t("chat.references.unavailable")}</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={seeded.retry}
-                data-testid="chat-reference-seed-retry"
-              >
-                {t("chat.activation.retry")}
-              </Button>
-            </div>
-          ) : null}
-        </div>
-      </PopoverAnchor>
-    </Popover>
-  );
-}
-
-function ModeGateMatrix({ mode }: { mode: AuthoringMode }) {
-  const { t } = useI18n();
-  const gates = modeGates(mode);
-  return (
-    <div className="grid gap-0.5 text-xs text-muted-foreground" data-testid="chat-mode-gates">
-      <p data-testid="chat-mode-gates-asks">
-        <span className="font-medium text-foreground">{t("chat.mode.asks")}</span>{" "}
-        {gates.asks.map((key) => t(key)).join(" · ")}
-      </p>
-      {gates.free.length > 0 ? (
-        <p data-testid="chat-mode-gates-free">
-          <span className="font-medium text-foreground">{t("chat.mode.free")}</span>{" "}
-          {gates.free.map((key) => t(key)).join(" · ")}
-        </p>
-      ) : null}
-      <p data-testid="chat-mode-gates-outside">
-        <span className="font-medium text-foreground">{t("chat.mode.outside")}</span>{" "}
-        {gates.outside.map((key) => t(key)).join(" ")}
-      </p>
-      {gates.guidance ? <p data-testid="chat-mode-guidance">{t(gates.guidance)}</p> : null}
-    </div>
-  );
-}
-
-function ModePill({
-  mode,
-  label,
-  editable,
-  disabled,
-  onChange,
-}: {
-  mode: AuthoringMode | null;
-  label: string;
-  editable: boolean;
-  disabled: boolean;
-  onChange: (mode: AuthoringMode) => void;
-}) {
-  const { t } = useI18n();
-  return (
-    <div className="flex items-center gap-0.5" data-testid="chat-permission">
-      {editable && mode ? (
-        <Select
-          value={mode}
-          disabled={disabled}
-          onValueChange={(value) => {
-            const next = AUTHORING_MODES.find((candidate) => candidate === value);
-            if (next) onChange(next);
-          }}
-        >
-          <SelectTrigger
-            size="sm"
-            aria-label={t("chat.mode.label")}
-            className="h-6 rounded-full px-2.5 text-xs"
-            data-testid="chat-permission-select"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent position="popper" align="start" className="w-72">
-            {AUTHORING_MODES.map((option) => {
-              const suffix = modeSuffixKey(option);
-              return (
-                <SelectItem
-                  key={option}
-                  value={option}
-                  data-testid={`chat-permission-${option}`}
-                  suffix={suffix ? t(suffix) : undefined}
-                  description={t(modeDescriptionKey(option))}
-                >
-                  {t(modeLabelKey(option))}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
-      ) : (
-        <span className="text-xs text-muted-foreground" data-testid="chat-permission-mode">
-          {t("chat.mode.label")}: {label}
-        </span>
-      )}
-      {mode ? (
-        <Popover>
-          <PopoverTrigger asChild>
-            <IconButton
-              label={t("chat.mode.explain")}
-              size="icon-xs"
-              data-testid="chat-mode-explain"
-            >
-              <Info />
-            </IconButton>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-80" data-testid="chat-mode-explain-content">
-            <p className="mb-2 text-sm font-medium">{t("chat.mode.explain")}</p>
-            <ModeGateMatrix mode={mode} />
-          </PopoverContent>
-        </Popover>
-      ) : null}
-    </div>
-  );
-}
-
-function UsagePills({
-  usage,
-  budget,
-}: {
-  usage: ConversationUsage | null | undefined;
-  budget: "tightening" | "critical" | null;
-}) {
-  const { t, locale } = useI18n();
-  const tokens = tokenPill(usage);
-  const cost = costPill(usage);
-  const pill =
-    "inline-flex h-6 items-center rounded-full border px-2.5 text-xs text-muted-foreground tabular-nums whitespace-nowrap";
-  return (
-    <>
-      {tokens !== null && (
-        <span
-          className={pill}
-          data-testid="chat-usage-tokens"
-          title={t("chat.usage.tokensTitle", {
-            models: (usage?.by_model ?? [])
-              .map((row) => `${row.model} ${new Intl.NumberFormat(locale).format(row.tokens)}`)
-              .join(" · "),
-          })}
-        >
-          {t("chat.usage.tokens", { tokens: new Intl.NumberFormat(locale).format(tokens) })}
-        </span>
-      )}
-      {cost && (
-        <span
-          className={pill}
-          data-testid="chat-usage-cost"
-          data-floor={cost.floor || undefined}
-          title={
-            cost.floor
-              ? t("chat.usage.costFloorTitle", {
-                  models: (usage?.cost?.unpriced_models ?? []).join(", "),
-                })
-              : t("chat.usage.costTitle")
-          }
-        >
-          {t(cost.floor ? "chat.usage.costFloor" : "chat.usage.cost", {
-            cost: new Intl.NumberFormat(locale, {
-              style: "currency",
-              currency: cost.currency,
-              maximumFractionDigits: cost.amount < 1 ? 4 : 2,
-            }).format(cost.amount),
-          })}
-        </span>
-      )}
-      {budget && (
-        <a
-          href={absolute(usageHref())}
-          data-testid="chat-budget"
-          data-budget={budget}
-          className={cn(
-            pill,
-            "underline-offset-4 hover:underline",
-            budget === "critical"
-              ? "border-destructive/40 text-destructive"
-              : "border-warning/40 bg-warning/10 text-warning",
-          )}
-        >
-          {t(budget === "critical" ? "chat.budget.critical" : "chat.budget.tightening")}
-        </a>
-      )}
-    </>
-  );
-}
-
-function ResultLink({ link, testId }: { link: WorkflowResultLink; testId: string }) {
-  const { t, locale } = useI18n();
-  if (Date.parse(link.expiresAt) <= Date.now()) {
-    return (
-      <p className="text-sm text-muted-foreground" data-testid={testId}>
-        {t("chat.resultLink.expired")}
-      </p>
-    );
-  }
-  return (
-    <div className="flex flex-wrap items-center gap-3" data-testid={testId}>
-      <a
-        className={buttonVariants({ variant: "default", size: "sm" })}
-        data-testid={`${testId}-open`}
-        href={link.url}
-        rel="noopener noreferrer"
-        target="_blank"
-      >
-        {t("chat.resultLink.open")}
-      </a>
-      <span className="text-sm text-muted-foreground">
-        {t("chat.resultLink.validUntil", { time: formatDateTime(locale, link.expiresAt) })}
-      </span>
-    </div>
-  );
-}
-
-function ChatMessage({
-  conversationId,
-  message,
-  messageIndex,
-  pendingApprovalId,
-  approval,
-  choice,
-  form,
-  text = null,
-  onForm,
-  onChoice,
-  answersQuestion = false,
-  approvalBusy,
-  approvalError,
-  onApproval,
-  onDecision,
-  onReauth,
-  onAutomationAdjust,
-  onAutomationSingleRun,
-  onInstruction,
-  latestPreviewCallId = null,
-  savedPreviews = NO_SAVED_PREVIEWS,
-  liveReviews,
-  nameFor,
-  workflowNameFor,
-  attachmentFor = () => null,
-  onOpenFile = () => {},
-}: {
-  conversationId?: string;
-  message: UiMessage;
-  messageIndex: number;
-  pendingApprovalId: string | null;
-  approval: ChatApproval | null;
-  choice: ChatChoice | null;
-  form: ChatForm | null;
-  text?: ChatText | null;
-  onForm: (id: string, output: Record<string, unknown>) => void;
-  onChoice: (id: string, value: string) => void;
-  answersQuestion?: boolean;
-  approvalBusy: boolean;
-  approvalError: boolean;
-  onApproval: (id: string, approved: boolean) => void;
-  onDecision: (toolCallId: string, approved: boolean) => void;
-  onReauth: (action: ChatReauth) => void;
-  onAutomationAdjust: (workflowId: string) => void;
-  onAutomationSingleRun: (workflowId: string) => void;
-  onInstruction: (instruction: ChatInstruction) => void;
-  latestPreviewCallId?: string | null;
-  savedPreviews?: ReadonlyMap<string, ChatWorkflowRef>;
-  liveReviews: ReadonlySet<string>;
-  nameFor: (id: string) => ResolvedIdentifier | null;
-  workflowNameFor: (slug: string) => string | null;
-  attachmentFor?: (fileId: string) => ConversationAttachment | null;
-  onOpenFile?: (fileId: string) => void;
-}) {
-  const { t, locale } = useI18n();
-  const from = messageAuthor(message.role);
-  const groups = groupMessageParts(message.parts, pendingApprovalId).filter(
-    (group) => group.kind !== "part" || Boolean(textFromPart(group.part)?.trim()),
-  );
-  if (groups.length === 0) return null;
-  return (
-    <Message
-      align="start"
-      data-cockpit-ui="chat-message"
-      data-action-scope="message"
-      data-testid={`chat-message-${messageIndex}`}
-    >
-      <MessageContent data-testid={`chat-message-${messageIndex}-content`}>
-        <MessageHeader data-testid={`chat-message-${messageIndex}-role`}>
-          {t(
-            from === "user"
-              ? "chat.role.you"
-              : from === "system"
-                ? "chat.role.system"
-                : "chat.role.assistant",
-          )}
-          {answersQuestion ? (
-            <span
-              className="ml-1 font-normal text-muted-foreground"
-              data-testid={`chat-message-${messageIndex}-answer-to`}
-            >
-              · {t("chat.text.answerTo")}
-            </span>
-          ) : null}
-        </MessageHeader>
-        {groups.map((group) => {
-          if (group.kind === "background") {
-            return (
-              <BackgroundTools
-                key={`${message.id}-bg-${group.index}`}
-                testId={`chat-message-${messageIndex}-background-${group.index}`}
-                lines={dedupeBackground(group.tools).map((line) => ({
-                  label: backgroundLabel(t, line.toolName, line.running),
-                  count: line.count,
-                  running: line.running,
-                }))}
-              />
-            );
-          }
-          if (group.kind === "part") {
-            const raw = textFromPart(group.part);
-            if (!raw) return null;
-            const recorded = recordedDecisionKey(group.part);
-            if (recorded)
-              return (
-                <p
-                  key={`${message.id}-decision-${group.index}`}
-                  className="text-sm text-muted-foreground"
-                  data-testid={`chat-message-${messageIndex}-decision`}
-                >
-                  {t("chat.decision.recorded", { verdict: t(recorded) })}
-                </p>
-              );
-            const split = from === "user" ? splitFileSentinels(raw) : { text: raw, fileIds: [] };
-            const text = split.text;
-            const mentions = from === "user" ? referencesFromPart(group.part) : null;
-            const files =
-              split.fileIds.length > 0 ? (
-                <div
-                  key={`${message.id}-files-${group.index}`}
-                  className="flex flex-wrap gap-1.5"
-                  data-testid={`chat-message-${messageIndex}-files`}
-                >
-                  {split.fileIds.map((fileId, index) => {
-                    const linked = attachmentFor(fileId);
-                    return (
-                      <AttachmentChip
-                        key={fileId}
-                        name={linked?.filename ?? t("chat.attachment.file")}
-                        size={linked?.size_bytes}
-                        icon={FileText}
-                        onOpen={() => onOpenFile(fileId)}
-                        testId={`chat-message-${messageIndex}-file-${index}`}
-                      />
-                    );
-                  })}
-                </div>
-              ) : null;
-            if (!text) return files;
-            return (
-              <Fragment key={`${message.id}-text-${group.index}`}>
-                {files}
-                <Bubble
-                  key={`${message.id}-text-${group.index}`}
-                  variant={from === "user" ? "question" : "ghost"}
-                  align="start"
-                >
-                  <BubbleContent data-testid={`chat-message-${messageIndex}-text-${group.index}`}>
-                    {mentions && mentions.references.length > 0 ? (
-                      <MentionChips
-                        text={text}
-                        references={mentions.references}
-                        unresolved={mentions.unresolved}
-                        hiddenLabel={t("tool.referenceHiddenInline")}
-                        testIdPrefix={`chat-message-${messageIndex}-text-${group.index}`}
-                      />
-                    ) : (
-                      <MessageResponse components={CHAT_MARKDOWN_COMPONENTS}>
-                        {nameIdentifiers(text, nameFor, t("chat.referenceUnnamed"))}
-                      </MessageResponse>
-                    )}
-                  </BubbleContent>
-                </Bubble>
-              </Fragment>
-            );
-          }
-          const tool = group.tool;
-          const partIndex = group.index;
-          if (approval?.toolCallId === tool.toolCallId) {
-            return (
-              <ChatApprovalCard
-                key={`${message.id}-approval-${partIndex}`}
-                approval={withWorkflowName(approval, workflowNameFor)}
-                conversationId={conversationId}
-                busy={approvalBusy}
-                error={approvalError}
-                onDecision={onApproval}
-                testId={`chat-message-${messageIndex}-approval`}
-              />
-            );
-          }
-          if (form?.toolCallId === tool.toolCallId)
-            return (
-              <ChatFormCard
-                key={`${message.id}-form-${partIndex}`}
-                form={form}
-                busy={approvalBusy}
-                error={approvalError}
-                onAnswer={onForm}
-                testId={`chat-message-${messageIndex}-form`}
-              />
-            );
-          if (text?.toolCallId === tool.toolCallId)
-            return (
-              <Bubble key={`${message.id}-question-${partIndex}`} variant="ghost" align="start">
-                <BubbleContent data-testid={`chat-message-${messageIndex}-question`}>
-                  <MessageResponse components={CHAT_MARKDOWN_COMPONENTS}>
-                    {nameIdentifiers(text.question, nameFor, t("chat.referenceUnnamed"))}
-                  </MessageResponse>
-                </BubbleContent>
-              </Bubble>
-            );
-          if (choice?.toolCallId === tool.toolCallId) {
-            return (
-              <ChatChoiceCard
-                key={`${message.id}-choice-${partIndex}`}
-                choice={choice}
-                busy={approvalBusy}
-                error={approvalError}
-                onAnswer={onChoice}
-                testId={`chat-message-${messageIndex}-choice`}
-              />
-            );
-          }
-          if (liveReviews.has(tool.toolCallId))
-            return (
-              <AutomationToolCard
-                key={`${message.id}-automation-${partIndex}`}
-                tool={tool}
-                conversationId={conversationId}
-                onAdjust={onAutomationAdjust}
-                onPrepareSingleRun={onAutomationSingleRun}
-              />
-            );
-          const reauth = chatReauth(tool, window.location.origin);
-          if (reauth)
-            return (
-              <ChatReauthCard
-                key={`${message.id}-reauth-${partIndex}`}
-                action={reauth}
-                connectorName={nameFor(reauth.connectorId)?.label || reauth.label || null}
-                pending={Boolean(approval || choice || form)}
-                busy={approvalBusy}
-                onRenew={onReauth}
-              />
-            );
-          const sensitiveTestRun = chatSensitiveTestRun(tool);
-          if (sensitiveTestRun)
-            return (
-              <ChatTestRunCard
-                key={`${message.id}-test-run-${partIndex}`}
-                run={sensitiveTestRun}
-                saved={savedPreviews.get(tool.toolCallId) ?? null}
-                latest={tool.toolCallId === latestPreviewCallId}
-              />
-            );
-          const sensitivePreview = chatSensitivePreview(tool);
-          if (sensitivePreview)
-            return (
-              <ChatSensitivePreviewCard
-                key={`${message.id}-preview-${partIndex}`}
-                preview={sensitivePreview}
-                saved={savedPreviews.get(tool.toolCallId) ?? null}
-                testId={`chat-message-${messageIndex}-preview-${partIndex}`}
-              />
-            );
-          const judgeFindings = chatJudgeFindings(tool);
-          if (judgeFindings)
-            return (
-              <ChatJudgeFindingsCard
-                key={`${message.id}-findings-${partIndex}`}
-                findings={judgeFindings}
-                disabled={
-                  approvalBusy ||
-                  Boolean(approval || choice || form) ||
-                  tool.toolCallId !== latestPreviewCallId
-                }
-                onInstruction={onInstruction}
-                testId={`chat-message-${messageIndex}-findings-${partIndex}`}
-              />
-            );
-          const candidateId = patchCandidateId(tool);
-          const verdict = toolPartVerdict(tool);
-          const stale = isStaleCall({
-            messageCreatedAt: message.created_at,
-            hasResult:
-              tool.state === "output-available" ||
-              tool.state === "output-error" ||
-              tool.state === "output-denied",
-            isStreaming: false,
-            now: Date.now(),
-          });
-          const answeredQuestion =
-            tool.type === "dynamic-tool" &&
-            (tool.toolName === "ask_user_choice" ||
-              tool.toolName === "ask_user_text" ||
-              tool.toolName === "ask_user_form") &&
-            verdict.outcome === "ok";
-          const choiceStatus =
-            tool.type === "dynamic-tool"
-              ? (tool.output as { status?: string } | undefined)?.status
-              : null;
-          const outcomeKey =
-            choiceStatus === "timeout"
-              ? "chat.choice.expired"
-              : choiceStatus === "cancelled"
-                ? "chat.choice.cancelled"
-                : answeredQuestion
-                  ? "chat.outcome.answered"
-                  : toolOutcomeKey({
-                      confirmationState: verdict.confirmationState,
-                      outcome: verdict.outcome,
-                      stale,
-                    });
-          const notRun = didNotRun(verdict);
-          const runKind =
-            notRun || !isWorkflowRunTool(toolNameOf(tool)) ? null : workflowRunKind(tool.output);
-          const refusalKey = runKind === "refused" ? workflowRefusalKey(tool.output) : null;
-          const headerOutcomeKey = refusalKey ?? outcomeKey;
-          const askedQuestion =
-            tool.type === "dynamic-tool" && tool.toolName === "ask_user_text"
-              ? (tool.input as { question?: unknown } | undefined)?.question
-              : undefined;
-          if (typeof askedQuestion === "string" && askedQuestion.trim() && outcomeKey !== null)
-            return (
-              <div
-                key={`${message.id}-asked-${partIndex}`}
-                className="rounded-lg border bg-muted/40 px-3 py-2 text-sm"
-                data-testid={`chat-message-${messageIndex}-asked-${partIndex}`}
-              >
-                <p className="text-xs text-muted-foreground">
-                  {t("chat.text.answeredQuestion")} · {t(outcomeKey)}
-                </p>
-                <p className="mt-1 whitespace-pre-line">
-                  {hideTechnicalIdentifiers(askedQuestion, t("tool.referenceHiddenInline"))}
-                </p>
-              </div>
-            );
-          const resultLink =
-            tool.type === "dynamic-tool" && verdict.outcome === "ok"
-              ? workflowResultLink(tool.output)
-              : null;
-          return (
-            <Fragment key={`${message.id}-tool-${partIndex}`}>
-              <Tool
-                defaultOpen={false}
-                data-testid={`chat-message-${messageIndex}-tool-${partIndex}`}
-              >
-                {tool.type === "dynamic-tool" ? (
-                  <ToolHeader
-                    type={tool.type}
-                    state={tool.state}
-                    toolName={tool.toolName}
-                    title={actionLabel(
-                      t,
-                      tool.toolName,
-                      notRun,
-                      workflowNameFor,
-                      runKind,
-                      stale,
-                      tool.output,
-                    )}
-                    outcomeKey={headerOutcomeKey}
-                    data-testid={`chat-message-${messageIndex}-tool-${partIndex}-toggle`}
-                  />
-                ) : (
-                  <ToolHeader
-                    type={tool.type}
-                    state={tool.state}
-                    title={actionLabel(
-                      t,
-                      tool.type.replace(/^tool-/, ""),
-                      notRun,
-                      workflowNameFor,
-                      runKind,
-                      stale,
-                      tool.output,
-                    )}
-                    outcomeKey={headerOutcomeKey}
-                    data-testid={`chat-message-${messageIndex}-tool-${partIndex}-toggle`}
-                  />
-                )}
-                <ToolContent>
-                  {stale && (
-                    <p
-                      className="text-muted-foreground text-sm"
-                      data-testid={`chat-message-${messageIndex}-tool-${partIndex}-stale`}
-                    >
-                      {t("tool.stale.description")}
-                    </p>
-                  )}
-                  <ToolInput input={tool.input} />
-                  {candidateId && (
-                    <PatchProposalDiff
-                      candidateId={candidateId}
-                      testId={`chat-message-${messageIndex}-tool-${partIndex}-diff`}
-                    />
-                  )}
-                  <Confirmation approval={tool.approval} state={tool.state}>
-                    <ConfirmationRequest>
-                      <ConfirmationTitle>{t("chat.approval.review")}</ConfirmationTitle>
-                      <ConfirmationActions>
-                        <ConfirmationAction
-                          variant="outline"
-                          data-testid={`chat-message-${messageIndex}-tool-${partIndex}-decline`}
-                          onClick={() => onDecision(tool.toolCallId, false)}
-                        >
-                          {t("chat.approval.decline")}
-                        </ConfirmationAction>
-                        <ConfirmationAction
-                          data-testid={`chat-message-${messageIndex}-tool-${partIndex}-approve`}
-                          onClick={() => onDecision(tool.toolCallId, true)}
-                        >
-                          {t("chat.approval.approve")}
-                        </ConfirmationAction>
-                      </ConfirmationActions>
-                    </ConfirmationRequest>
-                  </Confirmation>
-                  <ToolOutput output={tool.output} errorText={tool.errorText} />
-                </ToolContent>
-              </Tool>
-              {resultLink ? (
-                <ResultLink
-                  link={resultLink}
-                  testId={`chat-message-${messageIndex}-tool-${partIndex}-link`}
-                />
-              ) : null}
-            </Fragment>
-          );
-        })}
-        {from === "assistant" && (
-          <MessageFooter data-testid={`chat-message-${messageIndex}-metadata`}>
-            {[message.model, formatDateTime(locale, message.created_at)]
-              .filter(Boolean)
-              .join(" · ")}
-          </MessageFooter>
-        )}
-      </MessageContent>
-    </Message>
-  );
-}
-
-function FollowSubmittedTurn({ submittedAt }: { submittedAt: number }) {
-  const { scrollToEnd } = useMessageScroller();
-  useEffect(() => {
-    if (submittedAt) scrollToEnd({ behavior: "instant" });
-  }, [submittedAt, scrollToEnd]);
-  return null;
-}
-
-function selectionFromPath(initialPrompt: string): ConversationSelection {
-  if (initialPrompt || window.location.pathname.endsWith("/chat/new")) return { kind: "new" };
-  const match = window.location.pathname.match(/\/chat\/([^/?]+)$/);
-  return match?.[1]
-    ? { kind: "existing", id: decodeURIComponent(match[1]) }
-    : { kind: "automatic" };
-}
-
-function setChatPath(id: string | null, replace = false): void {
-  const path = absolute(id ? conversationHref(id) : chatNewHref());
-  window.history[replace ? "replaceState" : "pushState"]({}, "", path);
-}
-
-interface AttachmentPreview {
-  name: string;
-  size?: number;
-  contentType?: string | null;
-  file?: File;
-  fileId?: string;
-}
-
-function AttachmentPreviewSheet({
-  preview,
-  onClose,
-}: {
-  preview: AttachmentPreview | null;
-  onClose: () => void;
-}) {
-  const kind = preview ? previewKind(preview.name, preview.contentType) : "other";
-  const textual = kind === "markdown" || kind === "text" || kind === "csv";
-  const stored = preview?.fileId ?? null;
-  const content = useQuery({
-    queryKey: ["file-content", stored],
-    enabled: Boolean(stored && textual),
-    queryFn: async () => {
-      const response = await fetch(fileContentHref(stored ?? ""), { credentials: "same-origin" });
-      if (!response.ok) throw new Error(`file content ${response.status}`);
-      return response.text();
-    },
-  });
-  return (
-    <RecordSheet
-      open={preview !== null}
-      onOpenChange={(open) => !open && onClose()}
-      title={preview?.name ?? ""}
-      testId="chat-attachment-preview"
-      closeTestId="chat-attachment-preview-close"
-    >
-      {preview ? (
-        <FilePreview
-          name={preview.name}
-          mimeType={preview.contentType}
-          size={preview.size}
-          file={preview.file}
-          url={stored ? fileContentHref(stored) : undefined}
-          text={stored && textual ? content.data : undefined}
-          testId="chat-attachment-preview-body"
-        />
-      ) : null}
-    </RecordSheet>
-  );
-}
 
 export function ChatPage() {
   const { t, locale } = useI18n();

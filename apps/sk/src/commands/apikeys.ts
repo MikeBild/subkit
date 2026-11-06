@@ -1,33 +1,23 @@
-import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
-import { resolveProfile } from "../config.ts";
-import { EngineClient } from "../engine-client.ts";
-
-function makeClient() {
-  const profile = resolveProfile();
-  return new EngineClient({
-    engine_url: profile.engine_url,
-    api_key: profile.api_key,
-    tenant: profile.active_tenant_id,
-  });
-}
+import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
 const listCmd = defineCommand({
   meta: { name: "list", description: "List API keys" },
   args: { json: { type: "boolean", description: "JSON output" } },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const { items } = await client.listApiKeys();
-      emitList(
-        !!args.json,
-        ["id", "name", "prefix", "created_at", "expires_at"],
-        items as Record<string, unknown>[],
-      );
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { items } = await client.listApiKeys();
+        emitList(
+          !!args.json,
+          ["id", "name", "prefix", "created_at", "expires_at"],
+          items as Record<string, unknown>[],
+        );
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -61,7 +51,7 @@ const createCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       const me = (await client.whoami()) as {
         id: string;
         kind: "user" | "system_account";
@@ -81,9 +71,7 @@ const createCmd = defineCommand({
       const result = await client.issueApiKey(body);
       process.stderr.write("warning: the key value is shown only once — store it securely\n");
       printJson(result);
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -92,13 +80,11 @@ const rotateCmd = defineCommand({
   args: { id: { type: "positional", required: true, description: "Key id" } },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       const result = await client.rotateApiKey(String(args.id));
       process.stderr.write("warning: the new key value is shown only once — store it securely\n");
       printJson(result);
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -107,12 +93,10 @@ const revokeCmd = defineCommand({
   args: { id: { type: "positional", required: true, description: "Key id" } },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       await client.revokeApiKey(String(args.id));
       process.stdout.write("revoked\n");
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 

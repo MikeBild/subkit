@@ -12,7 +12,7 @@ import {
 import { JSDOM } from "jsdom";
 import { act } from "react";
 import type { Root } from "react-dom/client";
-import { DOCS } from "@/app/docs.generated";
+import { DOCS } from "@/app/docs-bundle";
 import { i18nValue } from "@/components/cockpit/patterns/test-utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { I18nContext } from "@/lib/i18n-context";

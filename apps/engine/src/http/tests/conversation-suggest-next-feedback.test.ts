@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
-import { apiKeys, conversations, roles, systemAccounts, tenants } from "../../db/schema/index.ts";
+import { apiKeys, conversations, roles, systemAccounts } from "../../db/schema/index.ts";
+import { adminHeaders, seedTenant } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -52,13 +53,10 @@ beforeAll(async () => {
   });
   scopedKey = key.plaintext;
 
-  const [otherTenant] = await srv.db
-    .insert(tenants)
-    .values({ slug: "t-feedback-other", display_name: "other" })
-    .returning();
+  const otherTenant = await seedTenant(srv.db, { slug: "t-feedback-other", display_name: "other" });
   const [otherConv] = await srv.db
     .insert(conversations)
-    .values({ tenant_id: otherTenant!.id, status: "active" })
+    .values({ tenant_id: otherTenant.id, status: "active" })
     .returning();
   otherTenantConvId = otherConv!.id;
 });
@@ -67,20 +65,13 @@ afterAll(async () => {
   await srv.cleanup();
 });
 
-function adminHeaders(): Record<string, string> {
-  return {
-    authorization: `Bearer ${srv.apiKey}`,
-    "content-type": "application/json",
-  };
-}
-
 describe("POST /v1/conversations/:id/suggest-next/feedback (RBAC + tenant + Zod)", () => {
   test("admin + valid body → 200 { ok: true }", async () => {
     const res = await fetch(
       `${srv.baseUrl}/v1/conversations/${conversation_id}/suggest-next/feedback`,
       {
         method: "POST",
-        headers: adminHeaders(),
+        headers: adminHeaders(srv.apiKey),
         body: JSON.stringify({ accepted: true, source: "right-arrow" }),
       },
     );
@@ -95,7 +86,7 @@ describe("POST /v1/conversations/:id/suggest-next/feedback (RBAC + tenant + Zod)
         `${srv.baseUrl}/v1/conversations/${conversation_id}/suggest-next/feedback`,
         {
           method: "POST",
-          headers: adminHeaders(),
+          headers: adminHeaders(srv.apiKey),
           body: JSON.stringify({ accepted: source !== "dismissed", source }),
         },
       );
@@ -123,7 +114,7 @@ describe("POST /v1/conversations/:id/suggest-next/feedback (RBAC + tenant + Zod)
       `${srv.baseUrl}/v1/conversations/${otherTenantConvId}/suggest-next/feedback`,
       {
         method: "POST",
-        headers: adminHeaders(),
+        headers: adminHeaders(srv.apiKey),
         body: JSON.stringify({ accepted: true, source: "right-arrow" }),
       },
     );
@@ -135,7 +126,7 @@ describe("POST /v1/conversations/:id/suggest-next/feedback (RBAC + tenant + Zod)
       `${srv.baseUrl}/v1/conversations/${conversation_id}/suggest-next/feedback`,
       {
         method: "POST",
-        headers: adminHeaders(),
+        headers: adminHeaders(srv.apiKey),
         body: JSON.stringify({ accepted: true }),
       },
     );
@@ -147,7 +138,7 @@ describe("POST /v1/conversations/:id/suggest-next/feedback (RBAC + tenant + Zod)
       `${srv.baseUrl}/v1/conversations/${conversation_id}/suggest-next/feedback`,
       {
         method: "POST",
-        headers: adminHeaders(),
+        headers: adminHeaders(srv.apiKey),
         body: JSON.stringify({ accepted: true, source: "double-click" }),
       },
     );
@@ -159,7 +150,7 @@ describe("POST /v1/conversations/:id/suggest-next/feedback (RBAC + tenant + Zod)
       `${srv.baseUrl}/v1/conversations/${conversation_id}/suggest-next/feedback`,
       {
         method: "POST",
-        headers: adminHeaders(),
+        headers: adminHeaders(srv.apiKey),
         body: JSON.stringify({ source: "right-arrow" }),
       },
     );

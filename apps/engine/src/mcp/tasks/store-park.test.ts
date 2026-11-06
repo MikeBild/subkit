@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { conversations, mcpTasks, tenants } from "../../db/schema/index.ts";
+import { conversations, mcpTasks } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { clearMcpTaskPark, parkedStateForConversation, setMcpTaskParked } from "./store.ts";
 
 let ctx: TestDb;
@@ -9,11 +10,8 @@ let tenant_id: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("mcp_task_park_visibility");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-park", display_name: "T-PARK" })
-    .returning();
-  tenant_id = t!.id;
+  const t = await seedTenant(ctx.db, { slug: "t-park", display_name: "T-PARK" });
+  tenant_id = t.id;
 });
 
 afterAll(async () => {

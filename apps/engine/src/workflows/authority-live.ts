@@ -25,14 +25,3 @@ export function authorityLive(moment?: Date | SQL): SQL {
     authorityHasRunsLeft(),
   ) as SQL;
 }
-
-export function isOpenEnded(row: { valid_until: Date | null; max_runs: number | null }): boolean {
-  return row.valid_until === null && row.max_runs === null;
-}
-
-export function remainingRuns(row: {
-  max_runs: number | null;
-  reserved_runs: number;
-}): number | null {
-  return row.max_runs === null ? null : Math.max(0, row.max_runs - row.reserved_runs);
-}

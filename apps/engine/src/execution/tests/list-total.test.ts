@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { executionSteps, executions, tenants } from "../../db/schema/index.ts";
+import { executionSteps, executions } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { listExecutions } from "../list.ts";
 
 let ctx: TestDb;
@@ -9,16 +10,10 @@ let tenantB = "";
 
 beforeAll(async () => {
   ctx = await createTestDb("executions_list_total");
-  const [a] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-exec-total-a", display_name: "A" })
-    .returning();
-  const [b] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-exec-total-b", display_name: "B" })
-    .returning();
-  tenantA = a!.id;
-  tenantB = b!.id;
+  const a = await seedTenant(ctx.db, { slug: "t-exec-total-a", display_name: "A" });
+  const b = await seedTenant(ctx.db, { slug: "t-exec-total-b", display_name: "B" });
+  tenantA = a.id;
+  tenantB = b.id;
 
   await ctx.db.insert(executions).values(
     Array.from({ length: 12 }, (_, i) => ({

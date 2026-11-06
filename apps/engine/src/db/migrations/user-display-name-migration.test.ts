@@ -1,20 +1,13 @@
 import { expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import { builtinRoleId } from "../../rbac/roles.ts";
-import { runMigrations } from "../migrate.ts";
 import { users } from "../schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT } from "../tests/setup.ts";
-import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
-
-const migration = EMBEDDED_MIGRATIONS.find((item) =>
-  item.statements.some((statement) => statement.includes('ADD COLUMN "display_name" text')),
-);
 
 test(
-  "adds an optional display name without changing existing users",
+  "a user has an optional display name without default",
   async () => {
-    if (!migration) throw new Error("display name migration is not embedded");
-    const ctx = await createTestDb("user_display_name", { upToIdx: migration.idx - 1 });
+    const ctx = await createTestDb("user_display_name");
     try {
       const {
         rows: [tenant],
@@ -31,8 +24,6 @@ test(
       const legacyUser = rows[0] as { id: string; email: string } | undefined;
       if (!legacyUser) throw new Error("legacy test user was not created");
 
-      const first = await runMigrations(ctx.db, [migration], true);
-      expect(first.applied).toBe(1);
       const [user] = await ctx.db
         .select({ email: users.email, display_name: users.display_name })
         .from(users)
@@ -49,7 +40,6 @@ test(
         (columns as unknown as { rows: { is_nullable: string; column_default: string | null }[] })
           .rows,
       ).toEqual([{ is_nullable: "YES", column_default: null }]);
-      expect((await runMigrations(ctx.db, [migration], true)).applied).toBe(0);
     } finally {
       await ctx.cleanup();
     }

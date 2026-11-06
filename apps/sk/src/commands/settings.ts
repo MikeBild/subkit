@@ -3,21 +3,9 @@ import { printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
-import { EngineClient } from "../engine-client.ts";
+import type { EngineClient } from "../engine-client.ts";
 import { runSettingsApp } from "../settings-ui/index.ts";
-
-function buildClient(args: Record<string, unknown>): EngineClient {
-  const profile = resolveProfile({
-    engine_url: args["engine-url"] as string | undefined,
-    api_key: args["api-key"] as string | undefined,
-    profile: args.profile as string | undefined,
-  });
-  return new EngineClient({
-    engine_url: profile.engine_url,
-    api_key: profile.api_key,
-    tenant: profile.active_tenant_id,
-  });
-}
+import { makeClientFromArgs, withCommandErrors } from "./command-runtime.ts";
 
 const commonArgs = {
   "engine-url": { type: "string" as const, description: "Engine base URL" },
@@ -31,39 +19,40 @@ const listCommand = defineCommand({
   meta: { name: "list", description: "List every leaf with its resolved value" },
   args: commonArgs,
   async run({ args }) {
-    const client = buildClient(args);
-    try {
-      const tenantOpt: { tenant?: string } = args.tenant ? { tenant: args.tenant as string } : {};
-      const res = await client.listSettings(tenantOpt);
-      if (args.json) return printJson(res);
-      let section: string | null = null;
-      for (const it of res.items) {
-        const head = it.path.split(".")[0] ?? "";
-        if (head !== section) {
-          section = head;
-          process.stdout.write(`\n${pc.bold(section)}\n`);
+    const client = makeClientFromArgs(args);
+    return withCommandErrors(
+      async () => {
+        const tenantOpt: { tenant?: string } = args.tenant ? { tenant: args.tenant as string } : {};
+        const res = await client.listSettings(tenantOpt);
+        if (args.json) return printJson(res);
+        let section: string | null = null;
+        for (const it of res.items) {
+          const head = it.path.split(".")[0] ?? "";
+          if (head !== section) {
+            section = head;
+            process.stdout.write(`\n${pc.bold(section)}\n`);
+          }
+          const flag =
+            it.meta.source === "default" ? pc.dim("(default)") : pc.green(`(${it.meta.source})`);
+          const secret = it.meta.sensitive ? pc.yellow(" secret") : "";
+          const restart = it.meta.requiresRestart ? pc.red(" restart") : "";
+          process.stdout.write(
+            `  ${pc.cyan(it.path.padEnd(44))} ${String(JSON.stringify(it.value)).slice(0, 48).padEnd(50)} ${flag}${secret}${restart}\n`,
+          );
         }
-        const flag =
-          it.meta.source === "default" ? pc.dim("(default)") : pc.green(`(${it.meta.source})`);
-        const secret = it.meta.sensitive ? pc.yellow(" secret") : "";
-        const restart = it.meta.requiresRestart ? pc.red(" restart") : "";
-        process.stdout.write(
-          `  ${pc.cyan(it.path.padEnd(44))} ${String(JSON.stringify(it.value)).slice(0, 48).padEnd(50)} ${flag}${secret}${restart}\n`,
-        );
-      }
-      if (res.diagnostics.pending_restart_keys.length > 0) {
-        process.stdout.write(
-          `\n${pc.yellow("pending restart:")} ${res.diagnostics.pending_restart_keys.join(", ")}\n`,
-        );
-      }
-      if (res.diagnostics.override_keys.length > 0) {
-        process.stdout.write(
-          `${pc.dim("active overrides:")} ${res.diagnostics.override_keys.join(", ")}\n`,
-        );
-      }
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+        if (res.diagnostics.pending_restart_keys.length > 0) {
+          process.stdout.write(
+            `\n${pc.yellow("pending restart:")} ${res.diagnostics.pending_restart_keys.join(", ")}\n`,
+          );
+        }
+        if (res.diagnostics.override_keys.length > 0) {
+          process.stdout.write(
+            `${pc.dim("active overrides:")} ${res.diagnostics.override_keys.join(", ")}\n`,
+          );
+        }
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -78,27 +67,28 @@ const getCommand = defineCommand({
     ...commonArgs,
   },
   async run({ args }) {
-    const client = buildClient(args);
-    try {
-      const tenantOpt: { tenant?: string } = args.tenant ? { tenant: args.tenant as string } : {};
-      const out = await client.getSetting(args.path as string, tenantOpt);
-      if (args.json) return printJson(out);
-      process.stdout.write(
-        `${pc.cyan(out.path)} ${pc.dim(`(${out.meta.scope}/${out.meta.source})`)}\n`,
-      );
-      process.stdout.write(`  value:           ${JSON.stringify(out.value)}\n`);
-      process.stdout.write(`  kind:            ${out.meta.kind}\n`);
-      if (out.meta.sensitive)
-        process.stdout.write(`  ${pc.yellow("sensitive — value is masked")}\n`);
-      if (out.meta.requiresRestart)
+    const client = makeClientFromArgs(args);
+    return withCommandErrors(
+      async () => {
+        const tenantOpt: { tenant?: string } = args.tenant ? { tenant: args.tenant as string } : {};
+        const out = await client.getSetting(args.path as string, tenantOpt);
+        if (args.json) return printJson(out);
         process.stdout.write(
-          `  ${pc.yellow("takes effect after a restart — `sk system restart --wait`")}\n`,
+          `${pc.cyan(out.path)} ${pc.dim(`(${out.meta.scope}/${out.meta.source})`)}\n`,
         );
-      if (out.meta.description)
-        process.stdout.write(`  description:     ${out.meta.description}\n`);
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+        process.stdout.write(`  value:           ${JSON.stringify(out.value)}\n`);
+        process.stdout.write(`  kind:            ${out.meta.kind}\n`);
+        if (out.meta.sensitive)
+          process.stdout.write(`  ${pc.yellow("sensitive — value is masked")}\n`);
+        if (out.meta.requiresRestart)
+          process.stdout.write(
+            `  ${pc.yellow("takes effect after a restart — `sk system restart --wait`")}\n`,
+          );
+        if (out.meta.description)
+          process.stdout.write(`  description:     ${out.meta.description}\n`);
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -145,7 +135,7 @@ const setCommand = defineCommand({
       api_key: args["api-key"] as string | undefined,
       profile: args.profile as string | undefined,
     });
-    const client = buildClient(args);
+    const client = makeClientFromArgs(args);
     const tenant = args.tenant as string | undefined;
     const target = writeTarget(profile.engine_url, tenant);
     try {
@@ -213,32 +203,33 @@ const configureCommand = defineCommand({
     ...commonArgs,
   },
   async run({ args }) {
-    const client = buildClient(args);
-    try {
-      const tenant = (args.tenant as string | undefined) ?? undefined;
-      const tab = (args.tab as string | undefined) ?? undefined;
+    const client = makeClientFromArgs(args);
+    return withCommandErrors(
+      async () => {
+        const tenant = (args.tenant as string | undefined) ?? undefined;
+        const tab = (args.tab as string | undefined) ?? undefined;
 
-      const headless =
-        Boolean(args["non-interactive"]) || !process.stdout.isTTY || !process.stdin.isTTY;
-      if (headless) {
-        const tenantOpt: { tenant?: string } = tenant ? { tenant } : {};
-        const res = await client.listSettings(tenantOpt);
-        return printJson({
-          mode: "non-interactive",
-          tenant: tenant ?? null,
-          tab: tab ?? null,
-          ...res,
-        });
-      }
+        const headless =
+          Boolean(args["non-interactive"]) || !process.stdout.isTTY || !process.stdin.isTTY;
+        if (headless) {
+          const tenantOpt: { tenant?: string } = tenant ? { tenant } : {};
+          const res = await client.listSettings(tenantOpt);
+          return printJson({
+            mode: "non-interactive",
+            tenant: tenant ?? null,
+            tab: tab ?? null,
+            ...res,
+          });
+        }
 
-      const opts: { client: EngineClient; tenant?: string; initialTab?: string } = { client };
-      if (tenant) opts.tenant = tenant;
-      if (tab) opts.initialTab = tab;
-      const exitCode = await runSettingsApp(opts);
-      process.exit(exitCode);
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+        const opts: { client: EngineClient; tenant?: string; initialTab?: string } = { client };
+        if (tenant) opts.tenant = tenant;
+        if (tab) opts.initialTab = tab;
+        const exitCode = await runSettingsApp(opts);
+        process.exit(exitCode);
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 

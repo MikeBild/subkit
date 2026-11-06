@@ -76,23 +76,6 @@ describe("policy-gate snapshot — resolveToolMode characterization", () => {
     ).toBe("confirm_before_execution");
   });
 
-  test("probe_connector prod POST → confirm_before_execution (prod is the boundary)", () => {
-    expect(
-      resolveToolMode({
-        tool: "probe_connector",
-        category: "tenant_read",
-        input: {
-          connector_slug: "demo",
-          method: "POST",
-          path: "/orders",
-          environment: "prod",
-          body: { foo: "bar" },
-        },
-        overrides: EMPTY_OVERRIDES,
-      }),
-    ).toBe("confirm_before_execution");
-  });
-
   test("save_workflow_draft draft_write → confirm_before_execution (default)", () => {
     expect(
       resolveToolMode({

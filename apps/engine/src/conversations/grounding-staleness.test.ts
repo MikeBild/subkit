@@ -6,12 +6,14 @@ import { computeGroundingStatus } from "./grounding-staleness.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./tests/setup.ts";
 import type { DraftDocument } from "./types.ts";
 
+const fixedClock = () => "2026-11-06T00:00:00.000Z";
+
 describe("grounding-staleness · provenance survives normalize", () => {
   test("grounding_fingerprint AND grounding_connector_ids survive the round-trip", () => {
     const state = createEmptyState("workflow");
     state.grounding_fingerprint = "0011223344556677";
     state.grounding_connector_ids = ["c-1", "c-2"];
-    const revived = normalizeState({ state }, undefined);
+    const revived = normalizeState({ state }, undefined, fixedClock);
     expect(revived.grounding_fingerprint).toBe("0011223344556677");
     expect(revived.grounding_connector_ids).toEqual(["c-1", "c-2"]);
   });
@@ -20,6 +22,7 @@ describe("grounding-staleness · provenance survives normalize", () => {
     const revived = normalizeState(
       { state: { grounding_fingerprint: "x", grounding_connector_ids: "nope" } },
       undefined,
+      fixedClock,
     );
     expect(revived.grounding_connector_ids).toBeNull();
   });
@@ -28,6 +31,7 @@ describe("grounding-staleness · provenance survives normalize", () => {
     const revived = normalizeState(
       { state: { grounding_connector_ids: ["c-1", 42, null, "c-2"] } },
       undefined,
+      fixedClock,
     );
     expect(revived.grounding_connector_ids).toEqual(["c-1", "c-2"]);
   });

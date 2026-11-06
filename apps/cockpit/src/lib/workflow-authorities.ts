@@ -1,4 +1,4 @@
-import type { components } from "@/api/schema";
+import type { components } from "@cli-core/engine-api/openapi";
 import { LOCALE_TAGS, type Locale, type TranslationKey } from "@/lib/i18n";
 import { shortIdentifier } from "@/pages/audit-model";
 

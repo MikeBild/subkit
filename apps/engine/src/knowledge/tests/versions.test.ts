@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { and, asc, count, eq, sql } from "drizzle-orm";
+import { and, asc, count, eq } from "drizzle-orm";
 import type { Actor } from "../../audit/actor.ts";
-import { EMBEDDED_MIGRATIONS } from "../../db/migrations/embedded.ts";
 import { auditLog, knowledgeChunks, knowledgeSourceVersions } from "../../db/schema/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { upsertKnowledgeBundle } from "../bundle-service.ts";
@@ -285,7 +284,7 @@ describe.skipIf(skip)("knowledge versions", () => {
     expect(await versionRows(source.id)).toHaveLength(0);
   });
 
-  test("a backfilled v1 restores once; restoring it again is a conflict that writes nothing", async () => {
+  test("v1 restores once; restoring it again is a conflict that writes nothing", async () => {
     const source = await createKnowledgeSource(
       {
         tenant_id: ctx.tenantId,
@@ -300,20 +299,6 @@ describe.skipIf(skip)("knowledge versions", () => {
       },
       ctx.testDb.db,
     );
-    await ctx.testDb.db
-      .delete(knowledgeSourceVersions)
-      .where(
-        and(
-          eq(knowledgeSourceVersions.tenant_id, ctx.tenantId),
-          eq(knowledgeSourceVersions.knowledge_source_id, source.id),
-        ),
-      );
-    const backfill = EMBEDDED_MIGRATIONS.find(
-      (m) => m.tag === "0084_knowledge_source_versions",
-    )?.statements.find((statement) => /^\s*INSERT\b/i.test(statement));
-    if (!backfill) throw new Error("backfill statement missing");
-    await ctx.testDb.db.execute(sql.raw(backfill));
-
     await ingestKnowledgeSource(
       {
         tenant_id: ctx.tenantId,

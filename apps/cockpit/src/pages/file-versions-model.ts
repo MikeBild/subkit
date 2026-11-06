@@ -1,4 +1,4 @@
-import type { components } from "@/api/schema";
+import type { components } from "@cli-core/engine-api/openapi";
 import { type ActorDirectory, actorDirectoryName } from "@/app/actor-directory-model";
 import { connectorHref, recordHref, runHref } from "@/app/links";
 import { previewKind } from "@/components/cockpit/patterns/file-kinds";

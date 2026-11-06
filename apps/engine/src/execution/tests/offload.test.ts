@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { executionFixtures, executionSteps, executions, tenants } from "../../db/schema/index.ts";
+import { executionFixtures, executionSteps, executions } from "../../db/schema/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import {
   type MemoryOffloadStorage,
   useMemoryOffloadStorage,
 } from "../../test-helpers/offload-storage.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { bodyEnvelopeForLoopAccumulator } from "../engine/envelope.ts";
 import { runExecution } from "../engine.ts";
 import {
@@ -178,14 +179,14 @@ describe("OffloadRef round-trip + resolveOffloaded", () => {
   });
 
   test("resolveOffloaded REFUSES a cross-tenant fixture id", async () => {
-    const [otherTenant] = await ctx.testDb.db
-      .insert(tenants)
-      .values({ slug: "offload-other", display_name: "offload-other-tenant" })
-      .returning({ id: tenants.id });
+    const otherTenant = await seedTenant(ctx.testDb.db, {
+      slug: "offload-other",
+      display_name: "offload-other-tenant",
+    });
     const [row] = await ctx.testDb.db
       .insert(executionFixtures)
       .values({
-        tenant_id: otherTenant!.id,
+        tenant_id: otherTenant.id,
         kind: "offload",
         execution_id: null,
         step_id: null,

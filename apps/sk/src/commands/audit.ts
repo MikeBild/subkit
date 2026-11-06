@@ -1,19 +1,8 @@
 import { createWriteStream } from "node:fs";
-import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
-import { resolveProfile } from "../config.ts";
-import { EngineClient } from "../engine-client.ts";
 import { auditFilterQuery } from "./audit-filter.ts";
-
-function makeClient() {
-  const profile = resolveProfile();
-  return new EngineClient({
-    engine_url: profile.engine_url,
-    api_key: profile.api_key,
-    tenant: profile.active_tenant_id,
-  });
-}
+import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
 const queryCmd = defineCommand({
   meta: { name: "query", description: "Filter the audit log" },
@@ -48,44 +37,45 @@ const queryCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const q: Record<string, string | number | undefined> = auditFilterQuery(args);
-      if (args.limit) q.limit = Number(args.limit);
-      if (args.since) {
-        const raw = String(args.since);
-        const relative = raw.match(/^(\d+)(m|h|d)$/);
-        if (relative) {
-          const [, num, unit] = relative;
-          const ms = Number(num) * (unit === "m" ? 60000 : unit === "h" ? 3600000 : 86400000);
-          q.ts_from = new Date(Date.now() - ms).toISOString();
-        } else {
-          q.ts_from = raw;
+    return withCommandErrors(
+      async () => {
+        const q: Record<string, string | number | undefined> = auditFilterQuery(args);
+        if (args.limit) q.limit = Number(args.limit);
+        if (args.since) {
+          const raw = String(args.since);
+          const relative = raw.match(/^(\d+)(m|h|d)$/);
+          if (relative) {
+            const [, num, unit] = relative;
+            const ms = Number(num) * (unit === "m" ? 60000 : unit === "h" ? 3600000 : 86400000);
+            q.ts_from = new Date(Date.now() - ms).toISOString();
+          } else {
+            q.ts_from = raw;
+          }
         }
-      }
-      if (args.to) q.ts_to = String(args.to);
-      if (args.cursor) q.cursor = String(args.cursor);
-      const result = await client.queryAuditLog(q);
-      if (args.json) {
-        printJson(result);
-        return;
-      }
-      emitList(
-        false,
-        [
-          "id",
-          "ts",
-          "action",
-          "actor_id",
-          "access_type",
-          "origin_source",
-          "execution_source",
-          "result",
-        ],
-        result.items as Record<string, unknown>[],
-      );
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+        if (args.to) q.ts_to = String(args.to);
+        if (args.cursor) q.cursor = String(args.cursor);
+        const result = await client.queryAuditLog(q);
+        if (args.json) {
+          printJson(result);
+          return;
+        }
+        emitList(
+          false,
+          [
+            "id",
+            "ts",
+            "action",
+            "actor_id",
+            "access_type",
+            "origin_source",
+            "execution_source",
+            "result",
+          ],
+          result.items as Record<string, unknown>[],
+        );
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -94,11 +84,9 @@ const showCmd = defineCommand({
   args: { id: { type: "positional", required: true, description: "Audit event id" } },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       printJson(await client.getAuditEvent(String(args.id)));
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -130,7 +118,7 @@ const exportCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       const q: Record<string, string | number | undefined> = auditFilterQuery(args);
       if (args.since) q.ts_from = String(args.since);
       if (args.to) q.ts_to = String(args.to);
@@ -171,9 +159,7 @@ const exportCmd = defineCommand({
       } else if (dest !== process.stdout) {
         (dest as ReturnType<typeof createWriteStream>).end();
       }
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 

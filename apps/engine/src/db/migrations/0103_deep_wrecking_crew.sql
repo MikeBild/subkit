@@ -1,2 +1,0 @@
-ALTER TABLE "outbound_connection_starts" ADD CONSTRAINT "outbound_connection_starts_actor_type_check" CHECK ("outbound_connection_starts"."actor_type" IN ('user','system_account','unknown'));--> statement-breakpoint
-ALTER TABLE "outbound_connection_starts" ADD CONSTRAINT "outbound_connection_starts_unknown_actor_id_check" CHECK ("outbound_connection_starts"."actor_type" <> 'unknown' OR "outbound_connection_starts"."actor_id" IS NULL);

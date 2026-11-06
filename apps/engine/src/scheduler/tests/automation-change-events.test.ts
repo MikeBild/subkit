@@ -1,13 +1,8 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import {
-  events,
-  tenants,
-  webhooksInbound,
-  workflows,
-  workflowsSchedules,
-} from "../../db/schema/index.ts";
+import { events, webhooksInbound, workflows, workflowsSchedules } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { recordInboundAdmission } from "../../webhooks/inbound/admission-state.ts";
 import { createInbound } from "../../webhooks/inbound/service.ts";
 import { createSchedule, deleteSchedule, updateSchedule } from "../repo.ts";
@@ -19,11 +14,11 @@ let workflow_id: string;
 
 beforeAll(async () => {
   testDb = await createTestDb("automation_change_events");
-  const [t] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "t-automation-events", display_name: "AutomationEvents" })
-    .returning();
-  tenant_id = t!.id;
+  const t = await seedTenant(testDb.db, {
+    slug: "t-automation-events",
+    display_name: "AutomationEvents",
+  });
+  tenant_id = t.id;
   const [wf] = await testDb.db
     .insert(workflows)
     .values({ tenant_id, slug: "nightly", name: "Nightly", lifecycle: "active" })

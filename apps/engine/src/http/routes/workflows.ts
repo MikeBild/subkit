@@ -30,7 +30,13 @@ import {
   TriggerSchema,
   validateTenantWorkflowDefForSave,
 } from "../../workflows/index.ts";
-import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../errors.ts";
+import {
+  BadRequestError,
+  ConflictError,
+  ForbiddenError,
+  HttpError,
+  NotFoundError,
+} from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -45,7 +51,15 @@ import {
   WorkflowDetailSchema,
   WorkflowListResponse,
 } from "./workflow-representation.ts";
-import { AutomationReadinessSchema, ScheduleEntry } from "./workflow-schedule-schemas.ts";
+import {
+  AutomationReadinessSchema,
+  ScheduleCreateBody,
+  ScheduleDeleteResponse,
+  ScheduleListResponse,
+  ScheduleUpdateBody,
+  ScheduleUpsertResponse,
+  ScheduleWriteResponse,
+} from "./workflow-schedule-schemas.ts";
 import { registerTransactionalMailRoutes } from "./workflow-transactional-mail.ts";
 import { registerWorkflowVersionRoutes } from "./workflow-versions.ts";
 
@@ -225,34 +239,12 @@ const deleteRoute = createRoute({
   },
 });
 
-const ScheduleUpsertResponse = ScheduleEntry.extend({
-  upsert_status: z.enum(["created", "updated"]),
-  automation_readiness: AutomationReadinessSchema.optional(),
-}).openapi("ScheduleUpsertResponse");
-const ScheduleWriteResponse = ScheduleEntry.extend({
-  automation_readiness: AutomationReadinessSchema.optional(),
-}).openapi("ScheduleWriteResponse");
-const ScheduleInputSchema = z.union([
-  z.string(),
-  z.number(),
-  z.boolean(),
-  z.null(),
-  z.array(z.unknown()),
-  z.record(z.string(), z.unknown()),
-]);
 const preparedVersionId = (
   wf: { draft_version_id?: string | null; current_version_id: string | null } | null | undefined,
 ) =>
   wf?.draft_version_id && wf.draft_version_id !== wf.current_version_id
     ? wf.draft_version_id
     : null;
-
-const ScheduleListResponse = z
-  .object({
-    schedules: z.array(ScheduleEntry),
-    total: z.number().int().nonnegative(),
-  })
-  .openapi("ScheduleListResponse");
 
 const listSchedulesRoute = createRoute({
   method: "get",
@@ -270,31 +262,6 @@ const listSchedulesRoute = createRoute({
     },
   },
 });
-
-const ScheduleCreateBody = z
-  .object({
-    workflow_id: z.string().uuid(),
-    cron: z.string().min(1),
-    timezone: z.string().optional(),
-    execution_mode: z.enum(["dev", "prod"]).optional(),
-    paused: z.boolean().optional(),
-    input: ScheduleInputSchema.optional(),
-  })
-  .openapi("ScheduleCreateBody");
-
-const ScheduleUpdateBody = z
-  .object({
-    cron: z.string().min(1).optional(),
-    timezone: z.string().optional(),
-    execution_mode: z.enum(["dev", "prod"]).optional(),
-    paused: z.boolean().optional(),
-    input: ScheduleInputSchema.optional(),
-  })
-  .openapi("ScheduleUpdateBody");
-
-const ScheduleDeleteResponse = z
-  .object({ id: z.string(), deleted: z.boolean() })
-  .openapi("ScheduleDeleteResponse");
 
 const createScheduleRoute = createRoute({
   method: "post",
@@ -890,6 +857,11 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     );
     if ("workflow" in result && result.workflow) {
       return c.json(await serializeOne(result.workflow, principal.tenant_id, db), 200);
+    }
+    if (result.code) {
+      throw new HttpError(409, result.code, result.errors[0] ?? "lifecycle change not allowed", {
+        details: { errors: result.errors },
+      });
     }
     if (result.conflict) {
       throw new ConflictError("slug already in use by a live workflow", {

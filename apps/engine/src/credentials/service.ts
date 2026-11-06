@@ -84,9 +84,8 @@ export type CredentialWriteSource =
 
 export async function upsertCredential(
   input: UpsertCredentialInput,
-  exec?: Executor,
+  db: Executor,
 ): Promise<CredentialRow> {
-  const db = exec ?? getDb();
   const ownerPredicate = eq(credentials.connector_id, input.connector_id);
   const row = await db.transaction(async (tx) => {
     if (input.mode === "signed_jwt") {
@@ -320,12 +319,11 @@ export async function rotateOAuth2Tokens(
     actor?: Actor | null;
     actor_type?: import("../audit/types.ts").AuditActorType;
   },
-  exec?: Executor,
+  db: Executor,
 ): Promise<{
   credential_generation: number | null;
   verified_identity: VerifiedProviderIdentity | null;
 }> {
-  const db = exec ?? getDb();
   const identity = await db.transaction(async (tx) => {
     const withIdentity = await hasColumn(tx, "credentials", "credential_generation");
     const [prior] = await tx
@@ -558,12 +556,11 @@ export interface ConnectorCredentialState {
 export async function describeConnectorCredentialStates(
   tenant_id: string,
   targets: readonly { id: string; environment: string; auth_type: string }[],
-  exec?: Executor,
+  db: Executor,
 ): Promise<Map<string, ConnectorCredentialState | null>> {
   const found = new Map<string, ConnectorCredentialState | null>();
   const ids = targets.map((target) => target.id).filter((id) => UUID_RE.test(id));
   if (ids.length === 0) return found;
-  const db = exec ?? getDb();
   const rows = await db
     .select({
       connector_id: credentials.connector_id,
@@ -604,7 +601,7 @@ export async function describeCredentialForConnector(
   tenant_id: string,
   connector_id: string,
   environment: "dev" | "prod",
-  exec?: Executor,
+  db: Executor,
 ): Promise<{
   speaks_as: VerifiedProviderIdentity | null;
   mode: string;
@@ -614,7 +611,6 @@ export async function describeCredentialForConnector(
   updated_at: string;
 } | null> {
   if (!UUID_RE.test(connector_id)) return null;
-  const db = exec ?? getDb();
   const rows = await db
     .select({
       id: credentials.id,
@@ -678,7 +674,7 @@ export async function getOAuth2ClientCredential(
   tenant_id: string,
   connector_id: string,
   environment: "dev" | "prod",
-  exec?: Executor,
+  db: Executor,
 ): Promise<{
   client_id: string;
   issuer?: string;
@@ -686,7 +682,6 @@ export async function getOAuth2ClientCredential(
   credential_snapshot: CredentialUseSnapshot;
 } | null> {
   if (!UUID_RE.test(connector_id)) return null;
-  const db = exec ?? getDb();
   const rows = await db
     .select()
     .from(credentials)
@@ -808,7 +803,7 @@ export async function getOAuth2PrivateKeyCredential(
   tenant_id: string,
   connector_id: string,
   environment: "dev" | "prod",
-  exec?: Executor,
+  db: Executor,
 ): Promise<{
   client_id: string;
   private_key: string;
@@ -816,7 +811,6 @@ export async function getOAuth2PrivateKeyCredential(
   credential_snapshot: CredentialUseSnapshot;
 } | null> {
   if (!UUID_RE.test(connector_id)) return null;
-  const db = exec ?? getDb();
   const rows = await db
     .select()
     .from(credentials)
@@ -909,9 +903,8 @@ export async function deleteCredential(
   tenant_id: string,
   credential_id: string,
   actor_input: string | Actor | null,
-  exec?: Executor,
+  db: Executor,
 ): Promise<boolean> {
-  const db = exec ?? getDb();
   const deleted = await db
     .delete(credentials)
     .where(and(eq(credentials.tenant_id, tenant_id), eq(credentials.id, credential_id)))

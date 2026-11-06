@@ -1,4 +1,4 @@
-import type { components } from "@/api/schema";
+import type { components } from "@cli-core/engine-api/openapi";
 import type { TranslationKey } from "@/lib/i18n";
 
 type EffectiveTrigger = components["schemas"]["EffectiveTrigger"];

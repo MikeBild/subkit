@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
-import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   dockerAvailable,
   type ObjectStoreFixture,
@@ -34,11 +34,8 @@ const BUCKET = `sk-s3-async-test-${Math.random().toString(36).slice(2, 8)}`; // 
 beforeAll(async () => {
   if (!DOCKER) return;
   testDb = await createTestDb("s3_async_body");
-  const [t] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "s3-async-t", display_name: "s3 async tenant" })
-    .returning();
-  tenantId = t!.id;
+  const t = await seedTenant(testDb.db, { slug: "s3-async-t", display_name: "s3 async tenant" });
+  tenantId = t.id;
   objectStore = await startObjectStore("subkit-s3-async-test");
 
   const bootstrap = new S3Client({

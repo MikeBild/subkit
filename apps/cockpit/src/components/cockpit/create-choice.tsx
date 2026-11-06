@@ -1,3 +1,4 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -11,7 +12,6 @@ import {
 import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
-import type { components } from "@/api/schema";
 import { absolute, chatNewHref, workflowHref } from "@/app/links";
 import { CreateConnectorDialog } from "@/components/cockpit/create-connector";
 import { useSolutionFlow } from "@/components/cockpit/create-from-template";

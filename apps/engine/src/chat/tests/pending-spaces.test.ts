@@ -7,8 +7,9 @@ import {
   createConversationTestCtx,
 } from "../../conversations/tests/setup.ts";
 import { encryptSecret } from "../../crypto/aes-gcm.ts";
-import { chatIdentities, chatWorkspaces, tenants, users } from "../../db/schema/index.ts";
+import { chatIdentities, chatWorkspaces, users } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { chatWorkspaceAad } from "../api.ts";
 import { listPendingSpacesForPrincipal } from "../pending-spaces.ts";
 
@@ -81,11 +82,10 @@ beforeAll(async () => {
     platform_user_id: CALLER_PID,
   });
 
-  const [tenantB] = await ctx.testDb.db
-    .insert(tenants)
-    .values({ slug: "t-pending-b", display_name: "Pending B" })
-    .returning();
-  if (!tenantB) throw new Error("seed tenant B failed");
+  const tenantB = await seedTenant(ctx.testDb.db, {
+    slug: "t-pending-b",
+    display_name: "Pending B",
+  });
   tenantBId = tenantB.id;
   const [userB] = await ctx.testDb.db
     .insert(users)

@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { setConfigKey } from "../../config/loader.ts";
 import { _withEgressLookupForTests } from "../../connectors/egress-guard.ts";
-import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { provisionSelfServiceTenant } from "../../identity/index.ts";
 import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { WEBHOOK_MAX_ATTEMPTS, WebhookNotificationAdapter } from "../channels/webhook.ts";
 
 let tdb: TestDb;
@@ -14,11 +14,10 @@ beforeAll(async () => {
   tdb = await createTestDb("notification-webhook-egress");
   await configureHostedPolicyForTests(tdb.db, tdb.url);
   await setConfigKey("egress.mode", "permissive");
-  const [tenant] = await tdb.db
-    .insert(tenants)
-    .values({ slug: "notification-selfhost", display_name: "Selfhost" })
-    .returning();
-  if (!tenant) throw new Error("missing tenant");
+  const tenant = await seedTenant(tdb.db, {
+    slug: "notification-selfhost",
+    display_name: "Selfhost",
+  });
   selfhostId = tenant.id;
   hostedId = (
     await provisionSelfServiceTenant(

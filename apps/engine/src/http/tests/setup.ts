@@ -23,7 +23,7 @@ import {
   tenants,
   users,
 } from "../../db/schema/index.ts";
-import { type CreateTestDbOptions, createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { claimOperatorTenantIfUnassigned } from "../../rbac/operator.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
@@ -103,7 +103,6 @@ export async function browserSessionHeaders(
 }
 
 export interface CreateHttpTestServerOptions {
-  testDbOptions?: CreateTestDbOptions;
   appOptions?: Partial<Parameters<typeof createApp>[0]>;
   operator?: boolean;
   hosted?: boolean;
@@ -114,7 +113,7 @@ export async function createHttpTestServer(
   opts?: CreateHttpTestServerOptions,
 ): Promise<HttpTestServer> {
   await ensureConfigLoaded();
-  const testDb = await createTestDb(`http-${label}`, opts?.testDbOptions);
+  const testDb = await createTestDb(`http-${label}`);
 
   let ownerIdentityId: string | undefined;
   if (opts?.hosted) {

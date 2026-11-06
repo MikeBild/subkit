@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
@@ -14,7 +14,9 @@ import {
   hostedQuotaError,
 } from "../db/hosted-quota-errors.ts";
 import { executions, mcpTasks, tenants } from "../db/schema/index.ts";
+import { isTerminalExecutionStatus } from "../execution/core/status.ts";
 import { settleExecutionGuards } from "../execution/index.ts";
+import { terminalizeExecutionRow } from "../execution/state.ts";
 import { withContext } from "../logging/context.ts";
 import { now } from "../utils/clock.ts";
 
@@ -48,7 +50,7 @@ export async function finalizeHostedContentQuota(
       .from(executions)
       .where(and(eq(executions.tenant_id, args.tenantId), eq(executions.id, args.resourceId)))
       .limit(1);
-    if (!observed || !["queued", "running"].includes(observed.status)) return "stale";
+    if (!observed || isTerminalExecutionStatus(observed.status)) return "stale";
   }
   return db.transaction(async (tx) => {
     await lockCatalogVocabulary(tx, args.tenantId);
@@ -66,25 +68,18 @@ export async function finalizeHostedContentQuota(
         .where(and(eq(executions.tenant_id, args.tenantId), eq(executions.id, args.resourceId)))
         .for("update")
         .limit(1);
-      if (!row || !["queued", "running"].includes(row.status)) return "stale";
-      await tx
-        .update(executions)
-        .set({
-          status: "failed",
-          finished_at: new Date(now()),
-          failure: {
-            step_id: null,
-            error_code: args.code,
-            error_message: HOSTED_CONTENT_QUOTA_MESSAGE,
-          },
-        })
-        .where(
-          and(
-            eq(executions.tenant_id, args.tenantId),
-            eq(executions.id, args.resourceId),
-            inArray(executions.status, ["queued", "running"]),
-          ),
-        );
+      if (!row || isTerminalExecutionStatus(row.status)) return "stale";
+      await terminalizeExecutionRow(tx, {
+        tenant_id: args.tenantId,
+        execution_id: args.resourceId,
+        status: "failed",
+        finished_at: new Date(now()),
+        failure: {
+          step_id: null,
+          error_code: args.code,
+          error_message: HOSTED_CONTENT_QUOTA_MESSAGE,
+        },
+      });
       await settleExecutionGuards(tx, {
         tenant_id: args.tenantId,
         execution_id: args.resourceId,

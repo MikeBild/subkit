@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { connectors, schemaVersions, tenants } from "../../db/schema/index.ts";
+import { connectors, schemaVersions } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   deriveShape,
   diffShapes,
@@ -16,17 +17,12 @@ let connectorId: string;
 
 beforeAll(async () => {
   testDb = await createTestDb("schema_versions");
-  const [t] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "schema-versions", display_name: "sv" })
-    .returning();
-  if (!t) throw new Error("tenant insert failed");
-  tenantId = t.id;
+  tenantId = (await seedTenant(testDb.db, { slug: "schema-versions", display_name: "sv" })).id;
 
   const [c] = await testDb.db
     .insert(connectors)
     .values({
-      tenant_id: t.id,
+      tenant_id: tenantId,
       slug: "sv-conn",
       display_name: "sv",
       driver: "http",

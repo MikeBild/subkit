@@ -7,9 +7,9 @@ import {
   credentials,
   outboundConnections,
   runtimeSecretVersions,
-  tenants,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createConnector } from "../service.ts";
 import { connectorSystemKey, loadConnectorSystem, loadConnectorSystems } from "../system.ts";
 
@@ -23,20 +23,9 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-async function seedTenant(): Promise<string> {
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({
-      slug: `t-${Math.random().toString(36).slice(2, 8)}`, // allow-random: per-test isolation
-      display_name: "T",
-    })
-    .returning();
-  return t!.id;
-}
-
 describe("ConnectorSystem facade", () => {
   test("loadConnectorSystem returns null for unknown connector", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const sys = await loadConnectorSystem(
       tenant_id,
       "00000000-0000-0000-0000-000000000000",
@@ -47,7 +36,7 @@ describe("ConnectorSystem facade", () => {
   });
 
   test("facade exposes connector + driver + tenant identity", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const created = await createConnector(
       {
         tenant_id,
@@ -74,7 +63,7 @@ describe("ConnectorSystem facade", () => {
   });
 
   test("getCredentials returns null when none configured (probe path)", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const created = await createConnector(
       {
         tenant_id,
@@ -97,7 +86,7 @@ describe("ConnectorSystem facade", () => {
   });
 
   test("getDocumentation returns [] when no docs ingested", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const created = await createConnector(
       {
         tenant_id,
@@ -120,7 +109,7 @@ describe("ConnectorSystem facade", () => {
   });
 
   test("environment fallback resolves to base connector when no sibling exists", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const created = await createConnector(
       {
         tenant_id,
@@ -188,8 +177,8 @@ async function batchCredential(
 }
 
 test("batch facade retains environment fallback and excludes foreign and deleted bases", async () => {
-  const tenant_id = await seedTenant();
-  const foreignTenant = await seedTenant();
+  const tenant_id = (await seedTenant(ctx.db)).id;
+  const foreignTenant = (await seedTenant(ctx.db)).id;
   const dev = await batchConnector(tenant_id, "paired", "dev");
   const prod = await batchConnector(tenant_id, "paired", "prod");
   const fallback = await batchConnector(tenant_id, "fallback", "dev");
@@ -228,7 +217,7 @@ test("batch facade retains environment fallback and excludes foreign and deleted
 });
 
 test("batch authority metadata selects primary and client separately and freezes only its own read", async () => {
-  const tenant_id = await seedTenant();
+  const tenant_id = (await seedTenant(ctx.db)).id;
   const connector = await batchConnector(tenant_id, "selection", "dev");
   await batchCredential(connector, "bearer", 2, new Date(1));
   const primary = await batchCredential(connector, "oauth2", 3, new Date(2));
@@ -265,8 +254,8 @@ test("batch authority metadata selects primary and client separately and freezes
 });
 
 test("batch connection availability binds the exact tenant secret version and refresh state", async () => {
-  const tenant_id = await seedTenant();
-  const foreignTenant = await seedTenant();
+  const tenant_id = (await seedTenant(ctx.db)).id;
+  const foreignTenant = (await seedTenant(ctx.db)).id;
   const connector = await batchConnector(tenant_id, "connection", "dev");
   const primary = await batchCredential(connector, "oauth2", 3, new Date(1));
   const [connection] = await ctx.db

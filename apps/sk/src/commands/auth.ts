@@ -1,17 +1,6 @@
-import { reportCommandError } from "@cli-core/errors";
 import { printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
-import { resolveProfile } from "../config.ts";
-import { EngineClient } from "../engine-client.ts";
-
-function makeClient() {
-  const profile = resolveProfile();
-  return new EngineClient({
-    engine_url: profile.engine_url,
-    api_key: profile.api_key,
-    tenant: profile.active_tenant_id,
-  });
-}
+import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
 export const authCommand = defineCommand({
   meta: {
@@ -33,21 +22,22 @@ export const authCommand = defineCommand({
   async run({ args }) {
     const client = makeClient();
     const connectorId = String(args["connector-id"]);
-    try {
-      const res = await client.startConnectorSignIn(connectorId);
+    return withCommandErrors(
+      async () => {
+        const res = await client.startConnectorSignIn(connectorId);
 
-      if (args.json) {
-        printJson(res);
-        return;
-      }
+        if (args.json) {
+          printJson(res);
+          return;
+        }
 
-      if (!res.authorization_url) {
-        process.stdout.write("signed in — no browser step was needed\n");
-        return;
-      }
-      process.stdout.write(`open this URL to sign in:\n  ${res.authorization_url}\n`);
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+        if (!res.authorization_url) {
+          process.stdout.write("signed in — no browser step was needed\n");
+          return;
+        }
+        process.stdout.write(`open this URL to sign in:\n  ${res.authorization_url}\n`);
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });

@@ -1,10 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
 import { AuditAction } from "../../audit/types.ts";
-import { auditLog, skills, tenants } from "../../db/schema/index.ts";
+import { auditLog, skills } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { HttpError } from "../../http/errors.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   createSkill,
   getSkillHistoryEntry,
@@ -24,14 +25,6 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-async function seedTenant(): Promise<string> {
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: `t-${nextUuid().slice(0, 8)}`, display_name: "T" })
-    .returning();
-  return t!.id;
-}
-
 async function expectHttpError(p: Promise<unknown>, status: number): Promise<HttpError> {
   try {
     await p;
@@ -45,7 +38,7 @@ async function expectHttpError(p: Promise<unknown>, status: number): Promise<Htt
 
 describe("skills/history", () => {
   test("update writes full snapshots; history lists newest-first; restore round-trips", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const skill = await createSkill(
       {
         tenant_id,
@@ -108,7 +101,7 @@ describe("skills/history", () => {
   });
 
   test("snapshot columns keep authored prose but still scrub credentials", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const prose = "Quote the pricing floor verbatim; never round it.";
     const pat = "dop_v1_c2648041abcdefabcdefabcdefabcdefabcdef";
 
@@ -134,7 +127,7 @@ describe("skills/history", () => {
   });
 
   test("legacy thin audit entries surface has_snapshot=false and refuse restore with 409", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const skill = await createSkill(
       { tenant_id, input: { scope: "global", title: "thin-skill", body: "body" } },
       ctx.db,
@@ -171,7 +164,7 @@ describe("skills/history", () => {
   });
 
   test("restore rejects entries that do not reference this skill, and 404s unknown entries", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const a = await createSkill(
       { tenant_id, input: { scope: "global", title: "skill-a", body: "a" } },
       ctx.db,
@@ -193,7 +186,7 @@ describe("skills/history", () => {
 
     await expectHttpError(restoreSkill(tenant_id, a.id, nextUuid(), null, ctx.db), 404);
 
-    const otherTenant = await seedTenant();
+    const otherTenant = (await seedTenant(ctx.db)).id;
     expect(await listSkillHistory(otherTenant, a.id, ctx.db)).toEqual([]);
     await expectHttpError(
       restoreSkill(otherTenant, a.id, aHistory[0]!.audit_entry_id, null, ctx.db),
@@ -202,7 +195,7 @@ describe("skills/history", () => {
   });
 
   test("one history entry carries title and body before and after its change", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const skill = await createSkill(
       { tenant_id, input: { scope: "global", title: "rules", body: "line one\nline two" } },
       ctx.db,
@@ -229,14 +222,14 @@ describe("skills/history", () => {
       await getSkillHistoryEntry(tenant_id, other.id, entry!.audit_entry_id, ctx.db),
     ).toBeNull();
     expect(await getSkillHistoryEntry(tenant_id, skill.id, nextUuid(), ctx.db)).toBeNull();
-    const otherTenant = await seedTenant();
+    const otherTenant = (await seedTenant(ctx.db)).id;
     expect(
       await getSkillHistoryEntry(otherTenant, skill.id, entry!.audit_entry_id, ctx.db),
     ).toBeNull();
   });
 
   test("a thin legacy entry has no before or after state", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const skill = await createSkill(
       { tenant_id, input: { scope: "global", title: "thin", body: "body" } },
       ctx.db,

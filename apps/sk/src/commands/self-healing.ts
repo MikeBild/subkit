@@ -1,9 +1,9 @@
-import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
+import { withCommandErrors } from "./command-runtime.ts";
 
 const scanCommand = defineCommand({
   meta: {
@@ -23,33 +23,35 @@ const scanCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
-      const body: { workflow_id?: string; connector_id?: string } = {};
-      if (args.workflow) body.workflow_id = String(args.workflow);
-      if (args.connector) body.connector_id = String(args.connector);
-      const opts: { idempotencyKey?: string } = {};
-      const key = args["idempotency-key"];
-      if (typeof key === "string" && key.length > 0) opts.idempotencyKey = key;
-      const result = await client.triggerSelfHealingScan(body, opts);
-      if (args.json) {
-        printJson(result);
-        return;
-      }
-      const scanId = String(result.scan_id ?? "");
-      const signals = Number(result.signals_detected ?? 0);
-      const candidates = Number(result.candidates_created ?? 0);
-      const unanchored = Number(result.unanchored_detected ?? 0);
-      const duration = Number(result.duration_ms ?? 0);
-      const replay = result.idempotent_replay === true;
-      const unanchoredFragment = unanchored > 0 ? `, ${pc.yellow(`${unanchored} unanchored`)}` : "";
-      process.stdout.write(
-        `${pc.green("scan")} ${scanId} — ${signals} signal(s), ${candidates} candidate(s)${unanchoredFragment}, ${duration}ms${
-          replay ? pc.yellow(" (idempotent replay)") : ""
-        }\n`,
-      );
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const body: { workflow_id?: string; connector_id?: string } = {};
+        if (args.workflow) body.workflow_id = String(args.workflow);
+        if (args.connector) body.connector_id = String(args.connector);
+        const opts: { idempotencyKey?: string } = {};
+        const key = args["idempotency-key"];
+        if (typeof key === "string" && key.length > 0) opts.idempotencyKey = key;
+        const result = await client.triggerSelfHealingScan(body, opts);
+        if (args.json) {
+          printJson(result);
+          return;
+        }
+        const scanId = String(result.scan_id ?? "");
+        const signals = Number(result.signals_detected ?? 0);
+        const candidates = Number(result.candidates_created ?? 0);
+        const unanchored = Number(result.unanchored_detected ?? 0);
+        const duration = Number(result.duration_ms ?? 0);
+        const replay = result.idempotent_replay === true;
+        const unanchoredFragment =
+          unanchored > 0 ? `, ${pc.yellow(`${unanchored} unanchored`)}` : "";
+        process.stdout.write(
+          `${pc.green("scan")} ${scanId} — ${signals} signal(s), ${candidates} candidate(s)${unanchoredFragment}, ${duration}ms${
+            replay ? pc.yellow(" (idempotent replay)") : ""
+          }\n`,
+        );
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -64,29 +66,30 @@ const listCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
-      const query: Record<string, string | number | undefined> = {
-        limit: Number(args.limit),
-      };
-      if (args.status) query.status = String(args.status);
-      if (args.source) query.source = String(args.source);
-      const { items } = await client.listSelfHealingScans(query);
-      emitList(
-        !!args.json,
-        [
-          "id",
-          "source",
-          "status",
-          "signals_detected",
-          "candidates_created",
-          "unanchored_detected",
-          "created_at",
-        ],
-        items as Record<string, unknown>[],
-      );
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const query: Record<string, string | number | undefined> = {
+          limit: Number(args.limit),
+        };
+        if (args.status) query.status = String(args.status);
+        if (args.source) query.source = String(args.source);
+        const { items } = await client.listSelfHealingScans(query);
+        emitList(
+          !!args.json,
+          [
+            "id",
+            "source",
+            "status",
+            "signals_detected",
+            "candidates_created",
+            "unanchored_detected",
+            "created_at",
+          ],
+          items as Record<string, unknown>[],
+        );
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -98,12 +101,10 @@ const showCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
+    return withCommandErrors(async () => {
       const scan = await client.getSelfHealingScan(args.id);
       printJson(scan);
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 

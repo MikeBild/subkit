@@ -92,26 +92,25 @@ export const AdminTab: React.FC<Props> = ({ client, onInnerEscape }) => {
               title: "Create subscription",
               fields: [
                 {
-                  key: "topic",
-                  label: "Topic",
+                  key: "event_pattern",
+                  label: "Event pattern",
                   required: true,
-                  placeholder: "execution.completed",
+                  placeholder: "execution.*",
                 },
                 {
-                  key: "endpoint",
-                  label: "Endpoint URL",
+                  key: "target_url",
+                  label: "Target URL",
                   required: true,
                   placeholder: "https://…",
                 },
-                { key: "secret", label: "HMAC secret", placeholder: "(optional)" },
+                { key: "secret", label: "Signing secret", required: true },
               ],
               submit: async (vals) => {
-                const body: Record<string, unknown> = {
-                  topic: vals.topic,
-                  endpoint: vals.endpoint,
-                };
-                if (vals.secret?.trim()) body.secret = vals.secret.trim();
-                await client.createSubscription(body);
+                await client.createSubscription({
+                  event_pattern: vals.event_pattern ?? "",
+                  target_url: vals.target_url ?? "",
+                  secret: vals.secret?.trim() ?? "",
+                });
               },
             }}
           />

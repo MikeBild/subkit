@@ -7,7 +7,6 @@ import {
   workflowVersions,
 } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "../tests/setup.ts";
-import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
 
 let testDb: TestDb;
 let tenant_id: string;
@@ -72,15 +71,7 @@ async function update(
     .where(eq(workflowExecutionAuthorities.id, id));
 }
 
-describe("0076_workflow_authority_open_ended_inheritance", () => {
-  test("is embedded", () => {
-    expect(
-      EMBEDDED_MIGRATIONS.some(
-        (migration) => migration.tag === "0076_workflow_authority_open_ended_inheritance",
-      ),
-    ).toBe(true);
-  });
-
+describe("workflow authority open-ended inheritance", () => {
   test("an approval may have neither end date nor run limit, and still counts runs", async () => {
     const row = await grant();
     expect(row).toMatchObject({ valid_until: null, max_runs: null, reserved_runs: 0 });

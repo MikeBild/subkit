@@ -1,1 +1,0 @@
-ALTER TABLE "mcp_oauth_clients" ADD COLUMN "retired_at" timestamp with time zone;

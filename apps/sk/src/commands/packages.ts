@@ -5,13 +5,8 @@ import * as prompts from "@clack/prompts";
 import { isEngineError, reportCommandError } from "@cli-core/errors";
 import { emitList, printJson, renderTable } from "@cli-core/format";
 import { defineCommand } from "citty";
-import { resolveProfile } from "../config.ts";
-import {
-  EngineClient,
-  type PackageApplyResult,
-  type PackageItemKind,
-  type PackagePlan,
-} from "../engine-client.ts";
+import type { PackageApplyResult, PackageItemKind, PackagePlan } from "../engine-client.ts";
+import { makeClientFromArgs, withCommandErrors } from "./command-runtime.ts";
 
 export const PACKAGE_KINDS: readonly PackageItemKind[] = [
   "connector_template",
@@ -30,19 +25,6 @@ const connectionArgs = {
   "engine-url": { type: "string" as const, description: "Engine base URL" },
   "api-key": { type: "string" as const, description: "API key" },
 };
-
-function makeClient(args: Record<string, unknown>): EngineClient {
-  const profile = resolveProfile({
-    engine_url: args["engine-url"] as string | undefined,
-    api_key: args["api-key"] as string | undefined,
-    profile: args.profile as string | undefined,
-  });
-  return new EngineClient({
-    engine_url: profile.engine_url,
-    api_key: profile.api_key,
-    tenant: profile.active_tenant_id,
-  });
-}
 
 export function parseKinds(raw: string | undefined): PackageItemKind[] | undefined {
   if (!raw) return undefined;
@@ -178,38 +160,39 @@ const exportCmd = defineCommand({
   },
   async run({ args }) {
     const asJson = Boolean(args.json);
-    try {
-      const kinds = parseKinds(args.only as string | undefined);
-      const categories = parseCategories(args.category as string | undefined);
-      const client = makeClient(args);
-      const exported = await client.exportPackage({
-        ...(kinds ? { kinds } : {}),
-        ...(categories ? { categories } : {}),
-      });
-      const archive = await client.downloadPackageArchive(exported.file_id);
-      const actual = sha256Hex(archive.bytes);
-      if (actual !== exported.sha256) {
-        throw new Error(`downloaded archive checksum mismatch (expected ${exported.sha256})`);
-      }
-      const out = String(args.out);
-      writeFileSync(out, archive.bytes);
-      if (asJson) {
-        printJson({ ...exported, out });
-        return;
-      }
-      const counts = Object.entries(exported.items_summary)
-        .filter(([, n]) => n > 0)
-        .map(([kind, n]) => `${kind} ${n}`)
-        .join(" · ");
-      const lines = [
-        `wrote ${out} (${exported.size_bytes} bytes, sha256 ${exported.sha256})`,
-        counts.length > 0 ? counts : "the package is empty",
-        ...renderRequirements(exported.requires, "Afterwards on the target engine:"),
-      ];
-      process.stdout.write(`${lines.join("\n")}\n`);
-    } catch (err) {
-      reportCommandError(err, { json: asJson });
-    }
+    return withCommandErrors(
+      async () => {
+        const kinds = parseKinds(args.only as string | undefined);
+        const categories = parseCategories(args.category as string | undefined);
+        const client = makeClientFromArgs(args);
+        const exported = await client.exportPackage({
+          ...(kinds ? { kinds } : {}),
+          ...(categories ? { categories } : {}),
+        });
+        const archive = await client.downloadPackageArchive(exported.file_id);
+        const actual = sha256Hex(archive.bytes);
+        if (actual !== exported.sha256) {
+          throw new Error(`downloaded archive checksum mismatch (expected ${exported.sha256})`);
+        }
+        const out = String(args.out);
+        writeFileSync(out, archive.bytes);
+        if (asJson) {
+          printJson({ ...exported, out });
+          return;
+        }
+        const counts = Object.entries(exported.items_summary)
+          .filter(([, n]) => n > 0)
+          .map(([kind, n]) => `${kind} ${n}`)
+          .join(" · ");
+        const lines = [
+          `wrote ${out} (${exported.size_bytes} bytes, sha256 ${exported.sha256})`,
+          counts.length > 0 ? counts : "the package is empty",
+          ...renderRequirements(exported.requires, "Afterwards on the target engine:"),
+        ];
+        process.stdout.write(`${lines.join("\n")}\n`);
+      },
+      { json: asJson },
+    );
   },
 });
 
@@ -228,7 +211,7 @@ const importCmd = defineCommand({
   async run({ args }) {
     const asJson = Boolean(args.json);
     try {
-      const client = makeClient(args);
+      const client = makeClientFromArgs(args);
       const path = String(args.file);
       const bytes = new Uint8Array(readFileSync(path));
       const preview = await client.previewPackageUpload({ name: basename(path), bytes });
@@ -285,29 +268,30 @@ const installsCmd = defineCommand({
   },
   async run({ args }) {
     const asJson = Boolean(args.json);
-    try {
-      const client = makeClient(args);
-      if (args.id) {
-        const detail = await client.getPackageInstall(String(args.id));
-        if (asJson) {
-          printJson(detail);
+    return withCommandErrors(
+      async () => {
+        const client = makeClientFromArgs(args);
+        if (args.id) {
+          const detail = await client.getPackageInstall(String(args.id));
+          if (asJson) {
+            printJson(detail);
+            return;
+          }
+          process.stdout.write(
+            `${detail.package_id} ${detail.package_version} · ${detail.created_at}\n`,
+          );
+          emitList(false, ["kind", "item_key", "state", "local_id"], detail.items);
           return;
         }
-        process.stdout.write(
-          `${detail.package_id} ${detail.package_version} · ${detail.created_at}\n`,
+        const items = await client.listPackageInstalls();
+        emitList(
+          asJson,
+          ["id", "package_id", "package_version", "created_at"],
+          items as unknown as Record<string, unknown>[],
         );
-        emitList(false, ["kind", "item_key", "state", "local_id"], detail.items);
-        return;
-      }
-      const items = await client.listPackageInstalls();
-      emitList(
-        asJson,
-        ["id", "package_id", "package_version", "created_at"],
-        items as unknown as Record<string, unknown>[],
-      );
-    } catch (err) {
-      reportCommandError(err, { json: asJson });
-    }
+      },
+      { json: asJson },
+    );
   },
 });
 

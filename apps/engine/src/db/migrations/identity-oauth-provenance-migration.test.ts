@@ -2,27 +2,14 @@ import { expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
-import { runMigrations } from "../migrate.ts";
 import { systemAccounts } from "../schema/index.ts";
 import { mcpOauthGrants } from "../schema/mcp_oauth.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT } from "../tests/setup.ts";
-import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
-
-const identityMigration = EMBEDDED_MIGRATIONS.find(
-  (item) => item.tag === "0100_identity_oauth_provenance",
-);
-const creatorConstraintMigration = EMBEDDED_MIGRATIONS.find(
-  (item) => item.tag === "0109_api_key_creator_identity_nulls",
-);
 
 test(
-  "adds identity provenance without breaking existing keys, audit rows, or OAuth grant identity",
+  "identity provenance constraints guard API key creators, audit actors, and OAuth grant identity",
   async () => {
-    if (!identityMigration || !creatorConstraintMigration)
-      throw new Error("identity provenance migrations are not embedded");
-    const ctx = await createTestDb("identity_oauth_provenance", {
-      upToIdx: identityMigration.idx - 1,
-    });
+    const ctx = await createTestDb("identity_oauth_provenance");
     try {
       const {
         rows: [tenant],
@@ -50,37 +37,6 @@ test(
         .values({ tenant_id: tenant.id, name: "identity-provenance-system" })
         .returning({ id: systemAccounts.id });
       if (!systemAccount) throw new Error("test system account was not created");
-
-      await ctx.pool.query(
-        `INSERT INTO api_keys (tenant_id, user_id, prefix, token_sha256, scopes)
-         VALUES ($1, $2, 'legacy-identity-key', 'legacy-identity-sha256', '[]'::jsonb)`,
-        [tenant.id, user.id],
-      );
-      await ctx.pool.query(
-        `INSERT INTO audit_log
-          (id, tenant_id, actor_type, actor_id, action, resource_type, result)
-         VALUES ('00000000-0000-0000-0000-000000000101', $1, 'user', $2,
-           'legacy.identity', 'user', 'success')`,
-        [tenant.id, user.id],
-      );
-
-      expect((await runMigrations(ctx.db, [identityMigration], true)).applied).toBe(1);
-      const legacyKey = await ctx.pool.query(
-        `SELECT creator_kind, creator_id FROM api_keys WHERE prefix = 'legacy-identity-key'`,
-      );
-      expect(legacyKey.rows).toEqual([{ creator_kind: null, creator_id: null }]);
-      const legacyActor = await ctx.pool.query(
-        `SELECT actor_type, actor_id FROM audit_log
-          WHERE id = '00000000-0000-0000-0000-000000000101'`,
-      );
-      expect(legacyActor.rows).toEqual([{ actor_type: "user", actor_id: user.id }]);
-
-      const followingMigrations = EMBEDDED_MIGRATIONS.filter(
-        (item) => item.idx > identityMigration.idx && item.idx <= creatorConstraintMigration.idx,
-      );
-      expect((await runMigrations(ctx.db, followingMigrations, true)).applied).toBe(
-        followingMigrations.length,
-      );
 
       await ctx.pool.query(
         `INSERT INTO api_keys (tenant_id, prefix, token_sha256, scopes, creator_kind, creator_id)
@@ -221,9 +177,6 @@ test(
           WHERE token_sha256 = 'identity-refresh-sha256'`,
       );
       expect(cascadedTokens.rows).toEqual([]);
-      expect(
-        (await runMigrations(ctx.db, [identityMigration, ...followingMigrations], true)).applied,
-      ).toBe(0);
     } finally {
       await ctx.cleanup();
     }

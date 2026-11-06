@@ -6,6 +6,7 @@ import { withContext } from "../../logging/context.ts";
 import { logger } from "../../logging/logger.ts";
 import { logRing } from "../../observability/log-ring.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { adminHeaders } from "../../test-helpers/seed.ts";
 import {
   createHttpTestServer,
   createSecondaryTenant,
@@ -56,13 +57,6 @@ afterAll(async () => {
   await srv.cleanup();
 });
 
-function adminHeaders() {
-  return {
-    authorization: `Bearer ${srv.apiKey}`,
-    "content-type": "application/json",
-  } as const;
-}
-
 function tenantAdminHeaders() {
   return {
     authorization: `Bearer ${secondary.admin.apiKey}`,
@@ -82,7 +76,7 @@ describe("/v1/diagnostics/logs", () => {
     });
     const res = await fetch(
       `${srv.baseUrl}/v1/diagnostics/logs?since=${beforeTs - 100}&module=test_logs`,
-      { headers: adminHeaders() },
+      { headers: adminHeaders(srv.apiKey) },
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
@@ -135,7 +129,7 @@ describe("/v1/diagnostics/logs", () => {
 
   test("rejects malformed `since` query", async () => {
     const res = await fetch(`${srv.baseUrl}/v1/diagnostics/logs?since=not-a-number`, {
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
     });
     expect(res.status).toBe(400);
   });
@@ -207,7 +201,7 @@ describe("/v1/diagnostics/logs", () => {
     });
     const res = await fetch(
       `${srv.baseUrl}/v1/diagnostics/logs?since=${before - 100}&module=test_system_scope`,
-      { headers: adminHeaders() },
+      { headers: adminHeaders(srv.apiKey) },
     );
     const body = (await res.json()) as { entries: Array<{ action?: string }> };
     expect(body.entries.map((e) => e.action)).toContain("boot_like");

@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { UNDESCRIBED_METADATA } from "../api/catalog-metadata.ts";
-import { intakeItems, skillCandidates, tenants } from "../db/schema/index.ts";
+import { intakeItems, skillCandidates } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import type { KnowledgeSourceView } from "../knowledge/types.ts";
 import { countTokens } from "../llm/accounting/count.ts";
 import type { Skill } from "../skills/types.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import {
   type AssembleInput,
   buildAgentBriefing,
@@ -341,12 +342,9 @@ describe("buildAgentBriefing collected material", () => {
 
   beforeAll(async () => {
     testDb = await createTestDb("agent-briefing-intake");
-    const [row] = await testDb.db
-      .insert(tenants)
-      .values({ slug: "briefing-intake", display_name: "Briefing Intake" })
-      .returning();
-    if (!row) throw new Error("tenant seed failed");
-    tenantId = row.id;
+    tenantId = (
+      await seedTenant(testDb.db, { slug: "briefing-intake", display_name: "Briefing Intake" })
+    ).id;
     await testDb.db
       .insert(intakeItems)
       .values([

@@ -2,10 +2,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { connectorDocumentChunks, connectorDocuments } from "../../db/schema/connector_docs.ts";
 import { conversationMessages, conversations } from "../../db/schema/conversations.ts";
-import { connectors, tenants } from "../../db/schema/index.ts";
+import { connectors } from "../../db/schema/index.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createKnowledgeSource, kickSourceEmbeddingBackfill } from "../../knowledge/service.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { backfillEmbeddings } from "../backfill.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
@@ -17,11 +18,10 @@ interface SeededTargets {
 }
 
 async function seedAllThreeTargets(testDb: TestDb, label: string): Promise<SeededTargets> {
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: `t-${label}`, display_name: `Backfill Scoping ${label}` })
-    .returning();
-  if (!tenant) throw new Error("seed tenant failed");
+  const tenant = await seedTenant(testDb.db, {
+    slug: `t-${label}`,
+    display_name: `Backfill Scoping ${label}`,
+  });
   const tenantId = tenant.id;
 
   const [source] = await testDb.db
@@ -140,12 +140,12 @@ let e2eTenantId: string;
 beforeAll(async () => {
   if (skipEmbeddingE2E) return;
   e2eTestDb = await createTestDb("backfill-scoping-e2e");
-  const [tenant] = await e2eTestDb.db
-    .insert(tenants)
-    .values({ slug: "backfill-scoping-e2e", display_name: "Backfill Scoping E2E" })
-    .returning();
-  if (!tenant) throw new Error("seed tenant failed");
-  e2eTenantId = tenant.id;
+  e2eTenantId = (
+    await seedTenant(e2eTestDb.db, {
+      slug: "backfill-scoping-e2e",
+      display_name: "Backfill Scoping E2E",
+    })
+  ).id;
 }, 120_000);
 
 afterAll(async () => {

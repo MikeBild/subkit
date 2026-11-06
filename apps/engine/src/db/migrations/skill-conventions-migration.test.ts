@@ -2,12 +2,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import { skills, tenants } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "../tests/setup.ts";
-import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
 
 let testDb: TestDb;
 let tenantId: string;
-
-const migration = EMBEDDED_MIGRATIONS.find((m) => m.tag === "0148_skill_conventions");
 
 async function seed(title: string, tags: string[]): Promise<string> {
   const [row] = await testDb.db
@@ -47,23 +44,9 @@ afterAll(async () => {
   await testDb.cleanup();
 });
 
-describe("0148_skill_conventions", () => {
-  test("derives domains once from domain tags, sorted and deduplicated", async () => {
-    const tagged = await seed("tagged", [
-      "domain:billing",
-      "domain:Accounting",
-      "domain:billing",
-      "ops",
-      "domain:not a category",
-    ]);
+describe("skill conventions", () => {
+  test("a new skill starts with empty rules and domains", async () => {
     const untagged = await seed("untagged", ["ops"]);
-    const backfill = migration?.statements.at(-1);
-    expect(backfill).toContain("UPDATE");
-    await testDb.db.execute(sql.raw(backfill ?? ""));
-    expect(await conventionsOf(tagged)).toEqual({
-      rules: [],
-      domains: ["accounting", "billing"],
-    });
     expect(await conventionsOf(untagged)).toEqual({ rules: [], domains: [] });
   });
 

@@ -2,9 +2,6 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { eq, inArray, sql } from "drizzle-orm";
 import type { FindJobsOptions, JobWithMetadata } from "pg-boss";
-import { createMigrationDbFromUrl } from "../db/client.ts";
-import { runMigrations } from "../db/migrate.ts";
-import { EMBEDDED_MIGRATIONS } from "../db/migrations/embedded.ts";
 import {
   auditLog,
   authIdentities,
@@ -398,18 +395,7 @@ test("deletion grace deadline never erases early", async () => {
 });
 
 test("shared global identity and foreign runtime overlay survive exact tenant erasure", async () => {
-  const firstGuard = EMBEDDED_MIGRATIONS.find((entry) =>
-    entry.statements.some(
-      (statement) =>
-        statement.includes("runtime_secret_owner_guard()") ||
-        statement.includes("hosted_runtime_secret_overlay_forbidden"),
-    ),
-  );
-  if (!firstGuard) throw new Error("runtime secret ownership migration missing");
-  expect(firstGuard.tag.endsWith("_runtime_secret_ownership")).toBe(true);
-  const ctx = await createHttpTestServer("erasure-legacy-runtime", {
-    testDbOptions: { upToIdx: firstGuard.idx - 1 },
-  });
+  const ctx = await createHttpTestServer("erasure-shared-runtime");
   try {
     await configureHostedPolicyForTests(ctx.db, ctx.testDb.url);
     const owned = await provisionSelfServiceTenant(
@@ -438,17 +424,31 @@ test("shared global identity and foreign runtime overlay survive exact tenant er
       .values({ document, digest: configDigest(document) })
       .returning();
     if (!revision) throw new Error("revision missing");
-    await ctx.testDb.pool.query(
-      "INSERT INTO subkit.runtime_secret_versions(name,version,ciphertext,iv,auth_tag,pending_bindings) VALUES($1,1,$2,$3,$4,NULL),('global.retained',1,$5,$3,$4,$6::jsonb)",
-      [
-        `tenants.${owned.tenant.id}.secret`,
-        Buffer.from("sensitive"),
-        Buffer.alloc(12),
-        Buffer.alloc(16),
-        Buffer.from("foreign"),
-        JSON.stringify([`tenants.${owned.tenant.id}.key`, `tenants.${ctx.tenantId}.key`]),
-      ],
-    );
+    const seeder = await ctx.testDb.pool.connect();
+    try {
+      await seeder.query("BEGIN");
+      await seeder.query(
+        "ALTER TABLE subkit.runtime_secret_versions DISABLE TRIGGER runtime_secret_owner_guard",
+      );
+      await seeder.query(
+        "INSERT INTO subkit.runtime_secret_versions(tenant_id,name,version,ciphertext,iv,auth_tag,pending_bindings) VALUES($7,$1,1,$2,$3,$4,NULL),(NULL,'global.retained',1,$5,$3,$4,$6::jsonb)",
+        [
+          `tenants.${owned.tenant.id}.secret`,
+          Buffer.from("sensitive"),
+          Buffer.alloc(12),
+          Buffer.alloc(16),
+          Buffer.from("foreign"),
+          JSON.stringify([`tenants.${owned.tenant.id}.key`, `tenants.${ctx.tenantId}.key`]),
+          owned.tenant.id,
+        ],
+      );
+      await seeder.query(
+        "ALTER TABLE subkit.runtime_secret_versions ENABLE TRIGGER runtime_secret_owner_guard",
+      );
+      await seeder.query("COMMIT");
+    } finally {
+      seeder.release();
+    }
     await ctx.db
       .update(tenants)
       .set({
@@ -457,12 +457,6 @@ test("shared global identity and foreign runtime overlay survive exact tenant er
         deletion_scheduled_for: new Date(getTestNow() - 86400000),
       })
       .where(eq(tenants.id, owned.tenant.id));
-    const migration = createMigrationDbFromUrl(ctx.testDb.url);
-    try {
-      expect((await runMigrations(migration.db)).hash_drift_backfilled).toBe(0);
-    } finally {
-      await migration.pool.end();
-    }
     const [upgraded] = await ctx.db
       .select()
       .from(runtimeSecretVersions)

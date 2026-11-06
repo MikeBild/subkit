@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { inArray } from "drizzle-orm";
 import { InvalidKeysetCursorError } from "../../db/keyset-cursor.ts";
-import { executions, tenants } from "../../db/schema/index.ts";
+import { executions } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { listExecutions } from "../list.ts";
 
 let ctx: TestDb;
@@ -39,11 +40,8 @@ async function walk(limit: number, between?: () => Promise<void>): Promise<strin
 
 beforeAll(async () => {
   ctx = await createTestDb("executions_list_cursor");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-exec-cursor", display_name: "Cursor" })
-    .returning();
-  tenant = t!.id;
+  const t = await seedTenant(ctx.db, { slug: "t-exec-cursor", display_name: "Cursor" });
+  tenant = t.id;
   await ctx.db
     .insert(executions)
     .values([

@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { tenants, users } from "../db/schema/index.ts";
+import { users } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { builtinRoleId } from "../rbac/roles.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import { resolveChatPrincipal } from "./principal.ts";
 
 const nextUuid = createDeterministicUuidFactory(0x1a2b3c4d);
@@ -16,18 +17,16 @@ let userBId = "";
 beforeAll(async () => {
   testDb = await createTestDb("chat-principal");
 
-  const [tenantA] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "chat-principal-a", display_name: "Chat Principal A" })
-    .returning();
-  if (!tenantA) throw new Error("seed tenant A failed");
+  const tenantA = await seedTenant(testDb.db, {
+    slug: "chat-principal-a",
+    display_name: "Chat Principal A",
+  });
   tenantAId = tenantA.id;
 
-  const [tenantB] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "chat-principal-b", display_name: "Chat Principal B" })
-    .returning();
-  if (!tenantB) throw new Error("seed tenant B failed");
+  const tenantB = await seedTenant(testDb.db, {
+    slug: "chat-principal-b",
+    display_name: "Chat Principal B",
+  });
   tenantBId = tenantB.id;
 
   const [userA] = await testDb.db

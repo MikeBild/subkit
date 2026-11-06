@@ -1,5 +1,5 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { apiRequest } from "./client";
-import type { components } from "./schema";
 
 export type IntakeClip = components["schemas"]["IntakeItem"];
 export type IntakeClipDetail = components["schemas"]["IntakeItemDetail"];

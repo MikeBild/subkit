@@ -22,6 +22,7 @@ import {
   resolveExecutionCallerActor,
   resolveExecutionCallerOrigin,
 } from "./caller-origin.ts";
+import { NON_TERMINAL_EXECUTION_STATUSES, transitionSources } from "./core/status.ts";
 import {
   isSensitivePayload,
   protectExecutionPayload,
@@ -322,7 +323,69 @@ export interface RefusedConnector {
   reason: string;
 }
 
-const NON_TERMINAL_STATUSES: ExecutionStatus[] = ["queued", "running"];
+const NON_TERMINAL_STATUSES: ExecutionStatus[] = [...NON_TERMINAL_EXECUTION_STATUSES];
+
+export interface TerminalizeExecutionParams {
+  tenant_id: string;
+  execution_id: string;
+  status: ExecutionStatus;
+  finished_at: Date;
+  failure: ExecutionFailureDetail | null;
+  expected_statuses?: readonly ExecutionStatus[];
+  output_contract?: OutputContractVerdict;
+  result_storage_uri?: string | null;
+  result_sha256?: string | null;
+  sensitive_result?: unknown;
+}
+
+export interface TerminalizedExecutionRow {
+  id: string;
+  workflow_id: string | null;
+  request_source: string | null;
+  started_at: Date | null;
+  finished_at: Date | null;
+}
+
+export async function terminalizeExecutionRow(
+  db: Executor,
+  params: TerminalizeExecutionParams,
+): Promise<TerminalizedExecutionRow | null> {
+  const sources = transitionSources(
+    params.status,
+    params.expected_statuses ?? NON_TERMINAL_STATUSES,
+  );
+  if (sources.length === 0) return null;
+  const [row] = await db
+    .update(executions)
+    .set({
+      status: params.status,
+      finished_at: params.finished_at,
+      failure: params.failure,
+      ...(params.output_contract !== undefined ? { output_contract: params.output_contract } : {}),
+      ...(params.result_storage_uri !== undefined
+        ? { result_storage_uri: params.result_storage_uri }
+        : {}),
+      ...(params.result_sha256 !== undefined ? { result_sha256: params.result_sha256 } : {}),
+      ...(params.sensitive_result !== undefined
+        ? { sensitive_result: params.sensitive_result }
+        : {}),
+    })
+    .where(
+      and(
+        eq(executions.tenant_id, params.tenant_id),
+        eq(executions.id, params.execution_id),
+        inArray(executions.status, sources),
+      ),
+    )
+    .returning({
+      id: executions.id,
+      workflow_id: executions.workflow_id,
+      request_source: executions.request_source,
+      started_at: executions.started_at,
+      finished_at: executions.finished_at,
+    });
+  return row ?? null;
+}
 
 export async function finalizeExecution(
   db: Db,
@@ -357,41 +420,27 @@ export async function finalizeExecution(
         : null;
       result_sha256 = null;
     }
-    const updated = await tx
-      .update(executions)
-      .set({
-        status,
-        finished_at: new Date(),
-        result_storage_uri,
-        result_sha256,
-        failure: failure ?? null,
-        output_contract,
-        ...(isSensitivePayload(persisted?.input) && sensitive_result !== undefined
-          ? {
-              sensitive_result: protectExecutionPayload(
-                sensitive_result,
-                tenant_id,
-                execution_id,
-                "result",
-              ),
-            }
-          : {}),
-      })
-      .where(
-        and(
-          eq(executions.tenant_id, tenant_id),
-          eq(executions.id, execution_id),
-          inArray(executions.status, expectedStatuses),
-        ),
-      )
-      .returning({
-        id: executions.id,
-        workflow_id: executions.workflow_id,
-        request_source: executions.request_source,
-        started_at: executions.started_at,
-        finished_at: executions.finished_at,
-      });
-    const row = updated[0];
+    const row = await terminalizeExecutionRow(tx, {
+      tenant_id,
+      execution_id,
+      status,
+      finished_at: new Date(),
+      failure: failure ?? null,
+      expected_statuses: expectedStatuses,
+      output_contract,
+      result_storage_uri,
+      result_sha256,
+      ...(isSensitivePayload(persisted?.input) && sensitive_result !== undefined
+        ? {
+            sensitive_result: protectExecutionPayload(
+              sensitive_result,
+              tenant_id,
+              execution_id,
+              "result",
+            ),
+          }
+        : {}),
+    });
     if (!row) {
       return;
     }

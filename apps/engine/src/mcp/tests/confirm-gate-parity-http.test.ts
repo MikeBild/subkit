@@ -19,10 +19,10 @@ import {
   toolApprovals,
   workflows,
 } from "../../db/schema/index.ts";
-import { EngineClient } from "../../engine-client/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
+import { makeToolCtx } from "../../test-helpers/seed.ts";
 import { hashToolArgs } from "../../tools/approval.ts";
 import { replayHumanGrantedMcpCall } from "./approved-call-fixture.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
@@ -81,24 +81,16 @@ function freshSignals(): TurnSignals {
 }
 
 function toolCtx(conversation_id: string, surface: "web" | "sk_headless"): ToolContext {
-  return {
+  return makeToolCtx({
     db: suite.http.db,
     tenant_id: suite.http.tenantId,
     conversation_id,
     actor_id: suite.http.userId,
     principal,
-    connector_id: null,
-    workflow_id: null,
-    engineClient: new EngineClient({
-      tenant_id: suite.http.tenantId,
-      actor_id: suite.http.userId,
-      actor_type: "user",
-      db: suite.http.db,
-    }),
     getDraft: () => ({ workflow: { name: "", steps: [] } }),
     setDraft: async () => {},
     surface,
-  };
+  });
 }
 
 async function runLoopTool(

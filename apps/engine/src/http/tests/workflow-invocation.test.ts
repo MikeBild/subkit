@@ -4,7 +4,6 @@ import { renderInvokeSnippet } from "@shared/invoke-snippet.ts";
 import { and, eq, sql } from "drizzle-orm";
 import {
   apiKeys,
-  tenants,
   users,
   webhooksInbound,
   workflowExecutionAuthorities,
@@ -14,6 +13,7 @@ import {
 import { grantResource } from "../../rbac/index.ts";
 import { builtinRoleId, createRole, grantPermissionToRole } from "../../rbac/roles.ts";
 import { withConfigKey } from "../../test-helpers/config-override.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createWorkflow as createWorkflowIn } from "../../workflows/index.ts";
 import { RunBodySchema } from "../routes/executions/schemas.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
@@ -460,11 +460,10 @@ describe("GET /v1/workflows/{id}/invocation", () => {
   });
 
   test("another tenant's workflow is not found", async () => {
-    const [other] = await ctx.db
-      .insert(tenants)
-      .values({ slug: "invocation-other-tenant", display_name: "Other tenant" })
-      .returning();
-    if (!other) throw new Error("missing tenant fixture");
+    const other = await seedTenant(ctx.db, {
+      slug: "invocation-other-tenant",
+      display_name: "Other tenant",
+    });
     const foreign = await createWorkflowIn(
       {
         tenant_id: other.id,
@@ -692,11 +691,10 @@ describe("workflow start access", () => {
       expires_at: new Date("2000-01-01T00:00:00Z"),
     });
     await grantResource(ctx.db, { ...base, subject_id: otherSubject, resource_id: other.id });
-    const [foreignTenant] = await ctx.db
-      .insert(tenants)
-      .values({ slug: "invocation-foreign-rules", display_name: "Foreign" })
-      .returning();
-    if (!foreignTenant) throw new Error("missing foreign tenant");
+    const foreignTenant = await seedTenant(ctx.db, {
+      slug: "invocation-foreign-rules",
+      display_name: "Foreign",
+    });
     await grantResource(ctx.db, {
       ...base,
       tenant_id: foreignTenant.id,

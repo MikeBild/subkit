@@ -43,7 +43,6 @@ let executionId: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("rewrap-stock");
-  await ctx.db.execute(sql.raw(renderVaultStockSql()));
   const [tenant] = await ctx.db
     .insert(tenants)
     .values({ slug: "stock", display_name: "Stock" })
@@ -318,6 +317,13 @@ test("persisted dispatch proofs refuse while ordinary unencrypted content remain
   });
 });
 
+test("shipped stock detection matches the declared stock inventory", async () => {
+  const shipped = await ctx.pool.query<{ source: string }>(
+    "SELECT prosrc AS source FROM pg_catalog.pg_proc WHERE oid='subkit.vault_non_registry_stock_present()'::regprocedure",
+  );
+  expect(shipped.rows[0]?.source.trim()).toBe(renderVaultStockSql().split("$$")[1]?.trim());
+});
+
 test("stock inventory remains lexical and covers every fixed declared table", () => {
   expect(VAULT_STOCK_TABLES).toEqual([...VAULT_STOCK_TABLES].sort());
   expect(new Set(VAULT_STOCK_TABLES).size).toBe(VAULT_STOCK_INVENTORY.length);
@@ -362,29 +368,5 @@ test("scope locks freeze concurrent stock writers until the maintenance transact
     release();
     await maintenance;
     writer.release();
-  }
-});
-
-test("previous schema detection never selects absent future columns", async () => {
-  const previous = await createTestDb("rewrap-stock-previous", { upToIdx: 47 });
-  try {
-    await previous.db.transaction(assertRegistryRewrapScope);
-    const columns = await previous.db.execute<{ present: boolean }>(
-      sql`SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid='subkit.executions'::regclass AND attname='sensitive_result' AND NOT attisdropped) AS present`,
-    );
-    expect(columns.rows[0]?.present).toBe(false);
-    const seeded = await previous.db.execute<{ id: string }>(
-      sql`INSERT INTO subkit.tenants(slug,display_name) VALUES('historical-stock','Historical') RETURNING id`,
-    );
-    const tenant = seeded.rows[0];
-    if (!tenant) throw new Error("missing historical tenant fixture");
-    await previous.db.execute(
-      sql`INSERT INTO subkit.auth_provider_configs(tenant_id,provider,priority,config_auth_tag) VALUES(${tenant.id},'historical',1,${Buffer.from([1])})`,
-    );
-    await expect(previous.db.transaction(assertRegistryRewrapScope)).rejects.toBeInstanceOf(
-      RegistryRewrapScopeError,
-    );
-  } finally {
-    await previous.cleanup();
   }
 });

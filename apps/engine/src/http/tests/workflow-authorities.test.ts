@@ -15,7 +15,6 @@ import {
   executions,
   patchCandidates,
   sessions,
-  tenants,
   users,
   webhooksInbound,
   workflowExecutionAuthorities,
@@ -26,6 +25,7 @@ import { createBoss, disposeBoss, EXECUTION_RUN_QUEUE } from "../../queue/index.
 import { builtinRoleId, createRole, grantPermissionToRole } from "../../rbac/roles.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { workflowJsonDigest } from "../../workflows/canonical-json.ts";
 import { buildDefaultRegistry, createApp } from "../server.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
@@ -808,11 +808,10 @@ test("authority history rejects cross-workflow cursors and cross-tenant reads", 
     (await app.request(`${f.base}/execution-authorities?cursor=${authority.id}`, { headers }))
       .status,
   ).toBe(404);
-  const [tenant] = await ctx.db
-    .insert(tenants)
-    .values({ slug: `history-foreign-${++counter}`, display_name: "Foreign history fixture" })
-    .returning();
-  if (!tenant) throw new Error("missing foreign tenant fixture");
+  const tenant = await seedTenant(ctx.db, {
+    slug: `history-foreign-${++counter}`,
+    display_name: "Foreign history fixture",
+  });
   const [user] = await ctx.db
     .insert(users)
     .values({

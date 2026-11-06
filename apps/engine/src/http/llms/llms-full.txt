@@ -4894,8 +4894,10 @@ Manage event subscriptions
 
 Create a subscription
 
-- `--event` (string, required) — Event type
-- `--workflow-id` (string, required) — Workflow id
+- `--event-pattern` (string, required) — Event pattern to match, e.g. execution.* or execution.failed
+- `--target-url` (string, required) — HTTPS URL that receives the signed delivery
+- `--secret` (string, required) — Signing secret for deliveries
+- `--active` (string) — Initial active state (true|false)
 
 #### `sk subscriptions delete`
 
@@ -4926,7 +4928,10 @@ List subscriptions
 Update a subscription
 
 - `<id>` (positional, required) — Subscription id
-- `--active` (string, required) — Set active state (true|false)
+- `--event-pattern` (string) — New event pattern
+- `--target-url` (string) — New target URL
+- `--secret` (string) — New signing secret
+- `--active` (string) — Set active state (true|false)
 
 #### `sk subscriptions replay`
 

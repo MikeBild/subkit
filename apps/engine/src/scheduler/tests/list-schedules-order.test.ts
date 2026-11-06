@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { tenants, workflows, workflowsSchedules } from "../../db/schema/index.ts";
+import { workflows, workflowsSchedules } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { listSchedules } from "../repo.ts";
 
 let testDb: TestDb;
@@ -10,11 +11,7 @@ let tenant_id: string;
 
 beforeAll(async () => {
   testDb = await createTestDb("list_schedules_order");
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "t-sched-order", display_name: "SchedOrder" })
-    .returning();
-  if (!tenant) throw new Error("seed tenant failed");
+  const tenant = await seedTenant(testDb.db, { slug: "t-sched-order", display_name: "SchedOrder" });
   tenant_id = tenant.id;
 });
 

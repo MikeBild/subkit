@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { auditLog, tenants } from "../../db/schema/index.ts";
+import { auditLog } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import { seedMcpConnector } from "../../mcp/client/test-fixtures.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { runMcpOAuthCleanup } from "../mcp-oauth-cleanup-runner.ts";
 
 let srv: HttpTestServer;
@@ -19,11 +20,10 @@ beforeAll(async () => {
       url: "https://connector.example/mcp",
     })
   ).id;
-  const [row] = await srv.db
-    .insert(tenants)
-    .values({ slug: "oauth-retention-neighbor", display_name: "Neighbor" })
-    .returning();
-  if (!row) throw new Error("tenant_fixture_missing");
+  const row = await seedTenant(srv.db, {
+    slug: "oauth-retention-neighbor",
+    display_name: "Neighbor",
+  });
   neighbor = row.id;
 });
 afterAll(async () => {

@@ -1,10 +1,10 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Zap } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
-import type { components } from "@/api/schema";
 import { connectorHref, workflowHref } from "@/app/links";
 import { connectorService, useConnectorRecords } from "@/components/cockpit/connector-names";
 import { SelectField, TextField } from "@/components/cockpit/form-field";

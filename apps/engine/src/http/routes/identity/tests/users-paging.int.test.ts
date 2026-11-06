@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { auditLog, events, tenants, users } from "../../../../db/schema/index.ts";
+import { auditLog, events, users } from "../../../../db/schema/index.ts";
 import { builtinRoleId } from "../../../../rbac/roles.ts";
+import { seedTenant } from "../../../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../../tests/setup.ts";
 
 let ctx: HttpTestServer;
@@ -111,11 +112,10 @@ describe("people list", () => {
       body: JSON.stringify({}),
     });
     expect(emptyPatch.status).toBe(400);
-    const [otherTenant] = await ctx.db
-      .insert(tenants)
-      .values({ slug: "paging-other-tenant", display_name: "Other tenant" })
-      .returning({ id: tenants.id });
-    if (!otherTenant) throw new Error("other tenant was not created");
+    const otherTenant = await seedTenant(ctx.db, {
+      slug: "paging-other-tenant",
+      display_name: "Other tenant",
+    });
     const member = await builtinRoleId(ctx.db, "member");
     const [foreignUser] = await ctx.db
       .insert(users)

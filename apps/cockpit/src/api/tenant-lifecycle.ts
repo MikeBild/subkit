@@ -1,5 +1,5 @@
+import type { paths } from "@cli-core/engine-api/openapi";
 import { apiRequest } from "./client";
-import type { paths } from "./schema";
 
 type OwnedTenant =
   paths["/v1/identity/owned-tenant"]["get"]["responses"][200]["content"]["application/json"];

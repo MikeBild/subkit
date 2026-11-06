@@ -15,7 +15,6 @@ import {
 export interface DocsPaths {
   referenceDir: string;
   llmsDir: string;
-  cockpitDocs: string;
   seedDir: string;
   templates: string;
 }
@@ -51,7 +50,6 @@ const ROOT = join(import.meta.dir, "..");
 export const REPOSITORY_PATHS: DocsPaths = {
   referenceDir: join(ROOT, "apps/engine/src/http/reference"),
   llmsDir: join(ROOT, "apps/engine/src/http/llms"),
-  cockpitDocs: join(ROOT, "apps/cockpit/src/app/docs.generated.ts"),
   seedDir: join(ROOT, "apps/engine/src/conversations/seed/knowledge"),
   templates: join(ROOT, "apps/engine/src/connectors/templates.json"),
 };
@@ -133,18 +131,6 @@ function matches(regex: RegExp, text: string): string[] {
 
 function readBundle(path: string): DocsBundle {
   return DocsBundleSchema.parse(JSON.parse(readFileSync(path, "utf8")));
-}
-
-function cockpitBundle(path: string): DocsBundle {
-  const source = readFileSync(path, "utf8");
-  const marker = "DOCS: DocsBundle = ";
-  const start = source.indexOf(marker);
-  if (start === -1) throw new Error(`${path} has no DOCS bundle`);
-  const json = source
-    .slice(start + marker.length)
-    .trimEnd()
-    .replace(/;$/, "");
-  return DocsBundleSchema.parse(JSON.parse(json));
 }
 
 function bundleTexts(bundle: DocsBundle): string[] {
@@ -600,7 +586,6 @@ export function checkDocs(paths: DocsPaths, options: CheckOptions = {}): Finding
   const artifacts: Artifact[] = [
     { file: llmsFile, texts: [llmsFull] },
     { file: docsFile, texts: bundleTexts(bundle) },
-    { file: paths.cockpitDocs, texts: bundleTexts(cockpitBundle(paths.cockpitDocs)) },
     ...generatedSeeds(paths.seedDir),
   ];
   return [

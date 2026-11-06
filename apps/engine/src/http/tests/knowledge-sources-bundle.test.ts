@@ -12,6 +12,7 @@ import { builtinRoleId } from "../../rbac/roles.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -645,15 +646,14 @@ describe("cross-tenant isolation on the full-content read", () => {
     });
     const { knowledge_source } = (await created.json()) as { knowledge_source: { id: string } };
 
-    const { tenants } = await import("../../db/schema/index.ts");
-    const [tenantB] = await srv.db
-      .insert(tenants)
-      .values({ slug: "kb-bundle-b", display_name: "Bundle Tenant B" })
-      .returning();
+    const tenantB = await seedTenant(srv.db, {
+      slug: "kb-bundle-b",
+      display_name: "Bundle Tenant B",
+    });
     const [userB] = await srv.db
       .insert(users)
       .values({
-        tenant_id: tenantB!.id,
+        tenant_id: tenantB.id,
         email: "admin-b@test.local",
         role_id: await builtinRoleId(srv.db, "admin"),
       })
@@ -661,7 +661,7 @@ describe("cross-tenant isolation on the full-content read", () => {
     const randB = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: test only
     const keyB = `wf_live_${randB}`;
     await srv.db.insert(apiKeys).values({
-      tenant_id: tenantB!.id,
+      tenant_id: tenantB.id,
       user_id: userB!.id,
       prefix: keyB.slice(0, 12),
       token_sha256: sha256Hex(keyB),

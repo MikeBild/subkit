@@ -6,6 +6,7 @@ import { presentationValue } from "@/components/ai-elements/tool";
 const files = [
   "apps/cockpit/src/app/**/*.tsx",
   "apps/cockpit/src/pages/**/*.tsx",
+  "apps/cockpit/src/features/**/*.tsx",
   "apps/cockpit/src/components/cockpit/**/*.tsx",
   "apps/cockpit/src/components/ai-elements/**/*.tsx",
 ].flatMap((pattern) => globSync(pattern));

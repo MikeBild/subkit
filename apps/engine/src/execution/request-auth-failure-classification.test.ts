@@ -2,11 +2,12 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createConnector } from "../connectors/service.ts";
 import { upsertCredential } from "../credentials/service.ts";
-import { connectors, executionSteps, executions, tenants } from "../db/schema/index.ts";
+import { connectors, executionSteps, executions } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { RunLlmBudget } from "../llm/accounting/index.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../test-helpers/mock-http.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import type { RequestStep } from "../workflows/types.ts";
 import { runRequestStep } from "./steps/request.ts";
 import type { StepRunContext } from "./types.ts";
@@ -19,11 +20,10 @@ const TEST_NOW_MS = getTestNow();
 
 beforeAll(async () => {
   testDb = await createTestDb("request-auth-failure-classification");
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "auth-failure-classification", display_name: "Auth failure classification" })
-    .returning();
-  if (!tenant) throw new Error("seed tenant failed");
+  const tenant = await seedTenant(testDb.db, {
+    slug: "auth-failure-classification",
+    display_name: "Auth failure classification",
+  });
   tenantId = tenant.id;
   mock = await createMockServer((req, res) => {
     req.on("data", () => {});

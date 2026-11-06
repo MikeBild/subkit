@@ -2,8 +2,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server as HttpServer } from "node:http";
 import { and, desc, eq } from "drizzle-orm";
 import * as jose from "jose";
-import { auditLog, tenants } from "../../db/schema/index.ts";
+import { auditLog } from "../../db/schema/index.ts";
 import { loadAuthProvidersForTest } from "../../http/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
 let ctx: JourneyCtx;
@@ -31,7 +32,7 @@ describe("journey: sk-cli audit provenance", () => {
   beforeAll(async () => {
     ctx = await createJourneyCtx("sk-cli-06-audit");
 
-    await ctx.db.insert(tenants).values({ slug: "default", display_name: "default" });
+    await seedTenant(ctx.db, { slug: "default", display_name: "default" });
 
     const kp = await jose.generateKeyPair("RS256", { extractable: true });
     const jwk = await jose.exportJWK(kp.publicKey);

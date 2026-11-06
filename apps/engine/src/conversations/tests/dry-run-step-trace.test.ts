@@ -1,12 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { EngineClient } from "../../engine-client/index.ts";
-import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { makeToolCtx } from "../../test-helpers/seed.ts";
 import { dryRunWorkflowTool } from "../tools/dry-run-workflow.ts";
 import type { ToolContext } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
-
-const uuid = createDeterministicUuidFactory(0xd11c5_71ace);
 
 let ctx: ConversationTestCtx;
 
@@ -19,21 +16,13 @@ afterAll(async () => {
 });
 
 function makeCtx(getDraft: () => DraftDocument): ToolContext {
-  return {
+  return makeToolCtx({
     db: ctx.testDb.db,
     tenant_id: ctx.tenant_id,
-    conversation_id: uuid(),
     actor_id: ctx.user_id,
-    connector_id: null,
-    workflow_id: null,
-    engineClient: new EngineClient({
-      tenant_id: ctx.tenant_id,
-      actor_id: ctx.user_id,
-      db: ctx.testDb.db,
-    }),
     getDraft,
     setDraft: async () => {},
-  };
+  });
 }
 
 describe("dry_run_workflow · step_trace envelope", () => {

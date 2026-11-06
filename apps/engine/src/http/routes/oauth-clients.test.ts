@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { setConfigKey } from "../../config/loader.ts";
-import { apiKeys, tenants, users } from "../../db/schema/index.ts";
+import { apiKeys, users } from "../../db/schema/index.ts";
 import {
   mcpOauthAccessTokens,
   mcpOauthClients,
@@ -12,6 +12,7 @@ import {
 } from "../../db/schema/mcp_oauth.ts";
 import { builtinRoleId, createRole } from "../../rbac/roles.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
 
 let ctx: HttpTestServer;
@@ -306,11 +307,10 @@ describe("GET /v1/oauth/clients", () => {
       .returning({ id: mcpOauthGrants.id });
     if (!ownGrant) throw new Error("seed own OAuth grant failed");
 
-    const [otherTenant] = await ctx.db
-      .insert(tenants)
-      .values({ slug: "oauth-other-tenant", display_name: "Other OAuth tenant" })
-      .returning({ id: tenants.id });
-    if (!otherTenant) throw new Error("seed other tenant failed");
+    const otherTenant = await seedTenant(ctx.db, {
+      slug: "oauth-other-tenant",
+      display_name: "Other OAuth tenant",
+    });
     const [otherUser] = await ctx.db
       .insert(users)
       .values({
@@ -425,11 +425,10 @@ describe("DELETE /v1/oauth/clients/{client_id}", () => {
   test("global client revocation ends OAuth grants and tokens in every tenant", async () => {
     const clientId = "global-revoke-client-iii999";
     await seedClient(clientId);
-    const [otherTenant] = await ctx.db
-      .insert(tenants)
-      .values({ slug: "oauth-revoke-other-tenant", display_name: "Other revoke tenant" })
-      .returning({ id: tenants.id });
-    if (!otherTenant) throw new Error("seed other tenant failed");
+    const otherTenant = await seedTenant(ctx.db, {
+      slug: "oauth-revoke-other-tenant",
+      display_name: "Other revoke tenant",
+    });
     const otherRoleId = await builtinRoleId(ctx.db, "admin");
     const [otherUser] = await ctx.db
       .insert(users)

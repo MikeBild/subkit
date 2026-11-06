@@ -8,8 +8,8 @@ import {
   conversations,
   roles,
   systemAccounts,
-  tenants,
 } from "../../db/schema/index.ts";
+import { adminHeaders, seedTenant } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -84,13 +84,10 @@ beforeAll(async () => {
   });
   memberKey = key.plaintext;
 
-  const [otherTenant] = await srv.db
-    .insert(tenants)
-    .values({ slug: "t-fork-other", display_name: "other" })
-    .returning();
+  const otherTenant = await seedTenant(srv.db, { slug: "t-fork-other", display_name: "other" });
   const [otherConv] = await srv.db
     .insert(conversations)
-    .values({ tenant_id: otherTenant!.id, status: "active" })
+    .values({ tenant_id: otherTenant.id, status: "active" })
     .returning();
   otherTenantConvId = otherConv!.id;
 });
@@ -99,18 +96,11 @@ afterAll(async () => {
   await srv.cleanup();
 });
 
-function adminHeaders(): Record<string, string> {
-  return {
-    authorization: `Bearer ${srv.apiKey}`,
-    "content-type": "application/json",
-  };
-}
-
 describe("POST /v1/conversations/:id/fork-from-message/:message_id (RBAC + tenant)", () => {
   test("admin → 200 + audit row carries CONVERSATION_FORKED metadata", async () => {
     const res = await fetch(
       `${srv.baseUrl}/v1/conversations/${conversation_id}/fork-from-message/${anchor_message_id}`,
-      { method: "POST", headers: adminHeaders() },
+      { method: "POST", headers: adminHeaders(srv.apiKey) },
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
@@ -155,7 +145,7 @@ describe("POST /v1/conversations/:id/fork-from-message/:message_id (RBAC + tenan
   test("cross-tenant source conversation → 404", async () => {
     const res = await fetch(
       `${srv.baseUrl}/v1/conversations/${otherTenantConvId}/fork-from-message/${anchor_message_id}`,
-      { method: "POST", headers: adminHeaders() },
+      { method: "POST", headers: adminHeaders(srv.apiKey) },
     );
     expect(res.status).toBe(404);
   });
@@ -163,7 +153,7 @@ describe("POST /v1/conversations/:id/fork-from-message/:message_id (RBAC + tenan
   test("non-existent anchor message → 404", async () => {
     const res = await fetch(
       `${srv.baseUrl}/v1/conversations/${conversation_id}/fork-from-message/00000000-0000-0000-0000-000000000000`,
-      { method: "POST", headers: adminHeaders() },
+      { method: "POST", headers: adminHeaders(srv.apiKey) },
     );
     expect(res.status).toBe(404);
   });
@@ -195,7 +185,7 @@ describe("POST /v1/conversations/:id/fork-from-message/:message_id (RBAC + tenan
 
     const res = await fetch(
       `${srv.baseUrl}/v1/conversations/${src!.id}/fork-from-message/${seedAnchor!.id}`,
-      { method: "POST", headers: adminHeaders() },
+      { method: "POST", headers: adminHeaders(srv.apiKey) },
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { conversation: { id: string } };
@@ -215,7 +205,7 @@ describe("POST /v1/conversations/:id/fork-from-message/:message_id (RBAC + tenan
   test("admin → fork audit row records tool_calls_omitted + elicitations_omitted", async () => {
     const res = await fetch(
       `${srv.baseUrl}/v1/conversations/${conversation_id}/fork-from-message/${anchor_message_id}`,
-      { method: "POST", headers: adminHeaders() },
+      { method: "POST", headers: adminHeaders(srv.apiKey) },
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { conversation: { id: string } };

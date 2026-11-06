@@ -1,5 +1,5 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { cockpitApiHref } from "@/app/installation-context";
-import type { components } from "./schema";
 import { acceptTenantContext, noticeTenantContext, tenantContextHeaders } from "./tenant-context";
 
 export type Bootstrap = components["schemas"]["CockpitBootstrapResponse"];

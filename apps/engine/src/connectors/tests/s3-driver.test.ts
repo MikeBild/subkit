@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   dockerAvailable,
   type ObjectStoreFixture,
@@ -23,11 +23,7 @@ beforeAll(async () => {
     "[s3-driver.test] Docker available — starting the object store (may take a while)...",
   );
   testDb = await createTestDb("s3_driver");
-  const [t] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "s3-t", display_name: "s3 tenant" })
-    .returning();
-  tenantId = t!.id;
+  tenantId = (await seedTenant(testDb.db, { slug: "s3-t", display_name: "s3 tenant" })).id;
   objectStore = await startObjectStore("subkit-s3-driver-test");
 
   const { S3Client } = await import("@bradenmacdonald/s3-lite-client");

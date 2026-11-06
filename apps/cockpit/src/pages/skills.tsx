@@ -1,3 +1,4 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useRouter, useRouterState } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
@@ -17,7 +18,6 @@ import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import { listProposedSkillCandidates } from "@/api/decisions";
 import { listIntakeClips } from "@/api/intake";
-import type { components } from "@/api/schema";
 import { useActorDirectory } from "@/app/actor-directory";
 import { type ActorDirectory, actorDirectoryName } from "@/app/actor-directory-model";
 import {

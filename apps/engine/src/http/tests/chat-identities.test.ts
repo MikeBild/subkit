@@ -7,11 +7,11 @@ import {
   chatIdentities,
   chatWorkspaces,
   systemAccounts,
-  tenants,
   users,
 } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -39,11 +39,7 @@ beforeAll(async () => {
     scopes: ["*"],
   });
 
-  const [t2] = await ctx.db
-    .insert(tenants)
-    .values({ slug: `t-chat-id-other`, display_name: "Other Tenant" })
-    .returning();
-  if (!t2) throw new Error("seed second tenant");
+  const t2 = await seedTenant(ctx.db, { slug: `t-chat-id-other`, display_name: "Other Tenant" });
   const [u2] = await ctx.db
     .insert(users)
     .values({

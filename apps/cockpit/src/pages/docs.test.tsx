@@ -9,7 +9,7 @@ import {
   RouterProvider,
   useParams,
 } from "@tanstack/react-router";
-import { DOCS } from "@/app/docs.generated";
+import { DOCS } from "@/app/docs-bundle";
 import { pageColumn, pageGutter } from "@/components/cockpit/patterns/page";
 import { ReadingScroll, ReadingSkeleton } from "@/components/cockpit/patterns/reading";
 import { render, renderInRouter } from "@/components/cockpit/patterns/test-utils";

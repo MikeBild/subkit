@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { executions, tenants, workflows } from "../db/schema/index.ts";
+import { executions, workflows } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { FROZEN_NOW } from "../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import { readFailureStreaks } from "./failure-streaks.ts";
 
 const nextId = createDeterministicUuidFactory(0x571ea);
@@ -14,10 +15,8 @@ let ctx: TestDb;
 
 beforeAll(async () => {
   ctx = await createTestDb("failure_streaks");
-  await ctx.db.insert(tenants).values([
-    { id: tenantId, slug: "streak", display_name: "Streak" },
-    { id: otherTenant, slug: "other-streak", display_name: "Other" },
-  ]);
+  await seedTenant(ctx.db, { id: tenantId, slug: "streak", display_name: "Streak" });
+  await seedTenant(ctx.db, { id: otherTenant, slug: "other-streak", display_name: "Other" });
   await ctx.db.insert(workflows).values([
     { id: workflowId, tenant_id: tenantId, slug: "streak", name: "Streak", lifecycle: "active" },
     {

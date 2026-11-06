@@ -16,7 +16,6 @@ import {
   mcpTasks,
   roles,
   sessions,
-  tenants,
   users,
   workflows,
   workflowVersions,
@@ -31,6 +30,7 @@ import { type EnvHandle, withTestEnv } from "../test-helpers/determinism/env.ts"
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { waitFor } from "../test-helpers/determinism/wait.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import { now } from "../utils/clock.ts";
 import { createBoss, disposeBoss } from "./boss.ts";
 import {
@@ -334,11 +334,10 @@ test("accepted execution and conversation tasks terminate safely when shared con
 
 test("self-hosted typed quota errors use ordinary worker failure settlement", async () => {
   const db = connection.db;
-  const [tenant] = await db
-    .insert(tenants)
-    .values({ slug: "quota-selfhost-control", display_name: "Self hosted" })
-    .returning();
-  if (!tenant) throw new Error("tenant missing");
+  const tenant = await seedTenant(db, {
+    slug: "quota-selfhost-control",
+    display_name: "Self hosted",
+  });
   const [role] = await db.insert(roles).values({ tenant_id: tenant.id, name: "admin" }).returning();
   if (!role) throw new Error("role missing");
   const [user] = await db

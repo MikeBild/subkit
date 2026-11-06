@@ -1,24 +1,13 @@
 import { expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import { builtinRoleId } from "../../rbac/roles.ts";
-import { runMigrations } from "../migrate.ts";
 import { systemAccounts, users } from "../schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT } from "../tests/setup.ts";
-import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
-
-const actorColumnsMigration = EMBEDDED_MIGRATIONS.find((item) => item.tag === "0102_lazy_hitman");
-const actorChecksMigration = EMBEDDED_MIGRATIONS.find(
-  (item) => item.tag === "0103_deep_wrecking_crew",
-);
 
 test(
   "adds actor defaults, owner deletion behavior, and actor-type database constraints",
   async () => {
-    if (!actorColumnsMigration || !actorChecksMigration)
-      throw new Error("outbound connection actor migrations are not embedded");
-    const ctx = await createTestDb("connection_actor_contract", {
-      upToIdx: actorColumnsMigration.idx - 1,
-    });
+    const ctx = await createTestDb("connection_actor_contract");
     try {
       const {
         rows: [tenant],
@@ -60,7 +49,6 @@ test(
         [tenant.id, user.id],
       );
 
-      expect((await runMigrations(ctx.db, [actorColumnsMigration], true)).applied).toBe(1);
       const upgraded = await ctx.pool.query(
         `SELECT actor_type, actor_id, owner_user_id
            FROM outbound_connection_starts
@@ -83,7 +71,6 @@ test(
       );
       expect(ownerAfterDelete.rows).toEqual([{ owner_user_id: null }]);
 
-      expect((await runMigrations(ctx.db, [actorChecksMigration], true)).applied).toBe(1);
       await expect(
         ctx.pool.query(
           `UPDATE outbound_connection_starts SET actor_id = '00000000-0000-0000-0000-000000000001'
@@ -119,9 +106,6 @@ test(
       expect(typedSystemActor.rows).toEqual([
         { actor_type: "system_account", actor_id: systemAccount.id },
       ]);
-      expect(
-        (await runMigrations(ctx.db, [actorColumnsMigration, actorChecksMigration], true)).applied,
-      ).toBe(0);
     } finally {
       await ctx.cleanup();
     }

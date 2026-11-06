@@ -1,4 +1,4 @@
-import type { components } from "@/api/schema";
+import type { components } from "@cli-core/engine-api/openapi";
 import { appUserProvider } from "@/lib/app-user";
 import type { TranslationKey } from "@/lib/i18n";
 import type { SettingsPatch, SettingsResponse } from "@/pages/settings-model";

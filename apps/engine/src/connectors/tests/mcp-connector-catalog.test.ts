@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { loadTenantSummary, renderTenantSummaryBlock } from "../../llm/core/tenant-summary.ts";
 import { seedMcpConnector } from "../../mcp/client/test-fixtures.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { listConnectors } from "../service.ts";
 
 let ctx: TestDb;
@@ -11,12 +11,7 @@ let mcpConnectorId: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("mcp-connector-catalog");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "mcp-catalog-t", display_name: "MCP Catalog" })
-    .returning();
-  if (!t) throw new Error("tenant seed failed");
-  tenant_id = t.id;
+  tenant_id = (await seedTenant(ctx.db, { slug: "mcp-catalog-t", display_name: "MCP Catalog" })).id;
 
   const seeded = await seedMcpConnector(ctx.db, {
     tenant_id,

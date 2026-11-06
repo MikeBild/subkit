@@ -1,13 +1,11 @@
 import { createHash } from "node:crypto";
 import { createWriteStream, existsSync, readFileSync, statSync } from "node:fs";
 import { basename } from "node:path";
-import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
-import { resolveProfile } from "../config.ts";
 import {
-  EngineClient,
+  type EngineClient,
   FILE_LINK_RESOURCE_TYPES,
   type FileLinkResourceType,
   type FileWire,
@@ -25,11 +23,7 @@ import {
   renderProgressLine,
   type UploadProgressEvent,
 } from "../utils/upload-progress.ts";
-
-function makeClient(): EngineClient {
-  const { engine_url, api_key, active_tenant_id } = resolveProfile();
-  return new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-}
+import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
 function humanBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -158,35 +152,36 @@ const listCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const query: {
-        status?: string;
-        linked_to?: string;
-        cursor?: string;
-        limit?: number;
-      } = { limit: Number(args.limit) };
-      if (args.status) query.status = String(args.status);
-      if (args["linked-to"]) query.linked_to = String(args["linked-to"]);
-      if (args.cursor) query.cursor = String(args.cursor);
-      const res = await client.listFiles(query);
-      if (args.json) {
-        printJson(res);
-        return;
-      }
-      emitList(
-        false,
-        ["id", "status", "filename", "category", "description", "size_bytes", "created_at"],
-        (res.items as unknown as Record<string, unknown>[]).map((r) => ({
-          ...r,
-          description: shortDescription(r.description),
-        })),
-      );
-      if (res.next_cursor) {
-        process.stdout.write(`\n${pc.dim(`next: --cursor ${res.next_cursor}`)}\n`);
-      }
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const query: {
+          status?: string;
+          linked_to?: string;
+          cursor?: string;
+          limit?: number;
+        } = { limit: Number(args.limit) };
+        if (args.status) query.status = String(args.status);
+        if (args["linked-to"]) query.linked_to = String(args["linked-to"]);
+        if (args.cursor) query.cursor = String(args.cursor);
+        const res = await client.listFiles(query);
+        if (args.json) {
+          printJson(res);
+          return;
+        }
+        emitList(
+          false,
+          ["id", "status", "filename", "category", "description", "size_bytes", "created_at"],
+          (res.items as unknown as Record<string, unknown>[]).map((r) => ({
+            ...r,
+            description: shortDescription(r.description),
+          })),
+        );
+        if (res.next_cursor) {
+          process.stdout.write(`\n${pc.dim(`next: --cursor ${res.next_cursor}`)}\n`);
+        }
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -198,28 +193,29 @@ const getCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const row = await client.getFile(args.id);
-      if (args.json) {
-        printJson(row);
-        return;
-      }
-      const lines = [
-        `${pc.bold(row.id)}`,
-        `  filename     ${row.filename}`,
-        `  status       ${row.status}`,
-        `  size         ${humanBytes(row.size_bytes)}`,
-        `  content_type ${row.content_type ?? "—"}`,
-        `  sha256       ${row.sha256 ?? "—"}`,
-        `  scan_result  ${row.scan_result ?? "—"}`,
-        `  created_at   ${row.created_at}`,
-        `  updated_at   ${row.updated_at}`,
-      ];
-      if (row.deleted_at) lines.push(`  deleted_at   ${row.deleted_at}`);
-      process.stdout.write(`${lines.join("\n")}\n`);
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const row = await client.getFile(args.id);
+        if (args.json) {
+          printJson(row);
+          return;
+        }
+        const lines = [
+          `${pc.bold(row.id)}`,
+          `  filename     ${row.filename}`,
+          `  status       ${row.status}`,
+          `  size         ${humanBytes(row.size_bytes)}`,
+          `  content_type ${row.content_type ?? "—"}`,
+          `  sha256       ${row.sha256 ?? "—"}`,
+          `  scan_result  ${row.scan_result ?? "—"}`,
+          `  created_at   ${row.created_at}`,
+          `  updated_at   ${row.updated_at}`,
+        ];
+        if (row.deleted_at) lines.push(`  deleted_at   ${row.deleted_at}`);
+        process.stdout.write(`${lines.join("\n")}\n`);
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -250,31 +246,32 @@ const uploadCommand = defineCommand({
     const client = makeClient();
     const quiet = Boolean(args.quiet);
     const json = Boolean(args.json);
-    try {
-      const opts: { content_type?: string; quiet?: boolean; json?: boolean } = { quiet, json };
-      if (args["content-type"]) opts.content_type = String(args["content-type"]);
-      const row = await uploadPath(client, String(args.path), opts);
-      if (args["link-to"]) {
-        const ref = parseResourceRef(String(args["link-to"]));
-        await client.linkFile(row.id, {
-          resource_type: ref.resource_type,
-          resource_id: ref.resource_id,
-          ...(args.slug ? { slug: String(args.slug) } : {}),
-          ...(args.role ? { role: String(args.role) } : {}),
-        });
-      }
-      if (json) {
-        printJson(row);
-        return;
-      }
-      if (!quiet) {
-        process.stdout.write(
-          `${pc.green("uploaded")}  ${row.id}  ${row.filename}  (${humanBytes(row.size_bytes)})\n`,
-        );
-      }
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const opts: { content_type?: string; quiet?: boolean; json?: boolean } = { quiet, json };
+        if (args["content-type"]) opts.content_type = String(args["content-type"]);
+        const row = await uploadPath(client, String(args.path), opts);
+        if (args["link-to"]) {
+          const ref = parseResourceRef(String(args["link-to"]));
+          await client.linkFile(row.id, {
+            resource_type: ref.resource_type,
+            resource_id: ref.resource_id,
+            ...(args.slug ? { slug: String(args.slug) } : {}),
+            ...(args.role ? { role: String(args.role) } : {}),
+          });
+        }
+        if (json) {
+          printJson(row);
+          return;
+        }
+        if (!quiet) {
+          process.stdout.write(
+            `${pc.green("uploaded")}  ${row.id}  ${row.filename}  (${humanBytes(row.size_bytes)})\n`,
+          );
+        }
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -290,7 +287,7 @@ const downloadCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       const dl = await client.downloadFile(args.id);
       const outPath = args.output ? String(args.output) : `./${dl.filename}`;
       if (outPath === "-") {
@@ -321,9 +318,7 @@ const downloadCommand = defineCommand({
           `${pc.green("downloaded")}  ${dl.filename} -> ${outPath} (${humanBytes(written)})\n`,
         );
       }
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -340,32 +335,33 @@ const replaceCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const filePath = sanitizePathInput(String(args.path));
-      if (!existsSync(filePath) || !statSync(filePath).isFile()) {
-        throw new Error(
-          `file not found: ${String(args.path)}${renderSuspiciousCodepoints(String(args.path))}`,
+    return withCommandErrors(
+      async () => {
+        const filePath = sanitizePathInput(String(args.path));
+        if (!existsSync(filePath) || !statSync(filePath).isFile()) {
+          throw new Error(
+            `file not found: ${String(args.path)}${renderSuspiciousCodepoints(String(args.path))}`,
+          );
+        }
+        const bytes = readFileSync(filePath);
+        if (bytes.byteLength > MAX_INLINE_BYTES) {
+          throw new Error(`replacement content is larger than ${humanBytes(MAX_INLINE_BYTES)}`);
+        }
+        const row = await client.replaceFile(String(args.id), {
+          filename: basename(filePath),
+          content_type: args["content-type"] ? String(args["content-type"]) : detectMime(filePath),
+          content_base64: bytes.toString("base64"),
+        });
+        if (args.json) {
+          printJson(row);
+          return;
+        }
+        process.stdout.write(
+          `${pc.green("replaced")}  ${row.id}  ${row.filename}  (${humanBytes(row.size_bytes)})\n`,
         );
-      }
-      const bytes = readFileSync(filePath);
-      if (bytes.byteLength > MAX_INLINE_BYTES) {
-        throw new Error(`replacement content is larger than ${humanBytes(MAX_INLINE_BYTES)}`);
-      }
-      const row = await client.replaceFile(String(args.id), {
-        filename: basename(filePath),
-        content_type: args["content-type"] ? String(args["content-type"]) : detectMime(filePath),
-        content_base64: bytes.toString("base64"),
-      });
-      if (args.json) {
-        printJson(row);
-        return;
-      }
-      process.stdout.write(
-        `${pc.green("replaced")}  ${row.id}  ${row.filename}  (${humanBytes(row.size_bytes)})\n`,
-      );
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -377,22 +373,23 @@ const versionsCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const items = await client.listFileVersions(String(args.id));
-      if (args.json) {
-        printJson({ items });
-        return;
-      }
-      const lines = items.map((item) => {
-        const label = `v${item.version}`.padEnd(5);
-        const marker = item.current ? pc.green("current ") : "        ";
-        const origin = item.restored_from ? pc.dim(` restored from v${item.restored_from}`) : "";
-        return `${label} ${marker} ${item.uploaded_at}  ${humanBytes(item.size_bytes).padStart(9)}  ${item.filename}${origin}`;
-      });
-      process.stdout.write(`${lines.join("\n")}\n`);
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const items = await client.listFileVersions(String(args.id));
+        if (args.json) {
+          printJson({ items });
+          return;
+        }
+        const lines = items.map((item) => {
+          const label = `v${item.version}`.padEnd(5);
+          const marker = item.current ? pc.green("current ") : "        ";
+          const origin = item.restored_from ? pc.dim(` restored from v${item.restored_from}`) : "";
+          return `${label} ${marker} ${item.uploaded_at}  ${humanBytes(item.size_bytes).padStart(9)}  ${item.filename}${origin}`;
+        });
+        process.stdout.write(`${lines.join("\n")}\n`);
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -408,20 +405,21 @@ const restoreCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const version = Number(args.version);
-      if (!Number.isInteger(version) || version < 1) {
-        throw new Error("version must be a positive whole number");
-      }
-      const row = await client.restoreFileVersion(String(args.id), version);
-      if (args.json) {
-        printJson(row);
-        return;
-      }
-      process.stdout.write(`${pc.green("restored")}  ${row.id}  v${version}  ${row.filename}\n`);
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const version = Number(args.version);
+        if (!Number.isInteger(version) || version < 1) {
+          throw new Error("version must be a positive whole number");
+        }
+        const row = await client.restoreFileVersion(String(args.id), version);
+        if (args.json) {
+          printJson(row);
+          return;
+        }
+        process.stdout.write(`${pc.green("restored")}  ${row.id}  v${version}  ${row.filename}\n`);
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -433,7 +431,7 @@ const deleteCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       if (!args.force && process.stdin.isTTY) {
         const prompts = await import("@clack/prompts");
         const ok = await prompts.confirm({ message: `delete ${args.id}?`, initialValue: false });
@@ -444,9 +442,7 @@ const deleteCommand = defineCommand({
       }
       await client.deleteFile(args.id);
       process.stdout.write(`${pc.green("deleted")}  ${args.id}\n`);
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -467,7 +463,7 @@ const linkCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       const ref = parseResourceRef(String(args.to));
       const link = await client.linkFile(String(args.fid), {
         resource_type: ref.resource_type,
@@ -476,9 +472,7 @@ const linkCommand = defineCommand({
         ...(args.role ? { role: String(args.role) } : {}),
       });
       printJson(link);
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -490,37 +484,38 @@ const statsCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const stats = await client.getFileStats();
-      if (args.json) {
-        printJson(stats);
-        return;
-      }
-      const lines: string[] = [];
-      lines.push(`total          ${stats.total}`);
-      lines.push(`dedup_hits     ${stats.dedup_hits}`);
-      const groupBy = (args.by ?? "status").toString();
-      lines.push("");
-      if (groupBy === "scanner_verdict") {
-        lines.push(`${pc.bold("by scanner verdict:")}`);
-        for (const [k, v] of Object.entries(stats.scan_verdicts)) {
+    return withCommandErrors(
+      async () => {
+        const stats = await client.getFileStats();
+        if (args.json) {
+          printJson(stats);
+          return;
+        }
+        const lines: string[] = [];
+        lines.push(`total          ${stats.total}`);
+        lines.push(`dedup_hits     ${stats.dedup_hits}`);
+        const groupBy = (args.by ?? "status").toString();
+        lines.push("");
+        if (groupBy === "scanner_verdict") {
+          lines.push(`${pc.bold("by scanner verdict:")}`);
+          for (const [k, v] of Object.entries(stats.scan_verdicts)) {
+            lines.push(`  ${k.padEnd(16)} ${v}`);
+          }
+        } else {
+          lines.push(`${pc.bold("by status:")}`);
+          for (const [k, v] of Object.entries(stats.by_status)) {
+            lines.push(`  ${k.padEnd(16)} ${v}`);
+          }
+        }
+        lines.push("");
+        lines.push(`${pc.bold("by size bucket:")}`);
+        for (const [k, v] of Object.entries(stats.by_size_bucket)) {
           lines.push(`  ${k.padEnd(16)} ${v}`);
         }
-      } else {
-        lines.push(`${pc.bold("by status:")}`);
-        for (const [k, v] of Object.entries(stats.by_status)) {
-          lines.push(`  ${k.padEnd(16)} ${v}`);
-        }
-      }
-      lines.push("");
-      lines.push(`${pc.bold("by size bucket:")}`);
-      for (const [k, v] of Object.entries(stats.by_size_bucket)) {
-        lines.push(`  ${k.padEnd(16)} ${v}`);
-      }
-      process.stdout.write(`${lines.join("\n")}\n`);
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+        process.stdout.write(`${lines.join("\n")}\n`);
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -534,16 +529,17 @@ const patchCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const body: Record<string, unknown> = { ...catalogMetadataBody(args) };
-      if (args.filename) body.filename = args.filename;
-      if (Object.keys(body).length === 0) {
-        throw new Error("pass at least one of --filename, --description, --category");
-      }
-      printJson(await client.patchFile(args.id, body));
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const body: Record<string, unknown> = { ...catalogMetadataBody(args) };
+        if (args.filename) body.filename = args.filename;
+        if (Object.keys(body).length === 0) {
+          throw new Error("pass at least one of --filename, --description, --category");
+        }
+        printJson(await client.patchFile(args.id, body));
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -586,27 +582,28 @@ export const attachCommand = defineCommand({
     const client = makeClient();
     const quiet = Boolean(args.quiet);
     const json = Boolean(args.json);
-    try {
-      const opts: { content_type?: string; quiet?: boolean; json?: boolean } = { quiet, json };
-      if (args["content-type"]) opts.content_type = String(args["content-type"]);
-      const row = await uploadPath(client, String(args.path), opts);
-      const link = await client.linkFile(row.id, {
-        resource_type: "conversation",
-        resource_id: String(args["conversation-id"]),
-        ...(args.slug ? { slug: String(args.slug) } : {}),
-        ...(args.role ? { role: String(args.role) } : {}),
-      });
-      if (json) {
-        printJson({ file: row, link });
-        return;
-      }
-      if (!quiet) {
-        process.stdout.write(
-          `${pc.green("attached")}  ${row.id}  ${row.filename}  →  conversation:${args["conversation-id"]}\n`,
-        );
-      }
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const opts: { content_type?: string; quiet?: boolean; json?: boolean } = { quiet, json };
+        if (args["content-type"]) opts.content_type = String(args["content-type"]);
+        const row = await uploadPath(client, String(args.path), opts);
+        const link = await client.linkFile(row.id, {
+          resource_type: "conversation",
+          resource_id: String(args["conversation-id"]),
+          ...(args.slug ? { slug: String(args.slug) } : {}),
+          ...(args.role ? { role: String(args.role) } : {}),
+        });
+        if (json) {
+          printJson({ file: row, link });
+          return;
+        }
+        if (!quiet) {
+          process.stdout.write(
+            `${pc.green("attached")}  ${row.id}  ${row.filename}  →  conversation:${args["conversation-id"]}\n`,
+          );
+        }
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });

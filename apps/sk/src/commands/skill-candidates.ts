@@ -1,9 +1,9 @@
-import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
+import { withCommandErrors } from "./command-runtime.ts";
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List skill candidates" },
@@ -14,16 +14,17 @@ const listCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
-      const { items } = await client.listSkillCandidates({ limit: Number(args.limit) });
-      emitList(
-        !!args.json,
-        ["id", "title", "source", "status", "created_at"],
-        items as Record<string, unknown>[],
-      );
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { items } = await client.listSkillCandidates({ limit: Number(args.limit) });
+        emitList(
+          !!args.json,
+          ["id", "title", "source", "status", "created_at"],
+          items as Record<string, unknown>[],
+        );
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -35,12 +36,10 @@ const getCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
+    return withCommandErrors(async () => {
       const candidate = await client.getSkillCandidate(args.id);
       printJson(candidate);
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -52,12 +51,10 @@ const approveCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
+    return withCommandErrors(async () => {
       await client.approveSkillCandidate(args.id);
       process.stdout.write(`${pc.green("approved")}\n`);
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -70,14 +67,12 @@ const rejectCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
+    return withCommandErrors(async () => {
       const body: { reason?: string } = {};
       if (args.reason) body.reason = args.reason;
       await client.rejectSkillCandidate(args.id, body);
       process.stdout.write(`${pc.green("rejected")}\n`);
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 

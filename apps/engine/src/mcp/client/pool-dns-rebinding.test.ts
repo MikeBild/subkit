@@ -5,8 +5,9 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { closeDb } from "../../db/client.ts";
-import { connectors, tenants } from "../../db/schema/index.ts";
+import { connectors } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   __resetMcpClientPoolForTests,
   __setMcpPoolFactoriesForTests,
@@ -47,8 +48,7 @@ function resolverAnswering(address: string) {
 }
 
 async function freshTenant(slug: string): Promise<string> {
-  const [t] = await ctx.db.insert(tenants).values({ slug, display_name: slug }).returning();
-  if (!t) throw new Error("seed tenant failed");
+  const t = await seedTenant(ctx.db, { slug, display_name: slug });
   return t.id;
 }
 

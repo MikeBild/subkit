@@ -1,9 +1,9 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
-import type { components } from "@/api/schema";
 import { absolute, chatNewHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { CatalogCategoryChip, CatalogPurpose } from "@/components/cockpit/catalog-metadata";

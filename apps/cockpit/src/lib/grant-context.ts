@@ -1,4 +1,4 @@
-import type { components } from "@/api/schema";
+import type { components } from "@cli-core/engine-api/openapi";
 import { authorityIsLive } from "@/lib/automation-state";
 import { pluralKey, type TranslationKey } from "@/lib/i18n";
 import type { ReviewEnvironment } from "@/lib/review-environment";

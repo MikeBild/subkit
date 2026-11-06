@@ -1,3 +1,4 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
@@ -12,7 +13,6 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { apiRequest } from "@/api/client";
-import type { components } from "@/api/schema";
 import { useSession } from "@/app/session";
 import { useAttention } from "@/app/use-attention";
 import {

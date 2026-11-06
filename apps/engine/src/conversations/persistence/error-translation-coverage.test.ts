@@ -91,4 +91,47 @@ describe("translateAutoPersistError · unknown error", () => {
     expect(t.error_code).toBe("auto_persist_failed");
     expect(t.message).toContain("connection refused");
   });
+
+  test("unknown error falls back to auto_persist_failed (with the verbatim message)", () => {
+    const err = new Error("unexpected runtime explosion");
+    const out = translateAutoPersistError(err, "save_connector_draft");
+    expect(out.error_code).toBe("auto_persist_failed");
+    expect(out.message).toContain("unexpected runtime explosion");
+    expect(out.next_best_actions).toContain("ask_user_text");
+  });
+});
+
+describe("translateAutoPersistError · resource-aware wording", () => {
+  test("23505 unique_violation on connector → slug_already_in_use", () => {
+    const err = pgError(
+      "23505",
+      'duplicate key value violates unique constraint "connectors_tenant_slug_env_key"',
+      "Key (tenant_id, slug, environment)=(t1, digitalocean, dev) already exists.",
+    );
+    const out = translateAutoPersistError(err, "save_connector_draft");
+    expect(out.error_code).toBe("slug_already_in_use");
+    expect(out.message).toMatch(/connector/);
+    expect(out.next_best_actions).toContain("list_connectors");
+  });
+
+  test("23505 unique_violation on workflow → slug_already_in_use", () => {
+    const err = pgError(
+      "23505",
+      'duplicate key value violates unique constraint "workflows_tenant_slug_active_key"',
+    );
+    const out = translateAutoPersistError(err, "save_workflow_draft");
+    expect(out.error_code).toBe("slug_already_in_use");
+    expect(out.message).toMatch(/workflow/);
+    expect(out.next_best_actions).toContain("list_workflows");
+  });
+
+  test("23502 not_null_violation on a connector relation → missing_required_field", () => {
+    const err = pgError(
+      "23502",
+      'null value in column "slug" of relation "connectors" violates not-null constraint',
+    );
+    const out = translateAutoPersistError(err, "save_connector_draft");
+    expect(out.error_code).toBe("missing_required_field");
+    expect(out.next_best_actions).toContain("inspect_connector_draft");
+  });
 });

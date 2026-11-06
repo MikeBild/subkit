@@ -4,10 +4,10 @@ import {
   conversationElicitations,
   conversations,
   conversationToolCalls,
-  tenants,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { maybeAutoPersistFromElicitation } from "../persistence/auto-persist.ts";
 
 let ctx: TestDb;
@@ -15,11 +15,7 @@ let tenant_id: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("auto_persist_wnd");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-apw", display_name: "T-APW" })
-    .returning();
-  tenant_id = t!.id;
+  tenant_id = (await seedTenant(ctx.db, { slug: "t-apw", display_name: "T-APW" })).id;
 });
 
 afterAll(async () => {

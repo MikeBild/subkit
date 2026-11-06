@@ -1,19 +1,8 @@
 import { readFile } from "node:fs/promises";
-import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import Fuse from "fuse.js";
-import { resolveProfile } from "../config.ts";
-import { EngineClient } from "../engine-client.ts";
-
-function makeClient() {
-  const profile = resolveProfile();
-  return new EngineClient({
-    engine_url: profile.engine_url,
-    api_key: profile.api_key,
-    tenant: profile.active_tenant_id,
-  });
-}
+import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List connector templates" },
@@ -22,12 +11,13 @@ const listCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const { items } = await client.listConnectorTemplates();
-      emitList(!!args.json, ["id", "slug", "name", "driver", "source", "version"], items);
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { items } = await client.listConnectorTemplates();
+        emitList(!!args.json, ["id", "slug", "name", "driver", "source", "version"], items);
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -65,18 +55,19 @@ const searchCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const { items } = await client.listConnectorTemplates();
-      const ranked = rankTemplates(items, String(args.query), Number(args.limit));
-      if (ranked.length === 0 && !args.json) {
-        process.stderr.write(
-          `no templates match '${args.query}' — browse the full catalog with: sk connector-templates list\n`,
-        );
-      }
-      emitList(!!args.json, ["slug", "name", "driver", "category", "score"], ranked);
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { items } = await client.listConnectorTemplates();
+        const ranked = rankTemplates(items, String(args.query), Number(args.limit));
+        if (ranked.length === 0 && !args.json) {
+          process.stderr.write(
+            `no templates match '${args.query}' — browse the full catalog with: sk connector-templates list\n`,
+          );
+        }
+        emitList(!!args.json, ["slug", "name", "driver", "category", "score"], ranked);
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -142,11 +133,9 @@ const createCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       printJson(await client.createConnectorTemplate(await loadTemplateBodyFromArgs(args)));
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -162,16 +151,14 @@ const setOauthCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       printJson(
         await client.setConnectorTemplateOAuthCredentials(String(args.slug), {
           client_id: String(args["client-id"]),
           client_secret: String(args["client-secret"]),
         }),
       );
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -182,12 +169,10 @@ const deleteCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       await client.deleteConnectorTemplate(args.id);
       process.stdout.write("deleted\n");
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -204,16 +189,17 @@ const recipesListCommand = defineCommand({
       process.exit(2);
     }
     const client = makeClient();
-    try {
-      const { recipes } = await client.listConnectorTemplateRecipes(slug);
-      if (args.json) {
-        printJson(recipes);
-        return;
-      }
-      emitList(false, ["slug", "title", "category", "difficulty", "version"], recipes);
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { recipes } = await client.listConnectorTemplateRecipes(slug);
+        if (args.json) {
+          printJson(recipes);
+          return;
+        }
+        emitList(false, ["slug", "title", "category", "difficulty", "version"], recipes);
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -232,86 +218,87 @@ const recipeShowCommand = defineCommand({
       process.exit(2);
     }
     const client = makeClient();
-    try {
-      const data = await client.getConnectorTemplateRecipe(slug, recipe);
-      if (args.json) {
-        printJson(data);
-        return;
-      }
-      const r = data as Record<string, unknown>;
-      const wf =
-        (r.workflow as {
-          steps?: unknown[];
-          trigger?: Record<string, unknown> | null;
-        }) ?? {};
-      const stepCount = Array.isArray(wf.steps) ? wf.steps.length : 0;
-      process.stdout.write(`recipe ${slug}/${r.slug}\n`);
-      process.stdout.write(`  title:        ${r.title}\n`);
-      process.stdout.write(`  description:  ${r.description}\n`);
-      process.stdout.write(
-        `  category:     ${r.category}  difficulty: ${r.difficulty}  version: ${r.version}\n`,
-      );
-      process.stdout.write(
-        `  tags:         ${Array.isArray(r.tags) && r.tags.length > 0 ? (r.tags as string[]).join(", ") : "(none)"}\n`,
-      );
-      process.stdout.write(
-        `  intent_keywords: ${(r.intent_keywords as string[] | undefined)?.join(", ") ?? "(none)"}\n`,
-      );
-      const prereqs = r.prerequisites as string[] | undefined;
-      if (prereqs && prereqs.length > 0) {
-        process.stdout.write(`  prerequisites:\n`);
-        for (const p of prereqs) process.stdout.write(`    - ${p}\n`);
-      }
-      process.stdout.write(`  step_count:   ${stepCount}\n`);
-      const trigger = wf.trigger ?? null;
-      if (trigger && typeof trigger === "object") {
-        const kind = String((trigger as Record<string, unknown>).kind ?? "request");
-        if (kind === "webhook") {
-          const t = trigger as {
-            source?: unknown;
-            events?: unknown;
-            verify?: unknown;
-          };
-          const source = typeof t.source === "string" ? t.source : "(unknown)";
-          const events = Array.isArray(t.events)
-            ? (t.events as unknown[]).map(String).join(", ")
-            : "(any)";
-          const verify = typeof t.verify === "string" ? t.verify : "(unknown)";
-          process.stdout.write(`  trigger:\n`);
-          process.stdout.write(`    kind:       webhook\n`);
-          process.stdout.write(`    source:     ${source}\n`);
-          process.stdout.write(`    events:     ${events.length > 0 ? events : "(any)"}\n`);
-          process.stdout.write(`    verify:     ${verify}\n`);
-        } else if (kind === "schedule") {
-          const t = trigger as {
-            cron?: unknown;
-            tz?: unknown;
-            business_days_only?: unknown;
-            skip_dates?: unknown;
-          };
-          process.stdout.write(`  trigger:\n`);
-          process.stdout.write(`    kind:       schedule\n`);
-          process.stdout.write(
-            `    cron:       ${typeof t.cron === "string" ? t.cron : "(unset)"}\n`,
-          );
-          process.stdout.write(`    tz:         ${typeof t.tz === "string" ? t.tz : "UTC"}\n`);
-          if (t.business_days_only === true) {
-            process.stdout.write(`    business_days_only: true\n`);
-          }
-          if (Array.isArray(t.skip_dates) && (t.skip_dates as unknown[]).length > 0) {
+    return withCommandErrors(
+      async () => {
+        const data = await client.getConnectorTemplateRecipe(slug, recipe);
+        if (args.json) {
+          printJson(data);
+          return;
+        }
+        const r = data as Record<string, unknown>;
+        const wf =
+          (r.workflow as {
+            steps?: unknown[];
+            trigger?: Record<string, unknown> | null;
+          }) ?? {};
+        const stepCount = Array.isArray(wf.steps) ? wf.steps.length : 0;
+        process.stdout.write(`recipe ${slug}/${r.slug}\n`);
+        process.stdout.write(`  title:        ${r.title}\n`);
+        process.stdout.write(`  description:  ${r.description}\n`);
+        process.stdout.write(
+          `  category:     ${r.category}  difficulty: ${r.difficulty}  version: ${r.version}\n`,
+        );
+        process.stdout.write(
+          `  tags:         ${Array.isArray(r.tags) && r.tags.length > 0 ? (r.tags as string[]).join(", ") : "(none)"}\n`,
+        );
+        process.stdout.write(
+          `  intent_keywords: ${(r.intent_keywords as string[] | undefined)?.join(", ") ?? "(none)"}\n`,
+        );
+        const prereqs = r.prerequisites as string[] | undefined;
+        if (prereqs && prereqs.length > 0) {
+          process.stdout.write(`  prerequisites:\n`);
+          for (const p of prereqs) process.stdout.write(`    - ${p}\n`);
+        }
+        process.stdout.write(`  step_count:   ${stepCount}\n`);
+        const trigger = wf.trigger ?? null;
+        if (trigger && typeof trigger === "object") {
+          const kind = String((trigger as Record<string, unknown>).kind ?? "request");
+          if (kind === "webhook") {
+            const t = trigger as {
+              source?: unknown;
+              events?: unknown;
+              verify?: unknown;
+            };
+            const source = typeof t.source === "string" ? t.source : "(unknown)";
+            const events = Array.isArray(t.events)
+              ? (t.events as unknown[]).map(String).join(", ")
+              : "(any)";
+            const verify = typeof t.verify === "string" ? t.verify : "(unknown)";
+            process.stdout.write(`  trigger:\n`);
+            process.stdout.write(`    kind:       webhook\n`);
+            process.stdout.write(`    source:     ${source}\n`);
+            process.stdout.write(`    events:     ${events.length > 0 ? events : "(any)"}\n`);
+            process.stdout.write(`    verify:     ${verify}\n`);
+          } else if (kind === "schedule") {
+            const t = trigger as {
+              cron?: unknown;
+              tz?: unknown;
+              business_days_only?: unknown;
+              skip_dates?: unknown;
+            };
+            process.stdout.write(`  trigger:\n`);
+            process.stdout.write(`    kind:       schedule\n`);
             process.stdout.write(
-              `    skip_dates: ${(t.skip_dates as unknown[]).map(String).join(", ")}\n`,
+              `    cron:       ${typeof t.cron === "string" ? t.cron : "(unset)"}\n`,
             );
+            process.stdout.write(`    tz:         ${typeof t.tz === "string" ? t.tz : "UTC"}\n`);
+            if (t.business_days_only === true) {
+              process.stdout.write(`    business_days_only: true\n`);
+            }
+            if (Array.isArray(t.skip_dates) && (t.skip_dates as unknown[]).length > 0) {
+              process.stdout.write(
+                `    skip_dates: ${(t.skip_dates as unknown[]).map(String).join(", ")}\n`,
+              );
+            }
+          } else {
+            process.stdout.write(`  trigger:      request (on-demand)\n`);
           }
         } else {
           process.stdout.write(`  trigger:      request (on-demand)\n`);
         }
-      } else {
-        process.stdout.write(`  trigger:      request (on-demand)\n`);
-      }
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -332,21 +319,22 @@ const recipePackCommand = defineCommand({
       process.exit(2);
     }
     const client = makeClient();
-    try {
-      const data = await client.getRecipePack(vertical);
-      if (args.json) {
-        printJson(data);
-        return;
-      }
-      process.stdout.write(`recipe-pack ${data.vertical}\n  ${data.outcome}\n`);
-      emitList(
-        false,
-        ["template_slug", "recipe_slug", "title", "category", "difficulty"],
-        data.recipes,
-      );
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const data = await client.getRecipePack(vertical);
+        if (args.json) {
+          printJson(data);
+          return;
+        }
+        process.stdout.write(`recipe-pack ${data.vertical}\n  ${data.outcome}\n`);
+        emitList(
+          false,
+          ["template_slug", "recipe_slug", "title", "category", "difficulty"],
+          data.recipes,
+        );
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 

@@ -1,14 +1,9 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import {
-  groupMembers,
-  groupRoleAssignments,
-  groups,
-  tenants,
-  users,
-} from "../../../db/schema/index.ts";
+import { groupMembers, groupRoleAssignments, groups, users } from "../../../db/schema/index.ts";
 import * as groupsSvc from "../../../rbac/groups.ts";
 import { builtinRoleId, createRole, grantPermissionToRole } from "../../../rbac/roles.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 
 let server: HttpTestServer;
@@ -21,11 +16,7 @@ let foreignRoleId: string;
 
 beforeAll(async () => {
   server = await createHttpTestServer("group-tenant-boundary");
-  const [tenant] = await server.db
-    .insert(tenants)
-    .values({ slug: "group-foreign", display_name: "Foreign" })
-    .returning();
-  if (!tenant) throw new Error("missing tenant fixture");
+  const tenant = await seedTenant(server.db, { slug: "group-foreign", display_name: "Foreign" });
   foreignTenantId = tenant.id;
   const localEmpty = await createRole(server.db, server.tenantId, "empty");
   const foreignEmpty = await createRole(server.db, foreignTenantId, "empty");

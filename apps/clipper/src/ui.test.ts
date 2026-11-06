@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   contentSummary,
@@ -147,7 +147,11 @@ test("German clipper text addresses the reader informally", () => {
 });
 
 function cockpitLabels(key: string): { en: string; de: string } {
-  const source = readFileSync(join(import.meta.dir, "../../cockpit/src/lib/i18n.ts"), "utf8");
+  const dir = join(import.meta.dir, "../../cockpit/src/lib/i18n");
+  const source = readdirSync(dir)
+    .sort()
+    .map((file) => readFileSync(join(dir, file), "utf8"))
+    .join("\n");
   const pattern = new RegExp(`"${key.replaceAll(".", "\\.")}":\\s*"([^"]+)"`, "g");
   const [en, de] = [...source.matchAll(pattern)].map((match) => match[1] ?? "");
   if (!en || !de) throw new Error(`Cockpit label ${key} is missing`);

@@ -1,3 +1,4 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
@@ -7,7 +8,6 @@ import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import { listIntakeClips } from "@/api/intake";
 import { loadKnowledgeChunks } from "@/api/knowledge";
-import type { components } from "@/api/schema";
 import { absolute, chatNewHref, recordHref, workflowHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { CatalogSummary, useCatalogCreatedBy } from "@/components/cockpit/catalog-categories";

@@ -1,1 +1,0 @@
-ALTER TYPE "public"."doc_source_type" ADD VALUE 'google_discovery' BEFORE 'markdown';

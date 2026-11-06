@@ -3,9 +3,10 @@ import { and, eq } from "drizzle-orm";
 import type { SizeBucket } from "../../audit/buckets.ts";
 import { bucketSize } from "../../audit/buckets.ts";
 import { AuditAction, auditAwait, FileCreatedMetadataSchema } from "../../audit/index.ts";
-import { auditLog, tenants } from "../../db/schema/index.ts";
+import { auditLog } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 
 const uuid = createDeterministicUuidFactory(0xfacaad);
 
@@ -16,12 +17,9 @@ let tenant_id: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("files-audit-cardinality");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "audit-card-t", display_name: "Audit Cardinality" })
-    .returning();
-  if (!t) throw new Error("seed tenant");
-  tenant_id = t.id;
+  tenant_id = (
+    await seedTenant(ctx.db, { slug: "audit-card-t", display_name: "Audit Cardinality" })
+  ).id;
 }, 60_000);
 
 afterAll(async () => {

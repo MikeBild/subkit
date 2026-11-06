@@ -13,6 +13,7 @@ import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { buildDefaultRegistry, createApp } from "../../http/server.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { JOURNEY_HOOK_TIMEOUT } from "./setup.ts";
 
 const SIGNING_SECRET = "slack-signing-secret-ABC";
@@ -44,14 +45,10 @@ beforeAll(async () => {
     env: { DATABASE_URL: testDb.url, NODE_ENV: "test", LLM_PROVIDER: "mock" },
     configPathOverride: join(configDirectory, "subkit.config.json"),
   });
-  const { apiKeys, systemAccounts, tenants, users } = await import("../../db/schema/index.ts");
+  const { apiKeys, systemAccounts, users } = await import("../../db/schema/index.ts");
   const { createHash, randomBytes } = await import("node:crypto");
 
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "t-chat", display_name: "Chat Tenant" })
-    .returning();
-  if (!tenant) throw new Error("seed tenant");
+  const tenant = await seedTenant(testDb.db, { slug: "t-chat", display_name: "Chat Tenant" });
   const [user] = await testDb.db
     .insert(users)
     .values({

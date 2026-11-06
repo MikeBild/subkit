@@ -19,7 +19,6 @@ export {
   nameGrowth,
   referenceApprovedManifest,
 } from "./authority-inheritance.ts";
-export { isOpenEnded, remainingRuns } from "./authority-live.ts";
 export * from "./authority-observation.ts";
 export { suggestAuthorityBounds } from "./authority-suggestions.ts";
 export {
@@ -33,6 +32,7 @@ export {
   contentBoundariesFromManifest,
   contentPublicationLabels,
 } from "./content-publication-proposal.ts";
+export { isOpenEnded, remainingRuns } from "./core/authority.ts";
 export * from "./destination-placeholders.ts";
 export * from "./draft-schemas.ts";
 export * from "./drafts.ts";

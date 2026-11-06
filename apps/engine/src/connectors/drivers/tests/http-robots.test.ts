@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { configureHostedPolicyForTests } from "../../../test-helpers/hosted-policy.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import { __resetRobotsCacheForTests } from "../../robots-cache.test-helpers.ts";
 import { createConnector, getConnector } from "../../service.ts";
 import { executeConnectorHttpRequest } from "../http.ts";
@@ -13,14 +13,10 @@ let tenantId: string;
 beforeAll(async () => {
   database = await createTestDb("http-robots");
   await configureHostedPolicyForTests(database.db, database.url);
-  const [tenant] = await database.db
-    .insert(tenants)
-    .values({
-      slug: "runtime-robots",
-      display_name: "Runtime robots fixture",
-    })
-    .returning();
-  if (!tenant) throw new Error("missing robots fixture tenant");
+  const tenant = await seedTenant(database.db, {
+    slug: "runtime-robots",
+    display_name: "Runtime robots fixture",
+  });
   tenantId = tenant.id;
 });
 afterAll(async () => {

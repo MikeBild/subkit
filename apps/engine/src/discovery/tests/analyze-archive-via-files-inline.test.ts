@@ -4,9 +4,9 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { and, eq, sql } from "drizzle-orm";
-import { tenants } from "../../db/schema/identity.ts";
 import { discoveryRuns, fileLinks, files } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
 
@@ -32,11 +32,7 @@ beforeAll(async () => {
   if (skip) return;
   ctx = await createTestDb("c20-archive");
 
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "c20-tenant", display_name: "C20 Tenant" })
-    .returning();
-  tenantId = t!.id;
+  tenantId = (await seedTenant(ctx.db, { slug: "c20-tenant", display_name: "C20 Tenant" })).id;
 }, 60_000);
 
 afterAll(async () => {

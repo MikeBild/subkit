@@ -3,8 +3,7 @@ import { exitCodeFor, reportCommandError } from "@cli-core/errors";
 import { emitGroupedList, emitList, printJson, printTable } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
-import { resolveProfile } from "../config.ts";
-import { EngineClient } from "../engine-client.ts";
+import type { EngineClient } from "../engine-client.ts";
 import {
   catalogMetadataArgs,
   catalogMetadataBody,
@@ -19,16 +18,8 @@ import {
 import { pickId } from "../lib/pick.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
 import type { ConnectorIntent, ConnectorSummary, PlanStep } from "../render/types.ts";
+import { makeClient, withCommandErrors } from "./command-runtime.ts";
 import { CONNECTOR_LIST_COLUMNS } from "./list-columns.ts";
-
-function makeClient() {
-  const profile = resolveProfile();
-  return new EngineClient({
-    engine_url: profile.engine_url,
-    api_key: profile.api_key,
-    tenant: profile.active_tenant_id,
-  });
-}
 
 const fetchConnectorRows = async (client: EngineClient) => {
   const { items } = await client.listConnectors({ limit: 50 });
@@ -55,42 +46,43 @@ const listCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const { items, total, categories } = await client.listConnectors({
-        limit: Number(args.limit),
-        ...(args.category ? { category: args.category } : {}),
-        ...(args.driver ? { driver: args.driver } : {}),
-      });
-      const rows = (items as Record<string, unknown>[]).map((r) => ({
-        ...r,
-        description: args.json ? r.description : shortDescription(r.description),
-        name:
-          typeof r.name === "string" && r.name
-            ? r.name
-            : typeof r.display_name === "string"
-              ? r.display_name
-              : "",
-      }));
-      const columns = CONNECTOR_LIST_COLUMNS;
-      if (args.flat || !categories?.length) {
-        emitList(!!args.json, columns, rows);
-      } else {
-        emitGroupedList(!!args.json, columns, rows, categories);
-      }
-      if (!args.json) {
-        const blocks =
-          !args.flat && categories?.length
-            ? ` · ${categories.length} categor${categories.length === 1 ? "y" : "ies"}`
-            : "";
-        process.stdout.write(
-          items.length < total
-            ? `${pc.dim(`showing ${items.length} of ${total} connectors${blocks} — raise --limit to see all`)}\n`
-            : `${pc.dim(`${total} connector${total === 1 ? "" : "s"} total${blocks}`)}\n`,
-        );
-      }
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { items, total, categories } = await client.listConnectors({
+          limit: Number(args.limit),
+          ...(args.category ? { category: args.category } : {}),
+          ...(args.driver ? { driver: args.driver } : {}),
+        });
+        const rows = (items as Record<string, unknown>[]).map((r) => ({
+          ...r,
+          description: args.json ? r.description : shortDescription(r.description),
+          name:
+            typeof r.name === "string" && r.name
+              ? r.name
+              : typeof r.display_name === "string"
+                ? r.display_name
+                : "",
+        }));
+        const columns = CONNECTOR_LIST_COLUMNS;
+        if (args.flat || !categories?.length) {
+          emitList(!!args.json, columns, rows);
+        } else {
+          emitGroupedList(!!args.json, columns, rows, categories);
+        }
+        if (!args.json) {
+          const blocks =
+            !args.flat && categories?.length
+              ? ` · ${categories.length} categor${categories.length === 1 ? "y" : "ies"}`
+              : "";
+          process.stdout.write(
+            items.length < total
+              ? `${pc.dim(`showing ${items.length} of ${total} connectors${blocks} — raise --limit to see all`)}\n`
+              : `${pc.dim(`${total} connector${total === 1 ? "" : "s"} total${blocks}`)}\n`,
+          );
+        }
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -101,16 +93,14 @@ const getCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       const id = await pickId({
         label: "connector id",
         argValue: args.id,
         fetch: () => fetchConnectorRows(client),
       });
       printJson(await client.getConnector(id));
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -320,90 +310,95 @@ const createCommand = defineCommand({
 
     const client = makeClient();
     const jsonMode = Boolean(args.json);
-    try {
-      const intent: ConnectorIntent = {
-        kind: "connector",
-        template_slug: args.template as string,
-        ...(args.name ? { name: args.name } : {}),
-      };
-      await renderIntent(intent, { jsonMode });
+    return withCommandErrors(
+      async () => {
+        const intent: ConnectorIntent = {
+          kind: "connector",
+          template_slug: args.template as string,
+          ...(args.name ? { name: args.name } : {}),
+        };
+        await renderIntent(intent, { jsonMode });
 
-      const body: Record<string, unknown> = {};
-      if (args.name) body.name = args.name;
-      const created = (await client.createConnectorFromTemplate(
-        args.template as string,
-        body,
-      )) as Record<string, unknown> & { id?: string; slug?: string };
-      printJson(created);
+        const body: Record<string, unknown> = {};
+        if (args.name) body.name = args.name;
+        const created = (await client.createConnectorFromTemplate(
+          args.template as string,
+          body,
+        )) as Record<string, unknown> & { id?: string; slug?: string };
+        printJson(created);
 
-      const skip = Boolean((args as Record<string, unknown>)["skip-checks"]);
-      let probe: ConnectorSummary["probe"];
-      if (!skip && typeof created.id === "string") {
-        try {
-          const result = (await client.testConnector(created.id)) as Record<string, unknown> & {
-            ok?: boolean;
-            status_code?: number;
-            duration_ms?: number;
-          };
-          probe = {
-            ok: Boolean(result.ok),
-            ...(typeof result.status_code === "number" ? { status_code: result.status_code } : {}),
-            ...(typeof result.duration_ms === "number" ? { duration_ms: result.duration_ms } : {}),
-          };
-          if (!result.ok) {
+        const skip = Boolean((args as Record<string, unknown>)["skip-checks"]);
+        let probe: ConnectorSummary["probe"];
+        if (!skip && typeof created.id === "string") {
+          try {
+            const result = (await client.testConnector(created.id)) as Record<string, unknown> & {
+              ok?: boolean;
+              status_code?: number;
+              duration_ms?: number;
+            };
+            probe = {
+              ok: Boolean(result.ok),
+              ...(typeof result.status_code === "number"
+                ? { status_code: result.status_code }
+                : {}),
+              ...(typeof result.duration_ms === "number"
+                ? { duration_ms: result.duration_ms }
+                : {}),
+            };
+            if (!result.ok) {
+              const phases: PlanStep[] = [
+                { id: "create", label: "Create", status: "succeeded" },
+                {
+                  id: "probe",
+                  label: "Probe",
+                  status: "failed",
+                  detail:
+                    typeof result.error === "string"
+                      ? result.error
+                      : `status=${result.status_code ?? "?"}`,
+                },
+              ];
+              await renderTaskList(phases, { jsonMode });
+              process.exit(64);
+            }
+          } catch (err) {
             const phases: PlanStep[] = [
               { id: "create", label: "Create", status: "succeeded" },
               {
                 id: "probe",
                 label: "Probe",
                 status: "failed",
-                detail:
-                  typeof result.error === "string"
-                    ? result.error
-                    : `status=${result.status_code ?? "?"}`,
+                detail: err instanceof Error ? err.message : String(err),
               },
             ];
             await renderTaskList(phases, { jsonMode });
-            process.exit(64);
+            process.exit(exitCodeFor(err));
           }
-        } catch (err) {
-          const phases: PlanStep[] = [
-            { id: "create", label: "Create", status: "succeeded" },
-            {
-              id: "probe",
-              label: "Probe",
-              status: "failed",
-              detail: err instanceof Error ? err.message : String(err),
-            },
-          ];
-          await renderTaskList(phases, { jsonMode });
-          process.exit(exitCodeFor(err));
+        } else if (skip && !jsonMode) {
+          process.stderr.write(
+            `${pc.yellow("warning:")} --skip-checks active; no driver probe was run\n`,
+          );
         }
-      } else if (skip && !jsonMode) {
-        process.stderr.write(
-          `${pc.yellow("warning:")} --skip-checks active; no driver probe was run\n`,
-        );
-      }
 
-      const summary: ConnectorSummary = {
-        kind: "connector",
-        id: typeof created.id === "string" ? created.id : "(unknown)",
-        slug: typeof created.slug === "string" ? created.slug : (args.template as string),
-        template_slug: args.template as string,
-        ...(probe ? { probe } : {}),
-      };
-      await renderSummary(summary, { jsonMode });
+        const summary: ConnectorSummary = {
+          kind: "connector",
+          id: typeof created.id === "string" ? created.id : "(unknown)",
+          slug: typeof created.slug === "string" ? created.slug : (args.template as string),
+          template_slug: args.template as string,
+          ...(probe ? { probe } : {}),
+        };
+        await renderSummary(summary, { jsonMode });
 
-      if (!jsonMode && typeof created.id === "string") {
-        const authType = typeof created.auth_type === "string" ? created.auth_type : "";
-        const next = authType.startsWith("oauth")
-          ? `sk auth --connector-id ${created.id}`
-          : `sk "create a workflow using ${typeof created.slug === "string" ? created.slug : args.template}"`;
-        process.stderr.write(`\n${pc.dim("Next:")} ${next}\n`);
-      }
-    } catch (err) {
-      reportCommandError(err, { json: jsonMode });
-    }
+        if (!jsonMode && typeof created.id === "string") {
+          const authType = typeof created.auth_type === "string" ? created.auth_type : "";
+          const next = authType.startsWith("oauth")
+            ? `sk auth --connector-id ${created.id}`
+            : `sk "create a workflow using ${typeof created.slug === "string" ? created.slug : args.template}"`;
+          process.stderr.write(`\n${pc.dim("Next:")} ${next}\n`);
+        }
+      },
+      { json: jsonMode },
+    );
   },
 });
 
@@ -429,31 +424,32 @@ const probeCommand = defineCommand({
   async run({ args }) {
     const client = makeClient();
     const jsonMode = Boolean(args.json);
-    try {
-      if (args.file) {
-        const connector = await readDefinitionFile(String(args.file));
-        const credential = args.credential
-          ? await readDefinitionFile(String(args.credential))
-          : undefined;
-        const result = await client.probeConnectorDraft({
-          connector,
-          ...(credential ? { credential } : {}),
-        });
-        printJson(result);
-        if (!result.ok) process.exit(1);
-        return;
-      }
+    return withCommandErrors(
+      async () => {
+        if (args.file) {
+          const connector = await readDefinitionFile(String(args.file));
+          const credential = args.credential
+            ? await readDefinitionFile(String(args.credential))
+            : undefined;
+          const result = await client.probeConnectorDraft({
+            connector,
+            ...(credential ? { credential } : {}),
+          });
+          printJson(result);
+          if (!result.ok) process.exit(1);
+          return;
+        }
 
-      const id = await pickId({
-        label: "connector id",
-        argValue: args.id,
-        fetch: () => fetchConnectorRows(client),
-      });
-      const result = await client.testConnector(id);
-      if (!renderProbeOutcome(result, jsonMode)) process.exit(1);
-    } catch (err) {
-      reportCommandError(err, { json: jsonMode });
-    }
+        const id = await pickId({
+          label: "connector id",
+          argValue: args.id,
+          fetch: () => fetchConnectorRows(client),
+        });
+        const result = await client.testConnector(id);
+        if (!renderProbeOutcome(result, jsonMode)) process.exit(1);
+      },
+      { json: jsonMode },
+    );
   },
 });
 
@@ -470,23 +466,24 @@ const validateCommand = defineCommand({
   async run({ args }) {
     const client = makeClient();
     const jsonMode = Boolean(args.json);
-    try {
-      const verdict = await client.validateConnectorDraft(
-        await readDefinitionFile(String(args.file)),
-      );
-      if (jsonMode) {
-        printJson(verdict);
-      } else if (verdict.ok) {
-        process.stdout.write(`${pc.green("ok")}  connector definition validates cleanly\n`);
-      } else {
-        for (const issue of verdict.issues) {
-          process.stderr.write(`  ${issue.path}  ${issue.message}\n`);
+    return withCommandErrors(
+      async () => {
+        const verdict = await client.validateConnectorDraft(
+          await readDefinitionFile(String(args.file)),
+        );
+        if (jsonMode) {
+          printJson(verdict);
+        } else if (verdict.ok) {
+          process.stdout.write(`${pc.green("ok")}  connector definition validates cleanly\n`);
+        } else {
+          for (const issue of verdict.issues) {
+            process.stderr.write(`  ${issue.path}  ${issue.message}\n`);
+          }
         }
-      }
-      if (!verdict.ok) process.exit(1);
-    } catch (err) {
-      reportCommandError(err, { json: jsonMode });
-    }
+        if (!verdict.ok) process.exit(1);
+      },
+      { json: jsonMode },
+    );
   },
 });
 
@@ -520,56 +517,57 @@ const importCommand = defineCommand({
   async run({ args }) {
     const client = makeClient();
     const jsonMode = Boolean(args.json);
-    try {
-      const specArg = String(args.spec);
-      let content = specArg;
-      try {
-        const { existsSync, readFileSync } = await import("node:fs");
-        if (existsSync(specArg)) content = readFileSync(specArg, "utf8");
-      } catch {}
+    return withCommandErrors(
+      async () => {
+        const specArg = String(args.spec);
+        let content = specArg;
+        try {
+          const { existsSync, readFileSync } = await import("node:fs");
+          if (existsSync(specArg)) content = readFileSync(specArg, "utf8");
+        } catch {}
 
-      const imported = await client.importConnectorFromSpec({
-        source: String(args.source),
-        content,
-        ...(args.name ? { name: args.name } : {}),
-        ...(args.environment ? { environment: String(args.environment) } : {}),
-      });
+        const imported = await client.importConnectorFromSpec({
+          source: String(args.source),
+          content,
+          ...(args.name ? { name: args.name } : {}),
+          ...(args.environment ? { environment: String(args.environment) } : {}),
+        });
 
-      const draft = imported.draft;
-      if (!draft) {
-        printJson(imported);
-        return;
-      }
-
-      printJson(draft);
-      if (args["dry-run"]) return;
-
-      if (!args.yes) {
-        if (!process.stdin.isTTY) {
-          process.stderr.write(
-            "error: refusing to create without confirmation — re-run with --yes, or --dry-run to inspect the draft\n",
-          );
-          process.exit(1);
-        }
-        const proceed = await prompts.confirm({ message: "Create this connector?" });
-        if (prompts.isCancel(proceed) || !proceed) {
-          process.stderr.write("cancelled; nothing was created\n");
+        const draft = imported.draft;
+        if (!draft) {
+          printJson(imported);
           return;
         }
-      }
 
-      const created = (await client.createConnector(draft)) as Record<string, unknown> & {
-        id?: string;
-      };
-      printJson(created);
-      if (!jsonMode && typeof created.id === "string") {
-        process.stderr.write(
-          `\n${pc.dim("Next:")} sk credentials set --connector-id ${created.id} --mode <mode>\n`,
-        );
-      }
-    } catch (err) {
-      reportCommandError(err, { json: jsonMode });
-    }
+        printJson(draft);
+        if (args["dry-run"]) return;
+
+        if (!args.yes) {
+          if (!process.stdin.isTTY) {
+            process.stderr.write(
+              "error: refusing to create without confirmation — re-run with --yes, or --dry-run to inspect the draft\n",
+            );
+            process.exit(1);
+          }
+          const proceed = await prompts.confirm({ message: "Create this connector?" });
+          if (prompts.isCancel(proceed) || !proceed) {
+            process.stderr.write("cancelled; nothing was created\n");
+            return;
+          }
+        }
+
+        const created = (await client.createConnector(draft)) as Record<string, unknown> & {
+          id?: string;
+        };
+        printJson(created);
+        if (!jsonMode && typeof created.id === "string") {
+          process.stderr.write(
+            `\n${pc.dim("Next:")} sk credentials set --connector-id ${created.id} --mode <mode>\n`,
+          );
+        }
+      },
+      { json: jsonMode },
+    );
   },
 });
 
@@ -583,16 +581,14 @@ const inspectCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       const id = await pickId({
         label: "connector id",
         argValue: args.id,
         fetch: () => fetchConnectorRows(client),
       });
       printJson(await client.getConnector(id));
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -603,16 +599,14 @@ const enableCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       const id = await pickId({
         label: "connector id",
         argValue: args.id,
         fetch: () => fetchConnectorRows(client),
       });
       printJson(await client.enableConnector(id));
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -627,16 +621,14 @@ const disableCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       const id = await pickId({
         label: "connector id",
         argValue: args.id,
         fetch: () => fetchConnectorRows(client),
       });
       printJson(await client.disableConnector(id));
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -651,16 +643,14 @@ const mcpInspectCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       const id = await pickId({
         label: "connector id",
         argValue: args.id,
         fetch: () => fetchConnectorRows(client),
       });
       printJson(await client.inspectMcpConnector(id));
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -675,7 +665,7 @@ const mcpAuthorizeCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       const id = await pickId({
         label: "connector id",
         argValue: args.id,
@@ -683,9 +673,7 @@ const mcpAuthorizeCommand = defineCommand({
       });
       const res = await client.authorizeMcpConnector(id);
       process.stdout.write(`open this URL to grant access:\n${res.authorization_url}\n`);
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -707,13 +695,14 @@ const patchCommand = defineCommand({
     if (args.file) return saveConnectorFromFile({ action: "patch", id: args.id }, args);
     const client = makeClient();
     const jsonMode = Boolean(args.json);
-    try {
-      const body: Record<string, unknown> = { ...catalogMetadataBody(args) };
-      if (args.name) body.name = args.name;
-      printJson(await client.patchConnector(args.id, body));
-    } catch (err) {
-      reportCommandError(err, { json: jsonMode });
-    }
+    return withCommandErrors(
+      async () => {
+        const body: Record<string, unknown> = { ...catalogMetadataBody(args) };
+        if (args.name) body.name = args.name;
+        printJson(await client.patchConnector(args.id, body));
+      },
+      { json: jsonMode },
+    );
   },
 });
 
@@ -725,7 +714,7 @@ const deleteCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       const id = await pickId({
         label: "connector id",
         argValue: args.id,
@@ -737,9 +726,7 @@ const deleteCommand = defineCommand({
       }
       await client.deleteConnector(id);
       process.stdout.write("deleted\n");
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -766,37 +753,38 @@ const promoteCommand = defineCommand({
   async run({ args }) {
     const client = makeClient();
     const jsonMode = Boolean(args.json);
-    try {
-      const id = await pickId({
-        label: "DEV connector id",
-        argValue: args.id,
-        fetch: () => fetchConnectorRows(client),
-      });
-      if (args.to !== "prod") throw new Error("--to must be prod");
-      if (args.strategy !== "copy" && args.strategy !== "move") {
-        throw new Error("--strategy must be copy or move");
-      }
-      if (args.strategy === "move" && !args.yes) {
-        const confirmed = await prompts.confirm({
-          message: `Move connector "${id}" from DEV to PROD? The DEV connector will not remain.`,
+    return withCommandErrors(
+      async () => {
+        const id = await pickId({
+          label: "DEV connector id",
+          argValue: args.id,
+          fetch: () => fetchConnectorRows(client),
         });
-        if (!confirmed || prompts.isCancel(confirmed)) return;
-      }
-      const idempotencyKey = args["idempotency-key"] ?? `sk-promote-${crypto.randomUUID()}`;
-      const result = await client.promoteConnector(
-        id,
-        { target_environment: "prod", strategy: args.strategy },
-        idempotencyKey,
-      );
-      if (jsonMode) {
-        printJson({ idempotency_key: idempotencyKey, ...result });
-      } else {
-        process.stderr.write(`${pc.dim("Idempotency-Key:")} ${idempotencyKey}\n`);
-        printJson(result);
-      }
-    } catch (err) {
-      reportCommandError(err, { json: jsonMode });
-    }
+        if (args.to !== "prod") throw new Error("--to must be prod");
+        if (args.strategy !== "copy" && args.strategy !== "move") {
+          throw new Error("--strategy must be copy or move");
+        }
+        if (args.strategy === "move" && !args.yes) {
+          const confirmed = await prompts.confirm({
+            message: `Move connector "${id}" from DEV to PROD? The DEV connector will not remain.`,
+          });
+          if (!confirmed || prompts.isCancel(confirmed)) return;
+        }
+        const idempotencyKey = args["idempotency-key"] ?? `sk-promote-${crypto.randomUUID()}`;
+        const result = await client.promoteConnector(
+          id,
+          { target_environment: "prod", strategy: args.strategy },
+          idempotencyKey,
+        );
+        if (jsonMode) {
+          printJson({ idempotency_key: idempotencyKey, ...result });
+        } else {
+          process.stderr.write(`${pc.dim("Idempotency-Key:")} ${idempotencyKey}\n`);
+          printJson(result);
+        }
+      },
+      { json: jsonMode },
+    );
   },
 });
 
@@ -813,17 +801,18 @@ const testCommand = defineCommand({
   async run({ args }) {
     const client = makeClient();
     const jsonMode = Boolean(args.json);
-    try {
-      const id = await pickId({
-        label: "connector id",
-        argValue: args.id,
-        fetch: () => fetchConnectorRows(client),
-      });
-      const result = await client.testConnector(id);
-      if (!renderProbeOutcome(result, jsonMode)) process.exit(1);
-    } catch (err) {
-      reportCommandError(err, { json: jsonMode });
-    }
+    return withCommandErrors(
+      async () => {
+        const id = await pickId({
+          label: "connector id",
+          argValue: args.id,
+          fetch: () => fetchConnectorRows(client),
+        });
+        const result = await client.testConnector(id);
+        if (!renderProbeOutcome(result, jsonMode)) process.exit(1);
+      },
+      { json: jsonMode },
+    );
   },
 });
 
@@ -835,11 +824,9 @@ const docsIngestCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       printJson(await client.ingestConnectorDocs(args.id, { url: args.url }));
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -851,12 +838,13 @@ const docsListCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const { items } = await client.listConnectorDocs(args.id);
-      emitList(!!args.json, ["id", "title", "url"], items);
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { items } = await client.listConnectorDocs(args.id);
+        emitList(!!args.json, ["id", "title", "url"], items);
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -869,7 +857,7 @@ const docsSearchCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       const { items } = await client.searchConnectorDocs(args.id, args.query, Number(args.limit));
       printTable(
         ["id", "title", "match_type", "score"],
@@ -878,9 +866,7 @@ const docsSearchCommand = defineCommand({
           score: (item as Record<string, unknown>).rank,
         })),
       );
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -892,12 +878,10 @@ const docsDeleteCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       await client.deleteConnectorDoc(args.id, args["doc-id"]);
       process.stdout.write("deleted\n");
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 

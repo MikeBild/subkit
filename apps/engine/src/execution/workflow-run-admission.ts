@@ -1,17 +1,17 @@
-import { isDeepStrictEqual } from "node:util";
 import { z } from "@hono/zod-openapi";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { waitForCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Db } from "../db/client.ts";
-import { executions, workflows } from "../db/schema/index.ts";
+import { workflows } from "../db/schema/index.ts";
 import { RequestSourceSchema } from "../observability/service-metadata.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import { JsonValueSchema } from "../workflows/types.ts";
+import { inputSchemaVerdict, lockIdempotentExecution } from "./admission-facts.ts";
 import { admitAuthorizedWorkflowExecution } from "./authority-admission.ts";
 import { authorizationContextFromPrincipal } from "./authorization-context.ts";
 import { bindCallerBudget, reserveCallerBudget } from "./caller-budget.ts";
 import { assertExecutionPrivacySupported, callerFromPrincipal } from "./caller-context.ts";
-import { validateAgainstJsonSchema } from "./engine/envelope.ts";
+import { type AdmissionDecision, boundaryOfExecution, decideAdmission } from "./core/admission.ts";
 import { resolveDefinition } from "./resolve-definition.ts";
 import { recoverExecutionPayload } from "./sensitive-payload.ts";
 import { createExecution } from "./state.ts";
@@ -36,6 +36,11 @@ function fail(code: string, message: string): never {
   throw Object.assign(new Error(message), { code });
 }
 
+function enforce(decision: AdmissionDecision): AdmissionDecision {
+  if (decision.kind === "rejected") fail(decision.code, decision.message);
+  return decision;
+}
+
 export async function admitWorkflowRun(
   raw: unknown,
   db: Db,
@@ -43,24 +48,13 @@ export async function admitWorkflowRun(
   workflowPermission?: import("./workflow-permission.ts").WorkflowPermission | null,
 ) {
   const input = schema.parse(raw);
-  if (
-    input.expected_workflow_version_id &&
-    input.workflow_version_id &&
-    input.expected_workflow_version_id !== input.workflow_version_id
-  ) {
-    fail(
-      "execution_boundary_mismatch",
-      "the prepared workflow version differs from the requested workflow version",
-    );
-  }
+  enforce(decideAdmission(input, { stage: "requested_version" }));
   const [saved] = await db
     .select({ lifecycle: workflows.lifecycle })
     .from(workflows)
     .where(and(eq(workflows.tenant_id, input.tenant_id), eq(workflows.id, input.workflow_id)))
     .limit(1);
-  if (saved?.lifecycle === "archived") {
-    fail("workflow_archived", "this workflow is archived and cannot run until it is restored");
-  }
+  enforce(decideAdmission(input, { stage: "lifecycle", lifecycle: saved?.lifecycle ?? null }));
   const resolved = await resolveDefinition(db, input.tenant_id, {
     kind: "saved",
     workflow_id: input.workflow_id,
@@ -76,12 +70,7 @@ export async function admitWorkflowRun(
     resolved.def.required_caller_kind,
   );
   assertExecutionPrivacySupported(input.request_source, resolved.def.execution_privacy);
-  if (input.hold_writes === true && input.execution_authority_id) {
-    fail(
-      "execution_boundary_mismatch",
-      "a preparation request cannot also select a live authority",
-    );
-  }
+  enforce(decideAdmission(input, { stage: "binding" }));
   let downgraded_from: { code: string; message: string } | undefined;
   if (input.hold_writes !== true) {
     const {
@@ -98,63 +87,46 @@ export async function admitWorkflowRun(
       );
       return { ...admitted, hold_writes: false };
     } catch (error) {
-      const code = (error as { code?: string }).code;
-      if (
-        input.execution_authority_id ||
-        input.hold_writes === false ||
-        ![
-          "execution_authority_required",
-          "execution_authority_unavailable",
-          "execution_authority_changed",
-          "workflow_version_not_active",
-          "execution_boundary_mismatch",
-        ].includes(code ?? "")
-      )
-        throw error;
-      if (input.expected_workflow_version_id) throw error;
-      downgraded_from = { code: code ?? "", message: (error as Error).message };
+      const fallback = decideAdmission(input, {
+        stage: "authority_refusal",
+        code: (error as { code?: string }).code ?? null,
+        message: (error as Error).message,
+      });
+      if (fallback.kind !== "downgrade") throw error;
+      downgraded_from = fallback.downgraded_from;
     }
   }
-  if (resolved.def.input_schema) {
-    const check = validateAgainstJsonSchema(normalized, resolved.def.input_schema, "$input");
-    if (!check.valid) fail("input_schema_violation", check.errors.join("; "));
-  }
+  enforce(
+    decideAdmission(input, {
+      stage: "input",
+      verdict: inputSchemaVerdict(normalized, resolved.def.input_schema),
+    }),
+  );
   return db.transaction(async (tx) => {
     await waitForCatalogVocabulary(tx, input.tenant_id);
     if (input.idempotency_key) {
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.tenant_id}:${input.idempotency_key}`}, 0))`,
-      );
-      const [existing] = await tx
-        .select()
-        .from(executions)
-        .where(
-          and(
-            eq(executions.tenant_id, input.tenant_id),
-            eq(executions.idempotency_key, input.idempotency_key),
-          ),
-        )
-        .limit(1);
+      const existing = await lockIdempotentExecution(tx, input.tenant_id, input.idempotency_key);
       if (existing) {
-        if (
-          !existing.hold_writes ||
-          existing.execution_authority_id ||
-          existing.workflow_id !== input.workflow_id ||
-          existing.workflow_version_id !== resolved.workflow_version_id ||
-          existing.execution_mode !== input.execution_environment ||
-          (existing.parent_execution_id ?? null) !== (input.parent_execution_id ?? null) ||
-          !isDeepStrictEqual(existing.caller_context, caller) ||
-          existing.caller_origin !== (caller ? "principal" : "unknown") ||
-          !isDeepStrictEqual(
-            recoverExecutionPayload(existing.input, input.tenant_id, existing.id),
-            normalized,
-          )
-        ) {
-          fail(
-            "execution_boundary_mismatch",
-            "the idempotency key belongs to a different execution boundary",
-          );
-        }
+        enforce(
+          decideAdmission(input, {
+            stage: "replay",
+            existing: boundaryOfExecution(
+              existing,
+              recoverExecutionPayload(existing.input, input.tenant_id, existing.id),
+            ),
+            requested: {
+              binding: "held",
+              execution_authority_id: null,
+              workflow_id: input.workflow_id,
+              workflow_version_id: resolved.workflow_version_id,
+              execution_mode: input.execution_environment,
+              parent_execution_id: input.parent_execution_id ?? null,
+              caller_context: caller,
+              caller_origin: caller ? "principal" : "unknown",
+              input: normalized,
+            },
+          }),
+        );
         return {
           execution_id: existing.id,
           execution_authority_id: null,

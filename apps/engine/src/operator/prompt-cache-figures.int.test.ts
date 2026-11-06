@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { tenants } from "../db/schema/identity.ts";
 import { llmUsage } from "../db/schema/llm.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import { readOperatingFigures } from "./operating-figures.ts";
 
 const FROM = new Date("2024-01-01T00:00:00.000Z");
@@ -37,14 +37,14 @@ function usage(
 
 beforeAll(async () => {
   testDb = await createTestDb("prompt_cache_figures");
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "t-prompt-cache", display_name: "Prompt cache" })
-    .returning();
-  const [other] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "t-prompt-cache-other", display_name: "Other" })
-    .returning();
+  const tenant = await seedTenant(testDb.db, {
+    slug: "t-prompt-cache",
+    display_name: "Prompt cache",
+  });
+  const other = await seedTenant(testDb.db, {
+    slug: "t-prompt-cache-other",
+    display_name: "Other",
+  });
   tenantId = tenant!.id;
   await testDb.db
     .insert(llmUsage)

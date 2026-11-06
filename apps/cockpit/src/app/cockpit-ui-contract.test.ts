@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, globSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -59,6 +59,7 @@ describe("cockpit-ui family contract", () => {
       "apps/cockpit/src/components/ui/select.tsx",
       "apps/cockpit/src/components/ai-elements/prompt-input.tsx",
       "apps/cockpit/src/pages/chat.tsx",
+      ...globSync("apps/cockpit/src/features/chat/**/*.tsx", { cwd: root }),
     ]) {
       const source = readFileSync(join(root, file), "utf8");
       expect(source).not.toMatch(/(?:hover|focus|data-open|aria-expanded):bg-accent/);
@@ -85,6 +86,7 @@ describe("cockpit-ui family contract", () => {
       "apps/cockpit/src/components/cockpit/table-columns.tsx",
       "apps/cockpit/src/components/ai-elements/tool.tsx",
       "apps/cockpit/src/components/ai-elements/prompt-input.tsx",
+      ...globSync("apps/cockpit/src/features/**/*.tsx", { cwd: root }),
     ]) {
       const source = readFileSync(join(root, file), "utf8");
       expect(source).not.toMatch(/(?:^|[" ])space-[xy]-/);

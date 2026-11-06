@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { executionSteps, executions, tenants } from "../db/schema/index.ts";
+import { executionSteps, executions } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { RunLlmBudget } from "../llm/accounting/index.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import type { RequestStep } from "../workflows/types.ts";
 import { runRequestStep } from "./steps/request.ts";
 import { createMockServer, jsonResponse, type MockServer } from "./tests/setup.ts";
@@ -24,11 +25,7 @@ let mockBehaviour: { kind: "ok" } | { kind: "fail-then-ok"; remaining: number; s
 
 beforeAll(async () => {
   testDb = await createTestDb("idempotency-key");
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "idemp", display_name: "Idempotency" })
-    .returning();
-  if (!tenant) throw new Error("tenant insert failed");
+  const tenant = await seedTenant(testDb.db, { slug: "idemp", display_name: "Idempotency" });
   tenantId = tenant.id;
 
   mock = await createMockServer((req, res) => {

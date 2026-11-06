@@ -1,20 +1,17 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { evaluateHook } from "../../../auth/hooks.ts";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
-import { requestHooks, tenants } from "../../../db/schema/index.ts";
+import { requestHooks } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 
 let testDb: TestDb;
 let tenantId: string;
 
 beforeAll(async () => {
   testDb = await createTestDb("sbx-hook");
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "sbx-hook", display_name: "Sandbox Hook Test" })
-    .returning();
-  if (!tenant) throw new Error("tenant insert failed");
-  tenantId = tenant.id;
+  tenantId = (await seedTenant(testDb.db, { slug: "sbx-hook", display_name: "Sandbox Hook Test" }))
+    .id;
 });
 
 afterAll(async () => {

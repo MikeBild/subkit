@@ -1,12 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
-import {
-  apiKeys,
-  skillCandidateEvidence,
-  skillCandidates,
-  tenants,
-} from "../../db/schema/index.ts";
+import { apiKeys, skillCandidateEvidence, skillCandidates } from "../../db/schema/index.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 interface EvidenceItem {
@@ -105,11 +101,10 @@ beforeAll(async () => {
     },
   ]);
 
-  const [otherTenant] = await srv.db
-    .insert(tenants)
-    .values({ slug: "t-skill-cand-evidence-other", display_name: "other" })
-    .returning();
-  if (!otherTenant) throw new Error("seed other tenant failed");
+  const otherTenant = await seedTenant(srv.db, {
+    slug: "t-skill-cand-evidence-other",
+    display_name: "other",
+  });
   foreignCandidateId = await seedCandidate(otherTenant.id, "foreign");
 });
 

@@ -7,8 +7,9 @@ import type {
   DiscoveryServiceResult,
 } from "../../connectors/discovery/service.ts";
 import type { ConnectorSelfDescriptionLink } from "../../connectors/types.ts";
-import { connectors, tenants } from "../../db/schema/index.ts";
+import { connectors } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { SchedulerReconciler } from "../reconciler.ts";
 
 const CADENCE_MS = 24 * 60 * 60 * 1000;
@@ -85,11 +86,8 @@ function makeReconciler(
 beforeAll(async () => {
   db = await createTestDb("connector-self-description");
 
-  const [t] = await db.db
-    .insert(tenants)
-    .values({ slug: "t-selfdesc", display_name: "Self-Desc Tenant" })
-    .returning();
-  tenantId = t!.id;
+  const t = await seedTenant(db.db, { slug: "t-selfdesc", display_name: "Self-Desc Tenant" });
+  tenantId = t.id;
 
   const links = {
     links: [

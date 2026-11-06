@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
-import type { PgBoss } from "pg-boss";
 import { selfHealingScans, tenants, workflowsSchedules } from "../db/schema/index.ts";
 import {
   createEngineCtx,
@@ -9,6 +8,7 @@ import {
 } from "../execution/tests/setup.ts";
 import { SchedulerReconciler } from "./reconciler.ts";
 import { grantScheduleAuthorityFixture } from "./tests/authority-fixture.ts";
+import { createStubBoss, type SendCall } from "./tests/stub-boss.ts";
 
 let ctx: EngineTestCtx;
 
@@ -19,25 +19,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await ctx.cleanup();
 }, 30_000);
-
-interface SendCall {
-  queue: string;
-  payload: unknown;
-}
-
-function createStubBoss(calls: SendCall[]): PgBoss {
-  return {
-    send: async (queue: string, payload: unknown) => {
-      calls.push({ queue, payload });
-      return "stub-job-id";
-    },
-    schedule: async () => undefined,
-    unschedule: async () => undefined,
-    getQueues: async () => [],
-    createQueue: async () => undefined,
-    on: () => undefined,
-  } as unknown as PgBoss;
-}
 
 describe("reconciler CAS is microsecond-safe", () => {
   test("workflow schedule with microsecond last_enqueued_at still fires", async () => {

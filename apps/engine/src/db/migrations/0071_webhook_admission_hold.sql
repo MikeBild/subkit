@@ -1,1 +1,0 @@
-ALTER TABLE "webhooks_inbound" ADD COLUMN "admission_hold" jsonb;

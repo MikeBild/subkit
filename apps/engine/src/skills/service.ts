@@ -113,8 +113,7 @@ export interface CreateSkillParams {
   slug?: string;
 }
 
-export async function createSkill(p: CreateSkillParams, exec?: Executor): Promise<Skill> {
-  const db = exec ?? getDb();
+export async function createSkill(p: CreateSkillParams, db: Executor): Promise<Skill> {
   const actor = resolveSkillActor(p.actor_id ?? null, p.actor_type);
   validateScope(p.input);
   const blob: SkillExamplesBlob = {
@@ -212,8 +211,7 @@ export interface ListSkillsParams {
   offset?: number;
 }
 
-export async function listSkills(p: ListSkillsParams, exec?: Executor): Promise<Skill[]> {
-  const db = exec ?? getDb();
+export async function listSkills(p: ListSkillsParams, db: Executor): Promise<Skill[]> {
   const tenantConds = [eq(skills.tenant_id, p.tenant_id)];
   if (p.scope) tenantConds.push(eq(skills.scope, p.scope));
   if (p.connector_id) tenantConds.push(eq(skills.connector_id, p.connector_id));
@@ -257,9 +255,8 @@ export async function listSkills(p: ListSkillsParams, exec?: Executor): Promise<
 
 export async function countSkills(
   p: Omit<ListSkillsParams, "limit" | "offset" | "sort" | "order">,
-  exec?: Executor,
+  db: Executor,
 ): Promise<number> {
-  const db = exec ?? getDb();
   const tenantConds = [eq(skills.tenant_id, p.tenant_id)];
   if (p.scope) tenantConds.push(eq(skills.scope, p.scope));
   if (p.connector_id) tenantConds.push(eq(skills.connector_id, p.connector_id));
@@ -287,13 +284,8 @@ export async function countSkills(
   return Number(row?.total ?? 0);
 }
 
-export async function getSkill(
-  tenant_id: string,
-  id: string,
-  exec?: Executor,
-): Promise<Skill | null> {
+export async function getSkill(tenant_id: string, id: string, db: Executor): Promise<Skill | null> {
   if (!UUID_RE.test(id)) return null;
-  const db = exec ?? getDb();
   const rows = await db
     .select()
     .from(skills)
@@ -306,9 +298,8 @@ export async function getSkill(
 export async function getSkillBySlug(
   tenant_id: string,
   slug: string,
-  exec?: Executor,
+  db: Executor,
 ): Promise<Skill | null> {
-  const db = exec ?? getDb();
   const rows = await db
     .select()
     .from(skills)
@@ -323,12 +314,11 @@ export async function updateSkill(
   id: string,
   patch: UpdateSkillInput,
   actor_id: string | null,
-  exec?: Executor,
+  db: Executor,
   actor_type?: AuditActorType,
   conventions?: SkillConventionsWrite,
 ): Promise<Skill | null> {
   const actor = resolveSkillActor(actor_id, actor_type);
-  const db = exec ?? getDb();
   return await db.transaction(async (tx) => {
     await lockCatalogVocabulary(tx, tenant_id);
     const existingRows = await tx
@@ -467,11 +457,10 @@ export async function activateSkill(
   tenant_id: string,
   id: string,
   actor_id: string | null,
-  exec?: Executor,
+  db: Executor,
   actor_type?: AuditActorType,
 ): Promise<Skill | null> {
   const actor = resolveSkillActor(actor_id, actor_type);
-  const db = exec ?? getDb();
   return await db.transaction(async (tx) => {
     const existing = await tx
       .select()
@@ -535,11 +524,10 @@ export async function archiveSkill(
   tenant_id: string,
   id: string,
   actor_id: string | null,
-  exec?: Executor,
+  db: Executor,
   actor_type?: AuditActorType,
 ): Promise<Skill | null> {
   const actor = resolveSkillActor(actor_id, actor_type);
-  const db = exec ?? getDb();
   return await db.transaction(async (tx) => {
     const existing = await tx
       .select()
@@ -593,11 +581,10 @@ export async function deleteSkill(
   tenant_id: string,
   id: string,
   actor_id: string | null,
-  exec?: Executor,
+  db: Executor,
   actor_type?: AuditActorType,
 ): Promise<boolean> {
   const actor = resolveSkillActor(actor_id, actor_type);
-  const db = exec ?? getDb();
   return await db.transaction(async (tx) => {
     const existing = await tx
       .select()
@@ -671,9 +658,8 @@ function historyEntry(row: typeof auditLog.$inferSelect): SkillHistoryEntry {
 export async function listSkillHistory(
   tenant_id: string,
   skill_id: string,
-  exec?: Executor,
+  db: Executor,
 ): Promise<SkillHistoryEntry[]> {
-  const db = exec ?? getDb();
   const tenantConds = [
     eq(auditLog.tenant_id, tenant_id),
     eq(auditLog.action, AuditAction.SKILL_UPDATED),
@@ -708,9 +694,8 @@ export async function getSkillHistoryEntry(
   tenant_id: string,
   skill_id: string,
   audit_entry_id: string,
-  exec?: Executor,
+  db: Executor,
 ): Promise<SkillHistoryDetail | null> {
-  const db = exec ?? getDb();
   const tenantConds = [
     eq(auditLog.tenant_id, tenant_id),
     eq(auditLog.id, audit_entry_id),
@@ -737,10 +722,9 @@ export async function restoreSkill(
   id: string,
   audit_entry_id: string,
   actor_id: string | null,
-  exec?: Executor,
+  db: Executor,
   actor_type?: AuditActorType,
 ): Promise<Skill | null> {
-  const db = exec ?? getDb();
   const rows = await db
     .select()
     .from(auditLog)
@@ -798,9 +782,8 @@ export interface RetrieveApplicableParams {
 
 export async function retrieveApplicableSkills(
   p: RetrieveApplicableParams,
-  exec?: Executor,
+  db: Executor,
 ): Promise<Skill[]> {
-  const db = exec ?? getDb();
   const active = eq(skills.lifecycle, "active");
   const tenant = eq(skills.tenant_id, p.tenant_id);
 

@@ -5,10 +5,10 @@ import {
   conversations,
   executions,
   llmUsage,
-  tenants,
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -117,11 +117,7 @@ beforeAll(async () => {
   conversationId = titled.id;
   untitledConversationId = untitled.id;
 
-  const [other] = await db
-    .insert(tenants)
-    .values({ slug: "t-llm-breakdown-other", display_name: "Other" })
-    .returning();
-  if (!other) throw new Error("seed other tenant failed");
+  const other = await seedTenant(db, { slug: "t-llm-breakdown-other", display_name: "Other" });
   const [foreign] = await db
     .insert(conversations)
     .values({ tenant_id: other.id, status: "active", title: "Fremde Unterhaltung" })

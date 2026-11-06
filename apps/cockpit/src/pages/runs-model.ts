@@ -1,5 +1,5 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import type { ReactNode } from "react";
-import type { components } from "@/api/schema";
 import { type ActorDirectory, actorDirectoryName } from "@/app/actor-directory-model";
 import { auditHref, instantParam, RUNS_FILTER_PARAMS, uuidParam } from "@/app/links";
 import { statusTone } from "@/components/cockpit/patterns/status-badge";

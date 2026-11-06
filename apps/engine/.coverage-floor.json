@@ -1,23 +1,32 @@
 {
-  "_comment": "Per-subsystem coverage floors enforced by `bun run check:coverage-floor` and the audit-invariants `coverage_floor` check.",
+  "_comment": "Coverage floors enforced by `bun run check:coverage-floor` and shape-checked by the audit-invariants `coverage_floor` check. `subsystems` are LOC-weighted directory aggregates; `files` are single files; `core_default` applies to every core.ts and core/** file not excluded. Bun reports no branch coverage, so branch_min is recorded but unmeasured.",
   "subsystems": {
     "apps/engine/src/rbac": {
       "line_min": 90,
       "branch_min": 85,
       "rationale": "RBAC mediates every authorisation decision; high coverage matches the highest enterprise-control-plane risk surface.",
-      "observed": { "line": 92, "branch": null }
+      "observed": {
+        "line": 92,
+        "branch": null
+      }
     },
     "apps/engine/src/audit": {
       "line_min": 90,
       "branch_min": 85,
       "rationale": "Audit log is the immutable evidence trail for SOC2/ISO27001/GDPR; redaction, tenant scoping, and tx rollback are non-negotiable contracts.",
-      "observed": { "line": 95, "branch": null }
+      "observed": {
+        "line": 95,
+        "branch": null
+      }
     },
     "apps/engine/src/identity": {
       "line_min": 80,
       "branch_min": 70,
       "rationale": "Identity covers OIDC, JWKS, JIT provisioning, portal tokens, sessions; the floor is below rbac/audit because some service-level paths only fire under live OIDC traffic that's covered by integration tests with real IdP fixtures.",
-      "observed": { "line": 80, "branch": null }
+      "observed": {
+        "line": 80,
+        "branch": null
+      }
     },
     "apps/engine/src/auth": {
       "line_min": 80,
@@ -48,13 +57,36 @@
       "line_min": 75,
       "branch_min": 65,
       "rationale": "Cron reconciler with CAS-guarded exactly-once semantics; race + dedup tests pin the contract. Calendar-gate / trigger-bind paths are also covered.",
-      "observed": { "line": 93, "branch": null }
+      "observed": {
+        "line": 93,
+        "branch": null
+      }
     },
     "apps/engine/src/http/routes": {
       "line_min": 51,
       "branch_min": 41,
       "rationale": "Route coverage is now enforced. The route boundary harness plus per-route tests pin Zod/RBAC/tenant/audit contracts; the floor sits three points under the observed LOC-weighted aggregate and should ratchet up as the large route files are split into per-resource files.",
-      "observed": { "line": 54.85, "branch": null }
+      "observed": {
+        "line": 54.85,
+        "branch": null
+      }
+    }
+  },
+  "core_default": {
+    "line_min": 100,
+    "branch_min": 100,
+    "exclude": ["apps/engine/src/llm/core/"],
+    "rationale": "Pure cores take time, ids and randomness as parameters, so every line is reachable from a plain example or property test. llm/core is the provider adapter layer, not a pure core."
+  },
+  "files": {
+    "packages/shared/src/approval-choice.ts": {
+      "line_min": 100,
+      "branch_min": 100,
+      "rationale": "Pure approval-choice mapping shared by engine, sk and cockpit; first Stryker target.",
+      "observed": {
+        "line": 100,
+        "branch": null
+      }
     }
   }
 }

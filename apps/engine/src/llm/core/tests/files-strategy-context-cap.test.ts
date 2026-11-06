@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-import { conversations, tenants } from "../../../db/schema/index.ts";
+import { conversations } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { attachInlineForTest } from "../../../files/test-helpers.ts";
 import {
   createDeterministicHexFactory,
   createDeterministicUuidFactory,
 } from "../../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import { getStaticCapabilities } from "../capabilities.ts";
 import { buildFileContentBlocks, FILE_PART_PER_TURN_CAP_BYTES } from "../file-context.ts";
 
@@ -24,11 +25,7 @@ let conversation_id: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("files-strategy-cap");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "fscap-t", display_name: "Files Strategy Cap" })
-    .returning();
-  if (!t) throw new Error("seed tenant");
+  const t = await seedTenant(ctx.db, { slug: "fscap-t", display_name: "Files Strategy Cap" });
   tenant_id = t.id;
 
   const [conv] = await ctx.db

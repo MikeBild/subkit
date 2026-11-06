@@ -14,6 +14,7 @@ import { logger } from "../logging/logger.ts";
 import type { BoundaryGrowth } from "./authority-growth.ts";
 import { authorityLive } from "./authority-live.ts";
 import { contentBoundariesFromManifest } from "./content-publication-proposal.ts";
+import { carryForward } from "./core/authority.ts";
 import { type WorkflowEffectManifest, WorkflowEffectManifestSchema } from "./effect-manifest.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
 import {
@@ -309,18 +310,17 @@ export async function carryApprovalsForward(
         const judged = await judgeCarry(sp, parent, input.to_version_id);
         if (!judged) continue;
         const { preview, granted, growth, relaxed_keys } = judged;
-        if (growth.length > 0) {
+        const carried = carryForward(parent, growth);
+        if (carried.kind === "growth") {
           outcome.growth[environment] = [...(outcome.growth[environment] ?? []), ...growth];
           continue;
         }
+        if (carried.kind === "exhausted") continue;
         const targets = [
           ...new Set(
             preview.manifest.effects.flatMap((effect) => (effect.target ? [effect.target] : [])),
           ),
         ].sort();
-        const remaining =
-          parent.max_runs === null ? null : Math.max(0, parent.max_runs - parent.reserved_runs);
-        if (remaining === 0) continue;
         const [child] = await sp
           .insert(workflowExecutionAuthorities)
           .values({
@@ -332,8 +332,8 @@ export async function carryApprovalsForward(
             execution_environment: environment,
             target_constraints: { targets },
             valid_from: sql`clock_timestamp()`,
-            valid_until: parent.valid_until,
-            max_runs: remaining,
+            valid_until: carried.valid_until,
+            max_runs: carried.max_runs,
             created_by: parent.created_by,
             inherited_from: parent.id,
             approved_manifest: { ...granted },
@@ -360,8 +360,8 @@ export async function carryApprovalsForward(
           workflow_version_id: input.to_version_id,
           execution_environment: environment,
           effect_manifest_digest: preview.digest,
-          max_runs: remaining,
-          valid_until: parent.valid_until?.toISOString() ?? null,
+          max_runs: carried.max_runs,
+          valid_until: carried.valid_until?.toISOString() ?? null,
           inheritance_basis:
             Object.keys(relaxed_keys).length > 0 ? ("read_relaxed" as const) : ("exact" as const),
           relaxed_keys,

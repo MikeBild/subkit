@@ -1,17 +1,7 @@
-import { reportCommandError } from "@cli-core/errors";
 import { emitList } from "@cli-core/format";
 import { defineCommand } from "citty";
-import { resolveProfile } from "../config.ts";
-import { EngineClient, type UserInviteWire } from "../engine-client.ts";
-
-function makeClient() {
-  const profile = resolveProfile();
-  return new EngineClient({
-    engine_url: profile.engine_url,
-    api_key: profile.api_key,
-    tenant: profile.active_tenant_id,
-  });
-}
+import type { UserInviteWire } from "../engine-client.ts";
+import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
 export function inviteStatus(invite: UserInviteWire, nowMs: number = Date.now()): string {
   if (invite.revoked_at) return "revoked";
@@ -31,29 +21,30 @@ const listCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const query: { status?: "pending" | "redeemed" | "revoked" | "expired" } = {};
-      if (args.status) {
-        const s = String(args.status);
-        if (s !== "pending" && s !== "redeemed" && s !== "revoked" && s !== "expired") {
-          process.stderr.write(
-            "sk invites list: --status must be one of pending|redeemed|revoked|expired\n",
-          );
-          process.exit(2);
+    return withCommandErrors(
+      async () => {
+        const query: { status?: "pending" | "redeemed" | "revoked" | "expired" } = {};
+        if (args.status) {
+          const s = String(args.status);
+          if (s !== "pending" && s !== "redeemed" && s !== "revoked" && s !== "expired") {
+            process.stderr.write(
+              "sk invites list: --status must be one of pending|redeemed|revoked|expired\n",
+            );
+            process.exit(2);
+          }
+          query.status = s;
         }
-        query.status = s;
-      }
-      const { items } = await client.listInvites(query);
-      const rows = items.map((v) => ({
-        id: v.id,
-        user: v.user_id,
-        status: inviteStatus(v),
-        expires: v.expires_at,
-      }));
-      emitList(!!args.json, ["id", "user", "status", "expires"], rows);
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+        const { items } = await client.listInvites(query);
+        const rows = items.map((v) => ({
+          id: v.id,
+          user: v.user_id,
+          status: inviteStatus(v),
+          expires: v.expires_at,
+        }));
+        emitList(!!args.json, ["id", "user", "status", "expires"], rows);
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -62,12 +53,10 @@ const revokeCmd = defineCommand({
   args: { id: { type: "positional", required: true, description: "Invite id" } },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       await client.revokeInvite(String(args.id));
       process.stdout.write("revoked\n");
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 

@@ -1,5 +1,5 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { apiRequest } from "./client";
-import type { components } from "./schema";
 import { tenantContentHref } from "./tenant-context";
 
 export const PACKAGE_KINDS = [

@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
-import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { withContext } from "../../logging/context.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import * as auditModule from "../audit.ts";
 import { auditAwait } from "../audit.ts";
 import {
@@ -27,14 +27,8 @@ let tenantB = "";
 
 beforeAll(async () => {
   testDb = await createTestDb("audit-contracts");
-  const [a] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "audit-cn-a", display_name: "Audit-Contracts A" })
-    .returning();
-  const [b] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "audit-cn-b", display_name: "Audit-Contracts B" })
-    .returning();
+  const a = await seedTenant(testDb.db, { slug: "audit-cn-a", display_name: "Audit-Contracts A" });
+  const b = await seedTenant(testDb.db, { slug: "audit-cn-b", display_name: "Audit-Contracts B" });
   if (!a || !b) throw new Error("seed tenants");
   tenantA = a.id;
   tenantB = b.id;
@@ -206,11 +200,10 @@ describe("tenant scoping on reads", () => {
   });
 
   test("resource search reaches safe names after multiple pages of discarded secret matches", async () => {
-    const [tenant] = await testDb.db
-      .insert(tenants)
-      .values({ slug: "audit-cn-search-late", display_name: "Audit Search Late" })
-      .returning();
-    if (!tenant) throw new Error("late search tenant missing");
+    const tenant = await seedTenant(testDb.db, {
+      slug: "audit-cn-search-late",
+      display_name: "Audit Search Late",
+    });
     const visibleId = uuid();
     await testDb.db.insert(auditLog).values({
       id: uuid(),
@@ -244,11 +237,10 @@ describe("tenant scoping on reads", () => {
   });
 
   test("resource search stops after a bounded number of discarded candidates", async () => {
-    const [tenant] = await testDb.db
-      .insert(tenants)
-      .values({ slug: "audit-cn-search-cap", display_name: "Audit Search Cap" })
-      .returning();
-    if (!tenant) throw new Error("search cap tenant missing");
+    const tenant = await seedTenant(testDb.db, {
+      slug: "audit-cn-search-cap",
+      display_name: "Audit Search Cap",
+    });
     const visibleId = uuid();
     await testDb.db.insert(auditLog).values({
       id: uuid(),

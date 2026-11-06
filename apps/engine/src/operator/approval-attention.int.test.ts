@@ -2,7 +2,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import {
-  tenants,
   users,
   webhooksInbound,
   workflowExecutionAuthorities,
@@ -15,6 +14,7 @@ import { builtinRoleId } from "../rbac/roles.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { addWorkflowVersion, seedPatchableWorkflow } from "../test-helpers/patch-candidates.ts";
 import { adminPrincipal } from "../test-helpers/principals.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import {
   AUTHORITY_EXTEND_BELOW_RUN_SHARE,
   AUTHORITY_EXTEND_WITHIN_DAYS,
@@ -33,12 +33,12 @@ let counter = 0;
 
 beforeAll(async () => {
   testDb = await createTestDb("operator-approval-attention");
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "t-approval-attention", display_name: "Approval attention" })
-    .returning();
-  if (!tenant) throw new Error("tenant fixture");
-  tenant_id = tenant.id;
+  tenant_id = (
+    await seedTenant(testDb.db, {
+      slug: "t-approval-attention",
+      display_name: "Approval attention",
+    })
+  ).id;
   const [user] = await testDb.db
     .insert(users)
     .values({

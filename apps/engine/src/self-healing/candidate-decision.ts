@@ -3,7 +3,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { resolveActor } from "../audit/recorders/types.ts";
 import type { AuditActorType } from "../audit/types.ts";
 import { AuditAction } from "../audit/types.ts";
-import { type Db, getDb } from "../db/client.ts";
+import type { Db } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { patchCandidates } from "../db/schema/index.ts";
 import type { PatchProposal } from "../llm/flows/repair.ts";
@@ -30,9 +30,8 @@ export async function approvePatchCandidate(
     expected_review_digest?: string;
     prepared_version_id?: string;
   },
-  exec?: Db,
+  db: Db,
 ): Promise<string | null> {
-  const db = exec ?? getDb();
   const result = await db.transaction(async (tx) => {
     const rows = await tx
       .select()
@@ -167,9 +166,8 @@ export async function rejectPatchCandidate(
     actor_type?: AuditActorType;
     reason?: string;
   },
-  exec?: Db,
+  db: Db,
 ): Promise<boolean> {
-  const db = exec ?? getDb();
   const rejected = await db.transaction(async (tx) => {
     const rows = await tx
       .update(patchCandidates)

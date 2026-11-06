@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import { setConfigKey } from "../../config/loader.ts";
-import { tenants, usageEvents } from "../../db/schema/index.ts";
+import { usageEvents } from "../../db/schema/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -20,11 +21,10 @@ beforeAll(async () => {
   srv = await createHttpTestServer("stats-usage");
   await setConfigKey("observability.usage.hmac_secret", "u".repeat(32), { force: true });
   await setConfigKey("observability.usage.enabled", true, { force: true });
-  const [foreignTenant] = await srv.db
-    .insert(tenants)
-    .values({ slug: "stats-usage-foreign", display_name: "Foreign usage tenant" })
-    .returning({ id: tenants.id });
-  if (!foreignTenant) throw new Error("foreign tenant seed failed");
+  const foreignTenant = await seedTenant(srv.db, {
+    slug: "stats-usage-foreign",
+    display_name: "Foreign usage tenant",
+  });
   await srv.db.insert(usageEvents).values([
     {
       tenant_id: srv.tenantId,

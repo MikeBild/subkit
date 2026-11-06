@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { closeDb } from "../../db/client.ts";
-import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   __resetMcpClientPoolForTests,
   __setMcpPoolFactoriesForTests,
@@ -58,11 +58,8 @@ beforeAll(async () => {
   ctx = await createTestDb("mcp-pool-evict");
   await closeDb();
   process.env.DATABASE_URL = ctx.url;
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-pool-evict", display_name: "Pool Evict Tenant" })
-    .returning();
-  tenantId = t!.id;
+  const t = await seedTenant(ctx.db, { slug: "t-pool-evict", display_name: "Pool Evict Tenant" });
+  tenantId = t.id;
 }, 30_000);
 
 afterAll(async () => {

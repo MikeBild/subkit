@@ -1,6 +1,7 @@
-import { authIdentities, connectors, tenants } from "../../db/schema/index.ts";
+import { authIdentities } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
+import { seedConnector, seedTenant } from "../../test-helpers/seed.ts";
 
 export interface DocsTestCtx {
   testDb: TestDb;
@@ -28,28 +29,20 @@ export async function createDocsTestCtx(
     if (!identity) throw new Error("identity fixture missing");
     ownerId = identity.id;
   }
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({
-      slug: `t-${label}`,
-      display_name: `Docs ${label}`,
-      ...(ownerId ? { origin: "self_service" as const, owner_identity_id: ownerId } : {}),
-    })
-    .returning();
-  if (!tenant) throw new Error("seed tenant failed");
-  const [connector] = await testDb.db
-    .insert(connectors)
-    .values({
-      tenant_id: tenant.id,
-      slug: `cn-${label}`,
-      display_name: `Connector ${label}`,
-      driver: "http",
-      environment: "dev",
-      auth_type: "none",
-      base_url: "https://example.test",
-    })
-    .returning();
-  if (!connector) throw new Error("seed connector failed");
+  const tenant = await seedTenant(testDb.db, {
+    slug: `t-${label}`,
+    display_name: `Docs ${label}`,
+    ...(ownerId ? { origin: "self_service" as const, owner_identity_id: ownerId } : {}),
+  });
+  const connector = await seedConnector(testDb.db, {
+    tenant_id: tenant.id,
+    slug: `cn-${label}`,
+    display_name: `Connector ${label}`,
+    driver: "http",
+    environment: "dev",
+    auth_type: "none",
+    base_url: "https://example.test",
+  });
   return {
     testDb,
     tenantId: tenant.id,

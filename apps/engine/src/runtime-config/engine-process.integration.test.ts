@@ -19,13 +19,13 @@ import {
   runtimeConfigRevisions,
   runtimeConfigState,
   runtimeSecretVersions,
-  tenants,
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { OPENAPI_INFO } from "../http/openapi.ts";
 import { logger } from "../logging/logger.ts";
 import { createDeterministicHexFactory } from "../test-helpers/determinism/ids.ts";
 import { waitFor } from "../test-helpers/determinism/wait.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 
 const hex = createDeterministicHexFactory(0xe619e);
 const entry = join(import.meta.dir, "../index.ts");
@@ -139,9 +139,11 @@ async function processFixture(label: string) {
   const port = await ephemeralPort();
   const key = hex(32);
   const sessionSecret = hex(32);
-  await db.db
-    .insert(tenants)
-    .values({ slug: "default", display_name: "Isolated process fixture", status: "suspended" });
+  await seedTenant(db.db, {
+    slug: "default",
+    display_name: "Isolated process fixture",
+    status: "suspended",
+  });
   writeFileSync(
     configPath,
     JSON.stringify({

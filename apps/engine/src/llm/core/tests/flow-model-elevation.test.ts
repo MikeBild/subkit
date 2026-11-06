@@ -1,10 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { getConfig, loadConfig } from "../../../config/loader.ts";
-import { tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
+import { ensureTestConfig } from "../../../queue/tests/test-config.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import { resetMockProvider } from "../../mock-provider.ts";
 import type { LlmFlow, ModelRoute } from "../../types.ts";
 import { applyFlowEnvOverrides, applyFlowModelElevation, invoke } from "../invoke.ts";
@@ -86,31 +83,16 @@ describe("applyFlowModelElevation", () => {
   });
 });
 
-async function ensureConfigLoaded(): Promise<void> {
-  try {
-    getConfig();
-    return;
-  } catch {}
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-elevation-test-"));
-  await loadConfig({
-    env: { DATABASE_URL: "postgres://placeholder/elevation-test", NODE_ENV: "test" },
-    configPathOverride: join(dir, "subkit.config.json"),
-  });
-}
-
 const skip = process.env.REQUIRES_PG === "0";
 let testDb: TestDb;
 let tenant_id: string;
 
 beforeAll(async () => {
   if (skip) return;
-  await ensureConfigLoaded();
+  await ensureTestConfig();
   testDb = await createTestDb("flow_model_elevation");
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "elevation", display_name: "Elevation" })
-    .returning();
-  tenant_id = tenant!.id;
+  const tenant = await seedTenant(testDb.db, { slug: "elevation", display_name: "Elevation" });
+  tenant_id = tenant.id;
 }, 60_000);
 
 afterAll(async () => {

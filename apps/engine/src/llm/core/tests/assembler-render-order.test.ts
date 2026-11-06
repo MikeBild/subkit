@@ -4,11 +4,11 @@ import {
   connectors,
   schemaVersions,
   skillCandidates,
-  tenants,
   workflows,
 } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { logger } from "../../../logging/logger.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import { resetMockProvider } from "../../mock-provider.ts";
 import type { AuthoringPromptHint } from "../../types.ts";
 import { assembleEnhancedPrompt } from "../context-assembler.ts";
@@ -96,11 +96,8 @@ beforeAll(async () => {
   resetMockProvider();
 
   ctx = await createTestDb("assembler_render_order");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-aro", display_name: "Render Order Test" })
-    .returning();
-  tenant_id = t!.id;
+  const t = await seedTenant(ctx.db, { slug: "t-aro", display_name: "Render Order Test" });
+  tenant_id = t.id;
 
   const [c] = await ctx.db
     .insert(connectors)
@@ -430,11 +427,11 @@ describe.skipIf(skip)("drop ladder — deterministic overflow (heavy seed)", () 
   beforeAll(async () => {
     if (skip) return;
     heavyCtx = await createTestDb("assembler_drop_ladder_heavy");
-    const [t] = await heavyCtx.db
-      .insert(tenants)
-      .values({ slug: "t-aro-heavy", display_name: "Drop Ladder Heavy Test" })
-      .returning();
-    heavyTenantId = t!.id;
+    const t = await seedTenant(heavyCtx.db, {
+      slug: "t-aro-heavy",
+      display_name: "Drop Ladder Heavy Test",
+    });
+    heavyTenantId = t.id;
 
     const [c] = await heavyCtx.db
       .insert(connectors)

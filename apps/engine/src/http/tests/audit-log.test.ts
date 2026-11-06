@@ -4,6 +4,7 @@ import { auditAwait } from "../../audit/audit.ts";
 import { apiKeys, users } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import { adminHeaders } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -76,17 +77,10 @@ afterAll(async () => {
   await srv.cleanup();
 });
 
-function adminHeaders() {
-  return {
-    authorization: `Bearer ${srv.apiKey}`,
-    "content-type": "application/json",
-  } as const;
-}
-
 describe("/v1/audit-log", () => {
   test("lists rows for the caller's tenant", async () => {
     const res = await fetch(`${srv.baseUrl}/v1/audit-log?limit=500`, {
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
@@ -100,7 +94,7 @@ describe("/v1/audit-log", () => {
 
   test("filters by action", async () => {
     const res = await fetch(`${srv.baseUrl}/v1/audit-log?action=workflow.created`, {
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { items: Array<{ action: string }> };
@@ -121,7 +115,7 @@ describe("/v1/audit-log", () => {
       pageQuery.set("limit", "2");
       if (cursor) pageQuery.set("cursor", cursor);
       const response = await fetch(`${srv.baseUrl}/v1/audit-log?${pageQuery}`, {
-        headers: adminHeaders(),
+        headers: adminHeaders(srv.apiKey),
       });
       expect(response.status).toBe(200);
       const body = (await response.json()) as {
@@ -137,7 +131,7 @@ describe("/v1/audit-log", () => {
     } while (cursor);
     expect(new Set(ids)).toEqual(new Set(seededIds));
     const exported = await fetch(`${srv.baseUrl}/v1/audit-log/export.ndjson?${filter}`, {
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
     });
     expect(exported.status).toBe(200);
     const exportIds = (await exported.text())
@@ -147,12 +141,12 @@ describe("/v1/audit-log", () => {
     expect(exportIds).toEqual(ids);
     filter.set("resource_type", "absent_resource");
     const narrowed = await fetch(`${srv.baseUrl}/v1/audit-log?${filter}`, {
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
     });
     expect(narrowed.status).toBe(200);
     expect((await narrowed.json()).items).toEqual([]);
     const narrowedExport = await fetch(`${srv.baseUrl}/v1/audit-log/export.ndjson?${filter}`, {
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
     });
     expect(narrowedExport.status).toBe(200);
     expect(await narrowedExport.text()).toBe("");
@@ -161,7 +155,7 @@ describe("/v1/audit-log", () => {
   test("ts_from / ts_to window narrows", async () => {
     const res = await fetch(
       `${srv.baseUrl}/v1/audit-log?ts_from=${encodeURIComponent(seedStartIso)}&ts_to=${encodeURIComponent(seedEndIso)}&limit=500`,
-      { headers: adminHeaders() },
+      { headers: adminHeaders(srv.apiKey) },
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { items: Array<{ id: string }> };
@@ -172,7 +166,7 @@ describe("/v1/audit-log", () => {
   test("cursor pagination with limit=2", async () => {
     const p1Res = await fetch(
       `${srv.baseUrl}/v1/audit-log?action=workflow.created,workflow.updated,workflow.deleted,connector.created,connector.updated&limit=2`,
-      { headers: adminHeaders() },
+      { headers: adminHeaders(srv.apiKey) },
     );
     expect(p1Res.status).toBe(200);
     const p1 = (await p1Res.json()) as {
@@ -184,7 +178,7 @@ describe("/v1/audit-log", () => {
 
     const p2Res = await fetch(
       `${srv.baseUrl}/v1/audit-log?action=workflow.created,workflow.updated,workflow.deleted,connector.created,connector.updated&limit=2&cursor=${encodeURIComponent(p1.next_cursor ?? "")}`,
-      { headers: adminHeaders() },
+      { headers: adminHeaders(srv.apiKey) },
     );
     expect(p2Res.status).toBe(200);
     const p2 = (await p2Res.json()) as {
@@ -199,19 +193,21 @@ describe("/v1/audit-log", () => {
   test("malformed cursor is 400, not 500", async () => {
     for (const bad of ["abc|def", "not-a-cursor", "|", "2026-01-01T00:00:00Z|nope"]) {
       const res = await fetch(`${srv.baseUrl}/v1/audit-log?cursor=${encodeURIComponent(bad)}`, {
-        headers: adminHeaders(),
+        headers: adminHeaders(srv.apiKey),
       });
       expect(res.status, `cursor=${bad}`).toBe(400);
     }
   });
 
   test("a real cursor still round-trips after the shape check", async () => {
-    const first = await fetch(`${srv.baseUrl}/v1/audit-log?limit=1`, { headers: adminHeaders() });
+    const first = await fetch(`${srv.baseUrl}/v1/audit-log?limit=1`, {
+      headers: adminHeaders(srv.apiKey),
+    });
     const p1 = (await first.json()) as { next_cursor: string | null };
     expect(p1.next_cursor).toBeTruthy();
     const res = await fetch(
       `${srv.baseUrl}/v1/audit-log?limit=1&cursor=${encodeURIComponent(p1.next_cursor ?? "")}`,
-      { headers: adminHeaders() },
+      { headers: adminHeaders(srv.apiKey) },
     );
     expect(res.status).toBe(200);
   });
@@ -219,7 +215,7 @@ describe("/v1/audit-log", () => {
   test("GET /v1/audit-log/:id returns a single row", async () => {
     const id = seededIds[0] as string;
     const res = await fetch(`${srv.baseUrl}/v1/audit-log/${id}`, {
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
     });
     expect(res.status).toBe(200);
     const row = (await res.json()) as { id: string; tenant_id: string };
@@ -230,7 +226,7 @@ describe("/v1/audit-log", () => {
   test("404 for a non-existent id", async () => {
     // allow-random: unique per-test id for a 404 lookup.
     const res = await fetch(`${srv.baseUrl}/v1/audit-log/${crypto.randomUUID()}`, {
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
     });
     expect(res.status).toBe(404);
   });
@@ -260,7 +256,7 @@ describe("/v1/audit-log", () => {
 
   test("permission gate: admin API key gets 200", async () => {
     const res = await fetch(`${srv.baseUrl}/v1/audit-log?limit=1`, {
-      headers: adminHeaders(),
+      headers: adminHeaders(srv.apiKey),
     });
     expect(res.status).toBe(200);
   });

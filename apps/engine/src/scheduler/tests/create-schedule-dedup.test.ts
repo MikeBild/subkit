@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { tenants, workflows, workflowsSchedules } from "../../db/schema/index.ts";
+import { workflows, workflowsSchedules } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createSchedule, listSchedules } from "../repo.ts";
 
 let testDb: TestDb;
@@ -10,11 +11,8 @@ let workflow_id: string;
 
 beforeAll(async () => {
   testDb = await createTestDb("create_schedule_dedup");
-  const [t] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "t-sched-dedup", display_name: "SchedDedup" })
-    .returning();
-  tenant_id = t!.id;
+  const t = await seedTenant(testDb.db, { slug: "t-sched-dedup", display_name: "SchedDedup" });
+  tenant_id = t.id;
   const [wf] = await testDb.db
     .insert(workflows)
     .values({ tenant_id, slug: "errorlog", name: "Errorlog", lifecycle: "active" })

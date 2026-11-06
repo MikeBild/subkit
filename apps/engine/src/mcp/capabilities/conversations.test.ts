@@ -1,10 +1,7 @@
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
+import { getConfig, setConfigKey } from "../../config/loader.ts";
 import { withWorkflowPersisted } from "../../conversations/authoring-state.ts";
 import { appendSnapshot, loadDraft } from "../../conversations/draft.ts";
 import { finishConversationTurn } from "../../conversations/turns.ts";
@@ -15,7 +12,6 @@ import {
   conversationToolCalls,
   conversationTurns,
   mcpTasks,
-  tenants,
   users,
   workflows,
   workflowVersions,
@@ -25,8 +21,10 @@ import { createIntakeItem } from "../../knowledge/index.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { logger } from "../../logging/logger.ts";
 import { startBoss, stopBoss } from "../../queue/index.ts";
+import { ensureTestConfig } from "../../queue/tests/test-config.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant, seedWorkflow as seedWorkflowRow } from "../../test-helpers/seed.ts";
 import { stampMcpTaskProgress } from "../tasks/store.ts";
 import { handleConversationTool } from "./conversations.ts";
 
@@ -45,28 +43,12 @@ async function finishQueuedConversation(conversation_id: string) {
     await finishConversationTurn(testDb.db, principal.tenant_id, conversation_id, row.id);
 }
 
-async function ensureConfig(): Promise<void> {
-  try {
-    getConfig();
-    return;
-  } catch {}
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-convtool-test-"));
-  await loadConfig({
-    env: { DATABASE_URL: "postgres://placeholder/convtool-test", NODE_ENV: "test" },
-    configPathOverride: join(dir, "subkit.config.json"),
-  });
-}
-
 beforeAll(async () => {
   process.env.LLM_PROVIDER = "mock";
-  await ensureConfig();
+  await ensureTestConfig();
   resetMockProvider();
   testDb = await createTestDb("mcp_conv_tool");
-  const [t] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "t-convtool", display_name: "ConvTool" })
-    .returning();
-  if (!t) throw new Error("seed tenant failed");
+  const t = await seedTenant(testDb.db, { slug: "t-convtool", display_name: "ConvTool" });
   const [u] = await testDb.db
     .insert(users)
     .values({
@@ -83,11 +65,10 @@ beforeAll(async () => {
     provider: "api_key",
     roles: ["admin"],
   };
-  const [t2] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "t-convtool-foreign", display_name: "ConvTool Foreign" })
-    .returning();
-  if (!t2) throw new Error("seed foreign tenant failed");
+  const t2 = await seedTenant(testDb.db, {
+    slug: "t-convtool-foreign",
+    display_name: "ConvTool Foreign",
+  });
   const [u2] = await testDb.db
     .insert(users)
     .values({
@@ -897,25 +878,12 @@ async function seedWorkflow(
   steps: Array<Record<string, unknown>>,
 ): Promise<{ workflow_id: string; version_id: string; slug: string; name: string }> {
   const name = `wf ${slug}`;
-  const [workflow] = await testDb.db
-    .insert(workflows)
-    .values({ tenant_id: principal.tenant_id, slug, name, lifecycle: "active" })
-    .returning();
-  if (!workflow) throw new Error("workflow insert failed");
-  const [version] = await testDb.db
-    .insert(workflowVersions)
-    .values({
-      tenant_id: principal.tenant_id,
-      workflow_id: workflow.id,
-      version: 1,
-      dag: { name, slug, steps },
-    })
-    .returning();
-  if (!version) throw new Error("workflow version insert failed");
-  await testDb.db
-    .update(workflows)
-    .set({ current_version_id: version.id })
-    .where(eq(workflows.id, workflow.id));
+  const { workflow, version } = await seedWorkflowRow(testDb.db, {
+    tenant_id: principal.tenant_id,
+    slug,
+    name,
+    dag: { name, slug, steps },
+  });
   return { workflow_id: workflow.id, version_id: version.id, slug, name };
 }
 

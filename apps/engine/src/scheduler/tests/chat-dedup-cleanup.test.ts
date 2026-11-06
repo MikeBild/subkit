@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { chatEventsSeen, chatWorkspaces, tenants } from "../../db/schema/index.ts";
+import { chatEventsSeen, chatWorkspaces } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   CHAT_DEDUP_CLEANUP_BATCH_SIZE,
   runChatDedupCleanup,
@@ -16,11 +17,7 @@ afterAll(async () => {
 });
 
 test("one sweep deletes a bounded batch and leaves fresh replay protection intact", async () => {
-  const [tenant] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "dedup", display_name: "Dedup" })
-    .returning();
-  if (!tenant) throw new Error("missing tenant");
+  const tenant = await seedTenant(ctx.db, { slug: "dedup", display_name: "Dedup" });
   const [workspace] = await ctx.db
     .insert(chatWorkspaces)
     .values({

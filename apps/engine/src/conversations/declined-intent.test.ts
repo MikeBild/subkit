@@ -23,6 +23,8 @@ import { askUserConfirmTool } from "./tools/ask-user/confirm.ts";
 import type { ToolContext } from "./tools/index.ts";
 import type { DraftDocument, TurnEvent } from "./types.ts";
 
+const fixedClock = () => "2026-11-06T00:00:00.000Z";
+
 const WORKFLOW = { name: "wf", steps: [{ id: "s1", kind: "request" }] };
 
 function draftWithDenial(fingerprint: string | null): DraftDocument {
@@ -182,7 +184,7 @@ describe("declined-intent · normalize resume", () => {
       fingerprint: "abc123def456abcd",
       timestamp: "2026-07-16T00:00:00.000Z",
     };
-    const revived = normalizeState({ state }, undefined);
+    const revived = normalizeState({ state }, undefined, fixedClock);
     expect(revived.last_denied_intent).toEqual({
       fingerprint: "abc123def456abcd",
       timestamp: "2026-07-16T00:00:00.000Z",
@@ -190,7 +192,11 @@ describe("declined-intent · normalize resume", () => {
   });
 
   test("a malformed last_denied_intent normalizes to null", () => {
-    const revived = normalizeState({ state: { last_denied_intent: { nope: true } } }, undefined);
+    const revived = normalizeState(
+      { state: { last_denied_intent: { nope: true } } },
+      undefined,
+      fixedClock,
+    );
     expect(revived.last_denied_intent).toBeNull();
   });
 });

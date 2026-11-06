@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { connectors, selfHealingScans, tenants } from "../db/schema/index.ts";
+import { connectors, selfHealingScans } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import {
   FRESHNESS_STALE_AFTER_SECONDS,
   getOperationalOverview,
@@ -24,15 +25,13 @@ async function snapshot(): Promise<OperationalOverview> {
 beforeAll(async () => {
   testDb = await createTestDb("overview_causes");
   const now = getTestNow();
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({
+  tenant_id = (
+    await seedTenant(testDb.db, {
       slug: "t-overview-causes",
       display_name: "Causes",
       last_connector_reauth_scan_at: new Date(now - 60_000),
     })
-    .returning();
-  tenant_id = tenant!.id;
+  ).id;
   const connector = (slug: string, health_state: string) => ({
     tenant_id,
     slug,

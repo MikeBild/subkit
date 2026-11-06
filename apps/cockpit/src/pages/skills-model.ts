@@ -1,5 +1,5 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import type { SkillCandidate } from "@/api/decisions";
-import type { components } from "@/api/schema";
 import type { TranslationKey } from "@/lib/i18n";
 import { computeLineDiff, type FocusedRow, focusDiff } from "@/lib/line-diff";
 import { isDetectedPattern } from "@/pages/skill-proposal-model";

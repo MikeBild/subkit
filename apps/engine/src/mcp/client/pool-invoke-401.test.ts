@@ -7,8 +7,9 @@ import { and, eq } from "drizzle-orm";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import { closeDb } from "../../db/client.ts";
-import { auditLog, credentials, tenants } from "../../db/schema/index.ts";
+import { auditLog, credentials } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   __resetMcpClientPoolForTests,
   __setMcpPoolFactoriesForTests,
@@ -60,11 +61,8 @@ beforeAll(async () => {
     configPathOverride: join(cfgDir, "subkit.config.json"),
   });
   await setConfigKey("server.public_base_url", "https://engine.pool401.example", { force: true });
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-pool-401", display_name: "Pool 401 Tenant" })
-    .returning();
-  tenantId = t!.id;
+  const t = await seedTenant(ctx.db, { slug: "t-pool-401", display_name: "Pool 401 Tenant" });
+  tenantId = t.id;
 }, 30_000);
 
 afterAll(async () => {

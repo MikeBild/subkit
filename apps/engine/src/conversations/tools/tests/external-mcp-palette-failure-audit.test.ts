@@ -2,10 +2,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import type { Db } from "../../../db/client.ts";
-import { auditLog, conversations, tenants } from "../../../db/schema/index.ts";
+import { auditLog, conversations } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import { __setExternalMcpToolsBuilderForTests } from "../sdk-wrap/external-mcp-tools.ts";
@@ -42,11 +43,8 @@ beforeAll(async () => {
   });
 
   ctx = await createTestDb("external-mcp-palette-failure");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-palette-fail", display_name: "Palette Fail" })
-    .returning();
-  tenant_id = t!.id;
+  tenant_id = (await seedTenant(ctx.db, { slug: "t-palette-fail", display_name: "Palette Fail" }))
+    .id;
   actor_id = createDeterministicUuidFactory(321)();
   const [conv] = await ctx.db
     .insert(conversations)

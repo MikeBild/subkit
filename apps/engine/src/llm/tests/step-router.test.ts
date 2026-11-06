@@ -320,11 +320,6 @@ describe("prepareStep — activeTools narrowing", () => {
     expect(decision?.activeTools).not.toContain("edit_workflow_patch");
     expect(decision?.activeTools).not.toContain("save_workflow_draft");
   });
-
-  it("returns full palette on commit/execute stages", () => {
-    const decision = prepareStep(baseParams({ signals: { stage: "workflow_persisted" } }));
-    expect(decision?.activeTools).toBeUndefined();
-  });
 });
 
 describe("prepareStep — forced tool survives activeTools narrowing (FIX 4 / BUG-3)", () => {

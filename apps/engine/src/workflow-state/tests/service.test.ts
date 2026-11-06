@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { tenants, workflows } from "../../db/schema/index.ts";
+import { workflows } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { readWorkflowState, writeWorkflowState } from "../service.ts";
 
 let ctx: TestDb;
@@ -11,16 +12,10 @@ let workflowB: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("workflow_run_state");
-  const [ta] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "wfs-a", display_name: "tenant A" })
-    .returning();
-  const [tb] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "wfs-b", display_name: "tenant B" })
-    .returning();
-  tenantA = ta!.id;
-  tenantB = tb!.id;
+  const ta = await seedTenant(ctx.db, { slug: "wfs-a", display_name: "tenant A" });
+  const tb = await seedTenant(ctx.db, { slug: "wfs-b", display_name: "tenant B" });
+  tenantA = ta.id;
+  tenantB = tb.id;
   const [wa] = await ctx.db
     .insert(workflows)
     .values({ tenant_id: tenantA, slug: "wf-a", name: "wf a", lifecycle: "active" })

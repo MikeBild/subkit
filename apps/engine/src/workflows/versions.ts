@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { resolveActor } from "../audit/recorders/types.ts";
@@ -8,7 +9,9 @@ import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
 import { carryApprovalsForward } from "./authority-inheritance.ts";
-import { definitionWithoutDescription, workflowJsonDigest } from "./canonical-json.ts";
+import { workflowJsonDigest } from "./canonical-json.ts";
+import { toStoredDefinition } from "./core/definition.ts";
+import { decide, describeRejection, evolve } from "./core/workflow.ts";
 import { emitWorkflowLifecycle, getWorkflow, type WorkflowView } from "./service.ts";
 import {
   describeVersionIssues,
@@ -24,7 +27,11 @@ import {
   versionAuthorColumns,
 } from "./version-author.ts";
 import { loadVersionSpec, readStoredSpec, workflowSpecDigest } from "./version-spec.ts";
-import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
+import {
+  lockWorkflowForVersionWrite,
+  nextVersionNumber,
+  workflowStateOf,
+} from "./version-write-lock.ts";
 
 export interface VersionView {
   author: VersionAuthor;
@@ -140,15 +147,14 @@ export async function restoreWorkflowVersion(
     const target = targetRows[0];
     if (!target) return null;
     const restoredDef = parseRestorableVersion(version, target.dag);
-    const restoreRows = (await tx
-      .select({
-        max_version: sql<number>`coalesce(max(${workflowVersions.version}), 0)`,
-      })
-      .from(workflowVersions)
-      .where(
-        and(eq(workflowVersions.tenant_id, tenant_id), eq(workflowVersions.workflow_id, id)),
-      )) as Array<{ max_version: number }>;
-    const next = (restoreRows[0]?.max_version ?? 0) + 1;
+    const versionId = randomUUID();
+    const restored = decide(workflowStateOf(locked), {
+      type: "RestoreVersion",
+      version_id: versionId,
+    });
+    if (!restored.ok) throw new Error(describeRejection(restored.rejection));
+    const state = evolve(workflowStateOf(locked), restored.event);
+    const next = await nextVersionNumber(tx, tenant_id, id);
     const currentSpec =
       (
         await loadVersionSpec(tx, {
@@ -161,11 +167,12 @@ export async function restoreWorkflowVersion(
     const [v] = await tx
       .insert(workflowVersions)
       .values({
+        id: versionId,
         ...versionAuthorColumns({ actor_id, actor_type }),
         tenant_id,
         workflow_id: id,
         version: next,
-        dag: definitionWithoutDescription(target.dag),
+        dag: toStoredDefinition(target.dag, "version"),
         spec: restoredSpec,
         note: `restored from v${version}`,
       })
@@ -173,8 +180,8 @@ export async function restoreWorkflowVersion(
     assertInsertRow(v, "restore");
     await tx
       .update(workflows)
-      .set({ current_version_id: v.id, updated_at: new Date() })
-      .where(eq(workflows.id, id));
+      .set({ current_version_id: state.current_version_id, updated_at: new Date() })
+      .where(and(eq(workflows.tenant_id, tenant_id), eq(workflows.id, id)));
     await carryApprovalsForward(tx, {
       tenant_id,
       workflow_id: id,

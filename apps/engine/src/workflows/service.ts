@@ -1,9 +1,8 @@
-import type { WorkflowOperatingStatus } from "@shared/workflow-operating-status.ts";
+import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   type CatalogMetadataColumns,
   type CatalogMetadataPatch,
-  type CatalogSource,
   catalogMetadataView,
   DescriptionAcceptanceError,
   humanMetadataWrite,
@@ -40,28 +39,28 @@ import { applySkillSchemaGate, applyStorageBindingGate } from "./commit-gates.ts
 import {
   connectorReferencesForDefinition,
   loadConnectorReferenceRecords,
-  type WorkflowConnectorReference,
 } from "./connector-refs.ts";
-import {
-  loadWorkflowOperatingStates,
-  type WorkflowAuthorityEnvironmentSummary,
-} from "./operating-status.ts";
+import { isValidSlug, toStoredDefinition, workflowSlug } from "./core/definition.ts";
+import { decide, describeRejection, evolve, type WorkflowRejection } from "./core/workflow.ts";
+import { loadWorkflowOperatingStates } from "./operating-status.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
 import { slugConflictResult } from "./slug-conflict.ts";
 import { invalidDefinitionForRead, readStoredDefinition } from "./stored-definition.ts";
 import { validateTenantWorkflowDefForSave } from "./tenant-validator.ts";
 import { applyTriggerBindings, triggerOf } from "./trigger-bindings.ts";
 import type { WorkflowDef } from "./types.ts";
-import {
-  readVersionAuthor,
-  type VersionActor,
-  type VersionAuthor,
-  versionAuthorColumns,
-} from "./version-author.ts";
+import { readVersionAuthor, type VersionActor, versionAuthorColumns } from "./version-author.ts";
 import { isUnchangedFromCurrentVersion } from "./version-dedup.ts";
 import { carriedSpecColumns, loadVersionSpec } from "./version-spec.ts";
-import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
+import {
+  lockWorkflowForVersionWrite,
+  nextVersionNumber,
+  workflowStateOf,
+} from "./version-write-lock.ts";
+import type { WorkflowView } from "./view.ts";
 import { writeWorkflowMetadata } from "./workflow-metadata.ts";
+
+export type { WorkflowView };
 
 export async function emitWorkflowLifecycle(
   tx: Executor,
@@ -85,43 +84,8 @@ export async function emitWorkflowLifecycle(
   });
 }
 
-export interface WorkflowView {
-  operating_status?: WorkflowOperatingStatus;
-  authority_environments?: Record<"dev" | "prod", WorkflowAuthorityEnvironmentSummary | null>;
-  connector_references: WorkflowConnectorReference[];
-  creator: VersionAuthor;
-  checksum: string | null;
-  id: string;
-  tenant_id: string;
-  slug: string;
-  name: string;
-  description: string | null;
-  description_source: CatalogSource;
-  category: string;
-  category_source: CatalogSource;
-  lifecycle: "draft" | "active" | "archived";
-  current_version_id: string | null;
-  draft_version_id?: string | null;
-  current_version: number | null;
-  created_at: Date;
-  updated_at: Date;
-  last_executed_at: Date | null;
-  health_state: string;
-  health_reason: string | null;
-  health_changed_at: Date | null;
-  invalid: boolean;
-  definition: WorkflowDef;
-  steps: WorkflowDef["steps"];
-}
-
-function slugify(name: string): string {
-  return (
-    name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 64) || `wf-${Math.random().toString(36).slice(2, 8)}`
-  );
+function slugFor(text: string): string {
+  return workflowSlug(text, randomUUID().slice(0, 8));
 }
 
 async function loadWorkflowView(
@@ -259,11 +223,15 @@ export async function createWorkflow(
   const storageGate = await applyStorageBindingGate(input.tenant_id, validation.workflow, db);
   if (!storageGate.ok) return { errors: storageGate.errors };
   const def = annotateRuntime(validation.workflow);
-  const slug = def.slug ?? slugify(def.name);
+  const slug = def.slug ?? slugFor(def.name);
   const metadata = humanMetadataWrite({
     ...(def.description !== undefined ? { description: def.description } : {}),
     ...input.metadata,
   });
+  const versionId = randomUUID();
+  const created = decide(null, { type: "CreateWorkflow", version_id: versionId });
+  if (!created.ok) return { errors: [describeRejection(created.rejection)] };
+  const state = evolve(null, created.event);
   let result: string;
   try {
     result = await db.transaction(async (tx) => {
@@ -276,24 +244,28 @@ export async function createWorkflow(
           slug,
           name: def.name,
           ...metadata,
-          lifecycle: "active",
+          lifecycle: state.lifecycle,
         })
         .returning();
       assertInsertRow(wf, "workflows");
       const [v] = await tx
         .insert(workflowVersions)
         .values({
+          id: versionId,
           ...versionAuthorColumns(input),
           tenant_id: input.tenant_id,
           workflow_id: wf.id,
           version: 1,
-          dag: definitionWithoutDescription(def),
+          dag: toStoredDefinition(def, "version"),
           ...carriedSpecColumns(null),
           ...(input.scope_index ? { scope_index: input.scope_index } : {}),
         })
         .returning();
       assertInsertRow(v, "workflow_versions");
-      await tx.update(workflows).set({ current_version_id: v.id }).where(eq(workflows.id, wf.id));
+      await tx
+        .update(workflows)
+        .set({ current_version_id: state.current_version_id })
+        .where(and(eq(workflows.tenant_id, input.tenant_id), eq(workflows.id, wf.id)));
       await auditAwait(
         {
           tenant_id: input.tenant_id,
@@ -414,18 +386,11 @@ export async function updateWorkflow(
     if (dedup.unchanged) {
       return wf.id;
     }
-    const versionRows = (await tx
-      .select({
-        max_version: sql<number>`coalesce(max(${workflowVersions.version}), 0)`,
-      })
-      .from(workflowVersions)
-      .where(
-        and(
-          eq(workflowVersions.tenant_id, input.tenant_id),
-          eq(workflowVersions.workflow_id, wf.id),
-        ),
-      )) as Array<{ max_version: number }>;
-    const next = (versionRows[0]?.max_version ?? 0) + 1;
+    const versionId = randomUUID();
+    const rotated = decide(workflowStateOf(wf), { type: "RotateVersion", version_id: versionId });
+    if (!rotated.ok) return { rejection: rotated.rejection };
+    const state = evolve(workflowStateOf(wf), rotated.event);
+    const next = await nextVersionNumber(tx, input.tenant_id, wf.id);
     const baseSpec = await loadVersionSpec(tx, {
       tenant_id: input.tenant_id,
       workflow_id: wf.id,
@@ -434,11 +399,12 @@ export async function updateWorkflow(
     const [v] = await tx
       .insert(workflowVersions)
       .values({
+        id: versionId,
         ...versionAuthorColumns(input),
         tenant_id: input.tenant_id,
         workflow_id: wf.id,
         version: next,
-        dag: definitionWithoutDescription(def),
+        dag: toStoredDefinition(def, "version"),
         ...carriedSpecColumns(baseSpec),
         ...(input.scope_index ? { scope_index: input.scope_index } : {}),
       })
@@ -448,10 +414,10 @@ export async function updateWorkflow(
       .update(workflows)
       .set({
         name: def.name,
-        current_version_id: v.id,
+        current_version_id: state.current_version_id,
         updated_at: new Date(),
       })
-      .where(eq(workflows.id, wf.id));
+      .where(and(eq(workflows.tenant_id, input.tenant_id), eq(workflows.id, wf.id)));
     await carryApprovalsForward(tx, {
       tenant_id: input.tenant_id,
       workflow_id: wf.id,
@@ -511,6 +477,7 @@ export async function updateWorkflow(
     return wf.id;
   });
   if (!updated) return { errors: ["workflow not found"] };
+  if (typeof updated !== "string") return { errors: [describeRejection(updated.rejection)] };
   const view = await loadWorkflowView(input.tenant_id, updated, db);
   if (!view) return { errors: ["workflow not found after update"] };
   return { workflow: view };
@@ -535,6 +502,7 @@ export type UpdateWorkflowMetadataResult =
   | {
       workflow?: never;
       errors: string[];
+      code?: WorkflowRejection["code"];
       conflict?: { workflow_id: string; slug: string; name: string };
     };
 
@@ -544,7 +512,7 @@ export async function updateWorkflowMetadata(
 ): Promise<UpdateWorkflowMetadataResult> {
   const db = exec ?? getDb();
   const desiredSlug =
-    typeof input.slug === "string" && input.slug.length > 0 ? slugify(input.slug) : null;
+    typeof input.slug === "string" && input.slug.length > 0 ? slugFor(input.slug) : null;
   const desiredName =
     typeof input.name === "string" && input.name.trim().length > 0 ? input.name.trim() : null;
   const desiredLifecycle = input.lifecycle ?? null;
@@ -563,7 +531,7 @@ export async function updateWorkflowMetadata(
       ],
     };
   }
-  if (desiredSlug && !/^[a-z0-9][a-z0-9-]*$/.test(desiredSlug)) {
+  if (desiredSlug && !isValidSlug(desiredSlug)) {
     return { errors: ["slug must be lowercase alphanumeric with hyphens"] };
   }
   try {
@@ -585,6 +553,20 @@ export async function updateWorkflowMetadata(
       const head = wf ? (wf.draft_version_id ?? wf.current_version_id) : null;
       if (!wf || (input.expected_head_version_id && head !== input.expected_head_version_id))
         return null;
+      const lifecycleDecision =
+        desiredLifecycle && desiredLifecycle !== wf.lifecycle
+          ? decide(
+              workflowStateOf(wf),
+              desiredLifecycle === "archived"
+                ? { type: "ArchiveWorkflow" }
+                : { type: "RestoreWorkflow" },
+            )
+          : null;
+      if (lifecycleDecision && !lifecycleDecision.ok)
+        return { rejection: lifecycleDecision.rejection };
+      const nextLifecycle = lifecycleDecision?.ok
+        ? evolve(workflowStateOf(wf), lifecycleDecision.event).lifecycle
+        : null;
       if (desiredSlug && desiredSlug !== wf.slug) {
         const conflictRows = await tx
           .select({ id: workflows.id, slug: workflows.slug, name: workflows.name })
@@ -603,7 +585,7 @@ export async function updateWorkflowMetadata(
       const patch: {
         slug?: string;
         name?: string;
-        lifecycle?: "active" | "archived";
+        lifecycle?: "draft" | "active" | "archived";
         updated_at: Date;
       } & CatalogMetadataColumns = {
         updated_at: new Date(),
@@ -611,9 +593,7 @@ export async function updateWorkflowMetadata(
       };
       if (desiredSlug && desiredSlug !== wf.slug) patch.slug = desiredSlug;
       if (desiredName && desiredName !== wf.name) patch.name = desiredName;
-      if (desiredLifecycle && desiredLifecycle !== wf.lifecycle) {
-        patch.lifecycle = desiredLifecycle;
-      }
+      if (nextLifecycle) patch.lifecycle = nextLifecycle;
       if (
         patch.slug === undefined &&
         patch.name === undefined &&
@@ -723,6 +703,9 @@ export async function updateWorkflowMetadata(
       return { id: wf.id, noop: false as const };
     });
     if (!result) return { errors: ["workflow not found"] };
+    if ("rejection" in result) {
+      return { errors: [describeRejection(result.rejection)], code: result.rejection.code };
+    }
     if ("conflict" in result && result.conflict) {
       return {
         errors: [

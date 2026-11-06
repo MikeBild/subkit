@@ -1,18 +1,7 @@
 import { readFile } from "node:fs/promises";
-import { reportCommandError } from "@cli-core/errors";
 import { emitList } from "@cli-core/format";
 import { defineCommand } from "citty";
-import { resolveProfile } from "../config.ts";
-import { EngineClient } from "../engine-client.ts";
-
-function makeClient() {
-  const profile = resolveProfile();
-  return new EngineClient({
-    engine_url: profile.engine_url,
-    api_key: profile.api_key,
-    tenant: profile.active_tenant_id,
-  });
-}
+import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List credentials for a connector" },
@@ -22,20 +11,21 @@ const listCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const connector = (await client.getConnector(args["connector-id"])) as Record<
-        string,
-        unknown
-      >;
-      const credentials = (connector.credentials ?? []) as Record<string, unknown>[];
-      emitList(
-        !!args.json,
-        ["id", "mode", "environment", "has_oauth_refresh", "created_at"],
-        credentials,
-      );
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const connector = (await client.getConnector(args["connector-id"])) as Record<
+          string,
+          unknown
+        >;
+        const credentials = (connector.credentials ?? []) as Record<string, unknown>[];
+        emitList(
+          !!args.json,
+          ["id", "mode", "environment", "has_oauth_refresh", "created_at"],
+          credentials,
+        );
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -87,56 +77,57 @@ const setCommand = defineCommand({
     const connectorId = String(args["connector-id"]);
     const mode = String(args.mode).replace(/-/g, "_");
     const body: Record<string, unknown> = { mode };
-    try {
-      if (mode === "bearer") {
-        if (!args.token) throw new Error("bearer mode requires --token");
-        body.token = args.token;
-      } else if (mode === "signed_jwt") {
-        if (!args["private-key-file"]) throw new Error("signed_jwt requires --private-key-file");
-        body.private_key = await readFile(String(args["private-key-file"]), "utf8");
-      } else if (mode === "header") {
-        if (!args.header) throw new Error('header mode requires --header "Name=Value"');
-        body.headers = parsePairs(String(args.header));
-      } else if (mode === "query") {
-        if (!args.query) throw new Error('query mode requires --query "key=Value"');
-        body.query = parsePairs(String(args.query));
-      } else if (mode === "basic") {
-        if (!args.username || !args.password)
-          throw new Error("basic mode requires --username and --password");
-        body.username = args.username;
-        body.password = args.password;
-      } else if (mode === "aws_sigv4") {
-        if (!args["access-key-id"] || !args["secret-access-key"])
-          throw new Error("aws_sigv4 mode requires --access-key-id and --secret-access-key");
-        body.access_key_id = args["access-key-id"];
-        body.secret_access_key = args["secret-access-key"];
-        if (args["session-token"]) body.session_token = args["session-token"];
-      } else if (mode !== "none") {
-        throw new Error(
-          `unknown --mode '${mode}' (bearer|header|query|basic|aws_sigv4|signed_jwt|none)`,
-        );
-      }
-
-      const created = (await client.createCredential(connectorId, body)) as { id?: string };
-      let probe: { ok: boolean; error?: string } | undefined;
-      if (!args["skip-checks"]) {
-        try {
-          const result = (await client.testConnector(connectorId)) as { ok?: boolean };
-          probe = { ok: result.ok === true };
-        } catch {
-          probe = { ok: false, error: "probe_failed" };
+    return withCommandErrors(
+      async () => {
+        if (mode === "bearer") {
+          if (!args.token) throw new Error("bearer mode requires --token");
+          body.token = args.token;
+        } else if (mode === "signed_jwt") {
+          if (!args["private-key-file"]) throw new Error("signed_jwt requires --private-key-file");
+          body.private_key = await readFile(String(args["private-key-file"]), "utf8");
+        } else if (mode === "header") {
+          if (!args.header) throw new Error('header mode requires --header "Name=Value"');
+          body.headers = parsePairs(String(args.header));
+        } else if (mode === "query") {
+          if (!args.query) throw new Error('query mode requires --query "key=Value"');
+          body.query = parsePairs(String(args.query));
+        } else if (mode === "basic") {
+          if (!args.username || !args.password)
+            throw new Error("basic mode requires --username and --password");
+          body.username = args.username;
+          body.password = args.password;
+        } else if (mode === "aws_sigv4") {
+          if (!args["access-key-id"] || !args["secret-access-key"])
+            throw new Error("aws_sigv4 mode requires --access-key-id and --secret-access-key");
+          body.access_key_id = args["access-key-id"];
+          body.secret_access_key = args["secret-access-key"];
+          if (args["session-token"]) body.session_token = args["session-token"];
+        } else if (mode !== "none") {
+          throw new Error(
+            `unknown --mode '${mode}' (bearer|header|query|basic|aws_sigv4|signed_jwt|none)`,
+          );
         }
-      }
-      if (jsonMode) {
-        process.stdout.write(`${JSON.stringify({ ...created, ...(probe ? { probe } : {}) })}\n`);
-      } else {
-        process.stdout.write(`✓ credential attached to ${connectorId}\n`);
-        if (probe) process.stdout.write(probe.ok ? "✓ probe ok\n" : "⚠ probe did not succeed\n");
-      }
-      if (probe && !probe.ok) process.exitCode = 1;
-    } catch (err) {
-      reportCommandError(err, { json: jsonMode });
-    }
+
+        const created = (await client.createCredential(connectorId, body)) as { id?: string };
+        let probe: { ok: boolean; error?: string } | undefined;
+        if (!args["skip-checks"]) {
+          try {
+            const result = (await client.testConnector(connectorId)) as { ok?: boolean };
+            probe = { ok: result.ok === true };
+          } catch {
+            probe = { ok: false, error: "probe_failed" };
+          }
+        }
+        if (jsonMode) {
+          process.stdout.write(`${JSON.stringify({ ...created, ...(probe ? { probe } : {}) })}\n`);
+        } else {
+          process.stdout.write(`✓ credential attached to ${connectorId}\n`);
+          if (probe) process.stdout.write(probe.ok ? "✓ probe ok\n" : "⚠ probe did not succeed\n");
+        }
+        if (probe && !probe.ok) process.exitCode = 1;
+      },
+      { json: jsonMode },
+    );
   },
 });
 
@@ -147,12 +138,10 @@ const rotateCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       await client.rotateCredential(args["credential-id"]);
       process.stdout.write("rotated\n");
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -163,12 +152,10 @@ const deleteCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       await client.deleteCredential(args["credential-id"]);
       process.stdout.write("deleted\n");
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedConnector, seedTenant } from "../../test-helpers/seed.ts";
 import { resolveDryRunEnvironment } from "../service.ts";
 
 let ctx: TestDb;
@@ -12,30 +12,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await ctx.cleanup?.();
 });
-
-async function seedTenant(): Promise<string> {
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: `t-${Math.random().toString(36).slice(2, 8)}`, display_name: "T" }) // allow-random: test fixture
-    .returning();
-  return t!.id;
-}
-
-async function seedConnector(tenant_id: string, auth_type: "none" | "bearer"): Promise<string> {
-  const [c] = await ctx.db
-    .insert(connectors)
-    .values({
-      tenant_id,
-      slug: `c-${Math.random().toString(36).slice(2, 8)}`, // allow-random: test fixture
-      display_name: "C",
-      driver: "http",
-      environment: "dev",
-      auth_type,
-      base_url: "https://example.test",
-    })
-    .returning();
-  return c!.id;
-}
 
 function captureWarns() {
   const warns: string[] = [];
@@ -49,8 +25,8 @@ function captureWarns() {
 
 describe("resolveDryRunEnvironment — keyless connectors do not warn", () => {
   test("all-keyless workflow: returns dev, NO no-credential warning", async () => {
-    const tenant_id = await seedTenant();
-    const keyless = await seedConnector(tenant_id, "none");
+    const tenant_id = (await seedTenant(ctx.db)).id;
+    const keyless = (await seedConnector(ctx.db, { tenant_id, auth_type: "none" })).id;
     const { warns, onLog } = captureWarns();
 
     const env = await resolveDryRunEnvironment({
@@ -65,8 +41,8 @@ describe("resolveDryRunEnvironment — keyless connectors do not warn", () => {
   });
 
   test("auth-requiring connector with no credential: STILL warns", async () => {
-    const tenant_id = await seedTenant();
-    const bearer = await seedConnector(tenant_id, "bearer");
+    const tenant_id = (await seedTenant(ctx.db)).id;
+    const bearer = (await seedConnector(ctx.db, { tenant_id, auth_type: "bearer" })).id;
     const { warns, onLog } = captureWarns();
 
     const env = await resolveDryRunEnvironment({
@@ -81,9 +57,9 @@ describe("resolveDryRunEnvironment — keyless connectors do not warn", () => {
   });
 
   test("mixed: keyless + uncredentialed auth connector → warns only about the auth one", async () => {
-    const tenant_id = await seedTenant();
-    const keyless = await seedConnector(tenant_id, "none");
-    const bearer = await seedConnector(tenant_id, "bearer");
+    const tenant_id = (await seedTenant(ctx.db)).id;
+    const keyless = (await seedConnector(ctx.db, { tenant_id, auth_type: "none" })).id;
+    const bearer = (await seedConnector(ctx.db, { tenant_id, auth_type: "bearer" })).id;
     const { warns, onLog } = captureWarns();
 
     await resolveDryRunEnvironment({

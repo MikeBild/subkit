@@ -4,12 +4,13 @@ import { sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { createConnector } from "../connectors/service.ts";
 import { upsertCredential } from "../credentials/service.ts";
-import { executionSteps, executions, tenants } from "../db/schema/index.ts";
+import { executionSteps, executions } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { RunLlmBudget } from "../llm/accounting/index.ts";
 import { logger } from "../logging/logger.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../test-helpers/mock-http.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import type { RequestStep } from "../workflows/types.ts";
 import { runRequestStep } from "./steps/request.ts";
 import type { StepRunContext } from "./types.ts";
@@ -166,11 +167,10 @@ const originalLevels = new Map<string, unknown>();
 
 beforeAll(async () => {
   testDb = await createTestDb("own-connector-credentials");
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "own-connector-credentials", display_name: "Own connector credentials" })
-    .returning();
-  if (!tenant) throw new Error("tenant fixture missing");
+  const tenant = await seedTenant(testDb.db, {
+    slug: "own-connector-credentials",
+    display_name: "Own connector credentials",
+  });
   tenantId = tenant.id;
   ownHost = await createMockServer(recorder(() => ownReceived, true));
   foreignHost = await createMockServer(recorder(() => foreignReceived, false));

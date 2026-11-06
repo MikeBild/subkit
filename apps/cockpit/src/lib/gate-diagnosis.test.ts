@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { components } from "@/api/schema";
+import type { components } from "@cli-core/engine-api/openapi";
 import { diagnosisFix, diagnosisRepairable } from "@/lib/gate-diagnosis";
 
 type GateDiagnosis = components["schemas"]["GateDiagnosis"];

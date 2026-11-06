@@ -1,19 +1,11 @@
 import { expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
-import { runMigrations } from "../migrate.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT } from "../tests/setup.ts";
-import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
 
 test(
-  "execution provenance migration preserves historical callers without inferring authority",
+  "an execution without caller origin keeps its caller context and reads as unknown",
   async () => {
-    const migration = EMBEDDED_MIGRATIONS.find((item) =>
-      item.statements.some(
-        (statement) => statement.includes('"executions"') && statement.includes('"caller_origin"'),
-      ),
-    );
-    if (!migration) throw new Error("execution caller origin migration is not embedded");
-    const ctx = await createTestDb("execution_caller_origin", { upToIdx: migration.idx - 1 });
+    const ctx = await createTestDb("execution_caller_origin");
     try {
       const {
         rows: [tenant],
@@ -46,7 +38,6 @@ test(
         "SELECT id, caller_context FROM executions WHERE tenant_id = $1 ORDER BY id",
         [tenant.id],
       );
-      expect((await runMigrations(ctx.db, [migration], true)).applied).toBe(1);
       const after = await ctx.pool.query(
         "SELECT id, caller_context, caller_origin FROM executions WHERE tenant_id = $1 ORDER BY id",
         [tenant.id],
@@ -58,7 +49,6 @@ test(
         [tenant.id],
       );
       expect(inserted.rows).toEqual([{ caller_origin: "unknown" }]);
-      expect((await runMigrations(ctx.db, [migration], true)).applied).toBe(0);
       expect(
         (
           await ctx.pool.query(

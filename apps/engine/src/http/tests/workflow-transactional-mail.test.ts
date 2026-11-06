@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { apiKeys, tenants, transactionalMailReceipts, workflows } from "../../db/schema/index.ts";
+import { apiKeys, transactionalMailReceipts, workflows } from "../../db/schema/index.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -14,10 +15,7 @@ beforeAll(async () => {
     .insert(workflows)
     .values({ tenant_id: ctx.tenantId, slug: "own", name: "Own", lifecycle: "draft" })
     .returning();
-  const [otherTenant] = await ctx.db
-    .insert(tenants)
-    .values({ display_name: "Other", slug: "other" })
-    .returning();
+  const otherTenant = await seedTenant(ctx.db, { display_name: "Other", slug: "other" });
   if (!own || !otherTenant) throw new Error("missing fixture");
   const [other] = await ctx.db
     .insert(workflows)

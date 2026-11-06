@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sql } from "drizzle-orm";
 import { _resetConfigForTests, loadConfig } from "../config/loader.ts";
-import { tenants } from "../db/schema/identity.ts";
 import { llmUsage } from "../db/schema/llm.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { effectiveModelPrices, longContextThresholds, priceCalls } from "../llm/index.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import { readLlmCostByKey, readLlmWindowCost, readPricedTokens } from "./llm-cost.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
@@ -20,12 +20,9 @@ const TS = new Date("2024-01-01T12:00:00.000Z");
 beforeAll(async () => {
   if (skip) return;
   testDb = await createTestDb("stats-llm-cost-tiers");
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "llm-cost-tiers", display_name: "LLM Cost Tiers" })
-    .returning();
-  if (!tenant) throw new Error("seed tenant failed");
-  tenantId = tenant.id;
+  tenantId = (
+    await seedTenant(testDb.db, { slug: "llm-cost-tiers", display_name: "LLM Cost Tiers" })
+  ).id;
 }, 60_000);
 
 afterAll(async () => {

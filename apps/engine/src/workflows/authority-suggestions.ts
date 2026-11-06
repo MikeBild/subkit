@@ -1,7 +1,7 @@
 import { CronExpressionParser } from "cron-parser";
+import { AUTHORITY_WINDOW_MAX_DAYS, DAY_MS } from "./core/authority.ts";
 
-const DAY_MS = 86_400_000;
-const AUTOMATIC_WINDOW_DAYS = 30;
+const AUTOMATIC_WINDOW_DAYS = AUTHORITY_WINDOW_MAX_DAYS - 1;
 const MAX_RUNS = 10_000;
 export const HOOK_RUN_HEADROOM = 2;
 export const HOOK_MINIMUM_RUNS = 100;

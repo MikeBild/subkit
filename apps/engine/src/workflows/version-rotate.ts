@@ -1,4 +1,5 @@
-import { and, eq, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -6,13 +7,19 @@ import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
 import { carryApprovalsForward } from "./authority-inheritance.ts";
+import { toStoredDefinition } from "./core/definition.ts";
+import { decide, describeRejection, evolve } from "./core/workflow.ts";
 import { validateBareIterationIdentifiers } from "./reference-validator.ts";
 import { emitWorkflowLifecycle } from "./service.ts";
 import { validateTenantWorkflowDefForSave } from "./tenant-validator.ts";
 import { triggerOf } from "./trigger-bindings.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { carriedSpecColumns } from "./version-spec.ts";
-import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
+import {
+  lockWorkflowForVersionWrite,
+  nextVersionNumber,
+  workflowStateOf,
+} from "./version-write-lock.ts";
 
 export interface RotateWorkflowVersionInternalInput {
   tenant_id: string;
@@ -69,24 +76,22 @@ export async function rotateWorkflowVersionInternal(
       "rotateWorkflowVersionInternal: trigger block differs from the current version — this path never reconciles trigger bindings, use updateWorkflow",
     );
   }
-  const versionRows = (await exec
-    .select({
-      max_version: sql<number>`coalesce(max(${workflowVersions.version}), 0)`,
-    })
-    .from(workflowVersions)
-    .where(
-      and(eq(workflowVersions.tenant_id, input.tenant_id), eq(workflowVersions.workflow_id, wf.id)),
-    )) as Array<{ max_version: number }>;
-  const next = (versionRows[0]?.max_version ?? 0) + 1;
+  const versionId = randomUUID();
+  const rotated = decide(workflowStateOf(wf), { type: "RotateVersion", version_id: versionId });
+  if (!rotated.ok)
+    throw new Error(`rotateWorkflowVersionInternal: ${describeRejection(rotated.rejection)}`);
+  const state = evolve(workflowStateOf(wf), rotated.event);
+  const next = await nextVersionNumber(exec, input.tenant_id, wf.id);
   const [v] = await exec
     .insert(workflowVersions)
     .values({
+      id: versionId,
       author_user_id: null,
       author_system_account_id: null,
       tenant_id: input.tenant_id,
       workflow_id: wf.id,
       version: next,
-      dag: def,
+      dag: toStoredDefinition(def, "version"),
       ...carriedSpecColumns(current),
       note: input.note,
       ...(current.scope_index ? { scope_index: current.scope_index } : {}),
@@ -95,7 +100,7 @@ export async function rotateWorkflowVersionInternal(
   assertInsertRow(v, "workflow_versions");
   await exec
     .update(workflows)
-    .set({ current_version_id: v.id, updated_at: new Date() })
+    .set({ current_version_id: state.current_version_id, updated_at: new Date() })
     .where(and(eq(workflows.tenant_id, input.tenant_id), eq(workflows.id, wf.id)));
   await carryApprovalsForward(exec, {
     tenant_id: input.tenant_id,

@@ -1,14 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import {
-  auditLog,
-  connectorEndpointSchemas,
-  conversations,
-  tenants,
-} from "../../db/schema/index.ts";
+import { auditLog, connectorEndpointSchemas, conversations } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   withConnectorInspection,
   withConnectorProbe,
@@ -38,11 +34,7 @@ let conversation_id: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("save_connector_draft_analysis");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-scda", display_name: "T-SCDA" })
-    .returning();
-  tenant_id = t!.id;
+  tenant_id = (await seedTenant(ctx.db, { slug: "t-scda", display_name: "T-SCDA" })).id;
   const [conv] = await ctx.db
     .insert(conversations)
     .values({ tenant_id, status: "active" })

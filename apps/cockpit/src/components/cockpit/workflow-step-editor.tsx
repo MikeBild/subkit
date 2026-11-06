@@ -1,9 +1,9 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Clock, GitBranch, type LucideIcon, Plug, Shuffle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
-import type { components } from "@/api/schema";
 import { useDirtyGuard } from "@/app/version-notice";
 import { connectorService, useConnectorRecords } from "@/components/cockpit/connector-names";
 import {

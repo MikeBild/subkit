@@ -4,16 +4,11 @@ import { builtinRoleId } from "../../rbac/roles.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import type { Db } from "../client.ts";
-import { runMigrations } from "../migrate.ts";
 import { cockpitInstallations } from "../schema/cockpit-installations.ts";
 import { cockpitPushSubscriptions } from "../schema/cockpit-push.ts";
 import { sessions, tenants, users } from "../schema/identity.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT } from "../tests/setup.ts";
-import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
 
-const migration = EMBEDDED_MIGRATIONS.find(
-  (item) => item.tag === "0144_cockpit_push_browser_subscriptions",
-);
 const nextUuid = createDeterministicUuidFactory(0xb40e);
 
 async function violation(run: () => Promise<unknown>): Promise<string | undefined> {
@@ -45,12 +40,9 @@ async function tenantWithUser(db: Db) {
 }
 
 test(
-  "existing installation rows become installation kind and browser rows stay bounded",
+  "a subscription without kind is an installation row and browser rows stay bounded",
   async () => {
-    if (!migration) throw new Error("cockpit push browser migration is not embedded");
-    const ctx = await createTestDb("cockpit_push_browser_migration", {
-      upToIdx: migration.idx - 1,
-    });
+    const ctx = await createTestDb("cockpit_push_browser_migration");
     try {
       const at = new Date(getTestNow());
       const first = await tenantWithUser(ctx.db);
@@ -78,8 +70,6 @@ test(
           (tenant_id, installation_id, session_id, endpoint_sha256, ciphertext, iv, auth_tag)
         values (${first.tenantId}, ${installationId}, ${installedSession}, 'installed',
           '\\x00'::bytea, '\\x00'::bytea, '\\x00'::bytea)`);
-
-      expect((await runMigrations(ctx.db, [migration], true)).applied).toBe(1);
 
       const existing = await ctx.db
         .select({

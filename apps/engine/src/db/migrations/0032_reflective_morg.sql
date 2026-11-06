@@ -1,1 +1,0 @@
-ALTER TABLE "conversations" ADD COLUMN "origin_client" text;

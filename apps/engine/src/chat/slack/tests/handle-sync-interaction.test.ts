@@ -10,11 +10,11 @@ import {
   conversationElicitations,
   conversations,
   conversationToolCalls,
-  tenants,
   users,
 } from "../../../db/schema/index.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import { SlackAdapter } from "../adapter.ts";
 
 const nextHex = createDeterministicHexFactory(0xa9c155);
@@ -63,11 +63,10 @@ describe("SlackAdapter.handleSyncInteraction — cross-tenant elicitation defens
       bot_auth_tag: detBytes(1),
     });
 
-    const [foreignTenant] = await ctx.testDb.db
-      .insert(tenants)
-      .values({ slug: "t-xtenant-foreign", display_name: "Foreign" })
-      .returning();
-    if (!foreignTenant) throw new Error("seed foreign tenant");
+    const foreignTenant = await seedTenant(ctx.testDb.db, {
+      slug: "t-xtenant-foreign",
+      display_name: "Foreign",
+    });
     const [foreignUser] = await ctx.testDb.db
       .insert(users)
       .values({

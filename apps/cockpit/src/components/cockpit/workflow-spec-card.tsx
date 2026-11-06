@@ -1,8 +1,8 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
-import type { components } from "@/api/schema";
 import { TextAreaField, TextField } from "@/components/cockpit/form-field";
 import {
   ActionButton,

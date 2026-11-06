@@ -1,14 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { EngineClient } from "../../../engine-client/index.ts";
 import { getMockProvider, resetMockProvider } from "../../../llm/mock-provider.ts";
-import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
+import { makeToolCtx, type SeededToolContext } from "../../../test-helpers/seed.ts";
 import { proposeDryRunRepairs, workflowOutputSite } from "../../dry-run-repair.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import type { DraftDocument } from "../../types.ts";
 import { dryRunWorkflowTool } from "../dry-run-workflow.ts";
-import type { ToolContext } from "../index.ts";
-
-const uuid = createDeterministicUuidFactory(0x0f_f0_07);
 
 let ctx: ConversationTestCtx;
 
@@ -24,26 +20,13 @@ beforeEach(() => {
   resetMockProvider();
 });
 
-function makeCtx(initial: DraftDocument): ToolContext & { current: () => DraftDocument } {
-  let draft = initial;
-  return {
+function makeCtx(initial: DraftDocument): SeededToolContext {
+  return makeToolCtx({
     db: ctx.testDb.db,
     tenant_id: ctx.tenant_id,
-    conversation_id: uuid(),
     actor_id: ctx.user_id,
-    connector_id: null,
-    workflow_id: null,
-    engineClient: new EngineClient({
-      tenant_id: ctx.tenant_id,
-      actor_id: ctx.user_id,
-      db: ctx.testDb.db,
-    }),
-    getDraft: () => draft,
-    setDraft: async (next) => {
-      draft = next;
-    },
-    current: () => draft,
-  };
+    draft: initial,
+  });
 }
 
 const ROWS = [{ a: 1 }, { a: 2 }];
@@ -77,7 +60,7 @@ describe("dry_run_workflow · the preview runs the validated definition, nothing
     );
     expect(result.ok).toBe(true);
     expect(data.final_output).toEqual({ rows: ROWS, row_count: 2 });
-    expect(toolCtx.current().latest_preview?.preview).toEqual({ rows: ROWS, row_count: 2 });
+    expect(toolCtx.draft.latest_preview?.preview).toEqual({ rows: ROWS, row_count: 2 });
   });
 
   test("validation_expression gates the preview", async () => {

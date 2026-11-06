@@ -1,10 +1,10 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouterState } from "@tanstack/react-router";
 import { Check, ChevronRight, Minus, X } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
-import type { components } from "@/api/schema";
 import { useActorDirectory } from "@/app/actor-directory";
 import { actorDirectoryName } from "@/app/actor-directory-model";
 import { absolute, RUNS_FILTER_PARAMS, runHref, workflowHref } from "@/app/links";

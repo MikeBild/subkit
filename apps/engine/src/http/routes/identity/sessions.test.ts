@@ -10,10 +10,11 @@ import {
   startMockOidc,
 } from "../../../auth/providers/tests/fixtures/mock-oidc.ts";
 import { _resetConfigForTests, loadConfig } from "../../../config/loader.ts";
-import { tenants, userIdentities, users } from "../../../db/schema/index.ts";
+import { userIdentities, users } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { flushDiscoveryCache } from "../../../identity/index.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import { buildDefaultRegistry, createApp } from "../../server.ts";
 
 let testDb: TestDb;
@@ -97,11 +98,7 @@ beforeAll(async () => {
   configDir = mkdtempSync(join(tmpdir(), "sk-identity-sessions-"));
   await writeOidcConfig(mock.url, CLIENT_ID);
 
-  const [t] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "default", display_name: "Default" })
-    .returning();
-  if (!t) throw new Error("seed default tenant failed");
+  const t = await seedTenant(testDb.db, { slug: "default", display_name: "Default" });
   defaultTenantId = t.id;
 
   const registry = buildDefaultRegistry(testDb.db);

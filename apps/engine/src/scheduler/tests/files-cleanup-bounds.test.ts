@@ -7,6 +7,7 @@ import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../db/tests/
 import { MemoryObjectStore, setObjectStoreForTesting } from "../../storage/object-store.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   FILES_CLEANUP_BATCH_SIZE,
   FILES_UNLINKED_CLEANUP_BATCH_SIZE,
@@ -31,9 +32,7 @@ afterAll(async () => {
 
 async function seed(kind: "pending" | "scanning" | "soft" | "hard", amount: number) {
   const tenantId = uuid();
-  await fixture.db
-    .insert(tenants)
-    .values({ id: tenantId, slug: tenantId, display_name: "Cleanup fixture" });
+  await seedTenant(fixture.db, { id: tenantId, slug: tenantId, display_name: "Cleanup fixture" });
   const old = new Date(getTestNow() - 9 * 86400000);
   const rows = Array.from({ length: amount }, () => ({
     id: uuid(),

@@ -5,7 +5,6 @@ import {
   executions,
   externalCallMetering,
   llmUsage,
-  tenants,
   users,
   workflows,
   workflowVersions,
@@ -14,6 +13,7 @@ import { currentMonthBucket } from "../../llm/accounting/budget.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 const uuid = createDeterministicUuidFactory(0x07);
@@ -155,11 +155,7 @@ beforeAll(async () => {
     execution_id: executionId,
   });
 
-  const [tenantB] = await db
-    .insert(tenants)
-    .values({ slug: "tenant-b-cost", display_name: "Tenant B Cost" })
-    .returning();
-  if (!tenantB) throw new Error("seed tenant B failed");
+  const tenantB = await seedTenant(db, { slug: "tenant-b-cost", display_name: "Tenant B Cost" });
   tenantBId = tenantB.id;
 
   const [userB] = await db

@@ -3,7 +3,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { resolveActor } from "../audit/recorders/types.ts";
 import type { AuditActorType } from "../audit/types.ts";
 import { AuditAction } from "../audit/types.ts";
-import { type Db, getDb } from "../db/client.ts";
+import type { Db } from "../db/client.ts";
 import {
   executionFixtures,
   patchCandidates,
@@ -90,9 +90,8 @@ export interface PatchCandidatePreview extends PatchReadiness {
 export async function previewPatchCandidate(
   tenant_id: string,
   candidate_id: string,
-  exec?: Db,
+  db: Db,
 ): Promise<PatchCandidatePreview | null> {
-  const db = exec ?? getDb();
   const rows = await db
     .select()
     .from(patchCandidates)
@@ -163,9 +162,8 @@ export async function dryRunPatchCandidate(
     actor_id: string | null;
     actor_type?: AuditActorType;
   },
-  exec?: Db,
+  db: Db,
 ): Promise<CandidateDryRunOutcome> {
-  const db = exec ?? getDb();
   const rows = await db
     .select()
     .from(patchCandidates)

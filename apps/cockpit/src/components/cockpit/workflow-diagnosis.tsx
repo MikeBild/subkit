@@ -1,8 +1,8 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { apiRequest } from "@/api/client";
-import type { components } from "@/api/schema";
 import { absolute, attentionHref, chatNewHref, routerTarget } from "@/app/links";
 import { useSession } from "@/app/session";
 import { ActionMenu, ContextHelp, DataState } from "@/components/cockpit/patterns";

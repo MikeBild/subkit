@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { executionSteps, executions, tenants } from "../db/schema/index.ts";
+import { executionSteps, executions } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { RunLlmBudget } from "../llm/accounting/index.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import type { RequestStep } from "../workflows/types.ts";
 import {
   type PaginationCheckpoint,
@@ -28,11 +29,10 @@ let failOnPage: number | null = null;
 
 beforeAll(async () => {
   testDb = await createTestDb("pagination-checkpoint");
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "pg-checkpoint", display_name: "Pagination Checkpoint" })
-    .returning();
-  if (!tenant) throw new Error("tenant insert failed");
+  const tenant = await seedTenant(testDb.db, {
+    slug: "pg-checkpoint",
+    display_name: "Pagination Checkpoint",
+  });
   tenantId = tenant.id;
 
   mock = await createMockServer((req, res) => {
@@ -414,11 +414,10 @@ describe("pagination checkpoint", () => {
     };
     await writePaginationCheckpoint(tenantId, step_row_id, cp, testDb.db);
 
-    const [otherTenant] = await testDb.db
-      .insert(tenants)
-      .values({ slug: "pg-checkpoint-other", display_name: "Other Tenant" })
-      .returning();
-    if (!otherTenant) throw new Error("second tenant insert failed");
+    const otherTenant = await seedTenant(testDb.db, {
+      slug: "pg-checkpoint-other",
+      display_name: "Other Tenant",
+    });
 
     const cross = await readPaginationCheckpoint(otherTenant.id, step_row_id, testDb.db);
     expect(cross).toBeNull();
@@ -439,11 +438,10 @@ describe("pagination checkpoint", () => {
     };
     await writePaginationCheckpoint(tenantId, step_row_id, original, testDb.db);
 
-    const [otherTenant] = await testDb.db
-      .insert(tenants)
-      .values({ slug: "pg-checkpoint-other-w", display_name: "Other Tenant W" })
-      .returning();
-    if (!otherTenant) throw new Error("second tenant insert failed");
+    const otherTenant = await seedTenant(testDb.db, {
+      slug: "pg-checkpoint-other-w",
+      display_name: "Other Tenant W",
+    });
 
     const hostile: PaginationCheckpoint = {
       state: { kind: "offset", offset: 9999 },

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { writeEvent } from "../../db/events.ts";
-import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { PubSubEmitter } from "../emitter.ts";
 import { PubSubListener } from "../listener.ts";
 import type { EventEnvelope } from "../types.ts";
@@ -11,11 +11,7 @@ let tenantId: string;
 
 beforeAll(async () => {
   testDb = await createTestDb("pubsub-catchup");
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "catchup-co", display_name: "Catchup Co" })
-    .returning();
-  tenantId = tenant!.id;
+  tenantId = (await seedTenant(testDb.db, { slug: "catchup-co", display_name: "Catchup Co" })).id;
 });
 
 afterAll(async () => {

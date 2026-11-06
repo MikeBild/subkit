@@ -1,17 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { ServerResponse } from "node:http";
 import { and, asc, eq } from "drizzle-orm";
-import {
-  auditLog,
-  connectors,
-  executionSteps,
-  executions,
-  tenants,
-} from "../../../db/schema/index.ts";
+import { auditLog, connectors, executionSteps, executions } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { RunLlmBudget } from "../../../llm/accounting/index.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import { createMockServer, type MockServer } from "../../../test-helpers/mock-http.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import { type RequestStep, RequestStepSchema } from "../../../workflows/types.ts";
 import { envelopeFor } from "../../engine/envelope.ts";
 import type { StepRunContext } from "../../types.ts";
@@ -41,11 +36,7 @@ function send(res: ServerResponse, status: number, body: unknown, headers: Recor
 
 beforeAll(async () => {
   testDb = await createTestDb("rest-pagination-dispatch");
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "rest-paging", display_name: "REST paging" })
-    .returning();
-  if (!tenant) throw new Error("tenant insert failed");
+  const tenant = await seedTenant(testDb.db, { slug: "rest-paging", display_name: "REST paging" });
   tenantId = tenant.id;
   mock = await createMockServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://mock");

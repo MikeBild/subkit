@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import type { PgBoss } from "pg-boss";
 import {
   executions,
   workflowExecutionAuthorities,
@@ -16,6 +15,9 @@ import { databaseNow } from "../test-helpers/database-clock.ts";
 import { FROZEN_NOW } from "../test-helpers/determinism/clock.ts";
 import { SchedulerReconciler } from "./reconciler.ts";
 import { grantScheduleAuthorityFixture } from "./tests/authority-fixture.ts";
+import { createStubBoss, type SendCall } from "./tests/stub-boss.ts";
+
+const IGNORED_QUEUES: ReadonlySet<string> = new Set(["workflow.repair"]);
 
 let ctx: EngineTestCtx;
 
@@ -26,25 +28,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await ctx.cleanup();
 }, 30_000);
-
-interface SendCall {
-  queue: string;
-  payload: unknown;
-}
-
-function createStubBoss(calls: SendCall[]): PgBoss {
-  return {
-    send: async (queue: string, payload: unknown) => {
-      if (queue !== "workflow.repair") calls.push({ queue, payload });
-      return "stub-job-id";
-    },
-    schedule: async () => undefined,
-    unschedule: async () => undefined,
-    getQueues: async () => [],
-    createQueue: async () => undefined,
-    on: () => undefined,
-  } as unknown as PgBoss;
-}
 
 async function insertSchedule(
   workflow_id: string,
@@ -75,8 +58,8 @@ describe("reconciler exactly-once under two concurrent engines", () => {
   test("two reconcilers running in parallel fire a single schedule exactly once", async () => {
     const callsA: SendCall[] = [];
     const callsB: SendCall[] = [];
-    const bossA = createStubBoss(callsA);
-    const bossB = createStubBoss(callsB);
+    const bossA = createStubBoss(callsA, IGNORED_QUEUES);
+    const bossB = createStubBoss(callsB, IGNORED_QUEUES);
 
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "race-wf",
@@ -115,8 +98,8 @@ describe("reconciler exactly-once under two concurrent engines", () => {
   test("the runner-up does not stamp last_enqueued_at past the winner's value", async () => {
     const callsA: SendCall[] = [];
     const callsB: SendCall[] = [];
-    const bossA = createStubBoss(callsA);
-    const bossB = createStubBoss(callsB);
+    const bossA = createStubBoss(callsA, IGNORED_QUEUES);
+    const bossB = createStubBoss(callsB, IGNORED_QUEUES);
 
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "race-wf-2",
@@ -154,7 +137,10 @@ describe("reconciler exactly-once under two concurrent engines", () => {
     const before = new Date(now.getTime() - 300_000);
     await insertSchedule(workflow_id, "* * * * *", before);
     const callsA: SendCall[] = [];
-    const first = new SchedulerReconciler({ boss: createStubBoss(callsA), db: ctx.testDb.db });
+    const first = new SchedulerReconciler({
+      boss: createStubBoss(callsA, IGNORED_QUEUES),
+      db: ctx.testDb.db,
+    });
     const [, apiResult] = await Promise.allSettled([
       first.reconcileWorkflowSchedules(now),
       admitAuthorizedWorkflowExecution(
@@ -206,7 +192,7 @@ describe("reconciler exactly-once under two concurrent engines", () => {
           .where(eq(workflowExecutionAuthorities.workflow_id, workflow_id));
       const calls: SendCall[] = [];
       const scheduler = new SchedulerReconciler({
-        boss: createStubBoss(calls),
+        boss: createStubBoss(calls, IGNORED_QUEUES),
         db: ctx.testDb.db,
         intervalMs: 60_000,
       });

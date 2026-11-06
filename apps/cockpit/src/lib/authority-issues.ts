@@ -1,4 +1,4 @@
-import type { components } from "../api/schema";
+import type { components } from "@cli-core/engine-api/openapi";
 
 type Manifest = components["schemas"]["WorkflowEffectManifest"];
 type Preview = components["schemas"]["WorkflowAuthorityPreview"];

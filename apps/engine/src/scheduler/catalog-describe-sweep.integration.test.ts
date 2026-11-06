@@ -11,6 +11,7 @@ import {
 } from "../queue/handlers/catalog-describe.ts";
 import { FROZEN_NOW } from "../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import { runCatalogDescribeSweep } from "./catalog-describe-runner.ts";
 import {
   acquireSweepPage,
@@ -51,7 +52,7 @@ beforeEach(async () => {
 });
 async function tenant(pending = true) {
   const id = uuid();
-  await fixture.db.insert(tenants).values({
+  await seedTenant(fixture.db, {
     id,
     slug: id,
     display_name: "Catalog sweep fixture",
@@ -151,7 +152,7 @@ test("explicit isolated short policy records real singleton null as existing", a
 
 test("database default and sub-millisecond birth timestamps remain eligible", async () => {
   const id = uuid();
-  await fixture.db.insert(tenants).values({ id, slug: id, display_name: "Default birth fixture" });
+  await seedTenant(fixture.db, { id, slug: id, display_name: "Default birth fixture" });
   await fixture.db
     .insert(catalogCategories)
     .values({ tenant_id: id, name: "pending default", purpose_pending: true });

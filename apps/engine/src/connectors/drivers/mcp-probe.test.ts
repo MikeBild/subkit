@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
 import { UNDESCRIBED_METADATA } from "../../api/catalog-metadata.ts";
 import { closeDb } from "../../db/client.ts";
-import { auditLog, tenants } from "../../db/schema/index.ts";
+import { auditLog } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import {
   __resetMcpClientPoolForTests,
@@ -10,6 +10,7 @@ import {
   type McpClientLike,
 } from "../../mcp/client/pool.ts";
 import { seedMcpConnector } from "../../mcp/client/test-fixtures.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { setConnectorEnabled } from "../service.ts";
 import type { ConnectorView } from "../types.ts";
 import { probeMcpConnector } from "./mcp.ts";
@@ -105,11 +106,8 @@ beforeAll(async () => {
   ctx = await createTestDb("mcp-driver-probe");
   await closeDb();
   process.env.DATABASE_URL = ctx.url;
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-mcp-probe", display_name: "MCP Probe Tenant" })
-    .returning();
-  tenantId = t!.id;
+  const t = await seedTenant(ctx.db, { slug: "t-mcp-probe", display_name: "MCP Probe Tenant" });
+  tenantId = t.id;
 }, 30_000);
 
 afterAll(async () => {

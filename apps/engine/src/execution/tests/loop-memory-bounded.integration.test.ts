@@ -1,10 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { executionFixtures, executionSteps, tenants } from "../../db/schema/index.ts";
+import { executionFixtures, executionSteps } from "../../db/schema/index.ts";
 import {
   type MemoryOffloadStorage,
   useMemoryOffloadStorage,
 } from "../../test-helpers/offload-storage.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { runExecution } from "../engine.ts";
 import { isOffloadRef, OffloadResolutionError, resolveOffloaded } from "../offload.ts";
 import { containsOffloadRef } from "../offload-rehydrate.ts";
@@ -214,13 +215,10 @@ describe("loop memory-bounded: OOM guard", () => {
       })
       .returning({ id: executionFixtures.id });
 
-    const [foreignTenant] = await ctx.testDb.db
-      .insert(tenants)
-      .values({
-        slug: "loop-bounded-foreign",
-        display_name: "Foreign Tenant (TC4)",
-      })
-      .returning({ id: tenants.id });
+    const foreignTenant = await seedTenant(ctx.testDb.db, {
+      slug: "loop-bounded-foreign",
+      display_name: "Foreign Tenant (TC4)",
+    });
 
     const ref = {
       $offloaded: true as const,
@@ -232,7 +230,7 @@ describe("loop memory-bounded: OOM guard", () => {
     const owned = await resolveOffloaded(ctx.testDb.db, ctx.tenantId, ref);
     expect(owned).toEqual(payload);
 
-    await expect(resolveOffloaded(ctx.testDb.db, foreignTenant!.id, ref)).rejects.toBeInstanceOf(
+    await expect(resolveOffloaded(ctx.testDb.db, foreignTenant.id, ref)).rejects.toBeInstanceOf(
       OffloadResolutionError,
     );
   });

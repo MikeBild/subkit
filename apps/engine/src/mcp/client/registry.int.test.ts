@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { setConnectorEnabled } from "../../connectors/service.ts";
-import { auditLog, connectorMcpSessions, connectors, tenants } from "../../db/schema/index.ts";
+import { auditLog, connectorMcpSessions, connectors } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   getMcpConnector,
   getMcpSessionBackoff,
@@ -19,14 +20,8 @@ let tenantB: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("mcp-registry");
-  const [a] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "mcp-reg-a", display_name: "A" })
-    .returning();
-  const [b] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "mcp-reg-b", display_name: "B" })
-    .returning();
+  const a = await seedTenant(ctx.db, { slug: "mcp-reg-a", display_name: "A" });
+  const b = await seedTenant(ctx.db, { slug: "mcp-reg-b", display_name: "B" });
   if (!a || !b) throw new Error("tenant seed failed");
   tenantA = a.id;
   tenantB = b.id;

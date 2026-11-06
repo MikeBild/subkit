@@ -10,6 +10,7 @@ import {
   users,
 } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -91,11 +92,7 @@ function apiFetch(path: string, init: RequestInit = {}, token?: string): Promise
 beforeAll(async () => {
   srv = await createHttpTestServer("notifications-inbox");
 
-  const [tB] = await srv.db
-    .insert(tenants)
-    .values({ slug: "ninbox-b", display_name: "Ninbox B" })
-    .returning();
-  if (!tB) throw new Error("seed tenant B failed");
+  const tB = await seedTenant(srv.db, { slug: "ninbox-b", display_name: "Ninbox B" });
 
   const [uB] = await srv.db
     .insert(users)

@@ -2,7 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import type { AuditActorType } from "../audit/types.ts";
 import { AuditAction } from "../audit/types.ts";
-import { type Db, type Executor, getDb } from "../db/client.ts";
+import type { Db, Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { executionFixtures, executions, type patchCandidates } from "../db/schema/index.ts";
 import { MAX_REPAIR_ATTEMPTS } from "../execution/timeouts.ts";
@@ -270,9 +270,8 @@ export async function processDriftSignal(
   signal: DriftSignal,
   ctx: SignalContext,
   options: ProcessSignalOptions,
-  exec?: Db,
+  db: Db,
 ): Promise<ProcessSignalResult> {
-  const db = exec ?? getDb();
   return db.transaction(async (tx) => {
     const workflow = await lockWorkflowForVersionWrite(tx, ctx.tenant_id, ctx.workflow_id);
     return processDriftSignalLocked(
@@ -688,10 +687,8 @@ async function processDriftSignalLocked(
 
 export async function runSelfHealingLoop(
   params: RunSelfHealingParams,
-  exec?: Db,
+  db: Db,
 ): Promise<SelfHealingResult> {
-  const db = exec ?? getDb();
-
   let snapshot: FailingStepSnapshot | null = params.step_snapshot ?? null;
   if (!snapshot && params.step_id) {
     snapshot = await loadStepSnapshot(params.tenant_id, params.step_id, db);

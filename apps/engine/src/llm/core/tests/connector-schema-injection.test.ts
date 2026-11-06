@@ -2,8 +2,9 @@ import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import * as discoveryModule from "../../../connectors/discovery/index.ts";
 import { runDiscoveryCached } from "../../../connectors/discovery/service.ts";
 import type { DiscoveryResult } from "../../../connectors/discovery/types.ts";
-import { connectors, tenants } from "../../../db/schema/index.ts";
+import { connectors } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import type { AuthoringPromptHint } from "../../types.ts";
 import { assembleEnhancedPrompt } from "../context-assembler.ts";
 
@@ -62,11 +63,8 @@ function authoringHintFor(mode: "connector" | "workflow"): AuthoringPromptHint {
 beforeAll(async () => {
   if (skip) return;
   ctx = await createTestDb("connector_schema_injection");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-inj", display_name: "Inject Tenant" })
-    .returning();
-  tenant_id = t!.id;
+  const t = await seedTenant(ctx.db, { slug: "t-inj", display_name: "Inject Tenant" });
+  tenant_id = t.id;
   const [c] = await ctx.db
     .insert(connectors)
     .values({

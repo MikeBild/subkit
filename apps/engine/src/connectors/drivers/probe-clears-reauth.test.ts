@@ -2,9 +2,10 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { eq } from "drizzle-orm";
 import { upsertCredential } from "../../credentials/service.ts";
-import { connectors, tenants } from "../../db/schema/index.ts";
+import { connectors } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { markConnectorNeedsReauth } from "../reauth.ts";
 import { createConnector, getConnector } from "../service.ts";
 import type { ConnectorView } from "../types.ts";
@@ -17,11 +18,10 @@ let probeStatus = 200;
 
 beforeAll(async () => {
   ctx = await createTestDb("probe-clears-reauth");
-  const [tenant] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "probe-clears-reauth", display_name: "Probe clears reauth" })
-    .returning();
-  if (!tenant) throw new Error("seed tenant failed");
+  const tenant = await seedTenant(ctx.db, {
+    slug: "probe-clears-reauth",
+    display_name: "Probe clears reauth",
+  });
   tenantId = tenant.id;
   mock = await createMockServer((_req: IncomingMessage, res: ServerResponse) => {
     jsonResponse(res, probeStatus, probeStatus === 200 ? { ok: true } : { error: "nope" });

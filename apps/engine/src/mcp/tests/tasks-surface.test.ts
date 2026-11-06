@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { eq } from "drizzle-orm";
-import { conversations, mcpTasks, tenants, users } from "../../db/schema/index.ts";
+import { mcpTasks, users } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { seedConversation as seedConversationRow, seedTenant } from "../../test-helpers/seed.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;
@@ -16,11 +17,11 @@ afterAll(async () => {
 });
 
 async function seedConversation(tenantId = suite.http.tenantId): Promise<string> {
-  const [row] = await suite.http.db
-    .insert(conversations)
-    .values({ tenant_id: tenantId, status: "active", draft: {} })
-    .returning({ id: conversations.id });
-  if (!row) throw new Error("seed conversation failed");
+  const row = await seedConversationRow(suite.http.db, {
+    tenant_id: tenantId,
+    status: "active",
+    draft: {},
+  });
   return row.id;
 }
 
@@ -51,11 +52,10 @@ async function seedTask(
 }
 
 async function seedOtherTenantPrincipal(): Promise<{ apiKey: string; tenantId: string }> {
-  const [tenant] = await suite.http.db
-    .insert(tenants)
-    .values({ slug: "tasks-other", display_name: "Tasks Other" })
-    .returning({ id: tenants.id });
-  if (!tenant) throw new Error("seed other tenant failed");
+  const tenant = await seedTenant(suite.http.db, {
+    slug: "tasks-other",
+    display_name: "Tasks Other",
+  });
 
   const [user] = await suite.http.db
     .insert(users)

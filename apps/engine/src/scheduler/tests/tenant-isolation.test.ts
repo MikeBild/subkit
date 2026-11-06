@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
-import type { PgBoss } from "pg-boss";
-import { auditLog, executions, tenants, workflowsSchedules } from "../../db/schema/index.ts";
+import { auditLog, executions, workflowsSchedules } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createWorkflowRow, type EngineTestCtx } from "../../execution/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { SchedulerReconciler } from "../reconciler.ts";
 import { readEveryScheduleDefinition } from "../workflow-schedule-sweep.ts";
 import { grantScheduleAuthorityFixture } from "./authority-fixture.ts";
+import { createStubBoss, type SendCall } from "./stub-boss.ts";
 
 let testDb: TestDb;
 let ctxA: EngineTestCtx;
@@ -16,39 +17,18 @@ let workflowB: string;
 
 const TICK = new Date(Date.UTC(2026, 4, 4, 9, 1, 0));
 
-interface SendCall {
-  queue: string;
-  payload: unknown;
-}
-
-function createStubBoss(calls: SendCall[]): PgBoss {
-  return {
-    send: async (queue: string, payload: unknown) => {
-      calls.push({ queue, payload });
-      return "stub-job-id";
-    },
-    schedule: async () => undefined,
-    unschedule: async () => undefined,
-    getQueues: async () => [],
-    createQueue: async () => undefined,
-    on: () => undefined,
-  } as unknown as PgBoss;
-}
-
 beforeAll(async () => {
   testDb = await createTestDb("sched-tenant-iso");
 
-  const [tA] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "sched-iso-a", display_name: "Sched-Iso Tenant A" })
-    .returning();
-  if (!tA) throw new Error("seed tenant A failed");
+  const tA = await seedTenant(testDb.db, {
+    slug: "sched-iso-a",
+    display_name: "Sched-Iso Tenant A",
+  });
 
-  const [tB] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "sched-iso-b", display_name: "Sched-Iso Tenant B" })
-    .returning();
-  if (!tB) throw new Error("seed tenant B failed");
+  const tB = await seedTenant(testDb.db, {
+    slug: "sched-iso-b",
+    display_name: "Sched-Iso Tenant B",
+  });
 
   ctxA = { testDb, tenantId: tA.id, cleanup: async () => {} };
   ctxB = { testDb, tenantId: tB.id, cleanup: async () => {} };

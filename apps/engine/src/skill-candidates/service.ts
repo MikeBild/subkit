@@ -4,7 +4,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
-import { type Db, type Executor, getDb } from "../db/client.ts";
+import type { Db, Executor } from "../db/client.ts";
 import { patchCandidates } from "../db/schema/executions.ts";
 import { skillCandidateEvidence, skillCandidates } from "../db/schema/skills.ts";
 import { log } from "../logging/logger.ts";
@@ -80,9 +80,8 @@ function listFilterConds(p: ListSkillCandidatesParams) {
 
 export async function listSkillCandidates(
   p: ListSkillCandidatesParams,
-  exec?: Executor,
+  db: Executor,
 ): Promise<SkillCandidateView[]> {
-  const db = exec ?? getDb();
   const limit = Math.min(Math.max(1, p.limit ?? 50), 500);
   const offset = Math.max(0, p.offset ?? 0);
 
@@ -103,9 +102,8 @@ export async function listSkillCandidates(
 
 export async function countSkillCandidates(
   p: ListSkillCandidatesParams,
-  exec?: Executor,
+  db: Executor,
 ): Promise<number> {
-  const db = exec ?? getDb();
   const [row] = await db
     .select({ cnt: count() })
     .from(skillCandidates)
@@ -118,9 +116,8 @@ const OPEN_STATUSES: SkillCandidateStatus[] = ["proposed", "context"];
 export async function getSkillCandidate(
   tenant_id: string,
   id: string,
-  exec?: Executor,
+  db: Executor,
 ): Promise<SkillCandidateView | null> {
-  const db = exec ?? getDb();
   const rows = await db
     .select()
     .from(skillCandidates)
@@ -144,10 +141,9 @@ export interface SkillCandidateReviewSubject {
 export async function getSkillCandidatesForReview(
   tenant_id: string,
   ids: readonly string[],
-  exec?: Executor,
+  db: Executor,
 ): Promise<SkillCandidateReviewSubject[]> {
   if (ids.length === 0) return [];
-  const db = exec ?? getDb();
   const rows = await db
     .select()
     .from(skillCandidates)
@@ -172,9 +168,8 @@ export async function getSkillCandidatesForReview(
 export async function getSkillCandidateEvidence(
   tenant_id: string,
   candidate_id: string,
-  exec?: Executor,
+  db: Executor,
 ): Promise<SkillCandidateEvidenceView[]> {
-  const db = exec ?? getDb();
   const candidate = await getSkillCandidate(tenant_id, candidate_id, db);
   if (!candidate) return [];
 
@@ -451,10 +446,8 @@ export async function upsertFromSignal(
 
 export async function runPatternAnalysis(
   params: { tenant_id: string },
-  exec?: Db,
+  db: Db,
 ): Promise<AnalysisResult> {
-  const db = exec ?? (getDb() as Db);
-
   const [repairSignals, failureSignals, successSignals] = await Promise.all([
     detectRepairPatterns(params.tenant_id, db),
     detectFailurePatterns(params.tenant_id, db),
@@ -523,9 +516,8 @@ export interface ApproveSkillCandidateResult {
 
 export async function approveSkillCandidate(
   p: ApproveSkillCandidateParams,
-  exec?: Db,
+  db: Db,
 ): Promise<ApproveSkillCandidateResult | null> {
-  const db = exec ?? (getDb() as Db);
   const actor = auditActor(p.actor);
   const actor_id = actor.actor_id;
 
@@ -670,10 +662,8 @@ export type RejectSkillCandidateOutcome =
 
 export async function rejectSkillCandidate(
   p: RejectSkillCandidateParams,
-  exec?: Db,
+  db: Db,
 ): Promise<RejectSkillCandidateOutcome> {
-  const db = exec ?? (getDb() as Db);
-
   const outcome = await db.transaction(async (tx): Promise<RejectSkillCandidateOutcome> => {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtextextended(${`skill-candidates:${p.tenant_id}`}, 0))`,

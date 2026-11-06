@@ -11,11 +11,32 @@ import {
   cockpitBundleMissing,
   cockpitCsp,
   inlineScriptHashes,
-  registerCockpitRoutes,
+  registerCockpitRoutesWith,
 } from "./cockpit.ts";
 import { browserCsrfMiddleware } from "./middleware/browser-csrf.ts";
 import { createOpenApiApp } from "./openapi.ts";
 import { registerCockpitIdentityRoutes } from "./routes/identity/cockpit.ts";
+
+const cockpitPublic = new URL("../../../cockpit/public/", import.meta.url);
+const fixtureShell = [
+  "<!doctype html>",
+  '<html lang="en"><head><title>SubKit Cockpit</title>',
+  '<link rel="icon" type="image/svg+xml" href="/cockpit/favicon.svg" />',
+  "<script>document.documentElement.dataset.theme = 'light';</script>",
+  '<script type="module" src="/cockpit/assets/index-fixture.js"></script>',
+  "</head><body></body></html>",
+].join("\n");
+const fixtureFiles: Record<string, Uint8Array> = {
+  "index.html": new TextEncoder().encode(fixtureShell),
+  "assets/index-fixture.js": new TextEncoder().encode("export {};\n"),
+  "favicon.svg": readFileSync(new URL("favicon.svg", cockpitPublic)),
+  "app-icon-192.png": readFileSync(new URL("app-icon-192.png", cockpitPublic)),
+  "app-icon-512.png": readFileSync(new URL("app-icon-512.png", cockpitPublic)),
+  "browser-worker.js": readFileSync(new URL("browser-worker.js", cockpitPublic)),
+  "installation-worker.js": readFileSync(new URL("installation-worker.js", cockpitPublic)),
+};
+const registerCockpitRoutes = (app: Parameters<typeof registerCockpitRoutesWith>[0]) =>
+  registerCockpitRoutesWith(app, (path) => fixtureFiles[path] ?? null);
 
 describe("cockpit browser boundary", () => {
   test("serves /cockpit as the canonical shell URL without redirecting", async () => {

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-import { conversations, tenants } from "../../../db/schema/index.ts";
+import { conversations } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { attachInlineForTest } from "../../../files/test-helpers.ts";
 import {
@@ -10,6 +10,7 @@ import {
   buildXlsxFixture,
 } from "../../../test-helpers/binary-fixtures.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import { getStaticCapabilities } from "../capabilities.ts";
 import { buildFileContentBlocks } from "../file-context.ts";
 
@@ -21,11 +22,7 @@ let conversation_id: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("text-extract-binary");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "tx-bin-t", display_name: "Text Extract Binary" })
-    .returning();
-  if (!t) throw new Error("seed tenant");
+  const t = await seedTenant(ctx.db, { slug: "tx-bin-t", display_name: "Text Extract Binary" });
   tenant_id = t.id;
 
   const [conv] = await ctx.db

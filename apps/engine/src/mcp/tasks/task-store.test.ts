@@ -8,14 +8,10 @@ import {
   releaseConversationTurn,
   reserveConversationTurn,
 } from "../../conversations/turns.ts";
-import {
-  conversationElicitations,
-  conversations,
-  mcpTasks,
-  tenants,
-} from "../../db/schema/index.ts";
+import { conversationElicitations, mcpTasks } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
+import { seedConversation as seedConversationRow, seedTenant } from "../../test-helpers/seed.ts";
 import { ConversationTaskStore } from "./task-store.ts";
 
 let testDb: TestDb;
@@ -24,17 +20,9 @@ let otherTenantId: string;
 
 beforeAll(async () => {
   testDb = await createTestDb("mcp_task_store");
-  const [t] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "t-taskstore", display_name: "TaskStore" })
-    .returning();
-  if (!t) throw new Error("seed tenant failed");
+  const t = await seedTenant(testDb.db, { slug: "t-taskstore", display_name: "TaskStore" });
   tenantId = t.id;
-  const [t2] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "t-taskstore-other", display_name: "Other" })
-    .returning();
-  if (!t2) throw new Error("seed other tenant failed");
+  const t2 = await seedTenant(testDb.db, { slug: "t-taskstore-other", display_name: "Other" });
   otherTenantId = t2.id;
 });
 
@@ -45,11 +33,7 @@ afterAll(async () => {
 async function seedConversation(
   status: "active" | "awaiting_input" | "committed",
 ): Promise<string> {
-  const [conv] = await testDb.db
-    .insert(conversations)
-    .values({ tenant_id: tenantId, status, draft: {} })
-    .returning();
-  if (!conv) throw new Error("seed conversation failed");
+  const conv = await seedConversationRow(testDb.db, { tenant_id: tenantId, status, draft: {} });
   return conv.id;
 }
 

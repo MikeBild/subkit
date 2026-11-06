@@ -1,4 +1,4 @@
-import type { components } from "@/api/schema";
+import type { components } from "@cli-core/engine-api/openapi";
 import { refusalSentenceKey } from "@/lib/authority-issues";
 import type { AutomationRights } from "@/lib/automation-state";
 import { CATALOGS, type TranslationKey } from "@/lib/i18n";

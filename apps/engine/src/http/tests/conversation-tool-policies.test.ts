@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
-import { apiKeys, auditLog, conversations, tenants, users } from "../../db/schema/index.ts";
+import { apiKeys, auditLog, conversations, users } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { browserSessionHeaders, createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -153,11 +154,7 @@ describe("conversation tool-policies HTTP route (Bug RR)", () => {
 describe("conversation tool-policies HTTP route — cross-tenant isolation", () => {
   test("a different tenant's conversation_id returns 404 (cross-tenant isolation)", async () => {
     const slug = `tp-cross-${crypto.randomUUID().slice(0, 8)}`; // allow-random: cross-tenant fixture; uniqueness > determinism here
-    const [otherTenant] = await srv.db
-      .insert(tenants)
-      .values({ slug, display_name: "Cross-Tenant Probe" })
-      .returning();
-    if (!otherTenant) throw new Error("seed other tenant failed");
+    const otherTenant = await seedTenant(srv.db, { slug, display_name: "Cross-Tenant Probe" });
     const [otherUser] = await srv.db
       .insert(users)
       .values({

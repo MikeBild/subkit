@@ -34,6 +34,7 @@ import {
   startTestBearerIssuer,
   type TestBearerIssuer,
 } from "../../test-helpers/oidc-bearer-issuer.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { previewWorkflowAuthority } from "../../workflows/execution-authorities.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -170,11 +171,7 @@ beforeAll(async () => {
     .set({ current_version_id: brokenVersion.id })
     .where(eq(workflows.id, broken.id));
 
-  const [other] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-apps-other", display_name: "Other" })
-    .returning();
-  if (!other) throw new Error("other tenant insert failed");
+  const other = await seedTenant(ctx.db, { slug: "t-apps-other", display_name: "Other" });
   const otherCtx = { ...ctx, tenantId: other.id };
   foreignAssistantId = (
     await createWorkflowRow(otherCtx, {

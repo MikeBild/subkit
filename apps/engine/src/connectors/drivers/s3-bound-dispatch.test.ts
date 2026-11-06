@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import { upsertCredential } from "../../credentials/service.ts";
-import { connectors, tenants } from "../../db/schema/index.ts";
+import { connectors } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { loadConnectorSystem } from "../system.ts";
 import { executeS3Request } from "./s3.ts";
 
@@ -47,11 +48,7 @@ beforeAll(async () => {
   const addr = server.address();
   if (!addr || typeof addr === "string") throw new Error("server address missing");
   endpoint = `http://127.0.0.1:${addr.port}`;
-  const [tenantRow] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "s3-bound", display_name: "S3 Bound" })
-    .returning();
-  if (!tenantRow) throw new Error("tenant missing");
+  const tenantRow = await seedTenant(testDb.db, { slug: "s3-bound", display_name: "S3 Bound" });
   tenant = tenantRow.id;
   const [row] = await testDb.db
     .insert(connectors)

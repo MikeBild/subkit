@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { autoloadForUserTurn, loadActivationCatalog } from "../../conversations/skill-autoload.ts";
-import { auditLog, skills, tenants } from "../../db/schema/index.ts";
+import { auditLog, skills } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { resolveLoadedSkills } from "../../llm/core/context-assembler/loaded-skills.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   activateSkill,
   archiveSkill,
@@ -26,18 +27,10 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-async function seedTenant(): Promise<string> {
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: `t-${Math.random().toString(36).slice(2, 8)}`, display_name: "T" }) // allow-random: legacy; review before changing
-    .returning();
-  return t!.id;
-}
-
 describe("skills/service", () => {
   test("installed intent phrases load only active same-tenant nonexperimental skills", async () => {
-    const tenant_id = await seedTenant();
-    const otherTenant = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
+    const otherTenant = (await seedTenant(ctx.db)).id;
     async function prepare(tenant: string, title: string, experimental = false, activate = true) {
       const skill = await createSkill(
         {
@@ -69,7 +62,7 @@ describe("skills/service", () => {
     expect(autoloadForUserTurn({ user_text: "Anderes Thema" }, catalog, [])).toEqual([]);
   });
   test("createSkill persists unknown legacy actors and system actors as normalized pairs", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const legacy = await createSkill(
       {
         tenant_id,
@@ -103,7 +96,7 @@ describe("skills/service", () => {
   });
 
   test("CRUD + lifecycle + retrieval order", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
 
     const global = await createSkill(
       {
@@ -218,7 +211,7 @@ describe("skills/service", () => {
   });
 
   test("applies_to round-trips and narrows the applicable set per audience", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const plain = await createSkill(
       { tenant_id, input: { scope: "global", title: "plain", body: "Both places." } },
       ctx.db,
@@ -245,13 +238,13 @@ describe("skills/service", () => {
   });
 
   test("getSkill rejects non-UUID input without throwing", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const result = await getSkill(tenant_id, "workflow-authoring", ctx.db);
     expect(result).toBeNull();
   });
 
   test("getSkillBySlug resolves a seeded skill by slug", async () => {
-    const tenant_id = await seedTenant();
+    const tenant_id = (await seedTenant(ctx.db)).id;
     const created = await createSkill(
       {
         tenant_id,

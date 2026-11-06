@@ -8,7 +8,6 @@ import type {
 import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
-import { tenants } from "../../db/schema/identity.ts";
 import {
   files,
   knowledgeSources,
@@ -19,6 +18,7 @@ import {
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { PubSubEmitter } from "../../pubsub/emitter.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { registerResourcesCapability } from "../capabilities/resources.ts";
 
 const TEST_NOW_MS = getTestNow();
@@ -71,11 +71,7 @@ let fileId = "";
 
 beforeAll(async () => {
   testDb = await createTestDb("mcp-resources-portal-scope");
-  const [t] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "portal-scope", display_name: "Portal Scope" })
-    .returning();
-  if (!t) throw new Error("seed tenant");
+  const t = await seedTenant(testDb.db, { slug: "portal-scope", display_name: "Portal Scope" });
   tenantId = t.id;
 
   for (const slug of ["scoped", "hidden"]) {

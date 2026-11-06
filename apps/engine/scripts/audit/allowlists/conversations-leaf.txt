@@ -1,0 +1,59 @@
+# Burndown allowlist for the audit-invariants `conversations_leaf` check.
+# Rule: production import of conversations/** from outside conversations/ other than conversations/tools/index.ts or conversations/types.ts.
+# Format: <path from repo root>  <budget in imports>. A listed file fails once it exceeds its budget;
+# an unlisted file fails at the first hit. Budgets only shrink: fix the file, then run
+# `bun run apps/engine/scripts/audit-invariants.ts --update-baseline` (lowers budgets, drops fixed files).
+# `--accept-new` also admits new offenders; use it only for a reviewed baseline reset.
+
+apps/engine/src/chat/dispatcher-types.ts                                1
+apps/engine/src/chat/dispatcher.ts                                      5
+apps/engine/src/chat/elicit-routing.ts                                  4
+apps/engine/src/chat/intake-handoff.ts                                  2
+apps/engine/src/chat/turn-lock.ts                                       1
+apps/engine/src/connectors/services/call-connector.ts                   1
+apps/engine/src/db/migrations/context-note-facts-backfill.ts            1
+apps/engine/src/db/migrations/conversation-title-backfill.ts            1
+apps/engine/src/http/middleware/error.ts                                4
+apps/engine/src/http/routes/connector-templates/import-spec.ts          1
+apps/engine/src/http/routes/connectors/authoring.ts                     1
+apps/engine/src/http/routes/connectors/credentials-setup.ts             1
+apps/engine/src/http/routes/connectors/signin-signals.ts                1
+apps/engine/src/http/routes/conversations/collection.ts                 3
+apps/engine/src/http/routes/conversations/direct-tools.ts               1
+apps/engine/src/http/routes/conversations/elicitations.ts               3
+apps/engine/src/http/routes/conversations/lifecycle.ts                  1
+apps/engine/src/http/routes/conversations/messages.ts                   3
+apps/engine/src/http/routes/conversations/schemas.ts                    2
+apps/engine/src/http/routes/conversations/stream.ts                     3
+apps/engine/src/http/routes/conversations/suggest-next-feedback.ts      1
+apps/engine/src/http/routes/conversations/tool-policies.ts              1
+apps/engine/src/http/routes/tool-approvals.ts                           1
+apps/engine/src/http/routes/workflow-authorities.ts                     1
+apps/engine/src/knowledge/embedded-seeds.ts                             8
+apps/engine/src/llm/core/authoring-context-block.ts                     3
+apps/engine/src/llm/core/context-assembler/base-prompts.ts              1
+apps/engine/src/llm/core/step-router.ts                                 2
+apps/engine/src/llm/manifests/vendor-recipes.ts                         2
+apps/engine/src/mcp/adapter.ts                                          1
+apps/engine/src/mcp/capabilities/conversation-commit.ts                 5
+apps/engine/src/mcp/capabilities/conversation-native-elicitation.ts     6
+apps/engine/src/mcp/capabilities/conversations.ts                       8
+apps/engine/src/mcp/capabilities/tool-meta.ts                           1
+apps/engine/src/mcp/capabilities/tools-helpers.ts                       1
+apps/engine/src/mcp/capabilities/tools.ts                               1
+apps/engine/src/mcp/capabilities/turn-projection.ts                     1
+apps/engine/src/mcp/error-adapter.ts                                    2
+apps/engine/src/mcp/server.ts                                           2
+apps/engine/src/mcp/tasks/task-store.ts                                 1
+apps/engine/src/observability/instrumentation.ts                        2
+apps/engine/src/observability/metric-label-allowlists.ts                4
+apps/engine/src/queue/handlers/conversation-run-turn-dlq.ts             3
+apps/engine/src/queue/handlers/conversation-run-turn.ts                 6
+apps/engine/src/scheduler/conversation-title-runner.ts                  2
+apps/engine/src/scheduler/elicitation-expiry-runner.ts                  4
+apps/engine/src/skill-candidates/detectors/chained-workflow-pattern.ts  1
+apps/engine/src/skills/embedded-seeds.ts                                45
+apps/engine/src/tools/dispatcher.ts                                     6
+apps/engine/src/tools/policy.ts                                         1
+apps/engine/src/tools/types.ts                                          1
+apps/engine/src/workflows/review-service.ts                             3

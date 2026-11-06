@@ -4,9 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LanguageModel } from "ai";
 import { _resetConfigForTests, loadConfig } from "../../config/loader.ts";
-import { conversations, llmUsage, tenants, users } from "../../db/schema/index.ts";
+import { conversations, llmUsage, users } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { recordRepairUsage } from "./repair-tool-call.ts";
 
 const MODEL = { modelId: "claude-haiku-4-5" } as unknown as LanguageModel;
@@ -24,9 +25,11 @@ beforeAll(async () => {
     configPathOverride: join(directory, "subkit.config.json"),
   });
   ctx = await createTestDb("repair-accounting");
-  await ctx.db
-    .insert(tenants)
-    .values({ id: TENANT, slug: "repair-accounting", display_name: "Repair Accounting" });
+  await seedTenant(ctx.db, {
+    id: TENANT,
+    slug: "repair-accounting",
+    display_name: "Repair Accounting",
+  });
   await ctx.db.insert(users).values({
     id: USER,
     tenant_id: TENANT,

@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { conversations, tenants } from "../../../db/schema/index.ts";
+import { conversations } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { attachInlineForTest } from "../../../files/test-helpers.ts";
 import { PACKAGE_CONTENT_TYPE } from "../../../identity/portability/format.ts";
 import { skillPackageArchive } from "../../../test-helpers/package-archive.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import { writeDeterministicZip } from "../../../utils/zip-write.ts";
 import { getStaticCapabilities } from "../capabilities.ts";
 import { buildFileContentBlocks } from "../file-context.ts";
@@ -14,11 +15,7 @@ let conversation_id: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("package-brief");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "pkg-brief-t", display_name: "Package Brief" })
-    .returning();
-  if (!t) throw new Error("seed tenant");
+  const t = await seedTenant(ctx.db, { slug: "pkg-brief-t", display_name: "Package Brief" });
   tenant_id = t.id;
   const [conv] = await ctx.db
     .insert(conversations)

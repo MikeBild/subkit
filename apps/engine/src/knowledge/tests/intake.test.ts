@@ -7,11 +7,11 @@ import {
   intakeProposalItems,
   skills,
   systemAccounts,
-  tenants,
 } from "../../db/schema/index.ts";
 import { createSkill, getSkill, updateSkill } from "../../skills/service.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { renameCategory } from "../../workflows/catalog-view.ts";
 import { upsertKnowledgeBundle } from "../bundle-service.ts";
 import { getKnowledgeSource, listKnowledgeSources } from "../catalog.ts";
@@ -468,11 +468,10 @@ describe.skipIf(skip)("knowledge intake", () => {
 
   test("does not expose a clip across tenants", async () => {
     const item = await createClip();
-    const [otherTenant] = await ctx.testDb.db
-      .insert(tenants)
-      .values({ slug: "t-intake-other", display_name: "Other intake tenant" })
-      .returning();
-    if (!otherTenant) throw new Error("other tenant insertion failed");
+    const otherTenant = await seedTenant(ctx.testDb.db, {
+      slug: "t-intake-other",
+      display_name: "Other intake tenant",
+    });
     expect(await getIntakeItem(otherTenant.id, item.id, ctx.testDb.db)).toBeNull();
   });
 
@@ -1328,14 +1327,10 @@ describe.skipIf(skip)("knowledge intake", () => {
 
   test("rejects cross-tenant proposal targets and confirmations", async () => {
     const item = await createClip();
-    const [otherTenant] = await ctx.testDb.db
-      .insert(tenants)
-      .values({
-        slug: `t-intake-proposal-${nextUuid().slice(0, 8)}`,
-        display_name: "Other proposal tenant",
-      })
-      .returning();
-    if (!otherTenant) throw new Error("other tenant insertion failed");
+    const otherTenant = await seedTenant(ctx.testDb.db, {
+      slug: `t-intake-proposal-${nextUuid().slice(0, 8)}`,
+      display_name: "Other proposal tenant",
+    });
     const otherTarget = await upsertKnowledgeBundle(
       {
         tenant_id: otherTenant.id,

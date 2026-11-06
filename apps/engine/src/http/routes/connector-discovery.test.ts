@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import * as discoveryModule from "../../connectors/discovery/index.ts";
 import { DiscoveryError, type DiscoveryResult } from "../../connectors/discovery/types.ts";
 import { auditLog } from "../../db/schema/audit.ts";
-import { apiKeys, tenants, users } from "../../db/schema/index.ts";
+import { apiKeys, users } from "../../db/schema/index.ts";
 import {
   knowledgeChunks,
   knowledgeSources,
@@ -12,6 +12,7 @@ import {
 } from "../../db/schema/knowledge_sources.ts";
 import { knowledgeContentHash } from "../../knowledge/version-record.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 
 const hex = createDeterministicHexFactory(0xc4112_d15c);
 
@@ -53,11 +54,7 @@ const SAMPLE_RESULT: DiscoveryResult = {
 beforeAll(async () => {
   ctx = await createHttpTestServer("conn-disc");
 
-  const [t2] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-conn-disc-b", display_name: "Tenant B" })
-    .returning();
-  if (!t2) throw new Error("seed tenant B failed");
+  const t2 = await seedTenant(ctx.db, { slug: "t-conn-disc-b", display_name: "Tenant B" });
   secondTenantId = t2.id;
   const [u2] = await ctx.db
     .insert(users)

@@ -3,8 +3,9 @@ import { eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import type { RefreshOAuthJob } from "../../credentials/oauth2/refresh-worker.ts";
 import { upsertCredential } from "../../credentials/service.ts";
-import { connectors, credentials, tenants } from "../../db/schema/index.ts";
+import { connectors, credentials } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   OAUTH2_KEEPALIVE_IDLE_MS,
   runOAuth2RefreshKeepAliveForTenant,
@@ -19,16 +20,10 @@ let otherTenantId: string;
 
 beforeAll(async () => {
   db = await createTestDb("oauth2_keepalive");
-  const [t] = await db.db
-    .insert(tenants)
-    .values({ slug: "t-keepalive", display_name: "Keepalive Tenant" })
-    .returning();
-  tenantId = t!.id;
-  const [t2] = await db.db
-    .insert(tenants)
-    .values({ slug: "t-keepalive-other", display_name: "Other Tenant" })
-    .returning();
-  otherTenantId = t2!.id;
+  const t = await seedTenant(db.db, { slug: "t-keepalive", display_name: "Keepalive Tenant" });
+  tenantId = t.id;
+  const t2 = await seedTenant(db.db, { slug: "t-keepalive-other", display_name: "Other Tenant" });
+  otherTenantId = t2.id;
 });
 
 afterAll(async () => {

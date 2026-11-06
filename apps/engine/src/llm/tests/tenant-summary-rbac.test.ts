@@ -1,12 +1,17 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { connectors, tenants, users, workflows, workflowVersions } from "../../db/schema/index.ts";
+import { users, workflows } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { catalogVisibility } from "../../rbac/evaluator.ts";
 import { grantResource } from "../../rbac/grants.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { emptyRoleId } from "../../test-helpers/roles.ts";
+import {
+  seedConnector as seedConnectorRow,
+  seedTenant,
+  seedWorkflow as seedWorkflowRow,
+} from "../../test-helpers/seed.ts";
 import { listWorkflowToolSlugs } from "../../workflows/catalog.ts";
 import {
   loadSnapshotCoverage,
@@ -24,35 +29,20 @@ let enduser: ResolvedPrincipal;
 let nobody: ResolvedPrincipal;
 
 async function seedWorkflow(slug: string, category: string): Promise<string> {
-  const [wf] = await tdb.db
-    .insert(workflows)
-    .values({ tenant_id, slug, name: slug, lifecycle: "active", is_tool: true, category })
-    .returning({ id: workflows.id });
-  const [version] = await tdb.db
-    .insert(workflowVersions)
-    .values({ tenant_id, workflow_id: wf!.id, version: 1, dag: { name: slug, slug, steps: [] } })
-    .returning({ id: workflowVersions.id });
-  await tdb.db
-    .update(workflows)
-    .set({ current_version_id: version!.id })
-    .where(eq(workflows.id, wf!.id));
-  return wf!.id;
+  const { workflow } = await seedWorkflowRow(tdb.db, {
+    tenant_id,
+    slug,
+    name: slug,
+    is_tool: true,
+    category,
+    dag: { name: slug, slug, steps: [] },
+  });
+  return workflow.id;
 }
 
 async function seedConnector(slug: string, environment: "dev" | "prod"): Promise<string> {
-  const [row] = await tdb.db
-    .insert(connectors)
-    .values({
-      tenant_id,
-      slug,
-      display_name: slug,
-      driver: "http",
-      environment,
-      auth_type: "none",
-      base_url: "https://example.test",
-    })
-    .returning({ id: connectors.id });
-  return row!.id;
+  const row = await seedConnectorRow(tdb.db, { tenant_id, slug, display_name: slug, environment });
+  return row.id;
 }
 
 async function seedUser(email: string, role_id: string): Promise<string> {
@@ -65,11 +55,8 @@ async function seedUser(email: string, role_id: string): Promise<string> {
 
 beforeAll(async () => {
   tdb = await createTestDb("tenant-summary-rbac");
-  const [tenant] = await tdb.db
-    .insert(tenants)
-    .values({ slug: "t-summary-rbac", display_name: "Summary RBAC" })
-    .returning();
-  tenant_id = tenant!.id;
+  const tenant = await seedTenant(tdb.db, { slug: "t-summary-rbac", display_name: "Summary RBAC" });
+  tenant_id = tenant.id;
 
   workflowIds["alpha-sync"] = await seedWorkflow("alpha-sync", "sales");
   workflowIds["beta-report"] = await seedWorkflow("beta-report", "sales");

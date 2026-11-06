@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCS_SECTIONS, type DocsBundle, DocsBundleSchema } from "@shared/llms-index.ts";
@@ -38,7 +38,6 @@ beforeEach(() => {
   paths = {
     referenceDir: join(root, "reference"),
     llmsDir: join(root, "llms"),
-    cockpitDocs: join(root, "docs.generated.ts"),
     seedDir: join(root, "seeds"),
     templates: join(root, "templates.json"),
   };
@@ -111,10 +110,6 @@ function run(): Finding[] {
   });
   const json = JSON.stringify(bundle, null, 2);
   writeFileSync(join(paths.llmsDir, "docs.json"), `${json}\n`);
-  writeFileSync(
-    paths.cockpitDocs,
-    `import type { DocsBundle } from "@shared/llms-index.ts";\n\nexport const DOCS: DocsBundle = ${json};\n`,
-  );
   const sections = new Map<string, string[]>();
   for (const p of pages) {
     if (p.llms_path) sections.set(p.llms_path, [...(sections.get(p.llms_path) ?? []), p.en]);
@@ -387,33 +382,6 @@ describe("checkDocs", () => {
   test("rejects an LLMS_PAGE_PATHS mismatch", () => {
     llmsPagePaths = ["guide.md", "cli.md", "settings.md"];
     expect(rules(run())).toEqual(["llms-paths"]);
-  });
-
-  test("scans the cockpit bundle", () => {
-    run();
-    writeFileSync(
-      paths.cockpitDocs,
-      `export const DOCS: DocsBundle = ${JSON.stringify(
-        DocsBundleSchema.parse({
-          locales: ["en", "de"],
-          sections: DOCS_SECTIONS,
-          pages: [
-            {
-              slug: "guide",
-              llms_path: "guide.md",
-              audience: "public",
-              section: "start",
-              order: 1,
-              generated: false,
-              locales: { en: content("# G\n\n10.1.2.3\n"), de: content("# G\n") },
-            },
-          ],
-        }),
-      )};\n`,
-    );
-    unlinkSync(join(paths.seedDir, "guide.md"));
-    const findings = checkDocs(paths, { llmsPagePaths });
-    expect(findings.map((f) => [f.rule, f.file])).toEqual([["ip", paths.cockpitDocs]]);
   });
 
   describe("screenshots", () => {

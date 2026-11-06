@@ -1,6 +1,5 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
-import { getDb } from "../db/client.ts";
 import { patchCandidates } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 
@@ -12,8 +11,7 @@ export interface OutcomeUpdate {
   outcome: "success" | "failure";
 }
 
-export async function recordExecutionOutcome(p: OutcomeUpdate, exec?: Executor): Promise<void> {
-  const db = exec ?? getDb();
+export async function recordExecutionOutcome(p: OutcomeUpdate, db: Executor): Promise<void> {
   try {
     const rows = await db
       .select({ id: patchCandidates.id })
@@ -51,8 +49,7 @@ export async function recordExecutionOutcome(p: OutcomeUpdate, exec?: Executor):
   }
 }
 
-export async function closeExpiredOutcomeWindows(exec?: Executor): Promise<number> {
-  const db = exec ?? getDb();
+export async function closeExpiredOutcomeWindows(db: Executor): Promise<number> {
   const cutoff = new Date(Date.now() - WINDOW_MS);
   const result = await db
     .update(patchCandidates)

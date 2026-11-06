@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import { closeDb, type Db } from "../../../db/client.ts";
-import { conversations, tenants } from "../../../db/schema/index.ts";
+import { conversations } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import {
@@ -11,6 +11,7 @@ import {
 } from "../../../mcp/client/pool.ts";
 import { seedMcpConnector } from "../../../mcp/client/test-fixtures.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import { buildExternalMcpTools } from "../sdk-wrap/external-mcp-tools.ts";
@@ -73,11 +74,9 @@ beforeAll(async () => {
   ctx = await createTestDb("external-mcp-pending-output");
   await closeDb();
   process.env.DATABASE_URL = ctx.url;
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-mcp-pending", display_name: "MCP Pending Output" })
-    .returning();
-  tenant_id = t!.id;
+  tenant_id = (
+    await seedTenant(ctx.db, { slug: "t-mcp-pending", display_name: "MCP Pending Output" })
+  ).id;
   actor_id = createDeterministicUuidFactory(319)();
   const [conv] = await ctx.db
     .insert(conversations)

@@ -1,9 +1,9 @@
-import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
+import { withCommandErrors } from "./command-runtime.ts";
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List patch candidates" },
@@ -14,16 +14,17 @@ const listCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
-      const { items } = await client.listPatchCandidates({ limit: Number(args.limit) });
-      emitList(
-        !!args.json,
-        ["id", "workflow_id", "summary", "status", "created_at"],
-        items as Record<string, unknown>[],
-      );
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { items } = await client.listPatchCandidates({ limit: Number(args.limit) });
+        emitList(
+          !!args.json,
+          ["id", "workflow_id", "summary", "status", "created_at"],
+          items as Record<string, unknown>[],
+        );
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -35,12 +36,10 @@ const getCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
+    return withCommandErrors(async () => {
       const candidate = await client.getPatchCandidate(args.id);
       printJson(candidate);
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -50,13 +49,11 @@ const previewCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
+    return withCommandErrors(async () => {
       printJson(
         await client.request("GET", `/v1/patch-candidates/${encodeURIComponent(args.id)}/preview`),
       );
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -73,12 +70,10 @@ const approveCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
+    return withCommandErrors(async () => {
       await client.approvePatchCandidate(args.id, args["review-digest"]);
       process.stdout.write(`${pc.green("approved")}\n`);
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -91,14 +86,12 @@ const rejectCommand = defineCommand({
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    try {
+    return withCommandErrors(async () => {
       const body: { reason?: string } = {};
       if (args.reason) body.reason = args.reason;
       await client.rejectPatchCandidate(args.id, body);
       process.stdout.write(`${pc.green("rejected")}\n`);
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 

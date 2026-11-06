@@ -1,14 +1,7 @@
-import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
-import { resolveProfile } from "../config.ts";
-import { EngineClient } from "../engine-client.ts";
-
-function makeClient(): EngineClient {
-  const { engine_url, api_key, active_tenant_id } = resolveProfile();
-  return new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-}
+import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
 const listCommand = defineCommand({
   meta: {
@@ -18,16 +11,17 @@ const listCommand = defineCommand({
   },
   args: { json: { type: "boolean", description: "JSON output" } },
   async run({ args }) {
-    try {
-      const { categories } = await makeClient().listCategories();
-      emitList(
-        Boolean(args.json),
-        ["category", "total", "workflow", "connector", "knowledge_source", "skill", "file"],
-        categories.map((c) => ({ category: c.category, total: c.total, ...c.counts })),
-      );
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { categories } = await makeClient().listCategories();
+        emitList(
+          Boolean(args.json),
+          ["category", "total", "workflow", "connector", "knowledge_source", "skill", "file"],
+          categories.map((c) => ({ category: c.category, total: c.total, ...c.counts })),
+        );
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -43,15 +37,16 @@ const renameCommand = defineCommand({
     json: { type: "boolean", description: "JSON output" },
   },
   async run({ args }) {
-    try {
-      const result = await makeClient().renameCategory(String(args.from), String(args.to));
-      if (args.json) return printJson(result);
-      process.stdout.write(
-        `${pc.green("✓")} ${result.from} → ${result.to}: ${result.total} object${result.total === 1 ? "" : "s"} moved\n`,
-      );
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const result = await makeClient().renameCategory(String(args.from), String(args.to));
+        if (args.json) return printJson(result);
+        process.stdout.write(
+          `${pc.green("✓")} ${result.from} → ${result.to}: ${result.total} object${result.total === 1 ? "" : "s"} moved\n`,
+        );
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 

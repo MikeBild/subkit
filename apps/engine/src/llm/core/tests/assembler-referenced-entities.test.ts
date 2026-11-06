@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { logger } from "../../../logging/logger.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import { resetMockProvider } from "../../mock-provider.ts";
 import { assembleEnhancedPrompt } from "../context-assembler.ts";
 
@@ -34,11 +34,8 @@ beforeAll(async () => {
   process.env.LLM_PROVIDER = "mock";
   resetMockProvider();
   ctx = await createTestDb("assembler_refs");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-asm-refs", display_name: "Assembler References" })
-    .returning();
-  tenant_id = t!.id;
+  const t = await seedTenant(ctx.db, { slug: "t-asm-refs", display_name: "Assembler References" });
+  tenant_id = t.id;
 }, 60_000);
 
 afterAll(async () => {

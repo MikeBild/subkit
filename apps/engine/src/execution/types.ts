@@ -8,6 +8,7 @@ import type { RequestSource } from "../observability/service-metadata.ts";
 import type { StepDef, WorkflowDef } from "../workflows/types.ts";
 import type { CallerContext } from "./caller-context.ts";
 import type { CallerOrigin } from "./caller-origin.ts";
+import type { ExecutionStatus, StepStatus } from "./core/status.ts";
 import type { MaterializedRequest } from "./prepared-request.ts";
 
 export type ExecutionSourceKind = "saved" | "draft" | "step";
@@ -16,16 +17,7 @@ export type { RequestSource };
 
 export type ExecutionMode = "dev" | "prod";
 
-export type StepStatus =
-  | "queued"
-  | "running"
-  | "succeeded"
-  | "failed"
-  | "aborted"
-  | "timed_out"
-  | "skipped";
-
-export type ExecutionStatus = Exclude<StepStatus, "skipped">;
+export type { ExecutionStatus, StepStatus } from "./core/status.ts";
 
 export interface RequestAuthoritySnapshot {
   referenced_authorities?: ResolvedAuthorityReference[];

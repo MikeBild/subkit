@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { connectors, schemaVersions, tenants } from "../../../db/schema/index.ts";
+import { connectors, schemaVersions } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { recordSuccessShape } from "../../../schema-versions/service.ts";
 import type { SchemaShape } from "../../../self-healing/types.ts";
+import { seedTenant } from "../../../test-helpers/seed.ts";
 import {
   fitShapeSummary,
   formatProbeShapeExamples,
@@ -23,16 +24,10 @@ beforeAll(async () => {
   if (skip) return;
   ctx = await createTestDb("probe_shape_examples");
 
-  const [ta] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-shapes-a", display_name: "Shapes Tenant A" })
-    .returning();
-  const [tb] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-shapes-b", display_name: "Shapes Tenant B" })
-    .returning();
-  tenantA = ta!.id;
-  tenantB = tb!.id;
+  const ta = await seedTenant(ctx.db, { slug: "t-shapes-a", display_name: "Shapes Tenant A" });
+  const tb = await seedTenant(ctx.db, { slug: "t-shapes-b", display_name: "Shapes Tenant B" });
+  tenantA = ta.id;
+  tenantB = tb.id;
 
   const [ca] = await ctx.db
     .insert(connectors)

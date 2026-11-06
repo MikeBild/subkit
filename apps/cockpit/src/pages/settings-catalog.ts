@@ -1,4 +1,4 @@
-import type { components } from "@/api/schema";
+import type { components } from "@cli-core/engine-api/openapi";
 
 export type ModelCatalog = components["schemas"]["SettingsModelCatalog"];
 export type ModelCatalogEntry = components["schemas"]["SettingsModelCatalogEntry"];

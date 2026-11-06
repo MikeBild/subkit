@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { components } from "@/api/schema";
+import type { components } from "@cli-core/engine-api/openapi";
 import { ALL_ROUTE_PATHS } from "@/app/route-table";
 import { type Locale, type TranslationKey, translate } from "@/lib/i18n";
 import {

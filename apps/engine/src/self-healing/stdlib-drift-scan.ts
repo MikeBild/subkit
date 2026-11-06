@@ -1,5 +1,5 @@
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
-import type { Db, Executor } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { requestHooks } from "../db/schema/request_hooks.ts";
 import { workflows, workflowVersions } from "../db/schema/workflows.ts";
 import { detectStdlibDrift } from "../sandboxes/quickjs/stdlib/drift.ts";
@@ -17,8 +17,7 @@ function readDagStdlibVersion(dag: unknown): string | null {
   return typeof v === "string" ? v : null;
 }
 
-export async function scanStdlibDrift(tenant_id: string, exec?: Executor): Promise<DriftSignal[]> {
-  const db: Executor = exec ?? ((await import("../db/client.ts")).getDb() as Db);
+export async function scanStdlibDrift(tenant_id: string, db: Executor): Promise<DriftSignal[]> {
   const out: DriftSignal[] = [];
 
   const wfRows = await db

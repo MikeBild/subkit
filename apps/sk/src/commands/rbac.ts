@@ -1,34 +1,24 @@
 import * as prompts from "@clack/prompts";
-import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
-import { resolveProfile } from "../config.ts";
-import { EngineClient } from "../engine-client.ts";
-
-function makeClient() {
-  const profile = resolveProfile();
-  return new EngineClient({
-    engine_url: profile.engine_url,
-    api_key: profile.api_key,
-    tenant: profile.active_tenant_id,
-  });
-}
+import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
 const permissionsListCmd = defineCommand({
   meta: { name: "list", description: "List the static permission catalog" },
   args: { json: { type: "boolean", description: "JSON output" } },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const { items } = await client.listPermissions();
-      if (args.json) {
-        printJson(items);
-        return;
-      }
-      for (const p of items) process.stdout.write(`${p}\n`);
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { items } = await client.listPermissions();
+        if (args.json) {
+          printJson(items);
+          return;
+        }
+        for (const p of items) process.stdout.write(`${p}\n`);
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -48,16 +38,17 @@ const whatcanCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const result = await client.getEffectivePermissions("connector", String(args.connector));
-      if (args.json) {
-        printJson(result);
-        return;
-      }
-      process.stdout.write(`connector ${result.resource_id}: ${result.level}\n`);
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const result = await client.getEffectivePermissions("connector", String(args.connector));
+        if (args.json) {
+          printJson(result);
+          return;
+        }
+        process.stdout.write(`connector ${result.resource_id}: ${result.level}\n`);
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -66,16 +57,17 @@ const rolesListCmd = defineCommand({
   args: { json: { type: "boolean", description: "JSON output" } },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const { items } = await client.listRoles();
-      emitList(
-        !!args.json,
-        ["id", "name", "description", "created_at"],
-        items as Record<string, unknown>[],
-      );
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { items } = await client.listRoles();
+        emitList(
+          !!args.json,
+          ["id", "name", "description", "created_at"],
+          items as Record<string, unknown>[],
+        );
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -84,11 +76,9 @@ const rolesGetCmd = defineCommand({
   args: { id: { type: "positional", required: true, description: "Role id" } },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       printJson(await client.getRole(String(args.id)));
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -100,13 +90,11 @@ const rolesCreateCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       printJson(
         await client.createRole({ name: String(args.name), description: args.description }),
       );
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -118,16 +106,14 @@ const rolesDeleteCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       if (!args.yes && process.stdin.isTTY) {
         const confirmed = await prompts.confirm({ message: `Delete role "${args.id}"?` });
         if (!confirmed || prompts.isCancel(confirmed)) return;
       }
       await client.deleteRole(String(args.id));
       process.stdout.write("deleted\n");
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -139,11 +125,9 @@ const rolesGrantCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       printJson(await client.grantRolePermission(String(args.id), String(args.permission)));
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -155,12 +139,10 @@ const rolesRevokeCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       await client.revokeRolePermission(String(args.id), String(args.permission));
       process.stdout.write("revoked\n");
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -184,11 +166,9 @@ const usersAssignCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       printJson(await client.assignUserRole(String(args.id), { role_id: String(args.role) }));
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -202,16 +182,17 @@ const grantsListCmd = defineCommand({
   args: { json: { type: "boolean", description: "JSON output" } },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const { items } = await client.listGrants();
-      emitList(
-        !!args.json,
-        ["id", "principal_id", "permission", "created_at"],
-        items as Record<string, unknown>[],
-      );
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { items } = await client.listGrants();
+        emitList(
+          !!args.json,
+          ["id", "principal_id", "permission", "created_at"],
+          items as Record<string, unknown>[],
+        );
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -224,7 +205,7 @@ const grantsCreateCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       const [subject_type, subject_id] = String(args.subject).split(":");
       const [resource_type, resource_id] = String(args.resource).split(":");
       if (!subject_type || !subject_id || !resource_type || !resource_id) {
@@ -239,9 +220,7 @@ const grantsCreateCmd = defineCommand({
           permission: String(args.permission),
         }),
       );
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -253,16 +232,14 @@ const grantsDeleteCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       if (!args.yes && process.stdin.isTTY) {
         const confirmed = await prompts.confirm({ message: `Delete grant "${args.id}"?` });
         if (!confirmed || prompts.isCancel(confirmed)) return;
       }
       await client.deleteGrant(String(args.id));
       process.stdout.write("deleted\n");
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -276,16 +253,17 @@ const groupsListCmd = defineCommand({
   args: { json: { type: "boolean", description: "JSON output" } },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const { items } = await client.listGroups();
-      emitList(
-        !!args.json,
-        ["id", "name", "member_count", "created_at"],
-        items as Record<string, unknown>[],
-      );
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { items } = await client.listGroups();
+        emitList(
+          !!args.json,
+          ["id", "name", "member_count", "created_at"],
+          items as Record<string, unknown>[],
+        );
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -297,13 +275,11 @@ const groupsCreateCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       printJson(
         await client.createGroup({ name: String(args.name), description: args.description }),
       );
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -315,16 +291,14 @@ const groupsDeleteCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       if (!args.yes && process.stdin.isTTY) {
         const confirmed = await prompts.confirm({ message: `Delete group "${args.id}"?` });
         if (!confirmed || prompts.isCancel(confirmed)) return;
       }
       await client.deleteGroup(String(args.id));
       process.stdout.write("deleted\n");
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -336,12 +310,10 @@ const groupsAddMemberCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       await client.addGroupMember(String(args.id), String(args.user));
       process.stdout.write("added\n");
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -353,12 +325,10 @@ const groupsRemoveMemberCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       await client.removeGroupMember(String(args.id), String(args.user));
       process.stdout.write("removed\n");
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -370,12 +340,10 @@ const groupsAssignRoleCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       await client.assignGroupRole(String(args.id), String(args.role));
       process.stdout.write("assigned\n");
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -396,16 +364,17 @@ const requestHooksListCmd = defineCommand({
   args: { json: { type: "boolean", description: "JSON output" } },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const { items } = await client.listRequestHooks();
-      emitList(
-        !!args.json,
-        ["id", "event_type", "url", "active"],
-        items as Record<string, unknown>[],
-      );
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const { items } = await client.listRequestHooks();
+        emitList(
+          !!args.json,
+          ["id", "event_type", "url", "active"],
+          items as Record<string, unknown>[],
+        );
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 
@@ -417,13 +386,11 @@ const requestHooksCreateCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       printJson(
         await client.createRequestHook({ url: String(args.url), event_type: String(args.event) }),
       );
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -435,16 +402,14 @@ const requestHooksDeleteCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
+    return withCommandErrors(async () => {
       if (!args.yes && process.stdin.isTTY) {
         const confirmed = await prompts.confirm({ message: `Delete request hook "${args.id}"?` });
         if (!confirmed || prompts.isCancel(confirmed)) return;
       }
       await client.deleteRequestHook(String(args.id));
       process.stdout.write("deleted\n");
-    } catch (err) {
-      reportCommandError(err);
-    }
+    });
   },
 });
 
@@ -471,24 +436,25 @@ const canCmd = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    try {
-      const canBody: Parameters<typeof client.rbacCan>[0] = {
-        principal_id: String(args.principal),
-        permission: String(args.permission),
-      };
-      if (args.resource) {
-        const [rType, rId] = String(args.resource).split(":");
-        if (rType && rId) canBody.resource = { type: rType, id: rId };
-      }
-      const result = await client.rbacCan(canBody);
-      if (args.json) {
-        process.stdout.write(`${JSON.stringify({ allow: result.allow })}\n`);
-      } else {
-        process.stdout.write(`${result.allow}\n`);
-      }
-    } catch (err) {
-      reportCommandError(err, { json: Boolean(args.json) });
-    }
+    return withCommandErrors(
+      async () => {
+        const canBody: Parameters<typeof client.rbacCan>[0] = {
+          principal_id: String(args.principal),
+          permission: String(args.permission),
+        };
+        if (args.resource) {
+          const [rType, rId] = String(args.resource).split(":");
+          if (rType && rId) canBody.resource = { type: rType, id: rId };
+        }
+        const result = await client.rbacCan(canBody);
+        if (args.json) {
+          process.stdout.write(`${JSON.stringify({ allow: result.allow })}\n`);
+        } else {
+          process.stdout.write(`${result.allow}\n`);
+        }
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 

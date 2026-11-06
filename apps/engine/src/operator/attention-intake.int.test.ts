@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { intakeItems, skillCandidates, tenants } from "../db/schema/index.ts";
+import { intakeItems, skillCandidates } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { adminPrincipal } from "../test-helpers/principals.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import { buildAttention, invalidateAttention } from "./attention.ts";
 import { attentionLine } from "./health-digest.ts";
 
@@ -35,12 +36,9 @@ function collected(title: string, state: "collected" | "reviewing" | "discarded"
 
 beforeAll(async () => {
   testDb = await createTestDb("attention-intake");
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "attention-intake", display_name: "Attention intake" })
-    .returning();
-  if (!tenant) throw new Error("seed tenant failed");
-  tenant_id = tenant.id;
+  tenant_id = (
+    await seedTenant(testDb.db, { slug: "attention-intake", display_name: "Attention intake" })
+  ).id;
   const proposal = {
     tenant_id,
     scope: "global" as const,

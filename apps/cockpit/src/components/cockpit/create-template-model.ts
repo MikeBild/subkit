@@ -1,4 +1,4 @@
-import type { components } from "@/api/schema";
+import type { components } from "@cli-core/engine-api/openapi";
 import type { TranslationKey } from "@/lib/i18n";
 import { templateIdentity } from "@/lib/service-icons";
 import { definitionKind, readStepDefinition, type StepKindSource } from "@/lib/workflow-steps";

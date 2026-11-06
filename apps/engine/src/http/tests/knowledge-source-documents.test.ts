@@ -3,15 +3,9 @@ import { createHash } from "node:crypto";
 import { and, eq, ne } from "drizzle-orm";
 import { issueBrowserSession } from "../../auth/browser-session.ts";
 import { auditLog } from "../../db/schema/audit.ts";
-import {
-  apiKeys,
-  fileLinks,
-  files,
-  knowledgeSources,
-  tenants,
-  users,
-} from "../../db/schema/index.ts";
+import { apiKeys, fileLinks, files, knowledgeSources, users } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -71,20 +65,20 @@ beforeAll(async () => {
   });
   readerKey = readerToken;
 
-  const [otherTenant] = await srv.db
-    .insert(tenants)
-    .values({ slug: "t-knowledge-documents-other", display_name: "Other tenant" })
-    .returning();
+  const otherTenant = await seedTenant(srv.db, {
+    slug: "t-knowledge-documents-other",
+    display_name: "Other tenant",
+  });
   const [otherUser] = await srv.db
     .insert(users)
     .values({
-      tenant_id: otherTenant!.id,
+      tenant_id: otherTenant.id,
       email: "admin-documents-other@test.local",
       role_id: await builtinRoleId(srv.db, "admin"),
     })
     .returning();
   await srv.db.insert(apiKeys).values({
-    tenant_id: otherTenant!.id,
+    tenant_id: otherTenant.id,
     user_id: otherUser!.id,
     prefix: otherTenantToken.slice(0, 12),
     token_sha256: sha256Hex(otherTenantToken),

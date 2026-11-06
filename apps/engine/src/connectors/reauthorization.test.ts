@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { auditLog, connectors, tenants } from "../db/schema/index.ts";
+import { auditLog, connectors } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { registerTenantStateCache } from "../operator/tenant-state.ts";
+import { seedConnector, seedTenant } from "../test-helpers/seed.ts";
 import { now } from "../utils/clock.ts";
 import {
   persistCircuitState,
@@ -26,40 +27,29 @@ registerTenantStateCache((tenant) => {
 
 beforeAll(async () => {
   testDb = await createTestDb("connector_reauthorization");
-  const rows = await testDb.db
-    .insert(tenants)
-    .values([
-      { slug: "t-reauthorization", display_name: "Reauthorization" },
-      { slug: "t-reauthorization-other", display_name: "Another tenant" },
-    ])
-    .returning();
-  if (!rows[0] || !rows[1]) throw new Error("seed tenants failed");
-  tenantId = rows[0].id;
-  otherTenantId = rows[1].id;
+  tenantId = (
+    await seedTenant(testDb.db, { slug: "t-reauthorization", display_name: "Reauthorization" })
+  ).id;
+  otherTenantId = (
+    await seedTenant(testDb.db, { slug: "t-reauthorization-other", display_name: "Another tenant" })
+  ).id;
 });
 
 afterAll(async () => {
   await testDb.cleanup();
 });
 
-async function seedConnector(over: Partial<typeof connectors.$inferInsert> = {}) {
+async function seedMailConnector(over: Partial<typeof connectors.$inferInsert> = {}) {
   sequence += 1;
-  const [row] = await testDb.db
-    .insert(connectors)
-    .values({
-      tenant_id: tenantId,
-      slug: `example-mail-${sequence}`,
-      display_name: "Example Mail",
-      driver: "http",
-      environment: "prod",
-      auth_type: "oauth2",
-      base_url: "https://mail.example.org",
-      config: {},
-      ...over,
-    })
-    .returning();
-  if (!row) throw new Error("seed connector failed");
-  return row;
+  return await seedConnector(testDb.db, {
+    tenant_id: tenantId,
+    slug: `example-mail-${sequence}`,
+    display_name: "Example Mail",
+    environment: "prod",
+    auth_type: "oauth2",
+    base_url: "https://mail.example.org",
+    ...over,
+  });
 }
 
 async function read(id: string) {
@@ -83,7 +73,7 @@ const OPEN = {
 
 describe("the breaker's persistence", () => {
   test("closing clears the stamp of the trip it recovered from", async () => {
-    const connector = await seedConnector(OPEN);
+    const connector = await seedMailConnector(OPEN);
     await persistCircuitState(testDb.db, connector, {
       circuit_state: "closed",
       circuit_failure_count: 0,
@@ -95,7 +85,7 @@ describe("the breaker's persistence", () => {
   });
 
   test("half-open keeps it: that is still the trip the probe is testing", async () => {
-    const connector = await seedConnector(OPEN);
+    const connector = await seedMailConnector(OPEN);
     await persistCircuitState(testDb.db, connector, { circuit_state: "half-open" });
     const row = await read(connector.id);
     expect(row.circuit_state).toBe("half-open");
@@ -103,7 +93,7 @@ describe("the breaker's persistence", () => {
   });
 
   test("a trip after a close is stamped afresh", async () => {
-    const connector = await seedConnector({ circuit_threshold: 1 });
+    const connector = await seedMailConnector({ circuit_threshold: 1 });
     await recordCircuitFailure(testDb.db, connector);
     const tripped = await read(connector.id);
     expect(tripped.circuit_state).toBe("open");
@@ -116,7 +106,7 @@ describe("the breaker's persistence", () => {
   });
 
   test("a write names its tenant: another tenant's id changes nothing", async () => {
-    const connector = await seedConnector(OPEN);
+    const connector = await seedMailConnector(OPEN);
     const foreign = { id: connector.id, tenant_id: otherTenantId };
     await persistCircuitState(testDb.db, foreign, {
       circuit_state: "closed",
@@ -130,7 +120,7 @@ describe("the breaker's persistence", () => {
   });
 
   test("a reset reports what it replaced, and nothing when there was nothing to reset", async () => {
-    const connector = await seedConnector(OPEN);
+    const connector = await seedMailConnector(OPEN);
     expect(await resetCircuitBreaker(testDb.db, tenantId, connector.id)).toEqual({
       circuit_state: "open",
       circuit_failure_count: 44,
@@ -139,14 +129,14 @@ describe("the breaker's persistence", () => {
   });
 
   test("a closed breaker that still carries a stamp or a count is reset too", async () => {
-    const stamped = await seedConnector({
+    const stamped = await seedMailConnector({
       circuit_state: "closed",
       circuit_opened_at: OPEN.circuit_opened_at,
     });
     expect(await resetCircuitBreaker(testDb.db, tenantId, stamped.id)).not.toBeNull();
     expect((await read(stamped.id)).circuit_opened_at).toBeNull();
 
-    const counting = await seedConnector({ circuit_state: "closed", circuit_failure_count: 3 });
+    const counting = await seedMailConnector({ circuit_state: "closed", circuit_failure_count: 3 });
     expect(await resetCircuitBreaker(testDb.db, tenantId, counting.id)).toEqual({
       circuit_state: "closed",
       circuit_failure_count: 3,
@@ -157,7 +147,7 @@ describe("the breaker's persistence", () => {
 
 describe("completeConnectorReauthorization", () => {
   test("clears the flag, its mirror and the breaker — each with its own audit row", async () => {
-    const connector = await seedConnector({
+    const connector = await seedMailConnector({
       ...OPEN,
       needs_reauth: true,
       auth_failed_at: OPEN.circuit_opened_at,
@@ -193,7 +183,7 @@ describe("completeConnectorReauthorization", () => {
   });
 
   test("does not switch a disabled connector on", async () => {
-    const connector = await seedConnector({ ...OPEN, enabled: false, needs_reauth: true });
+    const connector = await seedMailConnector({ ...OPEN, enabled: false, needs_reauth: true });
     await completeConnectorReauthorization(testDb.db, {
       tenant_id: tenantId,
       connector_id: connector.id,
@@ -205,7 +195,7 @@ describe("completeConnectorReauthorization", () => {
   });
 
   test("leaves a verdict that signing in cannot fix", async () => {
-    const connector = await seedConnector({
+    const connector = await seedMailConnector({
       needs_reauth: true,
       health_state: "needs_update",
       health_error_code: "endpoint_removed",
@@ -220,7 +210,7 @@ describe("completeConnectorReauthorization", () => {
   });
 
   test("a connector with nothing to resolve writes no audit row", async () => {
-    const connector = await seedConnector();
+    const connector = await seedMailConnector();
     await completeConnectorReauthorization(testDb.db, {
       tenant_id: tenantId,
       connector_id: connector.id,
@@ -229,7 +219,7 @@ describe("completeConnectorReauthorization", () => {
   });
 
   test("the rows name the person when there is one", async () => {
-    const connector = await seedConnector({ ...OPEN, needs_reauth: true });
+    const connector = await seedMailConnector({ ...OPEN, needs_reauth: true });
     const actor_id = connector.id;
     await completeConnectorReauthorization(testDb.db, {
       tenant_id: tenantId,
@@ -243,7 +233,7 @@ describe("completeConnectorReauthorization", () => {
   });
 
   test("an untyped identifier does not establish a person", async () => {
-    const connector = await seedConnector({ ...OPEN, needs_reauth: true });
+    const connector = await seedMailConnector({ ...OPEN, needs_reauth: true });
     await completeConnectorReauthorization(testDb.db, {
       tenant_id: tenantId,
       connector_id: connector.id,
@@ -258,7 +248,7 @@ describe("completeConnectorReauthorization", () => {
   });
 
   test("another tenant's call resolves nothing", async () => {
-    const connector = await seedConnector({ ...OPEN, needs_reauth: true });
+    const connector = await seedMailConnector({ ...OPEN, needs_reauth: true });
     await completeConnectorReauthorization(testDb.db, {
       tenant_id: otherTenantId,
       connector_id: connector.id,
@@ -271,7 +261,7 @@ describe("completeConnectorReauthorization", () => {
 
 describe("the tenant's cached views", () => {
   test("are dropped when a connector starts or stops needing a sign-in", async () => {
-    const connector = await seedConnector();
+    const connector = await seedMailConnector();
     const flagged = {
       id: connector.id,
       tenant_id: tenantId,
@@ -300,7 +290,7 @@ describe("the tenant's cached views", () => {
   });
 
   test("are dropped when only the breaker was reset", async () => {
-    const connector = await seedConnector(OPEN);
+    const connector = await seedMailConnector(OPEN);
     invalidated.length = 0;
     await completeConnectorReauthorization(testDb.db, {
       tenant_id: tenantId,
@@ -312,7 +302,7 @@ describe("the tenant's cached views", () => {
 
 describe("settleConnectorReauthorization", () => {
   test("resolves like the funnel, and never rejects", async () => {
-    const connector = await seedConnector({ ...OPEN, needs_reauth: true });
+    const connector = await seedMailConnector({ ...OPEN, needs_reauth: true });
     await settleConnectorReauthorization(testDb.db, {
       tenant_id: tenantId,
       connector_id: connector.id,

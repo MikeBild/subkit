@@ -21,6 +21,7 @@ import {
 import { builtinRoleId } from "../rbac/roles.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import { flushDiscoveryCache } from "./oidc-discovery.ts";
 import {
   createSession,
@@ -52,19 +53,11 @@ const nextAuditId = createDeterministicUuidFactory(0x617564);
 beforeAll(async () => {
   testDb = await createTestDb("identity-service");
 
-  const [t] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "svc-tenant", display_name: "Service Tenant" })
-    .returning();
-  if (!t) throw new Error("seed tenant failed");
-  tenantId = t.id;
-
-  const [other] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "other-tenant", display_name: "Other Tenant" })
-    .returning();
-  if (!other) throw new Error("seed other tenant failed");
-  otherTenantId = other.id;
+  tenantId = (await seedTenant(testDb.db, { slug: "svc-tenant", display_name: "Service Tenant" }))
+    .id;
+  otherTenantId = (
+    await seedTenant(testDb.db, { slug: "other-tenant", display_name: "Other Tenant" })
+  ).id;
 
   const [u] = await testDb.db
     .insert(users)

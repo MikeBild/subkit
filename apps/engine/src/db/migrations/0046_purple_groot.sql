@@ -1,2 +1,0 @@
-ALTER TABLE "executions" ADD COLUMN "idempotency_key" text;--> statement-breakpoint
-CREATE UNIQUE INDEX "executions_tenant_idempotency_key_uidx" ON "executions" USING btree ("tenant_id","idempotency_key") WHERE "executions"."idempotency_key" IS NOT NULL;

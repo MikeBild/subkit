@@ -434,7 +434,10 @@ export async function applyWorkflowPatchToDraft(
         "edit_workflow_patch",
       );
     }
-    if (!validation.ok) {
+    const onlyCycleErrors = validation.errors.every(
+      (error) => error.rule_id === "workflow_cycle_detected",
+    );
+    if (!validation.ok && !onlyCycleErrors) {
       return {
         ok: false,
         data: buildGateError(currentDraft, {

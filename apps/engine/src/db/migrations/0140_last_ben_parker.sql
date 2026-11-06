@@ -1,1 +1,0 @@
-ALTER TABLE "conversations" ADD COLUMN "playbook_mode" text DEFAULT 'auto' NOT NULL;

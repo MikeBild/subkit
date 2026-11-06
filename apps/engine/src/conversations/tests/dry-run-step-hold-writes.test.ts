@@ -1,16 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { executions } from "../../db/schema/index.ts";
-import { EngineClient } from "../../engine-client/index.ts";
-import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
+import { makeToolCtx, type SeededToolContext } from "../../test-helpers/seed.ts";
 import { dryRunStepTool } from "../tools/dry-run-step.ts";
 import { dryRunWorkflowTool } from "../tools/dry-run-workflow.ts";
-import type { ToolContext } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
-
-const uuid = createDeterministicUuidFactory(0x4e1d_3a7);
 
 let ctx: ConversationTestCtx;
 let mock: MockServer;
@@ -34,25 +30,13 @@ function hitsFor(path: string): Array<{ method: string; url: string }> {
   return hits.filter((h) => h.url.startsWith(path));
 }
 
-function makeCtx(initial: DraftDocument): ToolContext {
-  let draft = initial;
-  return {
+function makeCtx(initial: DraftDocument): SeededToolContext {
+  return makeToolCtx({
     db: ctx.testDb.db,
     tenant_id: ctx.tenant_id,
-    conversation_id: uuid(),
     actor_id: ctx.user_id,
-    connector_id: null,
-    workflow_id: null,
-    engineClient: new EngineClient({
-      tenant_id: ctx.tenant_id,
-      actor_id: ctx.user_id,
-      db: ctx.testDb.db,
-    }),
-    getDraft: () => draft,
-    setDraft: async (next) => {
-      draft = next;
-    },
-  };
+    draft: initial,
+  });
 }
 
 function writeStepDraft(): DraftDocument {

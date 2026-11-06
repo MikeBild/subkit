@@ -79,6 +79,9 @@ describe("ForbiddenState", () => {
     const src = join(import.meta.dir, "..");
     const files = [
       ...readdirSync(join(src, "pages")).map((file) => join(src, "pages", file)),
+      ...readdirSync(join(src, "features"), { recursive: true, encoding: "utf8" }).map((file) =>
+        join(src, "features", file),
+      ),
       ...readdirSync(join(src, "components/cockpit")).map((file) =>
         join(src, "components/cockpit", file),
       ),

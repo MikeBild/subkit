@@ -1,10 +1,10 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import { listProposedPatchCandidates } from "@/api/decisions";
-import type { components } from "@/api/schema";
 import {
   absolute,
   attentionHref,

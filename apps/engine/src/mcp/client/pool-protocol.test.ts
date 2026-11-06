@@ -2,8 +2,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { and, desc, eq } from "drizzle-orm";
 import { closeDb } from "../../db/client.ts";
-import { auditLog, connectorMcpSessions, tenants } from "../../db/schema/index.ts";
+import { auditLog, connectorMcpSessions } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { CLIENT_CAPABILITIES } from "./negotiation.ts";
 import {
   __resetMcpClientPoolForTests,
@@ -96,11 +97,11 @@ beforeAll(async () => {
   ctx = await createTestDb("mcp-pool-protocol");
   await closeDb();
   process.env.DATABASE_URL = ctx.url;
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-pool-protocol", display_name: "Pool Protocol Tenant" })
-    .returning();
-  tenantId = t!.id;
+  const t = await seedTenant(ctx.db, {
+    slug: "t-pool-protocol",
+    display_name: "Pool Protocol Tenant",
+  });
+  tenantId = t.id;
   const server = await seedMcpConnector(ctx.db, {
     tenant_id: tenantId,
     slug: "protofix",

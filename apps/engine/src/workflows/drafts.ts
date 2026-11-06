@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { type CatalogMetadataPatch, humanMetadataWrite } from "../api/catalog-metadata.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { resolveActor } from "../audit/recorders/types.ts";
@@ -11,6 +11,8 @@ import { workflows, workflowVersions } from "../db/schema/index.ts";
 import type { RequestSource } from "../observability/service-metadata.ts";
 import { canonicalWorkflowJson as canonical, workflowJsonDigest } from "./canonical-json.ts";
 import { applySkillSchemaGate, applyStorageBindingGate } from "./commit-gates.ts";
+import { toStoredDefinition, workflowSlug } from "./core/definition.ts";
+import { decide, describeRejection, evolve } from "./core/workflow.ts";
 import { type WorkflowSpec, WorkflowSpecSchema } from "./draft-schemas.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
 import type { ServicePackageWorkflowSource } from "./service-package-provenance.ts";
@@ -28,7 +30,11 @@ import {
   type SpecCarrier,
   workflowSpecDigest,
 } from "./version-spec.ts";
-import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
+import {
+  lockWorkflowForVersionWrite,
+  nextVersionNumber,
+  workflowStateOf,
+} from "./version-write-lock.ts";
 import { writeWorkflowMetadata } from "./workflow-metadata.ts";
 
 export interface WorkflowDraftView {
@@ -202,17 +208,11 @@ export async function saveWorkflowDraft(
     ...(def.description !== undefined ? { description: def.description } : {}),
     ...input.metadata,
   };
-  const slug =
-    def.slug ??
-    (def.name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 64) ||
-      `wf-${randomUUID().slice(0, 8)}`);
+  const slug = def.slug ?? workflowSlug(def.name, randomUUID().slice(0, 8));
   try {
     return await exec.transaction(async (tx): Promise<SaveWorkflowDraftResult> => {
       await lockCatalogVocabulary(tx, input.tenant_id);
+      const versionId = randomUUID();
       let wf: typeof workflows.$inferSelect;
       let baseSpec: SpecCarrier | null = null;
       if (input.workflow_id) {
@@ -262,6 +262,8 @@ export async function saveWorkflowDraft(
           }
         }
       } else {
+        const opened = decide(null, { type: "SaveDraft", version_id: versionId });
+        if (!opened.ok) throw new Error(describeRejection(opened.rejection));
         const [created] = await tx
           .insert(workflows)
           .values({
@@ -269,32 +271,27 @@ export async function saveWorkflowDraft(
             slug,
             name: def.name,
             ...humanMetadataWrite(createMetadata),
-            lifecycle: "draft",
+            lifecycle: evolve(null, opened.event).lifecycle,
           })
           .returning();
         assertInsertRow(created, "workflows");
         wf = created;
       }
-      const [latest] = await tx
-        .select({ max: sql<number>`coalesce(max(${workflowVersions.version}), 0)` })
-        .from(workflowVersions)
-        .where(
-          and(
-            eq(workflowVersions.tenant_id, input.tenant_id),
-            eq(workflowVersions.workflow_id, wf.id),
-          ),
-        );
+      const saved = decide(workflowStateOf(wf), { type: "SaveDraft", version_id: versionId });
+      if (!saved.ok) throw new Error(describeRejection(saved.rejection));
+      const state = evolve(workflowStateOf(wf), saved.event);
       const specColumns = requestedSpec
         ? { spec: requestedSpec.data }
         : carriedSpecColumns(baseSpec);
       const [version] = await tx
         .insert(workflowVersions)
         .values({
+          id: versionId,
           ...versionAuthorColumns(input),
           tenant_id: input.tenant_id,
           workflow_id: wf.id,
-          version: Number(latest?.max ?? 0) + 1,
-          dag: def,
+          version: await nextVersionNumber(tx, input.tenant_id, wf.id),
+          dag: toStoredDefinition(def, "draft"),
           note: servicePackageNote,
           ...specColumns,
           scope_index: input.scope_index ?? null,
@@ -303,7 +300,7 @@ export async function saveWorkflowDraft(
       assertInsertRow(version, "workflow_versions");
       await tx
         .update(workflows)
-        .set({ draft_version_id: version.id, updated_at: new Date() })
+        .set({ draft_version_id: state.draft_version_id, updated_at: new Date() })
         .where(and(eq(workflows.tenant_id, input.tenant_id), eq(workflows.id, wf.id)));
       if (input.workflow_id && input.metadata) {
         await writeWorkflowMetadata(tx, wf, input.metadata, {

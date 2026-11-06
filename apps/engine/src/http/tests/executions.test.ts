@@ -5,15 +5,10 @@ import {
   signBrowserCsrf,
   signBrowserSession,
 } from "../../auth/browser-session.ts";
-import {
-  auditLog,
-  executions,
-  sessions,
-  workflows,
-  workflowVersions,
-} from "../../db/schema/index.ts";
+import { auditLog, executions, sessions } from "../../db/schema/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
+import { seedWorkflow } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -26,55 +21,37 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-async function seedWorkflow(slug = "http-run-input"): Promise<string> {
-  const [workflow] = await ctx.db
-    .insert(workflows)
-    .values({
-      tenant_id: ctx.tenantId,
-      slug,
+async function seedRunInputWorkflow(slug = "http-run-input"): Promise<string> {
+  const { workflow } = await seedWorkflow(ctx.db, {
+    tenant_id: ctx.tenantId,
+    slug,
+    name: "HTTP Run Input",
+    dag: {
       name: "HTTP Run Input",
-      lifecycle: "active",
-    })
-    .returning();
-  if (!workflow) throw new Error("seed workflow failed");
-  const [version] = await ctx.db
-    .insert(workflowVersions)
-    .values({
-      tenant_id: ctx.tenantId,
-      workflow_id: workflow.id,
-      version: 1,
-      dag: {
-        name: "HTTP Run Input",
-        slug,
-        input_schema: {
-          type: "object",
-          required: ["date"],
-          properties: {
-            date: { type: "string" },
-          },
+      slug,
+      input_schema: {
+        type: "object",
+        required: ["date"],
+        properties: {
+          date: { type: "string" },
         },
-        steps: [
-          {
-            kind: "transform",
-            id: "shape",
-            expression: "return input.input.date;",
-            language: "javascript",
-          },
-        ],
       },
-    })
-    .returning();
-  if (!version) throw new Error("seed workflow version failed");
-  await ctx.db
-    .update(workflows)
-    .set({ current_version_id: version.id })
-    .where(eq(workflows.id, workflow.id));
+      steps: [
+        {
+          kind: "transform",
+          id: "shape",
+          expression: "return input.input.date;",
+          language: "javascript",
+        },
+      ],
+    },
+  });
   return workflow.id;
 }
 
 describe("http executions route", () => {
   test("normalizes a structured string payload before running the saved workflow", async () => {
-    const workflowId = await seedWorkflow();
+    const workflowId = await seedRunInputWorkflow();
     const response = await fetch(`${ctx.baseUrl}/v1/executions`, {
       method: "POST",
       headers: {
@@ -102,7 +79,7 @@ describe("http executions route", () => {
 describe("idempotency key on the saved-workflow trigger", () => {
   let workflowId = "";
   beforeAll(async () => {
-    workflowId = await seedWorkflow("http-run-idempotency");
+    workflowId = await seedRunInputWorkflow("http-run-idempotency");
   });
   async function post(body: Record<string, unknown>, headers: Record<string, string> = {}) {
     const response = await fetch(`${ctx.baseUrl}/v1/executions`, {
@@ -295,7 +272,7 @@ describe("a run's source is who started it, not what the body claims", () => {
   let workflowId = "";
   let cockpitHeaders: Record<string, string> = {};
   beforeAll(async () => {
-    workflowId = await seedWorkflow("http-run-source");
+    workflowId = await seedRunInputWorkflow("http-run-source");
     const [session] = await ctx.db
       .insert(sessions)
       .values({

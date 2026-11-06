@@ -1,3 +1,4 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   KeyRound,
@@ -9,7 +10,6 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/api/client";
-import type { components } from "@/api/schema";
 import { absolute, chatNewHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { ConnectionGraphic } from "@/components/cockpit/connector-graphic";

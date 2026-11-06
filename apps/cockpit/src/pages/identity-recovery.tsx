@@ -1,7 +1,7 @@
+import type { paths } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiRequest } from "@/api/client";
-import type { paths } from "@/api/schema";
 import { readRecovery, restoreTenant } from "@/api/tenant-lifecycle";
 import { loginHref } from "@/app/session";
 import { WorkspaceRecovery } from "@/components/cockpit/patterns/workspace-recovery";

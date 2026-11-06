@@ -1,10 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
-import { auditLog, executionSteps, executions, tenants } from "../db/schema/index.ts";
+import { auditLog, executionSteps, executions } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { withContext } from "../logging/context.ts";
 import { FROZEN_NOW } from "../test-helpers/determinism/clock.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import type { CallerContext } from "./caller-context.ts";
 import { runExecution } from "./engine.ts";
 import {
@@ -24,11 +25,8 @@ let tenantId = "";
 beforeAll(async () => {
   testDb = await createTestDb("execution-state");
   db = testDb.db;
-  const [t] = await db
-    .insert(tenants)
-    .values({ slug: "exec-state", display_name: "Exec State" })
-    .returning();
-  tenantId = t!.id;
+  const t = await seedTenant(db, { slug: "exec-state", display_name: "Exec State" });
+  tenantId = t.id;
 });
 
 afterAll(async () => {

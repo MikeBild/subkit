@@ -2,21 +2,14 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { FILE_VERSION_RETENTION, parseFileIdOrThrow } from "../../api/files-schemas.ts";
-import {
-  apiKeys,
-  auditLog,
-  files,
-  fileVersions,
-  roles,
-  tenants,
-  users,
-} from "../../db/schema/index.ts";
+import { apiKeys, auditLog, files, fileVersions, roles, users } from "../../db/schema/index.ts";
 import { removeStoredFile } from "../../files/remove-stored-file.ts";
 import { storageKey } from "../../files/resolver.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 
 const nextHex = createDeterministicHexFactory(0xf11e5e);
 
@@ -99,11 +92,10 @@ beforeAll(async () => {
   if (!portalRole) throw new Error("portal_token_user role not seeded");
   portalKey = token();
   await keyFor(portalKey, srv.tenantId, portalRole.id, "portal@files-versions.local");
-  const [other] = await srv.db
-    .insert(tenants)
-    .values({ slug: "versions-other", display_name: "Versions Other" })
-    .returning();
-  if (!other) throw new Error("seed tenant");
+  const other = await seedTenant(srv.db, {
+    slug: "versions-other",
+    display_name: "Versions Other",
+  });
   otherTenantKey = token();
   await keyFor(
     otherTenantKey,

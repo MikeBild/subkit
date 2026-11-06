@@ -17,6 +17,7 @@ const refusingProbe = async () => ({
   reason: "anthropic rejected the API key (HTTP 401)",
 });
 
+import { seedTenant } from "../test-helpers/seed.ts";
 import {
   _internal,
   _resetRateLimitForTests,
@@ -67,7 +68,7 @@ describe("isBootstrapPending", () => {
   });
 
   test("returns false when a tenant exists, even if sentinel unset", async () => {
-    await tdb.db.insert(tenants).values({ slug: "existing", display_name: "Existing" });
+    await seedTenant(tdb.db, { slug: "existing", display_name: "Existing" });
     expect(await isBootstrapPending(tdb.db)).toBe(false);
   });
 });
@@ -101,7 +102,7 @@ describe("run() — banner + token mint", () => {
   });
 
   test("no-op when a tenant is already present (stale-tenants safety)", async () => {
-    await tdb.db.insert(tenants).values({ slug: "stale", display_name: "Stale" });
+    await seedTenant(tdb.db, { slug: "stale", display_name: "Stale" });
     const captured: string[] = [];
     const result = await run(tdb.db, { stdout: { write: (c) => captured.push(c) } });
     expect(result.status).toBe("already_completed");

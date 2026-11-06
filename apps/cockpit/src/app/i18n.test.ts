@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { CATALOGS, type TranslationKey, translate } from "@/lib/i18n";
 import {
   createLocaleStore,
@@ -27,15 +27,23 @@ function environment(stored: string | null, languages: string[]) {
 
 describe("cockpit i18n", () => {
   test("rejects duplicate source keys before object evaluation can hide them", () => {
-    const source = readFileSync(new URL("../lib/i18n.ts", import.meta.url), "utf8");
-    for (const [name, block] of [
-      [
-        "EN",
-        source.slice(source.indexOf("const EN = {"), source.indexOf("export type TranslationKey")),
-      ],
-      ["DE", source.slice(source.indexOf("const DE:"), source.indexOf("export const CATALOGS"))],
+    const folder = new URL("../lib/i18n/", import.meta.url);
+    const sources = readdirSync(folder)
+      .filter((file) => file.endsWith(".ts"))
+      .map((file) => readFileSync(new URL(file, folder), "utf8"));
+    expect(sources.length).toBeGreaterThan(0);
+    for (const [name, start, end] of [
+      ["EN", /^export const \w+En = \{$/m, /^\} as const;$/m],
+      ["DE", /^export const \w+De: Record<keyof typeof \w+En, string> = \{$/m, /^\};$/m],
     ] as const) {
-      const keys = [...block.matchAll(/^\s+"([^"]+)":/gm)].map((match) => match[1]);
+      const keys = sources.flatMap((source) => {
+        const from = source.search(start);
+        expect(from, `${name} block is missing`).toBeGreaterThanOrEqual(0);
+        const rest = source.slice(from);
+        const block = rest.slice(0, rest.search(end));
+        return [...block.matchAll(/^\s+"([^"]+)":/gm)].map((match) => match[1]);
+      });
+      expect(keys.length, `${name} keys`).toBe(Object.keys(CATALOGS.en).length);
       const duplicates = keys.filter((key, index) => keys.indexOf(key) !== index);
       expect(duplicates, `${name} contains duplicate keys`).toEqual([]);
     }

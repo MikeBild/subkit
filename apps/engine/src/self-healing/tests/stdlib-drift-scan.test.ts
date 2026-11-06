@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { requestHooks, tenants, workflows, workflowVersions } from "../../db/schema/index.ts";
+import { requestHooks } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { STDLIB_VERSION } from "../../sandboxes/quickjs/stdlib/index.ts";
+import { seedTenant, seedWorkflow } from "../../test-helpers/seed.ts";
 import { scanStdlibDrift } from "../stdlib-drift-scan.ts";
 
 let testDb: TestDb;
@@ -9,11 +10,10 @@ let tenantId: string;
 
 beforeEach(async () => {
   testDb = await createTestDb("stdlib-scan");
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: "stdlib-scan", display_name: "Stdlib Scan" })
-    .returning();
-  if (!tenant) throw new Error("tenant insert failed");
+  const tenant = await seedTenant(testDb.db, {
+    slug: "stdlib-scan",
+    display_name: "Stdlib Scan",
+  });
   tenantId = tenant.id;
 });
 
@@ -21,36 +21,9 @@ afterEach(async () => {
   await testDb.cleanup();
 });
 
-let seededWorkflowCounter = 0;
-
-async function seedWorkflow(dag: Record<string, unknown>): Promise<string> {
-  seededWorkflowCounter += 1;
-  const [wf] = await testDb.db
-    .insert(workflows)
-    .values({
-      tenant_id: tenantId,
-      slug: `wf-${seededWorkflowCounter}`,
-      name: "wf",
-      lifecycle: "active",
-    })
-    .returning();
-  if (!wf) throw new Error("wf insert failed");
-  const [v] = await testDb.db
-    .insert(workflowVersions)
-    .values({
-      tenant_id: tenantId,
-      workflow_id: wf.id,
-      version: 1,
-      dag,
-    })
-    .returning();
-  if (!v) throw new Error("version insert failed");
-  const { eq } = await import("drizzle-orm");
-  await testDb.db
-    .update(workflows)
-    .set({ current_version_id: v.id })
-    .where(eq(workflows.id, wf.id));
-  return wf.id;
+async function seedDagWorkflow(dag: Record<string, unknown>): Promise<string> {
+  const { workflow } = await seedWorkflow(testDb.db, { tenant_id: tenantId, dag, name: "wf" });
+  return workflow.id;
 }
 
 describe("scanStdlibDrift", () => {
@@ -60,7 +33,7 @@ describe("scanStdlibDrift", () => {
   });
 
   test("workflow without runtime metadata yields no signal", async () => {
-    await seedWorkflow({
+    await seedDagWorkflow({
       name: "plain",
       steps: [{ kind: "request", id: "r", method: "GET", url: "https://x" }],
     });
@@ -69,7 +42,7 @@ describe("scanStdlibDrift", () => {
   });
 
   test("workflow with current stdlib version yields no signal", async () => {
-    await seedWorkflow({
+    await seedDagWorkflow({
       name: "ok",
       steps: [{ kind: "request", id: "r", method: "GET", url: "https://x" }],
       runtime: { stdlib_version: STDLIB_VERSION },
@@ -79,7 +52,7 @@ describe("scanStdlibDrift", () => {
   });
 
   test("workflow with older major surfaces a drift signal", async () => {
-    const wfId = await seedWorkflow({
+    const wfId = await seedDagWorkflow({
       name: "drifted",
       steps: [{ kind: "request", id: "r", method: "GET", url: "https://x" }],
       runtime: { stdlib_version: "0.9.0" },

@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
-import { tenants } from "../../db/schema/identity.ts";
 import { cliNotificationInbox, cliNotificationInboxReads } from "../../db/schema/notifications.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   NOTIFICATION_INBOX_RETENTION_BATCH_SIZE,
   runNotificationInboxRetention,
@@ -51,7 +51,7 @@ async function pruneAuditRows() {
 
 beforeAll(async () => {
   srv = await createHttpTestServer("notification-inbox-retention");
-  await srv.db.insert(tenants).values({
+  await seedTenant(srv.db, {
     id: neighborTenantId,
     slug: "retention-neighbor",
     display_name: "Retention neighbor",

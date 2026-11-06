@@ -1,15 +1,10 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import {
-  executionSteps,
-  executions,
-  tenants,
-  workflows,
-  workflowVersions,
-} from "../db/schema/index.ts";
+import { executionSteps, executions, workflows, workflowVersions } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { adminPrincipal } from "../test-helpers/principals.ts";
+import { seedTenant } from "../test-helpers/seed.ts";
 import {
   buildOperatorHealthDigest,
   DECISION_FAILURE_WINDOW_HOURS,
@@ -73,11 +68,7 @@ async function seedSuccess(args: { request_source: string; hoursAgo: number }) {
 beforeAll(async () => {
   testDb = await createTestDb("overview_failing_parity");
   const db = testDb.db;
-  const [tenant] = await db
-    .insert(tenants)
-    .values({ slug: "t-parity", display_name: "Parity" })
-    .returning();
-  tenant_id = tenant!.id;
+  tenant_id = (await seedTenant(db, { slug: "t-parity", display_name: "Parity" })).id;
   const [wf] = await db
     .insert(workflows)
     .values({ tenant_id, slug: "hourly-sync", name: "Hourly Sync", lifecycle: "active" })

@@ -41,10 +41,15 @@ import { executableDefinition } from "../workflows/stored-definition.ts";
 import { assertTransactionalMessage } from "../workflows/transactional-delivery-boundary.ts";
 import { JsonValueSchema } from "../workflows/types.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
+import { inputSchemaVerdict, lockIdempotentExecution } from "./admission-facts.ts";
 import { bindCallerBudget, reserveCallerBudget } from "./caller-budget.ts";
-import { assertCallerMatches, type CallerContext } from "./caller-context.ts";
+import {
+  assertCallerMatches,
+  assertExecutionPrivacySupported,
+  type CallerContext,
+} from "./caller-context.ts";
 import { type CallerOrigin, resolveExecutionCallerOrigin } from "./caller-origin.ts";
-import { validateAgainstJsonSchema } from "./engine/envelope.ts";
+import { type AdmissionDecision, boundaryOfExecution, decideAdmission } from "./core/admission.ts";
 import { resolveLiveSuccessor } from "./live-successor.ts";
 import { resolveDefinition } from "./resolve-definition.ts";
 import { isSensitivePayload, recoverExecutionPayload } from "./sensitive-payload.ts";
@@ -101,6 +106,10 @@ function fail(code: string, message: string): never {
   throw Object.assign(new Error(message), { code });
 }
 
+function enforce(decision: AdmissionDecision): void {
+  if (decision.kind === "rejected") fail(decision.code, decision.message);
+}
+
 export async function admitAuthorizedWorkflowExecution(
   raw: unknown,
   db: Executor,
@@ -117,57 +126,53 @@ export async function admitAuthorizedWorkflowExecution(
         await waitForCatalogVocabulary(tx, input.tenant_id);
         await assertTenantActive(input.tenant_id, tx);
         if (input.idempotency_key) {
-          await tx.execute(
-            sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.tenant_id}:${input.idempotency_key}`}, 0))`,
+          const existing = await lockIdempotentExecution(
+            tx,
+            input.tenant_id,
+            input.idempotency_key,
           );
-          const [existing] = await tx
-            .select()
-            .from(executions)
-            .where(
-              and(
-                eq(executions.tenant_id, input.tenant_id),
-                eq(executions.idempotency_key, input.idempotency_key),
-              ),
-            )
-            .limit(1);
           if (existing) {
-            if (existing.workflow_id !== input.workflow_id || !existing.workflow_version_id)
-              fail(
-                "execution_boundary_mismatch",
-                "the idempotency key belongs to a different execution boundary",
-              );
+            enforce(
+              decideAdmission(input, {
+                stage: "replay_candidate",
+                workflow_id: existing.workflow_id,
+                workflow_version_id: existing.workflow_version_id,
+              }),
+            );
+            const pinnedVersionId = existing.workflow_version_id as string;
             const pinned = await resolveDefinition(tx, input.tenant_id, {
               kind: "saved",
               workflow_id: input.workflow_id,
-              version_id: existing.workflow_version_id,
+              version_id: pinnedVersionId,
             });
             const normalized = JsonValueSchema.parse(
               normalizeWorkflowRunInput(input.input, pinned.def.input_schema) ?? null,
             );
-            if (
-              !existing.execution_authority_id ||
-              existing.workflow_id !== input.workflow_id ||
-              (input.workflow_version_id &&
-                input.workflow_version_id !== existing.workflow_version_id) ||
-              (input.execution_authority_id &&
-                input.execution_authority_id !== existing.execution_authority_id) ||
-              existing.execution_mode !== input.execution_environment ||
-              (existing.parent_execution_id ?? null) !== (input.parent_execution_id ?? null) ||
-              !isDeepStrictEqual(existing.caller_context, caller) ||
-              existing.caller_origin !== origin ||
-              !isDeepStrictEqual(
-                recoverExecutionPayload(existing.input, input.tenant_id, existing.id),
-                normalized,
-              )
-            )
-              fail(
-                "execution_boundary_mismatch",
-                "the idempotency key belongs to a different execution boundary",
-              );
+            enforce(
+              decideAdmission(input, {
+                stage: "replay",
+                existing: boundaryOfExecution(
+                  existing,
+                  recoverExecutionPayload(existing.input, input.tenant_id, existing.id),
+                ),
+                requested: {
+                  binding: "authorized",
+                  execution_authority_id:
+                    input.execution_authority_id ?? existing.execution_authority_id,
+                  workflow_id: input.workflow_id,
+                  workflow_version_id: input.workflow_version_id ?? pinnedVersionId,
+                  execution_mode: input.execution_environment,
+                  parent_execution_id: input.parent_execution_id ?? null,
+                  caller_context: caller,
+                  caller_origin: origin,
+                  input: normalized,
+                },
+              }),
+            );
             return {
               execution_id: existing.id,
               execution_authority_id: existing.execution_authority_id,
-              workflow_version_id: existing.workflow_version_id!,
+              workflow_version_id: pinnedVersionId,
               status: existing.status,
               input: normalized,
               replayed: true,
@@ -175,15 +180,14 @@ export async function admitAuthorizedWorkflowExecution(
           }
         }
         const workflow = await lockWorkflowForVersionWrite(tx, input.tenant_id, input.workflow_id);
-        if (
-          workflow?.lifecycle !== "active" ||
-          !workflow.current_version_id ||
-          (input.workflow_version_id && input.workflow_version_id !== workflow.current_version_id)
-        )
-          fail(
-            "workflow_version_not_active",
-            "only the exact active workflow version can be admitted",
-          );
+        enforce(
+          decideAdmission(input, {
+            stage: "active_version",
+            lifecycle: workflow?.lifecycle ?? null,
+            current_version_id: workflow?.current_version_id ?? null,
+          }),
+        );
+        const currentVersionId = workflow?.current_version_id as string;
         const [version] = await tx
           .select({ dag: workflowVersions.dag })
           .from(workflowVersions)
@@ -191,45 +195,44 @@ export async function admitAuthorizedWorkflowExecution(
             and(
               eq(workflowVersions.tenant_id, input.tenant_id),
               eq(workflowVersions.workflow_id, input.workflow_id),
-              eq(workflowVersions.id, workflow.current_version_id),
+              eq(workflowVersions.id, currentVersionId),
             ),
           )
           .for("share")
           .limit(1);
-        if (!version) fail("workflow_version_not_active", "active workflow version unavailable");
-        const definition = executableDefinition(version.dag);
+        enforce(decideAdmission(input, { stage: "active_definition", found: Boolean(version) }));
+        const definition = executableDefinition(version?.dag);
         const normalized = JsonValueSchema.parse(
           normalizeWorkflowRunInput(input.input, definition.input_schema) ?? null,
         );
-        if (input.request_source === "chat" && definition.execution_privacy === "sensitive")
-          fail(
-            "sensitive_execution_unsupported",
-            "Sensitive execution is unavailable on conversation surfaces.",
-          );
+        assertExecutionPrivacySupported(input.request_source, definition.execution_privacy);
         assertCallerMatches(
           caller,
           input.tenant_id,
           definition.product_id,
           definition.required_caller_kind,
         );
-        if (definition.input_schema) {
-          const check = validateAgainstJsonSchema(normalized, definition.input_schema, "$input");
-          if (!check.valid) fail("input_schema_violation", check.errors.join("; "));
-        }
+        enforce(
+          decideAdmission(input, {
+            stage: "input",
+            verdict: inputSchemaVerdict(normalized, definition.input_schema),
+          }),
+        );
         const preview = await previewWorkflowAuthority(
           {
             tenant_id: input.tenant_id,
             workflow_id: input.workflow_id,
-            workflow_version_id: workflow.current_version_id,
+            workflow_version_id: currentVersionId,
             execution_environment: input.execution_environment,
           },
           tx,
         );
-        if (!preview.eligible_for_repeated_runs)
-          fail(
-            "execution_authority_required",
-            "this workflow requires concrete-run review for its current effects",
-          );
+        enforce(
+          decideAdmission(input, {
+            stage: "repeated_runs",
+            eligible: preview.eligible_for_repeated_runs,
+          }),
+        );
         const requested = input.execution_authority_id
           ? await sameBoundaryReplacement(tx, input.tenant_id, input.execution_authority_id)
           : null;
@@ -240,7 +243,7 @@ export async function admitAuthorizedWorkflowExecution(
             and(
               eq(workflowExecutionAuthorities.tenant_id, input.tenant_id),
               eq(workflowExecutionAuthorities.workflow_id, input.workflow_id),
-              eq(workflowExecutionAuthorities.workflow_version_id, workflow.current_version_id),
+              eq(workflowExecutionAuthorities.workflow_version_id, currentVersionId),
               eq(workflowExecutionAuthorities.execution_environment, input.execution_environment),
               requested
                 ? eq(workflowExecutionAuthorities.id, requested)
@@ -254,22 +257,20 @@ export async function admitAuthorizedWorkflowExecution(
           )
           .for("update")
           .limit(1);
-        if (!authority)
-          fail(
-            "execution_authority_unavailable",
-            "no matching live execution authority has runs remaining",
-          );
-        if (authority.effect_manifest_digest !== preview.digest)
-          fail(
-            "execution_authority_changed",
-            "the execution authority no longer matches the current effect boundary",
-          );
+        enforce(
+          decideAdmission(input, {
+            stage: "authority",
+            authority_digest: authority?.effect_manifest_digest ?? null,
+            boundary_digest: preview.digest,
+          }),
+        );
+        const admittedAuthorityId = (authority as { id: string }).id;
         const reservation = await reserveCallerBudget(tx, definition, caller, normalized);
         const execution_id = await createExecution(tx, {
           tenant_id: input.tenant_id,
           workflow_id: input.workflow_id,
-          workflow_version_id: workflow.current_version_id,
-          execution_authority_id: authority.id,
+          workflow_version_id: currentVersionId,
+          execution_authority_id: admittedAuthorityId,
           execution_mode: input.execution_environment,
           source_kind: "saved",
           source_ref:
@@ -290,8 +291,8 @@ export async function admitAuthorizedWorkflowExecution(
         await bindCallerBudget(tx, input.tenant_id, execution_id, reservation);
         return {
           execution_id,
-          execution_authority_id: authority.id,
-          workflow_version_id: workflow.current_version_id,
+          execution_authority_id: admittedAuthorityId,
+          workflow_version_id: currentVersionId,
           status: "queued" as const,
           input: normalized,
           replayed: false,
