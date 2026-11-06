@@ -1,6 +1,10 @@
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
-import type { CreateSubscriptionBody, UpdateSubscriptionBody } from "../engine-client/events.ts";
+import type {
+  CreateSubscriptionBody,
+  SubscriptionDeliveriesQuery,
+  UpdateSubscriptionBody,
+} from "../engine-client/events.ts";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
 export const SUBSCRIPTION_LIST_COLUMNS = [
@@ -10,6 +14,16 @@ export const SUBSCRIPTION_LIST_COLUMNS = [
   "active",
   "consecutive_failures",
   "circuit_open_until",
+];
+
+export const SUBSCRIPTION_DELIVERY_COLUMNS = [
+  "id",
+  "event_type",
+  "status",
+  "attempt_number",
+  "response_code",
+  "terminal_reason",
+  "created_at",
 ];
 
 export function parseActiveFlag(value: string | undefined): boolean | undefined {
@@ -137,17 +151,47 @@ const deleteCommand = defineCommand({
   },
 });
 
+export function buildDeliveriesQuery(args: {
+  limit?: string | undefined;
+  offset?: string | undefined;
+}): SubscriptionDeliveriesQuery {
+  return {
+    ...(args.limit === undefined ? {} : { limit: parseCount("--limit", args.limit, 1) }),
+    ...(args.offset === undefined ? {} : { offset: parseCount("--offset", args.offset, 0) }),
+  };
+}
+
+function parseCount(flag: string, value: string, min: number): number {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < min) {
+    throw new Error(`${flag} must be an integer of at least ${min}, got "${value}"`);
+  }
+  return n;
+}
+
 const deliveriesCommand = defineCommand({
-  meta: { name: "deliveries", description: "Show deliveries for a subscription" },
+  meta: {
+    name: "deliveries",
+    description: "List delivery attempts of a subscription, newest first",
+  },
   args: {
     id: { type: "positional", required: true, description: "Subscription id" },
+    limit: { type: "string", description: "Maximum number of deliveries (1-200, default 50)" },
+    offset: { type: "string", description: "Number of deliveries to skip" },
+    json: { type: "boolean", description: "JSON output" },
   },
   async run({ args }) {
     const client = makeClient();
-    return withCommandErrors(async () => {
-      const sub = await client.getSubscription(args.id);
-      printJson((sub as Record<string, unknown>).deliveries ?? []);
-    });
+    return withCommandErrors(
+      async () => {
+        const { items } = await client.listSubscriptionDeliveries(
+          args.id,
+          buildDeliveriesQuery(args),
+        );
+        emitList(!!args.json, SUBSCRIPTION_DELIVERY_COLUMNS, items);
+      },
+      { json: Boolean(args.json) },
+    );
   },
 });
 

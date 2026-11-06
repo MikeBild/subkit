@@ -1,5 +1,15 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { ErrorSchema } from "../../api/common-schemas.ts";
+import {
+  approveDiscoveryArtifactOperation,
+  getDiscoveryArtifactOperation,
+  getDiscoveryRunOperation,
+  listCapabilityGapsOperation,
+  listDiscoveryArtifactsOperation,
+  listDiscoveryRunsOperation,
+  rejectDiscoveryArtifactOperation,
+  resolveCapabilityGapOperation,
+} from "../../api/operations/discovery.ts";
+import { toHonoRoute } from "../../api/operations/hono.ts";
 import {
   AuditAction,
   actorOf,
@@ -12,20 +22,12 @@ import {
   readRequestSource,
 } from "../../audit/index.ts";
 import * as svc from "../../discovery/index.ts";
-import {
-  DiscoveryArtifactSchema,
-  DiscoveryRunSchema,
-  extractCodebaseArchive,
-} from "../../discovery/index.ts";
+import { DiscoveryRunSchema, extractCodebaseArchive } from "../../discovery/index.ts";
 import { recordFilesDedupSeen } from "../../files/dedup-counter.ts";
 import { persistInlineUpload } from "../../files/persist-inline-upload.ts";
-import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-
-const RunIdParam = z.object({ id: z.string().uuid() });
-const ArtifactIdParam = z.object({ id: z.string().uuid() });
 
 export const MAX_DISCOVERY_UPLOAD_BYTES = 100 * 1024 * 1024;
 
@@ -37,14 +39,6 @@ export function contentLengthOverCap(c: {
   const n = Number(cl);
   return Number.isFinite(n) && n > MAX_DISCOVERY_UPLOAD_BYTES;
 }
-
-const DiscoveryRunListResponse = z
-  .object({ items: z.array(DiscoveryRunSchema) })
-  .openapi("DiscoveryRunListResponse");
-
-const DiscoveryArtifactListResponse = z
-  .object({ items: z.array(DiscoveryArtifactSchema) })
-  .openapi("DiscoveryArtifactListResponse");
 
 const DiscoveryUploadErrorSchema = z.object({ error: z.string() }).openapi("DiscoveryUploadError");
 
@@ -152,334 +146,20 @@ const createRunFromArchiveRoute = createRoute({
   },
 });
 
-const listRunsRoute = createRoute({
-  method: "get",
-  path: "/v1/discovery/runs",
-  tags: ["discovery"],
-  summary: "List discovery runs",
-  security: [{ bearerAuth: [] }],
-  request: {
-    query: z
-      .object({
-        status: z.enum(["pending", "analyzing", "synthesizing", "completed", "failed"]).optional(),
-        limit: z.coerce.number().int().positive().max(200).optional(),
-        offset: z.coerce.number().int().min(0).optional(),
-      })
-      .openapi("ListDiscoveryRunsQuery"),
-  },
-  responses: {
-    200: {
-      description: "OK",
-      content: { "application/json": { schema: DiscoveryRunListResponse } },
-    },
-  },
-});
-
-const getRunRoute = createRoute({
-  method: "get",
-  path: "/v1/discovery/runs/{id}",
-  tags: ["discovery"],
-  summary: "Get a discovery run",
-  security: [{ bearerAuth: [] }],
-  request: { params: RunIdParam },
-  responses: {
-    200: {
-      description: "OK",
-      content: { "application/json": { schema: DiscoveryRunSchema } },
-    },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
-
-const listArtifactsRoute = createRoute({
-  method: "get",
-  path: "/v1/discovery/runs/{id}/artifacts",
-  tags: ["discovery"],
-  summary: "List artifacts for a discovery run",
-  security: [{ bearerAuth: [] }],
-  request: {
-    params: RunIdParam,
-    query: z
-      .object({
-        kind: z.enum(["connector", "skill", "knowledge_source"]).optional(),
-        status: z.enum(["proposed", "approved", "rejected", "superseded"]).optional(),
-        limit: z.coerce.number().int().positive().max(200).optional(),
-        offset: z.coerce.number().int().min(0).optional(),
-      })
-      .openapi("ListDiscoveryArtifactsQuery"),
-  },
-  responses: {
-    200: {
-      description: "OK",
-      content: { "application/json": { schema: DiscoveryArtifactListResponse } },
-    },
-  },
-});
-
-const getArtifactRoute = createRoute({
-  method: "get",
-  path: "/v1/discovery/artifacts/{id}",
-  tags: ["discovery"],
-  summary: "Get a discovery artifact",
-  security: [{ bearerAuth: [] }],
-  request: { params: ArtifactIdParam },
-  responses: {
-    200: {
-      description: "OK",
-      content: { "application/json": { schema: DiscoveryArtifactSchema } },
-    },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
-
-const approveArtifactRoute = createRoute({
-  method: "post",
-  path: "/v1/discovery/artifacts/{id}/approve",
-  tags: ["discovery"],
-  summary: "Approve a discovery artifact",
-  security: [{ bearerAuth: [] }],
-  request: { params: ArtifactIdParam },
-  responses: {
-    200: {
-      description: "OK",
-      content: {
-        "application/json": {
-          schema: z
-            .object({
-              approved: z.boolean(),
-              materialized_id: z.string().nullable(),
-              materialized_type: z.string().nullable(),
-            })
-            .openapi("ApproveDiscoveryArtifactResponse"),
-        },
-      },
-    },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
-
-const rejectArtifactRoute = createRoute({
-  method: "post",
-  path: "/v1/discovery/artifacts/{id}/reject",
-  tags: ["discovery"],
-  summary: "Reject a discovery artifact",
-  security: [{ bearerAuth: [] }],
-  request: {
-    params: ArtifactIdParam,
-    body: {
-      content: {
-        "application/json": {
-          schema: z
-            .object({ reason: z.string().optional() })
-            .openapi("RejectDiscoveryArtifactBody"),
-        },
-      },
-    },
-  },
-  responses: {
-    200: {
-      description: "OK",
-      content: { "application/json": { schema: z.object({ rejected: z.boolean() }) } },
-    },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
-
-const CapabilityGapSchema = z
-  .object({
-    id: z.string(),
-    status: z.enum(["proposed", "approved", "rejected", "superseded"]),
-    state: z.enum(["open", "accepted", "declined", "resolved"]),
-    missing_capability: z.string().nullable(),
-    requested: z.string(),
-    suggested_kind: z.enum(["connector", "workflow", "knowledge", "unknown"]),
-    occurrences: z.number().int(),
-    resolution: z.object({ note: z.string(), resolved_at: z.string() }).nullable(),
-    decline_reason: z.string().nullable(),
-    created_at: z.string(),
-    updated_at: z.string(),
-  })
-  .openapi("CapabilityGap");
-
-const listCapabilityGapsRoute = createRoute({
-  method: "get",
-  path: "/v1/discovery/capability-gaps",
-  tags: ["discovery"],
-  summary: "List capability gaps with their state",
-  security: [{ bearerAuth: [] }],
-  request: {
-    query: z.object({
-      status: z.enum(["proposed", "approved", "rejected", "superseded"]).optional(),
-      limit: z.coerce.number().int().positive().max(200).optional(),
-    }),
-  },
-  responses: {
-    200: {
-      description: "OK",
-      content: {
-        "application/json": {
-          schema: z.object({ items: z.array(CapabilityGapSchema) }).openapi("CapabilityGapList"),
-        },
-      },
-    },
-  },
-});
-
-const resolveCapabilityGapRoute = createRoute({
-  method: "post",
-  path: "/v1/discovery/capability-gaps/{id}/resolve",
-  tags: ["discovery"],
-  summary: "Mark an open or accepted capability gap as resolved",
-  security: [{ bearerAuth: [] }],
-  request: {
-    params: ArtifactIdParam,
-    body: {
-      content: {
-        "application/json": {
-          schema: z
-            .object({ note: z.string().trim().min(1).max(2000) })
-            .openapi("ResolveCapabilityGapBody"),
-        },
-      },
-    },
-  },
-  responses: {
-    200: {
-      description: "OK",
-      content: { "application/json": { schema: CapabilityGapSchema } },
-    },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
-
 export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
-  app.use("/v1/discovery/*", async (c, next) => {
-    if (c.req.method === "GET") return requirePermission("discovery:read")(c, next);
-    return requirePermission("discovery:approve")(c, next);
-  });
-
-  app.openapi(listRunsRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const q = c.req.valid("query");
-    const items = await svc.listDiscoveryRuns(
-      {
-        tenant_id: principal.tenant_id,
-        ...(q.status ? { status: q.status } : {}),
-        ...(q.limit !== undefined ? { limit: q.limit } : {}),
-        ...(q.offset !== undefined ? { offset: q.offset } : {}),
-      },
-      db,
+  for (const path of ["/v1/discovery/runs", "/v1/discovery/runs/from-archive"])
+    app.use(path, async (c, next) =>
+      c.req.method === "GET" ? next() : requirePermission("discovery:approve")(c, next),
     );
-    return c.json({ items }, 200);
-  });
 
-  app.openapi(getRunRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-    const run = await svc.getDiscoveryRun(principal.tenant_id, id, db);
-    if (!run) throw new NotFoundError("discovery_run");
-    return c.json(run, 200);
-  });
-
-  app.openapi(listArtifactsRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-    const q = c.req.valid("query");
-    const items = await svc.listDiscoveryArtifacts(
-      {
-        tenant_id: principal.tenant_id,
-        run_id: id,
-        ...(q.kind ? { kind: q.kind } : {}),
-        ...(q.status ? { status: q.status } : {}),
-        ...(q.limit !== undefined ? { limit: q.limit } : {}),
-        ...(q.offset !== undefined ? { offset: q.offset } : {}),
-      },
-      db,
-    );
-    return c.json({ items }, 200);
-  });
-
-  app.openapi(getArtifactRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-    const artifact = await svc.getDiscoveryArtifact(principal.tenant_id, id, db);
-    if (!artifact) throw new NotFoundError("discovery_artifact");
-    return c.json(artifact, 200);
-  });
-
-  app.openapi(approveArtifactRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-    const result = await svc.approveDiscoveryArtifact(
-      {
-        tenant_id: principal.tenant_id,
-        artifact_id: id,
-        actor_id: principal.id,
-        actor: actorOf(principal),
-      },
-      db,
-    );
-    if (!result) throw new NotFoundError("discovery_artifact");
-    return c.json({ approved: true, ...result }, 200);
-  });
-
-  app.openapi(listCapabilityGapsRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const q = c.req.valid("query");
-    const gaps = await svc.listCapabilityGaps(
-      {
-        tenant_id: principal.tenant_id,
-        ...(q.status ? { status: q.status } : {}),
-        ...(q.limit ? { limit: q.limit } : {}),
-      },
-      db,
-    );
-    return c.json({ items: gaps.map(svc.toCapabilityGapView) }, 200);
-  });
-
-  app.openapi(resolveCapabilityGapRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-    const body = c.req.valid("json");
-    const gap = await svc.resolveCapabilityGap(
-      {
-        tenant_id: principal.tenant_id,
-        artifact_id: id,
-        note: body.note,
-        actor_id: principal.id,
-        actor: actorOf(principal),
-      },
-      db,
-    );
-    if (!gap) throw new NotFoundError("capability_gap");
-    return c.json(svc.toCapabilityGapView(gap), 200);
-  });
-
-  app.openapi(rejectArtifactRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-    const body = c.req.valid("json");
-    const rejected = await svc.rejectDiscoveryArtifact(
-      {
-        tenant_id: principal.tenant_id,
-        artifact_id: id,
-        actor_id: principal.id,
-        actor: actorOf(principal),
-        ...(body.reason ? { reason: body.reason } : {}),
-      },
-      db,
-    );
-    if (!rejected) throw new NotFoundError("discovery_artifact");
-    return c.json({ rejected: true }, 200);
-  });
+  toHonoRoute(app, listDiscoveryRunsOperation);
+  toHonoRoute(app, getDiscoveryRunOperation);
+  toHonoRoute(app, listDiscoveryArtifactsOperation);
+  toHonoRoute(app, getDiscoveryArtifactOperation);
+  toHonoRoute(app, approveDiscoveryArtifactOperation);
+  toHonoRoute(app, listCapabilityGapsOperation);
+  toHonoRoute(app, resolveCapabilityGapOperation);
+  toHonoRoute(app, rejectDiscoveryArtifactOperation);
 
   app.openapi(createRunRoute, async (c) => {
     const principal = requireAuth(c);

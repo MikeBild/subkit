@@ -14,67 +14,14 @@ export type SelfHealingScanRecord = Schemas["SelfHealingScanRecord"];
 type PatchApproval = { applied: boolean; workflow_version_id: string | null };
 type AppliedPatch = { applied: true; workflow_version_id: string };
 
-export type FailureOrigin = "authoring" | "manual" | "scheduled" | "mixed";
-export interface DigestFailureGroup {
-  signature: string;
-  workflow_id: string | null;
-  workflow_name: string | null;
-  step_key: string | null;
-  error_code: string | null;
-  origin: FailureOrigin;
-  count: number;
-  scheduled_count: number;
-  last_seen: string;
-  resolved_at: string | null;
-  cause: string;
-  guidance: string | null;
-}
-export interface DigestPatch {
-  id: string;
-  workflow_id: string | null;
-  workflow_name: string | null;
-  classification: "safe" | "unsafe";
-  summary: string;
-}
-export type RiskSeverity = "warn" | "critical";
-export interface RiskSignal {
-  kind: string;
-  severity: RiskSeverity;
-  headline: string;
-  detail: string;
-  metric: string;
-  value: number;
-  threshold: number;
-}
-export interface AttentionItem {
-  id: string;
-  class: "stopped" | "failing" | "decide";
-  severity: "critical" | "urgent";
-  kind: string;
-  subject: { kind: string; id: string; name: string | null } | null;
-  reason: string;
-  counts: { patches?: number; failures?: number; skills?: number };
-  since: string | null;
-  deadline: string | null;
-  detail: string | null;
-  actions: Array<{ verb: string; href: string; primary: boolean; permission: string }>;
-}
-export interface DigestAttention {
-  schema_version: "attention.v1";
-  sources: Record<string, "answered" | "failed" | "not_permitted">;
-  items: AttentionItem[];
-}
-export interface OperatorHealthDigest {
-  generated_at: string;
-  window_hours: number;
-  headline: string;
-  failure_groups: DigestFailureGroup[];
-  patch_candidates: { open: number; items: DigestPatch[] };
-  risk: RiskSignal[];
-  attention: DigestAttention;
-  rendered: string;
-  all_clear: boolean;
-}
+export type FailureOrigin = Schemas["OperatorFailureGroup"]["origin"];
+export type DigestFailureGroup = Schemas["OperatorFailureGroup"];
+export type DigestPatch = Schemas["OperatorDigestPatch"];
+export type RiskSeverity = Schemas["OperatorRiskSignal"]["severity"];
+export type RiskSignal = Schemas["OperatorRiskSignal"];
+export type AttentionItem = Schemas["AttentionItem"];
+export type DigestAttention = Schemas["AttentionV1"];
+export type OperatorHealthDigest = Schemas["OperatorHealthDigest"];
 
 export const selfHealingMethods = {
   async getOperatorHealthDigest(
@@ -135,20 +82,16 @@ export const selfHealingMethods = {
     return data as { rejected: boolean };
   },
 
-  triggerSelfHealingScan(
+  async triggerSelfHealingScan(
     this: EngineClient,
     body: SelfHealingScanRequest = {},
     opts: { idempotencyKey?: string } = {},
   ): Promise<SelfHealingScanResponse> {
-    const extraHeaders = opts.idempotencyKey ? { "idempotency-key": opts.idempotencyKey } : {};
-    return this.request<SelfHealingScanResponse>(
-      "POST",
-      "/v1/self-healing/scans",
+    const { data } = await this.api.POST("/v1/self-healing/scans", {
+      params: { header: opts.idempotencyKey ? { "idempotency-key": opts.idempotencyKey } : {} },
       body,
-      undefined,
-      undefined,
-      extraHeaders,
-    );
+    });
+    return data as SelfHealingScanResponse;
   },
   async listSelfHealingScans(
     this: EngineClient,

@@ -57,7 +57,7 @@ export const knowledgeMethods = {
   createKnowledgeSource(
     this: EngineClient,
     file: { name: string; content: Buffer | Uint8Array; mime_type: string },
-    metadata: KnowledgeSourceMetadata & Record<string, unknown> = {},
+    metadata: KnowledgeSourceMetadata = {},
   ): Promise<Schemas["KnowledgeSource"]> {
     const form = new FormData();
     form.append(

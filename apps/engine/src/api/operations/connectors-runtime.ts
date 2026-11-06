@@ -73,12 +73,11 @@ type ToolConfirmation = z.infer<typeof ToolConfirmationBody>;
 type ConnectorRuntime = Awaited<ReturnType<typeof readConnectorRuntime>>;
 type ToolConfirmationResult = NonNullable<Awaited<ReturnType<typeof setMcpToolConfirmation>>>;
 
-const notMcp: Rejection = {
-  rejected: true,
-  status: 422,
-  code: "unprocessable_entity",
-  message: "only an mcp connector has remote tools to confirm",
-};
+const notMcp: Rejection = reject.unprocessable(
+  "only an mcp connector has remote tools to confirm",
+  undefined,
+  "unprocessable_entity",
+);
 
 export const connectorRuntimeOperation = defineOperation<string, ConnectorRuntime>({
   id: "connector.runtime",

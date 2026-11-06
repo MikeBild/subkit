@@ -2,8 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { type ApiResponse, apiCall } from "@/api/call";
-import { apiRequest } from "@/api/client";
+import { apiCall } from "@/api/call";
+import { startWorkflowRun } from "@/api/workflow-run";
 import { absolute, runHref } from "@/app/links";
 import { ActionButton, FormDialog, SchemaForm } from "@/components/cockpit/patterns";
 import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
@@ -23,8 +23,6 @@ import {
 } from "@/lib/run-availability";
 import { buildFormSchemaInput, formValuesFromInput, type SchemaValues } from "@/lib/schema-form";
 import { formFields, inputForm } from "@/lib/workflow-inputs";
-
-type RunOutcome = ApiResponse<"/v1/executions", "post">;
 
 type Failure =
   | { kind: "connector"; environment: RunEnvironment; connector: UnavailableConnector }
@@ -114,16 +112,7 @@ export function RunWorkflowDialog({
 
   const queryClient = useQueryClient();
   const run = useMutation({
-    mutationFn: () =>
-      apiRequest<RunOutcome>("/v1/executions", {
-        method: "POST",
-        ...(liveEnvironment ? { headers: { "x-subkit-environment": liveEnvironment } } : {}),
-        body: JSON.stringify({
-          source: "saved",
-          workflow_id: workflowId,
-          ...(built.input !== undefined ? { input: built.input } : {}),
-        }),
-      }),
+    mutationFn: () => startWorkflowRun(workflowId, liveEnvironment, built.input),
     onSuccess: (result) => {
       setFailure(null);
       void invalidateWorkflowAutomation(queryClient, workflowId);

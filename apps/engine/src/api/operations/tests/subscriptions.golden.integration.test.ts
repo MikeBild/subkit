@@ -2,8 +2,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { and, eq } from "drizzle-orm";
-import { auditLog, users } from "../../../db/schema/index.ts";
+import { auditLog, deliveries, users } from "../../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../../http/tests/setup.ts";
+import { FROZEN_NOW } from "../../../test-helpers/determinism/clock.ts";
 import { createDeterministicHexFactory } from "../../../test-helpers/determinism/ids.ts";
 import { emptyRoleId } from "../../../test-helpers/roles.ts";
 
@@ -185,6 +186,54 @@ describe("subscription operations keep their HTTP responses byte for byte", () =
     );
   });
 
+  test("deliveries", async () => {
+    await ctx.db.insert(deliveries).values([
+      {
+        tenant_id: ctx.tenantId,
+        subscription_id: subscriptionId,
+        event_id: "0e0e0e0e-0e0e-4e0e-8e0e-0e0e0e0e0e01",
+        event_type: "execution.failed",
+        attempt: 1,
+        status: "failed",
+        response_code: 500,
+        error: "upstream error",
+        classification: "retryable",
+        target_url: "https://hooks.example.test/rotated",
+        duration_ms: 120,
+        next_retry_at: new Date(FROZEN_NOW + 60_000),
+        created_at: new Date(FROZEN_NOW),
+      },
+      {
+        tenant_id: ctx.tenantId,
+        subscription_id: subscriptionId,
+        event_id: "0e0e0e0e-0e0e-4e0e-8e0e-0e0e0e0e0e01",
+        event_type: "execution.failed",
+        attempt: 2,
+        attempt_number: 2,
+        status: "delivered",
+        response_code: 200,
+        target_url: "https://hooks.example.test/rotated",
+        duration_ms: 80,
+        created_at: new Date(FROZEN_NOW + 120_000),
+      },
+    ]);
+    record("http.deliveries", await http("GET", `/v1/subscriptions/${subscriptionId}/deliveries`));
+    record(
+      "http.deliveries.page",
+      await http("GET", `/v1/subscriptions/${subscriptionId}/deliveries?limit=1&offset=1`),
+    );
+    record(
+      "http.deliveries.past-end",
+      await http("GET", `/v1/subscriptions/${subscriptionId}/deliveries?offset=5`),
+    );
+    record(
+      "http.deliveries.invalid",
+      await http("GET", `/v1/subscriptions/${subscriptionId}/deliveries?limit=0`),
+    );
+    record("http.deliveries.missing", await http("GET", `/v1/subscriptions/${MISSING}/deliveries`));
+    record("http.deliveries.bad-id", await http("GET", "/v1/subscriptions/nope/deliveries"));
+  });
+
   test("permission is checked before the body is validated", async () => {
     const id = subscriptionId;
     record("http.denied.list", await http("GET", "/v1/subscriptions", undefined, deniedKey));
@@ -219,6 +268,19 @@ describe("subscription operations keep their HTTP responses byte for byte", () =
       ),
     );
     recordRows("http.denied.audit", await auditRows(eq(auditLog.result, "denied")));
+  });
+
+  test("listing deliveries needs subscription:read on the subscription", async () => {
+    const path = `/v1/subscriptions/${subscriptionId}/deliveries`;
+    record("http.denied.deliveries", await http("GET", path, undefined, deniedKey));
+    record("http.denied.head.deliveries", await http("HEAD", path, undefined, deniedKey));
+    const denied = await auditRows(eq(auditLog.result, "denied"));
+    recordRows(
+      "http.denied.deliveries.audit",
+      denied.filter(
+        (row) => (row.metadata as { permission?: string }).permission === "subscription:read",
+      ),
+    );
   });
 
   test("delete", async () => {

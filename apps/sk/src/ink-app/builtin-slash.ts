@@ -1,5 +1,6 @@
 import type React from "react";
 import { uploadPath } from "../commands/files.ts";
+import type { KnowledgeSourceMetadata } from "../engine-client/knowledge.ts";
 import type { EngineClient } from "../engine-client.ts";
 import { renderSuspiciousCodepoints, sanitizePathInput } from "../lib/path-input.ts";
 import { readClipboard } from "../repl/clipboard-read.ts";
@@ -173,8 +174,8 @@ export async function runBuiltinSlash(trimmed: string, ctx: BuiltinSlashContext)
       const filename = pathBasename(abs);
       const mime_type = detectMime(abs);
       const ksName = overrideName ?? (filename.replace(/\.[^.]+$/, "") || filename);
-      const metadata: Record<string, unknown> = { name: ksName };
-      if (scope) metadata.scope = scope;
+      const metadata: KnowledgeSourceMetadata = { name: ksName };
+      if (scope === "global" || scope === "workflow") metadata.scope = scope;
       if (workflow_id) metadata.workflow_id = workflow_id;
       const ks = (await engineClient.createKnowledgeSource(
         { name: filename, content: bytes, mime_type },

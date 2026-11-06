@@ -1,37 +1,28 @@
 import { describe, expect, test } from "bun:test";
 import type { EngineClient, OperatorHealthDigest } from "../engine-client.ts";
+import {
+  attention,
+  attentionItem,
+  attentionSources,
+  operatorDigest,
+} from "../tests/_helpers/operator-digest-fixtures.ts";
 import { digestAsContext, fetchOperatorDigest, riskSummaryLine } from "./operator-digest.ts";
 
 function digest(overrides: Partial<OperatorHealthDigest> = {}): OperatorHealthDigest {
-  return {
-    generated_at: "2026-06-22T08:00:00Z",
-    window_hours: 24,
-    headline: "Needs attention: 1 item (1 failing).",
-    failure_groups: [],
-    patch_candidates: { open: 0, items: [] },
-    risk: [],
-    attention: { schema_version: "attention.v1", sources: {}, items: [] },
-    rendered: "",
-    all_clear: false,
-    ...overrides,
-  };
+  return operatorDigest({ headline: "Needs attention: 1 item (1 failing).", ...overrides });
 }
 
 function clientReturning(d: OperatorHealthDigest): EngineClient {
   return { getOperatorHealthDigest: async () => d } as unknown as EngineClient;
 }
 
-const connectorItem = {
+const connectorItem = attentionItem({
   id: "connector:c1",
-  class: "failing" as const,
-  severity: "urgent" as const,
+  class: "failing",
+  severity: "urgent",
   kind: "connector",
   subject: { kind: "connector", id: "c1", name: "CRM" },
   reason: "needs_reauth",
-  counts: {},
-  since: null,
-  deadline: null,
-  detail: null,
   actions: [
     {
       verb: "reauth",
@@ -40,17 +31,13 @@ const connectorItem = {
       permission: "connector:oauth",
     },
   ],
-};
+});
 
 describe("digestAsContext", () => {
   test("names every attention item — kinds the digest does not detail included", () => {
     const text = digestAsContext(
       digest({
-        attention: {
-          schema_version: "attention.v1",
-          sources: { connectors: "answered" },
-          items: [connectorItem],
-        },
+        attention: attention({ items: [connectorItem] }),
       }),
     );
     expect(text).toContain("connector CRM: needs reauth");
@@ -60,11 +47,7 @@ describe("digestAsContext", () => {
   test("says which sources could not be read, so the model does not call them clear", () => {
     const text = digestAsContext(
       digest({
-        attention: {
-          schema_version: "attention.v1",
-          sources: { connections: "failed", skills: "answered" },
-          items: [],
-        },
+        attention: attention({ sources: attentionSources({ connections: "failed" }) }),
       }),
     );
     expect(text).toContain("Could not be read: connections");

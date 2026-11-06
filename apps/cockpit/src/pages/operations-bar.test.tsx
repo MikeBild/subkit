@@ -350,7 +350,6 @@ describe("Nutzung", () => {
       "OperationsBar",
       "usage-figure",
       "usage-summary",
-      "operatingFiguresEndpoint",
       "operatingCounts",
     ])
       expect(source, `usage.tsx mirrors ${mirror}`).not.toContain(mirror);

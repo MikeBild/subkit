@@ -11,6 +11,8 @@ type SchemaFieldKind = "text" | "number" | "boolean" | "enum" | "group" | "list"
 
 export type SchemaValue = string | boolean | string[] | SchemaValues;
 
+export type FormInput = string | number | boolean | null | unknown[] | { [key: string]: unknown };
+
 export interface SchemaValues {
   [name: string]: SchemaValue;
 }
@@ -100,7 +102,7 @@ function fitsJson(field: InputField, value: unknown): boolean {
   return true;
 }
 
-type Read = { present: false } | { present: true; value: unknown } | { problem: SchemaProblem };
+type Read = { present: false } | { present: true; value: FormInput } | { problem: SchemaProblem };
 
 function readScalar(field: InputField, text: string, itemType?: string): Read {
   const trimmed = text.trim();
@@ -142,7 +144,7 @@ function readField(field: InputField, raw: SchemaValue | undefined, errors: Sche
     if (text.trim() === "") return { present: false };
     const loose = field.union?.includes("string") ?? false;
     try {
-      const value = JSON.parse(text) as unknown;
+      const value: FormInput = JSON.parse(text);
       return fitsJson(field, value) ? { present: true, value } : { problem: "json" };
     } catch {
       return loose ? { present: true, value: text } : { problem: "json" };
@@ -155,8 +157,8 @@ function collect(
   fields: readonly InputField[],
   values: SchemaValues,
   errors: SchemaError[],
-): Record<string, unknown> {
-  const input: Record<string, unknown> = {};
+): Record<string, FormInput> {
+  const input: Record<string, FormInput> = {};
   for (const field of fields) {
     const read = readField(field, values[field.name], errors);
     if ("problem" in read) errors.push({ path: field.path, field, problem: read.problem });
@@ -169,7 +171,7 @@ function collect(
 export function buildSchemaInput(
   fields: readonly InputField[],
   values: SchemaValues,
-): { input: Record<string, unknown>; errors: SchemaError[] } {
+): { input: Record<string, FormInput>; errors: SchemaError[] } {
   const errors: SchemaError[] = [];
   const input = collect(fields, values, errors);
   return { input, errors };
@@ -187,7 +189,7 @@ export function fieldTitle(field: InputField): string {
 export function buildFormSchemaInput(
   form: InputForm,
   values: SchemaValues,
-): { input: unknown; errors: SchemaError[] } {
+): { input: FormInput | undefined; errors: SchemaError[] } {
   if (form.kind === "none") return { input: undefined, errors: [] };
   const built = buildSchemaInput(formFields(form), values);
   return {

@@ -2,20 +2,23 @@ import { createHash } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { ErrorSchema } from "../../api/common-schemas.ts";
-import { FileIdSchema, parseFileId, toFileId } from "../../api/files-schemas.ts";
+import { FileIdSchema, toFileId } from "../../api/files-schemas.ts";
+import { toHonoRoute } from "../../api/operations/hono.ts";
 import {
-  PackageApplyRequestSchema,
-  PackageApplyResultSchema,
+  applyPackageImportOperation,
+  getPackageInstallOperation,
+  listPackageInstallsOperation,
+  requireFileUuid,
+  throwPackageError,
+} from "../../api/operations/package.ts";
+import {
   PackageExportRequestSchema,
   PackageExportResultSchema,
-  PackageInstallDetailSchema,
-  PackageInstallListSchema,
   PackagePreviewJsonRequestSchema,
   PackagePreviewResultSchema,
 } from "../../api/packages-schemas.ts";
 import {
   AuditAction,
-  actorOf,
   actorType,
   auditAwait,
   bucketSize,
@@ -24,17 +27,10 @@ import {
 } from "../../audit/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import {
-  applyPackageImport,
   exportTenantPackage,
-  getPackageInstall,
-  listPackageInstalls,
   loadStoredPackageArchive,
   PACKAGE_CONTENT_TYPE,
   PACKAGE_MAX_BYTES,
-  PackageArchiveError,
-  PackageArchiveNotFoundError,
-  PackagePlanChangedError,
-  PackageTooLargeError,
   previewPackageImport,
   storePackageArchive,
 } from "../../identity/index.ts";
@@ -43,7 +39,6 @@ import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
 
-const InstallIdParam = z.object({ id: z.string().uuid() });
 const ArchiveIdParam = z.object({ file_id: FileIdSchema });
 
 const errorResponse = (description: string) => ({
@@ -59,12 +54,6 @@ function publicInstance(): string | null {
   return null;
 }
 
-function requireFileUuid(wire: string): string {
-  const uuid = parseFileId(wire);
-  if (uuid === null) throw new HttpError(400, "bad_request", "invalid file id");
-  return uuid;
-}
-
 function contentLengthOverCap(c: Context): boolean {
   const raw = c.req.header("content-length");
   if (!raw) return false;
@@ -72,57 +61,9 @@ function contentLengthOverCap(c: Context): boolean {
   return Number.isFinite(n) && n > PACKAGE_MAX_BYTES;
 }
 
-function mapPackageError(err: unknown): never {
-  if (err instanceof PackagePlanChangedError) {
-    throw new HttpError(409, "package_plan_changed", "the import plan changed since preview", {
-      hint: "Review the returned plan and apply again with its plan_digest.",
-      details: { plan: err.plan },
-    });
-  }
-  if (err instanceof PackageArchiveError) {
-    const status = err.code === "package_archive_too_large" ? 413 : 400;
-    throw new HttpError(status, err.code, err.detail);
-  }
-  if (err instanceof PackageArchiveNotFoundError) {
-    throw new HttpError(404, "not_found", "package archive not found", {
-      hint: "Upload the archive again with POST /v1/packages/import/preview.",
-    });
-  }
-  if (err instanceof PackageTooLargeError) {
-    throw new HttpError(413, "package_too_large", "package exceeds the size limit", {
-      details: { total_bytes: err.total_bytes, limit_bytes: err.limit_bytes },
-      hint: "Export fewer kinds or categories.",
-    });
-  }
-  throw err;
-}
-
 function contentDispositionName(filename: string): string {
   const safe = filename.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 200);
   return safe.length > 0 ? safe : "package.zip";
-}
-
-function iso(value: Date): string {
-  return value.toISOString();
-}
-
-type InstallRow = Awaited<ReturnType<typeof listPackageInstalls>>[number];
-
-function installView(row: InstallRow) {
-  return {
-    id: row.id,
-    package_id: row.package_id,
-    package_version: row.package_version,
-    format: row.format,
-    content_digest: row.content_digest,
-    archive_file_id: row.archive_file_id ? toFileId(row.archive_file_id) : null,
-    source: row.source,
-    installed_by_type: row.installed_by_type,
-    installed_by_id: row.installed_by_id,
-    summary: row.summary,
-    created_at: iso(row.created_at),
-    updated_at: iso(row.updated_at),
-  };
 }
 
 const exportRoute = createRoute({
@@ -203,60 +144,6 @@ const previewRoute = createRoute({
   },
 });
 
-const applyRoute = createRoute({
-  method: "post",
-  path: "/v1/packages/import/apply",
-  tags: ["packages"],
-  summary: "Apply a previewed package import",
-  security: [{ bearerAuth: [] }],
-  request: {
-    body: {
-      required: true,
-      content: { "application/json": { schema: PackageApplyRequestSchema } },
-    },
-  },
-  responses: {
-    200: {
-      description: "Import result",
-      content: { "application/json": { schema: PackageApplyResultSchema } },
-    },
-    400: errorResponse("Invalid archive or request"),
-    404: errorResponse("Package archive not found"),
-    409: errorResponse("The plan changed since preview; details.plan holds the current plan"),
-    413: errorResponse("Archive exceeds the size limit"),
-  },
-});
-
-const listInstallsRoute = createRoute({
-  method: "get",
-  path: "/v1/packages/installs",
-  tags: ["packages"],
-  summary: "List package installs",
-  security: [{ bearerAuth: [] }],
-  responses: {
-    200: {
-      description: "Package installs",
-      content: { "application/json": { schema: PackageInstallListSchema } },
-    },
-  },
-});
-
-const getInstallRoute = createRoute({
-  method: "get",
-  path: "/v1/packages/installs/{id}",
-  tags: ["packages"],
-  summary: "Get one package install with its items",
-  security: [{ bearerAuth: [] }],
-  request: { params: InstallIdParam },
-  responses: {
-    200: {
-      description: "Package install",
-      content: { "application/json": { schema: PackageInstallDetailSchema } },
-    },
-    404: errorResponse("Package install not found"),
-  },
-});
-
 async function readUploadedArchive(c: Context): Promise<{ filename: string; bytes: Buffer }> {
   if (contentLengthOverCap(c)) {
     throw new HttpError(413, "package_archive_too_large", "archive exceeds the size limit");
@@ -277,7 +164,9 @@ export function registerPackageRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/packages/export", requirePermission("package:export"));
   app.use("/v1/packages/archives/*", requirePermission("package:export"));
   app.use("/v1/packages/import/*", requirePermission("package:import"));
-  app.use("/v1/packages/installs", requirePermission("package:import"));
+  app.use("/v1/packages/installs", (c, next) =>
+    c.req.method === "GET" ? next() : requirePermission("package:import")(c, next),
+  );
   app.use("/v1/packages/installs/*", requirePermission("package:import"));
 
   app.openapi(exportRoute, async (c) => {
@@ -295,7 +184,7 @@ export function registerPackageRoutes(app: OpenAPIHono<AppEnv>): void {
       });
       return c.json({ ...result, file_id: toFileId(result.file_id) }, 201);
     } catch (err) {
-      mapPackageError(err);
+      throwPackageError(err);
     }
   });
 
@@ -314,7 +203,7 @@ export function registerPackageRoutes(app: OpenAPIHono<AppEnv>): void {
         "x-subkit-sha256": sha256,
       });
     } catch (err) {
-      mapPackageError(err);
+      throwPackageError(err);
     }
   });
 
@@ -370,62 +259,11 @@ export function registerPackageRoutes(app: OpenAPIHono<AppEnv>): void {
       const plan = await previewPackageImport(db, principal.tenant_id, stored.bytes);
       return c.json({ archive_file_id: toFileId(stored.file_id), plan }, 200);
     } catch (err) {
-      mapPackageError(err);
+      throwPackageError(err);
     }
   });
 
-  app.openapi(applyRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const body = c.req.valid("json");
-    const uuid = requireFileUuid(body.archive_file_id);
-    try {
-      const stored = await loadStoredPackageArchive(db, principal.tenant_id, uuid);
-      const result = await applyPackageImport(db, {
-        tenant_id: principal.tenant_id,
-        archive: stored.bytes,
-        archive_file_id: stored.file_id,
-        expected_plan_digest: body.expected_plan_digest,
-        who: {
-          actor: actorOf(principal),
-          actor_type: actorType(principal),
-          request_source: readRequestSource(c) ?? "api",
-        },
-      });
-      return c.json(result, 200);
-    } catch (err) {
-      mapPackageError(err);
-    }
-  });
-
-  app.openapi(listInstallsRoute, async (c) => {
-    const principal = requireAuth(c);
-    const rows = await listPackageInstalls(c.get("db"), principal.tenant_id);
-    return c.json({ items: rows.map(installView) }, 200);
-  });
-
-  app.openapi(getInstallRoute, async (c) => {
-    const principal = requireAuth(c);
-    const { id } = c.req.valid("param");
-    const found = await getPackageInstall(c.get("db"), principal.tenant_id, id);
-    if (!found) throw new HttpError(404, "not_found", "package install not found");
-    return c.json(
-      {
-        ...installView(found.install),
-        items: found.items.map((item) => ({
-          id: item.id,
-          kind: item.kind,
-          item_key: item.item_key,
-          local_id: item.local_id,
-          imported_hash: item.imported_hash,
-          local_hash: item.local_hash,
-          state: item.state,
-          intake_proposal_id: item.intake_proposal_id,
-          created_at: iso(item.created_at),
-          updated_at: iso(item.updated_at),
-        })),
-      },
-      200,
-    );
-  });
+  toHonoRoute(app, applyPackageImportOperation);
+  toHonoRoute(app, listPackageInstallsOperation);
+  toHonoRoute(app, getPackageInstallOperation);
 }

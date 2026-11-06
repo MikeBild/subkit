@@ -4902,9 +4902,12 @@ Delete a subscription
 
 #### `sk subscriptions deliveries`
 
-Show deliveries for a subscription
+List delivery attempts of a subscription, newest first
 
 - `<id>` (positional, required) — Subscription id
+- `--limit` (string) — Maximum number of deliveries (1-200, default 50)
+- `--offset` (string) — Number of deliveries to skip
+- `--json` — JSON output
 
 #### `sk subscriptions get`
 

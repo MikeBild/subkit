@@ -17,15 +17,12 @@ import {
   connectorDisplayName,
   connectorPatchBody,
   connectorPatchDraft,
-  unwrapConnectorRecord,
 } from "../lib/connector-patch.ts";
 import { pickId } from "../lib/pick.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
 import type { ConnectorIntent, ConnectorSummary, PlanStep } from "../render/types.ts";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
 import { CONNECTOR_LIST_COLUMNS } from "./list-columns.ts";
-
-type Json = Record<string, unknown>;
 
 const IMPORT_SOURCES = [
   "openapi",
@@ -197,6 +194,37 @@ export function docsIngestBody(url: string, sourceType: string): ConnectorDocsIn
   return { source_type: sourceType, url };
 }
 
+type ConnectorSavePlan =
+  | { action: "create"; body: CreateConnectorBody; draft: () => CreateConnectorBody; name: string }
+  | {
+      action: "patch";
+      id: string;
+      body: UpdateConnectorBody;
+      draft: () => CreateConnectorBody;
+      name: string;
+    };
+
+async function connectorSavePlan(
+  client: EngineClient,
+  target: { action: "create" } | { action: "patch"; id: string },
+  path: string,
+): Promise<ConnectorSavePlan> {
+  if (target.action === "create") {
+    const body = await readDefinitionFile<CreateConnectorBody>(path);
+    return { action: "create", body, draft: () => body, name: body.name };
+  }
+  const file = await readDefinitionFile<UpdateConnectorBody>(path);
+  const current = await client.getConnector(target.id);
+  const body = connectorPatchBody(current, file);
+  return {
+    action: "patch",
+    id: target.id,
+    body,
+    draft: () => connectorPatchDraft(current, body),
+    name: body.name ?? connectorDisplayName(current),
+  };
+}
+
 async function saveConnectorFromFile(
   target: { action: "create" } | { action: "patch"; id: string },
   args: Record<string, unknown>,
@@ -204,23 +232,13 @@ async function saveConnectorFromFile(
   const client = makeClient();
   const jsonMode = Boolean(args.json);
   try {
-    const file = await readDefinitionFile<Json>(String(args.file));
-    const current =
-      target.action === "patch"
-        ? unwrapConnectorRecord(await client.getConnector(target.id))
-        : undefined;
-    const body = current ? connectorPatchBody(current, file) : file;
+    const plan = await connectorSavePlan(client, target, String(args.file));
+    const { body, name } = plan;
     const skip = Boolean(args["skip-checks"]);
-    const name =
-      typeof body.name === "string"
-        ? body.name
-        : current
-          ? connectorDisplayName(current)
-          : undefined;
     await renderIntent(
       {
         kind: "connector",
-        action: target.action === "patch" ? "Update" : "Create",
+        action: plan.action === "patch" ? "Update" : "Create",
         ...(name ? { name } : {}),
         ...(typeof body.template_slug === "string" ? { template_slug: body.template_slug } : {}),
       },
@@ -229,9 +247,7 @@ async function saveConnectorFromFile(
 
     let probe: ConnectorSummary["probe"];
     if (!skip) {
-      const verdict = await client.validateConnectorDraft(
-        (current ? connectorPatchDraft(current, body) : body) as CreateConnectorBody,
-      );
+      const verdict = await client.validateConnectorDraft(plan.draft());
       if (!verdict.ok) {
         await renderTaskList(
           [
@@ -249,7 +265,7 @@ async function saveConnectorFromFile(
         process.exit(1);
       }
 
-      if (target.action === "create" && body.driver === "mcp") {
+      if (plan.action === "create" && plan.body.driver === "mcp") {
         await renderTaskList(
           [
             { id: "validate", label: "Validate", status: "succeeded" },
@@ -264,12 +280,12 @@ async function saveConnectorFromFile(
           ],
           { jsonMode },
         );
-      } else if (target.action === "create") {
+      } else if (plan.action === "create") {
         const credential = args.credential
           ? await readDefinitionFile<CredentialBody>(String(args.credential))
           : undefined;
         const result = await client.probeConnectorDraft({
-          connector: body as CreateConnectorBody,
+          connector: plan.body,
           ...(credential ? { credential } : {}),
         });
         probe = { ok: result.ok };
@@ -297,15 +313,15 @@ async function saveConnectorFromFile(
     }
 
     const saved =
-      target.action === "create"
-        ? await client.createConnector(body as CreateConnectorBody)
-        : await client.patchConnector(target.id, body as UpdateConnectorBody);
+      plan.action === "create"
+        ? await client.createConnector(plan.body)
+        : await client.patchConnector(plan.id, plan.body);
     printJson(saved);
 
     await renderSummary(
       {
         kind: "connector",
-        action: target.action === "patch" ? "Updated" : "Created",
+        action: plan.action === "patch" ? "Updated" : "Created",
         id: saved.id,
         slug: saved.slug,
         ...(typeof saved.template_slug === "string" ? { template_slug: saved.template_slug } : {}),

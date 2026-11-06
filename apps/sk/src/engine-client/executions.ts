@@ -19,19 +19,16 @@ export type ExecutionStep = Schemas["ExecutionStep"];
 export type RerunExecutionBody = ApiBody<"/v1/executions/{id}/rerun", "post">;
 
 export const executionsMethods = {
-  runExecution(
+  async runExecution(
     this: EngineClient,
     body: RunExecutionBody,
     opts: { environment?: RunEnvironment } = {},
   ): Promise<RunExecutionResponse> {
-    return this.request<RunExecutionResponse>(
-      "POST",
-      "/v1/executions",
+    const { data } = await this.api.POST("/v1/executions", {
+      params: { header: opts.environment ? { "x-subkit-environment": opts.environment } : {} },
       body,
-      undefined,
-      undefined,
-      opts.environment ? { "x-subkit-environment": opts.environment } : undefined,
-    );
+    });
+    return data as RunExecutionResponse;
   },
 
   async listExecutions(

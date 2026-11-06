@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
-import type { OperatorHealthDigest } from "../engine-client.ts";
+import type { AttentionItem, OperatorHealthDigest } from "../engine-client.ts";
 import type { PersonaProbe } from "../slash.ts";
+import {
+  attention,
+  attentionItem,
+  attentionSources,
+  digestPatch,
+  failureGroup,
+  operatorDigest,
+} from "../tests/_helpers/operator-digest-fixtures.ts";
 import { NeedsAttentionPanel } from "./needs-attention-panel.tsx";
 import { buildStarterActions } from "./starter-action-injection.ts";
 
@@ -11,39 +19,10 @@ function snapshot(ui: ReturnType<typeof render>): string {
 }
 
 function makeDigest(overrides: Partial<OperatorHealthDigest> = {}): OperatorHealthDigest {
-  return {
-    generated_at: "2026-06-22T08:00:00Z",
-    window_hours: 24,
-    headline: "2 failures in the last 24h",
-    failure_groups: [],
-    patch_candidates: { open: 0, items: [] },
-    risk: [],
-    attention: { schema_version: "attention.v1", sources: {}, items: [] },
-    rendered: "",
-    all_clear: false,
-    ...overrides,
-  };
+  return operatorDigest({ headline: "2 failures in the last 24h", ...overrides });
 }
 
-function mkGroup(
-  overrides: Partial<OperatorHealthDigest["failure_groups"][number]> = {},
-): OperatorHealthDigest["failure_groups"][number] {
-  return {
-    signature: "sig",
-    workflow_id: "wf",
-    workflow_name: "Workflow",
-    step_key: "step",
-    error_code: "ERR",
-    origin: "manual",
-    scheduled_count: 0,
-    count: 1,
-    last_seen: "2026-06-22T07:30:00Z",
-    resolved_at: null,
-    cause: "Something failed",
-    guidance: null,
-    ...overrides,
-  };
-}
+const mkGroup = failureGroup;
 
 describe("NeedsAttentionPanel — failure groups", () => {
   test("renders the workflow name for each failure group", () => {
@@ -51,7 +30,7 @@ describe("NeedsAttentionPanel — failure groups", () => {
       <NeedsAttentionPanel
         digest={makeDigest({
           failure_groups: [
-            {
+            mkGroup({
               signature: "sig-a",
               workflow_id: "wf-1",
               workflow_name: "Send invoice email",
@@ -64,7 +43,7 @@ describe("NeedsAttentionPanel — failure groups", () => {
               resolved_at: null,
               cause: "SMTP authentication failed",
               guidance: null,
-            },
+            }),
           ],
         })}
       />,
@@ -79,7 +58,7 @@ describe("NeedsAttentionPanel — failure groups", () => {
       <NeedsAttentionPanel
         digest={makeDigest({
           failure_groups: [
-            {
+            mkGroup({
               signature: "sig-b",
               workflow_id: "wf-2",
               workflow_name: "Sync CRM",
@@ -92,7 +71,7 @@ describe("NeedsAttentionPanel — failure groups", () => {
               resolved_at: null,
               cause: "Request timed out after 30s",
               guidance: null,
-            },
+            }),
           ],
         })}
       />,
@@ -107,7 +86,7 @@ describe("NeedsAttentionPanel — failure groups", () => {
       <NeedsAttentionPanel
         digest={makeDigest({
           failure_groups: [
-            {
+            mkGroup({
               signature: "sig-c",
               workflow_id: "wf-3",
               workflow_name: "Daily report",
@@ -120,7 +99,7 @@ describe("NeedsAttentionPanel — failure groups", () => {
               resolved_at: null,
               cause: "Template variable missing",
               guidance: null,
-            },
+            }),
           ],
         })}
       />,
@@ -135,7 +114,7 @@ describe("NeedsAttentionPanel — failure groups", () => {
       <NeedsAttentionPanel
         digest={makeDigest({
           failure_groups: [
-            {
+            mkGroup({
               signature: "sig-d",
               workflow_id: "wf-4",
               workflow_name: "Webhook relay",
@@ -148,7 +127,7 @@ describe("NeedsAttentionPanel — failure groups", () => {
               resolved_at: null,
               cause: "Upstream returned HTTP 500 — Internal Server Error",
               guidance: null,
-            },
+            }),
           ],
         })}
       />,
@@ -163,7 +142,7 @@ describe("NeedsAttentionPanel — failure groups", () => {
       <NeedsAttentionPanel
         digest={makeDigest({
           failure_groups: [
-            {
+            mkGroup({
               signature: "sig-draft",
               workflow_id: null,
               workflow_name: null,
@@ -176,7 +155,7 @@ describe("NeedsAttentionPanel — failure groups", () => {
               resolved_at: null,
               cause: "Step output schema mismatch",
               guidance: null,
-            },
+            }),
           ],
         })}
       />,
@@ -191,7 +170,7 @@ describe("NeedsAttentionPanel — failure groups", () => {
       <NeedsAttentionPanel
         digest={makeDigest({
           failure_groups: [
-            {
+            mkGroup({
               signature: "sig-1",
               workflow_id: "wf-a",
               workflow_name: "Alpha workflow",
@@ -204,8 +183,8 @@ describe("NeedsAttentionPanel — failure groups", () => {
               resolved_at: null,
               cause: "Connection refused",
               guidance: null,
-            },
-            {
+            }),
+            mkGroup({
               signature: "sig-2",
               workflow_id: "wf-b",
               workflow_name: "Beta workflow",
@@ -218,7 +197,7 @@ describe("NeedsAttentionPanel — failure groups", () => {
               resolved_at: null,
               cause: "Invalid credentials",
               guidance: null,
-            },
+            }),
           ],
         })}
       />,
@@ -276,7 +255,7 @@ describe("NeedsAttentionPanel — prose hygiene", () => {
       <NeedsAttentionPanel
         digest={makeDigest({
           failure_groups: [
-            {
+            mkGroup({
               signature: "sig-x",
               workflow_id: "wf-x",
               workflow_name: "Some workflow",
@@ -289,7 +268,7 @@ describe("NeedsAttentionPanel — prose hygiene", () => {
               resolved_at: null,
               cause: "Step crashed",
               guidance: null,
-            },
+            }),
           ],
         })}
       />,
@@ -303,7 +282,7 @@ describe("NeedsAttentionPanel — prose hygiene", () => {
       <NeedsAttentionPanel
         digest={makeDigest({
           failure_groups: [
-            {
+            mkGroup({
               signature: "sig-y",
               workflow_id: "wf-y",
               workflow_name: "Another workflow",
@@ -316,7 +295,7 @@ describe("NeedsAttentionPanel — prose hygiene", () => {
               resolved_at: null,
               cause: "Unexpected error",
               guidance: null,
-            },
+            }),
           ],
         })}
       />,
@@ -334,20 +313,20 @@ describe("NeedsAttentionPanel — patch candidates", () => {
           patch_candidates: {
             open: 2,
             items: [
-              {
+              digestPatch({
                 id: "patch-001",
                 workflow_id: "wf-p1",
                 workflow_name: "Nightly report",
                 classification: "safe",
                 summary: "Add null guard on step output",
-              },
-              {
+              }),
+              digestPatch({
                 id: "patch-002",
                 workflow_id: "wf-p2",
                 workflow_name: "Daily sync",
                 classification: "safe",
                 summary: "Retry with exponential backoff",
-              },
+              }),
             ],
           },
         })}
@@ -410,7 +389,7 @@ describe("NeedsAttentionPanel — totals header", () => {
         digest={makeDigest({
           window_hours: 48,
           failure_groups: [
-            {
+            mkGroup({
               signature: "sig-h1",
               workflow_id: "wf-h",
               workflow_name: "Header test",
@@ -423,7 +402,7 @@ describe("NeedsAttentionPanel — totals header", () => {
               resolved_at: null,
               cause: "Mixed error",
               guidance: null,
-            },
+            }),
           ],
         })}
       />,
@@ -439,7 +418,7 @@ describe("NeedsAttentionPanel — totals header", () => {
       <NeedsAttentionPanel
         digest={makeDigest({
           failure_groups: [
-            {
+            mkGroup({
               signature: "sig-sing",
               workflow_id: "wf-s",
               workflow_name: "Singular",
@@ -452,7 +431,7 @@ describe("NeedsAttentionPanel — totals header", () => {
               resolved_at: null,
               cause: "One error",
               guidance: null,
-            },
+            }),
           ],
         })}
       />,
@@ -477,37 +456,31 @@ describe("NeedsAttentionPanel — empty digest", () => {
   });
 });
 
-function attentionItem(
+function attentionEntry(
   id: string,
-  klass: "stopped" | "failing" | "decide",
-  subject: { kind: string; id: string; name: string | null } | null,
-  reason: string,
-  verb: string,
+  klass: AttentionItem["class"],
+  subject: AttentionItem["subject"],
+  reason: AttentionItem["reason"],
+  verb: AttentionItem["actions"][number]["verb"],
   href: string,
-): NonNullable<OperatorHealthDigest["attention"]>["items"][number] {
-  return {
+): AttentionItem {
+  return attentionItem({
     id,
     class: klass,
-    severity: "urgent",
     kind: subject?.kind ?? "skill_candidates",
     subject,
     reason,
-    counts: {},
-    since: null,
-    deadline: null,
-    detail: null,
     actions: [{ verb, href, primary: true, permission: "x" }],
-  };
+  });
 }
 
 describe("NeedsAttentionPanel — the attention list", () => {
   test("lists every item, whatever its kind, with its reason and where to act", () => {
     const digest = makeDigest({
-      attention: {
-        schema_version: "attention.v1",
-        sources: { connections: "failed" },
+      attention: attention({
+        sources: attentionSources({ connections: "failed" }),
         items: [
-          attentionItem(
+          attentionEntry(
             "connector:c1",
             "failing",
             { kind: "connector", id: "c1", name: "CRM" },
@@ -515,7 +488,7 @@ describe("NeedsAttentionPanel — the attention list", () => {
             "reauth",
             "/cockpit/connectors/c1",
           ),
-          attentionItem(
+          attentionEntry(
             "conversation:k1",
             "stopped",
             { kind: "conversation", id: "k1", name: "Mine" },
@@ -523,7 +496,7 @@ describe("NeedsAttentionPanel — the attention list", () => {
             "answer",
             "/cockpit/chat/k1",
           ),
-          attentionItem(
+          attentionEntry(
             "skills",
             "decide",
             null,
@@ -532,7 +505,7 @@ describe("NeedsAttentionPanel — the attention list", () => {
             "/cockpit?review=skills",
           ),
         ],
-      },
+      }),
     });
     const ui = render(<NeedsAttentionPanel digest={digest} />);
     const frame = snapshot(ui).replace(/\s+/g, " ");

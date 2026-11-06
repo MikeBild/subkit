@@ -219,10 +219,6 @@ export function appUserLabel(
   return `${personNameText(user, t)} (${user.id.slice(0, 8)})`;
 }
 
-export function eraseAppUserPath(appId: string, userId: string): string {
-  return `/v1/apps/${encodeURIComponent(appId)}/users/${encodeURIComponent(userId)}`;
-}
-
 function dagRecord(dag: unknown): SettingsEntry | null {
   return isEntry(dag) ? dag : null;
 }

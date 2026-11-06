@@ -22,9 +22,9 @@ import {
   replaceFileBytes,
   restoreFileVersion,
 } from "../../files/service.ts";
-import { requireAnyPermission } from "../middleware/require-permission.ts";
+import { gateOtherMethods, requireAnyPermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-import { fileActor, gateOtherMethods } from "./files.ts";
+import { fileActor } from "./files.ts";
 
 const TAG = "Files";
 
@@ -50,10 +50,10 @@ function duplicate(twinId: string) {
 
 export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/files/:id/replace", requireAnyPermission(["file:write"]));
-  app.use("/v1/files/:id/versions", gateOtherMethods(["GET"], "file:read"));
+  app.use("/v1/files/:id/versions", gateOtherMethods(["GET"], requireAnyPermission(["file:read"])));
   app.use("/v1/files/:id/versions/:version/content", requireAnyPermission(["file:read"]));
   app.use("/v1/files/:id/versions/:version/restore", requireAnyPermission(["file:write"]));
-  app.use("/v1/files/:id/usage", gateOtherMethods(["GET"], "file:read"));
+  app.use("/v1/files/:id/usage", gateOtherMethods(["GET"], requireAnyPermission(["file:read"])));
 
   toHonoRoute(app, renameFileOperation);
 

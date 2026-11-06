@@ -107,7 +107,7 @@ function CredentialSheet({
             : "create.connector.secretMissing",
         ),
       );
-    save.mutate(body as CredentialBody);
+    save.mutate(body);
   };
   return (
     <RecordSheet

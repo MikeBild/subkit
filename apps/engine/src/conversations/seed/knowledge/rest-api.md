@@ -305,7 +305,7 @@ These share the `/v1` base and the bearer auth:
 
 - Files: `/v1/files` (create/list, `{id}`, `{id}/content`, `{id}/upload`, `{id}/finalize`, `{id}/links`, `batch-create`, `inline`, `stats`).
 - Inbound hooks / webhooks: `/v1/webhooks/inbound`, `/v1/auth/request-hooks` (before-request hooks).
-- Subscriptions (outbound webhooks): `/v1/subscriptions`, with `{id}/deliveries/{delivery_id}/replay`.
+- Subscriptions (outbound webhooks): `/v1/subscriptions`, with `{id}/deliveries` (newest first, `limit` and `offset`) and `{id}/deliveries/{delivery_id}/replay`.
 - Notifications: `/v1/notifications/channels`, `/v1/notifications/rules`, `/v1/notifications/inbox`, `/v1/notifications/deliveries`.
 - Audit log: `GET /v1/audit-log`, `GET /v1/audit-log/{id}` (cursor-paginated, ceiling 500).
 - Skills: `/v1/skills` with `{id}/activate`, `{id}/archive`, `{id}/restore`, `{id}/history`.

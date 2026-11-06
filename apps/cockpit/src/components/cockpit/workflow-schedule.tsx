@@ -119,7 +119,7 @@ function ScheduleDialog({
         setChecked(true);
         if (built.errors.length > 0) return setError(t("schedule.inputInvalid"));
         setError(null);
-        save.mutate({ cron: rhythmToCron(value), input: built.input as ScheduleInput });
+        save.mutate({ cron: rhythmToCron(value), input: built.input });
       }}
       error={error}
       testId="schedule-dialog"

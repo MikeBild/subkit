@@ -6,6 +6,7 @@ import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
 import { rollingDays, type TimeSpan } from "./operations-figures";
 
 export type ConnectorRuntime = components["schemas"]["ConnectorRuntime"];
+export type CredentialBody = components["schemas"]["CredentialBody"];
 export type McpInspect = Omit<components["schemas"]["ConnectorMcpInspectResponse"], "tools"> & {
   tools: (components["schemas"]["ConnectorMcpInspectResponse"]["tools"][number] & {
     input_schema?: Record<string, unknown> | null;
@@ -126,10 +127,6 @@ export function connectorStatsWindow(now = new Date()): TimeSpan {
   return rollingDays(7, now);
 }
 
-export function connectorStatsEndpoint(connectorId: string, bounds: TimeSpan): string {
-  return `/v1/stats/connectors?bucket=day&from=${encodeURIComponent(bounds.from)}&to=${encodeURIComponent(bounds.to)}&connector_id=${encodeURIComponent(connectorId)}`;
-}
-
 interface ConnectorFigures {
   calls: number;
   succeeded: number;
@@ -195,7 +192,7 @@ export function credentialBody(
   authType: string | null,
   secret: string,
   headerName: string,
-): Record<string, unknown> | null {
+): CredentialBody | null {
   const value = secret.trim();
   if (!value) return null;
   if (authType === "header") {

@@ -5,12 +5,15 @@ import {
   deleteRule,
   listRules,
   type NotificationRuleRow,
+  testRule,
   updateRule,
 } from "../../notifications/admin/rules.ts";
+import type { DispatchResult } from "../../notifications/service.ts";
+import { mintTraceId } from "../../observability/service-metadata.ts";
 import { IdParam } from "../common-schemas.ts";
 import { defineOperation, reject } from "./index.ts";
 
-export const SeverityEnum = z.enum(["debug", "info", "warn", "error", "critical"]);
+const SeverityEnum = z.enum(["debug", "info", "warn", "error", "critical"]);
 
 const RuleSchema = z
   .object({
@@ -59,7 +62,34 @@ const UpdateRuleBody = z
   })
   .openapi("UpdateNotificationRuleBody");
 
+const TestRuleBody = z
+  .object({
+    event_type: z.string().min(1).default("notifications.test"),
+    workflow_id: z.string().nullable().optional(),
+    workflow_slug: z.string().nullable().optional(),
+    severity: SeverityEnum.optional(),
+    payload: z.record(z.string(), z.unknown()).nullable().optional(),
+  })
+  .openapi("TestNotificationRuleBody");
+
+const TestRuleResponse = z
+  .object({
+    matched: z.number().int().nonnegative(),
+    delivered: z.number().int().nonnegative(),
+    outcomes: z.array(
+      z.object({
+        rule_id: z.string(),
+        channel_id: z.string(),
+        status: z.string(),
+        reason: z.string().nullable().optional(),
+        error: z.string().nullable().optional(),
+      }),
+    ),
+  })
+  .openapi("TestNotificationRuleResponse");
+
 type CreateInput = z.infer<typeof CreateRuleBody>;
+type TestFields = z.infer<typeof TestRuleBody>;
 type UpdateFields = z.infer<typeof UpdateRuleBody>;
 
 interface IdInput {
@@ -68,6 +98,10 @@ interface IdInput {
 
 interface UpdateInput extends IdInput {
   readonly body: UpdateFields;
+}
+
+interface TestInput extends IdInput {
+  readonly body: TestFields;
 }
 
 const RULE_RESOURCE = { type: "notification_rule", param: "id" } as const;
@@ -182,5 +216,53 @@ export const deleteNotificationRuleOperation = defineOperation<IdInput, { delete
     errors: { 404: "Not found" },
     toInput: ({ param }) => idFrom(param),
     toBody: (result) => result,
+  },
+});
+
+export const testNotificationRuleOperation = defineOperation<TestInput, DispatchResult>({
+  id: "notification_rule.test",
+  summary:
+    "Synthesise a notification event and dispatch it through the rule pipeline. Returns the rule-matching, rate-limit, and channel-dispatch outcome so operators can verify a rule end-to-end without waiting for a real workflow run.",
+  permission: "notification:write",
+  resource: RULE_RESOURCE,
+  effect: "write",
+  audit: AuditAction.NOTIFICATION_RULE_TESTED,
+  async handler(scope, { id, body }) {
+    if (!scope.principal) return reject.unauthorized();
+    const result = await testRule(
+      scope.db,
+      {
+        tenant_id: scope.tenant_id,
+        actor_type: scope.principal.kind,
+        actor_id: scope.principal.id,
+        trace_id: scope.trace_id ?? mintTraceId(),
+        request_source: scope.request_source ?? "api",
+      },
+      id,
+      body,
+    );
+    return result ?? reject.notFound("notification_rule");
+  },
+  http: {
+    method: "post",
+    path: "/v1/notifications/rules/:id/test",
+    tags: ["notifications"],
+    params: IdParam,
+    body: TestRuleBody,
+    response: TestRuleResponse,
+    success: { status: 200, description: "Dispatch outcome" },
+    errors: { 404: "Rule not found" },
+    toInput: ({ param, json }) => ({ ...idFrom(param), body: json as TestFields }),
+    toBody: (result) => ({
+      matched: result.matched,
+      delivered: result.delivered,
+      outcomes: result.outcomes.map((o) => ({
+        rule_id: o.rule_id,
+        channel_id: o.channel_id,
+        status: o.status,
+        reason: o.reason ?? null,
+        error: o.error ?? null,
+      })),
+    }),
   },
 });

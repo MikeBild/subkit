@@ -12,7 +12,6 @@ import {
   appUserLastSeen,
   definitionGuardBucket,
   definitionProductId,
-  eraseAppUserPath,
   fetchCurrentVersionDag,
   mayEraseAppUsers,
   personApps,
@@ -373,11 +372,6 @@ describe("erasing an app user", () => {
   test("the label names the person and tells same-provider users apart", () => {
     expect(appUserLabel(user, de)).toBe("App-Nutzer · shop-bearer (4b1d0000)");
     expect(appUserLabel({ ...user, display_name: "Lena" }, de)).toBe("Lena (4b1d0000)");
-  });
-
-  test("the request path is encoded per segment", () => {
-    expect(eraseAppUserPath("shop", user.id)).toBe(`/v1/apps/shop/users/${user.id}`);
-    expect(eraseAppUserPath("a/b", "x y")).toBe("/v1/apps/a%2Fb/users/x%20y");
   });
 });
 

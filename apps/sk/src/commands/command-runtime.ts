@@ -1,10 +1,18 @@
 import { reportCommandError } from "@cli-core/errors";
 import { type ResolveOptions, resolveProfile } from "../config.ts";
-import { EngineClient } from "../engine-client.ts";
+import { type ClientOptions, EngineClient } from "../engine-client.ts";
 
-export function makeClient(opts: ResolveOptions = {}): EngineClient {
-  const { engine_url, api_key, active_tenant_id } = resolveProfile(opts);
-  return new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+export function makeClient(
+  opts: ResolveOptions & Pick<ClientOptions, "language"> = {},
+): EngineClient {
+  const { language, ...profile } = opts;
+  const { engine_url, api_key, active_tenant_id } = resolveProfile(profile);
+  return new EngineClient({
+    engine_url,
+    api_key,
+    tenant: active_tenant_id,
+    ...(language ? { language } : {}),
+  });
 }
 
 export async function withCommandErrors<T>(

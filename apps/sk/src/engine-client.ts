@@ -148,6 +148,8 @@ export interface ClientOptions {
   language?: "de" | "en" | undefined;
 }
 
+const TRANSPORT_HEADERS = new Set(["content-type", "accept", "content-length"]);
+
 export class EngineClient {
   readonly base: string;
   readonly apiKey: string;
@@ -197,7 +199,18 @@ export class EngineClient {
     const query = url.searchParams.size > 0 ? Object.fromEntries(url.searchParams) : undefined;
     const text = request.body ? await request.text() : "";
     const body = text ? JSON.parse(text) : undefined;
-    const data = await this.request(request.method, path, body, query);
+    const forwarded: Record<string, string> = {};
+    request.headers.forEach((value, key) => {
+      if (!TRANSPORT_HEADERS.has(key.toLowerCase())) forwarded[key] = value;
+    });
+    const data = await this.request(
+      request.method,
+      path,
+      body,
+      query,
+      undefined,
+      Object.keys(forwarded).length > 0 ? forwarded : undefined,
+    );
     if (data === undefined) return new Response(null, { status: 204 });
     return new Response(JSON.stringify(data), {
       status: 200,

@@ -1,4 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import {
   docsIngestBody,
@@ -145,6 +148,13 @@ beforeAll(() => {
       if (route === "POST /v1/connectors/import")
         return Response.json({ draft: { name: "Petstore", driver: "http" } });
       if (route === `PATCH /v1/connectors/${CONNECTOR_ID}`) return Response.json(connector);
+      if (route === `GET /v1/connectors/${CONNECTOR_ID}`)
+        return Response.json({ ...connector, config: { retries: 2, oauth: { scope: "read" } } });
+      if (route === "POST /v1/connectors/validate")
+        return Response.json({
+          ok: true,
+          issues: [],
+        } satisfies Schemas["ValidateConnectorResponse"]);
       if (route === "GET /v1/connectors")
         return Response.json({
           items: [connector],
@@ -283,6 +293,36 @@ describe("sk connectors request bodies match the engine contract", () => {
     expect(run.seen.map((s) => s.body)).toEqual([
       { description: "Charges and refunds", name: "Stripe Live" } satisfies UpdateConnectorBody,
     ]);
+  });
+
+  test("patch --file validates the whole definition and sends the merged UpdateConnectorBody", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sk-connector-patch-"));
+    const file = join(dir, "patch.json");
+    writeFileSync(
+      file,
+      JSON.stringify({ config: { oauth: { scope: "write" } } } satisfies UpdateConnectorBody),
+    );
+    try {
+      const run = await sk(["patch", CONNECTOR_ID, "--file", file, "--json"]);
+      expect(run.exitCode).toBe(0);
+      expect(run.seen.map((s) => `${s.method} ${s.path}`)).toEqual([
+        `GET /v1/connectors/${CONNECTOR_ID}`,
+        "POST /v1/connectors/validate",
+        `PATCH /v1/connectors/${CONNECTOR_ID}`,
+      ]);
+      const config = { retries: 2, oauth: { scope: "write" } };
+      expect(run.seen[1]?.body).toEqual({
+        name: "Stripe",
+        driver: "http",
+        environment: "dev",
+        auth_type: "bearer",
+        config,
+        base_url: "https://api.stripe.com",
+      } satisfies Schemas["CreateConnectorBody"]);
+      expect(run.seen[2]?.body).toEqual({ config } satisfies UpdateConnectorBody);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

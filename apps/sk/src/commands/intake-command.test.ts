@@ -164,6 +164,19 @@ describe("intake CLI commands", () => {
     });
   });
 
+  test("asks the engine in the language the review runs in", async () => {
+    installEngine([item(ONE, "One")]);
+    const engine = globalThis.fetch;
+    const languages: Array<string | null> = [];
+    globalThis.fetch = (async (input, init) => {
+      languages.push(new Headers(init?.headers).get("accept-language"));
+      return engine(input, init);
+    }) as typeof globalThis.fetch;
+    await runCommand(intakeCommand, { rawArgs: ["review", "--lang", "de"] });
+    expect(languages.length).toBeGreaterThan(0);
+    expect(new Set(languages)).toEqual(new Set(["de"]));
+  });
+
   test("a selected-items review reads naturally in German", async () => {
     installEngine([item(ONE, "One")]);
     process.env.SK_LANG = "de_DE.UTF-8";

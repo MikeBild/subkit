@@ -23,23 +23,45 @@ const TOP_LEVEL_FILE_TO_SLUG: Record<string, string> = {
   "health.ts": "health",
 };
 
-const NON_ROUTE_FILES = new Set<string>(["schemas.ts"]);
+const OPERATIONS_DIR = "apps/engine/src/api/operations";
+
+const OPERATION_IMPORT =
+  /import\s*\{([^}]*)\}\s*from\s*"(?:\.\.\/)+api\/operations\/([\w-]+)\.ts"/g;
+
+function importedOperationPermissions(src: string): (string | null)[] {
+  const permissions: (string | null)[] = [];
+  for (const [, names = "", module = ""] of src.matchAll(OPERATION_IMPORT)) {
+    const opSrc = readFileSync(join(OPERATIONS_DIR, `${module}.ts`), "utf8");
+    for (const name of names.split(",").map((part) => part.trim())) {
+      if (!name.endsWith("Operation")) continue;
+      const declared = new RegExp(
+        `export const ${name} = defineOperation[\\s\\S]*?\\n\\s+permission: (null|"[^"]+")`,
+      ).exec(opSrc);
+      if (!declared?.[1])
+        throw new Error(`${module}.ts does not declare ${name} with a permission`);
+      permissions.push(declared[1] === "null" ? null : declared[1]);
+    }
+  }
+  return permissions;
+}
 
 describe("self-introspection carve-out is a contract, not just a comment", () => {
-  test("every identity/ route either gates with requirePermission OR is on the carve-out list", () => {
+  test("every identity/ route gates with requirePermission or an operation permission, OR is on the carve-out list", () => {
     const files = readdirSync(IDENTITY_ROUTES_DIR)
       .filter((f) => f.endsWith(".ts"))
-      .filter((f) => !f.endsWith(".test.ts"))
-      .filter((f) => !NON_ROUTE_FILES.has(f));
+      .filter((f) => !f.endsWith(".test.ts"));
     const violations: string[] = [];
     for (const file of files) {
       const src = readFileSync(join(IDENTITY_ROUTES_DIR, file), "utf8");
-      const gated = /requirePermission\s*\(/.test(src);
-      if (gated) continue;
+      const operations = importedOperationPermissions(src);
+      const gated =
+        /requirePermission\s*\(/.test(src) || operations.some((permission) => permission !== null);
+      const selfOperations = operations.some((permission) => permission === null);
+      if (gated && !selfOperations) continue;
       const slug = FILE_TO_SLUG[file];
       if (!slug) {
         violations.push(
-          `${file} has no requirePermission() call AND no entry in FILE_TO_SLUG; either gate it or document it on the carve-out`,
+          `${file} has no requirePermission() call or gated operation AND no entry in FILE_TO_SLUG; either gate it or document it on the carve-out`,
         );
         continue;
       }

@@ -7,6 +7,7 @@ import type { Db } from "../../db/client.ts";
 import { HttpError } from "../../http/errors.ts";
 import { requireAuth } from "../../http/middleware/auth.ts";
 import {
+  ensurePermission,
   requireAnyPermission,
   requirePermission,
 } from "../../http/middleware/require-permission.ts";
@@ -26,7 +27,8 @@ interface OperationContext {
   get(key: "db"): Db;
   get(key: "principal"): ResolvedPrincipal | undefined;
   get(key: "boss"): PgBoss | undefined;
-  req: { valid(target: "param" | "query" | "json" | "header"): unknown };
+  get(key: "trace_id"): string | undefined;
+  req: { valid(target: "param" | "query" | "json" | "header"): unknown; raw: Request };
   json(body: unknown, status: number): Response;
   body(data: null, status: number): Response;
 }
@@ -57,29 +59,53 @@ function rejectionResponse(c: OperationContext, outcome: Rejection): Response {
       { code: outcome.code, message: outcome.message, ...outcome.extra },
       outcome.status,
     );
-  throw new HttpError(
-    outcome.status,
-    outcome.code,
-    outcome.message,
-    outcome.details ? { details: outcome.details } : {},
-  );
+  throw new HttpError(outcome.status, outcome.code, outcome.message, {
+    ...(outcome.details ? { details: outcome.details } : {}),
+    ...(outcome.hint ? { hint: outcome.hint } : {}),
+  });
 }
 
 function honoPath(path: string): string {
   return path.replace(/\{([^}]+)\}/g, ":$1");
 }
 
-function permissionGate<I, R>(op: Operation<I, R>): MiddlewareHandler<AppEnv> {
-  const resource = op.resource;
-  const resourceFrom = resource
+type ResourceParam = { readonly type: string; readonly param: string } | undefined;
+
+function resourceReader(resource: ResourceParam) {
+  return resource
     ? (c: { req: { param(name: string): string | undefined } }) => ({
         type: resource.type,
         id: c.req.param(resource.param) ?? "",
       })
     : undefined;
-  if (op.alternatePermissions)
-    return requireAnyPermission([op.permission, ...op.alternatePermissions], resourceFrom);
-  return requirePermission(op.permission, resourceFrom);
+}
+
+function permissionGates<I, R>(op: Operation<I, R>): MiddlewareHandler<AppEnv>[] {
+  const gates: MiddlewareHandler<AppEnv>[] = [];
+  if (op.permission !== null) {
+    const resourceFrom = resourceReader(op.resource);
+    gates.push(
+      op.alternatePermissions
+        ? requireAnyPermission([op.permission, ...op.alternatePermissions], resourceFrom)
+        : requirePermission(op.permission, resourceFrom),
+    );
+  }
+  for (const extra of op.requiredPermissions ?? [])
+    gates.push(requirePermission(extra.permission, resourceReader(extra.resource)));
+  return gates;
+}
+
+function chain(gates: readonly MiddlewareHandler<AppEnv>[]): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    let index = 0;
+    const step = async (): Promise<void> => {
+      const gate = gates[index];
+      index += 1;
+      if (!gate) return next();
+      await gate(c, step);
+    };
+    await step();
+  };
 }
 
 export function toHonoRoute<I, R>(app: OpenAPIHono<AppEnv>, op: Operation<I, R>): void {
@@ -89,11 +115,13 @@ export function toHonoRoute<I, R>(app: OpenAPIHono<AppEnv>, op: Operation<I, R>)
   const gatedMethods = method === "GET" ? ["GET", "HEAD"] : [method];
   const successes = successResponses(http.success);
   const primary = successes[0] as SuccessResponse;
-  const gate = permissionGate(op);
-  app.use(honoPath(http.path), async (c, next) => {
-    if (gatedMethods.includes(c.req.method)) return gate(c, next);
-    return next();
-  });
+  const gates = permissionGates(op);
+  const gate = chain(gates);
+  if (gates.length > 0)
+    app.use(honoPath(http.path), async (c, next) => {
+      if (gatedMethods.includes(c.req.method)) return gate(c, next);
+      return next();
+    });
   const route = createRoute({
     method: http.method,
     path: http.path,
@@ -105,7 +133,14 @@ export function toHonoRoute<I, R>(app: OpenAPIHono<AppEnv>, op: Operation<I, R>)
       ...(http.params ? { params: http.params } : {}),
       ...(http.query ? { query: http.query } : {}),
       ...(http.headers ? { headers: http.headers } : {}),
-      ...(http.body ? { body: { content: { "application/json": { schema: http.body } } } } : {}),
+      ...(http.body
+        ? {
+            body: {
+              content: { "application/json": { schema: http.body } },
+              ...(http.bodyRequired ? { required: true } : {}),
+            },
+          }
+        : {}),
     },
     responses: {
       ...Object.fromEntries(
@@ -130,6 +165,7 @@ export function toHonoRoute<I, R>(app: OpenAPIHono<AppEnv>, op: Operation<I, R>)
   const handler = async (c: OperationContext) => {
     const principal = requireAuth(c);
     const boss = c.get("boss");
+    const traceId = c.get("trace_id");
     const scope: OperationScope = {
       db: c.get("db"),
       tenant_id: principal.tenant_id,
@@ -137,6 +173,10 @@ export function toHonoRoute<I, R>(app: OpenAPIHono<AppEnv>, op: Operation<I, R>)
       actor: actorOfPrincipal(principal),
       request_source: readRequestSource(c as never) ?? "api",
       ...(boss ? { boss } : {}),
+      request: c.req.raw,
+      ...(traceId ? { trace_id: traceId } : {}),
+      ensurePermission: (permission, resource) =>
+        ensurePermission(c as never, permission, resource),
     };
     const input = http.toInput({
       param: http.params ? c.req.valid("param") : undefined,

@@ -18,22 +18,7 @@ export type SetupValidationResponse = Schemas["DiagnosticsSetupResponse"];
 export type AuditLogQuery = ApiQuery<"/v1/audit-log", "get">;
 export type AuditEntry = Schemas["AuditEntry"];
 
-export interface StatusSummary {
-  user: { id: string; email: string | null; kind: "user" | "system_account" };
-  tenant: { id: string; slug: string | null };
-  connectors_count: number;
-  skills_count: number;
-  tokens_today: number;
-  tokens_month: number;
-  monthly_budget_tokens: number | null;
-  remaining_monthly_budget_tokens: number | null;
-  monthly_budget_state?: "ample" | "tightening" | "critical" | null;
-  tokens_today_user: number | null;
-  tokens_month_user: number | null;
-  user_monthly_budget_tokens: number | null;
-  user_remaining_monthly_budget_tokens: number | null;
-  version: string;
-}
+export type StatusSummary = Schemas["StatusSummary"];
 
 type CheckState = "pass" | "fail" | "unknown";
 

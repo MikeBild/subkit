@@ -1,5 +1,5 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
-import type { Context, MiddlewareHandler } from "hono";
+import type { Context } from "hono";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import {
   BatchCreateRequestSchema,
@@ -35,21 +35,13 @@ import {
   storeUpload,
 } from "../../files/service.ts";
 import { requireAuth } from "../middleware/auth.ts";
-import { requireAnyPermission } from "../middleware/require-permission.ts";
+import { gateOtherMethods, requireAnyPermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 
 const TAG = "Files";
 
 export function fileActor(c: Context<AppEnv>): FileActor {
   return { principal: requireAuth(c), request_source: readRequestSource(c) };
-}
-
-export function gateOtherMethods(
-  methods: readonly string[],
-  permission: string,
-): MiddlewareHandler<AppEnv> {
-  const gate = requireAnyPermission([permission]);
-  return (c, next) => (methods.includes(c.req.method) ? next() : gate(c, next));
 }
 
 export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
@@ -136,13 +128,16 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.body(null, 200);
   });
 
-  app.use("/v1/files", gateOtherMethods(["GET"], "file:read"));
+  app.use("/v1/files", gateOtherMethods(["GET"], requireAnyPermission(["file:read"])));
   app.use("/v1/files/inline", requireAnyPermission(["file:write"]));
   app.use("/v1/files/batch-create", requireAnyPermission(["file:write"]));
-  app.use("/v1/files/:id", gateOtherMethods(["GET", "DELETE", "PATCH"], "file:read"));
+  app.use(
+    "/v1/files/:id",
+    gateOtherMethods(["GET", "DELETE", "PATCH"], requireAnyPermission(["file:read"])),
+  );
   app.use("/v1/files/:id/content", requireAnyPermission(["file:read"]));
   app.use("/v1/files/:id/finalize", requireAnyPermission(["file:write"]));
-  app.use("/v1/files/:id/links", gateOtherMethods(["POST"], "file:write"));
+  app.use("/v1/files/:id/links", gateOtherMethods(["POST"], requireAnyPermission(["file:write"])));
 
   const inlineRoute = createRoute({
     method: "post",

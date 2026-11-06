@@ -1,6 +1,33 @@
 import { applyTurnEvent, initialSessionState, type SkSessionState } from "@cli-core/index.ts";
 import type { ConversationDetail } from "../engine-client.ts";
 
+type PendingApproval = NonNullable<
+  NonNullable<ConversationDetail["resume_summary"]>["pending_approval"]
+>;
+
+function plainRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+export function pendingElicitationInput(
+  pending: PendingApproval,
+  toolCalls: ConversationDetail["tool_calls"],
+): Record<string, unknown> {
+  const call = pending.tool_call_id
+    ? toolCalls.find((candidate) => candidate.id === pending.tool_call_id)
+    : undefined;
+  const asked = call?.tool === pending.tool_name ? plainRecord(call.input) : {};
+  const { intent_kind, ...prompt } = pending.prompt ?? { question: pending.summary };
+  const intent = plainRecord(asked.commit_intent);
+  return {
+    ...asked,
+    ...prompt,
+    ...(intent_kind ? { commit_intent: { ...intent, kind: intent_kind } } : {}),
+  };
+}
+
 export function hydrateConversation(detail: ConversationDetail): SkSessionState {
   let state = initialSessionState(detail.conversation.id);
   for (const message of detail.messages) {
@@ -60,7 +87,7 @@ export function hydrateConversation(detail: ConversationDetail): SkSessionState 
       elicitation_id: pending.id,
       tool_name: pending.tool_name,
       summary: pending.summary,
-      input: pending.prompt,
+      input: pendingElicitationInput(pending, detail.tool_calls),
       ...(pending.tool_call_id ? { tool_call_id: pending.tool_call_id } : {}),
     });
   } else if (detail.conversation.status === "completed") {

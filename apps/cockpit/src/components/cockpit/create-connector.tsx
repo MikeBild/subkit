@@ -1,4 +1,3 @@
-import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   KeyRound,
@@ -59,8 +58,6 @@ import { currentHost, serviceIdentity, templateIdentity } from "@/lib/service-ic
 import { cn } from "@/lib/utils";
 import { credentialBody } from "@/pages/connector-detail-model";
 import { popularTemplates, serviceHost, signInChipKey } from "./connector-view-model";
-
-type CredentialBody = components["schemas"]["CredentialBody"];
 
 const POPULAR_IN_WIZARD = 12;
 
@@ -267,7 +264,7 @@ export function CreateConnectorDialog({
         if (credential)
           await apiCall("post", "/v1/connectors/{id}/credentials", {
             path: { id: connector.id },
-            body: credential as CredentialBody,
+            body: credential,
           });
       }
       return {

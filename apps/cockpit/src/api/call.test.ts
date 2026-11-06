@@ -64,6 +64,15 @@ describe("apiCall", () => {
     expect(calls[0]?.init.body).toBe(JSON.stringify({ title: "Renamed" }));
   });
 
+  test("passes extra headers to the request", async () => {
+    const calls = capture(200, { id: "s-1" });
+    await apiCall("get", "/v1/skills/{id}", {
+      path: { id: "s-1" },
+      headers: { "x-subkit-environment": "prod" },
+    });
+    expect(new Headers(calls[0]?.init.headers).get("x-subkit-environment")).toBe("prod");
+  });
+
   test("answers null for a 204", async () => {
     capture(204, null);
     expect(await apiCall("delete", "/v1/skills/{id}", { path: { id: "s-1" } })).toBeNull();

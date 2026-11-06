@@ -1,10 +1,16 @@
 import { z } from "@hono/zod-openapi";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { ackInbox, listInbox } from "../../notifications/admin/inbox.ts";
+import {
+  ackInbox,
+  listInbox,
+  markInboxRead,
+  markInboxUnread,
+} from "../../notifications/admin/inbox.ts";
 import { defineOperation, isRejection, type Rejection, reject } from "./index.ts";
 
 const INBOX_MAX_LIMIT = 500;
+const MARK_MAX_IDS = 500;
 
 const InboxItemSchema = z
   .object({
@@ -54,7 +60,22 @@ const AckResponse = z
   })
   .openapi("CliNotificationInboxAckResponse");
 
+const IdsBody = z
+  .object({
+    ids: z.array(z.number().int().positive()).min(1).max(MARK_MAX_IDS),
+  })
+  .openapi("CliNotificationInboxIdsRequest");
+
+const MarkReadResponse = z
+  .object({ marked: z.number().int().nonnegative() })
+  .openapi("CliNotificationInboxMarkReadResponse");
+
+const MarkUnreadResponse = z
+  .object({ unmarked: z.number().int().nonnegative() })
+  .openapi("CliNotificationInboxMarkUnreadResponse");
+
 type InboxQueryInput = z.infer<typeof InboxQuery>;
+type IdsInput = z.infer<typeof IdsBody>;
 type InboxPage = Awaited<ReturnType<typeof listInbox>>;
 
 interface InboxListResult {
@@ -62,11 +83,11 @@ interface InboxListResult {
   readonly since: number;
 }
 
-export function readerId(principal: { kind: string; id: string }): string | null {
+function readerId(principal: { kind: string; id: string }): string | null {
   return principal.kind === "user" ? principal.id : null;
 }
 
-export const PRINCIPAL_NOT_USER =
+const PRINCIPAL_NOT_USER =
   "read state is per user; this principal is a system account and has no inbox of its own";
 
 function reader(
@@ -149,3 +170,51 @@ export const ackNotificationInboxOperation = defineOperation<
     toBody: (result) => result,
   },
 });
+
+export const markNotificationInboxReadOperation = defineOperation<IdsInput, { marked: number }>({
+  id: "notification_inbox.read",
+  summary: "Mark specific inbox tasks read for this caller",
+  permission: "notification:read",
+  effect: "write",
+  audit: AuditAction.NOTIFICATION_INBOX_READ,
+  async handler(scope, { ids }) {
+    const caller = reader(scope.principal);
+    if (isRejection(caller)) return caller;
+    return { marked: await markInboxRead(scope.db, caller.principal, caller.id, ids) };
+  },
+  http: {
+    method: "post",
+    path: "/v1/notifications/inbox/read",
+    tags: ["notifications"],
+    body: IdsBody,
+    response: MarkReadResponse,
+    errors: { 400: "Principal is not a user" },
+    toInput: ({ json }) => json as IdsInput,
+    toBody: (result) => result,
+  },
+});
+
+export const markNotificationInboxUnreadOperation = defineOperation<IdsInput, { unmarked: number }>(
+  {
+    id: "notification_inbox.unread",
+    summary: "Restore unread state on specific inbox tasks for this caller",
+    permission: "notification:read",
+    effect: "write",
+    audit: AuditAction.NOTIFICATION_INBOX_UNREAD,
+    async handler(scope, { ids }) {
+      const caller = reader(scope.principal);
+      if (isRejection(caller)) return caller;
+      return { unmarked: await markInboxUnread(scope.db, caller.principal, caller.id, ids) };
+    },
+    http: {
+      method: "post",
+      path: "/v1/notifications/inbox/unread",
+      tags: ["notifications"],
+      body: IdsBody,
+      response: MarkUnreadResponse,
+      errors: { 400: "Principal is not a user" },
+      toInput: ({ json }) => json as IdsInput,
+      toBody: (result) => result,
+    },
+  },
+);

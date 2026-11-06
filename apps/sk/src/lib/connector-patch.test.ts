@@ -4,7 +4,6 @@ import {
   connectorPatchBody,
   connectorPatchDraft,
   mergeConnectorConfig,
-  unwrapConnectorRecord,
 } from "./connector-patch.ts";
 
 const current = {
@@ -60,6 +59,15 @@ describe("connectorPatchBody", () => {
   test("leaves a file without config untouched", () => {
     expect(connectorPatchBody(current, { name: "New" })).toEqual({ name: "New" });
   });
+
+  test("sends the file config as is when the stored config is not an object", () => {
+    expect(
+      connectorPatchBody(
+        { config: null as unknown as Record<string, unknown> },
+        { config: { a: 1 } },
+      ),
+    ).toEqual({ config: { a: 1 } });
+  });
 });
 
 describe("connectorPatchDraft", () => {
@@ -71,22 +79,42 @@ describe("connectorPatchDraft", () => {
       environment: "prod",
       auth_type: "oauth2",
       base_url: "https://searchconsole.googleapis.com",
-      config: patch.config,
+      config: {
+        oauth: { scope: "x", token_endpoint: "https://oauth2.googleapis.com/token" },
+        capabilities: { webhooks: false, webhook_events: [] },
+      },
     });
   });
 
   test("falls back to the slug, drops null fields and keeps a patched dsn", () => {
     const draft = connectorPatchDraft(
       { ...current, display_name: "", base_url: null, config: {} },
-      { auth_type: null, dsn: "postgres://db" },
+      { dsn: "postgres://db" },
     );
     expect(draft).toEqual({
       name: "google-search-console",
       driver: "http",
       environment: "prod",
+      auth_type: "oauth2",
       config: {},
       dsn: "postgres://db",
     });
+  });
+
+  test("a patched auth type wins over the stored one", () => {
+    expect(connectorPatchDraft(current, { auth_type: "bearer" }).auth_type).toBe("bearer");
+  });
+
+  test("refuses a stored driver, environment or auth type the engine does not accept", () => {
+    expect(() => connectorPatchDraft({ ...current, driver: "ftp" }, {})).toThrow(
+      "connector driver 'ftp' is not one the engine accepts",
+    );
+    expect(() => connectorPatchDraft({ ...current, environment: "staging" }, {})).toThrow(
+      "connector environment 'staging' is not one the engine accepts",
+    );
+    expect(() => connectorPatchDraft({ ...current, auth_type: "magic" }, {})).toThrow(
+      "connector auth_type 'magic' is not one the engine accepts",
+    );
   });
 
   test("prefers a patched name and base_url", () => {
@@ -97,10 +125,6 @@ describe("connectorPatchDraft", () => {
 });
 
 describe("record helpers", () => {
-  test("returns the connector record as the engine sends it, without an envelope", () => {
-    expect(unwrapConnectorRecord(current)).toBe(current);
-  });
-
   test("names the connector by display name, then slug, then id", () => {
     expect(connectorDisplayName(current)).toBe("Google Search Console");
     expect(connectorDisplayName({ id: "c9", slug: "s", display_name: "" })).toBe("s");

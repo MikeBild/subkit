@@ -22,16 +22,23 @@ export interface OperationScope {
   readonly actor: OperationActor;
   readonly request_source?: RequestSource;
   readonly boss?: PgBoss;
+  readonly request?: Request;
+  readonly trace_id?: string;
+  ensurePermission?(permission: string, resource?: { type: string; id: string }): Promise<void>;
 }
 
-export type RejectionStatus = 400 | 401 | 403 | 404 | 409 | 413 | 422;
+export type RejectionStatus = 400 | 401 | 403 | 404 | 409 | 413 | 422 | 429;
+
+const REJECTION: unique symbol = Symbol("operation.rejection");
 
 export interface Rejection {
+  readonly [REJECTION]: true;
   readonly rejected: true;
   readonly status: RejectionStatus;
   readonly code: string;
   readonly message: string;
   readonly details?: Record<string, unknown>;
+  readonly hint?: string;
   readonly plain?: true;
   readonly extra?: Record<string, unknown>;
 }
@@ -41,8 +48,17 @@ function rejection(
   code: string,
   message: string,
   details: Record<string, unknown> | undefined,
+  hint?: string,
 ): Rejection {
-  return { rejected: true, status, code, message, ...(details ? { details } : {}) };
+  return {
+    [REJECTION]: true,
+    rejected: true,
+    status,
+    code,
+    message,
+    ...(details ? { details } : {}),
+    ...(hint ? { hint } : {}),
+  };
 }
 
 export const reject = {
@@ -68,7 +84,8 @@ export const reject = {
     code: string,
     message: string,
     details?: Record<string, unknown>,
-  ): Rejection => rejection(status, code, message, details),
+    hint?: string,
+  ): Rejection => rejection(status, code, message, details, hint),
 };
 
 export function plainRejection(
@@ -77,20 +94,28 @@ export function plainRejection(
   message: string,
   extra?: Record<string, unknown>,
 ): Rejection {
-  return { rejected: true, status, code, message, plain: true, ...(extra ? { extra } : {}) };
+  return {
+    [REJECTION]: true,
+    rejected: true,
+    status,
+    code,
+    message,
+    plain: true,
+    ...(extra ? { extra } : {}),
+  };
 }
 
 export function isRejection(value: unknown): value is Rejection {
   return (
     typeof value === "object" &&
     value !== null &&
-    (value as { rejected?: unknown }).rejected === true
+    (value as { [REJECTION]?: unknown })[REJECTION] === true
   );
 }
 
 export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
 
-export type ErrorStatus = 400 | 403 | 404 | 409 | 413 | 422;
+export type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 413 | 422 | 429 | 500;
 
 export interface HttpRequestParts {
   readonly param: unknown;
@@ -120,6 +145,7 @@ export interface HttpBinding<I, R> {
   readonly params?: z.ZodTypeAny;
   readonly query?: z.ZodTypeAny;
   readonly body?: z.ZodTypeAny;
+  readonly bodyRequired?: true;
   readonly headers?: z.ZodTypeAny;
   readonly response: z.ZodTypeAny;
   readonly errors?: Partial<Record<ErrorStatus, string>>;
@@ -158,8 +184,12 @@ export interface ToolBinding<I, R> {
 interface OperationCore<I, R> {
   readonly id: string;
   readonly summary?: string;
-  readonly permission: string;
+  readonly permission: string | null;
   readonly alternatePermissions?: readonly string[];
+  readonly requiredPermissions?: readonly {
+    readonly permission: string;
+    readonly resource?: { readonly type: string; readonly param: string };
+  }[];
   readonly resource?: { readonly type: string; readonly param: string };
   handler(scope: OperationScope, input: I): Promise<R | Rejection>;
   readonly http?: HttpBinding<I, R>;
@@ -182,7 +212,22 @@ export function defineOperation<I, R>(op: Operation<I, R>): Operation<I, R> {
   if (surfaces.some((schema) => keysOf(schema).includes("tenant_id"))) {
     throw new Error(`operation ${op.id} takes tenant_id as input; the scope carries the tenant`);
   }
-  if (op.resource && op.http && !op.http.path.includes(`{${op.resource.param}}`)) {
+  const pathHas = (param: string) =>
+    op.http !== undefined &&
+    (op.http.path.includes(`{${param}}`) || op.http.path.includes(`:${param}`));
+  const scoped = [op.resource, ...(op.requiredPermissions ?? []).map((extra) => extra.resource)];
+  if (
+    op.permission === null &&
+    (op.alternatePermissions?.length || op.resource || op.tool?.gate === "enforced")
+  ) {
+    throw new Error(`operation ${op.id} has no permission but declares a permission scope`);
+  }
+  for (const resource of scoped) {
+    if (resource && op.http && !pathHas(resource.param)) {
+      throw new Error(`operation ${op.id} names resource param ${resource.param} not in its path`);
+    }
+  }
+  if (op.resource && op.http && !pathHas(op.resource.param)) {
     throw new Error(`operation ${op.id} names resource param ${op.resource.param} not in its path`);
   }
   return Object.freeze(op);

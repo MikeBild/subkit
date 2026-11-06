@@ -58,9 +58,9 @@ const SURFACES: readonly Surface[] = [
   },
   {
     label: "HTTP compact route",
-    file: "apps/engine/src/http/routes/conversations/lifecycle.ts",
-    registerCall: "registerConversationAbort(principal.tenant_id, id, db)",
-    unregisterCall: "unregisterConversationAbort(principal.tenant_id, id, ctrl)",
+    file: "apps/engine/src/api/operations/conversation-lifecycle.ts",
+    registerCall: "registerConversationAbort(scope.tenant_id, id, scope.db)",
+    unregisterCall: "unregisterConversationAbort(scope.tenant_id, id, ctrl)",
     serviceCall: "svc.compactConversation(",
   },
   {

@@ -1,4 +1,3 @@
-import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -39,7 +38,6 @@ import { authLabel, offersKeyReplacement } from "@/pages/connector-detail-model"
 const NEW_CATEGORY = "__new__";
 
 type RecordValue = Record<string, unknown>;
-type CredentialBody = components["schemas"]["CredentialBody"];
 
 const text = (record: RecordValue, key: string): string =>
   typeof record[key] === "string" ? (record[key] as string) : "";
@@ -137,7 +135,7 @@ export function ConnectorEditDialog({
       if (plan.credential)
         await apiCall("post", "/v1/connectors/{id}/credentials", {
           path: { id },
-          body: plan.credential as CredentialBody,
+          body: plan.credential,
         });
       return {
         replaced: Boolean(plan.credential),

@@ -38,6 +38,15 @@ describe("cockpit workflow previews", () => {
     });
   });
 
+  test("a definition without a name previews under an empty name", () => {
+    const unnamed = { execution_privacy: "standard" };
+    expect(workflowPreviewDefinition(unnamed, [{ id: "a" }])).toEqual({
+      ...unnamed,
+      name: "",
+      steps: [{ id: "a" }],
+    });
+  });
+
   test("selected preview input travels with the sensitive draft", () => {
     const definition = { name: "Briefing", execution_privacy: "sensitive", steps: [{ id: "get" }] };
     expect(

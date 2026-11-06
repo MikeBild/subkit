@@ -22,6 +22,7 @@ let deniedKey: string;
 let readerKey: string;
 const ids: Record<string, string> = {};
 let workflowId: string;
+let preparedVersionId: string;
 
 function uuidName(uuid: string): string {
   if (uuid === MISSING) return "<missing>";
@@ -257,12 +258,11 @@ describe("patch candidate operations keep their HTTP responses byte for byte", (
   test("prepare with the reviewed digest", async () => {
     const preview = await http("GET", `/v1/patch-candidates/${ids.alpha}/preview`);
     const digest = (preview.body as { review_digest: string }).review_digest;
-    record(
-      "http.prepare",
-      await http("POST", `/v1/patch-candidates/${ids.alpha}/prepare`, {
-        expected_review_digest: digest,
-      }),
-    );
+    const prepared = await http("POST", `/v1/patch-candidates/${ids.alpha}/prepare`, {
+      expected_review_digest: digest,
+    });
+    preparedVersionId = (prepared.body as { workflow_version_id: string }).workflow_version_id;
+    record("http.prepare", prepared);
     record("http.prepare.get", await http("GET", `/v1/patch-candidates/${ids.alpha}`));
   });
 
@@ -305,6 +305,43 @@ describe("patch candidate operations keep their HTTP responses byte for byte", (
     recordRows(
       "http.audit",
       await auditRows(inArray(auditLog.resource_id, [ids.alpha, ids.bare, ids.doomed] as string[])),
+    );
+  });
+
+  test("approve with the reviewed digest", async () => {
+    const preview = await http("GET", `/v1/patch-candidates/${ids.alpha}/preview`);
+    const digest = (preview.body as { review_digest: string }).review_digest;
+    const authority = {
+      expected_manifest_digest: DIGEST,
+      execution_environment: "dev",
+      valid_from: new Date(FROZEN_NOW).toISOString(),
+    };
+    const approve = (body: unknown, key?: string) =>
+      http("POST", `/v1/patch-candidates/${ids.alpha}/approve`, body, key);
+    record(
+      "http.approve.reviewed.reader",
+      await approve({ expected_review_digest: digest }, readerKey),
+    );
+    record(
+      "http.approve.authority.changed",
+      await approve({
+        expected_review_digest: digest,
+        execution_authority: { ...authority, workflow_version_id: MISSING },
+      }),
+    );
+    record(
+      "http.approve.authority.api-key",
+      await approve({
+        expected_review_digest: digest,
+        execution_authority: { ...authority, workflow_version_id: preparedVersionId },
+      }),
+    );
+    record("http.approve.reviewed", await approve({ expected_review_digest: digest }));
+    record("http.approve.reviewed.again", await approve({ expected_review_digest: digest }));
+    const rows = await auditRows(eq(auditLog.resource_id, ids.alpha as string));
+    recordRows(
+      "http.approve.audit",
+      rows.filter((row) => row.action === "patch_candidate.approved"),
     );
   });
 

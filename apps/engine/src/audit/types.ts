@@ -229,6 +229,8 @@ export const AuditAction = {
   SK_CLI_TENANT_SWITCHED: "sk_cli.tenant_switched",
   SK_CLI_INBOX_ACKED: "sk_cli.inbox_acked",
   NOTIFICATION_INBOX_PRUNED: "notification.inbox_pruned",
+  NOTIFICATION_INBOX_READ: "notification.inbox_read",
+  NOTIFICATION_INBOX_UNREAD: "notification.inbox_unread",
 
   APPROVAL_REQUESTED: "approval.requested",
   APPROVAL_GRANTED: "approval.granted",

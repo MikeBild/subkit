@@ -1,6 +1,6 @@
 import type { components } from "@cli-core/engine-api/openapi";
 import type { TranslationKey } from "@/lib/i18n";
-import { credentialBody } from "@/pages/connector-detail-model";
+import { type CredentialBody, credentialBody } from "@/pages/connector-detail-model";
 
 type CreateConnectorBody = components["schemas"]["CreateConnectorBody"];
 type UpdateConnectorBody = components["schemas"]["UpdateConnectorBody"];
@@ -220,7 +220,7 @@ export function missingHeaderValues(
 function everyHeaderBody(
   prior: ConnectorEditPrior,
   draft: ConnectorEditDraft,
-): Record<string, unknown> | null {
+): CredentialBody | null {
   const entries = prior.headerNames.map(
     (name) => [name, (draft.headerValues[name] ?? "").trim()] as const,
   );
@@ -230,7 +230,7 @@ function everyHeaderBody(
 
 interface ConnectorEditPlan {
   patch: UpdateConnectorBody;
-  credential: Record<string, unknown> | null;
+  credential: CredentialBody | null;
   startSignIn: boolean;
 }
 

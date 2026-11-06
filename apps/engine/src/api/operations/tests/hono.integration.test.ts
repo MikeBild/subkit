@@ -118,6 +118,55 @@ const accept = defineOperation({
   },
 });
 
+let seenRequest: { method: string; trace: string | undefined } | null = null;
+
+const whoami = defineOperation({
+  id: "things.whoami",
+  permission: null,
+  effect: "read",
+  handler: async (scope) => ({ id: scope.actor.id ?? "" }),
+  http: {
+    method: "get",
+    path: "/v1/things-self",
+    tags: ["things"],
+    response: z.object({ id: z.string() }),
+    toInput: () => ({}),
+    toBody: (result) => result,
+  },
+});
+
+const guarded = defineOperation({
+  id: "things.guarded",
+  permission: "workflow:read",
+  requiredPermissions: [
+    { permission: "schedule:read", resource: { type: "workflow", param: "id" } },
+  ],
+  effect: "write",
+  audit: "workflow.updated",
+  handler: async (scope, input: { id: string; level: string }) => {
+    seenRequest = { method: scope.request?.method ?? "", trace: scope.trace_id };
+    if (input.level === "admin") await scope.ensurePermission?.("rbac:write");
+    if (input.level === "busy")
+      return reject.status(409, "busy", "thing is busy", undefined, "retry in a minute");
+    return { id: input.id };
+  },
+  http: {
+    method: "post",
+    path: "/v1/things/{id}/guarded",
+    tags: ["things"],
+    params: IdParam,
+    body: z.object({ level: z.string() }),
+    bodyRequired: true,
+    response: z.object({ id: z.string() }),
+    errors: { 401: "Unauthenticated", 409: "Busy" },
+    toInput: (request) => ({
+      id: (request.param as { id: string }).id,
+      level: (request.json as { level: string }).level,
+    }),
+    toBody: (result) => result,
+  },
+});
+
 function buildApp(roles: string[] = ["admin"]) {
   const app = createOpenApiApp();
   app.use("*", errorMiddleware());
@@ -132,6 +181,8 @@ function buildApp(roles: string[] = ["admin"]) {
   toHonoRoute(app, link);
   toHonoRoute(app, read);
   toHonoRoute(app, accept);
+  toHonoRoute(app, whoami);
+  toHonoRoute(app, guarded);
   return app;
 }
 
@@ -231,5 +282,47 @@ describe("toHonoRoute success, header and validation bindings", () => {
     const response = await post("gone", "new", { name: "ab" });
     expect(response.status).toBe(413);
     expect(((await response.json()) as { code: string }).code).toBe("payload_too_large");
+  });
+});
+
+describe("toHonoRoute permission variants", () => {
+  const guardedPost = (app: ReturnType<typeof buildApp>, level: string) =>
+    app.request("/v1/things/t-1/guarded", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ level }),
+    });
+
+  test("an operation without a permission only needs an authenticated caller", async () => {
+    const response = await buildApp([]).request("/v1/things-self");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ id: adminPrincipal(tenant_id).id });
+  });
+
+  test("every required permission is checked and a caller with all of them passes", async () => {
+    expect((await guardedPost(buildApp([]), "plain")).status).toBe(403);
+    const allowed = await guardedPost(buildApp(), "plain");
+    expect(allowed.status).toBe(200);
+    expect(seenRequest?.method).toBe("POST");
+  });
+
+  test("the handler can check a further permission through the scope", async () => {
+    expect((await guardedPost(buildApp(), "admin")).status).toBe(200);
+  });
+
+  test("a rejection hint reaches the error body", async () => {
+    const response = await guardedPost(buildApp(), "busy");
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "busy", hint: "retry in a minute" });
+  });
+
+  test("documents a required body and the extra error statuses", () => {
+    const spec = buildApp().getOpenAPI31Document({
+      openapi: "3.1.0",
+      info: { title: "t", version: "0" },
+    });
+    const post = spec.paths?.["/v1/things/{id}/guarded"]?.post;
+    expect((post?.requestBody as { required?: boolean } | undefined)?.required).toBe(true);
+    expect(Object.keys(post?.responses ?? {})).toEqual(["200", "401", "409"]);
   });
 });

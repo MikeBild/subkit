@@ -64,6 +64,7 @@ export type ApiCallOptions<P extends ApiPath, M extends ApiMethod> = OptionalKey
   OptionalKey<"body", ApiRequestBody<P, M>> & {
     readonly signal?: AbortSignal;
     readonly limits?: RequestLimits;
+    readonly headers?: Readonly<Record<string, string>>;
   };
 
 export function resolveApiPath(
@@ -99,5 +100,6 @@ export function apiCall<P extends ApiPath, M extends MethodsOf<P>>(
   const init: RequestInit = { method: method.toUpperCase() };
   if (options.body !== undefined) init.body = JSON.stringify(options.body);
   if (options.signal) init.signal = options.signal;
+  if (options.headers) init.headers = { ...options.headers };
   return apiRequest<ApiResponse<P, M>>(target, init, options.limits ?? {});
 }

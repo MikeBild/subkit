@@ -6,6 +6,8 @@ type Schemas = components["schemas"];
 
 export type Subscription = Schemas["Subscription"];
 type SubscriptionList = Schemas["SubscriptionListResponse"];
+type SubscriptionDeliveryList = Schemas["SubscriptionDeliveryListResponse"];
+export type SubscriptionDeliveriesQuery = ApiQuery<"/v1/subscriptions/{id}/deliveries", "get">;
 export type CreateSubscriptionBody = Schemas["CreateSubscriptionBody"];
 export type UpdateSubscriptionBody = Schemas["UpdateSubscriptionBody"];
 export type WebhookInbound = Schemas["WebhookInbound"];
@@ -68,6 +70,16 @@ export const eventsMethods = {
   async deleteSubscription(this: EngineClient, id: string): Promise<void> {
     await this.api.DELETE("/v1/subscriptions/{id}", { params: { path: { id } } });
   },
+  async listSubscriptionDeliveries(
+    this: EngineClient,
+    id: string,
+    query: SubscriptionDeliveriesQuery = {},
+  ): Promise<SubscriptionDeliveryList> {
+    const { data } = await this.api.GET("/v1/subscriptions/{id}/deliveries", {
+      params: { path: { id }, query },
+    });
+    return data as SubscriptionDeliveryList;
+  },
   async replaySubscriptionDelivery(
     this: EngineClient,
     id: string,
@@ -77,14 +89,6 @@ export const eventsMethods = {
       params: { path: { id, delivery_id: deliveryId } },
     });
     return data as { replayed: boolean };
-  },
-
-  async listEvents(
-    this: EngineClient,
-    query: ApiQuery<"/v1/events", "get"> = {},
-  ): Promise<Schemas["OutboxEventListResponse"]> {
-    const { data } = await this.api.GET("/v1/events", { params: { query } });
-    return data as Schemas["OutboxEventListResponse"];
   },
 
   async listNotificationChannels(

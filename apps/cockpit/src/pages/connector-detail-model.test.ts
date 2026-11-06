@@ -13,7 +13,6 @@ import {
   connectorConfiguredTimeout,
   connectorFigures,
   connectorNotice,
-  connectorStatsEndpoint,
   connectorStatsWindow,
   credentialBody,
   driverLabel,
@@ -94,11 +93,6 @@ describe("runtime figures", () => {
       from: "2026-09-23T12:00:00.000Z",
       to: "2026-09-30T12:00:00.000Z",
     });
-    const endpoint = connectorStatsEndpoint("c-1", bounds);
-    const query = new URLSearchParams(endpoint.slice(endpoint.indexOf("?")));
-    expect(query.get("from")).toBe(bounds.from);
-    expect(query.get("to")).toBe(bounds.to);
-    expect(query.get("connector_id")).toBe("c-1");
   });
 
   test("a call the user stopped is counted, but is neither a success nor a failure", () => {

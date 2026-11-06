@@ -1,7 +1,5 @@
 import { z } from "@hono/zod-openapi";
 import { AuditAction } from "../../audit/types.ts";
-import { assertRecipeOrigin } from "../../http/routes/recipe-origin.ts";
-import { AutomationReadinessSchema } from "../../http/routes/workflow-schedule-schemas.ts";
 import { RecipeOriginSchema, recipeAuditMetadata } from "../../workflows/draft-schemas.ts";
 import { prepareWorkflowSave } from "../../workflows/prepare-save.ts";
 import {
@@ -16,7 +14,12 @@ import { CategorySchema, DescriptionSchema } from "../catalog-metadata.ts";
 import { IdParam } from "../common-schemas.ts";
 import { defineOperation, reject } from "./index.ts";
 import { automationReadinessFor } from "./workflow-automation-readiness.ts";
-import { serializeOne, WorkflowDetailSchema } from "./workflow-representation.ts";
+import {
+  recipeOriginRejection,
+  serializeOne,
+  WorkflowDetailSchema,
+} from "./workflow-representation.ts";
+import { AutomationReadinessSchema } from "./workflow-schedule-representation.ts";
 
 const CreateBody = z
   .object({
@@ -86,7 +89,8 @@ export const createWorkflowOperation = defineOperation<CreateRequest, WorkflowSa
     const principal = scope.principal;
     if (!principal) return reject.unauthorized();
     const { category, recipe, id: chosenId, ...def } = body;
-    if (recipe) assertRecipeOrigin(recipe, def);
+    const refused = recipe ? recipeOriginRejection(recipe, def) : null;
+    if (refused) return refused;
     if (chosenId && !principal.roles.includes("admin"))
       return reject.forbidden("only an admin may choose a workflow id");
     const result = await createWorkflow(

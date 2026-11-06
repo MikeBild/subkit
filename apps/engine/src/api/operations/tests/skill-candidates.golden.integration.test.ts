@@ -265,6 +265,24 @@ describe("skill candidate operations keep their HTTP responses byte for byte", (
       }),
     );
     record("http.approve-batch.invalid", await http("POST", "/v1/skill-candidates/approve", {}));
+    record(
+      "http.approve-batch.writer",
+      await http(
+        "POST",
+        "/v1/skill-candidates/approve",
+        { candidates: [{ id: ids.delta, expected_review_digest: DIGEST }] },
+        writerKey,
+      ),
+    );
+    record(
+      "http.approve.writer-draft",
+      await http(
+        "POST",
+        `/v1/skill-candidates/${ids.delta}/approve`,
+        { expected_review_digest: DIGEST },
+        writerKey,
+      ),
+    );
   });
 
   test("permission is checked before the body is validated", async () => {
@@ -283,6 +301,7 @@ describe("skill candidate operations keep their HTTP responses byte for byte", (
       ["POST", `/v1/skill-candidates/${ids.alpha}/evidence`, {}],
       ["GET", `/v1/skill-candidates/${ids.alpha}/reject`, undefined],
       ["GET", "/v1/skill-candidates/approve", undefined],
+      ["GET", `/v1/skill-candidates/${ids.alpha}/approve`, undefined],
     ];
     for (const [who, key] of [
       ["denied", deniedKey],

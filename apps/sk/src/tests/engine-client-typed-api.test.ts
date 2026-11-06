@@ -63,6 +63,19 @@ describe("EngineClient typed api transport", () => {
     });
   });
 
+  test("forwards a header the typed call sets and keeps the transport headers its own", async () => {
+    const { client: c, seen } = client(() => json({ id: "c" }, 201));
+    await c.api.POST("/v1/connectors/{id}/promote", {
+      params: { path: { id: "c-1" }, header: { "idempotency-key": "promo-1" } },
+      body: { target_environment: "prod", strategy: "copy" },
+    });
+    const headers = Object.fromEntries(
+      Object.entries(seen[0]?.headers ?? {}).map(([key, value]) => [key.toLowerCase(), value]),
+    );
+    expect(headers["idempotency-key"]).toBe("promo-1");
+    expect(headers.authorization).toBe("Bearer k");
+  });
+
   test("a call without body sends none", async () => {
     const { client: c, seen } = client(() => json({ replayed: true }, 202));
     expect(await c.replaySubscriptionDelivery("s", "d")).toEqual({ replayed: true });

@@ -3,14 +3,6 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
 import {
-  ScheduleCreateBody,
-  ScheduleDeleteResponse,
-  ScheduleListResponse,
-  ScheduleUpdateBody,
-  ScheduleUpsertResponse,
-  ScheduleWriteResponse,
-} from "../../http/routes/workflow-schedule-schemas.ts";
-import {
   createSchedule,
   deleteSchedule,
   getSchedule,
@@ -23,6 +15,14 @@ import type { WorkflowView } from "../../workflows/view.ts";
 import { IdParam } from "../common-schemas.ts";
 import { defineOperation, type Rejection, reject } from "./index.ts";
 import { automationReadinessFor } from "./workflow-automation-readiness.ts";
+import {
+  ScheduleCreateBody,
+  ScheduleDeleteResponse,
+  ScheduleListResponse,
+  ScheduleUpdateBody,
+  ScheduleUpsertResponse,
+  ScheduleWriteResponse,
+} from "./workflow-schedule-representation.ts";
 
 const ListSchedulesQuery = z
   .object({ workflow_id: z.string().uuid().optional() })

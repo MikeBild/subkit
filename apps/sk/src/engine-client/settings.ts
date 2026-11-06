@@ -53,23 +53,23 @@ export const settingsMethods = {
     return data as SettingLeafEntry;
   },
 
-  setSetting(
+  async setSetting(
     this: EngineClient,
     path: string,
     value: unknown,
     opts: { tenant?: string; force?: boolean } = {},
   ): Promise<SettingPutResult> {
-    const qs = opts.tenant ? `?tenant=${encodeURIComponent(opts.tenant)}` : "";
     const body: ApiBody<"/v1/settings/{path}", "put"> = opts.force
       ? { value, force: true }
       : { value };
-    return this.request(
-      "PUT",
-      `/v1/settings/${encodeURIComponent(path)}${qs}`,
+    const { data } = await this.api.PUT("/v1/settings/{path}", {
+      params: {
+        path: { path },
+        query: opts.tenant ? { tenant: opts.tenant } : {},
+        header: { [AUDIT_SOURCE_HEADER]: SK_CLI_AUDIT_SOURCE },
+      },
       body,
-      undefined,
-      undefined,
-      { [AUDIT_SOURCE_HEADER]: SK_CLI_AUDIT_SOURCE },
-    );
+    });
+    return data as SettingPutResult;
   },
 };

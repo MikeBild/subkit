@@ -1,6 +1,5 @@
 import { z } from "@hono/zod-openapi";
 import { AuditAction } from "../../audit/types.ts";
-import { assertRecipeOrigin } from "../../http/routes/recipe-origin.ts";
 import {
   applyBoundaryProposals,
   currentOrDraftDefinition,
@@ -19,6 +18,7 @@ import {
 } from "../../workflows/drafts.ts";
 import { IdParam } from "../common-schemas.ts";
 import { defineOperation, isRejection, type Rejection, reject } from "./index.ts";
+import { recipeOriginRejection } from "./workflow-representation.ts";
 
 const draftFailures = {
   400: "Invalid draft",
@@ -97,7 +97,8 @@ export const createWorkflowDraftOperation = defineOperation<CreateDraft, Draft>(
   async handler(scope, body) {
     const principal = scope.principal;
     if (!principal) return reject.unauthorized();
-    if (body.recipe) assertRecipeOrigin(body.recipe, body.definition);
+    const refused = body.recipe ? recipeOriginRejection(body.recipe, body.definition) : null;
+    if (refused) return refused;
     const result = await saveWorkflowDraft(
       {
         tenant_id: scope.tenant_id,

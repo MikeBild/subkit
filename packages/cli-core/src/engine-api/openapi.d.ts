@@ -20012,6 +20012,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/subscriptions/{id}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the delivery attempts of a subscription, newest first */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                    offset?: number | null;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SubscriptionDeliveryListResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/tool-approvals/decide": {
         parameters: {
             query?: never;
@@ -30035,6 +30085,29 @@ export interface components {
             secret?: string;
             rotating_secret?: string | null;
             active?: boolean;
+        };
+        SubscriptionDeliveryListResponse: {
+            items: components["schemas"]["SubscriptionDelivery"][];
+            next_cursor?: string | null;
+        };
+        SubscriptionDelivery: {
+            id: string;
+            tenant_id: string;
+            subscription_id: string;
+            event_id: string;
+            event_type: string | null;
+            outbox_event_id: number | null;
+            attempt: number;
+            attempt_number: number;
+            status: string;
+            response_code: number | null;
+            error: string | null;
+            classification: string | null;
+            terminal_reason: string | null;
+            target_url: string | null;
+            duration_ms: number | null;
+            next_retry_at: string | null;
+            created_at: string;
         };
         NotificationChannelListResponse: {
             items: components["schemas"]["NotificationChannel"][];

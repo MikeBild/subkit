@@ -11,6 +11,7 @@ import {
 import { DEFAULT_STARTER_ACTIONS, starterActionsForPersona } from "../repl/starter-actions.tsx";
 import { starterTaskActionsForPersona } from "../repl/task-actions.ts";
 import type { PersonaProbe } from "../slash.ts";
+import { failureGroup, operatorDigest } from "./_helpers/operator-digest-fixtures.ts";
 
 const allowAll: PersonaProbe = { allows: () => true };
 const denyAll: PersonaProbe = { allows: () => false };
@@ -19,30 +20,17 @@ const noIntakeRead: PersonaProbe = { allows: (p) => p !== "intake:read" };
 const pending = (count: number, category = "Inbox") => ({ category, count });
 
 function makeDigest(counts: number[] = [3]): OperatorHealthDigest {
-  return {
-    generated_at: "2026-06-22T08:00:00Z",
-    window_hours: 24,
+  return operatorDigest({
     headline: "failures in the last 24h",
-    failure_groups: counts.map((count, i) => ({
-      signature: `sig-${i}`,
-      workflow_id: `wf-${i}`,
-      workflow_name: `Workflow ${i}`,
-      step_key: "step",
-      error_code: "ERR",
-      origin: "manual" as const,
-      count,
-      scheduled_count: 0,
-      last_seen: "2026-06-22T07:30:00Z",
-      resolved_at: null,
-      cause: "Something failed",
-      guidance: null,
-    })),
-    patch_candidates: { open: 0, items: [] },
-    risk: [],
-    attention: { schema_version: "attention.v1", sources: {}, items: [] },
-    rendered: "",
-    all_clear: false,
-  };
+    failure_groups: counts.map((count, i) =>
+      failureGroup({
+        signature: `sig-${i}`,
+        workflow_id: `wf-${i}`,
+        workflow_name: `Workflow ${i}`,
+        count,
+      }),
+    ),
+  });
 }
 const noFailures = (): OperatorHealthDigest => ({ ...makeDigest([]), failure_groups: [] });
 

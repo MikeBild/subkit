@@ -265,6 +265,13 @@ describe("workflow routes keep their HTTP responses byte for byte", () => {
         recipe: { vertical: "nowhere", slug: "nothing" },
       }),
     );
+    record(
+      "http.create.recipe-mismatch",
+      await http("POST", "/v1/workflows", {
+        ...definition("recipe-mismatch-flow"),
+        recipe: { vertical: "solutions", slug: "webhook-to-slack" },
+      }),
+    );
     record("http.validate.ok", await http("POST", "/v1/workflows/validate", definition("valid")));
     record(
       "http.validate.errors",
@@ -312,6 +319,13 @@ describe("workflow routes keep their HTTP responses byte for byte", () => {
       await http("POST", "/v1/workflows/drafts", {
         definition: definition("draft-recipe"),
         recipe: { vertical: "nowhere", slug: "nothing" },
+      }),
+    );
+    record(
+      "http.drafts.create.recipe-mismatch",
+      await http("POST", "/v1/workflows/drafts", {
+        definition: definition("draft-recipe-mismatch"),
+        recipe: { vertical: "solutions", slug: "webhook-to-slack" },
       }),
     );
     const draft = created.body as { workflow_id: string; version_id: string };

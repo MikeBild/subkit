@@ -122,9 +122,28 @@ export async function ackInbox(
   return acked;
 }
 
+async function auditReadState(
+  db: Db,
+  actor: NotificationActor,
+  action: typeof AuditAction.NOTIFICATION_INBOX_READ | typeof AuditAction.NOTIFICATION_INBOX_UNREAD,
+  metadata: Record<string, unknown>,
+): Promise<void> {
+  await auditAwait(
+    {
+      ...auditedBy(actor),
+      action,
+      resource_type: "cli_notification_inbox",
+      resource_id: null,
+      result: "success",
+      metadata,
+    },
+    db,
+  );
+}
+
 export async function markInboxRead(
   db: Db,
-  tenantId: string,
+  actor: NotificationActor,
   userId: string,
   ids: number[],
 ): Promise<number> {
@@ -132,17 +151,19 @@ export async function markInboxRead(
     INSERT INTO ${cliNotificationInboxReads} (tenant_id, inbox_id, user_id)
     SELECT ${cliNotificationInbox.tenant_id}, ${cliNotificationInbox.id}, ${userId}::uuid
     FROM ${cliNotificationInbox}
-    WHERE ${cliNotificationInbox.tenant_id} = ${tenantId}
+    WHERE ${cliNotificationInbox.tenant_id} = ${actor.tenant_id}
       AND ${cliNotificationInbox.id} IN ${ids}
     ON CONFLICT (inbox_id, user_id) DO NOTHING
     RETURNING inbox_id
   `);
-  return result.rows.length;
+  const marked = result.rows.length;
+  await auditReadState(db, actor, AuditAction.NOTIFICATION_INBOX_READ, { ids, marked });
+  return marked;
 }
 
 export async function markInboxUnread(
   db: Db,
-  tenantId: string,
+  actor: NotificationActor,
   userId: string,
   ids: number[],
 ): Promise<number> {
@@ -150,11 +171,13 @@ export async function markInboxUnread(
     .delete(cliNotificationInboxReads)
     .where(
       and(
-        eq(cliNotificationInboxReads.tenant_id, tenantId),
+        eq(cliNotificationInboxReads.tenant_id, actor.tenant_id),
         eq(cliNotificationInboxReads.user_id, userId),
         inArray(cliNotificationInboxReads.inbox_id, ids),
       ),
     )
     .returning({ inbox_id: cliNotificationInboxReads.inbox_id });
-  return removed.length;
+  const unmarked = removed.length;
+  await auditReadState(db, actor, AuditAction.NOTIFICATION_INBOX_UNREAD, { ids, unmarked });
+  return unmarked;
 }

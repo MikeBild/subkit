@@ -26,21 +26,23 @@ export function toConversationTool<I, R>(op: Operation<I, R>): ConversationTool 
     inputSchema: tool.input,
     ...(tool.strict !== undefined ? { strict: tool.strict } : {}),
     category: op.effect === "read" ? "tenant_read" : "tenant_write",
-    ...(tool.gate === "enforced" && tool.permission
-      ? { permission: { action: op.permission, ...tool.permission } }
-      : tool.gate === "enforced"
-        ? {
-            permission: {
-              action: op.permission,
-              resourceType: tool.resourceType ?? resource?.type ?? op.id.split(".")[0] ?? op.id,
-              ...(tool.resolveResourceId
-                ? { resolveResourceId: tool.resolveResourceId }
-                : resource
-                  ? { resourceIdArg: resource.param }
-                  : {}),
-            },
-          }
-        : {}),
+    ...(op.permission === null
+      ? {}
+      : tool.gate === "enforced" && tool.permission
+        ? { permission: { action: op.permission, ...tool.permission } }
+        : tool.gate === "enforced"
+          ? {
+              permission: {
+                action: op.permission,
+                resourceType: tool.resourceType ?? resource?.type ?? op.id.split(".")[0] ?? op.id,
+                ...(tool.resolveResourceId
+                  ? { resolveResourceId: tool.resolveResourceId }
+                  : resource
+                    ? { resourceIdArg: resource.param }
+                    : {}),
+              },
+            }
+          : {}),
     async execute(ctx, args) {
       const principal = ctx.principal ?? null;
       const scope: OperationScope = {

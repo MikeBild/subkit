@@ -253,6 +253,19 @@ describe("notification operations keep their HTTP responses byte for byte", () =
       "http.rules.update.invalid",
       await http("PATCH", `/v1/notifications/rules/${ruleId}`, { severity: "loud" }),
     );
+    record("http.rules.test", await http("POST", `/v1/notifications/rules/${ruleId}/test`, {}));
+    record(
+      "http.rules.test.matched",
+      await http("POST", `/v1/notifications/rules/${ruleId}/test`, {
+        event_type: "execution.started",
+        severity: "info",
+        payload: { golden: true },
+      }),
+    );
+    record(
+      "http.rules.test.invalid",
+      await http("POST", `/v1/notifications/rules/${ruleId}/test`, { event_type: "" }),
+    );
     record(
       "http.rules.test.missing",
       await http("POST", `/v1/notifications/rules/${MISSING}/test`, {}),
@@ -360,6 +373,33 @@ describe("notification operations keep their HTTP responses byte for byte", () =
     record("http.rules.delete", await http("DELETE", `/v1/notifications/rules/${ruleId}`));
     record("http.rules.delete.again", await http("DELETE", `/v1/notifications/rules/${ruleId}`));
     record("http.rules.delete.invalid", await http("DELETE", "/v1/notifications/rules/nope"));
+  });
+
+  test("marking inbox tasks read or unread writes an audit row", async () => {
+    const rows = await auditRows(eq(auditLog.resource_type, "cli_notification_inbox"));
+    const readState = rows
+      .filter((row) => row.action.startsWith("notification.inbox_"))
+      .map((row) => {
+        const { ids, marked, unmarked } = row.metadata as Record<string, unknown>;
+        return { action: row.action, actor_type: row.actor_type, ids, marked, unmarked };
+      })
+      .sort((a, b) => a.action.localeCompare(b.action));
+    expect(readState).toEqual([
+      {
+        action: "notification.inbox_read",
+        actor_type: "user",
+        ids: [inboxIds[1]],
+        marked: 1,
+        unmarked: undefined,
+      },
+      {
+        action: "notification.inbox_unread",
+        actor_type: "user",
+        ids: [inboxIds[1]],
+        marked: undefined,
+        unmarked: 1,
+      },
+    ]);
   });
 
   test("audit trail of the written resources", async () => {

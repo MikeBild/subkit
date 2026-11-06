@@ -21,7 +21,7 @@ import {
   Workflow,
 } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useState } from "react";
-import { type ApiRequestBody, apiCall } from "@/api/call";
+import { apiCall } from "@/api/call";
 import { absolute, connectorHref, workflowHref } from "@/app/links";
 import {
   type ConnectorRecord,
@@ -55,7 +55,11 @@ import type { ServiceIdentity } from "@/lib/service-icons";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { cn } from "@/lib/utils";
 import { type Phrase, stepPhrase, type TriggerKind } from "@/lib/workflow-flow";
-import { type WorkflowPreviewSource, workflowPreviewRequest } from "@/lib/workflow-preview";
+import {
+  type WorkflowPreviewDraft,
+  type WorkflowPreviewSource,
+  workflowPreviewRequest,
+} from "@/lib/workflow-preview";
 import {
   type BuildVersion,
   buildVersion,
@@ -71,8 +75,6 @@ import {
   type WorkflowStepView,
 } from "@/lib/workflow-steps";
 import { stepWasHeld } from "@/pages/runs-model";
-
-type RunBody = ApiRequestBody<"/v1/executions", "post">;
 
 type PreviewResult =
   | { result: Record<string, unknown>; failure: null }
@@ -138,7 +140,7 @@ export function useWorkflowSteps({
   });
   const preview = useMutation({
     mutationFn: (body: WorkflowPreviewSource) =>
-      apiCall("post", "/v1/executions", { body: workflowPreviewRequest(body) as RunBody }),
+      apiCall("post", "/v1/executions", { body: workflowPreviewRequest(body) }),
   });
   async function runOne(key: string, body: WorkflowPreviewSource): Promise<void> {
     setRunning(key);
@@ -179,7 +181,7 @@ export function WorkflowTestRun({
   definition,
 }: {
   steps: WorkflowSteps;
-  definition: Record<string, unknown>;
+  definition: WorkflowPreviewDraft;
 }) {
   const { t } = useI18n();
   const schema = definition.input_schema;
@@ -696,7 +698,10 @@ function StepSheet({
             label: t(running ? "workflow.testing" : "workflow.testStep"),
             disabled: steps.running !== null,
             onSelect: () =>
-              void steps.runOne(definition.id, { source: "step", step: definition.raw }),
+              void steps.runOne(definition.id, {
+                source: "step",
+                step: { ...definition.raw, kind: definition.kind },
+              }),
             testId: `${testId}-test`,
           },
         ]

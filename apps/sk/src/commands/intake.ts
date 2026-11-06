@@ -1,7 +1,6 @@
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
-import { resolveProfile } from "../config.ts";
-import { EngineClient, type IntakeItem } from "../engine-client.ts";
+import type { EngineClient, IntakeItem } from "../engine-client.ts";
 import {
   cliLocale,
   cockpitUrl,
@@ -9,20 +8,10 @@ import {
   SELECTED_ITEMS_LABEL,
   terminalText,
 } from "../lib/intake-review.ts";
-import { withCommandErrors } from "./command-runtime.ts";
+import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_REVIEW_ITEMS = 100;
-
-function makeClient(language?: string): EngineClient {
-  const { engine_url, api_key, active_tenant_id } = resolveProfile();
-  return new EngineClient({
-    engine_url,
-    api_key,
-    tenant: active_tenant_id,
-    language: cliLocale(process.env, language),
-  });
-}
 
 export function intakeCategory(value: string): string {
   const category = value.trim();
@@ -85,7 +74,7 @@ const listCommand = defineCommand({
     const jsonMode = Boolean(args.json);
     return withCommandErrors(
       async () => {
-        const client = makeClient();
+        const client = makeClient({ language: cliLocale() });
         const category = await selectedCategory(client, args.category);
         const items = await collectedItems(client, category);
         if (jsonMode) {
@@ -126,7 +115,7 @@ const reviewCommand = defineCommand({
         if (args.category !== undefined && args.items !== undefined)
           throw new Error("use either --category or --items, not both");
         const locale = cliLocale(process.env, args.lang);
-        const client = makeClient(args.lang);
+        const client = makeClient({ language: cliLocale(process.env, args.lang) });
         if (args.items !== undefined) {
           const selectedIds = intakeItemIds(args.items);
           const outcome = await client.createConversation({
@@ -200,7 +189,9 @@ const defaultCommand = defineCommand({
     return withCommandErrors(
       async () => {
         const category = intakeCategory(args.category);
-        const result = await makeClient().setDefaultIntakeCategory(category);
+        const result = await makeClient({ language: cliLocale() }).setDefaultIntakeCategory(
+          category,
+        );
         if (jsonMode) printJson(result);
         else process.stdout.write(`Default intake category: ${terminalText(result.category)}\n`);
       },
@@ -229,7 +220,11 @@ function itemMutationCommand(
       return withCommandErrors(
         async () => {
           const itemId = intakeItemId(args.item);
-          const result = await mutateItem(makeClient(), itemId, input(args));
+          const result = await mutateItem(
+            makeClient({ language: cliLocale() }),
+            itemId,
+            input(args),
+          );
           const output = mutationResult(result);
           if (jsonMode) printJson(output);
           else process.stdout.write(`${name}: ${terminalText(result.title)}\n`);

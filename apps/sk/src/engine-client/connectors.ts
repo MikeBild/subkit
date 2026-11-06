@@ -191,20 +191,17 @@ export const connectorsMethods = {
     const { data } = await this.api.POST("/v1/connectors/{id}/test", { params: { path: { id } } });
     return data as ConnectorProbeResult;
   },
-  promoteConnector(
+  async promoteConnector(
     this: EngineClient,
     id: string,
     body: ConnectorPromotionBody,
     idempotencyKey: string,
   ): Promise<ConnectorPromotionResponse> {
-    return this.request<ConnectorPromotionResponse>(
-      "POST",
-      `/v1/connectors/${encodeURIComponent(id)}/promote`,
+    const { data } = await this.api.POST("/v1/connectors/{id}/promote", {
+      params: { path: { id }, header: { "idempotency-key": idempotencyKey } },
       body,
-      undefined,
-      undefined,
-      { "idempotency-key": idempotencyKey },
-    );
+    });
+    return data as ConnectorPromotionResponse;
   },
   async startConnectorSignIn(this: EngineClient, id: string): Promise<ConnectorSignIn> {
     const record = await this.getConnector(id);

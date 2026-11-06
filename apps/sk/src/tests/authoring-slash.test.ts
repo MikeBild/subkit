@@ -353,6 +353,7 @@ describe("authoring slash panes", () => {
 
   test("/onboard probe reads the created connector id and the probe detail", async () => {
     const created: Array<{ slug: string; body: unknown }> = [];
+    const stored: Array<{ id: string; body: unknown }> = [];
     let probeOk = false;
     const client = {
       listConnectorTemplates: async () => ({
@@ -360,7 +361,11 @@ describe("authoring slash panes", () => {
       }),
       createConnectorFromTemplate: async (slug: string, body: unknown) => {
         created.push({ slug, body });
-        return { id: "conn-1", slug: "stripe" };
+        return { id: "conn-1", slug: "stripe", auth_type: "bearer" };
+      },
+      createCredential: async (id: string, body: unknown) => {
+        stored.push({ id, body });
+        return { id: "cred-1" };
       },
       testConnector: async (id: string) =>
         probeOk
@@ -384,6 +389,11 @@ describe("authoring slash panes", () => {
     probeOk = true;
     expect(await wizard.onProbe(template, "sk_test")).toEqual({ ok: true });
     expect(await wizard.onSave(template, "sk_test")).toEqual({ ok: true, connector_id: "conn-1" });
+    expect(created).toEqual([{ slug: "stripe", body: {} }]);
+    expect(stored).toEqual([
+      { id: "conn-1", body: { mode: "bearer", token: "sk_test" } },
+      { id: "conn-1", body: { mode: "bearer", token: "sk_test" } },
+    ]);
   });
 
   test("/status includes cached setup summary when available", async () => {
@@ -400,11 +410,13 @@ describe("authoring slash panes", () => {
         tokens_month: 120,
         monthly_budget_tokens: 1000,
         remaining_monthly_budget_tokens: 901,
+        monthly_budget_state: "ample",
         tokens_today_user: 12,
         tokens_month_user: 40,
         user_monthly_budget_tokens: null,
         user_remaining_monthly_budget_tokens: null,
         version: "1.10.6",
+        llm_provider: { detected: "anthropic", ok: true, message: "ok", missing: [] },
       },
       setupSnapshot: {
         overall_status: "blocked",

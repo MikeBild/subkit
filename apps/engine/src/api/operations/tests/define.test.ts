@@ -45,6 +45,36 @@ describe("defineOperation", () => {
     ).toThrow(/names resource param thing_id not in its path/);
   });
 
+  test("refuses a permission scope on an operation without a permission", () => {
+    expect(() =>
+      defineOperation({
+        ...base,
+        permission: null,
+        resource: { type: "thing", param: "id" },
+        http,
+      }),
+    ).toThrow(/has no permission but declares a permission scope/);
+  });
+
+  test("checks every extra permission resource against the path", () => {
+    expect(() =>
+      defineOperation({
+        ...base,
+        requiredPermissions: [
+          { permission: "other:read", resource: { type: "other", param: "other_id" } },
+        ],
+        http,
+      }),
+    ).toThrow(/names resource param other_id not in its path/);
+    expect(() =>
+      defineOperation({
+        ...base,
+        resource: { type: "thing", param: "id" },
+        http: { ...http, path: "/v1/things/:id/test" },
+      }),
+    ).not.toThrow();
+  });
+
   test("returns a frozen operation", () => {
     const op = defineOperation({ ...base, resource: { type: "thing", param: "id" }, http });
     expect(Object.isFrozen(op)).toBe(true);
@@ -53,13 +83,13 @@ describe("defineOperation", () => {
 
 describe("rejections", () => {
   test("carry the HTTP status and error envelope fields", () => {
-    expect(reject.notFound("thing")).toEqual({
+    expect(JSON.parse(JSON.stringify(reject.notFound("thing")))).toEqual({
       rejected: true,
       status: 404,
       code: "not_found",
       message: "thing not found",
     });
-    expect(reject.badRequest("bad", { errors: ["x"] })).toEqual({
+    expect(JSON.parse(JSON.stringify(reject.badRequest("bad", { errors: ["x"] })))).toEqual({
       rejected: true,
       status: 400,
       code: "bad_request",
@@ -71,7 +101,8 @@ describe("rejections", () => {
     expect(reject.forbidden("no").status).toBe(403);
     expect(reject.payloadTooLarge("big").code).toBe("payload_too_large");
     expect(reject.unprocessable("bad").code).toBe("unprocessable");
-    expect(reject.status(409, "taken", "taken", { id: "x" })).toEqual({
+    expect(reject.status(409, "busy", "busy", undefined, "retry later").hint).toBe("retry later");
+    expect(JSON.parse(JSON.stringify(reject.status(409, "taken", "taken", { id: "x" })))).toEqual({
       rejected: true,
       status: 409,
       code: "taken",
@@ -83,6 +114,7 @@ describe("rejections", () => {
   test("are told apart from results", () => {
     expect(isRejection(reject.notFound("thing"))).toBe(true);
     expect(isRejection({ rejected: false })).toBe(false);
+    expect(isRejection({ rejected: true, status: 404, code: "x", message: "x" })).toBe(false);
     expect(isRejection(null)).toBe(false);
     expect(isRejection("rejected")).toBe(false);
   });

@@ -1,6 +1,10 @@
 import { z } from "@hono/zod-openapi";
+import { actorOf } from "../../audit/actor.ts";
 import { AuditAction } from "../../audit/types.ts";
+import { requireSignedInPerson } from "../../http/middleware/auth.ts";
 import {
+  approvalFailureOf,
+  approveSkillCandidate,
   countSkillCandidates,
   getSkillCandidate,
   getSkillCandidateEvidence,
@@ -8,6 +12,7 @@ import {
   rejectSkillCandidate,
 } from "../../skill-candidates/service.ts";
 import {
+  type ApproveSkillCandidateParams,
   SkillCandidateEvidenceSchema,
   SkillCandidatePatternSchema,
   SkillCandidateSchema,
@@ -41,9 +46,66 @@ const RejectSkillCandidateBody = z
   .object({ reason: z.string().optional() })
   .openapi("RejectSkillCandidateBody");
 
+const ApproveSkillCandidateBody = z
+  .object({
+    title: z.string().optional(),
+    body: z.string().optional(),
+    status: z.enum(["draft", "active"]).optional(),
+    expected_review_digest: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
+  })
+  .openapi("ApproveSkillCandidateBody");
+
+const ApproveSkillCandidateResponse = z
+  .object({
+    candidate: SkillCandidateSchema,
+    skill_id: z.string().describe("The skill the detected pattern became."),
+  })
+  .openapi("ApproveSkillCandidateResponse");
+
+const MAX_APPROVE_BATCH = 100;
+
+const ApproveSkillCandidatesBody = z
+  .object({
+    candidates: z
+      .array(
+        z.object({
+          id: z.string().uuid(),
+          expected_review_digest: z.string().regex(/^[a-f0-9]{64}$/),
+        }),
+      )
+      .min(1)
+      .max(MAX_APPROVE_BATCH)
+      .refine((items) => new Set(items.map((item) => item.id)).size === items.length, {
+        message: "each candidate may appear once",
+      }),
+  })
+  .openapi("ApproveSkillCandidatesBody");
+
+const SkillCandidateApprovalResult = z
+  .object({
+    id: z.string().uuid(),
+    outcome: z.enum(["approved", "changed_since_review", "not_found", "already_decided"]),
+    skill_id: z.string().nullable().describe("The active skill the candidate became, if approved."),
+  })
+  .openapi("SkillCandidateApprovalResult");
+
+const ApproveSkillCandidatesResponse = z
+  .object({
+    results: z.array(SkillCandidateApprovalResult),
+    approved: z.number().int().min(0),
+  })
+  .openapi("ApproveSkillCandidatesResponse");
+
 type ListQuery = z.infer<typeof ListSkillCandidatesQuery>;
 type Candidate = NonNullable<Awaited<ReturnType<typeof getSkillCandidate>>>;
 type Evidence = Awaited<ReturnType<typeof getSkillCandidateEvidence>>;
+type Approved = NonNullable<Awaited<ReturnType<typeof approveSkillCandidate>>>;
+type ApproveFields = z.infer<typeof ApproveSkillCandidateBody>;
+type BatchInput = z.infer<typeof ApproveSkillCandidatesBody>;
+type ApprovalResult = z.infer<typeof SkillCandidateApprovalResult>;
 
 interface IdInput {
   readonly id: string;
@@ -51,6 +113,10 @@ interface IdInput {
 
 interface RejectInput extends IdInput {
   readonly reason?: string | undefined;
+}
+
+interface ApproveInput extends IdInput {
+  readonly body: ApproveFields;
 }
 
 interface ListResult {
@@ -149,7 +215,119 @@ export const listSkillCandidateEvidenceOperation = defineOperation<IdInput, Evid
   },
 });
 
-export const rejectSkillCandidateOperation = defineOperation<RejectInput, { outcome: "rejected" }>({
+function overridesOf(body: ApproveFields): ApproveSkillCandidateParams["overrides"] {
+  const overrides = {
+    ...(body.title ? { title: body.title } : {}),
+    ...(body.body ? { body: body.body } : {}),
+    ...(body.status ? { status: body.status } : {}),
+  };
+  return Object.keys(overrides).length > 0 ? overrides : undefined;
+}
+
+export const approveSkillCandidateOperation = defineOperation<ApproveInput, Approved>({
+  id: "skill_candidate.approve",
+  summary: "Approve a detected skill candidate and promote it to a skill",
+  permission: "skill:write",
+  effect: "write",
+  audit: AuditAction.SKILL_CANDIDATE_APPROVED,
+  async handler(scope, { id, body }) {
+    const ensurePermission = scope.ensurePermission;
+    if (!scope.principal || !ensurePermission) return reject.unauthorized();
+    if (body.status === "active") await ensurePermission("skill:activate");
+    const overrides = overridesOf(body);
+    const result = await approveSkillCandidate(
+      {
+        tenant_id: scope.tenant_id,
+        candidate_id: id,
+        actor: actorOf(scope.principal),
+        ...(body.expected_review_digest
+          ? { expected_review_digest: body.expected_review_digest }
+          : {}),
+        ...(overrides ? { overrides } : {}),
+      },
+      scope.db,
+    );
+    if (result) return result;
+    const candidate = await getSkillCandidate(scope.tenant_id, id, scope.db);
+    if (approvalFailureOf(candidate) === "not_found") return reject.notFound("skill_candidate");
+    return reject.conflict(
+      "The skill candidate changed or was already decided",
+      undefined,
+      "review_changed",
+    );
+  },
+  http: {
+    method: "post",
+    path: "/v1/skill-candidates/{id}/approve",
+    tags: ["skill-candidates"],
+    description:
+      "Applies to patterns the engine detected. Learnings collected from sessions and conversations are intake items; they are reviewed and admitted through intake proposals, never here.",
+    params: IdParam,
+    body: ApproveSkillCandidateBody,
+    response: ApproveSkillCandidateResponse,
+    errors: { 404: "Not found", 409: "The skill candidate changed or was already decided" },
+    toInput: ({ param, json }) => ({ ...idFrom(param), body: json as ApproveFields }),
+    toBody: (result) => result,
+  },
+});
+
+export const approveSkillCandidatesOperation = defineOperation<BatchInput, ApprovalResult[]>({
+  id: "skill_candidate.approve_batch",
+  summary: "Approve several detected skill candidates as active skills",
+  permission: "skill:write",
+  requiredPermissions: [{ permission: "skill:activate" }],
+  effect: "write",
+  audit: AuditAction.SKILL_CANDIDATE_APPROVED,
+  async handler(scope, { candidates }) {
+    const ensurePermission = scope.ensurePermission;
+    if (!scope.principal || !ensurePermission) return reject.unauthorized();
+    requireSignedInPerson(scope.principal, "a signed-in person must approve skill candidates");
+    for (const candidate of candidates)
+      await ensurePermission("skill:write", { type: "skill_candidate", id: candidate.id });
+    const results: ApprovalResult[] = [];
+    for (const candidate of candidates) {
+      const approved = await approveSkillCandidate(
+        {
+          tenant_id: scope.tenant_id,
+          candidate_id: candidate.id,
+          actor: actorOf(scope.principal),
+          expected_review_digest: candidate.expected_review_digest,
+          overrides: { status: "active" },
+        },
+        scope.db,
+      );
+      results.push(
+        approved
+          ? { id: candidate.id, outcome: "approved", skill_id: approved.skill_id }
+          : {
+              id: candidate.id,
+              outcome: approvalFailureOf(
+                await getSkillCandidate(scope.tenant_id, candidate.id, scope.db),
+              ),
+              skill_id: null,
+            },
+      );
+    }
+    return results;
+  },
+  http: {
+    method: "post",
+    path: "/v1/skill-candidates/approve",
+    tags: ["skill-candidates"],
+    description:
+      "Only a signed-in person may approve in a batch. Each candidate is bound to the review digest the person saw, checked, approved and audited on its own; the result lists an outcome per candidate.",
+    body: ApproveSkillCandidatesBody,
+    response: ApproveSkillCandidatesResponse,
+    errors: { 403: "Not a signed-in person, or missing permission" },
+    toInput: ({ json }) => json as BatchInput,
+    toBody: (results) => ({
+      results,
+      approved: results.filter((result) => result.outcome === "approved").length,
+    }),
+  },
+});
+
+export const rejectSkillCandidateOperation = defineOperation<RejectInput, { rejected: true }>({
   id: "skill_candidate.reject",
   summary: "Reject a detected skill candidate",
   permission: "skill:write",
@@ -174,7 +352,7 @@ export const rejectSkillCandidateOperation = defineOperation<RejectInput, { outc
         { status: outcome.status },
         "already_decided",
       );
-    return { outcome: "rejected" };
+    return { rejected: true };
   },
   http: {
     method: "post",
@@ -190,6 +368,6 @@ export const rejectSkillCandidateOperation = defineOperation<RejectInput, { outc
       ...idFrom(param),
       reason: (json as z.infer<typeof RejectSkillCandidateBody>).reason,
     }),
-    toBody: () => ({ rejected: true }),
+    toBody: (result) => result,
   },
 });

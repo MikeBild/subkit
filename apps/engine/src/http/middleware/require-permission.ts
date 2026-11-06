@@ -181,3 +181,10 @@ export function requireAnyPermission(
     );
   };
 }
+
+export function gateOtherMethods(
+  methods: readonly string[],
+  gate: MiddlewareHandler<AppEnv>,
+): MiddlewareHandler<AppEnv> {
+  return (c, next) => (methods.includes(c.req.method) ? next() : gate(c, next));
+}

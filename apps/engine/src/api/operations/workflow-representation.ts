@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { WORKFLOW_OPERATING_STATUSES } from "@shared/workflow-operating-status.ts";
 import type { Executor } from "../../db/client.ts";
+import { RECIPE_PACK_PREDICATES } from "../../http/routes/connector-templates/schemas.ts";
 import {
   EffectiveTriggerSchema,
   type TriggerBinding,
@@ -9,8 +10,10 @@ import {
 } from "../../scheduler/trigger-bindings.ts";
 import type * as svc from "../../workflows/index.ts";
 import { loadWorkflowBinding, type WorkflowListEntry } from "../../workflows/read-model.ts";
+import { checkRecipeOrigin } from "../../workflows/recipe-origin.ts";
 import { TriggerSchema } from "../../workflows/types.ts";
 import { CatalogSourceSchema } from "../catalog-metadata.ts";
+import { type Rejection, reject } from "./index.ts";
 
 export const WorkflowSchema = z
   .object({
@@ -177,4 +180,14 @@ export function toWorkflowListItem(entry: WorkflowListEntry) {
 
 export async function serializeOne(w: svc.WorkflowView, tenantId: string, db: Executor) {
   return serializeWorkflowDetail(w, await loadWorkflowBinding(tenantId, w.id, db));
+}
+
+export function recipeOriginRejection(
+  origin: { vertical: string; slug: string },
+  definition: unknown,
+): Rejection | null {
+  const check = checkRecipeOrigin(origin, definition, RECIPE_PACK_PREDICATES);
+  return check.ok
+    ? null
+    : reject.unprocessable(check.message, { reason: check.reason }, "unprocessable_entity");
 }

@@ -5,8 +5,10 @@ import { join } from "node:path";
 import { runCommand } from "citty";
 import {
   buildCreateSubscriptionBody,
+  buildDeliveriesQuery,
   buildPatchSubscriptionBody,
   parseActiveFlag,
+  SUBSCRIPTION_DELIVERY_COLUMNS,
   SUBSCRIPTION_LIST_COLUMNS,
   subscriptionsCommand,
 } from "../../commands/subscriptions.ts";
@@ -29,6 +31,26 @@ const SUB = {
   circuit_open_until: null,
   created_at: "2026-11-06T10:00:00.000Z",
   updated_at: "2026-11-06T10:00:00.000Z",
+};
+
+const DELIVERY = {
+  id: "44444444-4444-4444-8444-444444444444",
+  tenant_id: SUB.tenant_id,
+  subscription_id: SUB.id,
+  event_id: "55555555-5555-4555-8555-555555555555",
+  event_type: "execution.failed",
+  outbox_event_id: null,
+  attempt: 1,
+  attempt_number: 1,
+  status: "failed",
+  response_code: 500,
+  error: "upstream error",
+  classification: "retryable",
+  terminal_reason: null,
+  target_url: SUB.target_url,
+  duration_ms: 120,
+  next_retry_at: null,
+  created_at: "2026-11-06T10:05:00.000Z",
 };
 
 function pathOf(url: string): string {
@@ -155,6 +177,19 @@ describe("subscription request bodies", () => {
     ]);
     for (const column of SUBSCRIPTION_LIST_COLUMNS) expect(Object.keys(SUB)).toContain(column);
   });
+
+  test("delivery columns match the engine SubscriptionDelivery schema", () => {
+    for (const column of SUBSCRIPTION_DELIVERY_COLUMNS)
+      expect(Object.keys(DELIVERY)).toContain(column);
+  });
+
+  test("deliveries query carries only the given paging flags", () => {
+    expect(buildDeliveriesQuery({})).toEqual({});
+    expect(buildDeliveriesQuery({ limit: "10", offset: "0" })).toEqual({ limit: 10, offset: 0 });
+    expect(() => buildDeliveriesQuery({ limit: "0" })).toThrow("--limit must be an integer");
+    expect(() => buildDeliveriesQuery({ offset: "-1" })).toThrow("--offset must be an integer");
+    expect(() => buildDeliveriesQuery({ limit: "2.5" })).toThrow("--limit must be an integer");
+  });
 });
 
 describe("sk subscriptions against the engine contract", () => {
@@ -245,6 +280,29 @@ describe("sk subscriptions against the engine contract", () => {
       `POST /v1/subscriptions/${SUB.id}/deliveries/33333333-3333-4333-8333-333333333333/replay`,
     ]);
     expect(stdout).toBe("deleted\nreplayed\n");
+  });
+
+  test("deliveries --json lists the engine delivery rows", async () => {
+    reply = { status: 200, body: { items: [DELIVERY] } };
+    await run(["deliveries", SUB.id, "--json"]);
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      `GET /v1/subscriptions/${SUB.id}/deliveries`,
+    ]);
+    expect(JSON.parse(stdout)).toEqual([DELIVERY]);
+  });
+
+  test("deliveries forwards paging and shows the delivery columns", async () => {
+    reply = { status: 200, body: { items: [DELIVERY] } };
+    await run(["deliveries", SUB.id, "--limit", "5", "--offset", "10"]);
+    expect(calls[0]?.url).toBe(`/v1/subscriptions/${SUB.id}/deliveries?limit=5&offset=10`);
+    for (const column of SUBSCRIPTION_DELIVERY_COLUMNS) expect(stdout).toContain(column);
+    expect(stdout).toContain("execution.failed");
+  });
+
+  test("deliveries with an invalid limit fails before any request", async () => {
+    const err = await run(["deliveries", SUB.id, "--limit", "0"]);
+    expect(err).toBeInstanceOf(Error);
+    expect(calls).toHaveLength(0);
   });
 
   test("engine errors are reported and rethrown", async () => {
