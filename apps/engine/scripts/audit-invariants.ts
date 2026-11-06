@@ -61,33 +61,6 @@ function readAllowlist(filename: string): Set<string> {
   return out;
 }
 
-function checkSubsystemCount(): Result {
-  const path = join(REPO, "tests/contract/subsystem-count.test.ts");
-  try {
-    statSync(path);
-    return {
-      id: "subsystem_count",
-      status: "PASS",
-      message: "subsystem-count contract test exists; run via `bun test tests/contract/`",
-    };
-  } catch {
-    return {
-      id: "subsystem_count",
-      status: "FAIL",
-      message: "tests/contract/subsystem-count.test.ts missing",
-    };
-  }
-}
-
-function checkNoNewSubsystem(): Result {
-  const dirs = readdirSync(ENGINE_SRC).filter((n) => statSync(join(ENGINE_SRC, n)).isDirectory());
-  return {
-    id: "no_new_subsystem",
-    status: "PASS",
-    message: `${dirs.length} subsystems under apps/engine/src/ (enforced via subsystem-count contract test)`,
-  };
-}
-
 function checkAiSdkLocality(): Result {
   const PROVIDER_VALUE_IMPORT =
     /(?:^|\n)\s*import\s+(?!type\s)[^"';]+from\s+["'](?:@ai-sdk\/(?:anthropic|openai|google|azure|google-vertex|amazon-bedrock)|@anthropic-ai\/sdk)["']/;
@@ -815,8 +788,6 @@ function checkNoComments(): Result {
 }
 
 const CHECKS: Array<() => Result> = [
-  checkSubsystemCount,
-  checkNoNewSubsystem,
   checkAiSdkLocality,
   checkJsonataLocality,
   checkConversationModelSelection,

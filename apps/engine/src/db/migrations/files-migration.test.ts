@@ -1,16 +1,3 @@
-// Smoke-test for the 0019_files_unify migration.
-//
-// The createTestDb helper always runs ALL migrations, so we cannot
-// replay a "stop at 0018" state without a more complex harness. Instead,
-// this test verifies the post-migration state: the new tables exist, the
-// legacy conversation_attachments table is absent, and the unified files
-// resource is functional (insert + query round-trip).
-//
-// Limitation documented: a pre-backfill replay harness does not exist in
-// this repo. The correctness of the backfill SQL is covered by the SQL's
-// own row-count assertions (¶7 in 0019_files_unify.sql) which abort the
-// migration transaction if the counts disagree.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import { fileLinks, files, tenants } from "../../db/schema/index.ts";
@@ -66,7 +53,6 @@ describe("0019_files_unify — post-migration schema smoke", () => {
       .returning();
     const tenant_id = t!.id;
 
-    // First insert succeeds.
     await ctx.db.insert(files).values({
       tenant_id,
       status: "ready",
@@ -77,7 +63,6 @@ describe("0019_files_unify — post-migration schema smoke", () => {
       scan_result: "clean",
     });
 
-    // Second insert with same (tenant_id, sha256) must throw.
     let threw = false;
     try {
       await ctx.db.insert(files).values({

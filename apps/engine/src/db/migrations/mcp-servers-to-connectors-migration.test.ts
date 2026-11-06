@@ -1,19 +1,3 @@
-// Proof for the mcp_servers → connectors data migration.
-//
-// The transform is only observable against the state that preceded it, so
-// this suite stops the runner one migration short, seeds a snapshot of a
-// real deployment (one disabled streamable-HTTP server declaring auth kind
-// "oauth2" whose only credential is mode oauth2_client in environment
-// prod), plus the shapes production does not have — slug collisions, an
-// sse and a stdio registration, a pre-existing connector whose slug the
-// new CHECK rejects, and a dev/prod PAIR sharing one rejected slug — then
-// runs the remainder and asserts what survived.
-//
-// The load-bearing assertion is that the re-owned credential still
-// DECRYPTS: its AAD is derived from the credential id, so anything that
-// re-creates the row instead of re-owning it in place bricks the only
-// identity the server has.
-
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
 import { getConnectorForEnvironment } from "../../connectors/service.ts";
@@ -33,8 +17,6 @@ import {
 } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "../tests/setup.ts";
 
-// The migration under test. The runner applies by tag membership, so
-// stopping one short and then running the full set applies exactly this one.
 const MIGRATION_IDX = 34;
 
 const HANDSHAKE_AT = new Date(getTestNow() - 60_000);
@@ -44,26 +26,17 @@ let tenant_id: string;
 let credential_id: string;
 let bearer_credential_id: string;
 
-/** The one row production actually has. */
 let rovoServerId: string;
-/** Namespace collides with two existing connectors — forces the id suffix. */
 let jiraServerId: string;
 let sseServerId: string;
 let stdioServerId: string;
 let erroredServerId: string;
-/** Pre-existing http connector that must come through untouched. */
 let existingRovoConnectorId: string;
 let existingRovoUpdatedAt: Date;
-/** Pre-existing connector whose slug the new shape CHECK rejects. */
 let badSlugConnectorId: string;
-/** A dev/prod PAIR sharing one rejected slug — `getConnectorForEnvironment`
- *  pairs siblings by slug, so both must be rewritten to the same value. */
 let pairDevConnectorId: string;
 let pairProdConnectorId: string;
 
-// The pre-state is seeded with raw SQL on purpose: drizzle names every
-// column of the current schema in its INSERT, which a database that has
-// not run this migration yet does not have.
 async function seedRows<T>(query: ReturnType<typeof sql>): Promise<T[]> {
   const res = (await ctx.db.execute(query)) as unknown as { rows: T[] };
   return res.rows ?? [];
@@ -202,15 +175,6 @@ beforeAll(async () => {
     last_error: "handshake failed: 502 Bad Gateway",
   });
 
-  // The credential production has: the RFC 7591 client identity, in
-  // environment prod, written through the real encrypt path so the
-  // ciphertext is genuinely AAD-bound to its row id.
-  // Written against a throwaway connector and then RE-OWNED onto the
-  // mcp_servers row with raw SQL, because `upsertCredential` has no
-  // mcp_server owner arm any more. The point of the fixture is the
-  // ciphertext, and the AAD is keyed on the credential ID — which the
-  // re-own preserves — so this produces exactly the row a pre-migration
-  // deployment holds.
   const credentialCarrier = await seedConnector({
     slug: "cred-carrier",
     environment: "prod",
@@ -238,12 +202,6 @@ beforeAll(async () => {
          WHERE id = ${credential_id}`,
   );
 
-  // A SECOND credential, on a transport-unsupported server, in a mode 0035 does
-  // NOT delete. It carries the re-own proof that the oauth2_client row can no
-  // longer carry: the AES-GCM AAD is keyed on the credential id, so a migration
-  // that copied instead of updating in place would leave an undecryptable row —
-  // and after 0035 removes the registration there would be nothing left to
-  // decrypt if this were the only credential in the fixture.
   const bearerCarrier = await seedConnector({
     slug: "bearer-carrier",
     environment: "prod",
@@ -299,8 +257,6 @@ test("the production row lands as a disabled mcp connector in environment prod, 
 
 test("the declared auth kind and the credential mode are both preserved, neither normalised", async () => {
   const row = await connectorById(rovoServerId);
-  // mcp_servers declared kind "oauth2" while its only credential is
-  // mode "oauth2_client". Both facts survive on their own side.
   expect(row?.auth_type).toBe("oauth2");
   const config = row?.config as { mcp?: { transport?: string; auth?: { kind?: string } } };
   expect(config.mcp?.transport).toBe("http");
@@ -308,9 +264,6 @@ test("the declared auth kind and the credential mode are both preserved, neither
 });
 
 test("a credential is re-owned IN PLACE, so its ciphertext still decrypts", async () => {
-  // The AES-GCM AAD is keyed on the credential id. A migration that copied the
-  // row instead of updating it would produce a new id and an undecryptable
-  // ciphertext — a connector that looks configured and fails on first use.
   const [cred] = await ctx.db
     .select()
     .from(credentials)
@@ -323,18 +276,10 @@ test("a credential is re-owned IN PLACE, so its ciphertext still decrypts", asyn
 });
 
 test("the stale OAuth client registration is deleted so the next handshake re-registers", async () => {
-  // The interactive callback path changed value with the route move, and an
-  // RFC 7591 registration records the redirect_uri it was created with.
-  // Keeping it would make the SDK skip registration and present the NEW
-  // redirect_uri under a client_id registered for the OLD one — which an
-  // authorization server that enforces exact registration rejects, long after
-  // the upgrade that caused it. Removing it costs one re-authorization.
   const [cred] = await ctx.db.select().from(credentials).where(eq(credentials.id, credential_id));
   expect(cred).toBeUndefined();
   expect(await getOAuth2ClientCredential(tenant_id, rovoServerId, "prod", ctx.db)).toBeNull();
 
-  // Only the registration goes. A static credential on another MCP connector
-  // is untouched — this is a targeted repair, not a credential purge.
   const [survivor] = await ctx.db
     .select()
     .from(credentials)
@@ -366,8 +311,6 @@ test("sse and stdio registrations are carried disabled and flagged needs_update"
   const stdio = await connectorById(stdioServerId);
   expect(stdio?.enabled).toBe(false);
   expect(stdio?.health_state).toBe("needs_update");
-  // A resolved command path must never land in base_url — that column is
-  // an egress target.
   expect(stdio?.base_url).toBeNull();
   const config = stdio?.config as { mcp?: { command?: string } };
   expect(config.mcp?.command).toBe("/usr/local/bin/some-mcp-server");
@@ -395,8 +338,6 @@ test("in-flight oauth state still names its connector", async () => {
     .select()
     .from(mcpOauthStates)
     .where(eq(mcpOauthStates.state, "pending-state-token"));
-  // Ids are preserved by the migration, so the pending flow already names
-  // the id its connector now carries — the FK repoint is pure DDL.
   expect(state?.connector_id).toBe(rovoServerId);
   const owner = await connectorById(rovoServerId);
   expect(owner?.driver).toBe("mcp");
@@ -417,9 +358,6 @@ test("a pre-existing slug the shape check rejects is normalised and audited", as
     );
   expect(rows).toHaveLength(1);
   expect(rows[0]?.action).toBe("connector.updated");
-  // `environment` is part of the row because the dev/prod sibling pairing is
-  // slug-based (see the pairing test below) — a rewrite that split a pair has
-  // to be visible from the trail alone.
   expect(rows[0]?.metadata).toMatchObject({
     previous_slug: "legacy__conn",
     slug: "legacy-conn",
@@ -427,9 +365,6 @@ test("a pre-existing slug the shape check rejects is normalised and audited", as
   });
 });
 
-// drizzle wraps a driver error, and the violated constraint name is only
-// on the wrapped cause — asserting on the outer message would pass for
-// any failed INSERT at all.
 async function rejectionText(run: () => Promise<unknown>): Promise<string> {
   try {
     await run();
@@ -466,9 +401,6 @@ test("every migrated server left a reconcilable audit row", async () => {
     .from(auditLog)
     .where(and(eq(auditLog.tenant_id, tenant_id), eq(auditLog.reason, "mcp_server_migration")));
   expect(rows).toHaveLength(5);
-  // `resource_id === source_mcp_server_id` IS the id-preservation claim: the
-  // migration carries the id over unconditionally, so the audit row needs no
-  // separate flag that could only ever read `true`.
   const rovo = rows.find((r) => r.resource_id === rovoServerId);
   expect(rovo?.action).toBe("connector.created");
   expect(rovo?.metadata).toMatchObject({
@@ -481,18 +413,6 @@ test("every migrated server left a reconcilable audit row", async () => {
 });
 
 test("a rewritten slug keeps its dev/prod sibling pairing", async () => {
-  // Why the rewrite is allowed to touch a pre-existing slug at all: a
-  // workflow step binds a connector by uuid (`connector_id`, a uuid in the
-  // step schema), so a rename cannot orphan a definition. But the slug is NOT
-  // inert — `getConnectorForEnvironment` pairs a dev row with its prod
-  // sibling by (tenant, slug, environment) when an execution runs under a
-  // different environment than the one the DAG pinned. A rewrite that landed
-  // the two rows on DIFFERENT slugs would silently break that pairing and a
-  // prod run would fall back to the dev connector.
-  //
-  // The normalisation is a pure function of the old slug and its collision
-  // scope excludes the other environment, so both siblings land on the same
-  // value. This is the assertion that keeps it that way.
   const dev = await connectorById(pairDevConnectorId);
   const prod = await connectorById(pairProdConnectorId);
   expect(dev?.slug).toBe("pair-conn");

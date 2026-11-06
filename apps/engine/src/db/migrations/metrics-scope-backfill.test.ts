@@ -1,16 +1,3 @@
-// metrics:read boot backfill (integration).
-//
-// `/metrics` now requires the `metrics:read` scope; before that, a
-// scope-bearing key reached it iff its owner held the `admin` role. This
-// backfill grants the scope to exactly the rows whose answer would otherwise
-// change, so a production scraper or deploy verify does not turn 403 at
-// rollout. The tests pin both halves: what is repaired, and what is left
-// alone.
-//
-// `createTestDb` runs the embedded migration bundle plus the code backfills,
-// so a fresh database already carries the marker; each test deletes it, seeds
-// key rows, re-runs, and reads the scopes back.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { generateKey } from "../../identity/api-key.ts";
@@ -74,8 +61,6 @@ async function clearMarker(): Promise<void> {
   await ctx.db.delete(dataMigrations).where(eq(dataMigrations.name, METRICS_SCOPE_BACKFILL_NAME));
 }
 
-// `api_keys.scopes` is NOT NULL — every key names a list, and `*` is how a
-// key says "narrow me by nothing" (`identity/service.ts` mints it by default).
 async function seedKey(
   owner: { user_id: string } | { system_account_id: string },
   scopes: string[],
@@ -120,11 +105,8 @@ describe("metrics:read backfill", () => {
 
   test("leaves alone every key whose answer is unchanged", async () => {
     await clearMarker();
-    // A member-owned narrow key was already refused before the change.
     const memberKey = await seedKey({ user_id: memberUserId }, ["connector:read"]);
-    // A `*` key asserts no narrowing — the role check still answers for it.
     const wildcardKey = await seedKey({ user_id: adminUserId }, ["*"]);
-    // Already carries the scope.
     const scraperKey = await seedKey({ system_account_id: adminAccountId }, ["metrics:read"]);
 
     await runMetricsScopeBackfill(ctx.db);

@@ -1,9 +1,3 @@
-// 0076_workflow_authority_open_ended_inheritance — an approval may have no run
-// limit and no end date (NULL), may be continued for a newer version
-// (`inherited_from`, at most once) and ends when it is (`superseded_by`, only
-// together with `revoked_at`). The boundary stays immutable and an ended
-// approval stays ended.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import {
@@ -115,7 +109,6 @@ describe("0076_workflow_authority_open_ended_inheritance", () => {
       revoked_at: sql`clock_timestamp()` as unknown as Date,
     });
     await expect(update(parent.id, { reserved_runs: 1 })).rejects.toThrow();
-    // A revocation still needs a person when nothing superseded it.
     const lone = await grant();
     await expect(
       update(lone.id, { revoked_at: sql`clock_timestamp()` as unknown as Date }),

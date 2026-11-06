@@ -6,11 +6,13 @@ export const DIRECTIVE =
 export const COMMENT_SCOPE = /^(apps|packages|scripts|tests)\/.*\.(ts|tsx|mjs|js)$/;
 
 export const COMMENT_EXEMPT =
-  /(^|\/)(node_modules|dist)\/|apps\/engine\/src\/db\/migrations\/|cockpit-embedded\.ts$|\.d\.ts$|packages\/cli-core\/src\/engine-api\/|apps\/engine\/src\/sandboxes\/quickjs\/stdlib\/stdlib\.js$/;
+  /(^|\/)(node_modules|dist)\/|apps\/engine\/src\/db\/migrations\/embedded\.ts$|cockpit-embedded\.ts$|apps\/cockpit\/src\/api\/schema\.d\.ts$|packages\/cli-core\/src\/engine-api\/openapi\.d\.ts$/;
 
 export interface CommentHit {
   line: number;
   text: string;
+  pos: number;
+  end: number;
 }
 
 export function findComments(file: string, text: string): CommentHit[] {
@@ -52,6 +54,8 @@ export function findComments(file: string, text: string): CommentHit[] {
         hits.set(r.pos, {
           line: sf.getLineAndCharacterOfPosition(r.pos).line + 1,
           text: body.split("\n")[0] ?? "",
+          pos: r.pos,
+          end: r.end,
         });
       }
     }

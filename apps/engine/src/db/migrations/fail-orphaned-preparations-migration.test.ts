@@ -1,9 +1,3 @@
-// 0074_fail_orphaned_preparations — a held run refused before its first step
-// stayed `queued`, and the preparation lock read it as "in flight" forever.
-// The migration fails exactly those rows: held, queued for over an hour, and
-// with no queue job that could still pick them up. Run once without the queue
-// schema (a fresh install migrates before pg-boss creates it) and once with it.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import { executions, tenants } from "../schema/index.ts";
@@ -34,7 +28,6 @@ async function seed(row: {
       status: row.status,
       request_source: "ui",
       execution_mode: "dev",
-      // Set on insert: a held row's boundary cannot be changed afterwards.
       created_at: sql`now() - make_interval(mins => ${row.ageMinutes})`,
     })
     .returning({ id: executions.id });

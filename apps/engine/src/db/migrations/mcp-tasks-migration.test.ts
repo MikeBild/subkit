@@ -1,13 +1,3 @@
-// 0026_mcp_tasks migration — table shape + FK cascade (integration).
-//
-// `createTestDb` runs the full embedded migration bundle, so a fresh
-// test database already has `mcp_tasks`. This test pins:
-//   - the table exists with the documented columns,
-//   - `conversation_id` cascades on conversation delete (the index row
-//     must not outlive its conversation),
-//   - the (tenant, conversation, turn_seq) and (tenant, created_at)
-//     indexes exist.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import { conversations, mcpTasks, tenants } from "../schema/index.ts";
@@ -49,7 +39,6 @@ describe("0026_mcp_tasks migration", () => {
       "result",
       "failure_reason",
       "cancelled_at",
-      // 0012_mcp_task_heartbeat — worker-stamped progress heartbeat.
       "phase",
       "last_action",
       "progress_step",

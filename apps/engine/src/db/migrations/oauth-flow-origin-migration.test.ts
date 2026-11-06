@@ -1,9 +1,3 @@
-// 0075_oauth_flow_origin — the sign-in state rows learn where their flow was
-// started, and breakers that are already closed lose the stamp of their last
-// trip: closing used to leave it behind, so a healthy connector still carried
-// the time it last failed. The engine clears it on close now; the migration
-// clears what was left.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import { connectors, tenants } from "../schema/index.ts";
@@ -15,7 +9,6 @@ let tenantId: string;
 
 const migration = EMBEDDED_MIGRATIONS.find((m) => m.tag === "0075_oauth_flow_origin");
 
-/** The data statement only: the columns are already there on a migrated test database. */
 async function runBackfill(): Promise<void> {
   if (!migration) throw new Error("migration 0075_oauth_flow_origin is not embedded");
   const statement = migration.statements.find((s) => s.includes('UPDATE "connectors"'));

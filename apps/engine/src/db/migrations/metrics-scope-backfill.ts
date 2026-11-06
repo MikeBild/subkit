@@ -1,27 +1,3 @@
-// One-shot code backfill: keep the keys that scrape `/metrics` today working.
-//
-// `GET /metrics` now requires the `metrics:read` scope from every credential
-// that carries a scope list; the owner's role no longer widens a scope grant
-// (`http/routes/metrics.ts`). Before that change a scope-bearing key reached
-// `/metrics` iff its owner held the `admin` role — the scope list was ignored.
-//
-// Exactly those rows are what this backfill repairs: a live `api_keys` row
-// that names a NARROW scope list (no `*` wildcard — a wildcard key asserts no
-// narrowing and still reaches `/metrics` through the role check), does NOT
-// already contain `metrics:read`, and belongs to an admin owner. Adding the
-// scope reproduces its previous answer on `/metrics` and changes nothing
-// else, because `metrics:read` gates that one route. A production Prometheus
-// scraper or deploy verify that used such a key keeps working across the
-// upgrade instead of turning 403 at rollout.
-//
-// Deliberately NOT repaired: connection tokens (`mcp_oauth_access_tokens`).
-// A delegated token that says `mcp:read` must mean `mcp:read` — that a
-// connection approved for MCP read could scrape `/metrics` is the defect this
-// release fixes, not state to preserve.
-//
-// Idempotent through a `data_migrations` marker; a failure leaves the marker
-// unset so the next boot retries. Never breaks boot — the caller wraps it.
-
 import { eq, isNull } from "drizzle-orm";
 import { WILDCARD_SCOPE } from "../../auth/scopes.ts";
 import { logger } from "../../logging/logger.ts";
@@ -56,9 +32,6 @@ export async function runMetricsScopeBackfill(db: Db): Promise<MetricsScopeBackf
     .limit(1);
   if (marker.length > 0) return { skipped: true, granted: 0 };
 
-  // Every live, scope-bearing key with its owner's role. The join is the same
-  // owner resolution `providers/api-key-row.ts` performs at auth time, so the
-  // predicate here and the gate there see the same role.
   const candidates = await db
     .select({
       id: apiKeys.id,
@@ -73,8 +46,6 @@ export async function runMetricsScopeBackfill(db: Db): Promise<MetricsScopeBackf
     .leftJoin(rolesTable, eq(rolesTable.id, users.role_id))
     .where(isNull(apiKeys.revoked_at));
 
-  // System-account keys resolve their role through a second roles lookup;
-  // read it separately rather than joining `roles` twice in one statement.
   const accountRoles = new Map<string, string>();
   const accounts = await db
     .select({ id: systemAccounts.id, role_name: rolesTable.name })
@@ -86,13 +57,9 @@ export async function runMetricsScopeBackfill(db: Db): Promise<MetricsScopeBackf
   const granted: string[] = [];
   for (const row of candidates) {
     const scopes = scopeList(row.scopes);
-    // No scope list at all → unrestricted credential → still reaches
-    // `/metrics` through the role check. Nothing to repair.
 
     if (scopes === null) continue;
     if (scopes.includes(METRICS_SCOPE)) continue;
-    // `*` asserts no narrowing — the gate still falls back to the role check
-    // for it, so the key's answer on `/metrics` is unchanged.
     if (scopes.includes(WILDCARD_SCOPE)) continue;
     const role =
       row.user_id !== null

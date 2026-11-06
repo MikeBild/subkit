@@ -1,20 +1,3 @@
-// Consumer-driven contract: every engine endpoint the `sk` CLI actually
-// calls must exist in the committed `openapi.json` (the artifact
-// `openapi.d.ts` — and therefore this package's exported types — are
-// generated from). Type generation alone doesn't catch drift because it
-// requires a manual `bun run gen:openapi-client`; this test reads the CLI's
-// own source so a newly-added call is picked up without maintaining a
-// hand-kept list.
-//
-// The CLI does not use `openapi-fetch` at runtime (see `client.ts`'s header
-// comment — it exists to keep the compiled binary's module graph small).
-// The real chokepoint is `EngineClient.request/.requestForm/.stream/
-// .streamPost` in `apps/sk/src/engine-client.ts`, dispatched from the
-// per-resource method groups under `apps/sk/src/engine-client/*.ts`. Scanning
-// `openapi-fetch`-style `client.GET(...)` call sites (as a naive port of this
-// test would) would find zero matches and pass vacuously — so this scans the
-// actual call shape instead.
-
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -30,10 +13,6 @@ interface EndpointCall {
   path: string;
 }
 
-/** `DIAGNOSTICS_DRIFT_PATH` and friends: path constants shared between the
- *  engine route and this client so a rename breaks typecheck on both sides
- *  (see `diagnostics-paths.ts`'s own header comment). Resolved generically
- *  so a new constant added there is picked up automatically. */
 function loadSharedPathConstants(): Record<string, string> {
   const src = readFileSync(DIAGNOSTICS_PATHS_FILE, "utf8");
   const map: Record<string, string> = {};
@@ -43,9 +22,6 @@ function loadSharedPathConstants(): Record<string, string> {
   return map;
 }
 
-/** Single-line `const NAME = \`...\`;` / `const NAME = "...";` aliases local
- *  to one engine-client file (e.g. `conversations.ts`'s `respondElicitation`
- *  builds `path` once and reuses it across a retry). */
 function loadLocalPathConstants(src: string): Record<string, string> {
   const map: Record<string, string> = {};
   for (const m of src.matchAll(/const ([A-Za-z_$][\w$]*)\s*=\s*`([^`]*)`;/g)) {
@@ -57,10 +33,6 @@ function loadLocalPathConstants(src: string): Record<string, string> {
   return map;
 }
 
-/** Index just past the `${...}` span opened by the `{` at `src[openIdx]`.
- *  Depth-counts braces only (ignores backticks) — sufficient here because
- *  every nested-template case in this codebase (e.g. the ternary in
- *  `logsTailWindow`) has balanced braces inside the interpolation. */
 function findMatchingBrace(src: string, openIdx: number): number {
   let depth = 1;
   let i = openIdx + 1;
@@ -73,9 +45,6 @@ function findMatchingBrace(src: string, openIdx: number): number {
   return i;
 }
 
-/** Reads a full template literal starting at `src[start] === '`'`, honoring
- *  nested `${...}` (including nested backticks inside those spans) so the
- *  scan doesn't terminate on an inner backtick. */
 function readTemplateLiteral(src: string, start: number): { raw: string; end: number } {
   let i = start + 1;
   while (i < src.length) {
@@ -94,12 +63,6 @@ function readTemplateLiteral(src: string, start: number): { raw: string; end: nu
   throw new Error(`unterminated template literal starting at index ${start}`);
 }
 
-/** Normalizes a raw template body into an openapi-comparable path:
- *  `${encodeURIComponent(x)}` and bare `${ident}` become `{param}`; a
- *  resolvable path constant splices in its literal value; a `${qs}`-shaped
- *  tail (this codebase's own naming convention for the optional `?...`
- *  suffix — see settings.ts, workflows.ts, diagnostics.ts) truncates the
- *  rest, since it is query string, not path. */
 function normalizeInterpolated(raw: string, constants: Record<string, string>): string {
   let out = "";
   let i = 0;
@@ -121,8 +84,6 @@ function normalizeInterpolated(raw: string, constants: Record<string, string>): 
             : "{param}";
         continue;
       }
-      // Anything more complex (ternary, etc.) is query/formatting, not a
-      // path segment — stop here.
       return out;
     }
     out += raw[i];
@@ -161,11 +122,6 @@ function parsePathArg(
   return { path: normalizeInterpolated(resolved, constants), end: i + ident.length };
 }
 
-/** Scans one `engine-client/*.ts` file for `.request/.requestForm/.stream/
- *  .streamPost` call sites and extracts the (method, path) pair each one
- *  dispatches to. This is the chokepoint every sk CLI command routes
- *  through (see `engine-client.ts`'s header comment), so a new CLI call is
- *  picked up automatically without touching this test. */
 function extractFromFile(src: string, constants: Record<string, string>): EndpointCall[] {
   const localConstants = loadLocalPathConstants(src);
   const out: EndpointCall[] = [];
@@ -198,36 +154,17 @@ function extractFromFile(src: string, constants: Record<string, string>): Endpoi
   return out;
 }
 
-/** Call sites that bypass the `.request/.stream` chokepoint via a raw
- *  `this.fetchImpl(...)` (byte bodies, presigned URLs, SSE readers) and so
- *  can't be regex-derived from the uniform call shape above. Small,
- *  low-churn, and pinned explicitly with a pointer to the source line —
- *  everything else is picked up automatically by `extractFromFile`. */
 const RAW_FETCH_ENDPOINTS: EndpointCall[] = [
-  // files.ts downloadFile(): GET `${this.base}/v1/files/${id}/content`.
   { method: "GET", path: "/v1/files/{param}/content" },
-  // knowledge.ts extractFile(): POST `${this.base}/v1/extract` with a raw
-  // byte body (bypasses the JSON `.request()` helper).
   { method: "POST", path: "/v1/extract" },
-  // connectors.ts subscribeConnectorOAuthCallback(): GET
-  // `${this.base}/v1/events/stream?...` — excluded below as SSE.
   { method: "GET", path: "/v1/events/stream" },
 ];
 
-/** SSE / NDJSON endpoints are not representable in OpenAPI's JSON-schema
- *  response model and are deliberately absent from the generated spec (see
- *  `diagnostics-paths.ts`'s own comment: "the SSE stream is not modeled by
- *  the OpenAPI generator"). Excluded from the "must exist in openapi.json"
- *  check for that structural reason, not because the drift doesn't matter. */
 const STREAM_ONLY_ENDPOINTS = new Set([
   "GET /v1/conversations/{param}/stream",
   "GET /v1/executions/{param}/stream",
   "GET /v1/audit-log/export.ndjson",
   "GET /v1/events/stream",
-  // Not streaming, but the same "structurally absent from the spec" bucket:
-  // content-type-polymorphic raw-byte body dispatched in the handler (see
-  // ai/extract.ts's module header). The typed JSON surface is the
-  // documented POST /v1/ai/extract.
   "POST /v1/extract",
 ]);
 
@@ -263,18 +200,10 @@ function extractCliEndpointPairs(): Set<string> {
   return pairs;
 }
 
-// Ratchet for CLI calls to live-but-undocumented engine routes (bypassing
-// @hono/zod-openapi, absent from the generated spec). Exact pin — a new
-// undocumented call fails this test, and documenting a route fails it too
-// until the entry is removed, so the list only ratchets down. It is empty
-// today; keep it that way. The engine-side set lives in
-// apps/engine/src/http/tests/openapi-route-coverage.test.ts.
 const KNOWN_UNDOCUMENTED_ENDPOINTS: string[] = [];
 
 describe("sk CLI <-> engine OpenAPI contract", () => {
   test("the scanner still finds the sk CLI's engine calls", () => {
-    // Canary against a regex regression silently reducing this to a
-    // vacuous pass: the CLI has 180+ real call sites as of this writing.
     const pairs = extractCliEndpointPairs();
     expect(pairs.size).toBeGreaterThan(150);
   });

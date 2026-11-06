@@ -1,30 +1,3 @@
-// One-shot code backfill: rewrite ACTIVE stored workflow definitions
-// from `kind:"loop"` to per-step `for_each` on the single body step.
-//
-// Runs in the migrations boot phase (called from `db/migrate.ts`
-// `runMigrations` after the embedded SQL set and the item_var backfill),
-// so it completes before any subsystem touches workflows — same guarantee
-// the SQL backfills get from the drizzle journal.
-//
-// Per-workflow contract:
-//   - eligibility is checked by `rewriteLoopsToForEach` (structural
-//     equivalence proof: single-body loop, no downstream scope-key
-//     reference, rewritten definition passes validateWorkflowDef);
-//   - ineligible workflows are LEFT UNCHANGED on the legacy loop
-//     execution path — the loop driver and loop-scope.ts remain;
-//   - the new version is written through
-//     `rotateWorkflowVersionInternal` (definition-only rotate — it
-//     NEVER reconciles trigger bindings, so `workflows_schedules` rows
-//     survive; parity is additionally asserted inside the transaction);
-//   - an audit_log entry (kind: "loop_to_for_each_migration") carries
-//     the before/after change set per migrated workflow.
-//
-// Idempotency: one row in `data_migrations` under
-// LOOP_TO_FOR_EACH_BACKFILL_NAME; present row → boot no-op.
-//
-// Failures never break boot: each workflow is in its own try/catch,
-// and the caller in migrate.ts wraps the whole backfill too.
-
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
@@ -47,9 +20,7 @@ import {
 export const LOOP_TO_FOR_EACH_BACKFILL_NAME = "loop_to_for_each_v1";
 
 export interface LoopToForEachBackfillReport {
-  /** True when the marker row already existed — nothing was scanned. */
   skipped: boolean;
-  /** Workflows whose current version contained at least one eligible loop. */
   affected: number;
   migrated: number;
   needs_review: number;
@@ -111,16 +82,6 @@ async function flagNeedsReview(
   );
 }
 
-/**
- * Walk every live workflow's CURRENT version; definitions that contain
- * eligible `loop` steps are rewritten to `for_each` and committed as a
- * new version. Historical version rows stay immutable.
- *
- * Ineligible loops (multi-body, complex JSONata `over`, downstream scope
- * reference, validation failure) are left on the legacy loop path without
- * logging a needs_review entry — they are expected to stay on the legacy
- * path indefinitely (same as Fix H left 4 of 15 in the estate migration).
- */
 export async function runLoopToForEachBackfill(db: Db): Promise<LoopToForEachBackfillReport> {
   const marker = await db
     .select({ name: dataMigrations.name })
@@ -148,12 +109,9 @@ export async function runLoopToForEachBackfill(db: Db): Promise<LoopToForEachBac
   let needsReview = 0;
 
   for (const row of rows) {
-    // Cheap pre-filter: only scan definitions that declare kind:"loop".
     if (!JSON.stringify(row.dag).includes('"loop"')) continue;
     const parsed = WorkflowDefSchema.safeParse(row.dag);
     if (!parsed.success) {
-      // Leave workflows that fail current schema parsing untouched —
-      // the item_var backfill already handles those; do not double-flag.
       continue;
     }
     const def = parsed.data;
@@ -173,7 +131,6 @@ export async function runLoopToForEachBackfill(db: Db): Promise<LoopToForEachBac
     }
 
     if (!rewrite.ok) {
-      // Hard structural error (e.g. body step missing) — flag as needs_review.
       affected++;
       needsReview++;
       await flagNeedsReview(db, {
@@ -187,8 +144,6 @@ export async function runLoopToForEachBackfill(db: Db): Promise<LoopToForEachBac
     }
 
     if (!rewrite.changed) {
-      // All loops in this workflow are ineligible (multi-body, complex
-      // `over`, downstream scope reference). Leave on legacy path.
       continue;
     }
 
@@ -242,9 +197,6 @@ export async function runLoopToForEachBackfill(db: Db): Promise<LoopToForEachBac
     }
   }
 
-  // Mark applied even when some workflows need review: the next boot
-  // must not re-attempt the same rewrites (they would fail for the
-  // same reasons). Needs-review cases require operator intervention.
   await db
     .insert(dataMigrations)
     .values({ name: LOOP_TO_FOR_EACH_BACKFILL_NAME })

@@ -1,26 +1,3 @@
-// Migration 0040 — the foreign key on `llm_usage.execution_id`, and the two
-// properties that make it the right constraint rather than merely a
-// constraint.
-//
-// Until 0040 the column had no foreign key. Anything uuid-shaped was accepted
-// and thereafter looked exactly like an execution reference: 163 rows carried
-// a `self_healing_scans.id` for two months without a single error or log line,
-// because a wrong-but-valid uuid produces neither — only a join that quietly
-// returns nothing.
-//
-// Two properties are pinned here, and they pull in opposite directions:
-//
-//   1. A reference that names no execution is REFUSED. This is what makes the
-//      column's claim true.
-//   2. Deleting an execution NULLs the reference and KEEPS the row. This table
-//      is an append-only financial ledger — the tokens were spent and the
-//      provider billed them. ON DELETE CASCADE would satisfy property 1 just
-//      as well while destroying billing history, which is why `user_id` on
-//      this same table carries no foreign key at all. SET NULL is what lets
-//      the ledger have both.
-//
-// A test that only checked property 1 would pass against CASCADE.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import { executions, llmUsage, tenants, workflows } from "../schema/index.ts";
@@ -92,8 +69,6 @@ describe.skipIf(skip)("migration 0040 — llm_usage.execution_id foreign key", (
          and conname = 'llm_usage_execution_id_executions_id_fk'
     `);
     expect(res.rows).toHaveLength(1);
-    // 'n' = SET NULL. 'c' would be CASCADE — see the header: that would
-    // delete billing rows.
     expect((res.rows[0] as { confdeltype: string }).confdeltype).toBe("n");
   });
 
@@ -108,12 +83,7 @@ describe.skipIf(skip)("migration 0040 — llm_usage.execution_id foreign key", (
   });
 
   test("a uuid that names no execution is refused, not silently stored", async () => {
-    // Shaped exactly like the `self_healing_scans.id` values that used to
-    // land here: a perfectly well-formed uuid belonging to another table.
     const strayScanId = "8a7b6c5d-4e3f-4a2b-9c8d-7e6f5a4b3c2d";
-    // Caught explicitly rather than via `.rejects`: the Drizzle insert builder
-    // is a thenable, and the assertion helper reports its internals instead of
-    // the Postgres error. We want the constraint name in the failure message.
     let caught: unknown;
     try {
       await testDb.db.insert(llmUsage).values(row(strayScanId));
@@ -121,15 +91,10 @@ describe.skipIf(skip)("migration 0040 — llm_usage.execution_id foreign key", (
       caught = err;
     }
     expect(caught).toBeDefined();
-    // Drizzle wraps the driver error with its own "Failed query" message and
-    // keeps the Postgres one on `cause`, where the constraint name and
-    // SQLSTATE live. Assert on those rather than on the wrapper, so this fails
-    // if the row is rejected for some unrelated reason.
     const cause = (caught as { cause?: { constraint?: string; code?: string } }).cause;
     expect(cause?.constraint).toBe("llm_usage_execution_id_executions_id_fk");
-    expect(cause?.code).toBe("23503"); // foreign_key_violation
+    expect(cause?.code).toBe("23503");
 
-    // And nothing was written.
     const rows = await testDb.db
       .select()
       .from(llmUsage)
@@ -157,10 +122,8 @@ describe.skipIf(skip)("migration 0040 — llm_usage.execution_id foreign key", (
     await testDb.db.delete(executions).where(eq(executions.id, doomed!.id));
 
     const after = await testDb.db.select().from(llmUsage).where(eq(llmUsage.id, usage!.id));
-    // The row survives its execution.
     expect(after).toHaveLength(1);
     expect(after[0]?.execution_id).toBeNull();
-    // And it still says what it cost.
     expect(after[0]?.total_tokens).toBe(110);
   });
 });

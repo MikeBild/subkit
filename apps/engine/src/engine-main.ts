@@ -184,7 +184,7 @@ async function runServer(): Promise<void> {
       logger.info({
         module: "files",
         action: "scanner.noop_in_production",
-        msg: "FileScanner is NoopScanner (accepted risk, see AGENTS.md). Uploads are reported clean without AV scanning; tenant uploads are not a primary attack surface today.",
+        msg: "FileScanner is NoopScanner (accepted risk). Uploads are reported clean without AV scanning; tenant uploads are not a primary attack surface today.",
       });
     }
 

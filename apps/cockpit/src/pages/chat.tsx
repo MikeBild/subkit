@@ -74,6 +74,7 @@ import {
   Bubble,
   BubbleContent,
   Button,
+  buttonVariants,
   ChatCard,
   CodeBlock,
   ConfirmDialog,
@@ -116,7 +117,6 @@ import {
   useMessageScroller,
 } from "@/components/cockpit/patterns";
 import { queryView } from "@/components/failure-state";
-import { buttonVariants } from "@/components/ui/button";
 import { formatDateTime, formatRelativeTime, LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { nameIdentifiers, type ResolvedIdentifier } from "@/lib/identifiers";
@@ -922,6 +922,7 @@ function ResultLink({ link, testId }: { link: WorkflowResultLink; testId: string
     <div className="flex flex-wrap items-center gap-3" data-testid={testId}>
       <a
         className={buttonVariants({ variant: "default", size: "sm" })}
+        data-testid={`${testId}-open`}
         href={link.url}
         rel="noopener noreferrer"
         target="_blank"

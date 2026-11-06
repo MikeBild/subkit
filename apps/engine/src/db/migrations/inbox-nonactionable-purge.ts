@@ -1,16 +1,3 @@
-// One-shot code backfill: drop the notification-inbox rows that were never
-// tasks.
-//
-// The sk CLI adapter used to persist EVERY event the default `*` rule matched,
-// including `execution.step.started` / `.finished`, so a production inbox held
-// six hundred thousand unread rows a person could only mark read. The adapter
-// now writes actionable events only (`chat/sk-cli/adapter.ts`); this walks the
-// existing table once and removes what it would no longer write. Read marks go
-// with their row through the FK cascade.
-//
-// Idempotent through a `data_migrations` marker; a failure leaves the marker
-// unset so the next boot retries. Never breaks boot — the caller wraps it.
-
 import { eq } from "drizzle-orm";
 import { logger } from "../../logging/logger.ts";
 import type { Db } from "../client.ts";

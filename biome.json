@@ -30,9 +30,6 @@
       "!contract/cockpit-ui.css",
       "!apps/engine/src/db/migrations/embedded.ts",
       "!apps/engine/eval/out",
-      "!FAMILY-UI.json",
-      "!OPERATIONAL-KPIS.json",
-      "!OPERATIONAL-OVERVIEW.schema.json",
       "!.agent-prime.json",
       "!assets/clipper",
       "!apps/engine/src/sandboxes/quickjs/stdlib/helpers/*.js"

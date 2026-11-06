@@ -3,7 +3,6 @@
 set -e
 
 bun run check:bun-version
-bun run check:github-sources
 
 echo "[pre-push] lint + typecheck + determinism + invariants + drift + commit messages + secrets + build"
 
@@ -25,7 +24,6 @@ bun run check:openapi-drift
 bun run check:config-example-drift
 bun run check:embedded-drift
 bun run check:llms-txt-drift
-bun run check:family-ui-drift
 
 echo "[pre-push] 6/8 commit-message gate (each new commit on this push)"
 zero=$(git hash-object --stdin < /dev/null | tr 'a-f0-9' '0')

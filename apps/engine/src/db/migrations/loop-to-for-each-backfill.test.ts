@@ -1,21 +1,3 @@
-// Integration tests for the loop→for_each boot backfill.
-//
-// `createTestDb` runs the full embedded migration set plus the item_var
-// and loop→for_each backfills, so a fresh DB already carries both
-// `data_migrations` markers. The tests below delete the
-// LOOP_TO_FOR_EACH_BACKFILL_NAME marker, seed legacy workflow rows
-// (direct inserts — historical versions predate validator rejection,
-// exactly like production data), then re-run the backfill and assert:
-//
-//   - an eligible loop (single body, data_selector, no downstream ref)
-//     is rotated to a new version with for_each on the body step;
-//   - the loop step is removed from the migrated definition;
-//   - an ineligible loop (multi-body) is left unchanged;
-//   - workflows_schedules rows survive the rotate (PUT-unbinds-schedules
-//     trap must not reappear here);
-//   - an audit_log entry per migrated workflow;
-//   - the second invocation is a no-op (idempotent via marker).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { createConnector } from "../../connectors/service.ts";
@@ -83,7 +65,6 @@ async function seedWorkflow(args: {
   return { workflow_id: wf.id, version_id: v.id };
 }
 
-// An eligible loop: single body step + data_selector.
 const eligibleDag = (extra?: Record<string, unknown>): Record<string, unknown> => ({
   name: "eligible-loop",
   steps: [
@@ -104,7 +85,6 @@ const eligibleDag = (extra?: Record<string, unknown>): Record<string, unknown> =
   ...(extra ?? {}),
 });
 
-// An ineligible loop: multi-body steps.
 const ineligibleDag = (): Record<string, unknown> => ({
   name: "multi-body-loop",
   steps: [
@@ -160,11 +140,10 @@ describe("loop→for_each backfill", () => {
   test("backfill migrates the eligible workflow and leaves the ineligible one unchanged", async () => {
     const report = await runLoopToForEachBackfill(ctx.db);
     expect(report.skipped).toBe(false);
-    expect(report.affected).toBe(1); // only the eligible one
+    expect(report.affected).toBe(1);
     expect(report.migrated).toBe(1);
     expect(report.needs_review).toBe(0);
 
-    // Eligible: two versions now.
     const eligibleVersions = await ctx.db
       .select()
       .from(workflowVersions)
@@ -177,11 +156,9 @@ describe("loop→for_each backfill", () => {
       .orderBy(asc(workflowVersions.version));
     expect(eligibleVersions).toHaveLength(2);
 
-    // Historical v1 unchanged.
     const v1dag = eligibleVersions[0]?.dag as { steps: Array<Record<string, unknown>> };
     expect(v1dag.steps.some((s) => s.id === "iterate_rows")).toBe(true);
 
-    // New v2: loop step removed, body step has for_each.
     const v2dag = eligibleVersions[1]?.dag as { steps: Array<Record<string, unknown>> };
     expect(v2dag.steps.some((s) => s.id === "iterate_rows")).toBe(false);
     const processRow = v2dag.steps.find((s) => s.id === "process_row") as
@@ -189,14 +166,12 @@ describe("loop→for_each backfill", () => {
       | undefined;
     expect(processRow?.for_each).toBe("(sourceData) => sourceData.fetch_data.data.rows");
 
-    // Current version pointer updated.
     const [wfRow] = await ctx.db
       .select()
       .from(workflows)
       .where(eq(workflows.id, eligible.workflow_id));
     expect(wfRow?.current_version_id).toBe(eligibleVersions[1]?.id ?? "");
 
-    // Ineligible: still one version.
     const ineligibleVersions = await ctx.db
       .select()
       .from(workflowVersions)

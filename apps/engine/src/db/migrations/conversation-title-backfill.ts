@@ -1,19 +1,3 @@
-// One-shot code backfill: name every conversation that predates auto-titling.
-//
-// Auto-titling (`conversations/title.ts`) only fires when a user message is
-// appended, so a purely lazy rollout would leave every dormant conversation
-// untitled forever — and dormant conversations are the bulk of the list a
-// person scrolls. This walks them once at boot.
-//
-// It is TypeScript rather than SQL on purpose: a SQL backfill would have to
-// re-implement `deriveConversationTitle`'s sentinel stripping and clipping, and
-// the copy would drift from the live path the first time either changed. Its
-// idempotency marker is one row in `data_migrations`; a present marker makes
-// the next boot a no-op.
-//
-// Failures never break boot — the caller in `db/migrate.ts` wraps it, and the
-// marker stays unset so the next boot retries.
-
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { deriveConversationTitle } from "../../conversations/title.ts";
 import { logger } from "../../logging/logger.ts";
@@ -22,11 +6,9 @@ import { conversationMessages, conversations, dataMigrations } from "../schema/i
 
 export const CONVERSATION_TITLE_BACKFILL_NAME = "conversation_title_v1";
 
-/** Rows per pass. Bounded so a large tenant cannot hold the boot phase. */
 const BATCH = 500;
 
 export interface ConversationTitleBackfillReport {
-  /** True when the marker row already existed — nothing was scanned. */
   skipped: boolean;
   scanned: number;
   titled: number;
@@ -59,7 +41,6 @@ export async function runConversationTitleBackfill(
     cursor = batch[batch.length - 1]?.id ?? null;
     scanned += batch.length;
 
-    // One query for the batch's first user message, not one per conversation.
     const ids = batch.map((row) => row.id);
     const messages = await db
       .select({
@@ -84,8 +65,6 @@ export async function runConversationTitleBackfill(
     for (const row of batch) {
       const title = deriveConversationTitle(firstUserMessage.get(row.id));
       if (!title) continue;
-      // Same `title IS NULL` guard as the live path: a title written by a
-      // concurrent request while this walk runs wins over the backfill's.
       const updated = await db
         .update(conversations)
         .set({ title })

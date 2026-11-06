@@ -1,19 +1,3 @@
-// sk-Stdlib v1 — curated helper surface for user-supplied JavaScript
-// running inside the QuickJS sandbox (before-request hooks,
-// transform steps with language: "javascript").
-//
-// Injected via `context.evalCode(STDLIB_SOURCE, "sk-stdlib.js")` in
-// runtime.ts before the user's code runs. Installs `globalThis.sk`
-// and freezes it so user code cannot mutate or replace the surface.
-//
-// Determinism: no Date.now, no Math.random, no host I/O.
-// `sk.now()` and `sk.uuid()` are deterministic — they derive from a
-// per-execution timestamp and seed the host injects (`__sandbox_now__`,
-// `__sandbox_seed__`), NOT from a live clock or RNG. A run replayed with
-// the same execution context yields byte-identical now()/uuid() values,
-// which is what keeps self-healing dry-runs reproducible.
-// Keep this file plain ES2020 — it is evaluated, not transpiled.
-
 (function installSkStdlib() {
   const READ_METHODS = ["GET", "HEAD", "OPTIONS"];
   const WRITE_METHODS = ["POST", "PUT", "PATCH", "DELETE"];
@@ -143,22 +127,6 @@
     return out;
   }
 
-  // ── Base64 ────────────────────────────────────────────────────────
-  // The sandbox installs no host globals, so `btoa`/`Buffer`/TextEncoder
-  // are absent. Email-send (`raw` as base64url MIME) and git-commit
-  // (`content` as base64) workflows universally need encoding, so it
-  // belongs on the curated surface rather than re-implemented per
-  // transform.
-  //
-  // `base64Encode` is deliberately IDENTICAL to jsonata's `$base64encode`
-  // (each character contributes one byte = its low 8 bits — the "binary
-  // string" convention, not UTF-8). This is what lets a transform move
-  // from jsonata to javascript with byte-for-byte the same output.
-  //
-  // `base64EncodeUtf8` is the explicit Unicode-safe helper for new MIME
-  // and API payloads. Keeping both names prevents a migration from
-  // silently changing historical outputs while still giving new code the
-  // encoding most external APIs expect.
   const B64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
   function stringInput(input) {
@@ -232,10 +200,6 @@
     return bytesToBase64(utf8Bytes(stringInput(input)));
   }
 
-  // base64url: the standard alphabet with `+`→`-`, `/`→`_`. Padding (`=`)
-  // is preserved, matching the prevailing `$replace($replace(
-  // $base64encode(x),'+','-'),'/','_')` jsonata idiom these workflows use
-  // for the Gmail `raw` field.
   function base64UrlEncode(input) {
     return base64Encode(input).replace(/\+/g, "-").replace(/\//g, "_");
   }
@@ -244,15 +208,11 @@
     return base64EncodeUtf8(input).replace(/\+/g, "-").replace(/\//g, "_");
   }
 
-  // Decode side — absent before v1.3.0, which forced transforms to either
-  // hand-roll a decoder or give up. Accepts BOTH the standard (`+`/`/`) and
-  // url-safe (`-`/`_`) alphabets and tolerates missing padding, so a value
-  // produced by any of the encoders above round-trips. Whitespace is ignored.
   const B64_LOOKUP = (function buildLookup() {
     const table = {};
     for (let i = 0; i < B64_ALPHABET.length; i++) table[B64_ALPHABET[i]] = i;
-    table["-"] = 62; // url-safe `+`
-    table._ = 63; // url-safe `/`
+    table["-"] = 62;
+    table._ = 63;
     return table;
   })();
 
@@ -274,8 +234,6 @@
     return bytes;
   }
 
-  // Inverse of `base64Encode`: returns a "binary string" (one char per byte,
-  // low 8 bits) — Web `atob` semantics.
   function base64Decode(input) {
     const bytes = base64ToBytes(input);
     let out = "";
@@ -283,8 +241,6 @@
     return out;
   }
 
-  // Inverse of `base64EncodeUtf8`: decodes the bytes as UTF-8 back to a
-  // JS string (handles multi-byte sequences and surrogate pairs).
   function base64DecodeUtf8(input) {
     const bytes = base64ToBytes(input);
     let out = "";
@@ -312,10 +268,6 @@
     return out;
   }
 
-  // ── Hex ───────────────────────────────────────────────────────────
-  // Lowercase hex of the binary-string bytes (one low-8-bit byte per
-  // UTF-16 code unit), matching the base64Encode byte convention so the
-  // two encoders agree on what "the bytes of a string" are.
   const HEX = "0123456789abcdef";
 
   function hexEncode(input) {
@@ -341,10 +293,6 @@
     return out;
   }
 
-  // ── MIME (RFC 5322/2047/2045) ──────────────────────────────────
-  // Headers are ASCII-only; raw non-ASCII gets Latin-1-mangled by mail
-  // servers. Rationale + full contract: stdlib.d.ts / README.
-
   function isAsciiPrintable(str) {
     for (let i = 0; i < str.length; i++) {
       const c = str.charCodeAt(i);
@@ -353,8 +301,6 @@
     return true;
   }
 
-  // RFC 2047 B-encoding: 45 payload bytes/word (word stays <= 75 chars,
-  // no mid-run padding); never splits a multi-byte UTF-8 sequence.
   function mimeEncodeHeaderValue(input) {
     const s = stringInput(input);
     if (isAsciiPrintable(s)) return s;
@@ -380,7 +326,6 @@
     return out;
   }
 
-  // Encoded-words around an addr-spec break routing -> require ASCII.
   function mimeAddressList(value, field) {
     const joined = Array.isArray(value) ? value.join(", ") : stringInput(value);
     if (!isAsciiPrintable(joined)) {
@@ -429,7 +374,6 @@
 
     let body;
     if (html !== null && text !== null) {
-      // Deterministic boundary (content hash) -> dry-runs reproduce.
       const boundary = `sk-mime-${sha256(`${html} ${text}`).slice(0, 24)}`;
       body = [
         `Content-Type: multipart/alternative; boundary="${boundary}"`,
@@ -451,23 +395,6 @@
     return { raw: base64UrlEncodeUtf8(mime), mime: mime };
   }
 
-  // ── Vendor payload shaping ─────────────────────────────────────────
-  // Read-side decoders for the connector shapes that repeatedly reached
-  // users wrong or lossy while the run reported green: email bodies left
-  // base64url-encoded (transforms shipped `snippet` and called it the
-  // message), calendar times reformatted with their offset/timeZone
-  // dropped, document rich-text flattened with every annotation lost.
-  // Surface rule: the EXPORTED names are generic (emailBody,
-  // rfc3339Parts, documentToMarkdown); the vendor-specific wire-format
-  // handling hides behind them and is selected by shape detection, so a
-  // new vendor extends an existing helper instead of growing the `sk`
-  // surface. Pure ES2020, deterministic, no host access — same contract
-  // as the rest of the stdlib.
-
-  // Gmail wire format: a `messages.get` resource (format=full) or its
-  // bare `payload` — nested multipart/* parts with base64url
-  // `body.data`. Walks the tree, decodes as UTF-8, keeps the FIRST
-  // text/plain and text/html parts found.
   function gmailPayloadTreeBody(message) {
     const payload = isObject(message.payload) ? message.payload : message;
     const found = { text: null, html: null };
@@ -493,8 +420,6 @@
     }
 
     walk(payload);
-    // Single-part message with no/unknown mimeType: the body is still
-    // the message text — never return {null, null} while data exists.
     if (found.text === null && found.html === null) {
       const decoded = decodeBody(payload.body);
       if (decoded !== null) found.text = decoded;
@@ -502,13 +427,6 @@
     return found;
   }
 
-  // Extract the decoded text/html bodies of an email message envelope:
-  // { text: string|null, html: string|null }. Generic entry point —
-  // vendor wire formats are detected by shape, never named by the
-  // caller:
-  //   - pre-decoded body object ({ body: { contentType, content } },
-  //     the Microsoft-Graph-style shape)
-  //   - Gmail payload tree (nested multipart parts, base64url data)
   function emailBody(message) {
     if (!isObject(message)) {
       throw new Error("emailBody: email message object (or its payload) required");
@@ -526,15 +444,6 @@
     return gmailPayloadTreeBody(message);
   }
 
-  // Split an RFC 3339 date-time string into its faithful parts WITHOUT
-  // timezone conversion (the sandbox has no tz database by design):
-  //   { date: "YYYY-MM-DD", time: "HH:mm[:ss[.SSS]]"|null,
-  //     offset: "Z"|"+HH:mm"|"-HH:mm"|null, wall: "YYYY-MM-DD[ HH:mm]" }
-  // Calendar shapes (Google `start.dateTime`) already carry the local
-  // offset applied; `wall` is the human-facing local time. A date-only
-  // input (all-day event `start.date`) yields time/offset null. Throws
-  // on anything that is not RFC 3339 — a silent reformat is exactly the
-  // lossy shape this helper exists to prevent.
   function rfc3339Parts(input) {
     const s = stringInput(input);
     const m =
@@ -549,10 +458,6 @@
     return { date: date, time: time, offset: offset, wall: wall };
   }
 
-  // Notion wire format, rich_text span array → inline markdown,
-  // preserving annotations (bold/italic/strikethrough/code) and links.
-  // Non-arrays render as "" so a missing field degrades quietly inside
-  // a block walk. Internal — reached via documentToMarkdown.
   function notionRichTextToMarkdown(richText) {
     if (!Array.isArray(richText)) return "";
     let out = "";
@@ -585,12 +490,6 @@
     return out;
   }
 
-  // Notion wire format, `blocks.children.list` response or bare block
-  // array → document markdown. Handles paragraph, heading_1-3, list
-  // items, to_do, quote, code (language fence), divider. An UNKNOWN
-  // block type degrades to its rich_text content — never "" (a renderer
-  // that returns "" for every unhandled type is the canonical
-  // silent-loss shape). Internal — reached via documentToMarkdown.
   function notionBlocksToMarkdown(blocks) {
     const list = Array.isArray(blocks)
       ? blocks
@@ -638,14 +537,6 @@
     return lines.join("\n\n");
   }
 
-  // Render a rich document structure to markdown, preserving annotations
-  // (bold/italic/strikethrough/code) and links. Generic entry point —
-  // the vendor format is detected by shape, never named by the caller:
-  //   - a Notion `blocks.children.list` response ({ results: [...] })
-  //   - a bare Notion block array (document markdown)
-  //   - a Notion rich_text span array (inline markdown)
-  // Unknown block types degrade to their text content — never silently
-  // to "".
   function documentToMarkdown(value) {
     if (isObject(value) && Array.isArray(value.results)) {
       return notionBlocksToMarkdown(value);
@@ -659,8 +550,6 @@
         }
       }
       if (probe === null) return "";
-      // Rich-text spans carry plain_text/annotations; blocks carry a
-      // `type` key naming their nested data object.
       if (typeof probe.plain_text === "string" || isObject(probe.annotations)) {
         return notionRichTextToMarkdown(value);
       }
@@ -669,11 +558,6 @@
     throw new Error("documentToMarkdown: block/rich-text array (or { results: [...] }) required");
   }
 
-  // ── SHA-256 / HMAC-SHA-256 ─────────────────────────────────────────
-  // Pure FIPS-180-4 implementation over the UTF-8 bytes of the input.
-  // No host crypto, no clock, no random — fully deterministic so a
-  // signed-payload transform reproduces byte-for-byte under self-healing
-  // dry-runs (where `crypto.subtle` is absent and `Buffer` is too).
   const SHA256_K = [
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
     0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
@@ -689,8 +573,6 @@
     return (x >>> n) | (x << (32 - n));
   }
 
-  // Returns the 32-byte digest of `bytes` (array of 0..255) as an array
-  // of bytes.
   function sha256Bytes(bytes) {
     const h = [
       0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
@@ -698,12 +580,9 @@
     ];
     const len = bytes.length;
     const bitLen = len * 8;
-    // Pad: append 0x80, then zeros, then 64-bit big-endian length.
     const padded = bytes.slice();
     padded.push(0x80);
     while (padded.length % 64 !== 56) padded.push(0);
-    // 64-bit length, big-endian. Lengths fit in 32 bits for any realistic
-    // sandbox input, so the high word is zero.
     padded.push(0, 0, 0, 0);
     padded.push(
       (bitLen >>> 24) & 0xff,
@@ -789,23 +668,6 @@
     return bytesToHex(sha256Bytes(oKeyPad.concat(inner)));
   }
 
-  // ── Deterministic clock / id ───────────────────────────────────────
-  // The host injects a fixed per-execution timestamp (`__sandbox_now__`,
-  // epoch ms) and a stable seed (`__sandbox_seed__`, e.g. the execution
-  // id) as VM globals BEFORE this stdlib runs. `now()` returns the SAME
-  // instant for every call in a run, and `uuid()` is a deterministic
-  // v4-shaped id derived from the seed plus a per-context call counter —
-  // so authors stop reaching for the banned `new Date()` / `Date.now()` /
-  // `Math.random()` and the run stays reproducible under self-healing
-  // dry-runs.
-  //
-  // SECURITY: capture the injected values ONCE here at install time into
-  // closure consts, then DELETE the writable globals. If we instead read
-  // `globalThis.__sandbox_now__` / `__sandbox_seed__` on every call,
-  // untrusted user JS could overwrite them between `sk.now()` /
-  // `sk.uuid()` calls (`globalThis.__sandbox_now__ = 0`) and corrupt
-  // determinism — two calls in the same run would observe different
-  // clocks. Captured-then-deleted, the user cannot reach or change them.
   const __CAPTURED_NOW = (function captureNow() {
     const n = globalThis.__sandbox_now__;
     return typeof n === "number" && Number.isFinite(n) ? n : 0;
@@ -816,14 +678,10 @@
   })();
   try {
     delete globalThis.__sandbox_now__;
-  } catch (_e) {
-    /* non-configurable in some hosts — the capture above still wins */
-  }
+  } catch (_e) {}
   try {
     delete globalThis.__sandbox_seed__;
-  } catch (_e) {
-    /* non-configurable in some hosts — the capture above still wins */
-  }
+  } catch (_e) {}
 
   function injectedNow() {
     return __CAPTURED_NOW;
@@ -843,16 +701,12 @@
 
   let __uuidCounter = 0;
 
-  // Deterministic UUIDv4-shaped id: SHA-256 over the seed + a monotonic
-  // per-context counter, formatted as a v4 UUID (version nibble `4`,
-  // variant bits `10`). Distinct on each call within a run, identical
-  // across replays of the same run.
   function uuid() {
     const digest = sha256Bytes(utf8Bytes(`${injectedSeed()}:${String(__uuidCounter)}`));
     __uuidCounter += 1;
     const b = digest.slice(0, 16);
-    b[6] = (b[6] & 0x0f) | 0x40; // version 4
-    b[8] = (b[8] & 0x3f) | 0x80; // variant 10xx
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
     const hex = bytesToHex(b);
     return (
       hex.slice(0, 8) +
@@ -892,12 +746,6 @@
     }),
   });
 
-  // ---------------------------------------------------------------- fmt
-  // QuickJS has no Intl/ECMA-402 (see QUICKJS.md). `toLocaleString("de-DE")`
-  // therefore ACCEPTS the locale and IGNORES it, returning the C-locale string:
-  // a German page shipped "+9.2 %" and "35606 USD" to production because the
-  // same code formatted correctly under Node. Same footgun class as the missing
-  // btoa below — so the surface exists here, and the silent path is closed.
   const SEPARATORS = {
     de: { group: ".", decimal: "," },
     en: { group: ",", decimal: "." },
@@ -931,11 +779,6 @@
     const digits = opts.digits === undefined || opts.digits === null ? 0 : Number(opts.digits);
     if (!(digits >= 0 && digits <= 20)) throw new Error("sk.fmt.number: digits must be 0..20");
     const grouping = opts.grouping === false ? false : true;
-    // toFixed rounds the binary double: 0.95 is stored just below 0.95, so
-    // toFixed(1) yields "0.9" while Intl yields "1.0". Re-parsing through
-    // exponential notation rounds the shortest round-trip decimal instead,
-    // which is what a reader expects and what the same code produced under
-    // Node during authoring.
     const magnitude = Math.abs(n);
     const shifted = Number(magnitude + "e" + digits);
     const rounded = isFinite(shifted) ? Number(Math.round(shifted) + "e-" + digits) : magnitude;
@@ -1229,14 +1072,6 @@
     enumerable: false,
   });
 
-  // Install the universally-known `btoa`/`atob` globals as thin wrappers
-  // over the binary-string base64 codec (Web semantics: each char is one
-  // byte, low 8 bits). Their absence is a footgun — author code reaches
-  // for `btoa` by reflex, fails, and hand-rolls an encoder instead of
-  // finding `sk.base64EncodeUtf8` (production session, the Gmail MIME
-  // build). For Unicode payloads use `sk.base64EncodeUtf8` /
-  // `sk.base64UrlEncodeUtf8`; `btoa` mirrors the browser and throws on
-  // code points > 255. Still no host I/O — pure in-sandbox functions.
   Object.defineProperty(globalThis, "btoa", {
     value: function btoa(input) {
       const s = stringInput(input);
@@ -1263,24 +1098,9 @@
     enumerable: false,
   });
 
-  // A locale argument to toLocaleString is silently ignored in QuickJS, which
-  // turns a formatting mistake into wrong output instead of an error. Passing
-  // one now fails loudly and names the replacement; calling it without
-  // arguments keeps working, because that is not locale-aware.
-  //
-  // Shipped as a MINOR bump, not a major one, although behaviour changes: the
-  // only code that starts failing was already producing wrong output, while a
-  // major bump would flag every persisted JS workflow as drifted and bury that
-  // signal in noise. Revisit if the guard turns out to catch legitimate use.
   function installLocaleGuard(proto, name) {
     const original = proto[name];
     Object.defineProperty(proto, name, {
-      // BOTH arguments are checked, not just the locale. `toLocaleString(undefined,
-      // { style: "percent" })` names no locale but still asks for Intl behaviour:
-      // under Node it yields "50 %", here the options are dropped and it yields
-      // "0.5". Guarding only the first argument would leave that path silently
-      // wrong — the exact failure this guard exists to close, reached through the
-      // second parameter instead of the first.
       value: function guardedToLocaleString(locales, options) {
         if (locales !== undefined || options !== undefined) {
           throw new Error(
