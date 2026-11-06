@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { and, eq, inArray, like, or } from "drizzle-orm";
+import { and, eq, inArray, like, or, type SQL, sql } from "drizzle-orm";
 import { _resetConfigForTests, getConfig, loadConfig } from "../../../config/loader.ts";
 import { apiKeys, auditLog, users } from "../../../db/schema/index.ts";
 import {
@@ -77,12 +77,14 @@ async function http(
   path: string,
   body?: unknown,
   key: string | null = ctx.apiKey,
+  extraHeaders: Record<string, string> = {},
 ): Promise<{ status: number; body: unknown }> {
   const res = await fetch(`${ctx.baseUrl}${path}`, {
     method,
     headers: {
       ...(key ? { authorization: `Bearer ${key}` } : {}),
       "content-type": "application/json",
+      ...extraHeaders,
     },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
@@ -90,7 +92,36 @@ async function http(
   return { status: res.status, body: parseBody(text) };
 }
 
-function auditRows(where: ReturnType<typeof eq | typeof or>) {
+function digest(value: unknown): string {
+  return createHash("sha256").update(scrub(value)).digest("hex");
+}
+
+function settingsSummary(res: { status: number; body: unknown }) {
+  if (res.status !== 200) return res;
+  const { items, ...rest } = res.body as { items: unknown[] };
+  return { status: res.status, ...rest, item_count: items.length, items_sha256: digest(items) };
+}
+
+function catalogSummary(res: { status: number; body: unknown }) {
+  if (res.status !== 200) return res;
+  const { models, ...rest } = res.body as { models: unknown[] };
+  return { status: res.status, ...rest, model_count: models.length, models_sha256: digest(models) };
+}
+
+async function databaseNow(): Promise<string> {
+  const result = (await ctx.db.execute(sql`select clock_timestamp()::text as now`)) as unknown as {
+    rows: { now: string }[];
+  };
+  const now = result.rows[0]?.now;
+  if (!now) throw new Error("clock_timestamp returned no row");
+  return now;
+}
+
+function auditedSince(since: string): SQL {
+  return sql`${auditLog.ts} > ${since}::timestamptz`;
+}
+
+function auditRows(where: ReturnType<typeof eq | typeof or> | SQL | undefined) {
   return ctx.db
     .select({
       tenant_id: auditLog.tenant_id,
@@ -338,6 +369,176 @@ describe("runtime configuration routes keep their HTTP responses byte for byte",
     recordRows(
       "http.audit",
       await auditRows(or(like(auditLog.action, "settings.%"), like(auditLog.action, "secret.%"))),
+    );
+  });
+
+  test("settings leaves: list, catalog and one leaf in every view", async () => {
+    const tenant = secondary.tenantId;
+    const admin = secondary.admin.apiKey;
+    record("http.settings.list.operator", settingsSummary(await http("GET", "/v1/settings")));
+    record(
+      "http.settings.list.operator.tenant",
+      settingsSummary(await http("GET", `/v1/settings?tenant=${tenant}`)),
+    );
+    record("http.settings.list.invalid-tenant", await http("GET", "/v1/settings?tenant=nope"));
+    record(
+      "http.settings.list.tenant-admin",
+      settingsSummary(await http("GET", "/v1/settings", undefined, admin)),
+    );
+    record(
+      "http.settings.list.tenant-admin.cross",
+      await http("GET", `/v1/settings?tenant=${ctx.tenantId}`, undefined, admin),
+    );
+    record(
+      "http.settings.catalog.operator",
+      catalogSummary(await http("GET", "/v1/settings/catalog/models")),
+    );
+    record(
+      "http.settings.catalog.operator.tenant",
+      catalogSummary(await http("GET", `/v1/settings/catalog/models?tenant=${tenant}`)),
+    );
+    record(
+      "http.settings.catalog.tenant-admin",
+      catalogSummary(await http("GET", "/v1/settings/catalog/models", undefined, admin)),
+    );
+    record(
+      "http.settings.catalog.tenant-admin.cross",
+      await http("GET", `/v1/settings/catalog/models?tenant=${ctx.tenantId}`, undefined, admin),
+    );
+    record("http.settings.get.operator", await http("GET", "/v1/settings/log.level"));
+    record(
+      "http.settings.get.operator.tenant",
+      await http("GET", `/v1/settings/llm.model?tenant=${tenant}`),
+    );
+    record("http.settings.get.unknown", await http("GET", "/v1/settings/no.such.leaf"));
+    record(
+      "http.settings.get.tenant-admin.engine-only",
+      await http("GET", "/v1/settings/log.level", undefined, admin),
+    );
+    record(
+      "http.settings.get.tenant-admin.tenant-leaf",
+      await http("GET", "/v1/settings/llm.model", undefined, admin),
+    );
+    record(
+      "http.settings.get.tenant-admin.unknown",
+      await http("GET", "/v1/settings/no.such.leaf", undefined, admin),
+    );
+    record(
+      "http.settings.get.tenant-admin.cross",
+      await http("GET", `/v1/settings/llm.model?tenant=${ctx.tenantId}`, undefined, admin),
+    );
+  });
+
+  test("settings leaves: writes, refusals and their audit rows", async () => {
+    const since = await databaseNow();
+    const tenant = secondary.tenantId;
+    const admin = secondary.admin.apiKey;
+    record(
+      "http.settings.put.operator",
+      await http("PUT", "/v1/settings/log.level", { value: "debug" }, ctx.apiKey, {
+        "x-subkit-audit-source": "sk_cli",
+        "x-subkit-deploy-version": "1.2.3",
+      }),
+    );
+    record(
+      "http.settings.put.operator.tenant",
+      await http("PUT", `/v1/settings/llm.model?tenant=${tenant}`, { value: "golden-model" }),
+    );
+    record(
+      "http.settings.put.unknown",
+      await http("PUT", "/v1/settings/no.such.leaf", { value: 1 }),
+    );
+    record(
+      "http.settings.put.database-url",
+      await http("PUT", "/v1/settings/database.url", { value: "postgres://x/y" }),
+    );
+    record("http.settings.put.invalid", await http("PUT", "/v1/settings/log.level", { value: 42 }));
+    record(
+      "http.settings.put.bad-header",
+      await http("PUT", "/v1/settings/log.level", { value: "info" }, ctx.apiKey, {
+        "x-subkit-audit-source": "nope",
+      }),
+    );
+    record(
+      "http.settings.put.tenant-admin.global",
+      await http("PUT", "/v1/settings/log.level", { value: "debug" }, admin),
+    );
+    record(
+      "http.settings.put.tenant-admin.without-tenant",
+      await http("PUT", "/v1/settings/llm.model", { value: "admin-model" }, admin),
+    );
+    record(
+      "http.settings.put.tenant-admin.cross",
+      await http("PUT", `/v1/settings/llm.model?tenant=${ctx.tenantId}`, { value: "x" }, admin),
+    );
+    record(
+      "http.settings.put.tenant-admin.own",
+      await http("PUT", `/v1/settings/llm.model?tenant=${tenant}`, { value: "admin-model" }, admin),
+    );
+    recordRows(
+      "http.settings.audit",
+      await auditRows(and(auditedSince(since), like(auditLog.action, "settings.%"))),
+    );
+  });
+
+  test("settings, hosted and setup gates for every key", async () => {
+    const since = await databaseNow();
+    const tenant = secondary.tenantId;
+    const paths: [string, string, unknown?][] = [
+      ["GET", "/v1/settings"],
+      ["GET", "/v1/settings/catalog/models"],
+      ["HEAD", "/v1/settings/catalog/models"],
+      ["GET", "/v1/settings/log.level"],
+      ["HEAD", "/v1/settings/log.level"],
+      ["PUT", "/v1/settings/log.level", { value: "info" }],
+      ["POST", "/v1/settings/log.level", {}],
+      ["DELETE", "/v1/settings/catalog/models"],
+      ["GET", `/v1/settings/hosted-work/${tenant}`],
+      ["POST", `/v1/settings/hosted-work/${tenant}`, {}],
+      ["GET", `/v1/settings/hosted-storage/${tenant}`],
+      ["POST", `/v1/settings/hosted-storage/${tenant}`, {}],
+    ];
+    for (const [label, key] of [
+      ["denied", deniedKey],
+      ["read-only", readOnlyKey],
+      ["write-only", writeOnlyKey],
+      ["tenant-admin", secondary.admin.apiKey],
+      ["tenant-member", secondary.member.apiKey],
+    ] as const) {
+      for (const [method, path, body] of paths) {
+        const res = await http(method, path, body, key);
+        record(`http.settings.gate.${label}.${method} ${path.replace(tenant, "<tenant>")}`, {
+          status: res.status,
+          code: (res.body as { code?: string } | null)?.code ?? null,
+          message: (res.body as { message?: string } | null)?.message ?? null,
+        });
+      }
+    }
+    record("http.settings.unauthenticated", await http("GET", "/v1/settings", undefined, null));
+    recordRows(
+      "http.settings.denied.audit",
+      await auditRows(and(auditedSince(since), eq(auditLog.result, "denied"))),
+    );
+  });
+
+  test("first-run setup routes after bootstrap", async () => {
+    record("http.setup.status", await http("GET", "/v1/setup", undefined, null));
+    record("http.bootstrap.status", await http("GET", "/v1/bootstrap/status", undefined, null));
+    record("http.setup.invalid", await http("POST", "/v1/setup", {}, null));
+    record(
+      "http.setup.gone",
+      await http(
+        "POST",
+        "/v1/setup",
+        {
+          token: "a".repeat(64),
+          admin_email: "golden@test.local",
+          tenant_name: "golden",
+          llm_provider: "mock",
+          llm_api_key: "golden-key",
+        },
+        null,
+      ),
     );
   });
 

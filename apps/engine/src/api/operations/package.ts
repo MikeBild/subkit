@@ -2,32 +2,65 @@ import { z } from "@hono/zod-openapi";
 import { actorOf, actorType } from "../../audit/actor.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { HttpError } from "../../http/errors.ts";
+import { OPENAPI_INFO } from "../../http/openapi.ts";
 import { applyPackageImport, PackagePlanChangedError } from "../../identity/portability/apply.ts";
 import { PackageArchiveError } from "../../identity/portability/archive-read.ts";
 import { PackageTooLargeError } from "../../identity/portability/collect.ts";
+import { exportTenantPackage } from "../../identity/portability/export.ts";
+import type { PackagePlan } from "../../identity/portability/plan.ts";
 import {
   getPackageInstall,
   listPackageInstalls,
   loadStoredPackageArchive,
   PackageArchiveNotFoundError,
 } from "../../identity/portability/registry.ts";
+import type { RequestSource } from "../../observability/service-metadata.ts";
 import { parseFileId, toFileId } from "../files-schemas.ts";
 import {
   PackageApplyRequestSchema,
   PackageApplyResultSchema,
+  PackageExportRequestSchema,
+  PackageExportResultSchema,
   PackageInstallDetailSchema,
   PackageInstallListSchema,
 } from "../packages-schemas.ts";
-import { defineOperation, reject } from "./index.ts";
+import { defineOperation, isRejection, type Rejection, reject } from "./index.ts";
+import {
+  authenticationRequired,
+  compactPackageItems,
+  invalidPackageFileId,
+  PackageFileIdInput,
+  packageArchiveNotFound,
+  packageReviewUrl,
+  packageToolFailure,
+  packageToolSource,
+  publicBaseUrl,
+  unreadablePackageArchive,
+} from "./package-tool.ts";
 
 const InstallIdParam = z.object({ id: z.string().uuid() });
 
 const TAGS = ["packages"];
 
-type ApplyInput = z.infer<typeof PackageApplyRequestSchema>;
+type ExportInput = z.infer<typeof PackageExportRequestSchema>;
+type ExportResult = Awaited<ReturnType<typeof exportTenantPackage>>;
+type ApplyInput = z.infer<typeof PackageApplyRequestSchema> & {
+  readonly request_source?: RequestSource;
+};
 type ApplyResult = Awaited<ReturnType<typeof applyPackageImport>>;
 type InstallRow = Awaited<ReturnType<typeof listPackageInstalls>>[number];
 type InstallDetail = NonNullable<Awaited<ReturnType<typeof getPackageInstall>>>;
+
+const ApplyPackageImportToolInput = z
+  .object({
+    file_id: PackageFileIdInput,
+    expected_plan_digest: z
+      .string()
+      .min(1)
+      .describe("plan_digest returned by preview_package_import for this file."),
+  })
+  .strict()
+  .openapi("ApplyPackageImportToolInput");
 
 export function requireFileUuid(wire: string): string {
   const uuid = parseFileId(wire);
@@ -35,29 +68,67 @@ export function requireFileUuid(wire: string): string {
   return uuid;
 }
 
-export function throwPackageError(err: unknown): never {
+function packageErrorRejection(err: unknown): Rejection {
   if (err instanceof PackagePlanChangedError) {
-    throw new HttpError(409, "package_plan_changed", "the import plan changed since preview", {
-      hint: "Review the returned plan and apply again with its plan_digest.",
-      details: { plan: err.plan },
-    });
+    return reject.status(
+      409,
+      "package_plan_changed",
+      "the import plan changed since preview",
+      { plan: err.plan },
+      "Review the returned plan and apply again with its plan_digest.",
+    );
   }
   if (err instanceof PackageArchiveError) {
     const status = err.code === "package_archive_too_large" ? 413 : 400;
-    throw new HttpError(status, err.code, err.detail);
+    return reject.status(status, err.code, err.detail);
   }
   if (err instanceof PackageArchiveNotFoundError) {
-    throw new HttpError(404, "not_found", "package archive not found", {
-      hint: "Upload the archive again with POST /v1/packages/import/preview.",
-    });
+    return reject.status(
+      404,
+      "not_found",
+      "package archive not found",
+      undefined,
+      "Upload the archive again with POST /v1/packages/import/preview.",
+    );
   }
   if (err instanceof PackageTooLargeError) {
-    throw new HttpError(413, "package_too_large", "package exceeds the size limit", {
-      details: { total_bytes: err.total_bytes, limit_bytes: err.limit_bytes },
-      hint: "Export fewer kinds or categories.",
-    });
+    return reject.status(
+      413,
+      "package_too_large",
+      "package exceeds the size limit",
+      { total_bytes: err.total_bytes, limit_bytes: err.limit_bytes },
+      "Export fewer kinds or categories.",
+    );
   }
   throw err;
+}
+
+export function throwPackageError(err: unknown): never {
+  const rejection = packageErrorRejection(err);
+  throw new HttpError(rejection.status, rejection.code, rejection.message, {
+    ...(rejection.details ? { details: rejection.details } : {}),
+    ...(rejection.hint ? { hint: rejection.hint } : {}),
+  });
+}
+
+function applyRejectionResult(rejection: Rejection) {
+  if (rejection.status === 401) return authenticationRequired();
+  if (rejection.code === "bad_request") return invalidPackageFileId();
+  if (rejection.code === "not_found") return packageArchiveNotFound();
+  if (rejection.code === "package_plan_changed") {
+    const plan = rejection.details?.plan as PackagePlan;
+    return packageToolFailure(
+      "package_plan_changed",
+      "The tenant or package changed since the preview, so nothing was imported. Preview the package again and confirm the new plan.",
+      {
+        details: { summary: plan.summary },
+        next_best_actions: ["preview_package_import"],
+      },
+    );
+  }
+  if (rejection.code === "package_too_large")
+    return packageToolFailure(rejection.code, rejection.message);
+  return unreadablePackageArchive(rejection.code, rejection.message);
 }
 
 function iso(value: Date): string {
@@ -99,31 +170,74 @@ function installDetailView(found: InstallDetail) {
   };
 }
 
+export const exportPackageOperation = defineOperation<ExportInput, ExportResult>({
+  id: "package.export",
+  summary: "Export the tenant as a package archive",
+  permission: "package:export",
+  effect: "write",
+  audit: AuditAction.DATA_EXPORTED,
+  async handler(scope, body) {
+    const principal = scope.principal;
+    if (!principal) return reject.unauthorized();
+    try {
+      return await exportTenantPackage(scope.db, {
+        tenant_id: scope.tenant_id,
+        actor_type: actorType(principal),
+        actor_id: principal.id,
+        request_source: scope.request_source ?? "api",
+        kinds: body.kinds,
+        categories: body.categories,
+        source: { instance: publicBaseUrl(), engine_version: OPENAPI_INFO.version },
+      });
+    } catch (err) {
+      return packageErrorRejection(err);
+    }
+  },
+  http: {
+    method: "post",
+    path: "/v1/packages/export",
+    tags: TAGS,
+    description:
+      "Collects workflows, connectors without secrets, skills, files, schedules and knowledge into a stored package archive. Download it with GET /v1/packages/archives/{file_id}.",
+    body: PackageExportRequestSchema,
+    bodyRequired: false,
+    response: PackageExportResultSchema,
+    success: { status: 201, description: "Package archive stored" },
+    errors: {
+      400: "Invalid request",
+      413: "Package exceeds the size limit",
+    },
+    toInput: ({ json }) => json as ExportInput,
+    toBody: (result) => ({ ...result, file_id: toFileId(result.file_id) }),
+  },
+});
+
 export const applyPackageImportOperation = defineOperation<ApplyInput, ApplyResult>({
   id: "package.import_apply",
   summary: "Apply a previewed package import",
   permission: "package:import",
   effect: "write",
   audit: AuditAction.DATA_IMPORTED,
-  async handler(scope, body) {
+  async handler(scope, input) {
     const principal = scope.principal;
     if (!principal) return reject.unauthorized();
-    const uuid = requireFileUuid(body.archive_file_id);
+    const uuid = parseFileId(input.archive_file_id);
+    if (uuid === null) return reject.badRequest("invalid file id");
     try {
       const stored = await loadStoredPackageArchive(scope.db, scope.tenant_id, uuid);
       return await applyPackageImport(scope.db, {
         tenant_id: scope.tenant_id,
         archive: stored.bytes,
         archive_file_id: stored.file_id,
-        expected_plan_digest: body.expected_plan_digest,
+        expected_plan_digest: input.expected_plan_digest,
         who: {
           actor: actorOf(principal),
           actor_type: actorType(principal),
-          request_source: scope.request_source ?? "api",
+          request_source: input.request_source ?? scope.request_source ?? "api",
         },
       });
     } catch (err) {
-      throwPackageError(err);
+      return packageErrorRejection(err);
     }
   },
   http: {
@@ -142,6 +256,53 @@ export const applyPackageImportOperation = defineOperation<ApplyInput, ApplyResu
     },
     toInput: ({ json }) => json as ApplyInput,
     toBody: (result) => result,
+  },
+  tool: {
+    name: "apply_package_import",
+    description:
+      "Import a previewed SubKit package file into this tenant. Requires the plan_digest from preview_package_import; if the tenant or package changed since the preview, nothing is imported and the plan must be previewed again. Conflicts are skipped, never overwritten. Imported knowledge waits for human review; credentials, approvals and paused schedules must be completed afterwards.",
+    input: ApplyPackageImportToolInput,
+    gate: "enforced",
+    permission: { resourceType: "package" },
+    toInput: (args, ctx) => {
+      const { file_id, expected_plan_digest } = args as {
+        file_id: string;
+        expected_plan_digest: string;
+      };
+      return {
+        archive_file_id: file_id,
+        expected_plan_digest,
+        request_source: packageToolSource(ctx),
+      };
+    },
+    async guard(input, ctx) {
+      if (!ctx.principal) return authenticationRequired();
+      if (parseFileId(input.archive_file_id) === null) return invalidPackageFileId();
+      return null;
+    },
+    toResult(outcome) {
+      if (isRejection(outcome)) return applyRejectionResult(outcome);
+      const { items, truncated } = compactPackageItems(
+        outcome.items.map((item) => ({
+          kind: item.kind,
+          key: item.key,
+          action: item.action,
+          ...(item.errors && item.errors.length > 0 ? { errors: item.errors } : {}),
+          ...(item.review ? { review_url: packageReviewUrl(item.review.path) } : {}),
+        })),
+      );
+      return {
+        ok: true,
+        data: {
+          install_id: outcome.install_id,
+          plan_digest: outcome.plan_digest,
+          summary: outcome.summary,
+          items,
+          items_truncated: truncated,
+          requires: outcome.requires,
+        },
+      };
+    },
   },
 });
 

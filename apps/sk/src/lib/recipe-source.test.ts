@@ -11,6 +11,13 @@ const SLACK = "54000000-0000-4000-8000-000000000001";
 
 type Candidate = RecipePackEntry["connectors"][number]["candidates"][number];
 
+function recipeWorkflow(shape: {
+  name: string;
+  steps: { id: string; connector_id: string }[];
+}): RecipePackEntry["workflow"] {
+  return shape as unknown as RecipePackEntry["workflow"];
+}
+
 function entry(connector_id: string | null, candidates: Candidate[] = []): RecipePackEntry {
   return {
     template_slug: null,
@@ -31,10 +38,10 @@ function entry(connector_id: string | null, candidates: Candidate[] = []): Recip
       },
     ],
     sample_input: { level: "error", title: "Down" },
-    workflow: {
+    workflow: recipeWorkflow({
       name: "webhook-to-slack",
       steps: [{ id: "post", connector_id: connector_id ?? SLACK }],
-    },
+    }),
   };
 }
 

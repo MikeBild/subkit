@@ -9,11 +9,11 @@ const base = {
 };
 
 describe("manualWorkflowDefinition", () => {
-  test("starts with one transform step that names its error policy", () => {
+  test("starts with one transform step and leaves the error policy to the engine default", () => {
     expect(manualWorkflowDefinition({ ...base, trigger: "request" })).toEqual({
       name: "Daily report",
       slug: "daily-report",
-      steps: [{ id: "start", kind: "transform", on_error: "fail", expression: "return input;" }],
+      steps: [{ id: "start", kind: "transform", expression: "return input;" }],
       trigger: { kind: "request" },
     });
   });

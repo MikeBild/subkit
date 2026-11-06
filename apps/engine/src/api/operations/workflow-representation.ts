@@ -1,7 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { WORKFLOW_OPERATING_STATUSES } from "@shared/workflow-operating-status.ts";
 import type { Executor } from "../../db/client.ts";
-import { RECIPE_PACK_PREDICATES } from "../../http/routes/connector-templates/schemas.ts";
 import {
   EffectiveTriggerSchema,
   type TriggerBinding,
@@ -186,7 +185,7 @@ export function recipeOriginRejection(
   origin: { vertical: string; slug: string },
   definition: unknown,
 ): Rejection | null {
-  const check = checkRecipeOrigin(origin, definition, RECIPE_PACK_PREDICATES);
+  const check = checkRecipeOrigin(origin, definition);
   return check.ok
     ? null
     : reject.unprocessable(check.message, { reason: check.reason }, "unprocessable_entity");

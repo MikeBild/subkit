@@ -5,8 +5,9 @@ import {
   onboardingCredential,
 } from "../repl/slash/handlers/onboarding.ts";
 
-const noHints = { credential_hints: [] };
+const noHints = { credential_hints: [], auth_options: [] };
 const keyHeader = {
+  auth_options: [],
   credential_hints: [
     {
       field: "value",
@@ -36,6 +37,28 @@ describe("onboardingCredential", () => {
       ok: true,
       body: { mode: "header", headers: { "x-api-key": "k-1" } },
     });
+  });
+
+  test("a header or query key takes its name from the template's auth option first", () => {
+    const option = (auth_type: "header" | "query", param_name: string) => ({
+      credential_hints: [],
+      auth_options: [{ auth_type, label: "Key", description: "Key", param_name }],
+    });
+    expect(
+      onboardingCredential("c1", "header", option("header", "X-Shopify-Access-Token"), "k-1"),
+    ).toEqual({ ok: true, body: { mode: "header", headers: { "X-Shopify-Access-Token": "k-1" } } });
+    expect(onboardingCredential("c1", "query", option("query", "token"), "k-2")).toEqual({
+      ok: true,
+      body: { mode: "query", query: { token: "k-2" } },
+    });
+    expect(
+      onboardingCredential(
+        "c1",
+        "header",
+        { ...keyHeader, auth_options: option("header", "apikey").auth_options },
+        "k-3",
+      ),
+    ).toEqual({ ok: true, body: { mode: "header", headers: { apikey: "k-3" } } });
   });
 
   test("a header or query key without a named field points to sk credentials set", () => {

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { z } from "@hono/zod-openapi";
+import { proposalReviewUrl } from "../../../api/operations/intake-proposals.ts";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import type { Db } from "../../../db/client.ts";
 import { conversations, tenants, users } from "../../../db/schema/index.ts";
@@ -17,7 +18,6 @@ import { createDeterministicUuidFactory } from "../../../test-helpers/determinis
 import { createEmptyDraftDocument } from "../../authoring-state/index.ts";
 import { decideToolMode } from "../../tool-policies.ts";
 import type { TurnEvent } from "../../types.ts";
-import { proposalReviewUrl } from "../engine-api/intake.ts";
 import { type ConversationTool, getTool, type ToolContext } from "../index.ts";
 import { prepareGate } from "../sdk-wrap/gate-subjects.ts";
 import { wrapOne } from "../sdk-wrap/invoke.ts";

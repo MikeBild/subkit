@@ -2,34 +2,48 @@ import { z } from "@hono/zod-openapi";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction, type AuditActionValue } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { LastAdminError } from "../../identity/last-admin.ts";
+import { assignUserRole } from "../../identity/user-role.ts";
 import { loadPermissionCatalog } from "../../rbac/catalog.ts";
-import { listGrants, revokeResource } from "../../rbac/grants.ts";
+import { can } from "../../rbac/evaluator.ts";
+import { type GrantRow, grantResource, listGrants, revokeResource } from "../../rbac/grants.ts";
 import {
   addMember,
   assignRoleToGroup,
+  createGroup,
   deleteGroup,
+  type GroupRow,
   getGroup,
   listGroups,
   listTenantGroupMemberships,
   removeMember,
   revokeRoleFromGroup,
+  updateGroup,
 } from "../../rbac/groups.ts";
+import { buildQueryPrincipal } from "../../rbac/query-principal.ts";
 import {
+  createRole,
   deleteRole,
   getRole,
+  grantPermissionToRole,
   listRolePermissions,
   listRoles,
+  type RoleRow,
   revokePermissionFromRole,
   roleMemberCounts,
   tenantRolePermissions,
+  updateRole,
 } from "../../rbac/roles.ts";
 import { IdParam } from "../common-schemas.ts";
 import { defineOperation, type OperationScope, type Rejection, reject } from "./index.ts";
 import {
   PermissionCatalogEntrySchema,
+  RbacCanResponseSchema,
   RbacGrantSchema,
   RbacGroupDetailSchema,
+  RbacGroupSchema,
   RbacRoleDetailSchema,
+  RbacRoleSchema,
   roleErrorRejection,
   serializeGrant,
   serializeGroup,
@@ -41,6 +55,81 @@ const OkResponse = z.object({ ok: z.literal(true) });
 const RolePermissionParams = z.object({ id: z.string().uuid(), permission: z.string() });
 const GroupMemberParams = z.object({ id: z.string().uuid(), user_id: z.string().uuid() });
 const GroupRoleParams = z.object({ id: z.string().uuid(), role_id: z.string().uuid() });
+const UserIdParam = z.object({ user_id: z.string().uuid() });
+
+const CreateRoleBody = z
+  .object({ name: z.string(), description: z.string().optional() })
+  .openapi("CreateRbacRoleRequest");
+const UpdateRoleBody = z
+  .object({
+    name: z.string().optional(),
+    description: z.string().nullable().optional(),
+  })
+  .openapi("UpdateRbacRoleRequest");
+const GrantRolePermissionBody = z
+  .object({ permission: z.string() })
+  .openapi("GrantRolePermissionRequest");
+const AssignUserRoleBody = z.object({ role_id: z.string() }).openapi("AssignUserRoleRequest");
+const AssignUserRoleResponse = z
+  .object({
+    ok: z.literal(true),
+    user_id: z.string(),
+    role_id: z.string(),
+  })
+  .openapi("AssignUserRoleResponse");
+const CreateGrantBody = z
+  .object({
+    subject_type: z.enum(["user", "system_account", "group"]),
+    subject_id: z.string(),
+    resource_type: z.string(),
+    resource_id: z.string(),
+    permission: z.string(),
+    expires_at: z.string().nullable().optional(),
+  })
+  .openapi("CreateRbacGrantRequest");
+const CreateGroupBody = z
+  .object({ name: z.string(), description: z.string().optional() })
+  .openapi("CreateRbacGroupRequest");
+const UpdateGroupBody = z
+  .object({
+    name: z.string().optional(),
+    description: z.string().nullable().optional(),
+  })
+  .openapi("UpdateRbacGroupRequest");
+const CanBody = z
+  .object({
+    principal_id: z.string(),
+    permission: z.string(),
+    resource: z.object({ type: z.string(), id: z.string() }).optional(),
+  })
+  .openapi("RbacCanRequest");
+
+type CreateNamed = z.infer<typeof CreateRoleBody>;
+type UpdateNamed = z.infer<typeof UpdateRoleBody>;
+type CreateGrantInput = z.infer<typeof CreateGrantBody>;
+type CanInput = z.infer<typeof CanBody>;
+
+interface UpdateInput {
+  readonly id: string;
+  readonly body: UpdateNamed;
+}
+
+interface AssignUserRoleInput {
+  readonly user_id: string;
+  readonly role_id: string;
+}
+
+interface AssignedUserRole {
+  readonly ok: true;
+  readonly user_id: string;
+  readonly role_id: string;
+}
+
+interface CanDecision {
+  readonly allow: boolean;
+  readonly reason: string | null;
+  readonly source: string | null;
+}
 
 interface IdInput {
   readonly id: string;
@@ -198,6 +287,76 @@ export const getRoleOperation = defineOperation<IdInput, RoleDetail>({
   },
 });
 
+function namedPatch(body: UpdateNamed) {
+  return {
+    ...(body.name !== undefined ? { name: body.name } : {}),
+    ...(body.description !== undefined ? { description: body.description } : {}),
+  };
+}
+
+export const createRoleOperation = defineOperation<CreateNamed, RoleRow>({
+  id: "rbac.role.create",
+  summary: "Create a custom role",
+  permission: "rbac:write",
+  effect: "write",
+  audit: AuditAction.RBAC_ROLE_CREATED,
+  async handler(scope, body) {
+    const principal = scope.principal;
+    if (!principal) return reject.unauthorized();
+    const role = await createRole(scope.db, scope.tenant_id, body.name, body.description);
+    await audited(scope, principal, AuditAction.RBAC_ROLE_CREATED, "role", role.id, {
+      name: role.name,
+    });
+    return role;
+  },
+  http: {
+    method: "post",
+    path: "/v1/rbac/roles",
+    tags: TAGS,
+    body: CreateRoleBody,
+    bodyRequired: true,
+    response: RbacRoleSchema,
+    success: { status: 201, description: "Created" },
+    errors: { 400: "Bad request" },
+    toInput: ({ json }) => json as CreateNamed,
+    toBody: serializeRole,
+  },
+});
+
+export const updateRoleOperation = defineOperation<UpdateInput, RoleRow>({
+  id: "rbac.role.update",
+  summary: "Update a custom role",
+  permission: "rbac:write",
+  effect: "write",
+  audit: AuditAction.RBAC_ROLE_UPDATED,
+  async handler(scope, { id, body }) {
+    const principal = scope.principal;
+    if (!principal) return reject.unauthorized();
+    let role: RoleRow;
+    try {
+      role = await updateRole(scope.db, scope.tenant_id, id, namedPatch(body));
+    } catch (err) {
+      return roleErrorRejection(err);
+    }
+    await audited(scope, principal, AuditAction.RBAC_ROLE_UPDATED, "role", role.id, {
+      patch: body,
+    });
+    return role;
+  },
+  http: {
+    method: "patch",
+    path: "/v1/rbac/roles/{id}",
+    tags: TAGS,
+    params: IdParam,
+    body: UpdateRoleBody,
+    bodyRequired: true,
+    response: RbacRoleSchema,
+    errors: { 404: "Not found", 409: "Conflict" },
+    toInput: ({ param, json }) => ({ id: (param as IdInput).id, body: json as UpdateNamed }),
+    toBody: serializeRole,
+  },
+});
+
 export const deleteRoleOperation = defineOperation<IdInput, Ok>({
   id: "rbac.role.delete",
   summary: "Delete a custom role",
@@ -222,6 +381,41 @@ export const deleteRoleOperation = defineOperation<IdInput, Ok>({
     errors: { 404: "Not found", 409: "Conflict" },
     toInput: ({ param }) => ({ id: (param as IdInput).id }),
     toBody: () => null,
+  },
+});
+
+export const grantRolePermissionOperation = defineOperation<RolePermissionInput, Ok>({
+  id: "rbac.role.permission.grant",
+  summary: "Grant a permission to a role",
+  permission: "rbac:write",
+  effect: "write",
+  audit: AuditAction.RBAC_ROLE_PERMISSION_GRANTED,
+  async handler(scope, { id, permission }) {
+    const principal = scope.principal;
+    if (!principal) return reject.unauthorized();
+    const failed = await roleChange(() =>
+      grantPermissionToRole(scope.db, scope.tenant_id, id, permission),
+    );
+    if (failed) return failed;
+    await audited(scope, principal, AuditAction.RBAC_ROLE_PERMISSION_GRANTED, "role", id, {
+      permission,
+    });
+    return OK;
+  },
+  http: {
+    method: "post",
+    path: "/v1/rbac/roles/{id}/permissions",
+    tags: TAGS,
+    params: IdParam,
+    body: GrantRolePermissionBody,
+    bodyRequired: true,
+    response: OkResponse,
+    errors: { 400: "Bad request", 404: "Not found", 409: "Conflict" },
+    toInput: ({ param, json }) => ({
+      id: (param as IdInput).id,
+      permission: (json as { permission: string }).permission,
+    }),
+    toBody: (ok) => ok,
   },
 });
 
@@ -259,6 +453,54 @@ export const revokeRolePermissionOperation = defineOperation<RolePermissionInput
   },
 });
 
+export const assignUserRoleOperation = defineOperation<AssignUserRoleInput, AssignedUserRole>({
+  id: "rbac.user.role.assign",
+  summary: "Assign a user's role",
+  permission: "rbac:write",
+  effect: "write",
+  audit: AuditAction.RBAC_USER_ROLE_ASSIGNED,
+  async handler(scope, { user_id, role_id }) {
+    const principal = scope.principal;
+    if (!principal) return reject.unauthorized();
+    const role = await getRole(scope.db, scope.tenant_id, role_id);
+    if (!role) return reject.badRequest("role_id not found");
+    let assigned: boolean;
+    try {
+      assigned = await assignUserRole(scope.db, {
+        tenant_id: scope.tenant_id,
+        user_id,
+        role_id,
+        role_name: role.name,
+        actor: principal,
+      });
+    } catch (err) {
+      if (err instanceof LastAdminError) return reject.status(409, "last_admin", err.message);
+      throw err;
+    }
+    if (!assigned) return reject.notFound("user");
+    return { ok: true, user_id, role_id };
+  },
+  http: {
+    method: "post",
+    path: "/v1/rbac/users/{user_id}/role",
+    tags: TAGS,
+    params: UserIdParam,
+    body: AssignUserRoleBody,
+    bodyRequired: true,
+    response: AssignUserRoleResponse,
+    errors: {
+      400: "Bad request",
+      404: "Not found",
+      409: "last_admin — the change would leave the workspace without an administrator",
+    },
+    toInput: ({ param, json }) => ({
+      user_id: (param as { user_id: string }).user_id,
+      role_id: (json as { role_id: string }).role_id,
+    }),
+    toBody: (assigned) => assigned,
+  },
+});
+
 export const listGrantsOperation = defineOperation<null, Awaited<ReturnType<typeof listGrants>>>({
   id: "rbac.grant.list",
   summary: "List resource grants",
@@ -274,6 +516,56 @@ export const listGrantsOperation = defineOperation<null, Awaited<ReturnType<type
     response: z.object({ items: z.array(RbacGrantSchema) }).openapi("RbacGrantListResponse"),
     toInput: () => null,
     toBody: (grants) => ({ items: grants.map(serializeGrant) }),
+  },
+});
+
+export const createGrantOperation = defineOperation<CreateGrantInput, GrantRow>({
+  id: "rbac.grant.create",
+  summary: "Create a resource grant",
+  permission: "rbac:write",
+  effect: "write",
+  audit: AuditAction.RBAC_GRANT_CREATED,
+  async handler(scope, body) {
+    const principal = scope.principal;
+    if (!principal) return reject.unauthorized();
+    let grant: GrantRow;
+    try {
+      grant = await grantResource(scope.db, {
+        tenant_id: scope.tenant_id,
+        subject_type: body.subject_type,
+        subject_id: body.subject_id,
+        resource_type: body.resource_type,
+        resource_id: body.resource_id,
+        permission: body.permission,
+        granted_by: principal.id,
+        expires_at: body.expires_at ? new Date(body.expires_at) : null,
+      });
+    } catch (err) {
+      if ((err as Error).message?.startsWith("permission_unknown:")) {
+        return reject.badRequest((err as Error).message);
+      }
+      throw err as Error;
+    }
+    await audited(scope, principal, AuditAction.RBAC_GRANT_CREATED, "resource_grant", grant.id, {
+      subject_type: grant.subject_type,
+      subject_id: grant.subject_id,
+      permission: grant.permission_name,
+      resource_type: grant.resource_type,
+      resource_id: grant.resource_id,
+    });
+    return grant;
+  },
+  http: {
+    method: "post",
+    path: "/v1/rbac/grants",
+    tags: TAGS,
+    body: CreateGrantBody,
+    bodyRequired: true,
+    response: RbacGrantSchema,
+    success: { status: 201, description: "Created" },
+    errors: { 400: "Bad request" },
+    toInput: ({ json }) => json as CreateGrantInput,
+    toBody: serializeGrant,
   },
 });
 
@@ -338,6 +630,65 @@ export const listGroupsOperation = defineOperation<null, GroupListResult>({
         member_ids: members.get(group.id) ?? [],
       })),
     }),
+  },
+});
+
+export const createGroupOperation = defineOperation<CreateNamed, GroupRow>({
+  id: "rbac.group.create",
+  summary: "Create a group",
+  permission: "rbac:write",
+  effect: "write",
+  audit: AuditAction.RBAC_GROUP_CREATED,
+  async handler(scope, body) {
+    const principal = scope.principal;
+    if (!principal) return reject.unauthorized();
+    const group = await createGroup(scope.db, scope.tenant_id, body.name, body.description);
+    await audited(scope, principal, AuditAction.RBAC_GROUP_CREATED, "group", group.id, {
+      name: group.name,
+    });
+    return group;
+  },
+  http: {
+    method: "post",
+    path: "/v1/rbac/groups",
+    tags: TAGS,
+    body: CreateGroupBody,
+    bodyRequired: true,
+    response: RbacGroupSchema,
+    success: { status: 201, description: "Created" },
+    errors: { 400: "Bad request" },
+    toInput: ({ json }) => json as CreateNamed,
+    toBody: serializeGroup,
+  },
+});
+
+export const updateGroupOperation = defineOperation<UpdateInput, GroupRow>({
+  id: "rbac.group.update",
+  summary: "Update a group",
+  permission: "rbac:write",
+  effect: "write",
+  audit: AuditAction.RBAC_GROUP_UPDATED,
+  async handler(scope, { id, body }) {
+    const principal = scope.principal;
+    if (!principal) return reject.unauthorized();
+    const group = await updateGroup(scope.db, scope.tenant_id, id, namedPatch(body));
+    if (!group) return reject.notFound("group");
+    await audited(scope, principal, AuditAction.RBAC_GROUP_UPDATED, "group", id, {
+      patch: body,
+    });
+    return group;
+  },
+  http: {
+    method: "patch",
+    path: "/v1/rbac/groups/{id}",
+    tags: TAGS,
+    params: IdParam,
+    body: UpdateGroupBody,
+    bodyRequired: true,
+    response: RbacGroupSchema,
+    errors: { 404: "Not found" },
+    toInput: ({ param, json }) => ({ id: (param as IdInput).id, body: json as UpdateNamed }),
+    toBody: serializeGroup,
   },
 });
 
@@ -495,5 +846,38 @@ export const revokeGroupRoleOperation = defineOperation<GroupRoleInput, Ok>({
     errors: { 404: "Not found" },
     toInput: ({ param }) => groupRoleInput(param),
     toBody: () => null,
+  },
+});
+
+export const canOperation = defineOperation<CanInput, CanDecision>({
+  id: "rbac.can",
+  summary: "Check whether a principal holds a permission",
+  permission: "rbac:read",
+  effect: "read",
+  async handler(scope, body) {
+    const queryPrincipal = await buildQueryPrincipal(scope.db, scope.tenant_id, body.principal_id);
+    if (!queryPrincipal) return reject.notFound("principal");
+    const decision = await can(scope.db, {
+      tenant_id: scope.tenant_id,
+      principal: queryPrincipal,
+      permission: body.permission,
+      ...(body.resource ? { resource: body.resource } : {}),
+    });
+    return {
+      allow: decision.allow,
+      reason: decision.reason ?? null,
+      source: decision.source ?? null,
+    };
+  },
+  http: {
+    method: "post",
+    path: "/v1/rbac/can",
+    tags: TAGS,
+    body: CanBody,
+    bodyRequired: true,
+    response: RbacCanResponseSchema,
+    errors: { 400: "Bad request", 404: "Not found" },
+    toInput: ({ json }) => json as CanInput,
+    toBody: (decision) => decision,
   },
 });

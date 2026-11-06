@@ -7,4 +7,3 @@
 
 apps/engine/src/http/routes/connectors/credentials-setup.ts  634
 apps/engine/src/http/routes/connectors/mcp.ts                660
-apps/engine/src/http/routes/settings.ts                      619

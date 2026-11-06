@@ -75,6 +75,22 @@ describe("defineOperation", () => {
     ).not.toThrow();
   });
 
+  test("allows a target tenant in the body only when the binding says so", () => {
+    const body = z.object({ tenant_id: z.string() });
+    expect(() => defineOperation({ ...base, http: { ...http, body } })).toThrow(
+      /takes tenant_id as input/,
+    );
+    expect(() =>
+      defineOperation({ ...base, http: { ...http, body, targetTenant: "body" } }),
+    ).not.toThrow();
+    expect(() =>
+      defineOperation({
+        ...base,
+        http: { ...http, query: body, targetTenant: "body" },
+      }),
+    ).toThrow(/takes tenant_id as input/);
+  });
+
   test("returns a frozen operation", () => {
     const op = defineOperation({ ...base, resource: { type: "thing", param: "id" }, http });
     expect(Object.isFrozen(op)).toBe(true);
@@ -232,6 +248,49 @@ describe("toConversationTool", () => {
       ok: true,
       data: { outcome: { id: null, type: "system" }, prepared: "before" },
     });
+  });
+
+  test("toInput sees the context, a guard can stop the handler, draft flags pass through", async () => {
+    const ctx = {
+      db: {},
+      tenant_id: "t",
+      conversation_id: "c-9",
+      engineClient: { context: { tenant_id: "t", actor_id: null } },
+    } as never;
+    let handled = 0;
+    const precheck = async () => ({ ok: true }) as never;
+    const op = defineOperation({
+      ...base,
+      handler: async (_scope: unknown, input: { id: string; conversation: string }) => {
+        handled += 1;
+        return input as never;
+      },
+      tool: {
+        ...tool,
+        requires_draft: true,
+        precheck,
+        toInput: async (args: unknown, context: { conversation_id: string }) => ({
+          id: (args as { id: string }).id,
+          conversation: context.conversation_id,
+        }),
+        guard: async (input: { id: string }) =>
+          input.id === "blocked" ? { ok: false as const, error_code: "blocked" } : null,
+        toResult: (outcome: unknown) => ({ ok: true as const, data: outcome }),
+      },
+    });
+    const derived = toConversationTool(op);
+    expect(derived.requires_draft).toBe(true);
+    expect(derived.precheck).toBe(precheck);
+    expect(await derived.execute(ctx, { id: "blocked" })).toEqual({
+      ok: false,
+      error_code: "blocked",
+    });
+    expect(handled).toBe(0);
+    expect(await derived.execute(ctx, { id: "x" })).toEqual({
+      ok: true,
+      data: { id: "x", conversation: "c-9" },
+    });
+    expect(handled).toBe(1);
   });
 
   test("refuses an operation without a tool binding", () => {

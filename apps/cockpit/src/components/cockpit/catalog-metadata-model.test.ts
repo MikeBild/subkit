@@ -25,8 +25,14 @@ describe("metadataPatch", () => {
 
   test("an emptied description or the catch-all hands the field back to automation", () => {
     expect(metadataPatch(record, { description: "", category: "other" })).toEqual({
-      description: "",
-      category: "",
+      description: null,
+      category: null,
+    });
+  });
+
+  test("an empty category draft clears the category like the catch-all", () => {
+    expect(metadataPatch(record, { description: "Sends the report.", category: "" })).toEqual({
+      category: null,
     });
   });
 });

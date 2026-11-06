@@ -18,7 +18,7 @@ apps/engine/src/http/routes/connector-templates/import-spec.ts          1
 apps/engine/src/http/routes/connectors/authoring.ts                     1
 apps/engine/src/http/routes/connectors/credentials-setup.ts             1
 apps/engine/src/http/routes/connectors/signin-signals.ts                1
-apps/engine/src/http/routes/conversations/collection.ts                 3
+apps/engine/src/http/routes/conversations/collection.ts                 1
 apps/engine/src/http/routes/conversations/direct-tools.ts               1
 apps/engine/src/http/routes/conversations/elicitations.ts               3
 apps/engine/src/http/routes/conversations/lifecycle.ts                  1

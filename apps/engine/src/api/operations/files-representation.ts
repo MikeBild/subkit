@@ -8,6 +8,15 @@ export const FileIdParam = z.object({
   id: FileIdSchema.openapi({ param: { name: "id", in: "path" } }),
 });
 
+export const FileVersionParam = z.object({
+  id: FileIdSchema.openapi({ param: { name: "id", in: "path" } }),
+  version: z.coerce
+    .number()
+    .int()
+    .positive()
+    .openapi({ param: { name: "version", in: "path" }, type: "integer" }),
+});
+
 export function toFileWire(row: FileRow): FileWire {
   return {
     id: toFileId(row.id),

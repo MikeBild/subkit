@@ -2,7 +2,7 @@ import type { z } from "@hono/zod-openapi";
 import type { PgBoss } from "pg-boss";
 import type { AuditActionValue } from "../../audit/index.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import type { ToolContext, ToolResult } from "../../conversations/tools/index.ts";
+import type { ConversationTool, ToolContext, ToolResult } from "../../conversations/tools/index.ts";
 import type { Db } from "../../db/client.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
 
@@ -27,7 +27,7 @@ export interface OperationScope {
   ensurePermission?(permission: string, resource?: { type: string; id: string }): Promise<void>;
 }
 
-export type RejectionStatus = 400 | 401 | 403 | 404 | 409 | 413 | 422 | 429;
+export type RejectionStatus = 400 | 401 | 403 | 404 | 409 | 410 | 413 | 422 | 429;
 
 const REJECTION: unique symbol = Symbol("operation.rejection");
 
@@ -115,7 +115,7 @@ export function isRejection(value: unknown): value is Rejection {
 
 export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
 
-export type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 413 | 422 | 429 | 500;
+export type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 410 | 413 | 422 | 429 | 500;
 
 export interface HttpRequestParts {
   readonly param: unknown;
@@ -145,10 +145,14 @@ export interface HttpBinding<I, R> {
   readonly params?: z.ZodTypeAny;
   readonly query?: z.ZodTypeAny;
   readonly body?: z.ZodTypeAny;
-  readonly bodyRequired?: true;
+  readonly bodyRequired?: boolean;
+  readonly security?: readonly Readonly<Record<string, readonly string[]>>[] | null;
+  readonly targetTenant?: "body";
   readonly headers?: z.ZodTypeAny;
   readonly response: z.ZodTypeAny;
-  readonly errors?: Partial<Record<ErrorStatus, string>>;
+  readonly errors?: Partial<
+    Record<ErrorStatus, string | { readonly description: string; readonly schema: z.ZodTypeAny }>
+  >;
   readonly success?: SuccessResponse | readonly SuccessResponse[];
   statusFor?(result: R): SuccessStatus;
   invalid?(issues: readonly ValidationIssue[]): Rejection;
@@ -170,7 +174,10 @@ export interface ToolBinding<I, R> {
   ) => Promise<string | null>;
   readonly use_case?: string;
   readonly important_notes?: readonly string[];
-  toInput(args: unknown): I;
+  readonly requires_draft?: boolean;
+  precheck?: ConversationTool["precheck"];
+  toInput(args: unknown, ctx: ToolContext): I | Promise<I>;
+  guard?(input: I, ctx: ToolContext): Promise<ToolResult | null>;
   prepare?(input: I, ctx: ToolContext): Promise<unknown>;
   toResult(
     outcome: R | Rejection,
@@ -208,7 +215,12 @@ function keysOf(schema: z.ZodTypeAny | undefined): string[] {
 }
 
 export function defineOperation<I, R>(op: Operation<I, R>): Operation<I, R> {
-  const surfaces = [op.http?.params, op.http?.query, op.http?.body, op.tool?.input];
+  const surfaces = [
+    op.http?.params,
+    op.http?.query,
+    op.http?.targetTenant === "body" ? undefined : op.http?.body,
+    op.tool?.input,
+  ];
   if (surfaces.some((schema) => keysOf(schema).includes("tenant_id"))) {
     throw new Error(`operation ${op.id} takes tenant_id as input; the scope carries the tenant`);
   }

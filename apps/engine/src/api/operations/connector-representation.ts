@@ -5,8 +5,11 @@ import { connectorSignIn } from "../../connectors/sign-in.ts";
 import {
   ConnectorTemplateSourceEnum,
   type ConnectorView,
+  DriverEnum,
+  EnvironmentEnum,
   OperatorQuirksSchema,
 } from "../../connectors/types.ts";
+import { CredentialMode } from "../../credentials/types.ts";
 import { CatalogSourceSchema } from "../catalog-metadata.ts";
 import { ConnectionSummarySchema } from "../connection-schemas.ts";
 
@@ -52,9 +55,9 @@ export const ConnectorSchema = z
         "The catalog block this connector belongs to, shared with workflows, knowledge sources, skills and files; `other` until one is assigned.",
       ),
     category_source: CatalogSourceSchema,
-    driver: z.string(),
-    environment: z.string(),
-    auth_type: z.string(),
+    driver: DriverEnum,
+    environment: EnvironmentEnum,
+    auth_type: CredentialMode,
     base_url: z.string().nullable(),
     dsn: z.string().nullable(),
     config: z.record(z.string(), z.unknown()),

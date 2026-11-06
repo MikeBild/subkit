@@ -5,6 +5,7 @@ import type { PgBoss } from "pg-boss";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import type { RequestSource, ServiceMetadata } from "../observability/service-metadata.ts";
+import { type JsonObject, refineOpenApiDocument } from "./openapi-document.ts";
 
 export type AppEnv = {
   Bindings: { incoming?: IncomingMessage };
@@ -24,7 +25,7 @@ export type AppEnv = {
 };
 
 export function createOpenApiApp(): OpenAPIHono<AppEnv> {
-  return new OpenAPIHono<AppEnv>({
+  const app = new OpenAPIHono<AppEnv>({
     defaultHook: (result, c) => {
       if (!result.success) {
         return c.json(
@@ -39,6 +40,14 @@ export function createOpenApiApp(): OpenAPIHono<AppEnv> {
       return undefined;
     },
   });
+  const generate = app.getOpenAPI31Document;
+  app.getOpenAPI31Document = (objectConfig, generatorConfig) => {
+    const generated: JsonObject = JSON.parse(
+      JSON.stringify(generate(objectConfig, generatorConfig)),
+    );
+    return JSON.parse(JSON.stringify(refineOpenApiDocument(generated)));
+  };
+  return app;
 }
 
 function resolveEngineVersion(): string {

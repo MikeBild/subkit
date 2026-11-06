@@ -197,7 +197,6 @@ A connector is a governed binding to an external system. There are five drivers 
 - `POST /v1/connectors/{id}/test` — the driver's own health probe (HTTP request against `base_url`, Postgres `SELECT 1`, S3 list-bucket, MCP handshake).
 - `POST /v1/connectors/{id}/call` — invoke the connector directly (method/path/body passthrough).
 - `POST /v1/connectors/{id}/credentials` — set connector credentials.
-- `POST /v1/connectors/{id}/end-user-credentials` — set per-enduser credentials.
 - `POST /v1/connectors/{id}/oauth/start` / `GET /v1/connectors/{id}/oauth/start` — begin an OAuth2 grant (a connector's `sign_in` names which of this and `/mcp/authorize` signs it in); `GET /v1/oauth/callback` completes it (unauthenticated, state-token-authed).
 - `POST /v1/connectors/validate`, `POST /v1/connectors/probe`, `POST /v1/connectors/import` — check a definition, probe a target, or import a spec. None of the three persists anything. `probe` answers 400 for a driver-`mcp` definition: an MCP session and its credential are resolved by connector id, so there is nothing to probe until the connector is saved (probe it afterwards with `POST /v1/connectors/{id}/mcp/inspect`).
 - `POST /v1/connectors/discover` — discover endpoints for a target.

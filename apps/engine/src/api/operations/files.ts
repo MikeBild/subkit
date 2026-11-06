@@ -10,6 +10,8 @@ import {
   getFileDetail,
   linkFile,
   listFiles,
+  replaceFileBytes,
+  restoreFileVersion,
   updateFileDetails,
 } from "../../files/service.ts";
 import { listFileVersions } from "../../files/versions.ts";
@@ -24,15 +26,18 @@ import {
   FileStatsSchema,
   FileUsageSchema,
   FileVersionListSchema,
+  type InlineUpload,
+  InlineUploadSchema,
   type LinkRequest,
   LinkRequestSchema,
   type ListFilesQuery,
   ListFilesQuerySchema,
+  MAX_INLINE_BYTES,
   parseFileIdOrThrow,
   toFileId,
   UpdateFileSchema,
 } from "../files-schemas.ts";
-import { FileIdParam, toFileWire } from "./files-representation.ts";
+import { FileIdParam, FileVersionParam, toFileWire } from "./files-representation.ts";
 import { defineOperation, type OperationScope, plainRejection, reject } from "./index.ts";
 
 const TAGS = ["Files"] as const;
@@ -229,6 +234,80 @@ export const renameFileOperation = defineOperation<RenameInput, FileRow>({
   },
 });
 
+interface ReplaceInput {
+  readonly fileUuid: string;
+  readonly body: InlineUpload;
+}
+
+interface RestoreInput {
+  readonly fileUuid: string;
+  readonly version: number;
+}
+
+function duplicateContent(twinId: string) {
+  return plainRejection(
+    409,
+    "duplicate_content",
+    "another stored file already has exactly this content",
+    { hint: `Use the existing file ${toFileId(twinId)} instead.` },
+  );
+}
+
+export const replaceFileOperation = defineOperation<ReplaceInput, FileRow>({
+  id: "files.replace",
+  permission: "file:write",
+  alternatePermissions: [],
+  effect: "write",
+  audit: AuditAction.FILE_REPLACED,
+  async handler(scope, { fileUuid, body }) {
+    const actor = fileActorOf(scope);
+    if (!actor) return reject.unauthorized();
+    const row = await findLiveFile(scope.db, scope.tenant_id, fileUuid);
+    if (!row) return fileNotFound();
+    const bytes = Uint8Array.from(Buffer.from(body.content_base64, "base64"));
+    if (bytes.byteLength === 0) return plainRejection(400, "bad_input", "empty content");
+    if (bytes.byteLength > MAX_INLINE_BYTES)
+      return plainRejection(413, "too_large", `replacement exceeds ${MAX_INLINE_BYTES} bytes cap`);
+    const result = await replaceFileBytes(scope.db, actor, row, {
+      filename: body.filename,
+      content_type: body.content_type ?? null,
+      bytes,
+    });
+    if (result.kind === "scan_rejected")
+      return plainRejection(
+        422,
+        "scan_rejected",
+        result.verdict === "timeout"
+          ? "the content could not be checked in time; nothing was replaced"
+          : "the content did not pass the scan; nothing was replaced",
+      );
+    if (result.kind === "duplicate") return duplicateContent(result.twinId);
+    if (result.kind === "not_found") return fileNotFound();
+    return result.row;
+  },
+  http: {
+    method: "post",
+    path: "/v1/files/{id}/replace",
+    tags: TAGS,
+    params: FileIdParam,
+    body: InlineUploadSchema,
+    response: FileSchema,
+    success: {
+      status: 200,
+      description: "Replaced; the id and every reference to it are unchanged",
+    },
+    errors: {
+      400: "bad_input",
+      404: "not_found",
+      409: "duplicate_content",
+      413: "too_large",
+      422: "scan_rejected",
+    },
+    toInput: ({ param, json }) => ({ fileUuid: fileUuidOf(param), body: json as InlineUpload }),
+    toBody: (row) => toFileWire(row),
+  },
+});
+
 export const listFileVersionsOperation = defineOperation<
   string,
   Awaited<ReturnType<typeof listFileVersions>>
@@ -252,6 +331,49 @@ export const listFileVersionsOperation = defineOperation<
     errors: { 404: "not_found" },
     toInput: ({ param }) => fileUuidOf(param),
     toBody: (items) => ({ items }),
+  },
+});
+
+export const restoreFileVersionOperation = defineOperation<RestoreInput, FileRow>({
+  id: "files.restore_version",
+  summary: "Make an earlier content version the file's content again",
+  permission: "file:write",
+  alternatePermissions: [],
+  effect: "write",
+  audit: AuditAction.FILE_REPLACED,
+  async handler(scope, { fileUuid, version }) {
+    const actor = fileActorOf(scope);
+    if (!actor) return reject.unauthorized();
+    const row = await findLiveFile(scope.db, scope.tenant_id, fileUuid);
+    if (!row) return fileNotFound();
+    const result = await restoreFileVersion(scope.db, actor, row, version);
+    if (result.kind === "current_version")
+      return plainRejection(
+        409,
+        "current_version",
+        `version ${version} is already the current content`,
+      );
+    if (result.kind === "version_not_found")
+      return plainRejection(404, "not_found", "file version not found");
+    if (result.kind === "duplicate") return duplicateContent(result.twinId);
+    if (result.kind === "not_found") return fileNotFound();
+    return result.row;
+  },
+  http: {
+    method: "post",
+    path: "/v1/files/{id}/versions/{version}/restore",
+    tags: TAGS,
+    description:
+      "Restores the content of an earlier version as a new version. The content it replaces stays in the history, so a restore can be undone the same way. The id and every reference stay unchanged.",
+    params: FileVersionParam,
+    response: FileSchema,
+    success: { status: 200, description: "Restored as the newest version" },
+    errors: { 404: "not_found", 409: "duplicate_content or current_version" },
+    toInput: ({ param }) => ({
+      fileUuid: fileUuidOf(param),
+      version: (param as { version: number }).version,
+    }),
+    toBody: (row) => toFileWire(row),
   },
 });
 

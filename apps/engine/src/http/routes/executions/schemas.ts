@@ -77,6 +77,7 @@ const OpenApiDraftDefinitionSchema = z
     name: z.string().min(1),
     slug: z.string().min(1).optional(),
     description: z.string().optional(),
+    execution_privacy: WorkflowDefSchema.shape.execution_privacy,
     input_schema: z.record(z.string(), z.unknown()).optional(),
     output_schema: z.record(z.string(), z.unknown()).optional(),
     steps: z.array(z.record(z.string(), z.unknown())).min(1).max(200),

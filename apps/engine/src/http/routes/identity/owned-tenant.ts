@@ -77,6 +77,20 @@ const restoreRoute = createRoute({
   summary: "Restore the owner tenant using a fresh one-time identity recovery proof",
   description:
     "Requires the separate HttpOnly recovery cookie and X-Subkit-Recovery-CSRF from GET /v1/identity/recovery. Does not issue or reactivate tenant credentials.",
+  request: {
+    headers: z.object({
+      "x-subkit-recovery-csrf": z
+        .string()
+        .optional()
+        .openapi({
+          param: {
+            required: true,
+            description:
+              "csrf_token from GET /v1/identity/recovery; a missing or stale token is refused with 403.",
+          },
+        }),
+    }),
+  },
   responses: {
     200: {
       description: "Tenant restored; sign in again",

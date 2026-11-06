@@ -11,14 +11,29 @@ export const catalogMetadataArgs = {
   },
 } as const;
 
-export function catalogMetadataBody(args: {
+interface CatalogMetadataFlags {
   description?: string | undefined;
   category?: string | undefined;
-}): Record<string, string> {
-  const body: Record<string, string> = {};
-  if (args.description !== undefined) body.description = args.description;
-  if (args.category !== undefined) body.category = args.category;
+}
+
+export function catalogMetadataBody(args: CatalogMetadataFlags): {
+  description?: string | null;
+  category?: string | null;
+} {
+  const body: { description?: string | null; category?: string | null } = {};
+  if (args.description !== undefined) body.description = args.description || null;
+  if (args.category !== undefined) body.category = args.category || null;
   return body;
+}
+
+export function catalogMetadataCreate(args: CatalogMetadataFlags): {
+  description?: string;
+  category?: string;
+} {
+  return {
+    ...(args.description ? { description: args.description } : {}),
+    ...(args.category ? { category: args.category } : {}),
+  };
 }
 
 const LIST_DESCRIPTION_WIDTH = 60;

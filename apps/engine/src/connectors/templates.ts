@@ -258,6 +258,10 @@ const TemplateAuthOptionSchema = z
     auth_type: TemplateAuthTypeEnum,
     label: z.string(),
     description: z.string(),
+    param_name: z.string().min(1).optional().openapi({
+      description:
+        "For a header or query option: the header or query parameter name the credential value is sent in.",
+    }),
     oauth: TemplateOAuthSchema.nullable().optional(),
     signed_jwt: TemplateSignedJwtSchema.nullable().optional(),
   })

@@ -8,13 +8,21 @@ import type { SlashHandlerContext } from "../handler.ts";
 
 type ConnectorTemplate = components["schemas"]["ConnectorTemplateListResponse"]["items"][number];
 type CredentialBody = components["schemas"]["CredentialBody"];
-type TemplateHints = Pick<ConnectorTemplate, "credential_hints">;
+type TemplateHints = Pick<ConnectorTemplate, "credential_hints" | "auth_options">;
 
 export type OnboardingCredential =
   | { ok: true; body: CredentialBody | null }
   | { ok: false; reason: string };
 
-function templateHeaderName(template: TemplateHints | undefined): string | null {
+function templateParamName(
+  template: TemplateHints | undefined,
+  authType: "header" | "query",
+): string | null {
+  const option = template?.auth_options.find(
+    (candidate) => candidate.auth_type === authType && candidate.param_name,
+  );
+  if (option?.param_name) return option.param_name;
+  if (authType === "query") return null;
   return template?.credential_hints.find((hint) => hint.header_name)?.header_name ?? null;
 }
 
@@ -36,7 +44,7 @@ export function onboardingCredential(
     case "signed_jwt":
       return { ok: true, body: { mode: "signed_jwt", private_key: value } };
     case "header": {
-      const name = templateHeaderName(template);
+      const name = templateParamName(template, "header");
       return name
         ? { ok: true, body: { mode: "header", headers: { [name]: value } } }
         : {
@@ -44,11 +52,15 @@ export function onboardingCredential(
             reason: `the template names no header for this key; ${byHand(' --header "Name=Value"')}`,
           };
     }
-    case "query":
-      return {
-        ok: false,
-        reason: `the template names no query parameter for this key; ${byHand(' --query "name=Value"')}`,
-      };
+    case "query": {
+      const name = templateParamName(template, "query");
+      return name
+        ? { ok: true, body: { mode: "query", query: { [name]: value } } }
+        : {
+            ok: false,
+            reason: `the template names no query parameter for this key; ${byHand(' --query "name=Value"')}`,
+          };
+    }
     case "oauth2":
       return {
         ok: false,

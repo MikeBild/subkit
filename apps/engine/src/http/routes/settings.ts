@@ -2,6 +2,14 @@ import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
 import { AUDIT_SOURCE_HEADER, DEPLOY_VERSION_HEADER } from "@shared/audit-source.ts";
 import { ErrorSchema } from "../../api/common-schemas.ts";
+import { toHonoRoute } from "../../api/operations/hono.ts";
+import {
+  getSettingOperation,
+  listSettingsModelCatalogOperation,
+  listSettingsOperation,
+  SettingPathParam,
+  SettingsTenantQuery,
+} from "../../api/operations/settings.ts";
 import {
   AuditAction,
   AuditSourceEnum,
@@ -17,7 +25,6 @@ import {
   ValidationError,
 } from "../../config/loader.ts";
 import { type ConfigLeaf, findLeafByPath } from "../../config/walk.ts";
-import { CATALOG_MODEL_PROVIDERS, modelCatalogView } from "../../llm/index.ts";
 import { logger } from "../../logging/index.ts";
 import {
   activateRuntimeRevision,
@@ -32,69 +39,11 @@ import {
   saveRuntimeConfigPatch,
   settingSecretName,
 } from "../../runtime-config/service.ts";
-import {
-  engineOnlyReadDenial,
-  resolveSettingsReadView,
-  resolveSettingWriteTarget,
-} from "../../runtime-config/settings-access.ts";
-import {
-  maskedSettingValue,
-  readSettingEntry,
-  readSettingsList,
-} from "../../runtime-config/settings-read.ts";
+import { resolveSettingWriteTarget } from "../../runtime-config/settings-access.ts";
+import { maskedSettingValue } from "../../runtime-config/settings-read.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-
-const LeafMetaSchema = z
-  .object({
-    source: z.enum(["override", "tenant", "global", "default"]),
-    scope: z.enum(["global", "tenant"]),
-    sensitive: z.boolean(),
-    requiresRestart: z.boolean(),
-    description: z.string().optional(),
-    kind: z.string(),
-    default: z.unknown().optional(),
-    enum_values: z.array(z.string()).optional(),
-  })
-  .openapi("SettingLeafMeta");
-
-const LeafEntrySchema = z
-  .object({
-    path: z.string(),
-    value: z.unknown(),
-    meta: LeafMetaSchema,
-  })
-  .openapi("SettingLeafEntry");
-
-const SettingsListResponse = z
-  .object({
-    view: z.enum(["engine", "tenant"]),
-    tenant_id: z.string().uuid().nullable(),
-    saved_revision: z.number().int().positive().nullable(),
-    active_revision: z.number().int().positive().nullable(),
-    activation_status: z
-      .enum(["saved", "preparing", "active", "failed", "restart_required"])
-      .nullable(),
-    pending_restart_fields: z.array(z.string()),
-    items: z.array(LeafEntrySchema),
-    diagnostics: z.object({
-      pending_restart_keys: z.array(z.string()),
-      override_keys: z.array(z.string()),
-    }),
-  })
-  .openapi("SettingsListResponse");
-
-const PathParam = z.object({
-  path: z
-    .string()
-    .min(1)
-    .openapi({ param: { name: "path", in: "path" } }),
-});
-
-const TenantQuery = z.object({
-  tenant: z.string().uuid().optional(),
-});
 
 const PutBody = z
   .object({
@@ -156,29 +105,6 @@ const PutSuccessSchema = z
   })
   .openapi("SettingPutResult");
 
-const SettingsModelCatalogEntry = z
-  .object({
-    provider: z.enum(CATALOG_MODEL_PROVIDERS).nullable(),
-    model: z.string(),
-    display_name: z.string(),
-    input_per_mtok: z.number().nonnegative().nullable(),
-    output_per_mtok: z.number().nonnegative().nullable(),
-    price_source: z.enum(["catalog", "override"]),
-    badges: z.object({
-      recommended: z.boolean(),
-      economical: z.boolean(),
-      capable: z.boolean(),
-    }),
-  })
-  .openapi("SettingsModelCatalogEntry");
-
-const SettingsModelCatalog = z
-  .object({
-    currency: z.string(),
-    models: z.array(SettingsModelCatalogEntry),
-  })
-  .openapi("SettingsModelCatalog");
-
 function maskedValue(leaf: ConfigLeaf, value: unknown): unknown {
   return maskedSettingValue(!!leaf.meta.secret, value);
 }
@@ -192,85 +118,14 @@ function readDeep(source: unknown, leafPath: string[]): unknown {
   return cursor;
 }
 
-const listRoute = createRoute({
-  method: "get",
-  path: "/v1/settings",
-  tags: ["settings"],
-  summary: "List every leaf in the runtime config with its resolved value",
-  request: { query: TenantQuery },
-  responses: {
-    200: {
-      description: "All leaves (secrets masked)",
-      content: { "application/json": { schema: SettingsListResponse } },
-    },
-    401: {
-      description: "Unauthorized",
-      content: { "application/json": { schema: ErrorSchema } },
-    },
-    403: {
-      description: "Forbidden",
-      content: { "application/json": { schema: ErrorSchema } },
-    },
-  },
-});
-
-const catalogRoute = createRoute({
-  method: "get",
-  path: "/v1/settings/catalog/models",
-  tags: ["settings"],
-  summary: "List the models the settings page offers, with prices and recommendations",
-  request: { query: TenantQuery },
-  responses: {
-    200: {
-      description: "Named models with their effective prices per 1M tokens",
-      content: { "application/json": { schema: SettingsModelCatalog } },
-    },
-    401: {
-      description: "Unauthorized",
-      content: { "application/json": { schema: ErrorSchema } },
-    },
-    403: {
-      description: "Another workspace's settings or insufficient permissions",
-      content: { "application/json": { schema: ErrorSchema } },
-    },
-  },
-});
-
-const getRoute = createRoute({
-  method: "get",
-  path: "/v1/settings/{path}",
-  tags: ["settings"],
-  summary: "Read one leaf by dotted path",
-  request: { params: PathParam, query: TenantQuery },
-  responses: {
-    200: {
-      description: "Resolved value",
-      content: { "application/json": { schema: LeafEntrySchema } },
-    },
-    404: {
-      description: "Unknown leaf path",
-      content: { "application/json": { schema: ErrorSchema } },
-    },
-    401: {
-      description: "Unauthorized",
-      content: { "application/json": { schema: ErrorSchema } },
-    },
-    403: {
-      description:
-        "Another workspace's settings, an engine-wide setting that only the engine operator can read, or insufficient permissions",
-      content: { "application/json": { schema: ErrorSchema } },
-    },
-  },
-});
-
 const putRoute = createRoute({
   method: "put",
   path: "/v1/settings/{path}",
   tags: ["settings"],
   summary: "Write one leaf",
   request: {
-    params: PathParam,
-    query: TenantQuery,
+    params: SettingPathParam,
+    query: SettingsTenantQuery,
     headers: PutHeaders,
     body: { content: { "application/json": { schema: PutBody } } },
   },
@@ -310,45 +165,26 @@ const putRoute = createRoute({
   },
 });
 
+const HOSTED_SETTINGS_PATHS = [
+  "/v1/settings/hosted-work/*",
+  "/v1/settings/hosted-storage/*",
+] as const;
+
 export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
-  app.use("/v1/settings", requirePermission("settings:read"));
-  app.use("/v1/settings/*", (c, next) => {
-    if (c.req.method === "GET") return requirePermission("settings:read")(c, next);
-    return requirePermission("settings:write")(c, next);
-  });
+  toHonoRoute(app, listSettingsOperation);
+  toHonoRoute(app, listSettingsModelCatalogOperation);
+  toHonoRoute(app, getSettingOperation);
 
-  app.openapi(listRoute, async (c) => {
-    const principal = requireAuth(c);
-    const { tenant } = c.req.valid("query");
-    const access = await resolveSettingsReadView(c.get("db"), principal, tenant);
-    if (!access.ok) return c.json({ code: access.code, message: access.message }, 403);
-    return c.json(await readSettingsList(c.get("db"), access.view), 200);
-  });
-
-  app.use("/v1/settings/catalog/models", requirePermission("settings:read"));
-  app.openapi(catalogRoute, async (c) => {
-    const principal = requireAuth(c);
-    const { tenant } = c.req.valid("query");
-    const access = await resolveSettingsReadView(c.get("db"), principal, tenant);
-    if (!access.ok) return c.json({ code: access.code, message: access.message }, 403);
-    return c.json(modelCatalogView(getConfig(access.view.tenantId).tokens), 200);
-  });
-
-  app.openapi(getRoute, async (c) => {
-    const principal = requireAuth(c);
-    const { path } = c.req.valid("param");
-    const { tenant } = c.req.valid("query");
-    const access = await resolveSettingsReadView(c.get("db"), principal, tenant);
-    if (!access.ok) return c.json({ code: access.code, message: access.message }, 403);
-    const entry = readSettingEntry(path, access.view);
-    const engineOnly = entry ? null : engineOnlyReadDenial(path, access.view);
-    if (engineOnly) return c.json({ code: engineOnly.code, message: engineOnly.message }, 403);
-    if (!entry) {
-      return c.json({ code: "not_found", message: `unknown setting path: ${path}` }, 404);
-    }
-    return c.json(entry, 200);
-  });
-
+  for (const prefix of HOSTED_SETTINGS_PATHS) {
+    app.use(prefix, (c, next) =>
+      c.req.method === "GET"
+        ? requirePermission("settings:read")(c, next)
+        : requirePermission("settings:write")(c, next),
+    );
+  }
+  app.use("/v1/settings/:path", (c, next) =>
+    c.req.method === "PUT" ? requirePermission("settings:write")(c, next) : next(),
+  );
   app.openapi(putRoute, async (c) => {
     const principal = requireAuth(c);
     const { path } = c.req.valid("param");

@@ -37,7 +37,7 @@ export type TemplateOAuthCredentialBody = ApiBody<
 >;
 export type TemplateOAuthCredentialResponse = Schemas["TemplateOAuthCredentialResponse"];
 export type ConnectorTemplateRecipeListResponse = Schemas["ConnectorTemplateRecipeListResponse"];
-export type ConnectorTemplateRecipe = Schemas["ConnectorTemplateRecipe"];
+export type ConnectorTemplateRecipe = Schemas["ConnectorTemplateRecipeOutput"];
 export type RecipePackVertical = RecipePackResponse["vertical"];
 export type RecipePackResponse = Schemas["RecipePackResponse"];
 export type ConnectorFromTemplateBody = ApiBody<"/v1/connectors/from-template/{slug}", "post">;

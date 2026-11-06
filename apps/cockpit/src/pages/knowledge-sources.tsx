@@ -5,7 +5,7 @@ import type { SortingState } from "@tanstack/react-table";
 import { AlignLeft, ChevronRight, Inbox, Link, Plus, Upload, Workflow } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { apiCall } from "@/api/call";
+import { type ApiRequestBody, apiCall } from "@/api/call";
 import { ApiError, apiRequest } from "@/api/client";
 import { listIntakeClips } from "@/api/intake";
 import { loadKnowledgeChunks } from "@/api/knowledge";
@@ -103,7 +103,7 @@ type KnowledgeSource = components["schemas"]["KnowledgeSource"];
 export function urlSourceBody(
   url: string,
   rhythm: Exclude<RefreshRhythm, "custom">,
-): { url: string; refresh_strategy: "manual" | "scheduled"; refresh_cron?: string } {
+): ApiRequestBody<"/v1/knowledge-sources/url", "post"> {
   const refresh = refreshFields(rhythm);
   return {
     url: url.trim(),
@@ -558,10 +558,7 @@ function AddSourceDialog({
   const create = useMutation({
     mutationFn: async (): Promise<KnowledgeSource> => {
       if (mode === "url")
-        return apiRequest(`${ENDPOINT}/url`, {
-          method: "POST",
-          body: JSON.stringify(urlSourceBody(url, rhythm)),
-        });
+        return apiCall("post", "/v1/knowledge-sources/url", { body: urlSourceBody(url, rhythm) });
       if (mode === "text")
         return apiCall("post", "/v1/knowledge-sources/inline", {
           body: { name: name.trim(), content: text, mime_type: "text/markdown" },

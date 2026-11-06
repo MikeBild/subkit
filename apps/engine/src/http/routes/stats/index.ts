@@ -1,5 +1,5 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { requirePermission } from "../../middleware/require-permission.ts";
+import { gateOtherMethods, requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { registerStatsConnectorsRoute } from "./connectors.ts";
 import { registerStatsEventsRoute } from "./events.ts";
@@ -16,10 +16,11 @@ export function registerStatsRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/stats/llm", requirePermission("stats:read"));
   app.use("/v1/stats/operating-figures", requirePermission("stats:read"));
   app.use("/v1/stats/quality", requirePermission("stats:read"));
-  app.use("/v1/stats/http", requirePermission("stats:read"));
-  app.use("/v1/stats/chat", requirePermission("stats:read"));
-  app.use("/v1/stats/mcp", requirePermission("stats:read"));
-  app.use("/v1/stats/conversations", requirePermission("stats:read"));
+  const usage = gateOtherMethods(["GET", "HEAD"], requirePermission("stats:read"));
+  app.use("/v1/stats/http", usage);
+  app.use("/v1/stats/chat", usage);
+  app.use("/v1/stats/mcp", usage);
+  app.use("/v1/stats/conversations", usage);
 
   registerStatsExecutionsRoute(app);
   registerStatsConnectorsRoute(app);

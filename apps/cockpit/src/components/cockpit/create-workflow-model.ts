@@ -15,7 +15,7 @@ export function manualWorkflowDefinition(p: {
     name: p.name.trim(),
     slug: p.slug,
     ...(p.purpose.trim() ? { description: p.purpose.trim() } : {}),
-    steps: [{ id: "start", kind: "transform", on_error: "fail", expression: "return input;" }],
+    steps: [{ id: "start", kind: "transform", expression: "return input;" }],
     trigger:
       p.trigger === "schedule"
         ? { kind: "schedule", cron: p.schedule().cron, tz: p.schedule().timezone }

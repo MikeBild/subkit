@@ -366,10 +366,13 @@ export const deleteKnowledgeSourceOperation = defineOperation<{ id: string }, tr
   },
 });
 
-const CreateKnowledgeSourceFromUrlBody = CreateKnowledgeSourceSchema.extend({
-  name: z.string().min(1).max(200).optional(),
-  url: z.string().url().max(2048),
-}).openapi("CreateKnowledgeSourceFromUrlBody");
+const CreateKnowledgeSourceFromUrlBody = z
+  .object({
+    ...CreateKnowledgeSourceSchema.shape,
+    name: CreateKnowledgeSourceSchema.shape.name.optional(),
+    url: z.string().url().max(2048),
+  })
+  .openapi("CreateKnowledgeSourceFromUrlBody");
 
 type FromUrlBody = z.infer<typeof CreateKnowledgeSourceFromUrlBody>;
 

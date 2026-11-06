@@ -1,4 +1,4 @@
-import type { ConversationTool, ToolContext } from "../../conversations/tools/index.ts";
+import type { ConversationTool, ToolContext, ToolResult } from "../../conversations/tools/index.ts";
 import {
   actorOfPrincipal,
   type Operation,
@@ -24,6 +24,8 @@ export function toConversationTool<I, R>(op: Operation<I, R>): ConversationTool 
     ...(tool.use_case ? { use_case: tool.use_case } : {}),
     ...(tool.important_notes ? { important_notes: tool.important_notes } : {}),
     inputSchema: tool.input,
+    ...(tool.requires_draft !== undefined ? { requires_draft: tool.requires_draft } : {}),
+    ...(tool.precheck ? { precheck: tool.precheck } : {}),
     ...(tool.strict !== undefined ? { strict: tool.strict } : {}),
     category: op.effect === "read" ? "tenant_read" : "tenant_write",
     ...(op.permission === null
@@ -53,14 +55,17 @@ export function toConversationTool<I, R>(op: Operation<I, R>): ConversationTool 
           return principal ? actorOfPrincipal(principal) : engineClientActor(ctx);
         },
       };
-      const input = tool.toInput(args);
-      const run = async (prepared: unknown) =>
-        tool.toResult(await op.handler(scope, input), input, ctx, prepared);
-      if (!tool.onError) return run(tool.prepare ? await tool.prepare(input, ctx) : undefined);
-      let prepared: unknown;
-      try {
+      const input = await tool.toInput(args, ctx);
+      const run = async (): Promise<ToolResult> => {
+        const refused = tool.guard ? await tool.guard(input, ctx) : null;
+        if (refused) return refused;
         prepared = tool.prepare ? await tool.prepare(input, ctx) : undefined;
-        return await run(prepared);
+        return tool.toResult(await op.handler(scope, input), input, ctx, prepared);
+      };
+      let prepared: unknown;
+      if (!tool.onError) return run();
+      try {
+        return await run();
       } catch (error) {
         return tool.onError(error, input, ctx, prepared);
       }

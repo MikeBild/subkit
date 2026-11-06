@@ -1,9 +1,5 @@
+import { recipePackPredicate } from "../connectors/recipe-packs.ts";
 import { builtFromRecipe, recipeForOrigin } from "../connectors/solutions.ts";
-
-export interface RecipePackPredicate {
-  readonly match_categories: readonly string[];
-  readonly match_tags: readonly string[];
-}
 
 export type RecipeOriginCheck =
   | { readonly ok: true }
@@ -16,9 +12,8 @@ export type RecipeOriginCheck =
 export function checkRecipeOrigin(
   origin: { vertical: string; slug: string },
   definition: unknown,
-  packs: Readonly<Record<string, RecipePackPredicate>>,
 ): RecipeOriginCheck {
-  const predicate = Object.hasOwn(packs, origin.vertical) ? packs[origin.vertical] : undefined;
+  const predicate = recipePackPredicate(origin.vertical);
   const recipe = recipeForOrigin(
     origin,
     predicate ? { categories: predicate.match_categories, tags: predicate.match_tags } : null,

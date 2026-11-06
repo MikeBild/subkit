@@ -38,6 +38,8 @@ export interface ResumeSummary {
       external_tool?: ExternalToolSubject;
       effect?: ConnectorCallSubject;
       subjects?: string[];
+      kind?: string;
+      diffs?: ConfirmDiff[];
     };
     summary: string;
     expires_at: string;
@@ -152,7 +154,7 @@ export function buildResumeSummary(params: BuildResumeSummaryParams): ResumeSumm
           : {}),
         tool_name: pendingElicitation.tool_name,
         summary: pendingElicitation.summary ?? "",
-        ...pendingPrompt(pendingElicitation.input),
+        ...pendingPrompt(pendingElicitation.input, pendingElicitation.tool_name),
         expires_at: pendingElicitation.expires_at,
       }
     : null;
@@ -412,7 +414,26 @@ function pendingTransferBytes(value: unknown): number | undefined {
   return typeof size === "number" && Number.isFinite(size) && size > 0 ? size : undefined;
 }
 
-export function pendingPrompt(input: unknown): {
+interface ConfirmDiff {
+  label: string;
+  preview?: string;
+}
+
+function confirmDiffs(value: unknown): ConfirmDiff[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const diffs = value.flatMap((entry): ConfirmDiff[] => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+    const { label, preview } = entry as Record<string, unknown>;
+    if (typeof label !== "string") return [];
+    return [{ label, ...(typeof preview === "string" ? { preview } : {}) }];
+  });
+  return diffs.length > 0 ? diffs : undefined;
+}
+
+export function pendingPrompt(
+  input: unknown,
+  tool_name?: string,
+): {
   prompt?: {
     question: string;
     intent_kind?: string;
@@ -422,6 +443,8 @@ export function pendingPrompt(input: unknown): {
     effect?: ConnectorCallSubject;
     subjects?: string[];
     transfer_bytes?: number;
+    kind?: string;
+    diffs?: ConfirmDiff[];
   };
 } {
   if (!input || typeof input !== "object" || Array.isArray(input)) return {};
@@ -433,6 +456,9 @@ export function pendingPrompt(input: unknown): {
   const subjects = pendingSubjects(value.pending_output);
   const transferBytes = pendingTransferBytes(value.pending_output);
   const intent = value.commit_intent as { kind?: unknown } | undefined;
+  const confirm = tool_name === "ask_user_confirm";
+  const confirmKind = confirm && typeof value.kind === "string" ? value.kind : undefined;
+  const diffs = confirm ? confirmDiffs(value.diffs) : undefined;
   let authorizationUrl: string | undefined;
   if (intent?.kind === "oauth_completed" && typeof value.authorization_url === "string") {
     try {
@@ -457,6 +483,8 @@ export function pendingPrompt(input: unknown): {
       ...(effect ? { effect } : {}),
       ...(subjects ? { subjects } : {}),
       ...(transferBytes ? { transfer_bytes: transferBytes } : {}),
+      ...(confirmKind ? { kind: confirmKind } : {}),
+      ...(diffs ? { diffs } : {}),
     },
   };
 }

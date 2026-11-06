@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+import { serializeConnector } from "../../../api/operations/connector-template-representation.ts";
 import {
   CONNECTOR_SECRET_MASK,
   getConnector,
@@ -8,7 +9,6 @@ import {
 import { auditLog, connectors } from "../../../db/schema/index.ts";
 import { FROZEN_NOW } from "../../../test-helpers/determinism/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
-import { serializeConnector } from "../connector-templates/schemas.ts";
 
 const CLIENT_SECRET = "fixture-client-secret-not-real";
 const HEADER_SECRET = "fixture-header-secret-not-real";

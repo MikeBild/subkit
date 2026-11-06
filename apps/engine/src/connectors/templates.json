@@ -461,7 +461,8 @@
       {
         "auth_type": "header",
         "label": "API key header",
-        "description": "Authenticate with the API key sent in the x-api-key request header."
+        "description": "Authenticate with the API key sent in the x-api-key request header.",
+        "param_name": "x-api-key"
       }
     ],
     "url_pattern": "^https:\\/\\/api\\.anthropic\\.com\\/v1(\\/|$)",
@@ -4974,7 +4975,8 @@
       {
         "auth_type": "query",
         "label": "API key query parameter",
-        "description": "Authenticate with an API key sent as a URL query parameter."
+        "description": "Authenticate with an API key sent as a URL query parameter.",
+        "param_name": "token"
       }
     ],
     "url_pattern": "^https://production\\-sfo\\.browserless\\.io(\\/|$)",
@@ -13557,7 +13559,8 @@
       {
         "auth_type": "header",
         "label": "API key header",
-        "description": "Authenticate with an API key sent in a request header."
+        "description": "Authenticate with an API key sent in a request header.",
+        "param_name": "X-Shopify-Access-Token"
       }
     ],
     "url_pattern": "^https:\\/\\/[^/]+\\.myshopify\\.com\\/admin\\/api(\\/|$)",
@@ -16155,6 +16158,7 @@
         "auth_type": "header",
         "label": "API key (apikey header)",
         "description": "Use the anon or service_role key from Dashboard > Settings > API. Supabase GraphQL expects the `apikey` header; pair it with `Authorization: Bearer <key>` for RLS-guarded reads.",
+        "param_name": "apikey",
         "oauth": null
       }
     ],

@@ -11,19 +11,6 @@ type ConnectorDraftSource = Pick<
   "display_name" | "slug" | "driver" | "environment" | "auth_type" | "base_url" | "dsn" | "config"
 >;
 
-const DRIVERS = [
-  "http",
-  "postgres",
-  "s3",
-  "graphql",
-  "mcp",
-] as const satisfies readonly CreateConnectorBody["driver"][];
-
-const ENVIRONMENTS = [
-  "dev",
-  "prod",
-] as const satisfies readonly CreateConnectorBody["environment"][];
-
 const AUTH_TYPES = [
   "none",
   "header",
@@ -81,8 +68,8 @@ export function connectorPatchDraft(
   const dsn = patch.dsn ?? current.dsn;
   return {
     name: patch.name ?? (current.display_name || current.slug),
-    driver: accepted(DRIVERS, current.driver, "driver"),
-    environment: accepted(ENVIRONMENTS, current.environment, "environment"),
+    driver: current.driver,
+    environment: current.environment,
     auth_type: patch.auth_type ?? accepted(AUTH_TYPES, current.auth_type, "auth_type"),
     config: patch.config ?? current.config,
     ...(baseUrl ? { base_url: baseUrl } : {}),

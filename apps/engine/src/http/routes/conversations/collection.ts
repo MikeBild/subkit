@@ -1,22 +1,9 @@
-import {
-  createRoute,
-  type OpenAPIHono,
-  type RouteConfigToTypedResponse,
-  z,
-} from "@hono/zod-openapi";
-import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { actorType } from "../../../audit/index.ts";
+import { createRoute, type OpenAPIHono, type RouteConfigToTypedResponse } from "@hono/zod-openapi";
+import { ErrorSchema } from "../../../api/common-schemas.ts";
+import { conversationCollectionOperations } from "../../../api/operations/conversation-collection.ts";
+import { toHonoRoute } from "../../../api/operations/hono.ts";
 import { principalOrigin } from "../../../auth/index.ts";
-import type { ConversationStatus, TurnEvent } from "../../../conversations/index.ts";
 import * as svc from "../../../conversations/index.ts";
-import {
-  buildMessages,
-  humanChatAnswer,
-  registerConversationAbort,
-  serializeEvent,
-  surfaceFromClientHeader,
-  unregisterConversationAbort,
-} from "../../../conversations/index.ts";
 import * as intake from "../../../knowledge/index.ts";
 import { BadRequestError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -26,62 +13,13 @@ import { streamTenantSSE as streamSSE } from "../../tenant-stream.ts";
 import { conversationLocale } from "./locale.ts";
 import {
   buildRuntimeContextFromRequest,
-  ConversationDetailSchema,
-  ConversationListResponse,
-  ConversationSchema,
   CreateBody,
   errorFrame,
   outcomeFrame,
-  PatchConversationBody,
   RunOutcomeSchema,
   serializeConversation,
   wantsSSE,
 } from "./schemas.ts";
-
-const listRoute = createRoute({
-  method: "get",
-  path: "/v1/conversations",
-  tags: ["conversations"],
-  summary: "List conversations",
-  security: [{ bearerAuth: [] }],
-  request: {
-    query: z
-      .object({
-        status: z.enum(["active", "awaiting_input", "committed", "abandoned"]).optional(),
-        owner: z.literal("me").optional(),
-        hidden: z.enum(["exclude", "only", "all"]).optional(),
-        owner_kind: z.enum(["user", "system_account"]).optional(),
-        target_workflow_id: z.string().uuid().optional(),
-        target_connector_id: z.string().uuid().optional(),
-        referenced_skill_id: z
-          .string()
-          .uuid()
-          .optional()
-          .describe(
-            "Only conversations that mention this skill with an @ reference or loaded it with load_skill. Requires skill:read on the skill.",
-          ),
-        referenced_knowledge_source_id: z
-          .string()
-          .uuid()
-          .optional()
-          .describe(
-            "Only conversations that mention this knowledge source with an @ reference or read, fetched or found it through a knowledge tool. Requires knowledge:read.",
-          ),
-        q: z.string().min(1).max(200).optional(),
-        sort: z.enum(["title", "status", "created_at", "updated_at"]).optional(),
-        order: z.enum(["asc", "desc"]).optional(),
-        limit: z.coerce.number().int().positive().max(200).optional(),
-        offset: z.coerce.number().int().min(0).optional(),
-      })
-      .openapi("ListConversationsQuery"),
-  },
-  responses: {
-    200: {
-      description: "OK",
-      content: { "application/json": { schema: ConversationListResponse } },
-    },
-  },
-});
 
 const createRouteSpec = createRoute({
   method: "post",
@@ -98,80 +36,9 @@ const createRouteSpec = createRoute({
   },
 });
 
-const getRouteSpec = createRoute({
-  method: "get",
-  path: "/v1/conversations/{id}",
-  tags: ["conversations"],
-  summary: "Fetch a conversation with messages, tool calls, and draft",
-  security: [{ bearerAuth: [] }],
-  request: { params: IdParam },
-  responses: {
-    200: {
-      description: "OK",
-      content: { "application/json": { schema: ConversationDetailSchema } },
-    },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
-
-const patchRoute = createRoute({
-  method: "patch",
-  path: "/v1/conversations/{id}",
-  tags: ["conversations"],
-  summary: "Patch conversation metadata (model, title)",
-  security: [{ bearerAuth: [] }],
-  request: {
-    params: IdParam,
-    body: { content: { "application/json": { schema: PatchConversationBody } } },
-  },
-  responses: {
-    200: {
-      description: "OK",
-      content: { "application/json": { schema: ConversationSchema } },
-    },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
-
 export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
-  app.openapi(listRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const q = c.req.valid("query");
-    if (q.referenced_skill_id) {
-      await ensurePermission(c, "skill:read", { type: "skill", id: q.referenced_skill_id });
-    }
-    if (q.referenced_knowledge_source_id) {
-      await ensurePermission(c, "knowledge:read", {
-        type: "knowledge",
-        id: q.referenced_knowledge_source_id,
-      });
-    }
-    const params = {
-      tenant_id: principal.tenant_id,
-      ...(q.status ? { status: q.status as ConversationStatus } : {}),
-      ...(q.owner === "me" ? { owner_id: principal.id } : {}),
-      ...(principal.kind === "user" ? { viewer_user_id: principal.id } : {}),
-      ...(q.hidden ? { hidden: q.hidden } : {}),
-      ...(q.owner_kind ? { owner_kind: q.owner_kind } : {}),
-      ...(q.target_workflow_id ? { target_workflow_id: q.target_workflow_id } : {}),
-      ...(q.target_connector_id ? { target_connector_id: q.target_connector_id } : {}),
-      ...(q.referenced_skill_id ? { referenced_skill_id: q.referenced_skill_id } : {}),
-      ...(q.referenced_knowledge_source_id
-        ? { referenced_knowledge_source_id: q.referenced_knowledge_source_id }
-        : {}),
-      ...(q.q ? { q: q.q } : {}),
-      ...(q.sort ? { sort: q.sort } : {}),
-      ...(q.order ? { order: q.order } : {}),
-      ...(q.limit !== undefined ? { limit: q.limit } : {}),
-      ...(q.offset !== undefined ? { offset: q.offset } : {}),
-    };
-    const [items, total] = await Promise.all([
-      svc.listConversations(params, db),
-      svc.countConversations(params, db),
-    ]);
-    return c.json({ items, total }, 200);
-  });
+  const operations = conversationCollectionOperations(svc);
+  toHonoRoute(app, operations.list);
 
   app.openapi(createRouteSpec, async (c) => {
     const principal = requireAuth(c);
@@ -220,15 +87,15 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       ...(intakeItemIds.length ? { intake_item_ids: intakeItemIds } : {}),
       ...(body.references && body.references.length > 0 ? { references: body.references } : {}),
       origin_client: principalOrigin(principal),
-      surface: surfaceFromClientHeader(c.req.header("x-subkit-client")),
+      surface: svc.surfaceFromClientHeader(c.req.header("x-subkit-client")),
     } as const;
     const runtimeContext = buildRuntimeContextFromRequest(c, principal);
 
     const driveTurn = async (
       created: svc.CreateConversationResult,
-      onEvent?: (ev: TurnEvent) => void,
+      onEvent?: (ev: svc.TurnEvent) => void,
     ): Promise<svc.ConversationTurnOutcome> => {
-      const turnAbortCtrl = await registerConversationAbort(
+      const turnAbortCtrl = await svc.registerConversationAbort(
         principal.tenant_id,
         created.conversation.id,
         db,
@@ -243,7 +110,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
             locale: conversationLocale(c.req.header("cookie"), c.req.header("accept-language")),
             user_message: created.initial_message ?? "",
             ...(created.references ? { user_references: created.references } : {}),
-            answer_actor: humanChatAnswer(principal),
+            answer_actor: svc.humanChatAnswer(principal),
             user_memory: created.user_memory,
             turn_abort_ctrl: turnAbortCtrl,
             runtime_context: runtimeContext,
@@ -254,7 +121,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
           db,
         );
       } finally {
-        await unregisterConversationAbort(
+        await svc.unregisterConversationAbort(
           principal.tenant_id,
           created.conversation.id,
           turnAbortCtrl,
@@ -281,8 +148,8 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
             );
             return;
           }
-          const outcome = await driveTurn(created, (ev: TurnEvent) => {
-            void stream.writeSSE(serializeEvent(ev));
+          const outcome = await driveTurn(created, (ev: svc.TurnEvent) => {
+            void stream.writeSSE(svc.serializeEvent(ev));
           });
           await stream.writeSSE(outcomeFrame(outcome));
         } catch (error) {
@@ -311,60 +178,6 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json(serializeConversation(outcome), 201);
   });
 
-  app.openapi(getRouteSpec, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-    const detail = await svc.getConversation(
-      principal.tenant_id,
-      id,
-      db,
-      principal,
-      conversationLocale(c.req.header("cookie"), c.req.header("accept-language")),
-    );
-    if (!detail) throw new NotFoundError("conversation");
-    const messages = buildMessages(detail.messages, detail.tool_calls);
-    const usage = await svc.readConversationUsage(db, principal.tenant_id, id);
-    const hidden =
-      principal.kind === "user"
-        ? await svc.isConversationHiddenFor(
-            { tenant_id: principal.tenant_id, conversation_id: id, user_id: principal.id },
-            db,
-          )
-        : false;
-    return c.json(
-      {
-        conversation: { ...detail.conversation, hidden },
-        owner: detail.owner,
-        created_resources: detail.created_resources,
-        messages,
-        tool_calls: detail.tool_calls,
-        draft: detail.draft,
-        playbook: detail.playbook ?? null,
-        ...(detail.resume_summary ? { resume_summary: detail.resume_summary } : {}),
-        usage,
-      },
-      200,
-    );
-  });
-
-  app.openapi(patchRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-    const body = c.req.valid("json");
-    const row = await svc.patchConversation(
-      {
-        tenant_id: principal.tenant_id,
-        conversation_id: id,
-        actor_id: principal.id,
-        actor_type: actorType(principal),
-        ...(body.model !== undefined ? { model: body.model } : {}),
-        ...(body.title !== undefined ? { title: body.title } : {}),
-      },
-      db,
-    );
-    if (!row) throw new NotFoundError("conversation");
-    return c.json(row, 200);
-  });
+  toHonoRoute(app, operations.detail);
+  toHonoRoute(app, operations.patch);
 }

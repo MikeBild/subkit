@@ -128,7 +128,7 @@ export function toHonoRoute<I, R>(app: OpenAPIHono<AppEnv>, op: Operation<I, R>)
     tags: [...http.tags],
     ...(op.summary ? { summary: op.summary } : {}),
     ...(http.description ? { description: http.description } : {}),
-    security: [{ bearerAuth: [] }],
+    ...(http.security === null ? {} : { security: http.security ?? [{ bearerAuth: [] }] }),
     request: {
       ...(http.params ? { params: http.params } : {}),
       ...(http.query ? { query: http.query } : {}),
@@ -137,7 +137,7 @@ export function toHonoRoute<I, R>(app: OpenAPIHono<AppEnv>, op: Operation<I, R>)
         ? {
             body: {
               content: { "application/json": { schema: http.body } },
-              ...(http.bodyRequired ? { required: true } : {}),
+              ...(http.bodyRequired === undefined ? {} : { required: http.bodyRequired }),
             },
           }
         : {}),
@@ -155,9 +155,14 @@ export function toHonoRoute<I, R>(app: OpenAPIHono<AppEnv>, op: Operation<I, R>)
         ]),
       ),
       ...Object.fromEntries(
-        Object.entries(http.errors ?? {}).map(([status, description]) => [
+        Object.entries(http.errors ?? {}).map(([status, entry]) => [
           status,
-          { description, content: { "application/json": { schema: ErrorSchema } } },
+          typeof entry === "string"
+            ? { description: entry, content: { "application/json": { schema: ErrorSchema } } }
+            : {
+                description: entry.description,
+                content: { "application/json": { schema: entry.schema } },
+              },
         ]),
       ),
     },

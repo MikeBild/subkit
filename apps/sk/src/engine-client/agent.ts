@@ -55,17 +55,9 @@ export const agentMethods = {
 
   async captureAgentSession(
     this: EngineClient,
-    body: {
-      agent: string;
-      session_id?: string;
-      repo?: string;
-      domains: string[];
-      transcript: string;
-    },
+    body: ApiBody<"/v1/agent/sessions", "post">,
   ): Promise<{ queued: boolean; transcript_chars: number }> {
-    const { data } = await this.api.POST("/v1/agent/sessions", {
-      body: body as ApiBody<"/v1/agent/sessions", "post">,
-    });
+    const { data } = await this.api.POST("/v1/agent/sessions", { body });
     return data as { queued: boolean; transcript_chars: number };
   },
 };

@@ -46,8 +46,8 @@ export function writtenByAssistant(record: CatalogMetadataRecord | undefined): b
 }
 
 export interface MetadataPatch {
-  description?: string;
-  category?: string;
+  description?: string | null;
+  category?: string | null;
 }
 
 export function metadataPatch(
@@ -57,10 +57,10 @@ export function metadataPatch(
   const patch: MetadataPatch = {};
 
   const description = draft.description.trim();
-  if (description !== recordDescription(record).trim()) patch.description = description;
-  const category = draft.category === UNCATEGORIZED ? "" : draft.category;
+  if (description !== recordDescription(record).trim()) patch.description = description || null;
+  const category = draft.category && draft.category !== UNCATEGORIZED ? draft.category : null;
   const current = recordCategory(record);
-  if ((category || UNCATEGORIZED) !== current) patch.category = category;
+  if ((category ?? UNCATEGORIZED) !== current) patch.category = category;
   return Object.keys(patch).length > 0 ? patch : null;
 }
 

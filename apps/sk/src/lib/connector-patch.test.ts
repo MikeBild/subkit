@@ -6,7 +6,7 @@ import {
   mergeConnectorConfig,
 } from "./connector-patch.ts";
 
-const current = {
+const current: Parameters<typeof connectorPatchDraft>[0] & { id: string } = {
   id: "c1",
   slug: "google-search-console",
   display_name: "Google Search Console",
@@ -105,16 +105,14 @@ describe("connectorPatchDraft", () => {
     expect(connectorPatchDraft(current, { auth_type: "bearer" }).auth_type).toBe("bearer");
   });
 
-  test("refuses a stored driver, environment or auth type the engine does not accept", () => {
-    expect(() => connectorPatchDraft({ ...current, driver: "ftp" }, {})).toThrow(
-      "connector driver 'ftp' is not one the engine accepts",
+  test("refuses a stored auth type that a connector definition cannot carry", () => {
+    expect(() => connectorPatchDraft({ ...current, auth_type: "token_mint" }, {})).toThrow(
+      "connector auth_type 'token_mint' is not one the engine accepts",
     );
-    expect(() => connectorPatchDraft({ ...current, environment: "staging" }, {})).toThrow(
-      "connector environment 'staging' is not one the engine accepts",
-    );
-    expect(() => connectorPatchDraft({ ...current, auth_type: "magic" }, {})).toThrow(
-      "connector auth_type 'magic' is not one the engine accepts",
-    );
+    expect(
+      connectorPatchDraft({ ...current, auth_type: "token_mint" }, { auth_type: "bearer" })
+        .auth_type,
+    ).toBe("bearer");
   });
 
   test("prefers a patched name and base_url", () => {

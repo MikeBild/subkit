@@ -28,6 +28,15 @@ export const ToolCallRespondParam = z.object({
 
 const PermissionModeSchema = z.enum(["auto", "ask", "plan", "yolo"]);
 
+export const CONFIRM_PROMPT_KINDS = [
+  "save_workflow_draft",
+  "external_write",
+  "generic",
+  "partial_diff_approval",
+] as const;
+
+export type ConfirmPromptKind = (typeof CONFIRM_PROMPT_KINDS)[number];
+
 export const RespondElicitationBody = z
   .object({
     output: z.unknown(),
@@ -205,6 +214,18 @@ export const ConversationDetailSchema = z
                   .optional(),
                 subjects: z.array(z.string()).optional(),
                 transfer_bytes: z.number().int().positive().optional(),
+                kind: z
+                  .enum(CONFIRM_PROMPT_KINDS)
+                  .optional()
+                  .describe(
+                    "Confirm kind of an ask_user_confirm question, as in the live prompt; drives the confirm card.",
+                  ),
+                diffs: z
+                  .array(z.object({ label: z.string(), preview: z.string().optional() }))
+                  .optional()
+                  .describe(
+                    "Changes the person approves one by one (kind partial_diff_approval), as in the live prompt.",
+                  ),
               })
               .optional(),
             expires_at: z.string(),

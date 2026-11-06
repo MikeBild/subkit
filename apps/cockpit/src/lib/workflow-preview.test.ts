@@ -20,7 +20,7 @@ describe("cockpit workflow previews", () => {
   test("an edited draft retains privacy and input contracts", () => {
     const saved = {
       name: "Private briefing",
-      execution_privacy: "sensitive",
+      execution_privacy: "sensitive" as const,
       input_schema: { type: "object", properties: { mode: { enum: ["daily", "weekly"] } } },
       output_schema: { type: "object" },
       steps: [{ id: "old" }],
@@ -39,7 +39,7 @@ describe("cockpit workflow previews", () => {
   });
 
   test("a definition without a name previews under an empty name", () => {
-    const unnamed = { execution_privacy: "standard" };
+    const unnamed = { execution_privacy: "sensitive" as const };
     expect(workflowPreviewDefinition(unnamed, [{ id: "a" }])).toEqual({
       ...unnamed,
       name: "",
@@ -48,7 +48,11 @@ describe("cockpit workflow previews", () => {
   });
 
   test("selected preview input travels with the sensitive draft", () => {
-    const definition = { name: "Briefing", execution_privacy: "sensitive", steps: [{ id: "get" }] };
+    const definition = {
+      name: "Briefing",
+      execution_privacy: "sensitive" as const,
+      steps: [{ id: "get" }],
+    };
     expect(
       workflowPreviewRequest({ source: "draft", definition, input: { mode: "weekly" } }),
     ).toEqual({ source: "draft", definition, input: { mode: "weekly" }, hold_writes: true });

@@ -6,14 +6,13 @@ import { FileIdSchema, toFileId } from "../../api/files-schemas.ts";
 import { toHonoRoute } from "../../api/operations/hono.ts";
 import {
   applyPackageImportOperation,
+  exportPackageOperation,
   getPackageInstallOperation,
   listPackageInstallsOperation,
   requireFileUuid,
   throwPackageError,
 } from "../../api/operations/package.ts";
 import {
-  PackageExportRequestSchema,
-  PackageExportResultSchema,
   PackagePreviewJsonRequestSchema,
   PackagePreviewResultSchema,
 } from "../../api/packages-schemas.ts";
@@ -25,9 +24,7 @@ import {
   FileCreatedMetadataSchema,
   readRequestSource,
 } from "../../audit/index.ts";
-import { getConfig } from "../../config/loader.ts";
 import {
-  exportTenantPackage,
   loadStoredPackageArchive,
   PACKAGE_CONTENT_TYPE,
   PACKAGE_MAX_BYTES,
@@ -37,7 +34,7 @@ import {
 import { HttpError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
-import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
+import type { AppEnv } from "../openapi.ts";
 
 const ArchiveIdParam = z.object({ file_id: FileIdSchema });
 
@@ -45,14 +42,6 @@ const errorResponse = (description: string) => ({
   description,
   content: { "application/json": { schema: ErrorSchema } },
 });
-
-function publicInstance(): string | null {
-  try {
-    const base = getConfig().server.public_base_url;
-    if (base && base.length > 0) return base.endsWith("/") ? base.slice(0, -1) : base;
-  } catch {}
-  return null;
-}
 
 function contentLengthOverCap(c: Context): boolean {
   const raw = c.req.header("content-length");
@@ -65,30 +54,6 @@ function contentDispositionName(filename: string): string {
   const safe = filename.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 200);
   return safe.length > 0 ? safe : "package.zip";
 }
-
-const exportRoute = createRoute({
-  method: "post",
-  path: "/v1/packages/export",
-  tags: ["packages"],
-  summary: "Export the tenant as a package archive",
-  description:
-    "Collects workflows, connectors without secrets, skills, files, schedules and knowledge into a stored package archive. Download it with GET /v1/packages/archives/{file_id}.",
-  security: [{ bearerAuth: [] }],
-  request: {
-    body: {
-      required: false,
-      content: { "application/json": { schema: PackageExportRequestSchema } },
-    },
-  },
-  responses: {
-    201: {
-      description: "Package archive stored",
-      content: { "application/json": { schema: PackageExportResultSchema } },
-    },
-    400: errorResponse("Invalid request"),
-    413: errorResponse("Package exceeds the size limit"),
-  },
-});
 
 const downloadRoute = createRoute({
   method: "get",
@@ -160,33 +125,17 @@ async function readUploadedArchive(c: Context): Promise<{ filename: string; byte
   return { filename: archive.name || "package.zip", bytes };
 }
 
-export function registerPackageRoutes(app: OpenAPIHono<AppEnv>): void {
+function gateUnroutedPackageRequests(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/packages/export", requirePermission("package:export"));
-  app.use("/v1/packages/archives/*", requirePermission("package:export"));
   app.use("/v1/packages/import/*", requirePermission("package:import"));
-  app.use("/v1/packages/installs", (c, next) =>
-    c.req.method === "GET" ? next() : requirePermission("package:import")(c, next),
-  );
   app.use("/v1/packages/installs/*", requirePermission("package:import"));
+}
 
-  app.openapi(exportRoute, async (c) => {
-    const principal = requireAuth(c);
-    const body = c.req.valid("json") as z.infer<typeof PackageExportRequestSchema>;
-    try {
-      const result = await exportTenantPackage(c.get("db"), {
-        tenant_id: principal.tenant_id,
-        actor_type: actorType(principal),
-        actor_id: principal.id,
-        request_source: readRequestSource(c) ?? "api",
-        kinds: body.kinds,
-        categories: body.categories,
-        source: { instance: publicInstance(), engine_version: OPENAPI_INFO.version },
-      });
-      return c.json({ ...result, file_id: toFileId(result.file_id) }, 201);
-    } catch (err) {
-      throwPackageError(err);
-    }
-  });
+export function registerPackageRoutes(app: OpenAPIHono<AppEnv>): void {
+  app.use("/v1/packages/archives/*", requirePermission("package:export"));
+  app.use("/v1/packages/import/preview", requirePermission("package:import"));
+
+  toHonoRoute(app, exportPackageOperation);
 
   app.openapi(downloadRoute, async (c) => {
     const principal = requireAuth(c);
@@ -266,4 +215,6 @@ export function registerPackageRoutes(app: OpenAPIHono<AppEnv>): void {
   toHonoRoute(app, applyPackageImportOperation);
   toHonoRoute(app, listPackageInstallsOperation);
   toHonoRoute(app, getPackageInstallOperation);
+
+  gateUnroutedPackageRequests(app);
 }

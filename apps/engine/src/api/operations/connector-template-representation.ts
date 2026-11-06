@@ -1,18 +1,24 @@
 import { z } from "@hono/zod-openapi";
-import { policy } from "../../../auth/index.ts";
-import type {
-  ConnectorView,
-  CreateConnectorInput,
-  ResolvedConnectorTemplate,
-} from "../../../connectors/index.ts";
+import { policy } from "../../auth/policy.ts";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { toPublicConnector } from "../../connectors/public-view.ts";
+import { RecipeConnectorBindingSchema } from "../../connectors/recipe-binding.ts";
+import { RECIPE_PACK_VERTICALS } from "../../connectors/recipe-packs.ts";
+import type { ResolvedConnectorTemplate } from "../../connectors/template-resolver.ts";
 import {
   ConnectorRecipeSchema,
   type ConnectorTemplate,
   ConnectorTemplateSchema,
-  RecipeConnectorBindingSchema,
-  toPublicConnector,
-} from "../../../connectors/index.ts";
-import { ForbiddenError } from "../../errors.ts";
+} from "../../connectors/templates.ts";
+import {
+  type ConnectorView,
+  type CreateConnectorInput,
+  DriverEnum,
+  EnvironmentEnum,
+} from "../../connectors/types.ts";
+import { CredentialMode } from "../../credentials/types.ts";
+import { WorkflowDefSchema } from "../../workflows/types.ts";
+import { type Rejection, reject } from "./index.ts";
 
 export const ListResponseSchema = z
   .object({
@@ -38,9 +44,9 @@ export const ConnectorResponseSchema = z
     tenant_id: z.string(),
     slug: z.string(),
     display_name: z.string(),
-    driver: z.string(),
-    environment: z.string(),
-    auth_type: z.string(),
+    driver: DriverEnum,
+    environment: EnvironmentEnum,
+    auth_type: CredentialMode,
     base_url: z.string().nullable(),
     dsn: z.string().nullable(),
     config: z.record(z.string(), z.unknown()),
@@ -138,77 +144,6 @@ export const RecipeSlugParam = z.object({
   recipe_slug: z.string().min(1),
 });
 
-const RECIPE_PACK_VERTICALS = [
-  "revops",
-  "customer-success",
-  "finance",
-  "data",
-  "devops",
-  "security",
-  "marketing",
-  "hr",
-  "solutions",
-] as const;
-export type RecipePackVertical = (typeof RECIPE_PACK_VERTICALS)[number];
-export type PredicateRecipePackVertical = Exclude<RecipePackVertical, "solutions">;
-
-interface PackPredicate {
-  outcome: string;
-  match_categories: string[];
-  match_tags: string[];
-}
-
-export const RECIPE_PACK_PREDICATES: Record<PredicateRecipePackVertical, PackPredicate> = {
-  revops: {
-    outcome:
-      "Stand up the lead → opportunity → close loop with the LLM doing routing, enrichment, and Slack hand-off in real time.",
-    match_categories: ["crm", "marketing"],
-    match_tags: ["revops", "lead", "deal"],
-  },
-  "customer-success": {
-    outcome:
-      "Detect health-score regressions and route them to the right CSM playbook before churn lands on the renewal call.",
-    match_categories: ["enterprise", "support"],
-    match_tags: ["customer-success", "health", "churn", "playbook"],
-  },
-  finance: {
-    outcome:
-      "Catch failed charges, dunning windows, and high-risk payments while they still have a recovery path.",
-    match_categories: ["payments"],
-    match_tags: ["finance", "dunning", "billing", "risk"],
-  },
-  data: {
-    outcome:
-      "Move rows between systems-of-record on a schedule with idempotent upserts and watermark state — reverse-ETL without the bespoke vendor.",
-    match_categories: ["database", "analytics"],
-    match_tags: ["reverse-etl", "sync", "warehouse", "data"],
-  },
-  devops: {
-    outcome:
-      "Page on-call from the right alarm tier, post the AI postmortem, open the ticket — every incident with the same first 60 seconds.",
-    match_categories: ["devops", "analytics"],
-    match_tags: ["devops", "incident", "deploy", "release"],
-  },
-  security: {
-    outcome:
-      "Audit IAM drift, rotate stale keys, and require human approval on the operations a single Slack message would otherwise execute.",
-    match_categories: ["enterprise"],
-    match_tags: ["security", "audit", "approval"],
-  },
-  marketing: {
-    outcome:
-      "Run trial nurture and campaign QA across ESP + CRM + warehouse without the seven-tab manual spreadsheet.",
-    match_categories: ["marketing"],
-    match_tags: ["marketing", "nurture", "campaign", "utm"],
-  },
-  hr: {
-    outcome:
-      "Onboard a new hire across Okta + Workspace + BambooHR + Slack atomically; offboard the same way without leaving an orphaned account.",
-    match_categories: ["enterprise"],
-    match_tags: ["hr", "onboarding", "offboarding"],
-  },
-};
-
 export const RecipePackVerticalParam = z.object({
   vertical: z.enum(RECIPE_PACK_VERTICALS),
 });
@@ -224,7 +159,7 @@ export const RecipePackEntrySchema = z
     difficulty: z.string(),
     connectors: z.array(RecipeConnectorBindingSchema),
     sample_input: z.unknown().nullable(),
-    workflow: z.record(z.string(), z.unknown()),
+    workflow: WorkflowDefSchema,
   })
   .openapi("RecipePackEntry");
 
@@ -236,59 +171,9 @@ export const RecipePackResponseSchema = z
   })
   .openapi("RecipePackResponse");
 
-export const ImportRequestSchema = z
-  .object({
-    source: z.enum([
-      "postman",
-      "har",
-      "openapi",
-      "google_discovery",
-      "graphql",
-      "graphql_introspection",
-      "curl",
-    ]),
-    content: z
-      .string()
-      .min(1)
-      .describe(
-        "Inline specification content or a source-specific URL/command. URL-fetched OpenAPI and Google Discovery documents are streamed with a 50 MiB limit; specification metadata seeds the connector draft.",
-      ),
-    headers: z.record(z.string(), z.string()).optional(),
-    name: z.string().min(1).optional(),
-    environment: z.enum(["dev", "prod"]).default("dev"),
-    base_url_environment: z.string().optional(),
-  })
-  .openapi("ConnectorSpecImportRequest");
-
-const ImportDraftSchema = z
-  .object({
-    name: z.string().optional(),
-    slug: z.string().optional(),
-    driver: z.string(),
-    environment: z.string(),
-    base_url: z.string().optional(),
-    auth_type: z.string(),
-    config: z.record(z.string(), z.unknown()),
-  })
-  .openapi("ConnectorSpecImportDraft");
-
-export const ImportResponseSchema = z
-  .object({
-    draft: ImportDraftSchema,
-    template_match: z
-      .object({
-        slug: z.string(),
-        score: z.number(),
-        matched_segment: z.string(),
-      })
-      .nullable(),
-    recommended_next: z.array(z.string()),
-  })
-  .openapi("ConnectorSpecImportResponse");
-
-export function requireAdmin(p: import("../../../auth/types.ts").ResolvedPrincipal): void {
-  const decision = policy.adminOnly(p);
-  if (!decision.allowed) throw new ForbiddenError(decision.reason ?? "admin_required");
+export function adminRejection(principal: ResolvedPrincipal): Rejection | null {
+  const decision = policy.adminOnly(principal);
+  return decision.allowed ? null : reject.forbidden(decision.reason ?? "admin_required");
 }
 
 export function templateAuthToConnectorAuth(

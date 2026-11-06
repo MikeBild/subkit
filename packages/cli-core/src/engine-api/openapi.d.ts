@@ -4028,7 +4028,10 @@ export interface paths {
         post: {
             parameters: {
                 query?: never;
-                header?: never;
+                header: {
+                    /** @description csrf_token from GET /v1/identity/recovery; a missing or stale token is refused with 403. */
+                    "x-subkit-recovery-csrf": string;
+                };
                 path?: never;
                 cookie?: never;
             };
@@ -9982,7 +9985,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ConnectorTemplateRecipe"];
+                        "application/json": components["schemas"]["ConnectorTemplateRecipeOutput"];
                     };
                 };
                 /** @description Not found */
@@ -24311,7 +24314,7 @@ export interface components {
              * @default prod
              * @enum {string}
              */
-            environment: "dev" | "prod";
+            environment?: "dev" | "prod";
         };
         WorkflowInvocation: {
             /** Format: uuid */
@@ -24478,7 +24481,7 @@ export interface components {
             digest: string;
             /** Format: uuid */
             current_version_id: string | null;
-            definition: components["schemas"]["WorkflowDef"];
+            definition: components["schemas"]["WorkflowDefOutput"];
             spec: components["schemas"]["WorkflowSpec"] | null;
         };
         WorkflowDef: {
@@ -24514,6 +24517,39 @@ export interface components {
             /** @enum {string} */
             caller_erasure?: "on_success";
         };
+        WorkflowDefOutput: {
+            name: string;
+            product_id?: string;
+            /** @enum {string} */
+            required_caller_kind?: "user" | "system_account";
+            /** @enum {string} */
+            execution_privacy?: "sensitive";
+            slug?: string;
+            description?: string;
+            /** @enum {string} */
+            tool_effect?: "read" | "reversible_write" | "irreversible_write";
+            derived_from_skill_id?: string | null;
+            input_schema?: {
+                [key: string]: unknown;
+            };
+            input_schema_sample?: unknown;
+            output_schema?: {
+                [key: string]: unknown;
+            };
+            validation_expression?: string;
+            validation_function?: string;
+            output_transform?: string;
+            output_transform_function?: string;
+            response_filters?: components["schemas"]["ResponseFilter"][];
+            steps: (components["schemas"]["RequestStepOutput"] | components["schemas"]["TransformStepOutput"] | components["schemas"]["CallStepOutput"] | components["schemas"]["WaitStepOutput"] | components["schemas"]["WaitForEventStepOutput"] | components["schemas"]["BranchStepOutput"] | components["schemas"]["ParallelStepOutput"] | components["schemas"]["LoopStepOutput"])[];
+            timeout_ms?: number;
+            max_llm_tokens_per_run?: number;
+            runtime?: components["schemas"]["WorkflowRuntime"];
+            trigger?: components["schemas"]["WorkflowTriggerOutput"];
+            execution_guards?: components["schemas"]["ExecutionGuardsOutput"];
+            /** @enum {string} */
+            caller_erasure?: "on_success";
+        };
         ResponseFilter: {
             /** @enum {string} */
             target: "KEYS" | "VALUES" | "BOTH";
@@ -24525,6 +24561,234 @@ export interface components {
             scope?: "FIELD" | "ITEM" | "ENTRY";
         };
         RequestStep: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "request";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error?: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            /**
+             * @default GET
+             * @enum {string}
+             */
+            method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS" | "LIST" | "SELECT" | "INSERT" | "UPDATE" | "CALL";
+            /** @enum {string} */
+            side_effects?: "read" | "write";
+            url?: string;
+            path?: string;
+            /** Format: uuid */
+            connector_id?: string;
+            boundary?: {
+                variables: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                    } | {
+                        /** @enum {boolean} */
+                        caller_bound: true;
+                    };
+                };
+                max_body_bytes: number;
+                max_calls: number;
+                /** @enum {boolean} */
+                destructive?: true;
+            };
+            report_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_report";
+                to: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain" | "text/html" | "multipart/alternative";
+            };
+            transactional_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_transactional";
+                /** @enum {string} */
+                webhook_verifier?: "standard" | "hmac";
+                /**
+                 * Format: uuid
+                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 */
+                webhook_id: string;
+                /** @description The single allowed event type configured on the signed binding */
+                event_type: string;
+                /** @description Reviewed event type field inside the signed body, equal to event_type; webhook-type alone is not signed */
+                event_type_input: string;
+                /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
+                recipient_input: string;
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                request_id_input: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes; derive from bounded template inputs */
+                max_body_bytes: number;
+            };
+            outbox_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_outbox";
+                /** @description Earlier GET request step of this workflow that reads exactly one queued message from a fixed, approved address; the recipient is only ever taken from its response in the same run */
+                source_step_id: string;
+                /** @description Dot path inside the source step's response data that holds the one recipient address, for example email or item.email */
+                recipient_field: string;
+                /** @description Dot path inside the source step's response data that identifies the queued message; one dispatch attempt per workflow and item */
+                item_id_field: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes */
+                max_body_bytes: number;
+                /** @description Most messages this workflow may send within any 24 hours */
+                max_per_day: number;
+            };
+            headers?: {
+                [key: string]: string;
+            } | string;
+            query?: {
+                [key: string]: string | number | boolean;
+            };
+            body?: components["schemas"]["WorkflowJsonValue"];
+            response_filters?: components["schemas"]["ResponseFilter"][];
+            pagination?: components["schemas"]["Pagination"];
+            max_retries?: number;
+            retry_backoff_ms?: number;
+            retry_on_status?: number[];
+            graphql?: {
+                /** @enum {string} */
+                operation?: "query" | "mutation" | "subscription";
+                query: string;
+                variables?: {
+                    [key: string]: unknown;
+                };
+                cursor_pagination?: {
+                    connection_path: string;
+                    cursor_variable: string;
+                    /**
+                     * @default nodes
+                     * @enum {string}
+                     */
+                    items_field?: "nodes" | "edges";
+                    required_connection_paths?: string[];
+                    max_pages: number;
+                    max_items: number;
+                    expected_items?: {
+                        min?: number;
+                        max?: number;
+                    };
+                    reread_on_empty?: number;
+                };
+            } | string;
+            /**
+             * @default none
+             * @enum {string}
+             */
+            error_policy?: "none" | "all";
+            xml?: {
+                body: components["schemas"]["WorkflowJsonValue"];
+                declaration?: boolean;
+            };
+            sql?: {
+                query: string;
+                params?: unknown[];
+                also?: {
+                    query: string;
+                    params?: unknown[];
+                    expected_row_count?: number | [
+                        number,
+                        number
+                    ] | {
+                        min?: number;
+                        max?: number;
+                    };
+                }[];
+                transaction?: boolean;
+                cursor?: {
+                    /** @default 1000 */
+                    fetch_size?: number;
+                };
+            };
+            s3?: {
+                scope?: {
+                    key_prefix: string;
+                    max_bytes: number;
+                    max_deletes?: number;
+                    principal_bound?: boolean;
+                };
+                key?: string;
+                prefix?: string;
+                /** @enum {string} */
+                parse_as?: "json" | "text" | "base64" | "bytes";
+                max_keys?: number;
+                content_type?: string;
+                metadata?: {
+                    [key: string]: string;
+                };
+                paginate?: boolean;
+                multipart?: boolean;
+                multipart_threshold_mb?: number;
+                range?: string;
+                presign?: {
+                    /** @default 900 */
+                    expires_in_s?: number;
+                };
+            };
+            mcp?: {
+                /**
+                 * @default call_tool
+                 * @enum {string}
+                 */
+                operation?: "call_tool" | "read_resource" | "get_prompt";
+                tool?: string;
+                uri?: string;
+                prompt?: string;
+                arguments?: {
+                    [key: string]: components["schemas"]["WorkflowJsonValue"];
+                };
+            };
+            body_schema?: {
+                [key: string]: unknown;
+            };
+            response_schema?: {
+                [key: string]: unknown;
+            };
+            expected_statuses?: number[];
+            expected_row_count?: number | [
+                number,
+                number
+            ] | {
+                min?: number;
+                max?: number;
+            };
+            idempotency_key?: string;
+            outputs?: {
+                [key: string]: {
+                    secret?: boolean;
+                };
+            };
+            state_read?: {
+                key: string;
+                into_var: string;
+                default_value?: unknown;
+            };
+            state_write?: {
+                key: string;
+                value_path: string;
+            };
+            multipart?: components["schemas"]["MultipartPart"][];
+        };
+        RequestStepOutput: {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -24625,7 +24889,7 @@ export interface components {
             };
             body?: components["schemas"]["WorkflowJsonValue"];
             response_filters?: components["schemas"]["ResponseFilter"][];
-            pagination?: components["schemas"]["Pagination"];
+            pagination?: components["schemas"]["PaginationOutput"];
             max_retries?: number;
             retry_backoff_ms?: number;
             retry_on_status?: number[];
@@ -24756,6 +25020,79 @@ export interface components {
             /** @enum {string} */
             strategy: "offset";
             /** @default 100 */
+            page_size?: number;
+            /** @default offset */
+            offset_param?: string;
+            /** @default limit */
+            limit_param?: string;
+            /** @enum {string} */
+            parameter_location?: "query" | "body";
+            /** @enum {string} */
+            output_mode?: "items" | "pages";
+            items_path?: string;
+            stop_when_empty_path?: string;
+            max_pages?: number;
+            max_items?: number;
+            /** @enum {string} */
+            on_limit?: "fail" | "truncate";
+            unique_by?: string;
+        } | {
+            /** @enum {string} */
+            strategy: "page";
+            /** @default 100 */
+            page_size?: number;
+            /** @default page */
+            page_param?: string;
+            /** @default page_size */
+            limit_param?: string;
+            /** @default 1 */
+            start_page?: number;
+            /** @enum {string} */
+            parameter_location?: "query" | "body";
+            /** @enum {string} */
+            output_mode?: "items" | "pages";
+            items_path?: string;
+            max_pages?: number;
+            max_items?: number;
+            /** @enum {string} */
+            on_limit?: "fail" | "truncate";
+            unique_by?: string;
+        } | {
+            /** @enum {string} */
+            strategy: "cursor";
+            cursor_request_param: string;
+            cursor_response_path: string;
+            page_size?: number;
+            limit_param?: string;
+            /** @enum {string} */
+            parameter_location?: "query" | "body";
+            /** @enum {string} */
+            output_mode?: "items" | "pages";
+            items_path?: string;
+            max_pages?: number;
+            max_items?: number;
+            /** @enum {string} */
+            on_limit?: "fail" | "truncate";
+            unique_by?: string;
+        } | {
+            /** @enum {string} */
+            strategy: "link";
+            link_params: string[];
+            page_size?: number;
+            limit_param?: string;
+            items_path?: string;
+            /** @enum {string} */
+            output_mode?: "items" | "pages";
+            max_pages?: number;
+            max_items?: number;
+            /** @enum {string} */
+            on_limit?: "fail" | "truncate";
+            unique_by?: string;
+        };
+        PaginationOutput: {
+            /** @enum {string} */
+            strategy: "offset";
+            /** @default 100 */
             page_size: number;
             /** @default offset */
             offset_param: string;
@@ -24843,6 +25180,37 @@ export interface components {
              * @default fail
              * @enum {string}
              */
+            on_error?: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            expression?: string;
+            /** @enum {string} */
+            language?: "javascript" | "readability" | "html-to-markdown" | "structured-data";
+            readability?: components["schemas"]["ReadabilityConfig"];
+            markdown?: components["schemas"]["MarkdownConfig"];
+            structured_data?: components["schemas"]["StructuredDataConfig"];
+            input_schema?: {
+                [key: string]: unknown;
+            };
+            output_schema?: {
+                [key: string]: unknown;
+            };
+            /** @description Suppress specific non-fatal warnings on this step. */
+            silence_warnings?: "dropped_fields"[];
+        };
+        TransformStepOutput: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "transform";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
             on_error: "fail" | "continue";
             data_selector?: string;
             timeout_ms?: number;
@@ -24887,6 +25255,27 @@ export interface components {
              * @default fail
              * @enum {string}
              */
+            on_error?: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            /** Format: uuid */
+            workflow_id?: string;
+            workflow_slug?: string;
+            input?: components["schemas"]["WorkflowJsonValue"];
+        };
+        CallStepOutput: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "call";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
             on_error: "fail" | "continue";
             data_selector?: string;
             timeout_ms?: number;
@@ -24908,6 +25297,24 @@ export interface components {
              * @default fail
              * @enum {string}
              */
+            on_error?: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            duration_ms: number;
+        };
+        WaitStepOutput: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "wait";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
             on_error: "fail" | "continue";
             data_selector?: string;
             timeout_ms?: number;
@@ -24916,6 +25323,29 @@ export interface components {
             duration_ms: number;
         };
         WaitForEventStep: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "wait_for_event";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error?: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            event_name: string;
+            match?: {
+                path: string;
+                equals: string | number | boolean | null;
+            };
+            on_timeout?: string;
+        };
+        WaitForEventStepOutput: {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -24949,6 +25379,26 @@ export interface components {
              * @default fail
              * @enum {string}
              */
+            on_error?: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            when: string;
+            then_steps: string[];
+            else_steps?: string[];
+        };
+        BranchStepOutput: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "branch";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
             on_error: "fail" | "continue";
             data_selector?: string;
             timeout_ms?: number;
@@ -24959,6 +25409,24 @@ export interface components {
             else_steps?: string[];
         };
         ParallelStep: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "parallel";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error?: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            branches: string[][];
+        };
+        ParallelStepOutput: {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -24987,6 +25455,26 @@ export interface components {
              * @default fail
              * @enum {string}
              */
+            on_error?: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            over?: string;
+            body: string[];
+            fail_fast?: boolean;
+        };
+        LoopStepOutput: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "loop";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
             on_error: "fail" | "continue";
             data_selector?: string;
             timeout_ms?: number;
@@ -25000,6 +25488,7 @@ export interface components {
             stdlib_version?: string;
         };
         WorkflowTrigger: components["schemas"]["RequestTrigger"] | components["schemas"]["WebhookTrigger"] | components["schemas"]["ScheduleTrigger"];
+        WorkflowTriggerOutput: components["schemas"]["RequestTrigger"] | components["schemas"]["WebhookTrigger"] | components["schemas"]["ScheduleTriggerOutput"];
         RequestTrigger: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -25026,6 +25515,20 @@ export interface components {
             kind: "schedule";
             cron: string;
             /** @default UTC */
+            tz?: string;
+            /** @enum {string} */
+            execution_mode?: "dev" | "prod";
+            business_days_only?: boolean;
+            skip_dates?: string[];
+        };
+        ScheduleTriggerOutput: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "schedule";
+            cron: string;
+            /** @default UTC */
             tz: string;
             /** @enum {string} */
             execution_mode?: "dev" | "prod";
@@ -25039,7 +25542,42 @@ export interface components {
                 [key: string]: number;
             };
         };
+        ExecutionGuardsOutput: {
+            caller_daily_limit?: components["schemas"]["CallerDailyLimitOutput"];
+            /** @description Maximum UTF-8 bytes per $input path (a string counts itself, other values their JSON text); checked at admission before any charge */
+            input_bytes?: {
+                [key: string]: number;
+            };
+        };
         CallerDailyLimit: {
+            /** @description Ledger bucket shared by workflows that draw from the same daily allowance */
+            bucket: string;
+            /** @description Units per caller and local day */
+            limit: number;
+            /** @description Time zone whose midnight resets the daily allowance */
+            tz: string;
+            /** @description Dot path into $input whose value (1..128 characters) is the unit one charge covers */
+            unit: string;
+            /**
+             * @description How long a reserved unit waits for its next round before it settles
+             * @default 600000
+             */
+            lease_ms?: number;
+            /** @description Step ids whose sent requests or success make the unit billable; a sent request is never refunded */
+            billable_steps: string[];
+            /** @description JSONata over a billable step output yielding the calls it used (default 1); requests already sent count toward it */
+            meter?: string;
+            /** @description Metered calls a unit may use before admission refuses with turn_limit; later calls of a reserved or committed unit are free and one call of a unit runs at a time */
+            max_metered: number;
+            /** @description JSONata over the run output; true commits the unit so it is never refunded, false keeps it reserved */
+            commit_when: string;
+            /**
+             * @description Result key that receives {usedToday, dailyLimit} after settlement
+             * @default usage
+             */
+            attach_usage_as?: string;
+        };
+        CallerDailyLimitOutput: {
             /** @description Ledger bucket shared by workflows that draw from the same daily allowance */
             bucket: string;
             /** @description Units per caller and local day */
@@ -25275,7 +25813,7 @@ export interface components {
             validation_function: string | null;
             timeout_ms: number | null;
             max_llm_tokens_per_run: number | null;
-            trigger: components["schemas"]["WorkflowTrigger"];
+            trigger: components["schemas"]["WorkflowTriggerOutput"];
             schedule: components["schemas"]["WorkflowScheduleBinding"];
             webhooks_active: number;
             effective_trigger: components["schemas"]["EffectiveTrigger"];
@@ -25472,10 +26010,10 @@ export interface components {
         WorkflowMetadataPatchBody: {
             slug?: string;
             name?: string;
-            description?: components["schemas"]["CatalogDescription"] & (string | null);
+            description?: components["schemas"]["CatalogDescription"] | null;
             /** @description Accept the supplied unchanged description as human-owned. Requires the exact current nonempty description; stale text is rejected. */
             accept_description?: boolean;
-            category?: components["schemas"]["CatalogCategory"] & (string | null);
+            category?: components["schemas"]["CatalogCategory"] | null;
             /** @enum {string} */
             lifecycle?: "active" | "archived";
         };
@@ -25723,6 +26261,8 @@ export interface components {
             name: string;
             slug?: string;
             description?: string;
+            /** @enum {string} */
+            execution_privacy?: "sensitive";
             input_schema?: {
                 [key: string]: unknown;
             };
@@ -26140,7 +26680,7 @@ export interface components {
              * @default dev
              * @enum {string}
              */
-            environment: "dev" | "prod";
+            environment?: "dev" | "prod";
             base_url_environment?: string;
         };
         ConnectorTemplateUrlMatchResponse: {
@@ -26187,8 +26727,8 @@ export interface components {
                 base_url: string | null;
                 /** @enum {string} */
                 auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "signed_jwt" | "aws_sigv4";
-                oauth: components["schemas"]["ConnectorTemplateOAuth"];
-                signed_jwt?: components["schemas"]["ConnectorTemplateSignedJwt"];
+                oauth: components["schemas"]["ConnectorTemplateOAuthOutput"];
+                signed_jwt?: components["schemas"]["ConnectorTemplateSignedJwtOutput"];
                 default_skill: string | null;
                 /** @enum {string|null} */
                 ingestion_source: "openapi" | "google_discovery" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported" | null;
@@ -26202,12 +26742,12 @@ export interface components {
                 aliases: string[];
                 setup_instructions: string;
                 /** @default [] */
-                auth_options: components["schemas"]["ConnectorTemplateAuthOption"][];
+                auth_options: components["schemas"]["ConnectorTemplateAuthOptionOutput"][];
                 url_pattern: string | null;
                 /** @default [] */
                 keywords: string[];
                 inline_schema: components["schemas"]["ConnectorTemplateInlineSchema"];
-                probe_endpoint: components["schemas"]["ConnectorTemplateProbeEndpoint"];
+                probe_endpoint: components["schemas"]["ConnectorTemplateProbeEndpointOutput"];
                 probe_diagnostics?: components["schemas"]["ConnectorTemplateProbeDiagnostics"];
                 /** @default [] */
                 read_operations: components["schemas"]["ConnectorTemplateReadOperation"][];
@@ -26217,16 +26757,16 @@ export interface components {
                  */
                 resource_url_parser: "atlassian_cloud" | "notion" | null;
                 /** @default [] */
-                credential_hints: components["schemas"]["ConnectorTemplateCredentialHint"][];
+                credential_hints: components["schemas"]["ConnectorTemplateCredentialHintOutput"][];
                 /** @default [] */
                 base_url_options: components["schemas"]["ConnectorTemplateBaseUrlOption"][];
                 pagination_defaults: components["schemas"]["ConnectorTemplatePaginationDefaults"];
-                capabilities: components["schemas"]["ConnectorTemplateCapabilities"];
+                capabilities: components["schemas"]["ConnectorTemplateCapabilitiesOutput"];
                 /** @default [] */
                 example_paths: string[];
                 operator_quirks?: components["schemas"]["OperatorQuirks"];
                 /** @default [] */
-                recipes: components["schemas"]["ConnectorTemplateRecipe"][];
+                recipes: components["schemas"]["ConnectorTemplateRecipeOutput"][];
                 /** @default null */
                 aws_service: string | null;
                 /** @default null */
@@ -26244,6 +26784,29 @@ export interface components {
             }[];
         };
         ConnectorTemplateOAuth: {
+            issuer_url: string;
+            authorization_endpoint?: string;
+            token_endpoint?: string;
+            scopes?: string;
+            /** @enum {string} */
+            grant_type: "authorization_code" | "client_credentials" | "password" | "cognito_user_password" | "client_credentials_json";
+            /** @enum {string} */
+            token_auth_method: "body" | "basic_auth";
+            /** @enum {string} */
+            token_content_type: "form" | "json";
+            use_pkce: boolean;
+            client_id: string | null;
+            /** @default {} */
+            extra_headers?: {
+                [key: string]: string;
+            };
+            /** @default false */
+            dynamic_registration?: boolean;
+            /** @enum {string} */
+            token_response_format?: "raw" | "json";
+            token_response_ttl_ms?: number;
+        } | null;
+        ConnectorTemplateOAuthOutput: {
             issuer_url: string;
             authorization_endpoint?: string;
             token_endpoint?: string;
@@ -26275,6 +26838,21 @@ export interface components {
             subject?: string;
             key_id?: string;
             /** @default {} */
+            claims?: {
+                [key: string]: string | number | boolean | (string | number | boolean)[];
+            };
+            /** @default 300 */
+            ttl_seconds?: number;
+        } | null;
+        /** @default null */
+        ConnectorTemplateSignedJwtOutput: {
+            /** @enum {string} */
+            algorithm: "ES256" | "RS256";
+            audience: string | string[];
+            issuer?: string;
+            subject?: string;
+            key_id?: string;
+            /** @default {} */
             claims: {
                 [key: string]: string | number | boolean | (string | number | boolean)[];
             };
@@ -26286,8 +26864,20 @@ export interface components {
             auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "signed_jwt" | "aws_sigv4";
             label: string;
             description: string;
+            /** @description For a header or query option: the header or query parameter name the credential value is sent in. */
+            param_name?: string;
             oauth?: components["schemas"]["ConnectorTemplateOAuth"];
             signed_jwt?: components["schemas"]["ConnectorTemplateSignedJwt"];
+        };
+        ConnectorTemplateAuthOptionOutput: {
+            /** @enum {string} */
+            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "signed_jwt" | "aws_sigv4";
+            label: string;
+            description: string;
+            /** @description For a header or query option: the header or query parameter name the credential value is sent in. */
+            param_name?: string;
+            oauth?: components["schemas"]["ConnectorTemplateOAuthOutput"];
+            signed_jwt?: components["schemas"]["ConnectorTemplateSignedJwtOutput"];
         };
         ConnectorTemplateInlineSchema: {
             /** @enum {string} */
@@ -26295,6 +26885,20 @@ export interface components {
             content: string;
         } | null;
         ConnectorTemplateProbeEndpoint: {
+            /** @enum {string} */
+            method: "GET" | "HEAD" | "POST";
+            path: string;
+            expected_status?: [
+                number,
+                number
+            ];
+            /** @default  */
+            description?: string;
+            headers?: {
+                [key: string]: string;
+            };
+        } | null;
+        ConnectorTemplateProbeEndpointOutput: {
             /** @enum {string} */
             method: "GET" | "HEAD" | "POST";
             path: string;
@@ -26327,6 +26931,15 @@ export interface components {
             field: string;
             label: string;
             /** @default  */
+            placeholder?: string;
+            doc_url: string | null;
+            secret: boolean;
+            header_name?: string;
+        };
+        ConnectorTemplateCredentialHintOutput: {
+            field: string;
+            label: string;
+            /** @default  */
             placeholder: string;
             doc_url: string | null;
             secret: boolean;
@@ -26350,6 +26963,12 @@ export interface components {
         ConnectorTemplateCapabilities: {
             webhooks: boolean;
             /** @default [] */
+            webhook_events?: string[];
+            rate_limits: components["schemas"]["ConnectorTemplateRateLimits"];
+        };
+        ConnectorTemplateCapabilitiesOutput: {
+            webhooks: boolean;
+            /** @default [] */
             webhook_events: string[];
             rate_limits: components["schemas"]["ConnectorTemplateRateLimits"];
         };
@@ -26368,6 +26987,54 @@ export interface components {
             general?: string;
         };
         ConnectorTemplateRecipe: {
+            slug: string;
+            title: string;
+            description: string;
+            /** @default [] */
+            intent_keywords?: string[];
+            /** @default null */
+            derived_from_skill?: string | null;
+            /**
+             * @default other
+             * @enum {string}
+             */
+            category?: "ai" | "analytics" | "aws" | "cloud" | "communication" | "crm" | "database" | "devops" | "ecommerce" | "enterprise" | "marketing" | "payments" | "productivity" | "project-management" | "protocol" | "scraping" | "storage" | "support" | "other";
+            /** @default [] */
+            tags?: string[];
+            /**
+             * @default intermediate
+             * @enum {string}
+             */
+            difficulty?: "beginner" | "intermediate" | "advanced";
+            /** @default 5 */
+            estimated_setup_minutes?: number;
+            /** @default [] */
+            prerequisites?: string[];
+            sample_input?: unknown;
+            expected_output_preview?: unknown;
+            /** @default [] */
+            required_connectors?: components["schemas"]["RecipeRequiredConnector"][];
+            /** @default 1.0.0 */
+            version?: string;
+            /**
+             * @default subkit-builtin
+             * @enum {string}
+             */
+            author?: "subkit-builtin" | "tenant";
+            /**
+             * Format: date-time
+             * @default null
+             */
+            last_validated_at?: string | null;
+            /** @default null */
+            deprecated?: {
+                /** Format: date-time */
+                since: string;
+                replacement_slug: string;
+            } | null;
+            workflow: Record<string, never>;
+        };
+        ConnectorTemplateRecipeOutput: {
             slug: string;
             title: string;
             description: string;
@@ -26429,8 +27096,8 @@ export interface components {
             base_url: string | null;
             /** @enum {string} */
             auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "signed_jwt" | "aws_sigv4";
-            oauth: components["schemas"]["ConnectorTemplateOAuth"];
-            signed_jwt?: components["schemas"]["ConnectorTemplateSignedJwt"];
+            oauth: components["schemas"]["ConnectorTemplateOAuthOutput"];
+            signed_jwt?: components["schemas"]["ConnectorTemplateSignedJwtOutput"];
             default_skill: string | null;
             /** @enum {string|null} */
             ingestion_source: "openapi" | "google_discovery" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported" | null;
@@ -26444,12 +27111,12 @@ export interface components {
             aliases: string[];
             setup_instructions: string;
             /** @default [] */
-            auth_options: components["schemas"]["ConnectorTemplateAuthOption"][];
+            auth_options: components["schemas"]["ConnectorTemplateAuthOptionOutput"][];
             url_pattern: string | null;
             /** @default [] */
             keywords: string[];
             inline_schema: components["schemas"]["ConnectorTemplateInlineSchema"];
-            probe_endpoint: components["schemas"]["ConnectorTemplateProbeEndpoint"];
+            probe_endpoint: components["schemas"]["ConnectorTemplateProbeEndpointOutput"];
             probe_diagnostics?: components["schemas"]["ConnectorTemplateProbeDiagnostics"];
             /** @default [] */
             read_operations: components["schemas"]["ConnectorTemplateReadOperation"][];
@@ -26459,16 +27126,16 @@ export interface components {
              */
             resource_url_parser: "atlassian_cloud" | "notion" | null;
             /** @default [] */
-            credential_hints: components["schemas"]["ConnectorTemplateCredentialHint"][];
+            credential_hints: components["schemas"]["ConnectorTemplateCredentialHintOutput"][];
             /** @default [] */
             base_url_options: components["schemas"]["ConnectorTemplateBaseUrlOption"][];
             pagination_defaults: components["schemas"]["ConnectorTemplatePaginationDefaults"];
-            capabilities: components["schemas"]["ConnectorTemplateCapabilities"];
+            capabilities: components["schemas"]["ConnectorTemplateCapabilitiesOutput"];
             /** @default [] */
             example_paths: string[];
             operator_quirks?: components["schemas"]["OperatorQuirks"];
             /** @default [] */
-            recipes: components["schemas"]["ConnectorTemplateRecipe"][];
+            recipes: components["schemas"]["ConnectorTemplateRecipeOutput"][];
             /** @default null */
             aws_service: string | null;
             /** @default null */
@@ -26503,52 +27170,52 @@ export interface components {
             description: string;
             category: string;
             /** @default [] */
-            tags: string[];
+            tags?: string[];
             /** @default [] */
-            aliases: string[];
+            aliases?: string[];
             setup_instructions: string;
             /** @default [] */
-            auth_options: components["schemas"]["ConnectorTemplateAuthOption"][];
+            auth_options?: components["schemas"]["ConnectorTemplateAuthOption"][];
             url_pattern: string | null;
             /** @default [] */
-            keywords: string[];
+            keywords?: string[];
             inline_schema: components["schemas"]["ConnectorTemplateInlineSchema"];
             probe_endpoint: components["schemas"]["ConnectorTemplateProbeEndpoint"];
             probe_diagnostics?: components["schemas"]["ConnectorTemplateProbeDiagnostics"];
             /** @default [] */
-            read_operations: components["schemas"]["ConnectorTemplateReadOperation"][];
+            read_operations?: components["schemas"]["ConnectorTemplateReadOperation"][];
             /**
              * @default null
              * @enum {string|null}
              */
-            resource_url_parser: "atlassian_cloud" | "notion" | null;
+            resource_url_parser?: "atlassian_cloud" | "notion" | null;
             /** @default [] */
-            credential_hints: components["schemas"]["ConnectorTemplateCredentialHint"][];
+            credential_hints?: components["schemas"]["ConnectorTemplateCredentialHint"][];
             /** @default [] */
-            base_url_options: components["schemas"]["ConnectorTemplateBaseUrlOption"][];
+            base_url_options?: components["schemas"]["ConnectorTemplateBaseUrlOption"][];
             pagination_defaults: components["schemas"]["ConnectorTemplatePaginationDefaults"];
             capabilities: components["schemas"]["ConnectorTemplateCapabilities"];
             /** @default [] */
-            example_paths: string[];
+            example_paths?: string[];
             operator_quirks?: components["schemas"]["OperatorQuirks"];
             /** @default [] */
-            recipes: components["schemas"]["ConnectorTemplateRecipe"][];
+            recipes?: components["schemas"]["ConnectorTemplateRecipe"][];
             /** @default null */
-            aws_service: string | null;
+            aws_service?: string | null;
             /** @default null */
-            aws_region: string | null;
+            aws_region?: string | null;
             /**
              * Format: date-time
              * @default null
              */
-            verified_at: string | null;
+            verified_at?: string | null;
             /** @default false */
-            respects_robots: boolean;
+            respects_robots?: boolean;
         };
         ConnectorTemplateRecipeListResponse: {
             template_slug: string;
             template_name: string;
-            recipes: components["schemas"]["ConnectorTemplateRecipe"][];
+            recipes: components["schemas"]["ConnectorTemplateRecipeOutput"][];
         };
         RecipePackResponse: {
             /** @enum {string} */
@@ -26566,9 +27233,7 @@ export interface components {
             difficulty: string;
             connectors: components["schemas"]["RecipeConnectorBinding"][];
             sample_input?: unknown;
-            workflow: {
-                [key: string]: unknown;
-            };
+            workflow: components["schemas"]["WorkflowDefOutput"];
         };
         RecipeConnectorBinding: {
             placeholder: string;
@@ -26596,9 +27261,12 @@ export interface components {
             tenant_id: string;
             slug: string;
             display_name: string;
-            driver: string;
-            environment: string;
-            auth_type: string;
+            /** @enum {string} */
+            driver: "http" | "postgres" | "s3" | "graphql" | "mcp";
+            /** @enum {string} */
+            environment: "dev" | "prod";
+            /** @enum {string} */
+            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4" | "token_mint" | "oauth2_client" | "oauth2_private_key" | "signed_jwt";
             base_url: string | null;
             dsn: string | null;
             config: {
@@ -26640,7 +27308,7 @@ export interface components {
              * @default dev
              * @enum {string}
              */
-            environment: "dev" | "prod";
+            environment?: "dev" | "prod";
             /** Format: uri */
             base_url?: string;
             dsn?: string;
@@ -26649,7 +27317,7 @@ export interface components {
              * @default none
              * @enum {string}
              */
-            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "oauth2_client" | "oauth2_private_key" | "signed_jwt" | "aws_sigv4";
+            auth_type?: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "oauth2_client" | "oauth2_private_key" | "signed_jwt" | "aws_sigv4";
             config?: {
                 [key: string]: unknown;
             };
@@ -26658,8 +27326,8 @@ export interface components {
             /** @enum {string} */
             template_source?: "builtin" | "tenant";
             template_base_url_environment?: string;
-            description?: components["schemas"]["CatalogDescription"] & (string | null);
-            category?: components["schemas"]["CatalogCategory"] & (string | null);
+            description?: components["schemas"]["CatalogDescription"] | null;
+            category?: components["schemas"]["CatalogCategory"] | null;
         };
         ProbeConnectorResponse: {
             ok: boolean;
@@ -26718,7 +27386,7 @@ export interface components {
              * @default dev
              * @enum {string}
              */
-            environment: "dev" | "prod";
+            environment?: "dev" | "prod";
             base_url_environment?: string;
             /** @description Set true only when the operator explicitly wants a SEPARATE connector on a base_url that already has one. Skips URL reuse and mints an independent draft. */
             force_new?: boolean;
@@ -26741,9 +27409,12 @@ export interface components {
             /** @description The catalog block this connector belongs to, shared with workflows, knowledge sources, skills and files; `other` until one is assigned. */
             category: string;
             category_source: components["schemas"]["CatalogMetadataSource"];
-            driver: string;
-            environment: string;
-            auth_type: string;
+            /** @enum {string} */
+            driver: "http" | "postgres" | "s3" | "graphql" | "mcp";
+            /** @enum {string} */
+            environment: "dev" | "prod";
+            /** @enum {string} */
+            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4" | "token_mint" | "oauth2_client" | "oauth2_private_key" | "signed_jwt";
             base_url: string | null;
             dsn: string | null;
             config: {
@@ -26841,10 +27512,10 @@ export interface components {
             template_source?: "builtin" | "tenant";
             template_base_url_environment?: string;
             clear_template_binding?: boolean;
-            description?: components["schemas"]["CatalogDescription"] & (string | null);
+            description?: components["schemas"]["CatalogDescription"] | null;
             /** @description Accept the supplied unchanged description as human-owned. Requires the exact current nonempty description; stale text is rejected. */
             accept_description?: boolean;
-            category?: components["schemas"]["CatalogCategory"] & (string | null);
+            category?: components["schemas"]["CatalogCategory"] | null;
         };
         ConnectorProbeResult: {
             ok: boolean;
@@ -27460,8 +28131,8 @@ export interface components {
             /** Format: uuid */
             workflow_id?: string;
             title: string;
-            description?: components["schemas"]["CatalogDescription"] & (string | null);
-            category?: components["schemas"]["CatalogCategory"] & (string | null);
+            description?: components["schemas"]["CatalogDescription"] | null;
+            category?: components["schemas"]["CatalogCategory"] | null;
             body: string;
             examples?: string[];
             best_practices?: string[];
@@ -27492,10 +28163,10 @@ export interface components {
         UpdateSkillBody: {
             expected_version?: number;
             title?: string;
-            description?: components["schemas"]["CatalogDescription"] & (string | null);
+            description?: components["schemas"]["CatalogDescription"] | null;
             /** @description Accept the supplied unchanged description as human-owned. Requires the exact current nonempty description; stale text is rejected. */
             accept_description?: boolean;
-            category?: components["schemas"]["CatalogCategory"] & (string | null);
+            category?: components["schemas"]["CatalogCategory"] | null;
             body?: string;
             examples?: string[];
             best_practices?: string[];
@@ -27553,7 +28224,7 @@ export interface components {
         };
         CategoryUsage: {
             purpose: string | null;
-            purpose_source: components["schemas"]["CatalogMetadataSource"] & (string | null);
+            purpose_source: components["schemas"]["CatalogMetadataSource"] | null;
             aliases: string[];
             revision: number | null;
             category: string;
@@ -27580,7 +28251,7 @@ export interface components {
             moved: components["schemas"]["CategoryKindCounts"];
             metadata: {
                 purpose: string | null;
-                purpose_source: components["schemas"]["CatalogMetadataSource"] & (string | null);
+                purpose_source: components["schemas"]["CatalogMetadataSource"] | null;
                 aliases: string[];
                 revision: number | null;
             };
@@ -27770,7 +28441,7 @@ export interface components {
                 digest: string;
                 title: string;
                 body: string;
-                target: components["schemas"]["IntakeProposalTarget"];
+                target: components["schemas"]["IntakeProposalTargetOutput"];
                 items: {
                     /** Format: uuid */
                     id: string;
@@ -27794,8 +28465,36 @@ export interface components {
             category?: components["schemas"]["CatalogCategory"];
             tags?: string[];
         };
+        IntakeProposalTargetOutput: components["schemas"]["IntakeSkillTargetOutput"] | {
+            /** Format: uuid */
+            knowledge_source_id: string;
+            expected_version: string;
+        } | {
+            name: string;
+            category?: components["schemas"]["CatalogCategory"];
+            tags?: string[];
+        };
         /** @description Skill destination for a repeatable practice or convention. Name either new (a new active skill; give it the domain:<name> tag of its domain so coding-agent briefings for that domain find it) or skill_id with the expected_version you read (changes and activates that skill). supersedes lists each skill this one consolidates with the expected_version you read; they are archived on confirmation and the proposal goes stale when one of them changes. rules and domains carry typed tenant conventions (timezone, locale, currency, naming, delivery_default, connector_preference, glossary_term, field_semantics, pitfall); only the confirming person publishes them. */
         IntakeSkillTarget: {
+            skill: {
+                /** Format: uuid */
+                skill_id?: string;
+                expected_version?: number;
+                new?: components["schemas"]["IntakeNewSkill"];
+                /** @default [] */
+                supersedes?: {
+                    /** Format: uuid */
+                    skill_id: string;
+                    expected_version: number;
+                }[];
+                /** @description Typed conventions published with this skill. Omit to keep the skill's current rules; [] removes them; a list replaces all of them. Every rule change needs a new review. */
+                rules?: components["schemas"]["SkillRule"][];
+                /** @description Catalog categories the rules apply to (workflow and connector categories). Omit to keep them; [] applies the rules wherever the skill applies. */
+                domains?: string[];
+            };
+        };
+        /** @description Skill destination for a repeatable practice or convention. Name either new (a new active skill; give it the domain:<name> tag of its domain so coding-agent briefings for that domain find it) or skill_id with the expected_version you read (changes and activates that skill). supersedes lists each skill this one consolidates with the expected_version you read; they are archived on confirmation and the proposal goes stale when one of them changes. rules and domains carry typed tenant conventions (timezone, locale, currency, naming, delivery_default, connector_preference, glossary_term, field_semantics, pitfall); only the confirming person publishes them. */
+        IntakeSkillTargetOutput: {
             skill: {
                 /** Format: uuid */
                 skill_id?: string;
@@ -27953,12 +28652,8 @@ export interface components {
             content: string;
             note?: string;
         };
-        CreateKnowledgeSourceFromUrlBody: components["schemas"]["CreateKnowledgeSourceBody"] & {
-            /** Format: uri */
-            url: string;
-        };
-        CreateKnowledgeSourceBody: {
-            name: string;
+        CreateKnowledgeSourceFromUrlBody: {
+            name?: string;
             slug?: string;
             description?: components["schemas"]["CatalogDescription"];
             category?: components["schemas"]["CatalogCategory"];
@@ -27970,15 +28665,17 @@ export interface components {
             /** @enum {string} */
             refresh_strategy?: "manual" | "scheduled";
             refresh_cron?: string;
+            /** Format: uri */
+            url: string;
         };
         UpdateKnowledgeSourceBody: {
             name?: string;
             /** Format: uri */
             source_uri?: string;
-            description?: components["schemas"]["CatalogDescription"] & (string | null);
+            description?: components["schemas"]["CatalogDescription"] | null;
             /** @description Accept the supplied unchanged description as human-owned. Requires the exact current nonempty description; stale text is rejected. */
             accept_description?: boolean;
-            category?: components["schemas"]["CatalogCategory"] & (string | null);
+            category?: components["schemas"]["CatalogCategory"] | null;
             tags?: string[];
             /** @enum {string} */
             scope?: "global" | "workflow";
@@ -28000,9 +28697,23 @@ export interface components {
         CreateKnowledgeSourceInlineBody: components["schemas"]["CreateKnowledgeSourceBody"] & {
             content: string;
             /** @default text/markdown */
-            mime_type: string;
+            mime_type?: string;
             /** Format: uri */
             source_uri?: string;
+        };
+        CreateKnowledgeSourceBody: {
+            name: string;
+            slug?: string;
+            description?: components["schemas"]["CatalogDescription"];
+            category?: components["schemas"]["CatalogCategory"];
+            tags?: string[];
+            /** @enum {string} */
+            scope?: "global" | "workflow";
+            /** Format: uuid */
+            workflow_id?: string;
+            /** @enum {string} */
+            refresh_strategy?: "manual" | "scheduled";
+            refresh_cron?: string;
         };
         KnowledgeBundleUpsertResponse: {
             knowledge_source: components["schemas"]["KnowledgeSource"];
@@ -28207,7 +28918,7 @@ export interface components {
             session_id?: string;
             repo?: string;
             /** @default [] */
-            domains: string[];
+            domains?: string[];
             transcript: string;
         };
         DiscoveryRunListResponse: {
@@ -28464,6 +29175,16 @@ export interface components {
                         };
                         subjects?: string[];
                         transfer_bytes?: number;
+                        /**
+                         * @description Confirm kind of an ask_user_confirm question, as in the live prompt; drives the confirm card.
+                         * @enum {string}
+                         */
+                        kind?: "save_workflow_draft" | "external_write" | "generic" | "partial_diff_approval";
+                        /** @description Changes the person approves one by one (kind partial_diff_approval), as in the live prompt. */
+                        diffs?: {
+                            label: string;
+                            preview?: string;
+                        }[];
                     };
                     expires_at: string;
                 } | null;
@@ -28912,11 +29633,53 @@ export interface components {
             /** @enum {string} */
             source: "right-arrow" | "tab" | "typed-over" | "dismissed";
         };
-        ConversationAttachment: components["schemas"]["File"] & {
-            slug?: string;
+        ConversationAttachment: {
+            id: components["schemas"]["FileId"];
+            status: components["schemas"]["FileStatus"];
+            filename: string;
+            content_type: string | null;
+            size_bytes: number;
+            sha256: string | null;
+            scan_result: string | null;
+            /**
+             * Format: uuid
+             * @description Recorded creator identifier, or null when unknown. Does not imply an actor kind.
+             */
+            created_by: string | null;
+            /** @description Creator kind established by a retained original creation audit event matching created_by. Null when unknown or ambiguous. */
+            creator: {
+                /** @enum {string} */
+                kind: "user" | "system_account";
+                /** Format: uuid */
+                id: string;
+            } | null;
+            /** @description Display name of the established creator: the person's display name or the system account's name. Only on a single file and only for readers of the identity directory; null otherwise. */
+            creator_name?: string | null;
+            /** @description Name of the API key the creator uploaded the file with, when the creation audit names one. Only on a single file and only for readers of the identity directory. */
+            creator_api_key_name?: string | null;
+            created_at: string;
+            updated_at: string;
+            replaced_at: string | null;
+            /** @description Number of the current content version. */
+            version: number;
+            deleted_at: string | null;
+            slug: string;
+            reference: string | null;
+            description: string | null;
+            description_source: components["schemas"]["CatalogMetadataSource"];
+            category: string;
+            category_source: components["schemas"]["CatalogMetadataSource"];
         };
         /** @enum {string} */
         FileStatus: "pending" | "uploading" | "scanning" | "ready" | "failed" | "expired";
+        ConversationAttachmentUpload: components["schemas"]["FileRef"] | {
+            filename: string;
+            content_type?: string;
+            content_base64: string;
+        };
+        ConversationAttachmentList: {
+            attachments: components["schemas"]["ConversationAttachment"][];
+        };
         File: {
             id: components["schemas"]["FileId"];
             status: components["schemas"]["FileStatus"];
@@ -28953,14 +29716,6 @@ export interface components {
             description_source: components["schemas"]["CatalogMetadataSource"];
             category: string;
             category_source: components["schemas"]["CatalogMetadataSource"];
-        };
-        ConversationAttachmentUpload: components["schemas"]["FileRef"] | {
-            filename: string;
-            content_type?: string;
-            content_base64: string;
-        };
-        ConversationAttachmentList: {
-            attachments: components["schemas"]["ConversationAttachment"][];
         };
         InlineUpload: {
             filename: string;
@@ -29039,10 +29794,10 @@ export interface components {
         FileLinkResourceType: "conversation" | "knowledge_source" | "skill" | "connector" | "workflow_run" | "discovery_run";
         UpdateFile: {
             filename?: string;
-            description?: components["schemas"]["CatalogDescription"] & (string | null);
+            description?: components["schemas"]["CatalogDescription"] | null;
             /** @description Accept the supplied unchanged description as human-owned. Requires the exact current nonempty description; stale text is rejected. */
             accept_description?: boolean;
-            category?: components["schemas"]["CatalogCategory"] & (string | null);
+            category?: components["schemas"]["CatalogCategory"] | null;
         };
         FileVersionList: {
             items: components["schemas"]["FileVersion"][];
@@ -30194,7 +30949,7 @@ export interface components {
         };
         TestNotificationRuleBody: {
             /** @default notifications.test */
-            event_type: string;
+            event_type?: string;
             workflow_id?: string | null;
             workflow_slug?: string | null;
             /** @enum {string} */

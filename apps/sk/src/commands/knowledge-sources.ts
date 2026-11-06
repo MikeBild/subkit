@@ -11,6 +11,7 @@ import { collectBundleFiles, defaultBundleName } from "../lib/bundle-import.ts";
 import {
   catalogMetadataArgs,
   catalogMetadataBody,
+  catalogMetadataCreate,
   shortDescription,
 } from "../lib/catalog-metadata.ts";
 import { sanitizePathInput } from "../lib/path-input.ts";
@@ -171,7 +172,7 @@ const createCommand = defineCommand({
           await renderTaskList(phases, { jsonMode });
           throw err;
         }
-        const metadata: KnowledgeSourceMetadata = { name: title, ...catalogMetadataBody(args) };
+        const metadata: KnowledgeSourceMetadata = { name: title, ...catalogMetadataCreate(args) };
         if (args.tags) metadata.tags = tagList(args.tags);
         if (args.scope) metadata.scope = knowledgeScope(args.scope);
         if (args["workflow-id"]) metadata.workflow_id = args["workflow-id"];
@@ -260,7 +261,7 @@ const importCommand = defineCommand({
         const result = await client.importKnowledgeBundle({
           name,
           ...(args.slug ? { slug: args.slug } : {}),
-          ...catalogMetadataBody(args),
+          ...catalogMetadataCreate(args),
           ...(args.tags ? { tags: tagList(args.tags) } : {}),
           ...(args.scope ? { scope: knowledgeScope(args.scope) } : {}),
           ...(args["workflow-id"] ? { workflow_id: args["workflow-id"] } : {}),

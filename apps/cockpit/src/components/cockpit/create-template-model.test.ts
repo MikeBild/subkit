@@ -33,6 +33,10 @@ const GA = "52000000-0000-4000-8000-000000000001";
 const GMAIL = "52000000-0000-4000-8000-000000000002";
 const BOUND_GA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
+function fixtureWorkflow(shape: Record<string, unknown>): SolutionEntry["workflow"] {
+  return shape as unknown as SolutionEntry["workflow"];
+}
+
 function report(gaBound: boolean): SolutionEntry {
   const ga = gaBound ? BOUND_GA : GA;
   return {
@@ -62,28 +66,37 @@ function report(gaBound: boolean): SolutionEntry {
       },
     ],
     sample_input: { property_id: "123456789" },
-    workflow: {
+    workflow: fixtureWorkflow({
       name: "daily-analytics-report",
       trigger: { kind: "schedule", cron: "0 7 * * *", tz: "Europe/Berlin" },
       steps: [
-        { kind: "request", id: "totals", method: "POST", side_effects: "read", connector_id: ga },
+        {
+          kind: "request",
+          id: "totals",
+          method: "POST",
+          side_effects: "read",
+          connector_id: ga,
+          on_error: "fail",
+        },
         {
           kind: "request",
           id: "top_pages",
           method: "POST",
           side_effects: "read",
           connector_id: ga,
+          on_error: "fail",
         },
-        { kind: "transform", id: "build_report" },
+        { kind: "transform", id: "build_report", on_error: "fail" },
         {
           kind: "request",
           id: "send_report",
           method: "POST",
           connector_id: GMAIL,
           url: "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+          on_error: "fail",
         },
       ],
-    },
+    }),
   };
 }
 

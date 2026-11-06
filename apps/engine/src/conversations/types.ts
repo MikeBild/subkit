@@ -518,6 +518,8 @@ export interface ConversationResumeSummary {
     prompt?: {
       question: string;
       intent_kind?: string;
+      kind?: string;
+      diffs?: { label: string; preview?: string }[];
       authorization_url?: string;
       fields?: ResumeFormField[];
       external_tool?: ExternalToolSubject;

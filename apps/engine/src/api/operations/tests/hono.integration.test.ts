@@ -158,11 +158,36 @@ const guarded = defineOperation({
     body: z.object({ level: z.string() }),
     bodyRequired: true,
     response: z.object({ id: z.string() }),
-    errors: { 401: "Unauthenticated", 409: "Busy" },
+    errors: {
+      401: "Unauthenticated",
+      409: {
+        description: "Busy",
+        schema: z.object({ code: z.literal("busy"), retry: z.boolean() }),
+      },
+    },
     toInput: (request) => ({
       id: (request.param as { id: string }).id,
       level: (request.json as { level: string }).level,
     }),
+    toBody: (result) => result,
+  },
+});
+
+const unsecured = defineOperation({
+  id: "things.unsecured",
+  permission: null,
+  effect: "write",
+  audit: "workflow.updated",
+  handler: async () => ({ id: "x" }),
+  http: {
+    method: "post",
+    path: "/v1/things-unsecured",
+    tags: ["things"],
+    body: z.object({ note: z.string().optional() }),
+    bodyRequired: false,
+    security: null,
+    response: z.object({ id: z.string() }),
+    toInput: () => ({}),
     toBody: (result) => result,
   },
 });
@@ -183,6 +208,7 @@ function buildApp(roles: string[] = ["admin"]) {
   toHonoRoute(app, accept);
   toHonoRoute(app, whoami);
   toHonoRoute(app, guarded);
+  toHonoRoute(app, unsecured);
   return app;
 }
 
@@ -324,5 +350,31 @@ describe("toHonoRoute permission variants", () => {
     const post = spec.paths?.["/v1/things/{id}/guarded"]?.post;
     expect((post?.requestBody as { required?: boolean } | undefined)?.required).toBe(true);
     expect(Object.keys(post?.responses ?? {})).toEqual(["200", "401", "409"]);
+    const conflict = post?.responses?.["409"] as {
+      content: { "application/json": { schema: { properties?: Record<string, unknown> } } };
+    };
+    expect(Object.keys(conflict.content["application/json"].schema.properties ?? {})).toEqual([
+      "code",
+      "retry",
+    ]);
+  });
+});
+
+describe("toHonoRoute documentation overrides", () => {
+  test("omits security when the binding sets it to null and documents an optional body", async () => {
+    const spec = buildApp().getOpenAPI31Document({
+      openapi: "3.1.0",
+      info: { title: "t", version: "0" },
+    });
+    const post = spec.paths?.["/v1/things-unsecured"]?.post;
+    expect(post?.security).toBeUndefined();
+    expect((post?.requestBody as { required?: boolean } | undefined)?.required).toBe(false);
+    expect(spec.paths?.["/v1/things/{id}/guarded"]?.post?.security).toEqual([{ bearerAuth: [] }]);
+    const response = await buildApp([]).request("/v1/things-unsecured", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    expect(response.status).toBe(200);
   });
 });

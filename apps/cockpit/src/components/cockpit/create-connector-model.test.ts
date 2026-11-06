@@ -50,7 +50,7 @@ describe("connector by hand: what it connects, then how SubKit signs in", () => 
           slug: "billing",
           address: " https://api.example.com ",
         });
-        expect<string[]>([body.driver, body.auth_type]).toEqual(
+        expect<(string | undefined)[]>([body.driver, body.auth_type]).toEqual(
           expected[`${target}/${signIn}`] ?? [],
         );
         expect(body).toMatchObject({
