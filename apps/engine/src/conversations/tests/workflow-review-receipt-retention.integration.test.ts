@@ -7,8 +7,8 @@ import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
 import { seedConversation } from "../../test-helpers/seed.ts";
-import { readDatabaseNow } from "../database-clock.ts";
-import { purgeSpentReviewReceipts } from "../review-service.ts";
+import { readDatabaseNow } from "../../workflows/database-clock.ts";
+import { purgeSpentReviewReceipts } from "../workflow-review.ts";
 
 const nextUuid = createDeterministicUuidFactory(0x7e03);
 

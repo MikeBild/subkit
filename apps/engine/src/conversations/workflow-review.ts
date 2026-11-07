@@ -1,14 +1,6 @@
 import { and, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { browserSessionForPrincipal, verifyBrowserCsrf } from "../auth/browser-session.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
-import { appendSnapshot, loadDraft } from "../conversations/draft.ts";
-import { resolveElicitation } from "../conversations/elicitations.ts";
-import {
-  commitWorkflowAtomic,
-  workflowDefFromDraft,
-} from "../conversations/persistence/commit-workflow.ts";
-import type { ToolContext } from "../conversations/tools/index.ts";
-import type { DraftDocument } from "../conversations/types.ts";
 import type { Db, Executor } from "../db/client.ts";
 import {
   conversationDrafts,
@@ -21,24 +13,32 @@ import {
 } from "../db/schema/index.ts";
 import { can } from "../rbac/evaluator.ts";
 import { createScheduleLocked } from "../scheduler/repo.ts";
+import { suggestAuthorityBounds } from "../workflows/authority-suggestions.ts";
+import { workflowJsonDigest } from "../workflows/canonical-json.ts";
+import { RECEIPT_PURGE_BATCH, receiptsToPurge } from "../workflows/core/review-receipt.ts";
+import { readDatabaseNow } from "../workflows/database-clock.ts";
 import {
   activateWorkflowDraftLocked,
   grantWorkflowAuthority,
   lockLiveSession,
   previewWorkflowAuthority,
 } from "../workflows/execution-authorities.ts";
-import { suggestAuthorityBounds } from "./authority-suggestions.ts";
-import { workflowJsonDigest } from "./canonical-json.ts";
-import { RECEIPT_PURGE_BATCH, receiptsToPurge } from "./core/review-receipt.ts";
-import { readDatabaseNow } from "./database-clock.ts";
-import { resolveWorkflowReviewManifest, workflowReviewBoundaryDigest } from "./review-manifest.ts";
+import {
+  resolveWorkflowReviewManifest,
+  workflowReviewBoundaryDigest,
+} from "../workflows/review-manifest.ts";
 import {
   FinalizeWorkflowReviewSchema,
   PrepareWorkflowReviewSchema,
   type WorkflowReviewReceipt,
   WorkflowReviewReceiptSchema,
-} from "./review-receipt.ts";
-import { readReviewTriggerState } from "./review-triggers.ts";
+} from "../workflows/review-receipt.ts";
+import { readReviewTriggerState } from "../workflows/review-triggers.ts";
+import { appendSnapshot, loadDraft } from "./draft.ts";
+import { resolveElicitation } from "./elicitations.ts";
+import { commitWorkflowAtomic, workflowDefFromDraft } from "./persistence/commit-workflow.ts";
+import type { ToolContext } from "./tools/index.ts";
+import type { DraftDocument } from "./types.ts";
 
 const REVIEW_ERROR_STATUS: Record<string, number> = {
   authority_permission_denied: 403,

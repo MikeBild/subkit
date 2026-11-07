@@ -1,3 +1,4 @@
+name: subkit-test
 configs:
   object_store_identities:
     content: |

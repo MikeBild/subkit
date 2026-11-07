@@ -6,7 +6,6 @@ import { errorFields, logger } from "../logging/logger.ts";
 import { cutOverLearningCandidates } from "../skill-candidates/learning-cutover.ts";
 import { createMigrationDbFromUrl, type Db } from "./client.ts";
 import { runContextNoteFactsBackfill } from "./migrations/context-note-facts-backfill.ts";
-import { runConversationTitleBackfill } from "./migrations/conversation-title-backfill.ts";
 import { EMBEDDED_MIGRATIONS, type EmbeddedMigration } from "./migrations/embedded.ts";
 import { runInboxNonActionablePurge } from "./migrations/inbox-nonactionable-purge.ts";
 import { runLoopToForEachBackfill } from "./migrations/loop-to-for-each-backfill.ts";
@@ -256,16 +255,6 @@ async function applyMigrations(
       module: "db",
       action: "migrate.code_backfill_failed",
       msg: "loop→for_each backfill failed (non-fatal; retried on next boot)",
-      ...errorFields(err),
-    });
-  }
-  try {
-    await runConversationTitleBackfill(db);
-  } catch (err) {
-    logger.error({
-      module: "db",
-      action: "migrate.code_backfill_failed",
-      msg: "conversation title backfill failed (non-fatal; retried on next boot)",
       ...errorFields(err),
     });
   }

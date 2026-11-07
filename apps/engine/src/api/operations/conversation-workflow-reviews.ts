@@ -2,6 +2,12 @@ import { z } from "@hono/zod-openapi";
 import { AuditAction } from "../../audit/types.ts";
 import { browserSessionForPrincipal, verifyBrowserCsrf } from "../../auth/browser-session.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import {
+  finalizeWorkflowReview,
+  getWorkflowReview,
+  prepareWorkflowReview,
+  WorkflowReviewError,
+} from "../../conversations/workflow-review.ts";
 import { HttpError } from "../../http/errors.ts";
 import { requireSignedInPerson } from "../../http/middleware/auth.ts";
 import {
@@ -9,12 +15,6 @@ import {
   PrepareWorkflowReviewSchema,
   WorkflowReviewReceiptSchema,
 } from "../../workflows/review-receipt.ts";
-import {
-  finalizeWorkflowReview,
-  getWorkflowReview,
-  prepareWorkflowReview,
-  WorkflowReviewError,
-} from "../../workflows/review-service.ts";
 import {
   defineOperation,
   type OperationScope,
