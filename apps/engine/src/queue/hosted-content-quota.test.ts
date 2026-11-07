@@ -26,6 +26,7 @@ import { callerFromPrincipal } from "../execution/caller-context.ts";
 import { provisionSelfServiceTenant } from "../identity/self-service.ts";
 import { getMockProvider } from "../llm/mock-provider.ts";
 import { logRing } from "../observability/log-ring.ts";
+import { builtinRoleId } from "../rbac/roles.ts";
 import { type EnvHandle, withTestEnv } from "../test-helpers/determinism/env.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { waitFor } from "../test-helpers/determinism/wait.ts";
@@ -338,8 +339,7 @@ test("self-hosted typed quota errors use ordinary worker failure settlement", as
     slug: "quota-selfhost-control",
     display_name: "Self hosted",
   });
-  const [role] = await db.insert(roles).values({ tenant_id: tenant.id, name: "admin" }).returning();
-  if (!role) throw new Error("role missing");
+  const role = { id: await builtinRoleId(db, "admin") };
   const [user] = await db
     .insert(users)
     .values({ tenant_id: tenant.id, role_id: role.id, email: "selfhost@example.test" })

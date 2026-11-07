@@ -15,6 +15,7 @@
   ],
   "ignorePatterns": [
     "/.artifacts",
+    "/.stryker-tmp*",
     "/.tmp",
     "/.devtools",
     "/.superdesign",

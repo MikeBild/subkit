@@ -8,6 +8,7 @@ import {
   listRolePermissions,
   PermissionNotFoundError,
   RoleNameReservedError,
+  RoleNameTakenError,
   RoleNotFoundError,
   revokePermissionFromRole,
   updateRole,
@@ -135,6 +136,14 @@ export const editRoleTool: ConversationTool = {
           ok: false,
           error_code: "role_name_reserved",
           message: "this name belongs to a built-in role. Choose a different name.",
+          next_best_actions: ["find_role"],
+        };
+      }
+      if (err instanceof RoleNameTakenError) {
+        return {
+          ok: false,
+          error_code: "role_name_taken",
+          message: "another role of this workspace already has this name. Choose a different name.",
           next_best_actions: ["find_role"],
         };
       }

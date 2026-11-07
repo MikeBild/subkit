@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { userInfo } from "node:os";
 import path from "node:path";
 import { BASE_URL, type CommandResult, waitForHealth } from "../e2e/_helpers.ts";
 
@@ -7,12 +8,16 @@ const SK_BIN = path.join(REPO_ROOT, "dist/sk");
 const COMPOSE_FILE = "docker-compose.test.yml";
 const SERVICE = "engine";
 const TEST_BOOTSTRAP_KEY = "b".repeat(64);
+const DOCKER_ENV = {
+  ...process.env,
+  DOCKER_CONFIG: process.env.DOCKER_CONFIG ?? path.join(userInfo().homedir, ".docker"),
+};
 
 export function compose(args: string[], extraEnv?: Record<string, string>): CommandResult {
   const result = spawnSync("docker", ["compose", "-f", COMPOSE_FILE, ...args], {
     cwd: REPO_ROOT,
     encoding: "utf8",
-    ...(extraEnv ? { env: { ...process.env, ...extraEnv } } : {}),
+    env: { ...DOCKER_ENV, ...extraEnv },
   });
   return {
     status: result.status ?? 1,
@@ -49,6 +54,7 @@ export function engineMounts(): Array<{ Destination?: string; Type?: string }> {
   const inspected = spawnSync("docker", ["inspect", "--format", "{{json .Mounts}}", id], {
     cwd: REPO_ROOT,
     encoding: "utf8",
+    env: DOCKER_ENV,
   });
   if (inspected.status !== 0) {
     throw new Error(`docker inspect failed: ${inspected.stderr ?? "unknown error"}`);

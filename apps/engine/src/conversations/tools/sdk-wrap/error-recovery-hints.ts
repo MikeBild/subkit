@@ -178,6 +178,8 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the recipe is unknown — call inspect_recipe with a real recipe slug, or get_vendor_recipe to discover the canonical one",
   role_not_found:
     "the role does not exist — call find_role or list_roles to discover the correct slug",
+  role_name_taken:
+    "another role already has this name — call find_role to see it, or ask the person for a different name",
   role_name_reserved:
     "the name belongs to a built-in role — ask the person for a different role name, then retry",
   user_not_found:

@@ -6,6 +6,7 @@ import {
   PermissionNotFoundError,
   RoleInUseError,
   RoleNameReservedError,
+  RoleNameTakenError,
   RoleNotFoundError,
   type RoleRow,
 } from "../../rbac/roles.ts";
@@ -128,6 +129,7 @@ export function roleErrorRejection(err: unknown): Rejection {
   if (err instanceof BuiltinImmutableError) return reject.conflict("builtin_role_immutable");
   if (err instanceof RoleInUseError) return reject.conflict("role_in_use");
   if (err instanceof RoleNameReservedError) return reject.conflict("role_name_reserved");
+  if (err instanceof RoleNameTakenError) return reject.conflict("role_name_taken");
   if (err instanceof RoleNotFoundError) return reject.notFound("role");
   if (err instanceof PermissionNotFoundError) return reject.badRequest(err.message);
   throw err as Error;

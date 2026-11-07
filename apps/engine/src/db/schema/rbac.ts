@@ -1,5 +1,7 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   index,
   pgTable,
   primaryKey,
@@ -33,7 +35,13 @@ export const roles = pgTable(
     is_builtin: boolean("is_builtin").notNull().default(false),
     ...timestamps,
   },
-  (t) => [uniqueIndex("roles_tenant_name_key").on(t.tenant_id, t.name)],
+  (t) => [
+    uniqueIndex("roles_tenant_name_key").on(t.tenant_id, t.name),
+    check(
+      "roles_reserved_name_builtin_only",
+      sql`${t.is_builtin} OR ${t.name} NOT IN ('admin','member','enduser','metrics_scraper','portal_token_user')`,
+    ),
+  ],
 );
 
 export const rolePermissions = pgTable(

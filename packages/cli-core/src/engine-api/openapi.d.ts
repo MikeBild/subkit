@@ -20860,7 +20860,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Role name is reserved */
+                /** @description Role name is reserved or already taken */
                 409: {
                     headers: {
                         [name: string]: unknown;

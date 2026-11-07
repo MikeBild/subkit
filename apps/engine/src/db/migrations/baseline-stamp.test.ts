@@ -59,6 +59,7 @@ describe("baseline over the squashed migration chain", () => {
       baseline.tag,
       "0001_hosted_meter_workflow_review_receipts",
       "0002_drop_tenant_dlp_rules",
+      "0003_reserved_role_names",
     ]);
     expect(baseline.idx).toBe(0);
   });

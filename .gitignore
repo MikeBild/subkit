@@ -48,5 +48,5 @@ docs/
 /CLAUDE.md
 /assets/cockpit/
 /apps/engine/src/http/cockpit-embedded.ts
-.stryker-tmp/
+.stryker-tmp*/
 /reports/mutation/

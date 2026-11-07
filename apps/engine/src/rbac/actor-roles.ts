@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { roles, systemAccounts, users } from "../db/schema/index.ts";
 
@@ -11,7 +11,7 @@ export async function findUserRoleName(
     .select({ role_name: roles.name })
     .from(users)
     .leftJoin(roles, eq(roles.id, users.role_id))
-    .where(and(eq(users.id, user_id), eq(users.tenant_id, tenant_id)))
+    .where(and(eq(users.id, user_id), eq(users.tenant_id, tenant_id), isNull(users.deleted_at)))
     .limit(1);
   return row;
 }
@@ -24,7 +24,13 @@ export async function findSystemAccountRoleId(
   const [row] = await db
     .select({ role_id: systemAccounts.role_id })
     .from(systemAccounts)
-    .where(and(eq(systemAccounts.id, system_account_id), eq(systemAccounts.tenant_id, tenant_id)))
+    .where(
+      and(
+        eq(systemAccounts.id, system_account_id),
+        eq(systemAccounts.tenant_id, tenant_id),
+        isNull(systemAccounts.deleted_at),
+      ),
+    )
     .limit(1);
   return row;
 }
@@ -62,5 +68,7 @@ export async function listRoleMembers(
   return db
     .select({ id: users.id, email: users.email })
     .from(users)
-    .where(and(eq(users.tenant_id, tenant_id), eq(users.role_id, role_id)));
+    .where(
+      and(eq(users.tenant_id, tenant_id), eq(users.role_id, role_id), isNull(users.deleted_at)),
+    );
 }

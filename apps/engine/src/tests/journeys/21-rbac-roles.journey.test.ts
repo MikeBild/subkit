@@ -151,5 +151,12 @@ describe("journey: rbac custom role", () => {
     });
     expect(renameRes.status).toBe(409);
     expect(JSON.stringify(await renameRes.json())).toContain("role_name_reserved");
+
+    const duplicate = await journeyFetch(ctx, "/v1/rbac/roles", {
+      method: "POST",
+      body: JSON.stringify({ name: "renamer" }),
+    });
+    expect(duplicate.status).toBe(409);
+    expect(JSON.stringify(await duplicate.json())).toContain("role_name_taken");
   });
 });

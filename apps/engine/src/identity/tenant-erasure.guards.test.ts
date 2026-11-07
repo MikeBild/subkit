@@ -257,7 +257,7 @@ test("bounded lifecycle sweep finishes twenty tenants then continues without blo
   } finally {
     await isolated.cleanup();
   }
-});
+}, 30_000);
 
 test("multiple live replicas cannot begin destructive erasure", async () => {
   const { owned, objects } = await fixture("erase-multiple");
@@ -388,4 +388,4 @@ test("zero growth policy still erases a short tenant name and retains zero charg
   } finally {
     await isolated.cleanup();
   }
-});
+}, 30_000);

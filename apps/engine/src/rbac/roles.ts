@@ -50,6 +50,32 @@ export class RoleNameReservedError extends Error {
   }
 }
 
+export class RoleNameTakenError extends Error {
+  constructor(name: string) {
+    super(`role_name_taken:${name}`);
+    this.name = "RoleNameTakenError";
+  }
+}
+
+function isRoleNameViolation(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < 4 && current && typeof current === "object"; depth++) {
+    const e = current as { code?: unknown; constraint?: unknown; cause?: unknown };
+    if (e.code === "23505" && e.constraint === "roles_tenant_name_key") return true;
+    current = e.cause;
+  }
+  return false;
+}
+
+async function guardRoleName<T>(name: string | undefined, write: () => Promise<T>): Promise<T> {
+  try {
+    return await write();
+  } catch (err) {
+    if (name !== undefined && isRoleNameViolation(err)) throw new RoleNameTakenError(name);
+    throw err;
+  }
+}
+
 const RESERVED_ROLE_NAMES: ReadonlySet<string> = new Set(Object.values(BUILTIN_ROLE_NAMES));
 
 function assertRoleNameFree(name: string): void {
@@ -92,10 +118,12 @@ export async function createRole(
   description?: string,
 ): Promise<RoleRow> {
   assertRoleNameFree(name);
-  const [row] = await db
-    .insert(rolesTable)
-    .values({ tenant_id, name, description: description ?? null, is_builtin: false })
-    .returning();
+  const [row] = await guardRoleName(name, () =>
+    db
+      .insert(rolesTable)
+      .values({ tenant_id, name, description: description ?? null, is_builtin: false })
+      .returning(),
+  );
   if (!row) throw new Error("role_insert_failed");
   return row;
 }
@@ -113,11 +141,13 @@ export async function updateRole(
   const set: Record<string, unknown> = { updated_at: new Date() };
   if (patch.name !== undefined) set.name = patch.name;
   if (patch.description !== undefined) set.description = patch.description;
-  const [row] = await db
-    .update(rolesTable)
-    .set(set)
-    .where(and(eq(rolesTable.id, id), eq(rolesTable.tenant_id, tenant_id)))
-    .returning();
+  const [row] = await guardRoleName(patch.name, () =>
+    db
+      .update(rolesTable)
+      .set(set)
+      .where(and(eq(rolesTable.id, id), eq(rolesTable.tenant_id, tenant_id)))
+      .returning(),
+  );
   if (!row) throw new RoleNotFoundError();
   return row;
 }

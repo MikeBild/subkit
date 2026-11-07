@@ -322,7 +322,7 @@ export const createRoleOperation = defineOperation<CreateNamed, RoleRow>({
     bodyRequired: true,
     response: RbacRoleSchema,
     success: { status: 201, description: "Created" },
-    errors: { 400: "Bad request", 409: "Role name is reserved" },
+    errors: { 400: "Bad request", 409: "Role name is reserved or already taken" },
     toInput: ({ json }) => json as CreateNamed,
     toBody: serializeRole,
   },

@@ -20,6 +20,7 @@ import { createHash } from "node:crypto";
 import sql0000Baseline from "./0000_baseline.sql" with { type: "text" };
 import sql0001HostedMeterWorkflowReviewReceipts from "./0001_hosted_meter_workflow_review_receipts.sql" with { type: "text" };
 import sql0002DropTenantDlpRules from "./0002_drop_tenant_dlp_rules.sql" with { type: "text" };
+import sql0003ReservedRoleNames from "./0003_reserved_role_names.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -47,6 +48,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0000_baseline": sql0000Baseline,
   "0001_hosted_meter_workflow_review_receipts": sql0001HostedMeterWorkflowReviewReceipts,
   "0002_drop_tenant_dlp_rules": sql0002DropTenantDlpRules,
+  "0003_reserved_role_names": sql0003ReservedRoleNames,
 };
 
 const journal = journalMeta as unknown as Journal;

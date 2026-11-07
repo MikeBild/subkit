@@ -1,4 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
+import { systemAccounts, users } from "../../db/schema/index.ts";
 import {
   findRoleNameByRoleId,
   findSystemAccountRoleId,
@@ -53,6 +55,15 @@ describe("findUserRoleName", () => {
     expect(await findUserRoleName(h.db, tenantA, h.nextId())).toBeUndefined();
   });
 
+  test("a deleted user resolves to nothing", async () => {
+    const gone = await addUser(h, tenantA, "gone@ar", memberRole);
+    await h.db
+      .update(users)
+      .set({ deleted_at: new Date(0) })
+      .where(eq(users.id, gone));
+    expect(await findUserRoleName(h.db, tenantA, gone)).toBeUndefined();
+  });
+
   test("a system account id is not resolved as a user", async () => {
     expect(await findUserRoleName(h.db, tenantA, botA)).toBeUndefined();
   });
@@ -62,6 +73,15 @@ describe("findSystemAccountRoleId", () => {
   test("a system account returns its role id, or null when it has none", async () => {
     expect(await findSystemAccountRoleId(h.db, tenantA, botA)).toEqual({ role_id: reviewerA });
     expect(await findSystemAccountRoleId(h.db, tenantA, roleLessBotA)).toEqual({ role_id: null });
+  });
+
+  test("a deleted system account resolves to nothing", async () => {
+    const gone = await addSystemAccount(h, tenantA, "gone-bot", reviewerA);
+    await h.db
+      .update(systemAccounts)
+      .set({ deleted_at: new Date(0) })
+      .where(eq(systemAccounts.id, gone));
+    expect(await findSystemAccountRoleId(h.db, tenantA, gone)).toBeUndefined();
   });
 
   test("a system account of another tenant or a user id resolves to nothing", async () => {
@@ -94,6 +114,16 @@ describe("role name lookups", () => {
 });
 
 describe("listRoleMembers", () => {
+  test("a deleted user is no longer listed as a member of its role", async () => {
+    const left = await addUser(h, tenantA, "left@ar", reviewerA);
+    await h.db
+      .update(users)
+      .set({ deleted_at: new Date(0) })
+      .where(eq(users.id, left));
+    const rows = await listRoleMembers(h.db, tenantA, reviewerA);
+    expect(rows).toEqual([{ id: reviewerUserA, email: "reviewer@ar" }]);
+  });
+
   test("a shared builtin role lists only the members of the asking tenant", async () => {
     const rows = await listRoleMembers(h.db, tenantA, memberRole);
     expect(rows.sort((a, b) => a.email.localeCompare(b.email))).toEqual([

@@ -1,6 +1,6 @@
 {
-  "id": "5fe3f134-03f5-42f5-880d-9843736838c0",
-  "prevId": "791c3735-fecf-4937-b6e0-c296245c993a",
+  "id": "6a36f851-c032-4478-8e5f-4d57198b68a7",
+  "prevId": "5fe3f134-03f5-42f5-880d-9843736838c0",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -15219,7 +15219,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "roles_reserved_name_builtin_only": {
+          "name": "roles_reserved_name_builtin_only",
+          "value": "\"roles\".\"is_builtin\" OR \"roles\".\"name\" NOT IN ('admin','member','enduser','metrics_scraper','portal_token_user')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.request_hooks": {

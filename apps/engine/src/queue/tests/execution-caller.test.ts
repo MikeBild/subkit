@@ -10,6 +10,7 @@ import {
   createWorkflowRow,
   type EngineTestCtx,
 } from "../../execution/tests/setup.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { createBoss, disposeBoss } from "../boss.ts";
 import { registerExecutionRunHandler } from "../handlers/execution-run.ts";
@@ -30,11 +31,7 @@ afterAll(async () => {
 }, 30_000);
 
 test("queue restores the persisted caller instead of a caller supplied in the job input", async () => {
-  const [role] = await ctx.testDb.db
-    .insert(roles)
-    .values({ tenant_id: ctx.tenantId, name: "admin" })
-    .returning();
-  if (!role) throw new Error("role fixture missing");
+  const role = { id: await builtinRoleId(ctx.testDb.db, "admin") };
   const [user] = await ctx.testDb.db
     .insert(users)
     .values({

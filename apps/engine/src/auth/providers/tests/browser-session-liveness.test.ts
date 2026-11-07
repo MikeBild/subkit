@@ -3,6 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { roles, sessions, users } from "../../../db/schema/index.ts";
 import { TEST_DB_HOOK_TIMEOUT } from "../../../db/tests/setup.ts";
 import { createEngineCtx, type EngineTestCtx } from "../../../execution/tests/setup.ts";
+import { builtinRoleId } from "../../../rbac/roles.ts";
 import { BROWSER_SESSION_COOKIE, signBrowserSession } from "../../browser-session.ts";
 import { createBrowserSessionProvider } from "../browser-session.ts";
 
@@ -12,11 +13,7 @@ let sequence = 0;
 
 beforeAll(async () => {
   ctx = await createEngineCtx("browser-session-liveness");
-  const [role] = await ctx.testDb.db
-    .insert(roles)
-    .values({ tenant_id: ctx.tenantId, name: "admin" })
-    .returning();
-  if (!role) throw new Error("role fixture missing");
+  const role = { id: await builtinRoleId(ctx.testDb.db, "admin") };
   roleId = role.id;
 }, TEST_DB_HOOK_TIMEOUT);
 

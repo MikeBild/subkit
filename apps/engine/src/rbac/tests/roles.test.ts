@@ -10,6 +10,7 @@ import {
   PermissionNotFoundError,
   RoleInUseError,
   RoleNameReservedError,
+  RoleNameTakenError,
   RoleNotFoundError,
   updateRole,
 } from "../roles.ts";
@@ -30,6 +31,19 @@ describe("createRole", () => {
     expect(role.is_builtin).toBe(false);
     expect(role.name).toBe("reviewers");
     expect(role.description).toBe("reviews drafts");
+  });
+
+  test("a second role with the same name in one tenant is refused as taken", async () => {
+    await createRole(world.db, world.tenantA, "twins");
+    await expect(createRole(world.db, world.tenantA, "twins")).rejects.toBeInstanceOf(
+      RoleNameTakenError,
+    );
+    const other = await createRole(world.db, world.tenantA, "twin-b");
+    await expect(updateRole(world.db, world.tenantA, other.id, { name: "twins" })).rejects.toThrow(
+      "role_name_taken:twins",
+    );
+    expect((await storedRole(other.id))?.name).toBe("twin-b");
+    expect((await createRole(world.db, world.tenantB, "twins")).tenant_id).toBe(world.tenantB);
   });
 
   test("a role created without description stores null", async () => {

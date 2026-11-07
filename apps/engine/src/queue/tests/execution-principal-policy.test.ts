@@ -23,6 +23,7 @@ import {
   jsonResponse,
   type MockServer,
 } from "../../execution/tests/setup.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { createBoss, disposeBoss } from "../boss.ts";
 import { registerExecutionRunHandler } from "../handlers/execution-run.ts";
@@ -57,11 +58,7 @@ beforeAll(async () => {
     })
     .returning();
   if (!connector) throw new Error("connector fixture missing");
-  const [role] = await ctx.testDb.db
-    .insert(roles)
-    .values({ tenant_id: ctx.tenantId, name: "admin" })
-    .returning();
-  if (!role) throw new Error("role fixture missing");
+  const role = { id: await builtinRoleId(ctx.testDb.db, "admin") };
   adminRoleId = role.id;
   const [user] = await ctx.testDb.db
     .insert(users)
