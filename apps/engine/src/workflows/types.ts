@@ -1016,8 +1016,6 @@ export const WorkflowDefSchema = _baseWorkflowDefSchema
           "set either `output_transform` (JSONata) or `output_transform_function` (JS), not both",
       });
     }
-    if (s.validation_expression && s.validation_function) {
-    }
     const workflowTimeoutMs = s.timeout_ms ?? WORKFLOW_TIMEOUT_DEFAULT_MS_LITERAL;
     s.steps.forEach((step, idx) => {
       if (step.kind !== "wait_for_event") return;

@@ -174,15 +174,15 @@ async function disableOauthClientEngineWide(
       .for("update");
     if (!lockedClient || (lockedClient.disabled_at && !lockedClient.retired_at)) return;
 
-    const now = new Date();
+    const at = new Date(now());
     await tx
       .update(mcpOauthClients)
-      .set({ disabled_at: now, retired_at: null })
+      .set({ disabled_at: at, retired_at: null })
       .where(eq(mcpOauthClients.client_id, input.client_id));
 
     const revokedAccess = await tx
       .update(mcpOauthAccessTokens)
-      .set({ revoked_at: now })
+      .set({ revoked_at: at })
       .where(
         and(
           eq(mcpOauthAccessTokens.client_id, input.client_id),
@@ -196,7 +196,7 @@ async function disableOauthClientEngineWide(
       });
     const revokedRefresh = await tx
       .update(mcpOauthRefreshTokens)
-      .set({ revoked_at: now })
+      .set({ revoked_at: at })
       .where(
         and(
           eq(mcpOauthRefreshTokens.client_id, input.client_id),
@@ -224,7 +224,7 @@ async function disableOauthClientEngineWide(
     // tenant-filter:exempt — OAuth client revocation is platform-global and permission-gated.
     await tx
       .update(mcpOauthGrants)
-      .set({ revoked_at: now })
+      .set({ revoked_at: at })
       .where(and(eq(mcpOauthGrants.client_id, input.client_id), isNull(mcpOauthGrants.revoked_at)));
 
     await auditAwait(

@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
-import { assertCallerMatches, callerFromPrincipal } from "../caller-context.ts";
+import {
+  assertCallerExecutionSource,
+  assertCallerMatches,
+  callerFromPrincipal,
+} from "../caller-context.ts";
 
 const tenant = "00000000-0000-4000-8000-000000000031";
 const principal: ResolvedPrincipal = {
@@ -13,7 +17,39 @@ const principal: ResolvedPrincipal = {
   product_id: "harmoniqs",
 };
 
+function refusal(run: () => unknown): { code: unknown; message: string } {
+  try {
+    run();
+  } catch (error) {
+    return { code: (error as { code?: unknown }).code, message: (error as Error).message };
+  }
+  throw new Error("expected a refusal");
+}
+
+const productMismatch = {
+  code: "caller_product_mismatch",
+  message:
+    "This caller does not match the workflow's product. A product-bound workflow runs only for a caller of that product: save the workflow, then run it as that product's caller.",
+};
+
 describe("caller identity resolution", () => {
+  test("product refusals keep their code and explain what to do", () => {
+    expect(refusal(() => assertCallerExecutionSource(principal, "draft"))).toEqual({
+      code: "caller_saved_workflow_required",
+      message:
+        "This caller can only run a saved workflow version, not a draft. Product callers run only saved workflows of their own product: save the workflow, then run the saved version.",
+    });
+    expect(refusal(() => assertCallerExecutionSource(principal, "step")).code).toBe(
+      "caller_saved_workflow_required",
+    );
+    expect(() => assertCallerExecutionSource(principal, "saved")).not.toThrow();
+    const { product_id: _product, ...unbound } = principal;
+    expect(() => assertCallerExecutionSource(unbound, "draft")).not.toThrow();
+    expect(refusal(() => callerFromPrincipal(null, tenant, "harmoniqs")).message).toBe(
+      "caller_required",
+    );
+  });
+
   test("caller references authenticated identity rather than role or workflow identity", () => {
     expect(callerFromPrincipal(principal, tenant, "harmoniqs")).toEqual({
       tenantId: tenant,
@@ -40,12 +76,14 @@ describe("caller identity resolution", () => {
     expect(() =>
       callerFromPrincipal({ ...principal, tenant_id: principal.id }, tenant, "harmoniqs"),
     ).toThrow("caller_tenant_mismatch");
-    expect(() =>
-      callerFromPrincipal({ ...principal, product_id: "other" }, tenant, "harmoniqs"),
-    ).toThrow("caller_product_mismatch");
+    expect(
+      refusal(() =>
+        callerFromPrincipal({ ...principal, product_id: "other" }, tenant, "harmoniqs"),
+      ),
+    ).toEqual(productMismatch);
     const { product_id: _product, ...unbound } = principal;
-    expect(() => callerFromPrincipal(unbound, tenant, "harmoniqs")).toThrow(
-      "caller_product_mismatch",
+    expect(refusal(() => callerFromPrincipal(unbound, tenant, "harmoniqs"))).toEqual(
+      productMismatch,
     );
   });
 
@@ -54,11 +92,11 @@ describe("caller identity resolution", () => {
     expect(() => assertCallerMatches(caller, principal.id, "harmoniqs")).toThrow(
       "caller_tenant_mismatch",
     );
-    expect(() => assertCallerMatches(caller, tenant, "other")).toThrow("caller_product_mismatch");
+    expect(refusal(() => assertCallerMatches(caller, tenant, "other"))).toEqual(productMismatch);
     expect(() => assertCallerMatches(null, tenant, "harmoniqs")).toThrow("caller_required");
-    expect(() => assertCallerMatches(caller, tenant, undefined)).toThrow("caller_product_mismatch");
-    expect(() => callerFromPrincipal(principal, tenant, undefined)).toThrow(
-      "caller_product_mismatch",
+    expect(refusal(() => assertCallerMatches(caller, tenant, undefined))).toEqual(productMismatch);
+    expect(refusal(() => callerFromPrincipal(principal, tenant, undefined))).toEqual(
+      productMismatch,
     );
   });
 

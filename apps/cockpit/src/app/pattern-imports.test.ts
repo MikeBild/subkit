@@ -17,14 +17,20 @@ const RULES: Record<Rule, RegExp> = {
 
 function scopedFiles(): string[] {
   const pages = readdirSync(join(SRC, "pages"), { recursive: true, encoding: "utf8" })
-    .filter((file) => file.endsWith(".tsx") && !file.includes(".test."))
+    .filter(
+      (file) =>
+        file.endsWith(".tsx") && !file.includes(".test.") && !file.endsWith("-fixtures.tsx"),
+    )
     .map((file) => join(SRC, "pages", file));
   const features = readdirSync(join(SRC, "features"), { recursive: true, encoding: "utf8" })
-    .filter((file) => file.endsWith(".tsx") && !file.includes(".test."))
+    .filter(
+      (file) =>
+        file.endsWith(".tsx") && !file.includes(".test.") && !file.endsWith("-fixtures.tsx"),
+    )
     .map((file) => join(SRC, "features", file));
   const cockpit = readdirSync(join(SRC, "components/cockpit"), { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".tsx"))
-    .filter((entry) => !entry.name.includes(".test."))
+    .filter((entry) => !entry.name.includes(".test.") && !entry.name.endsWith("-fixtures.tsx"))
     .map((entry) => join(SRC, "components/cockpit", entry.name));
   return [...pages, ...features, ...cockpit].sort();
 }

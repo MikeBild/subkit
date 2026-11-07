@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { StepSchema } from "./types.ts";
+import { workflowInputIssues } from "./tenant-validator.ts";
+import { StepSchema, WorkflowDefSchema } from "./types.ts";
 import { validateWorkflowDef } from "./validator.ts";
 
 describe("StepSchema — retired `tool` step is rejected", () => {
@@ -398,5 +399,67 @@ describe("validateWorkflowDef — W3a retirement enforcement", () => {
     });
     expect(res.ok).toBe(true);
     expect(res.errors).toHaveLength(0);
+  });
+});
+
+describe("final-output checks pick one form at the input boundary", () => {
+  const steps = [{ id: "a", kind: "wait", duration_ms: 1 }];
+  const rule =
+    "set either `validation_expression` (JSONata) or `validation_function` (JS), not both";
+  const both = {
+    name: "both",
+    steps,
+    validation_expression: "ok = true",
+    validation_function: "return input.ok === true;",
+  };
+
+  test("accepts validation_expression alone", () => {
+    expect(
+      workflowInputIssues({ name: "expr", steps, validation_expression: "ok = true" }),
+    ).toEqual([]);
+  });
+
+  test("accepts validation_function alone", () => {
+    expect(
+      workflowInputIssues({ name: "fn", steps, validation_function: "return input.ok === true;" }),
+    ).toEqual([]);
+  });
+
+  test("ignores input that is not an object", () => {
+    expect(workflowInputIssues(null)).toEqual([]);
+    expect(workflowInputIssues("workflow")).toEqual([]);
+  });
+
+  test("rejects validation_expression together with validation_function", () => {
+    expect(workflowInputIssues(both)).toEqual([{ path: "validation_function", message: rule }]);
+  });
+
+  test("the rule has the same issue shape as the output transform rule", () => {
+    const transform = validateWorkflowDef({
+      name: "transform",
+      steps,
+      output_transform: "$",
+      output_transform_function: "return input;",
+    });
+    expect(transform.ok).toBe(false);
+    expect(transform.errors).toContainEqual({
+      path: "output_transform_function",
+      message:
+        "set either `output_transform` (JSONata) or `output_transform_function` (JS), not both",
+    });
+    const [issue] = workflowInputIssues(both);
+    const sibling = transform.errors.find((e) => e.path === "output_transform_function");
+    expect(Object.keys(issue ?? {}).sort()).toEqual(Object.keys(sibling ?? {}).sort());
+    expect(issue?.message).toBe(
+      String(sibling?.message)
+        .replace("`output_transform`", "`validation_expression`")
+        .replace("`output_transform_function`", "`validation_function`"),
+    );
+  });
+
+  test("a stored definition with both fields still parses", () => {
+    const result = WorkflowDefSchema.safeParse(both);
+    expect(result.success).toBe(true);
+    expect(validateWorkflowDef(both).ok).toBe(true);
   });
 });

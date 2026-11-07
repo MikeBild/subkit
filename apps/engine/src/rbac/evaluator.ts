@@ -77,11 +77,10 @@ async function lookupBuiltinRoleIdByName(db: Executor, name: string): Promise<st
 
 async function principalRoleId(db: Executor, principal: ResolvedPrincipal): Promise<string | null> {
   if (principal.kind === "user") {
-    // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
     const rows = await db
       .select({ role_id: users.role_id })
       .from(users)
-      .where(eq(users.id, principal.id))
+      .where(and(eq(users.id, principal.id), eq(users.tenant_id, principal.tenant_id)))
       .limit(1);
     if (rows[0]) return rows[0].role_id;
     for (const name of principal.roles ?? []) {
@@ -91,11 +90,12 @@ async function principalRoleId(db: Executor, principal: ResolvedPrincipal): Prom
     return null;
   }
   const { systemAccounts } = await import("../db/schema/index.ts");
-  // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
   const rows = await db
     .select({ role_id: systemAccounts.role_id })
     .from(systemAccounts)
-    .where(eq(systemAccounts.id, principal.id))
+    .where(
+      and(eq(systemAccounts.id, principal.id), eq(systemAccounts.tenant_id, principal.tenant_id)),
+    )
     .limit(1);
   if (rows[0]?.role_id) return rows[0].role_id;
   for (const name of principal.roles ?? []) {

@@ -28,8 +28,15 @@ export function callerAuditActorId(caller: CallerContext | null | undefined): st
   return id && z.string().uuid().safeParse(id).success ? id : null;
 }
 
+const CALLER_REFUSAL_MESSAGES: Readonly<Record<string, string>> = {
+  caller_saved_workflow_required:
+    "This caller can only run a saved workflow version, not a draft. Product callers run only saved workflows of their own product: save the workflow, then run the saved version.",
+  caller_product_mismatch:
+    "This caller does not match the workflow's product. A product-bound workflow runs only for a caller of that product: save the workflow, then run it as that product's caller.",
+};
+
 function refuse(code: string): never {
-  throw Object.assign(new Error(code), { code });
+  throw Object.assign(new Error(CALLER_REFUSAL_MESSAGES[code] ?? code), { code });
 }
 
 export function assertCallerExecutionSource(

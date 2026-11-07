@@ -78,7 +78,7 @@ export const subkitUpdateSettingMcpTool: Tool = {
         type: "boolean",
         default: false,
         description:
-          "Confirm a write while the saved revision has fields that need a restart. Without it such a write is refused with restart_required; with it the revision is saved and takes effect after the restart.",
+          "Confirm that the change waits for a restart. Without it, a write to a setting that needs a restart still saves the revision and answers restart_required with write_applied true and saved_revision; with it the same revision is saved and the call succeeds with activation restart_required. Either way the revision becomes active with the next engine restart. Without the revision service, a write without force saves nothing, and with force it applies in this process.",
       },
     },
     required: ["path", "value"],
@@ -158,6 +158,9 @@ export async function handleSubkitUpdateSetting(
         message: string;
         requires_restart?: boolean;
         write_applied?: boolean;
+        saved_revision?: number;
+        activation?: "restart_required";
+        pending_restart_keys?: string[];
         hint?: string;
       };
     }
@@ -178,6 +181,21 @@ export async function handleSubkitUpdateSetting(
     deployVersion: null,
   });
   if (!outcome.ok) {
+    if (outcome.code === "restart_required" && outcome.savedRevision !== undefined) {
+      return {
+        ok: false,
+        data: {
+          error_code: outcome.code,
+          message: outcome.message,
+          requires_restart: true,
+          write_applied: true,
+          saved_revision: outcome.savedRevision,
+          activation: "restart_required",
+          pending_restart_keys: outcome.pendingRestartKeys ?? [],
+          hint: `Revision ${outcome.savedRevision} is saved and becomes active with the next engine restart; do not repeat this write. force: true only turns this answer into a success, it does not activate the revision sooner.`,
+        },
+      };
+    }
     if (outcome.code === "restart_required") {
       return {
         ok: false,
@@ -186,7 +204,7 @@ export async function handleSubkitUpdateSetting(
           message: outcome.message,
           requires_restart: true,
           write_applied: false,
-          hint: "Call subkit_update_setting again with force: true to accept that this revision becomes active only with the next engine restart.",
+          hint: "Nothing was saved. Call subkit_update_setting again with force: true to apply the value in this process.",
         },
       };
     }

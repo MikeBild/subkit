@@ -56,6 +56,9 @@ import { useSearchParamState } from "@/lib/use-search-param-state";
 import { cn } from "@/lib/utils";
 import { type Phrase, stepPhrase, type TriggerKind } from "@/lib/workflow-flow";
 import {
+  type PreviewFailure,
+  previewFailure,
+  previewRefusalKey,
   type WorkflowPreviewDraft,
   type WorkflowPreviewSource,
   workflowPreviewRequest,
@@ -78,7 +81,7 @@ import { stepWasHeld } from "@/pages/runs-model";
 
 type PreviewResult =
   | { result: Record<string, unknown>; failure: null }
-  | { result: null; failure: string };
+  | { result: null; failure: PreviewFailure };
 
 export function useBuildVersion(
   workflowId: string,
@@ -150,7 +153,7 @@ export function useWorkflowSteps({
     } catch (error) {
       setResults((current) => ({
         ...current,
-        [key]: { result: null, failure: error instanceof Error ? error.message : String(error) },
+        [key]: { result: null, failure: previewFailure(error) },
       }));
     } finally {
       setRunning(null);
@@ -269,7 +272,9 @@ function PreviewCard({
           : []),
       ]
     : [];
-  const failure = summary ? summary.error : result.failure;
+  const refused = result.result ? null : result.failure;
+  const failure = summary ? summary.error : (refused?.message ?? null);
+  const refusalKey = previewRefusalKey(refused?.code ?? null);
   return (
     <div className="rounded-lg border p-3" data-testid={testId}>
       <Section
@@ -277,8 +282,24 @@ function PreviewCard({
         aside={<StatusBadge state={summary?.status ?? "failed"} testId={`${testId}-status`} />}
       >
         {facts.length > 0 ? <FactList items={facts} /> : null}
+        {refusalKey ? (
+          <p className="text-sm" data-testid={`${testId}-refusal`}>
+            {t(refusalKey)}
+          </p>
+        ) : null}
         {summary || failure ? (
           <TechnicalDetails testId={`${testId}-technical`}>
+            {refused?.code ? (
+              <FactList
+                items={[
+                  {
+                    label: t("workflow.preview.code"),
+                    value: <span className="font-mono text-xs">{refused.code}</span>,
+                    testId: `${testId}-code`,
+                  },
+                ]}
+              />
+            ) : null}
             {summary?.stoppedAt ? (
               <FactList
                 items={[

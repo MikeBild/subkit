@@ -303,7 +303,12 @@ export const createRoleOperation = defineOperation<CreateNamed, RoleRow>({
   async handler(scope, body) {
     const principal = scope.principal;
     if (!principal) return reject.unauthorized();
-    const role = await createRole(scope.db, scope.tenant_id, body.name, body.description);
+    let role: RoleRow;
+    try {
+      role = await createRole(scope.db, scope.tenant_id, body.name, body.description);
+    } catch (err) {
+      return roleErrorRejection(err);
+    }
     await audited(scope, principal, AuditAction.RBAC_ROLE_CREATED, "role", role.id, {
       name: role.name,
     });
@@ -317,7 +322,7 @@ export const createRoleOperation = defineOperation<CreateNamed, RoleRow>({
     bodyRequired: true,
     response: RbacRoleSchema,
     success: { status: 201, description: "Created" },
-    errors: { 400: "Bad request" },
+    errors: { 400: "Bad request", 409: "Role name is reserved" },
     toInput: ({ json }) => json as CreateNamed,
     toBody: serializeRole,
   },

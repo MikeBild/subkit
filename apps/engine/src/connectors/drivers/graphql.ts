@@ -9,6 +9,7 @@ import { assertEgressAllowedResolved } from "../egress-guard.ts";
 import { requestUsedStoredCredential } from "../reauth.ts";
 import { connectorHeaderPolicy, requestHeaderViolations } from "../request-header-policy.ts";
 import type { ConnectorView } from "../types.ts";
+import { getDriverFetch } from "./fetch-seam.ts";
 import { GRAPHQL_PATH_INVALID_MESSAGE, sameOriginEndpoint } from "./graphql-endpoint.ts";
 import {
   type AppliedAuthMethod,
@@ -193,7 +194,7 @@ export async function executeGraphQLRequest(p: {
     auth_method,
     oauth2_refreshed,
   });
-  const fetchImpl = p.fetchImpl ?? fetch;
+  const fetchImpl = p.fetchImpl ?? getDriverFetch();
   injectTraceContext(headers);
   validateOutboundHeaders(headers);
   const requestedDispatchPolicy = await p.before_dispatch?.({

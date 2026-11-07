@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { and, eq } from "drizzle-orm";
+import { workflowVersions } from "../../db/schema/index.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../execution/tests/setup.ts";
 import { RunResponseSchema } from "../routes/executions/schemas.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
@@ -134,6 +136,69 @@ describe("HTTP draft runs behave like the saved workflow", () => {
       for (const message of draftErrors) expect(saveErrors).toContain(message);
     });
   }
+
+  test("a definition with validation_expression and validation_function is refused on save and on a draft run", async () => {
+    const rule =
+      "set either `validation_expression` (JSONata) or `validation_function` (JS), not both";
+    const def = definition("Both validations", {
+      validation_expression: "ok = true",
+      validation_function: "return input.ok === true;",
+    });
+    const save = await send("/v1/workflows", def);
+    const draft = await send("/v1/executions", { source: "draft", definition: def });
+    expect(save.status).toBe(400);
+    expect(draft.status).toBe(400);
+    const saveBody = (await save.json()) as ErrorBody;
+    const draftBody = (await draft.json()) as ErrorBody;
+    expect(draftBody.code).toBe(saveBody.code);
+    const saveErrors = ((saveBody.details as { errors?: string[] }).errors ?? []).join("\n");
+    expect(saveErrors).toContain("validation_function");
+    expect(saveErrors).toContain(rule);
+    const draftErrors = definitionErrors(draftBody.details);
+    expect(draftErrors.join("\n")).toContain(rule);
+    for (const message of draftErrors) expect(saveErrors).toContain(message);
+  });
+
+  test("a stored definition with validation_expression and validation_function still loads and runs", async () => {
+    const created = await send(
+      "/v1/workflows",
+      definition("Stored both validations", { validation_expression: "ok = true" }),
+    );
+    expect(created.status).toBe(201);
+    const { id } = (await created.json()) as { id: string };
+    const [version] = await ctx.db
+      .select({ id: workflowVersions.id, dag: workflowVersions.dag })
+      .from(workflowVersions)
+      .where(
+        and(eq(workflowVersions.tenant_id, ctx.tenantId), eq(workflowVersions.workflow_id, id)),
+      );
+    if (!version) throw new Error("stored workflow version missing");
+    await ctx.db
+      .update(workflowVersions)
+      .set({
+        dag: {
+          ...(version.dag as Record<string, unknown>),
+          validation_function: "return input.ok === false;",
+        },
+      })
+      .where(
+        and(eq(workflowVersions.tenant_id, ctx.tenantId), eq(workflowVersions.id, version.id)),
+      );
+
+    const loaded = await fetch(`${ctx.baseUrl}/v1/workflows/${id}`, {
+      headers: { authorization: `Bearer ${ctx.apiKey}` },
+    });
+    expect(loaded.status).toBe(200);
+    const saved = await send("/v1/executions", {
+      source: "saved",
+      workflow_id: id,
+      hold_writes: true,
+    });
+    expect(saved.status).toBe(200);
+    const run = RunResponseSchema.parse(await saved.json());
+    expect(run.status).toBe("failed");
+    expect(errorCode(run.error)).toBe("validation_failed");
+  });
 
   test("a draft for a product caller refuses a caller the saved workflow refuses", async () => {
     const def = definition("Product profile", {

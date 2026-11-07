@@ -124,4 +124,32 @@ describe("journey: rbac custom role", () => {
     });
     expect(res.status).toBe(409);
   });
+
+  test("AC7: a custom role cannot take or be renamed to a built-in name", async () => {
+    const before = await journeyFetch(ctx, "/v1/rbac/roles");
+    const countBefore = ((await before.json()) as { items: unknown[] }).items.length;
+
+    const createRes = await journeyFetch(ctx, "/v1/rbac/roles", {
+      method: "POST",
+      body: JSON.stringify({ name: "admin" }),
+    });
+    expect(createRes.status).toBe(409);
+    expect(JSON.stringify(await createRes.json())).toContain("role_name_reserved");
+
+    const after = await journeyFetch(ctx, "/v1/rbac/roles");
+    expect(((await after.json()) as { items: unknown[] }).items.length).toBe(countBefore);
+
+    const custom = await journeyFetch(ctx, "/v1/rbac/roles", {
+      method: "POST",
+      body: JSON.stringify({ name: "renamer" }),
+    });
+    expect(custom.status).toBe(201);
+    const { id } = (await custom.json()) as { id: string };
+    const renameRes = await journeyFetch(ctx, `/v1/rbac/roles/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: "admin" }),
+    });
+    expect(renameRes.status).toBe(409);
+    expect(JSON.stringify(await renameRes.json())).toContain("role_name_reserved");
+  });
 });

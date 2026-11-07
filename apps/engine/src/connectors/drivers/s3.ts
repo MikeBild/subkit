@@ -5,6 +5,7 @@ import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db, Executor } from "../../db/client.ts";
 import { errorFields, logger } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
+import { fetchWithEgressGuard } from "../egress-fetch.ts";
 import {
   assertEgressAllowedResolved,
   resolveEgressGuardMode,
@@ -367,8 +368,13 @@ async function executeS3Operation(ctx: {
       let res: Response;
       if (p.range) {
         const url = await client.getPresignedUrl("GET", key, { expirySeconds: 60 });
+        const context = await resolveTenantEgressContext({ tenant_id: p.tenant_id, exec: p.db });
+        if (resolveEgressGuardMode(context) === "strict")
+          await assertEgressAllowedResolved(url, context);
         await p.on_credential_use?.(snapshot);
-        res = await getDriverFetch()(url, { headers: { range: p.range } });
+        res = await fetchWithEgressGuard(url, { headers: { range: p.range } }, context, {
+          fetchImpl: getDriverFetch(),
+        });
       } else {
         res = await client.getObject(key);
       }
@@ -521,9 +527,13 @@ async function executeS3Operation(ctx: {
       const cap = Math.min(p.maxKeys ?? 1000, 10_000);
       const items: Array<{ key: string; size: number; etag: string; last_modified: string }> = [];
       const stopAt = p.paginate === true ? cap : Math.min(cap, 1000);
+      let truncated = false;
       for await (const obj of client.listObjects({ prefix })) {
         if (obj.type !== "Object") continue;
-        if (items.length >= stopAt) break;
+        if (items.length >= stopAt) {
+          truncated = true;
+          break;
+        }
         items.push({
           key: obj.key,
           size: obj.size,
@@ -537,7 +547,7 @@ async function executeS3Operation(ctx: {
         body: {
           items,
           count: items.length,
-          truncated: items.length >= stopAt,
+          truncated,
           paginated: p.paginate === true,
         },
         credential_id,

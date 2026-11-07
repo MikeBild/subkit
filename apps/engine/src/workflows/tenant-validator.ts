@@ -10,7 +10,7 @@ import { type ConsistencyContext, consistencyLintWarnings } from "./consistency-
 import type { ConnectorBaseUrls } from "./graphql-conversion.ts";
 import { listActiveWorkflowRefs } from "./prior-workflows.ts";
 import { WorkflowDefSchema } from "./types.ts";
-import { type ValidateOptions, validateWorkflowDef } from "./validator.ts";
+import { type ValidateOptions, type ValidationError, validateWorkflowDef } from "./validator.ts";
 
 export async function loadTenantWorkflowHeaderPolicies(
   input: unknown,
@@ -209,11 +209,39 @@ export async function validateTenantWorkflowDef(
   return { ...result, warnings: consistencyLintWarnings(input, parsed.data, consistencyContext) };
 }
 
+export function workflowInputIssues(input: unknown): ValidationError[] {
+  if (typeof input !== "object" || input === null) return [];
+  const def = input as { validation_expression?: unknown; validation_function?: unknown };
+  if (!def.validation_expression || !def.validation_function) return [];
+  return [
+    {
+      path: "validation_function",
+      message:
+        "set either `validation_expression` (JSONata) or `validation_function` (JS), not both",
+    },
+  ];
+}
+
+export async function validateTenantWorkflowDefForInput(
+  input: unknown,
+  tenantId: string,
+  db: Executor,
+  options: TenantValidateOptions = {},
+) {
+  const result = await validateTenantWorkflowDef(input, tenantId, db, options);
+  const issues = workflowInputIssues(input);
+  if (issues.length === 0) return result;
+  return { ...result, ok: false, errors: [...result.errors, ...issues] };
+}
+
 export function validateTenantWorkflowDefForSave(
   input: unknown,
   tenantId: string,
   db: Executor,
   options: Pick<ValidateOptions, "destinationTier"> = {},
 ) {
-  return validateTenantWorkflowDef(input, tenantId, db, { ...options, lintJavascript: true });
+  return validateTenantWorkflowDefForInput(input, tenantId, db, {
+    ...options,
+    lintJavascript: true,
+  });
 }

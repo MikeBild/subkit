@@ -60,6 +60,8 @@ interface SettingWriteFailure {
   readonly code: string;
   readonly message: string;
   readonly details?: Record<string, unknown>;
+  readonly savedRevision?: number;
+  readonly pendingRestartKeys?: string[];
 }
 
 type SettingWriteOutcome = SettingWriteSuccess | SettingWriteFailure;
@@ -73,6 +75,17 @@ interface WriteTarget {
   readonly leaf: ConfigLeaf;
   readonly tenant: string | undefined;
   readonly restricted: boolean;
+}
+
+class SavedRevisionAwaitsRestartError extends RestartRequiredError {
+  constructor(
+    message: string,
+    readonly savedRevision: number,
+    readonly pendingRestartKeys: string[],
+  ) {
+    super(message);
+    this.name = "SavedRevisionAwaitsRestartError";
+  }
 }
 
 function failure(
@@ -188,8 +201,10 @@ async function writeThroughRevisions(target: WriteTarget): Promise<WriteResult> 
     db,
   );
   if (restartRequired && !request.force) {
-    throw new RestartRequiredError(
+    throw new SavedRevisionAwaitsRestartError(
       `${leafPath} was saved as revision ${saved.saved_revision} and becomes active with the next process restart (waiting for it: ${saved.pending_restart_fields.join(", ")}).`,
+      saved.saved_revision,
+      saved.pending_restart_fields,
     );
   }
   if (!restartRequired && activated.activation_status !== "active") {
@@ -241,6 +256,12 @@ function writeFailure(error: unknown, leaf: ConfigLeaf): SettingWriteFailure {
     });
   if (error instanceof RuntimeConfigPendingError || error instanceof RuntimeConfigConflictError)
     return failure(409, error.code, error.message);
+  if (error instanceof SavedRevisionAwaitsRestartError)
+    return {
+      ...failure(409, "restart_required", error.message, { requiresRestart: true }),
+      savedRevision: error.savedRevision,
+      pendingRestartKeys: error.pendingRestartKeys,
+    };
   if (error instanceof RestartRequiredError)
     return failure(409, "restart_required", error.message, { requiresRestart: true });
   if (error instanceof ScopeViolationError) return failure(403, "scope_violation", error.message);

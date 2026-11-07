@@ -52,6 +52,10 @@ const ALLOWED = new Set<string>([
   "apps/engine/src/http/routes/rbac/group-history-tenant-boundary.integration.test.ts",
   "apps/engine/src/rbac/tests/resource-access.test.ts",
   "apps/engine/src/rbac/tests/quiet-flag-guard.test.ts",
+  "apps/engine/src/rbac/tests/evaluator-branches.test.ts",
+  "apps/engine/src/rbac/tests/evaluator-branches.resource-access.test.ts",
+  "apps/engine/src/rbac/tests/query-principal.test.ts",
+  "apps/engine/src/rbac/tests/operator-principal.test.ts",
 ]);
 
 describe("RBAC quiet-flag invariant", () => {

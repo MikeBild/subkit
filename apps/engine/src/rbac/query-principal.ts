@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { roles as rolesTable, systemAccounts, users as usersTable } from "../db/schema/index.ts";
 
@@ -19,7 +19,13 @@ export async function buildQueryPrincipal(
     .select({ id: usersTable.id, role_name: rolesTable.name })
     .from(usersTable)
     .leftJoin(rolesTable, eq(rolesTable.id, usersTable.role_id))
-    .where(and(eq(usersTable.id, id), eq(usersTable.tenant_id, tenant_id)))
+    .where(
+      and(
+        eq(usersTable.id, id),
+        eq(usersTable.tenant_id, tenant_id),
+        isNull(usersTable.deleted_at),
+      ),
+    )
     .limit(1);
   if (uRows[0]) {
     return {
@@ -37,7 +43,13 @@ export async function buildQueryPrincipal(
     })
     .from(systemAccounts)
     .leftJoin(rolesTable, eq(rolesTable.id, systemAccounts.role_id))
-    .where(and(eq(systemAccounts.id, id), eq(systemAccounts.tenant_id, tenant_id)))
+    .where(
+      and(
+        eq(systemAccounts.id, id),
+        eq(systemAccounts.tenant_id, tenant_id),
+        isNull(systemAccounts.deleted_at),
+      ),
+    )
     .limit(1);
   if (sRows[0]) {
     return {

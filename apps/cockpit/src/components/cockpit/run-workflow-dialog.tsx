@@ -10,6 +10,7 @@ import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { invalidateWorkflowAutomation } from "@/lib/automation-queries";
+import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import {
   approvalRefusal,
@@ -23,11 +24,13 @@ import {
 } from "@/lib/run-availability";
 import { buildFormSchemaInput, formValuesFromInput, type SchemaValues } from "@/lib/schema-form";
 import { formFields, inputForm } from "@/lib/workflow-inputs";
+import { runRefusalKey } from "@/lib/workflow-preview";
 
 type Failure =
   | { kind: "connector"; environment: RunEnvironment; connector: UnavailableConnector }
   | { kind: "legacy"; steps: string[] }
   | { kind: "approval"; environment: RunEnvironment }
+  | { kind: "caller"; key: TranslationKey }
   | { kind: "failed"; executionId: string | null };
 
 interface RunWording {
@@ -147,6 +150,11 @@ export function RunWorkflowDialog({
         setFailure({ kind: "approval", environment });
         return;
       }
+      const callerKey = runRefusalKey(error);
+      if (callerKey) {
+        setFailure({ kind: "caller", key: callerKey });
+        return;
+      }
       const details = (error as { details?: Record<string, unknown> | null }).details;
       setFailure({
         kind: "failed",
@@ -240,7 +248,9 @@ export function RunWorkflowDialog({
                       ? t("run.approvalMissing", {
                           environment: environmentWord(failure.environment),
                         })
-                      : t("run.failed")}
+                      : failure.kind === "caller"
+                        ? t(failure.key)
+                        : t("run.failed")}
             </p>
             {failureFix && (
               <a

@@ -56,6 +56,8 @@ export const runsEn = {
     "Not started: this version is stored in an earlier format (steps: {steps}). Change the workflow in the chat to save it again.",
   "run.approvalMissing":
     "Not started ({environment}): no valid approval covers this run. Approve the workflow first.",
+  "run.productCaller":
+    "Not started: this workflow belongs to an app, so only that app's users can run it. Start it from the app.",
   "run.refusedAgain": "Another attempt would be refused the same way.",
   "run.failedWithLink": "Open the run",
   "run.environment.blocked": "{environment}: sign in to {connector} again",
@@ -310,6 +312,8 @@ export const runsDe: Record<keyof typeof runsEn, string> = {
     "Nicht gestartet: Diese Version ist in einem älteren Format gespeichert (Schritte: {steps}). Ändere den Workflow im Chat, um ihn neu zu speichern.",
   "run.approvalMissing":
     "Nicht gestartet ({environment}): Für diesen Lauf gibt es keine gültige Freigabe. Gib den Workflow zuerst frei.",
+  "run.productCaller":
+    "Nicht gestartet: Dieser Workflow gehört zu einer App, deshalb können ihn nur Nutzer dieser App ausführen. Starte ihn über die App.",
   "run.refusedAgain": "Ein weiterer Versuch würde genauso abgelehnt.",
   "run.failedWithLink": "Lauf ansehen",
   "run.environment.blocked": "{environment}: {connector} neu anmelden",

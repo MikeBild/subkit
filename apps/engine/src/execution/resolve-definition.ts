@@ -2,7 +2,10 @@ import { and, eq, isNull } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { executableDefinition } from "../workflows/stored-definition.ts";
-import { validateTenantWorkflowDef } from "../workflows/tenant-validator.ts";
+import {
+  validateTenantWorkflowDef,
+  validateTenantWorkflowDefForInput,
+} from "../workflows/tenant-validator.ts";
 import type { StepDef, WorkflowDef } from "../workflows/types.ts";
 
 export type RunExecutionSource =
@@ -96,7 +99,7 @@ async function resolveDraft(
   definition: unknown,
   name: string | undefined,
 ): Promise<ResolvedDefinition> {
-  const validation = await validateTenantWorkflowDef(definition, tenant_id, db);
+  const validation = await validateTenantWorkflowDefForInput(definition, tenant_id, db);
   if (!validation.ok || !validation.workflow) {
     const msg = validation.errors.map((e) => e.message).join("; ") || "invalid draft";
     throw Object.assign(new Error(msg), {

@@ -7,6 +7,7 @@ import {
   grantPermissionToRole,
   listRolePermissions,
   PermissionNotFoundError,
+  RoleNameReservedError,
   RoleNotFoundError,
   revokePermissionFromRole,
   updateRole,
@@ -127,6 +128,14 @@ export const editRoleTool: ConversationTool = {
           error_code: "builtin_immutable",
           message: "this role is built-in and cannot be edited. Create a custom role instead.",
           next_best_actions: ["find_role", "inspect_role"],
+        };
+      }
+      if (err instanceof RoleNameReservedError) {
+        return {
+          ok: false,
+          error_code: "role_name_reserved",
+          message: "this name belongs to a built-in role. Choose a different name.",
+          next_best_actions: ["find_role"],
         };
       }
       if (err instanceof RoleNotFoundError) {

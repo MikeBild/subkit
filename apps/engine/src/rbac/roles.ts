@@ -7,8 +7,10 @@ import {
   permissions as permissionsTable,
   rolePermissions,
   roles as rolesTable,
+  systemAccounts,
   users,
 } from "../db/schema/index.ts";
+import { BUILTIN_ROLE_NAMES } from "./seed.ts";
 
 export interface RoleRow {
   id: string;
@@ -39,6 +41,19 @@ export class RoleInUseError extends Error {
     super("role_in_use");
     this.name = "RoleInUseError";
   }
+}
+
+export class RoleNameReservedError extends Error {
+  constructor(name: string) {
+    super(`role_name_reserved:${name}`);
+    this.name = "RoleNameReservedError";
+  }
+}
+
+const RESERVED_ROLE_NAMES: ReadonlySet<string> = new Set(Object.values(BUILTIN_ROLE_NAMES));
+
+function assertRoleNameFree(name: string): void {
+  if (RESERVED_ROLE_NAMES.has(name)) throw new RoleNameReservedError(name);
 }
 
 export class PermissionNotFoundError extends Error {
@@ -76,6 +91,7 @@ export async function createRole(
   name: string,
   description?: string,
 ): Promise<RoleRow> {
+  assertRoleNameFree(name);
   const [row] = await db
     .insert(rolesTable)
     .values({ tenant_id, name, description: description ?? null, is_builtin: false })
@@ -93,6 +109,7 @@ export async function updateRole(
   const existing = await getRole(db, tenant_id, id);
   if (!existing) throw new RoleNotFoundError();
   if (existing.is_builtin) throw new BuiltinImmutableError();
+  if (patch.name !== undefined) assertRoleNameFree(patch.name);
   const set: Record<string, unknown> = { updated_at: new Date() };
   if (patch.name !== undefined) set.name = patch.name;
   if (patch.description !== undefined) set.description = patch.description;
@@ -115,6 +132,12 @@ export async function deleteRole(db: Db, tenant_id: string, id: string): Promise
     .where(and(eq(users.tenant_id, tenant_id), eq(users.role_id, id)))
     .limit(1);
   if (holder) throw new RoleInUseError();
+  const [accountHolder] = await db
+    .select({ id: systemAccounts.id })
+    .from(systemAccounts)
+    .where(and(eq(systemAccounts.tenant_id, tenant_id), eq(systemAccounts.role_id, id)))
+    .limit(1);
+  if (accountHolder) throw new RoleInUseError();
   await db
     .delete(rolesTable)
     .where(and(eq(rolesTable.id, id), eq(rolesTable.tenant_id, tenant_id)));

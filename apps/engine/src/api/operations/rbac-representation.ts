@@ -5,6 +5,7 @@ import {
   BuiltinImmutableError,
   PermissionNotFoundError,
   RoleInUseError,
+  RoleNameReservedError,
   RoleNotFoundError,
   type RoleRow,
 } from "../../rbac/roles.ts";
@@ -126,6 +127,7 @@ export function serializeGroup(g: GroupRow) {
 export function roleErrorRejection(err: unknown): Rejection {
   if (err instanceof BuiltinImmutableError) return reject.conflict("builtin_role_immutable");
   if (err instanceof RoleInUseError) return reject.conflict("role_in_use");
+  if (err instanceof RoleNameReservedError) return reject.conflict("role_name_reserved");
   if (err instanceof RoleNotFoundError) return reject.notFound("role");
   if (err instanceof PermissionNotFoundError) return reject.badRequest(err.message);
   throw err as Error;

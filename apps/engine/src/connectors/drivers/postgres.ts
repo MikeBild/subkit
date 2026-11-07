@@ -17,6 +17,9 @@ import { classifyPgProbeError } from "./probe-classify.ts";
 
 const { Pool } = pg;
 
+export const CONNECTOR_STATEMENT_TIMEOUT_MS = 30_000;
+export const CONNECTOR_CONNECT_TIMEOUT_MS = 10_000;
+
 const pools = new Map<string, pg.Pool>();
 const closingPools = new Map<pg.Pool, { key: string; task: Promise<void> }>();
 
@@ -67,7 +70,11 @@ export async function getPoolForConnector(
   const prepared = await postgresPoolConfiguration(
     connector.dsn,
     { tenant_id: connector.tenant_id, exec },
-    { max: 5 },
+    {
+      max: 5,
+      statement_timeout: CONNECTOR_STATEMENT_TIMEOUT_MS,
+      connectionTimeoutMillis: CONNECTOR_CONNECT_TIMEOUT_MS,
+    },
   );
   const key = `${poolKey(connector)}:${connector.tenant_id}:${prepared.key}`;
   const existing = pools.get(key);

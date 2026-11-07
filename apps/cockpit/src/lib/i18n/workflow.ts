@@ -61,6 +61,11 @@ export const workflowEn = {
   "workflow.preview.output": "Output",
   "workflow.preview.noOutput": "No output.",
   "workflow.preview.error": "Error message",
+  "workflow.preview.code": "Error code",
+  "workflow.preview.refusal.savedRequired":
+    "This sign-in belongs to an app and may only run saved workflows, so a trial run of a draft or a single step is not possible. Save the workflow and run the saved version.",
+  "workflow.preview.refusal.productCaller":
+    "This workflow belongs to an app. Only that app's users can run it, and only once it is saved, so a trial run from here is not possible. Save the workflow and start it from the app.",
   "workflow.edit": "Edit safely with SubKit",
   "workflow.loadFailed": "Could not load workflow definition",
   "workflow.stepMap": "Committed step map",
@@ -424,6 +429,11 @@ export const workflowDe: Record<keyof typeof workflowEn, string> = {
   "workflow.preview.output": "Ausgabe",
   "workflow.preview.noOutput": "Keine Ausgabe.",
   "workflow.preview.error": "Fehlermeldung",
+  "workflow.preview.code": "Fehlercode",
+  "workflow.preview.refusal.savedRequired":
+    "Diese Anmeldung gehört zu einer App und darf nur gespeicherte Workflows ausführen. Ein Probelauf eines Entwurfs oder eines einzelnen Schritts ist damit nicht möglich. Speichere den Workflow und führe die gespeicherte Version aus.",
+  "workflow.preview.refusal.productCaller":
+    "Dieser Workflow gehört zu einer App. Nur Nutzer dieser App können ihn ausführen, und erst, wenn er gespeichert ist. Ein Probelauf von hier aus ist deshalb nicht möglich. Speichere den Workflow und starte ihn über die App.",
   "workflow.edit": "Sicher mit SubKit bearbeiten",
   "workflow.loadFailed": "Workflow-Definition konnte nicht geladen werden",
   "workflow.stepMap": "Gespeicherter Ablauf",

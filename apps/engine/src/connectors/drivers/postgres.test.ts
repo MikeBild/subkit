@@ -3,7 +3,6 @@ import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import type { ConnectorView } from "../types.ts";
 import {
-  closeAllPools,
   closePoolForConnector,
   getPoolForConnector,
   pgQueryCursor,
@@ -17,10 +16,11 @@ const skip = process.env.REQUIRES_PG === "0";
 let ctx: TestDb;
 let tenantId: string;
 let counter = 0;
+const opened: ConnectorView[] = [];
 
 function makeConnector(overrides: Partial<ConnectorView> = {}): ConnectorView {
   counter += 1;
-  return {
+  const connector = {
     id: `pg-driver-test-${counter}`,
     tenant_id: tenantId,
     slug: `pg-driver-test-${counter}`,
@@ -35,6 +35,8 @@ function makeConnector(overrides: Partial<ConnectorView> = {}): ConnectorView {
     template_snapshot: null,
     ...overrides,
   } as unknown as ConnectorView;
+  opened.push(connector);
+  return connector;
 }
 
 beforeAll(async () => {
@@ -54,7 +56,7 @@ afterEach(async () => {
 
 afterAll(async () => {
   if (skip) return;
-  await closeAllPools();
+  await Promise.all(opened.map((connector) => closePoolForConnector(connector)));
   await ctx.cleanup();
 }, 30_000);
 

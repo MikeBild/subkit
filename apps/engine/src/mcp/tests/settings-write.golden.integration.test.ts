@@ -2,10 +2,10 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { and, inArray, like, notInArray, or } from "drizzle-orm";
+import { and, eq, inArray, like, notInArray, or } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { _resetConfigForTests, getConfig, loadConfig } from "../../config/loader.ts";
-import { auditLog } from "../../db/schema/index.ts";
+import { auditLog, runtimeConfigRevisions } from "../../db/schema/index.ts";
 import {
   createHttpTestServer,
   createSecondaryTenant,
@@ -13,7 +13,7 @@ import {
   type SecondaryTenant,
 } from "../../http/tests/setup.ts";
 import { RuntimeConfigCoordinator } from "../../runtime-config/coordinator.ts";
-import { initializeRuntimeConfig } from "../../runtime-config/service.ts";
+import { getRuntimeConfigState, initializeRuntimeConfig } from "../../runtime-config/service.ts";
 import { handleSubkitUpdateSetting } from "../tools/settings.ts";
 
 const GOLDEN_PATH = new URL("./fixtures/settings-write.golden.json", import.meta.url).pathname;
@@ -170,6 +170,62 @@ describe("subkit_update_setting results and audit rows", () => {
       else process.env.NODE_ENV = previousNodeEnv;
     }
     recordRows("mcp.production.audit", await changesSince(seen));
+  });
+
+  test("a refused restart write reports the revision it saved", async () => {
+    const seen = await auditIds();
+    const operator = principal(ctx.userId, ctx.tenantId);
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    let result: Awaited<ReturnType<typeof handleSubkitUpdateSetting>>;
+    try {
+      result = await handleSubkitUpdateSetting(
+        { db: ctx.db, principal: operator },
+        { path: "server.port", value: 4113 },
+      );
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+    }
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const data = result.data;
+    expect(data.error_code).toBe("restart_required");
+    expect(data.write_applied).toBe(true);
+    expect(data.activation).toBe("restart_required");
+    expect(data.pending_restart_keys).toEqual(["server.port"]);
+    const revision = data.saved_revision as number;
+    expect(Number.isInteger(revision)).toBe(true);
+    expect(data.message).toContain(`was saved as revision ${revision} `);
+    expect(data.hint).toContain(`Revision ${revision} is saved`);
+
+    const [row] = await ctx.db
+      .select({
+        document: runtimeConfigRevisions.document,
+        status: runtimeConfigRevisions.status,
+        pending_restart_fields: runtimeConfigRevisions.pending_restart_fields,
+      })
+      .from(runtimeConfigRevisions)
+      .where(eq(runtimeConfigRevisions.revision, revision));
+    if (!row) throw new Error(`revision ${revision} is not stored`);
+    expect(row.status).toBe("restart_required");
+    expect(row.pending_restart_fields).toEqual(["server.port"]);
+    expect((row.document as { server?: { port?: unknown } }).server?.port).toBe(4113);
+
+    const state = await getRuntimeConfigState(ctx.db);
+    expect(state.saved_revision).toBe(revision);
+    expect(state.active_revision).not.toBe(revision);
+
+    const rows = await changesSince(seen);
+    const revisionActions = rows
+      .filter((entry) => entry.resource_id === String(revision))
+      .map((entry) => entry.action)
+      .sort();
+    expect(revisionActions).toEqual([
+      "settings.revision_restart_required",
+      "settings.revision_saved",
+    ]);
+    expect(rows.some((entry) => entry.action === "settings.changed")).toBe(false);
   });
 
   test("the golden file has no stale entries", () => {
