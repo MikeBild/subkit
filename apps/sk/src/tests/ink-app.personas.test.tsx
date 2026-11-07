@@ -258,6 +258,43 @@ describe("ink-app: journey 09 — exit flows", () => {
     instance.unmount();
   });
 
+  test("AC4: /exit arriving with its Enter in one input chunk triggers onExit", async () => {
+    let exited = false;
+    const instance = renderApp({
+      onExit: () => {
+        exited = true;
+      },
+    });
+    await tick();
+    instance.stdin.write("/exit\r");
+    await tick(40);
+    expect(exited).toBe(true);
+    instance.unmount();
+  });
+
+  test("AC6: /exit arriving as a cooked-mode line with a trailing newline triggers onExit", async () => {
+    let exited = false;
+    const instance = renderApp({
+      onExit: () => {
+        exited = true;
+      },
+    });
+    await tick();
+    instance.stdin.write("/exit\n");
+    await tick(40);
+    expect(exited).toBe(true);
+    instance.unmount();
+  });
+
+  test("AC5: /help arriving with its Enter in one input chunk opens the help pane", async () => {
+    const instance = renderApp();
+    await tick();
+    instance.stdin.write("/help\r");
+    await tick(40);
+    expect(stripAnsi(instance.lastFrame() ?? "")).toContain("slash commands");
+    instance.unmount();
+  });
+
   test("AC3: double Ctrl-C triggers onExit (first press arms the confirm banner)", async () => {
     let exited = false;
     const instance = renderApp({

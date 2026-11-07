@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { userInfo } from "node:os";
 import path from "node:path";
+import pg from "pg";
 import { BASE_URL, type CommandResult, waitForHealth } from "../e2e/_helpers.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..", "..");
@@ -198,4 +199,81 @@ export async function dockerApi<T = unknown>(
 
 export function issueAdminKeyViaExec(tenantSlug = "default"): CommandResult {
   return compose(["exec", "-T", SERVICE, "engine", "--issue-admin-key", "--tenant", tenantSlug]);
+}
+
+const CONTAINER_DATABASE_URL = `postgres://subkit:subkit-test@127.0.0.1:${process.env.SUBKIT_DB_PORT ?? "5432"}/subkit`;
+
+export interface ScheduleAuthorityPreview {
+  manifest: { effects: Array<{ target?: unknown }> };
+  digest: string;
+}
+
+export async function grantScheduleAuthority(
+  env: DockerEnv,
+  workflowId: string,
+  versionId: string,
+  preview: ScheduleAuthorityPreview,
+): Promise<string> {
+  const client = new pg.Client({ connectionString: CONTAINER_DATABASE_URL });
+  await client.connect();
+  try {
+    const owner = await client.query<{ id: string; tenant_id: string }>(
+      `SELECT u.id, u.tenant_id FROM subkit.users u
+         JOIN subkit.workflows w ON w.tenant_id = u.tenant_id
+         JOIN subkit.roles r ON r.id = u.role_id
+        WHERE w.id = $1 AND r.name = 'admin' AND r.is_builtin AND u.deleted_at IS NULL
+        ORDER BY u.created_at LIMIT 1`,
+      [workflowId],
+    );
+    const user = owner.rows[0];
+    if (!user) throw new Error(`no admin user for the tenant of workflow ${workflowId}`);
+    const targets = preview.manifest.effects.flatMap((effect) =>
+      effect.target ? [effect.target] : [],
+    );
+    const inserted = await client.query<{ id: string }>(
+      `INSERT INTO subkit.workflow_execution_authorities
+         (tenant_id, workflow_id, workflow_version_id, effect_manifest_digest, effect_manifest,
+          target_constraints, execution_environment, valid_from, valid_until, max_runs, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, 'prod', now() - interval '1 minute', now() + interval '1 hour', 3, $7)
+       RETURNING id`,
+      [
+        user.tenant_id,
+        workflowId,
+        versionId,
+        preview.digest,
+        JSON.stringify(preview.manifest),
+        JSON.stringify({ targets }),
+        user.id,
+      ],
+    );
+    const id = inserted.rows[0]?.id;
+    if (!id) throw new Error("authority insert returned no row");
+    await client.query(
+      `UPDATE subkit.workflows_schedules
+          SET admission_hold = NULL, last_enqueued_at = clock_timestamp()
+        WHERE tenant_id = $1 AND workflow_id = $2 AND execution_mode = 'prod'
+          AND paused = false AND admission_hold IS NOT NULL`,
+      [user.tenant_id, workflowId],
+    );
+    return id;
+  } finally {
+    await client.end();
+  }
+}
+
+export async function scheduledRunAuthorities(workflowId: string): Promise<string[]> {
+  const client = new pg.Client({ connectionString: CONTAINER_DATABASE_URL });
+  await client.connect();
+  try {
+    const rows = await client.query<{ execution_authority_id: string | null }>(
+      `SELECT execution_authority_id FROM subkit.executions
+        WHERE workflow_id = $1 AND request_source = 'scheduler'`,
+      [workflowId],
+    );
+    return rows.rows.flatMap((row) =>
+      row.execution_authority_id ? [row.execution_authority_id] : [],
+    );
+  } finally {
+    await client.end();
+  }
 }

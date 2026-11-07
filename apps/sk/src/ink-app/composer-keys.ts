@@ -415,6 +415,11 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
           if (suffix) setInput((prev) => applyInput(prev, { type: "insert", text: suffix }));
           return;
         }
+        const typedLine = /^([^\r\n]+)(?:\r\n|\r|\n)$/.exec(char)?.[1];
+        if (typedLine !== undefined && !looksLikePaste(char)) {
+          void handleSubmit(applyInput(input, { type: "insert", text: typedLine }).value);
+          return;
+        }
         if (char.length > 1 && looksLikePaste(char)) {
           insertPasteChunk(char);
           return;

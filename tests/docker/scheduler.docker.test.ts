@@ -6,6 +6,9 @@ import {
   type DockerEnv,
   dockerApi,
   dockerBoot,
+  grantScheduleAuthority,
+  type ScheduleAuthorityPreview,
+  scheduledRunAuthorities,
   skDocker,
 } from "./_harness.ts";
 
@@ -39,6 +42,23 @@ describe("in-container reconciler", () => {
     });
     expect(wf.status).toBe(201);
 
+    const detail = await dockerApi<{ current_version_id: string }>(
+      env,
+      "GET",
+      `/v1/workflows/${wf.body.id}`,
+    );
+    const versionId = detail.body.current_version_id;
+    const preview = await dockerApi<
+      ScheduleAuthorityPreview & { eligible_for_repeated_runs: boolean }
+    >(
+      env,
+      "GET",
+      `/v1/workflows/${wf.body.id}/versions/${versionId}/authority-preview?environment=prod`,
+    );
+    expect(preview.status).toBe(200);
+    expect(preview.body.eligible_for_repeated_runs).toBe(true);
+    const authorityId = await grantScheduleAuthority(env, wf.body.id, versionId, preview.body);
+
     const schedules = await skDocker(env, ["schedules", "list"]);
     expect(schedules.exitCode).toBe(0);
 
@@ -55,5 +75,6 @@ describe("in-container reconciler", () => {
       { timeoutMs: 150_000, intervalMs: 3_000, label: `scheduler-fired execution for ${slug}` },
     );
     expect(fired.request_source).toBe("scheduler");
+    expect(await scheduledRunAuthorities(wf.body.id)).toContain(authorityId);
   }, 180_000);
 });
