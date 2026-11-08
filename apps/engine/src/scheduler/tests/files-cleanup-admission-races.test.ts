@@ -178,7 +178,7 @@ test("unlinked cleanup retries a catalog conflict with a fresh reference scan", 
     const cleanup = runFilesCleanup(new Date(getTestNow()), srv.db, boss, srv.testDb.pool);
     await waitFor(() => retries() > before, {
       label: "cleanup retried catalog lock",
-      sleepMs: 1,
+      sleepMs: 5,
       tries: 1000,
     });
     await boss.send(EXECUTION_RUN_QUEUE, { tenant_id: srv.tenantId, input: { $file: id } });

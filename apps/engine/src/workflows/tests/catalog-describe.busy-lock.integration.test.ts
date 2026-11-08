@@ -119,7 +119,7 @@ describe("a busy catalog lock", () => {
               (entry as { action?: string; label?: string }).action === "retry_transient" &&
               (entry as { label?: string }).label === label,
           ),
-        { label: `${label} retry`, tries: 200, sleepMs: 5 },
+        { label: `${label} retry`, tries: 200, sleepMs: 20 },
       ),
     ]);
   }

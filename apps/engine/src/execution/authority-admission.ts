@@ -3,7 +3,7 @@ import { z } from "@hono/zod-openapi";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import type { RequestDispatchPolicy } from "../connectors/drivers/http.ts";
 import { loadConnectorSystem } from "../connectors/system.ts";
-import { CatalogVocabularyBusyError, waitForCatalogVocabulary } from "../db/catalog-vocabulary.ts";
+import { CatalogVocabularyBusyError, lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Db, Executor } from "../db/client.ts";
 import {
   executions,
@@ -123,7 +123,7 @@ export async function admitAuthorizedWorkflowExecution(
   return retryTransient(
     () =>
       db.transaction(async (tx) => {
-        await waitForCatalogVocabulary(tx, input.tenant_id);
+        await lockCatalogVocabulary(tx, input.tenant_id);
         await assertTenantActive(input.tenant_id, tx);
         if (input.idempotency_key) {
           const existing = await lockIdempotentExecution(

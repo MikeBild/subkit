@@ -7,23 +7,13 @@ export class CatalogVocabularyBusyError extends Error {
 
 const catalogLockKey = (tenant_id: string) => sql`hashtextextended(${tenant_id}::text, 741937)`;
 
-export async function lockCatalogVocabulary(exec: Executor, tenant_id: string): Promise<void> {
-  const result = await exec.execute<{ locked: boolean }>(
-    sql`SELECT pg_try_advisory_xact_lock(${catalogLockKey(tenant_id)}) AS locked`,
-  );
-  if (result.rows[0]?.locked) return;
-  throw new CatalogVocabularyBusyError(
-    "Catalog vocabulary changed concurrently; retry the operation",
-  );
-}
-
 function isLockNotAvailable(error: unknown, depth = 0): boolean {
   if (depth > 4 || !error || typeof error !== "object") return false;
   if ("code" in error && error.code === "55P03") return true;
   return "cause" in error && isLockNotAvailable(error.cause, depth + 1);
 }
 
-export async function waitForCatalogVocabulary(
+export async function lockCatalogVocabulary(
   exec: Executor,
   tenant_id: string,
   timeoutMs = 1500,

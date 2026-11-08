@@ -42,6 +42,10 @@ describe("isTransientDbError — transient codes", () => {
   test("40001 serialization_failure → true", () => {
     expect(isTransientDbError({ code: "40001" })).toBe(true);
   });
+
+  test("40P01 deadlock_detected → true", () => {
+    expect(isTransientDbError({ code: "40P01" })).toBe(true);
+  });
 });
 
 describe("isTransientDbError — codeless connection-teardown messages", () => {

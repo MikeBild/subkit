@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
-import { waitForCatalogVocabulary } from "../db/catalog-vocabulary.ts";
+import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Db } from "../db/client.ts";
 import { workflows } from "../db/schema/index.ts";
 import { RequestSourceSchema } from "../observability/service-metadata.ts";
@@ -103,7 +103,7 @@ export async function admitWorkflowRun(
     }),
   );
   return db.transaction(async (tx) => {
-    await waitForCatalogVocabulary(tx, input.tenant_id);
+    await lockCatalogVocabulary(tx, input.tenant_id);
     if (input.idempotency_key) {
       const existing = await lockIdempotentExecution(tx, input.tenant_id, input.idempotency_key);
       if (existing) {

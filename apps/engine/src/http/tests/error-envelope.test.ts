@@ -3,6 +3,7 @@ import { type ServerType, serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { PendingElicitationBlockedError } from "../../conversations/service/shared.ts";
 import { LlmTimeoutError } from "../../conversations/turn-failure.ts";
+import { CatalogVocabularyBusyError } from "../../db/catalog-vocabulary.ts";
 import { BadRequestError, ConflictError, HttpError, UnprocessableEntityError } from "../errors.ts";
 import { errorMiddleware, mapKnownErrorResponse } from "../middleware/error.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -250,5 +251,47 @@ describe("error envelope wire — conversation turn conflicts", () => {
     expect(res.status).toBe(500);
     const body = (await res.json()) as ErrorBody;
     expect(body.code).toBe("internal_error");
+  });
+});
+
+describe("error envelope wire — a tenant catalog that stayed busy", () => {
+  let server: ServerType;
+  let baseUrl: string;
+
+  beforeAll(async () => {
+    const app = new Hono<AppEnv>();
+    app.onError((err, c) => {
+      const known = mapKnownErrorResponse(c, err);
+      if (known) return known;
+      return c.json({ code: "internal_error", message: String(err) }, 500);
+    });
+    app.get("/__test__/busy", () => {
+      throw new CatalogVocabularyBusyError("Catalog vocabulary stayed busy; retry the operation");
+    });
+    app.get("/__test__/deadlock", () => {
+      throw new Error("write failed", {
+        cause: Object.assign(new Error("deadlock detected"), { code: "40P01" }),
+      });
+    });
+    server = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
+    const addr = (server as unknown as { address: () => { port: number } | null }).address();
+    if (!addr || typeof addr !== "object") throw new Error("test server address resolution failed");
+    baseUrl = `http://127.0.0.1:${addr.port}`;
+  });
+
+  afterAll(() => {
+    server?.close();
+  });
+
+  test("a lock wait that ran out answers 409 catalog_vocabulary_changed", async () => {
+    const res = await fetch(`${baseUrl}/__test__/busy`);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as ErrorBody).code).toBe("catalog_vocabulary_changed");
+  });
+
+  test("a deadlock while waiting answers the same retryable 409", async () => {
+    const res = await fetch(`${baseUrl}/__test__/deadlock`);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as ErrorBody).code).toBe("catalog_vocabulary_changed");
   });
 });

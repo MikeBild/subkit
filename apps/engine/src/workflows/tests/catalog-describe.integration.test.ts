@@ -410,7 +410,7 @@ describe("category purpose persistence", () => {
             ([entry]) =>
               entry.action === "retry_transient" && entry.label === "category_purpose_catalog",
           ),
-        { label: "category purpose persistence retry", tries: 100, sleepMs: 5 },
+        { label: "category purpose persistence retry", tries: 100, sleepMs: 40 },
       );
       release.resolve();
       await operation;

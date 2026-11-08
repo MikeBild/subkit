@@ -2,10 +2,7 @@ import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { AuditAction } from "../../audit/types.ts";
-import {
-  CatalogVocabularyBusyError,
-  waitForCatalogVocabulary,
-} from "../../db/catalog-vocabulary.ts";
+import { CatalogVocabularyBusyError, lockCatalogVocabulary } from "../../db/catalog-vocabulary.ts";
 import {
   auditLog,
   executionSteps,
@@ -377,12 +374,12 @@ test("the catalog lock wait is bounded and restores the transaction lock timeout
   const holder = holdCatalogLock(f.params.tenant_id, 400);
   await holder.acquired;
   await expect(
-    ctx.db.transaction((tx) => waitForCatalogVocabulary(tx, f.params.tenant_id, 50)),
+    ctx.db.transaction((tx) => lockCatalogVocabulary(tx, f.params.tenant_id, 50)),
   ).rejects.toBeInstanceOf(CatalogVocabularyBusyError);
   await holder.done;
   const timeout = await ctx.db.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('lock_timeout', '7s', true)`);
-    await waitForCatalogVocabulary(tx, f.params.tenant_id, 50);
+    await lockCatalogVocabulary(tx, f.params.tenant_id, 50);
     const result = await tx.execute<{ lock_timeout: string }>(
       sql`SELECT current_setting('lock_timeout') AS lock_timeout`,
     );

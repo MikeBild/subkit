@@ -187,7 +187,10 @@ const CONVERSATION_TURN_ABORT_MESSAGES: Record<string, string> = {
 export function mapKnownErrorResponse(c: Context<AppEnv>, err: unknown): Response | null {
   let databaseError = err;
   for (let depth = 0; depth < 4 && databaseError instanceof Error; depth++) {
-    if ("code" in databaseError && databaseError.code === "40001")
+    if (
+      "code" in databaseError &&
+      (databaseError.code === "40001" || databaseError.code === "40P01")
+    )
       return envelope(
         c,
         409,
