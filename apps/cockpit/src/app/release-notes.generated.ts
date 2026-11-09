@@ -1,7 +1,7 @@
 export type ReleaseNotes = { version: string; notes: string[] };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: string[] } = {
-  "source": "ec9595f0335bfbc0928691e7680d4521c8ce3053",
+  "source": "83bf233573a5bf957473c95740d796d472fe65b8",
   "releases": [
     {
       "version": "v1.0.0",
@@ -1727,6 +1727,7 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
     }
   ],
   "unpublished": [
+    "preserve workflow authoring intent during connector preparation",
     "knowledge chunks preserve Unicode characters within byte limits",
     "cancelled connector requests no longer leak rejected operations",
     "Escape closes the settings editor before the settings dialog",
