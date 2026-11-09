@@ -26,7 +26,12 @@ import {
   retainCoverageRawRun,
   snapshotInputs,
 } from "./audit/coverage-artifacts.ts";
-import { coverageDatabaseUrl } from "./audit/coverage-environment.ts";
+import { validateCoverageBehaviorProof } from "./audit/coverage-behavior-proof.ts";
+import {
+  coverageDatabaseUrl,
+  coverageExecutionContext,
+  coverageTestEnvironment,
+} from "./audit/coverage-environment.ts";
 import {
   aggregateByPrefix,
   type CoverageRun,
@@ -37,7 +42,10 @@ import {
   resolveFileFloors,
   testCandidates,
 } from "./audit/coverage-floor.ts";
-import { planCoverageShardExecution } from "./audit/coverage-shard-plan.ts";
+import {
+  planCoverageBehaviorGroups,
+  planCoverageShardExecution,
+} from "./audit/coverage-shard-plan.ts";
 import { listFiles } from "./audit/files.ts";
 import { coverageRows, type LcovRecord, mergeLcov, parseLcov, renderLcov } from "./audit/lcov.ts";
 import { createClosureAnalysis, directTestPaths } from "./audit/mutation-closure.ts";
@@ -65,6 +73,8 @@ const COVERAGE_CONFIG_INPUTS = [
   "apps/engine/.coverage-floor.json",
   "apps/engine/scripts/check-coverage-floor.ts",
   "apps/engine/scripts/audit/coverage-artifacts.ts",
+  "apps/engine/scripts/audit/coverage-behavior-proof.ts",
+  "apps/engine/scripts/audit/coverage-environment.ts",
   "apps/engine/scripts/audit/coverage-publication.ts",
   "apps/engine/scripts/audit/bounded-runner.ts",
   "apps/engine/scripts/audit/coverage-floor.ts",
@@ -101,10 +111,12 @@ let waveContext:
       manifestSha256: string;
       tests: Map<string, string[]>;
       typeOnlyTargets: ReadonlySet<string>;
+      resourceTags: readonly string[];
     }
   | undefined;
 let waveDatabaseUrl: string | undefined;
 const canonicalTestsByTarget = new Map<string, string[]>();
+let behaviorEvidence: { sha256: string; text: string } | undefined;
 
 const coverageInputFiles = (): string[] => [
   ...COVERAGE_INPUT_ROOTS.flatMap((root) =>
@@ -147,16 +159,8 @@ function invalidDeclaredTests(tests: readonly string[]): string[] {
   });
 }
 
-function coverageTestEnvironment(databaseUrl = waveDatabaseUrl): NodeJS.ProcessEnv {
-  return {
-    ...process.env,
-    NODE_ENV: "test",
-    LLM_PROVIDER: "mock",
-    SKIP_DOCKER: "1",
-    DATABASE_URL: databaseUrl ?? localDatabaseUrl(process.env),
-    MASTER_KEY:
-      process.env.MASTER_KEY ?? "00000000000000000000000000000000000000000000000000000000000000aa",
-  };
+function currentCoverageTestEnvironment(): NodeJS.ProcessEnv {
+  return coverageTestEnvironment(process.env, waveDatabaseUrl ?? localDatabaseUrl(process.env));
 }
 
 export function testUsesModuleMock(test: string): boolean {
@@ -207,7 +211,7 @@ async function runCoverageGroup(
       {
         cwd: REPO,
         env: {
-          ...coverageTestEnvironment(),
+          ...currentCoverageTestEnvironment(),
           HOME: home.path,
           USERPROFILE: home.path,
           SUBKIT_TEST_HOME: home.path,
@@ -310,13 +314,59 @@ async function runClosureBehaviorTests(tests: readonly string[]): Promise<string
       await runIsolatedTestFile(test, {
         cwd: REPO,
         deadlineMs: 300_000,
-        env: coverageTestEnvironment(),
+        env: currentCoverageTestEnvironment(),
       });
     } catch (error) {
       return `${test}: ${error instanceof Error ? error.message : String(error)}`;
     }
   }
   return undefined;
+}
+
+function verifiedBehaviorReceipt(tests: readonly string[]): string | undefined {
+  const path = process.env.SUBKIT_COVERAGE_BEHAVIOR_RECEIPT;
+  if (path === undefined) return undefined;
+  if (!waveContext) return "behavior receipt is only valid for a wave shard";
+  let text: string;
+  try {
+    text = readFileSync(path, "utf8");
+    const sha256 = createHash("sha256").update(text).digest("hex");
+    validateCoverageBehaviorProof({
+      text,
+      sha256,
+      repo: REPO,
+      wave_id: waveContext.manifest.wave_id,
+      manifest_sha256: waveContext.manifestSha256,
+      source_sha256: waveContext.manifest.source_freeze_sha256,
+      test_sha256: waveContext.manifest.test_freeze_sha256,
+      config_sha256: waveContext.manifest.config_sha256,
+      context_sha256: digest([
+        JSON.stringify(
+          coverageExecutionContext(currentCoverageTestEnvironment(), waveContext.resourceTags),
+          null,
+          2,
+        ),
+        "\n",
+      ]),
+      resource_tags: waveContext.resourceTags,
+      tests,
+      executed_tests:
+        planCoverageBehaviorGroups({
+          shards: waveContext.manifest.shards.map((shard) => ({
+            ...shard,
+            targets: shard.targets.filter((target) => !waveContext!.typeOnlyTargets.has(target)),
+          })),
+          usesModuleMock: testUsesModuleMock,
+        }).find(
+          (group) =>
+            JSON.stringify(group.resource_tags) === JSON.stringify(waveContext!.resourceTags),
+        )?.tests ?? [],
+    });
+    behaviorEvidence = { sha256, text };
+  } catch {
+    return "behavior receipt is unreadable";
+  }
+  return "";
 }
 
 async function persistCoverageArtifact(): Promise<string | undefined> {
@@ -393,6 +443,7 @@ async function persistCoverageArtifact(): Promise<string | undefined> {
           path: proof.relativePath,
           sha256: proof.sha256,
         })),
+        ...(behaviorEvidence ? { behavior_evidence: behaviorEvidence } : {}),
         ...(waveContext
           ? {
               wave_id: waveContext.manifest.wave_id,
@@ -516,6 +567,7 @@ if (cliArgs[0] === "--wave-manifest") {
     shardId: shard.id,
     manifestSha256: digest([text]),
     tests: new Map(shard.targets.map((target) => [target, shard.tests.map((test) => test.path)])),
+    resourceTags: [...shard.resource_tags].sort(),
     typeOnlyTargets: new Set(
       entries.filter((entry) => entry.runtime_kind === "type_only").map((entry) => entry.path),
     ),
@@ -665,7 +717,11 @@ if (waveContext) {
         status: "SKIP",
         message: "type_only_ast (line/function runtime coverage not applicable)",
       });
-  const behaviorError = await runClosureBehaviorTests(execution.behaviorOnlyTests);
+  const behaviorReceipt = verifiedBehaviorReceipt(execution.behaviorOnlyTests);
+  const behaviorError =
+    behaviorReceipt === undefined
+      ? await runClosureBehaviorTests(execution.behaviorOnlyTests)
+      : behaviorReceipt || undefined;
   if (behaviorError)
     results.push({
       target: "closure",

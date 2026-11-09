@@ -129,6 +129,23 @@ export async function exportShardQualityEvidence(options: {
       ...native.targetProofPaths,
     ])
       add(file);
+    const provenance = JSON.parse(readFileSync(native.provenancePath, "utf8")) as {
+      behavior_evidence?: { text?: unknown };
+    };
+    const behavior = provenance.behavior_evidence?.text;
+    if (behavior !== undefined) {
+      if (typeof behavior !== "string") throw new Error("Coverage behavior evidence is malformed");
+      const proof = JSON.parse(behavior) as { terminal?: Array<Record<string, unknown>> };
+      if (!Array.isArray(proof.terminal))
+        throw new Error("Coverage behavior terminal evidence is malformed");
+      for (const terminal of proof.terminal)
+        for (const key of ["manifest_path", "result_path", "log_path"] as const) {
+          const path = terminal[key];
+          if (typeof path !== "string" || !isCanonicalRepoPath(path))
+            throw new Error("Coverage behavior artifact path is noncanonical");
+          add(join(repo, path));
+        }
+    }
   }
   const ledger = JSON.parse(readFileSync(join(repo, wave.dynamic_import_ledger_path), "utf8")) as {
     runtime_witnesses: { execution_receipt_path: string }[];

@@ -14,9 +14,11 @@ export function qualityChainFixture(
   policyBound = false,
   externalRuntime = false,
   equivalentSurvivor = false,
+  behaviorEvidence = false,
 ) {
   const f = frozenWaveFixture();
   const { wave, put, root } = f;
+  if (behaviorEvidence) wave.shards[0]!.tests[0]!.kind = "reverse_import";
   const allTargets = f.targets;
   const equivalentTarget = allTargets[0]!;
   const equivalentSource = "export const fixture = (true ? 1 : 1);\n";
@@ -172,6 +174,47 @@ export function qualityChainFixture(
     for (const proof of proofs) put(`${nativeRoot}/${proof.path}`, proof.lcov);
     const lcovText = proofs.map((proof) => proof.lcov).join("");
     const coverageConfig = hash("coverage-config");
+    const behavior =
+      behaviorEvidence && shard.tests.some((test) => test.kind !== "direct")
+        ? (() => {
+            const base = `.artifacts/behavior/${shard.id}`;
+            const manifest = JSON.stringify({ status: "passed" });
+            const result = JSON.stringify({
+              status: "passed",
+              test: shard.tests[0]!.path,
+              context_sha256: "e".repeat(64),
+              outcome: { exitCode: 0, timedOut: false, error: null },
+            });
+            const log = "native behavior output\n";
+            put(`${base}/manifest.json`, manifest);
+            put(`${base}/result.json`, result);
+            put(`${base}/runner.log`, log);
+            const text = JSON.stringify({
+              version: 2,
+              wave_id: wave.wave_id,
+              manifest_sha256: manifestHash,
+              source_sha256: wave.source_freeze_sha256,
+              test_sha256: wave.test_freeze_sha256,
+              config_sha256: wave.config_sha256,
+              context_sha256: "e".repeat(64),
+              resource_tags: shard.resource_tags,
+              tests: [shard.tests[0]!.path],
+              executed_tests: [shard.tests[0]!.path],
+              terminal: [
+                {
+                  test: shard.tests[0]!.path,
+                  manifest_path: `${base}/manifest.json`,
+                  manifest_sha256: hash(manifest),
+                  result_path: `${base}/result.json`,
+                  result_sha256: hash(result),
+                  log_path: `${base}/runner.log`,
+                  log_sha256: hash(log),
+                },
+              ],
+            });
+            return { sha256: hash(text), text };
+          })()
+        : undefined;
     const provenanceText = JSON.stringify({
       version: 4,
       wave_id: wave.wave_id,
@@ -183,6 +226,7 @@ export function qualityChainFixture(
       wave_base_config_sha256: wave.config_sha256,
       config_sha256: coverageConfig,
       direct_target_evidence: refs,
+      ...(behavior ? { behavior_evidence: behavior } : {}),
     });
     const nativeReceiptText = JSON.stringify({
       version: 1,

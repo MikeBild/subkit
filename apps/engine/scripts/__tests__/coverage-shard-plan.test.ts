@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
-import { planCoverageShardExecution } from "../audit/coverage-shard-plan.ts";
+import {
+  planCoverageBehaviorGroups,
+  planCoverageShardExecution,
+} from "../audit/coverage-shard-plan.ts";
 
 const target = "apps/engine/src/example/core.ts";
 
@@ -72,4 +75,21 @@ test("keeps external-runtime Docker acceptance out of coverage and in-process be
   expect(plan.coverageTests).toEqual(["core.test.ts"]);
   expect(plan.behaviorOnlyTests).toEqual([]);
   expect(plan.externalRuntimeTests).toEqual(["tests/docker/bootstrap.docker.test.ts"]);
+});
+
+test("deduplicates only behavior tests with the same resource context", () => {
+  const shared = { path: "consumer.test.ts", kind: "reverse_import", covers_targets: [target] };
+  expect(
+    planCoverageBehaviorGroups({
+      shards: [
+        { id: "a", targets: [target], tests: [shared], resource_tags: ["db"] },
+        { id: "b", targets: [target], tests: [shared], resource_tags: ["db"] },
+        { id: "c", targets: [target], tests: [shared], resource_tags: [] },
+      ],
+      usesModuleMock: () => false,
+    }),
+  ).toEqual([
+    { key: "", resource_tags: [], tests: ["consumer.test.ts"], shards: ["c"] },
+    { key: "db", resource_tags: ["db"], tests: ["consumer.test.ts"], shards: ["a", "b"] },
+  ]);
 });

@@ -9,6 +9,13 @@ export type IsolatedTestFileOptions = {
   deadlineMs?: number;
   killGraceMs?: number;
   env?: NodeJS.ProcessEnv;
+  onTerminal?: (outcome: {
+    exitCode: number | null;
+    signal: string | null;
+    timedOut: boolean;
+    error: string | null;
+  }) => void;
+  onOutput?: (chunk: Buffer) => void;
 };
 
 const DOCKER_CLI_PLUGIN_DIRS = [
@@ -49,7 +56,7 @@ function dockerHost(env: NodeJS.ProcessEnv | undefined): string | undefined {
 
 export async function runIsolatedTestFile(
   file: string,
-  { cwd, deadlineMs, killGraceMs = 5_000, env }: IsolatedTestFileOptions,
+  { cwd, deadlineMs, killGraceMs = 5_000, env, onTerminal, onOutput }: IsolatedTestFileOptions,
 ): Promise<void> {
   const home = createIsolatedTestHome();
   try {
@@ -74,11 +81,31 @@ export async function runIsolatedTestFile(
     const child = startOwnedChild(
       "bun",
       ["test", "--timeout", dockerTest ? "600000" : "120000", file],
-      { cwd, env: childEnv, stdio: "inherit" },
+      { cwd, env: childEnv, stdio: onOutput ? ["ignore", "pipe", "pipe"] : "inherit" },
       effectiveDeadlineMs,
       killGraceMs,
     );
+    let outputError: unknown;
+    if (onOutput) {
+      const capture = (chunk: Buffer) => {
+        try {
+          onOutput(chunk);
+        } catch (error) {
+          outputError ??= error;
+          child.stop();
+        }
+      };
+      child.child.stdout?.on("data", capture);
+      child.child.stderr?.on("data", capture);
+    }
     const outcome = await child.completed;
+    onTerminal?.({
+      exitCode: outcome.exitCode ?? null,
+      signal: outcome.signal ?? null,
+      timedOut: outcome.timedOut,
+      error: outcome.error ? String(outcome.error) : null,
+    });
+    if (outputError !== undefined) throw outputError;
     if (outcome.timedOut) {
       throw new Error(`${file} exceeded the ${effectiveDeadlineMs}ms process deadline`);
     }

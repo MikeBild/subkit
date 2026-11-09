@@ -149,6 +149,28 @@ test("requires explicit not-applicable receipt evidence for a type-only target",
     "runtime/type-only audit mismatch",
   );
 });
+
+test("rejects a behavior closure without its terminal proof", () => {
+  const value = fixture();
+  value.wave = {
+    ...wave,
+    shards: wave.shards.map((shard, index) =>
+      index === 0
+        ? {
+            ...shard,
+            tests: [
+              {
+                path: "apps/engine/scripts/__tests__/coverage-union.test.ts",
+                kind: "reverse_import",
+                covers_targets: [paths[0]!],
+              },
+            ],
+          }
+        : shard,
+    ),
+  };
+  expect(validateCoverageShardUnion(value).join("\n")).toContain("has no behavior evidence");
+});
 test("rejects each native provenance wave binding", () => {
   for (const key of [
     "wave_id",

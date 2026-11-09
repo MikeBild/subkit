@@ -58,7 +58,7 @@ function bindParentTicket(source: ReturnType<typeof qualityChainFixture>): void 
 }
 
 test("complete policy-bound evidence survives another checkout and rejects changed proof bytes", async () => {
-  const source = qualityChainFixture(true, true);
+  const source = qualityChainFixture(true, true, false, true);
   const transfer = realpathSync(mkdtempSync(join(tmpdir(), "subkit-quality-transfer-")));
   const git = (cwd: string, args: string[]) =>
     execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -97,7 +97,11 @@ test("complete policy-bound evidence survives another checkout and rejects chang
       commit_sha: string;
     };
     expect(index.commit_sha).toBe(commit);
-    expect(index.files.some((file) => file.path.endsWith("runner.log"))).toBe(false);
+    expect(
+      index.files.some(
+        (file) => file.path.includes(".artifacts/behavior/") && file.path.endsWith("runner.log"),
+      ),
+    ).toBe(true);
     expect(
       index.files.filter((file) => file.path.includes(".build-index.json.receipts/")).length,
     ).toBe(10);
@@ -105,6 +109,11 @@ test("complete policy-bound evidence survives another checkout and rejects chang
     expect(index.files.some((file) => file.path.endsWith("mutation-validation-ticket.json"))).toBe(
       true,
     );
+    expect(
+      index.files.some(
+        (file) => file.path.includes(".artifacts/behavior/") && file.path.endsWith("result.json"),
+      ),
+    ).toBe(true);
     const checkout = join(transfer, "checkout");
     git(transfer, ["clone", "--quiet", "--no-hardlinks", source.root, checkout]);
     cpSync(bundle, checkout, { recursive: true });

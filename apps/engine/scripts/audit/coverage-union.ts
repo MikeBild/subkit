@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
+import { validateCoverageBehaviorProof } from "./coverage-behavior-proof.ts";
+import { planCoverageShardExecution } from "./coverage-shard-plan.ts";
 import { coverageRows, parseLcov } from "./lcov.ts";
 import type { MutationWaveManifest } from "./mutation-wave.ts";
 
@@ -223,6 +226,60 @@ export function validateCoverageShardUnion(input: CoverageUnionInput): string[] 
       ["wave_base_config_sha256", input.wave.config_sha256],
     ] as const)
       if (provenance[key] !== value) errors.push(`${prefix} provenance ${key} mismatch`);
+    const behaviorTests = planCoverageShardExecution({
+      targets: runtimeTargets,
+      tests: shard.tests,
+      usesModuleMock: (test) =>
+        readFileSync(join(input.repo, test), "utf8").includes("mock.module("),
+    }).behaviorOnlyTests;
+    const behavior = record(provenance.behavior_evidence);
+    if (behaviorTests.length === 0) {
+      if (behavior !== null) errors.push(`${prefix} has unexpected behavior evidence`);
+    } else if (
+      !behavior ||
+      typeof behavior.text !== "string" ||
+      typeof behavior.sha256 !== "string"
+    )
+      errors.push(`${prefix} has no behavior evidence`);
+    else
+      try {
+        const group = planCoverageShardExecution({
+          targets: runtimeTargets,
+          tests: shard.tests,
+          usesModuleMock: (test) =>
+            readFileSync(join(input.repo, test), "utf8").includes("mock.module("),
+        });
+        const shared = input.wave.shards
+          .filter(
+            (candidate) =>
+              JSON.stringify([...new Set(candidate.resource_tags)].sort()) ===
+              JSON.stringify([...new Set(shard.resource_tags)].sort()),
+          )
+          .flatMap(
+            (candidate) =>
+              planCoverageShardExecution({
+                targets: candidate.targets.filter((target) => runtimeScope.has(target)),
+                tests: candidate.tests,
+                usesModuleMock: (test) =>
+                  readFileSync(join(input.repo, test), "utf8").includes("mock.module("),
+              }).behaviorOnlyTests,
+          );
+        validateCoverageBehaviorProof({
+          text: behavior.text,
+          sha256: behavior.sha256,
+          repo: input.repo,
+          wave_id: input.wave.wave_id,
+          manifest_sha256: input.manifestSha256,
+          source_sha256: input.sourceSha256,
+          test_sha256: input.wave.test_freeze_sha256,
+          config_sha256: input.wave.config_sha256,
+          resource_tags: shard.resource_tags,
+          tests: group.behaviorOnlyTests,
+          executed_tests: [...new Set(shared)].sort(),
+        });
+      } catch (error) {
+        errors.push(`${prefix} behavior evidence rejected: ${String(error)}`);
+      }
     const refs = references(receipt.direct_target_evidence);
     if (
       refs === null ||

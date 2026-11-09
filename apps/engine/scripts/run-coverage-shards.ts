@@ -4,6 +4,13 @@ import { join, relative, resolve } from "node:path";
 import { verificationRunsRoot } from "../../../scripts/lib/verification-run-lifecycle.ts";
 import { runWithVerificationLog } from "../../../scripts/run-with-verification-log.ts";
 import { readPublishedCoverage } from "./audit/coverage-artifacts.ts";
+import { executeCoverageBehaviorTests } from "./audit/coverage-behavior-proof.ts";
+import {
+  coverageDatabaseUrl,
+  coverageExecutionContext,
+  coverageTestEnvironment,
+} from "./audit/coverage-environment.ts";
+import { planCoverageBehaviorGroups } from "./audit/coverage-shard-plan.ts";
 import {
   type CoverageShardNative,
   type CoverageShardReceipt,
@@ -42,14 +49,67 @@ export async function executeCoverageWave(options: {
   const root = join(repo, "reports/coverage/shards", wave.wave_id, runId);
   mkdirSync(root, { recursive: true });
   writeFileSync(join(root, "wave.json"), manifestText, { flag: "wx" });
-  const batches = planMutationBatches(wave.shards, wave.worker_budget);
-  const receipts: CoverageShardReceipt[] = [];
-  const native: CoverageShardNative[] = [];
   const assertUnchanged = () => {
     const current = loadMutationWave(repo, manifestPath);
     if (hash(current.manifestText) !== manifestSha256)
       throw new Error("Coverage wave changed during execution");
   };
+  const behaviorRoot = join(root, "behavior");
+  mkdirSync(behaviorRoot);
+  const behaviorReceipts = new Map<string, string>();
+  const behaviorShards = wave.shards.map((shard) => ({
+    ...shard,
+    targets: shard.targets.filter((target) => runtimeScope.includes(target)),
+  }));
+  for (const group of planCoverageBehaviorGroups({
+    shards: behaviorShards,
+    usesModuleMock: (test) => readFileSync(join(repo, test), "utf8").includes("mock.module("),
+  })) {
+    assertUnchanged();
+    const database = coverageDatabaseUrl(process.env, group.resource_tags);
+    if (database.error) throw new Error(database.error);
+    const environment = coverageTestEnvironment(process.env, database.url);
+    const contextSha256 = hash(json(coverageExecutionContext(environment, group.resource_tags)));
+    const terminal = await executeCoverageBehaviorTests({
+      repo,
+      artifactRoot: behaviorRoot,
+      owner: `coverage-behavior:${wave.wave_id}:${runId}`,
+      sourceDigest: wave.source_freeze_sha256,
+      contextSha256,
+      tests: group.tests,
+      env: environment,
+    });
+    assertUnchanged();
+    for (const shardId of group.shards) {
+      const shard = behaviorShards.find((candidate) => candidate.id === shardId)!;
+      const local = planCoverageBehaviorGroups({
+        shards: [shard],
+        usesModuleMock: (test) => readFileSync(join(repo, test), "utf8").includes("mock.module("),
+      })[0]!.tests;
+      const path = join(behaviorRoot, `${hash(`${shardId}\0${local.join("\0")}`)}.json`);
+      writeFileSync(
+        path,
+        json({
+          version: 2,
+          wave_id: wave.wave_id,
+          manifest_sha256: manifestSha256,
+          source_sha256: wave.source_freeze_sha256,
+          test_sha256: wave.test_freeze_sha256,
+          config_sha256: wave.config_sha256,
+          context_sha256: contextSha256,
+          resource_tags: group.resource_tags,
+          tests: local,
+          executed_tests: group.tests,
+          terminal,
+        }),
+        { flag: "wx" },
+      );
+      behaviorReceipts.set(shardId, path);
+    }
+  }
+  const batches = planMutationBatches(wave.shards, wave.worker_budget);
+  const receipts: CoverageShardReceipt[] = [];
+  const native: CoverageShardNative[] = [];
   try {
     for (const batch of batches) {
       assertUnchanged();
@@ -105,6 +165,9 @@ export async function executeCoverageWave(options: {
               ...process.env,
               SUBKIT_COVERAGE_DIR: coverageDir,
               SUBKIT_COVERAGE_CONCURRENCY: coverageShardConcurrency(workers, shard.resource_tags),
+              ...(behaviorReceipts.has(id)
+                ? { SUBKIT_COVERAGE_BEHAVIOR_RECEIPT: behaviorReceipts.get(id)! }
+                : {}),
             },
             timeoutMs,
           });

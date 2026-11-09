@@ -97,6 +97,7 @@ const RUNNER_INPUTS = [
   "apps/engine/scripts/audit/mutation-union.ts",
   "apps/engine/scripts/audit/mutation-shard-score.ts",
   "apps/engine/scripts/audit/coverage-union.ts",
+  "apps/engine/scripts/audit/coverage-behavior-proof.ts",
   "apps/engine/scripts/audit/coverage-artifacts.ts",
   "apps/engine/scripts/audit/coverage-publication.ts",
   "apps/engine/scripts/audit/coverage-retention.ts",

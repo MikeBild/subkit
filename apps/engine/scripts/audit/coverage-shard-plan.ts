@@ -14,6 +14,13 @@ export interface CoverageShardExecutionPlan {
   errors: string[];
 }
 
+export interface CoverageBehaviorGroup {
+  key: string;
+  resource_tags: string[];
+  tests: string[];
+  shards: string[];
+}
+
 export function planCoverageShardExecution(input: {
   targets: readonly string[];
   tests: readonly CoverageShardTest[];
@@ -52,4 +59,36 @@ export function planCoverageShardExecution(input: {
     directTargetsByTest,
     errors,
   };
+}
+
+export function planCoverageBehaviorGroups(input: {
+  shards: readonly {
+    id: string;
+    targets: readonly string[];
+    tests: readonly CoverageShardTest[];
+    resource_tags: readonly string[];
+  }[];
+  usesModuleMock: (test: string) => boolean;
+}): CoverageBehaviorGroup[] {
+  const groups = new Map<string, CoverageBehaviorGroup>();
+  for (const shard of input.shards) {
+    const plan = planCoverageShardExecution({
+      targets: shard.targets,
+      tests: shard.tests,
+      usesModuleMock: input.usesModuleMock,
+    });
+    const resource_tags = [...new Set(shard.resource_tags)].sort();
+    const key = resource_tags.join("\0");
+    const group = groups.get(key) ?? { key, resource_tags, tests: [], shards: [] };
+    group.tests.push(...plan.behaviorOnlyTests);
+    group.shards.push(shard.id);
+    groups.set(key, group);
+  }
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      tests: [...new Set(group.tests)].sort(),
+      shards: [...new Set(group.shards)].sort(),
+    }))
+    .sort((left, right) => left.key.localeCompare(right.key));
 }
