@@ -18,12 +18,14 @@ export function frozenWaveFixture() {
   };
   const targets = [...EXPLICIT_PURE_TARGET_PATHS, ...REVIEWED_ENGINE_CORE_TARGET_PATHS].sort();
   const tests = targets.map((target) => target.replace(/\.ts$/, ".test.ts"));
+  put("package.json", '{"patchedDependencies":{}}\n');
   for (const [index, target] of targets.entries()) {
     put(target, "export const fixture = true;\n");
     put(tests[index]!, `import { fixture } from "./${target.split("/").at(-1)}"; void fixture;\n`);
   }
   for (const file of mutationTestInputs(root)) {
-    if (!targets.includes(file) && !tests.includes(file)) put(file, "\n");
+    if (file !== "package.json" && !targets.includes(file) && !tests.includes(file))
+      put(file, "\n");
   }
   put(
     "stryker.config.json",
