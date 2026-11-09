@@ -1,12 +1,41 @@
 import { describe, expect, test } from "bun:test";
 import {
   createClosureAnalysis,
+  directTestPaths,
   reviewedClosure,
   reviewedClosurePlan,
   reviewedClosurePlanFromAnalysis,
 } from "../audit/mutation-closure.ts";
 
 describe("reviewed mutation closure", () => {
+  test("coverage and mutation agree on runtime direct tests across names and facades", () => {
+    const source: Record<string, string> = {
+      "src/core.ts": "export const core = 1; export type Shape = number;",
+      "src/facade.ts": 'export { core } from "./core.ts";',
+      "src/behavior-contract.test.ts": 'import { core } from "./core";',
+      "src/facade.test.ts": 'import { core } from "./facade.ts";',
+      "src/types.test.ts": 'import type { Shape } from "./core.ts";',
+      "src/core.test.ts": "const unrelated = true;",
+    };
+    const analysis = createClosureAnalysis({
+      files: Object.keys(source),
+      readText: (path) => source[path] ?? null,
+      tsconfig: "{}",
+      cockpitTsconfig: "{}",
+    });
+    const direct = directTestPaths(analysis, "src/core.ts");
+    expect(direct).toEqual(["src/behavior-contract.test.ts"]);
+    const closure = reviewedClosurePlanFromAnalysis(analysis, {
+      targets: ["src/core.ts"],
+      declared: [],
+    });
+    expect(
+      closure.tests.filter((entry) => entry.kind === "direct").map((entry) => entry.path),
+    ).toEqual(direct);
+    expect(closure.tests.find((entry) => entry.path === "src/facade.test.ts")?.kind).toBe(
+      "reverse_import",
+    );
+  });
   test("reuses one cached reverse graph and source reads across independent shard plans", () => {
     const source: Record<string, string> = {
       "src/a.ts": "export const a = 1;",

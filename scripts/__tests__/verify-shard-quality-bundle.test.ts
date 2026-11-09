@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test";
-import { parseQualityBundleIndex } from "../verify-shard-quality-bundle.ts";
+import {
+  DEFAULT_QUALITY_BUNDLE_INDEX,
+  parseQualityBundleIndex,
+  qualityBundleIndexPath,
+} from "../verify-shard-quality-bundle.ts";
 
 const commit = "a".repeat(40);
 const index = {
@@ -35,4 +39,18 @@ test("rejects missing evidence, duplicate files and path escapes", () => {
     { ...index, files: [...index.files, { path: "reports/extra", sha256: "bad" }] },
   ])
     expect(() => parseQualityBundleIndex(value, commit)).toThrow();
+});
+
+test("uses a root index by default and accepts only canonical repository-relative indexes", () => {
+  expect(qualityBundleIndexPath()).toBe(DEFAULT_QUALITY_BUNDLE_INDEX);
+  expect(qualityBundleIndexPath("reports/quality-export/shards/quality-bundle.json")).toBe(
+    "reports/quality-export/shards/quality-bundle.json",
+  );
+  for (const path of [
+    "",
+    "../quality-bundle.json",
+    "/tmp/quality-bundle.json",
+    "reports\\bundle.json",
+  ])
+    expect(() => qualityBundleIndexPath(path)).toThrow("not canonical");
 });

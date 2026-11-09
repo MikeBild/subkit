@@ -30,18 +30,16 @@ export const REPORT_DELIVERY_REFUSALS = [
 ] as const;
 export type ReportDeliveryRefusal = (typeof REPORT_DELIVERY_REFUSALS)[number];
 
-const KNOWN_REFUSALS: ReadonlySet<string> = new Set(REPORT_DELIVERY_REFUSALS);
+const KNOWN_REFUSALS: ReadonlySet<unknown> = new Set(REPORT_DELIVERY_REFUSALS);
 
 export function reportRefusalReason(error: unknown): ReportDeliveryRefusal | null {
   const record = error as { code?: unknown; reason?: unknown } | null;
   if (record?.code !== "execution_authority_changed") return null;
-  return typeof record.reason === "string" && KNOWN_REFUSALS.has(record.reason)
-    ? (record.reason as ReportDeliveryRefusal)
-    : null;
+  return KNOWN_REFUSALS.has(record.reason) ? (record.reason as ReportDeliveryRefusal) : null;
 }
 
-const MESSAGE_REFUSALS: ReadonlySet<string> = new Set(REPORT_MESSAGE_REFUSALS);
+const MESSAGE_REFUSALS: ReadonlySet<unknown> = new Set(REPORT_MESSAGE_REFUSALS);
 
 export function isReportMessageRefusal(reason: unknown): reason is ReportMessageRefusal {
-  return typeof reason === "string" && MESSAGE_REFUSALS.has(reason);
+  return MESSAGE_REFUSALS.has(reason);
 }

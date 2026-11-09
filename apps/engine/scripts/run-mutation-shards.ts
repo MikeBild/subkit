@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { verificationRunsRoot } from "../../../scripts/lib/verification-run-lifecycle.ts";
 import { runWithVerificationLog } from "../../../scripts/run-with-verification-log.ts";
@@ -7,6 +7,10 @@ import { readMutationEquivalentManifest } from "./audit/mutation-floor.ts";
 import { mutationClosureFiles, mutationTestInputs } from "./audit/mutation-inputs.ts";
 import { planMutationBatches } from "./audit/mutation-scheduler.ts";
 import { buildMutationShardConfig } from "./audit/mutation-shard-config.ts";
+import {
+  inspectMutationShardScore,
+  summarizeMutationScores,
+} from "./audit/mutation-shard-score.ts";
 import {
   type MutationShardReceipt,
   type MutationShardUnionInput,
@@ -29,6 +33,34 @@ import { assertCanonicalWaveOwners } from "./audit/quality-shard-policy.ts";
 const REPO = resolve(import.meta.dir, "../../..");
 const hash = (text: string | Uint8Array) => createHash("sha256").update(text).digest("hex");
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
+const STRYKER_TEMP_PARENT = ".stryker-tmp";
+const STRYKER_TEMP_MARKER = ".subkit-owned-parent";
+const STRYKER_TEMP_MARKER_CONTENT = "subkit persistent stryker temp parent v1\n";
+
+export function ensurePersistentStrykerTempParent(repo: string): void {
+  const parent = join(repo, STRYKER_TEMP_PARENT);
+  const marker = join(parent, STRYKER_TEMP_MARKER);
+  mkdirSync(parent, { recursive: true });
+  if (!lstatSync(parent).isDirectory())
+    throw new Error("Stryker temp parent is not an owned directory");
+  const verify = () => {
+    const stat = lstatSync(marker);
+    if (!stat.isFile() || readFileSync(marker, "utf8") !== STRYKER_TEMP_MARKER_CONTENT)
+      throw new Error("Stryker temp parent marker is not owned by Subkit");
+  };
+  try {
+    verify();
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+    try {
+      writeFileSync(marker, STRYKER_TEMP_MARKER_CONTENT, { encoding: "utf8", flag: "wx" });
+    } catch (writeError) {
+      if (!(writeError instanceof Error && "code" in writeError && writeError.code === "EEXIST"))
+        throw writeError;
+      verify();
+    }
+  }
+}
 
 export function loadMutationWave(repo: string, manifestPath: string) {
   const files = mutationClosureFiles(repo);
@@ -81,6 +113,7 @@ export async function executeMutationWave(options: {
   const runId = `run-${randomUUID()}`;
   const root = join(repo, "reports/mutation/runs", wave.wave_id, runId);
   mkdirSync(root, { recursive: true });
+  ensurePersistentStrykerTempParent(repo);
   const executionManifestPath = join(root, "wave.json");
   writeFileSync(executionManifestPath, manifestText, { flag: "wx" });
   const batches = planMutationBatches(wave.shards, wave.worker_budget);
@@ -206,8 +239,32 @@ export async function executeMutationWave(options: {
       if (outcome.status === "rejected") failures.push(String(outcome.reason));
       else {
         results.push(outcome.value);
-        if (outcome.value.exitCode !== 0)
-          failures.push(`${outcome.value.id} exited ${outcome.value.exitCode}`);
+        const result = outcome.value;
+        if (result.reportText === "") {
+          if (result.exitCode !== 0) failures.push(`${result.id} exited ${result.exitCode}`);
+        } else {
+          try {
+            const targets = wave.shards
+              .find((shard) => shard.id === result.id)!
+              .targets.filter((target) => runtimeScope.includes(target));
+            const scoring = inspectMutationShardScore({
+              report: JSON.parse(result.reportText),
+              exitCode: result.exitCode,
+              manifest: {
+                ...equivalents,
+                equivalents: equivalents.equivalents.filter((entry) =>
+                  targets.includes(entry.file),
+                ),
+              },
+              repo,
+              expectedScope: targets,
+              sourceSha256ForFile: (file) => hash(readFileSync(join(repo, file))),
+            });
+            failures.push(...scoring.errors.map((error) => `${result.id}: ${error}`));
+          } catch (error) {
+            failures.push(`${result.id}: ${String(error)}`);
+          }
+        }
       }
     }
     if (failures.length > 0) {
@@ -238,6 +295,24 @@ export async function executeMutationWave(options: {
     });
     throw new Error(`Mutation union rejected: ${errors.join("; ")}`);
   }
+  const scores = results.flatMap((result) => {
+    if (result.reportText === "") return [];
+    const targets = wave.shards
+      .find((shard) => shard.id === result.id)!
+      .targets.filter((target) => runtimeScope.includes(target));
+    return inspectMutationShardScore({
+      report: JSON.parse(result.reportText),
+      exitCode: result.exitCode,
+      manifest: {
+        ...equivalents,
+        equivalents: equivalents.equivalents.filter((entry) => targets.includes(entry.file)),
+      },
+      repo,
+      expectedScope: targets,
+      sourceSha256ForFile: (file) => hash(readFileSync(join(repo, file))),
+    }).scores;
+  });
+  const scoreSummary = summarizeMutationScores(scores);
   const unionPath = join(root, "union.json");
   writeFileSync(
     unionPath,
@@ -251,7 +326,10 @@ export async function executeMutationWave(options: {
         id: result.id,
         receipt_sha256: hash(result.receiptText),
       })),
-      mutation_score: 100,
+      mutation_score: scoreSummary.adjusted_score,
+      raw_mutation_score: scoreSummary.raw_score,
+      adjusted_mutation_score: scoreSummary.adjusted_score,
+      score_summary: scoreSummary,
       coverage_verification: "pending",
     }),
     { flag: "wx" },

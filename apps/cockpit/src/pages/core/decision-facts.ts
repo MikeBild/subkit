@@ -73,7 +73,7 @@ export function suggestionTargets(
 }
 
 export function humanStep(stepKey: string): string {
-  return stepKey.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  return stepKey.replace(/[_-]/g, " ").replace(/\s+/g, " ").trim();
 }
 function valueAt(source: unknown, path: string): unknown {
   return path

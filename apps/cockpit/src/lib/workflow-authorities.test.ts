@@ -54,6 +54,11 @@ test("authority core offers a bounded approval only when it is active and writab
   expect(coreUntilRevokedOffer(authority, now, true)).toEqual({ days: 1 });
   expect(coreUntilRevokedOffer(authority, now, false)).toBeNull();
   expect(coreUntilRevokedOffer({ ...authority, revoked_at: UNTIL }, now, true)).toBeNull();
+  expect(coreUntilRevokedOffer({ ...authority, valid_until: null }, now, true)).toBeNull();
+  expect(coreUntilRevokedOffer({ ...authority, state: "superseded" }, now, true)).toBeNull();
+  expect(
+    coreUntilRevokedOffer({ ...authority, valid_until: "2026-01-04T00:00:00.000Z" }, now, true),
+  ).toEqual({ days: 3 });
 });
 const during = Date.parse("2026-01-01T12:00:00.000Z");
 
@@ -98,6 +103,20 @@ describe("which review answer the dialog shows", () => {
 });
 
 describe("exact grant input", () => {
+  test("accepts inclusive count and hour limits and rejects past-start invalid durations", () => {
+    const beforeStart = Date.parse(authority.valid_from) - 86_400_000;
+    for (const runs of ["1", "10000"]) {
+      for (const hours of ["1", "744"]) {
+        expect(authorityGrantInput(preview, expected, runs, hours, beforeStart)).toMatchObject({
+          max_runs: Number(runs),
+          valid_until: hours === "1" ? "2026-01-01T01:00:00.000Z" : "2026-02-01T00:00:00.000Z",
+        });
+      }
+    }
+    for (const hours of ["0", "-1", "1.5"]) {
+      expect(authorityGrantInput(preview, expected, "1", hours, beforeStart)).toBeNull();
+    }
+  });
   test("binds the reviewed digest, version, environment and original start time", () => {
     expect(authorityGrantInput(preview, expected, "2", "24", during)).toEqual({
       workflow_version_id: authority.workflow_version_id,
@@ -162,6 +181,15 @@ describe("exact grant input", () => {
       request_review_truncated: false,
       opaque_payload_omitted: false,
     };
+    expect(
+      authorityGrantInput(
+        { ...preview, execution_shape: { ...preview.execution_shape, requests: [request] } },
+        expected,
+        "1",
+        "24",
+        during,
+      ),
+    ).not.toBeNull();
     for (const patch of [{ request_review_truncated: true }, { opaque_payload_omitted: true }]) {
       expect(
         authorityGrantInput(

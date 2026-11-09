@@ -70,7 +70,7 @@ export function compile(source: string): Expression {
 }
 
 function assertAstDepth(expr: Expression, source: string): void {
-  const ast = (expr as Expression & { ast?: () => unknown }).ast?.();
+  const ast = expr.ast();
   const visit = (value: unknown, depth: number): void => {
     if (depth > JSONATA_AST_DEPTH_CAP) {
       throw new JSONataError(
@@ -83,10 +83,6 @@ function assertAstDepth(expr: Expression, source: string): void {
       );
     }
     if (!value || typeof value !== "object") return;
-    if (Array.isArray(value)) {
-      for (const entry of value) visit(entry, depth + 1);
-      return;
-    }
     for (const entry of Object.values(value)) visit(entry, depth + 1);
   };
   visit(ast, 0);
@@ -106,19 +102,25 @@ interface JSONataCallableFinding {
   suggestion: string;
 }
 
+export function deduplicateCallSites<
+  T extends Readonly<{ name: string; position?: number | undefined }>,
+>(calls: readonly T[]): T[] {
+  const seen = new Set<string>();
+  return calls.filter((call) => {
+    const key = `${call.name}:${call.position ?? "unknown"}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function findUnboundFunctionCalls(source: string): JSONataCallableFinding[] {
   const expr = compile(source);
-  const ast = (expr as Expression & { ast?: () => unknown }).ast?.();
-  if (!ast || typeof ast !== "object") return [];
+  const ast = expr.ast();
 
   const findings: JSONataCallableFinding[] = [];
-  const seen = new Set<string>();
   const visit = (value: unknown): void => {
     if (!value || typeof value !== "object") return;
-    if (Array.isArray(value)) {
-      for (const item of value) visit(item);
-      return;
-    }
     const node = value as Record<string, unknown>;
     if (node.type === "function") {
       const procedure = node.procedure as Record<string, unknown> | undefined;
@@ -128,17 +130,13 @@ export function findUnboundFunctionCalls(source: string): JSONataCallableFinding
         steps.length === 1 ? (steps[0] as Record<string, unknown> | undefined) : undefined;
       if (target?.type === "name" && typeof target.value === "string") {
         const position = typeof target.position === "number" ? target.position : undefined;
-        const key = `${target.value}:${position ?? "unknown"}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          findings.push({ name: target.value, position, suggestion: `$${target.value}` });
-        }
+        findings.push({ name: target.value, position, suggestion: `$${target.value}` });
       }
     }
     for (const child of Object.values(node)) visit(child);
   };
   visit(ast);
-  return findings;
+  return deduplicateCallSites(findings);
 }
 
 export const JSONATA_BUILTIN_FUNCTIONS: ReadonlySet<string> = new Set([
@@ -232,21 +230,14 @@ export function findUnknownFunctionCalls(source: string): JSONataUnknownFunction
   const calls: Array<{ name: string; position: number | undefined }> = [];
   const visit = (value: unknown): void => {
     if (!value || typeof value !== "object") return;
-    if (Array.isArray(value)) {
-      for (const item of value) visit(item);
-      return;
-    }
     const node = value as Record<string, unknown>;
     if (node.type === "bind") {
-      const lhs = node.lhs as Record<string, unknown> | undefined;
-      if (lhs?.type === "variable" && typeof lhs.value === "string") bound.add(lhs.value);
+      const lhs = node.lhs as { type: "variable"; value: string };
+      bound.add(lhs.value);
     }
-    if (node.type === "lambda" && Array.isArray(node.arguments)) {
-      for (const argument of node.arguments as Array<Record<string, unknown> | undefined>) {
-        if (argument?.type === "variable" && typeof argument.value === "string") {
-          bound.add(argument.value);
-        }
-      }
+    if (node.type === "lambda") {
+      for (const argument of node.arguments as Array<{ type: "variable"; value: string }>)
+        bound.add(argument.value);
     }
     if (node.type === "function") {
       const procedure = node.procedure as Record<string, unknown> | undefined;
@@ -262,19 +253,15 @@ export function findUnknownFunctionCalls(source: string): JSONataUnknownFunction
   visit(ast);
 
   const findings: JSONataUnknownFunctionFinding[] = [];
-  const seen = new Set<string>();
   for (const call of calls) {
     if (JSONATA_BUILTIN_FUNCTIONS.has(call.name) || bound.has(call.name)) continue;
-    const key = `${call.name}:${call.position ?? "unknown"}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
     findings.push({
       name: call.name,
       ...(call.position !== undefined ? { position: call.position } : {}),
       suggestion: JSONATA_FUNCTION_SUGGESTIONS[call.name] ?? null,
     });
   }
-  return findings;
+  return deduplicateCallSites(findings);
 }
 
 export function describeUnknownFunction(f: JSONataUnknownFunctionFinding): string {
@@ -319,8 +306,7 @@ export function extractAst(source: string): unknown | null {
     return null;
   }
   try {
-    const ast = (expr as Expression & { ast?: () => unknown }).ast?.();
-    return ast ?? null;
+    return expr.ast();
   } catch {
     return null;
   }

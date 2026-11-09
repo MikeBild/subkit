@@ -23,3 +23,15 @@ test("message faults and delivery discrepancies are recognized only for the auth
   for (const error of [null, undefined, {}, false, "execution_authority_changed"])
     expect(reportRefusalReason(error)).toBeNull();
 });
+
+test("refusal membership never coerces callable or boxed values", () => {
+  for (const reason of [
+    Object(REPORT_MESSAGE_REFUSALS[0]),
+    Object.assign(() => undefined, { toString: () => REPORT_MESSAGE_REFUSALS[0] }),
+    Symbol("not_utf8"),
+    1n,
+  ]) {
+    expect(isReportMessageRefusal(reason)).toBe(false);
+    expect(reportRefusalReason({ code: "execution_authority_changed", reason })).toBeNull();
+  }
+});

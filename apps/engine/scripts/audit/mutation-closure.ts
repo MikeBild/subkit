@@ -53,6 +53,7 @@ export function reviewedClosurePlanFromAnalysis(
 ): ReviewedClosure {
   const inferred = new Map<string, WaveTest>();
   for (const target of input.targets) {
+    const directTests = new Set(directTestPaths(analysis, target));
     const selected = selectAffected({
       changed: [target],
       testFiles: analysis.testFiles,
@@ -62,9 +63,7 @@ export function reviewedClosurePlanFromAnalysis(
     });
     for (const path of selected.tests) {
       const previous = inferred.get(path);
-      const direct = pathVariants(target).some((variant) =>
-        analysis.reverse.get(variant)?.has(path),
-      );
+      const direct = directTests.has(path);
       const kind = direct || previous?.kind === "direct" ? "direct" : "reverse_import";
       const covered =
         kind === "direct"
@@ -129,6 +128,17 @@ export function reviewedClosurePlanFromAnalysis(
       return { path, witnesses: [...witnesses].sort() };
     }),
   };
+}
+
+export function directTestPaths(analysis: ClosureAnalysis, target: string): string[] {
+  const tests = new Set(analysis.testFiles);
+  return [
+    ...new Set(
+      pathVariants(target).flatMap((variant) =>
+        [...(analysis.reverse.get(variant) ?? [])].filter((path) => tests.has(path)),
+      ),
+    ),
+  ].sort();
 }
 
 export function reviewedClosurePlan(input: {

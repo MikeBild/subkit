@@ -86,17 +86,24 @@ export function isFailedRunStatus(status: string): boolean {
   return FAILED_RUN_STATUSES.has(status);
 }
 
+export interface IndexedStoppingStep {
+  readonly row: Pick<OutcomeStepRow, "started_at">;
+  readonly index: number;
+}
+
+export function compareStoppingSteps(a: IndexedStoppingStep, b: IndexedStoppingStep): number {
+  return (
+    (a.row.started_at?.getTime() ?? 0) - (b.row.started_at?.getTime() ?? 0) || a.index - b.index
+  );
+}
+
 export function pickStoppingStep<
   T extends Pick<OutcomeStepRow, "step_key" | "status" | "started_at">,
 >(rows: readonly T[], failureStepId: string | null | undefined): T | null {
   const failed = rows
     .map((row, index) => ({ row, index }))
     .filter(({ row }) => FAILED_STEP_STATUS_SET.has(row.status))
-    .sort(
-      (a, b) =>
-        (a.row.started_at?.getTime() ?? 0) - (b.row.started_at?.getTime() ?? 0) ||
-        a.index - b.index,
-    )
+    .sort(compareStoppingSteps)
     .map(({ row }) => row);
   if (failureStepId) {
     const named = failed.filter((row) => rowOfStep(row.step_key, failureStepId));

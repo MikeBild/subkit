@@ -42,6 +42,16 @@ jobs:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
       - run: bun run build:clipper
+      - run: bun run check:coverage-floor
+      - name: Retain global coverage evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: coverage-floor-evidence
+          retention-days: 30
+          include-hidden-files: true
+          if-no-files-found: error
+          path: reports/coverage/
       - run: bun run verify:quality:release-shards
       - name: Retain complete shard quality evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

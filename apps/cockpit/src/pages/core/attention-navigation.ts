@@ -53,6 +53,6 @@ export function reviewSettles(
   }>,
 ): boolean {
   if (review.openNow > 0) return false;
-  if (review.openBefore !== null && review.openBefore > 0) return true;
+  if ((review.openBefore || 0) > 0) return true;
   return review.listedBefore && !review.listedNow;
 }

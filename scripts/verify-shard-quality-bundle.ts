@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { isCanonicalRepoPath } from "../apps/engine/scripts/audit/mutation-wave.ts";
 import { verifyQualityShards } from "../apps/engine/scripts/verify-quality-shards.ts";
@@ -12,6 +13,14 @@ interface QualityBundleIndex {
   mutation_union_path: string;
   coverage_union_path: string;
   files: { path: string; sha256: string }[];
+}
+
+export const DEFAULT_QUALITY_BUNDLE_INDEX = "quality-bundle.json";
+
+export function qualityBundleIndexPath(indexPath = DEFAULT_QUALITY_BUNDLE_INDEX): string {
+  if (!isCanonicalRepoPath(indexPath))
+    throw new Error("Quality bundle index path is not canonical");
+  return indexPath;
 }
 
 export function parseQualityBundleIndex(
@@ -44,12 +53,18 @@ export function parseQualityBundleIndex(
 export async function verifyShardQualityBundle(
   repo: string,
   expectedCommit: string,
+  indexPath = DEFAULT_QUALITY_BUNDLE_INDEX,
 ): Promise<string> {
+  const bundleIndexPath = qualityBundleIndexPath(indexPath);
   const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
   if (head !== expectedCommit) throw new Error("Release checkout does not match expected commit");
   execFileSync("git", ["diff", "--quiet", "HEAD", "--"], { cwd: repo });
+  if (!existsSync(join(repo, bundleIndexPath)))
+    throw new Error(
+      `Release quality bundle is missing at ${bundleIndexPath}. Run \`bun run verify:quality:release-shards\` first.`,
+    );
   const index = parseQualityBundleIndex(
-    JSON.parse(new TextDecoder().decode(readBundleFile(repo, "quality-bundle.json"))),
+    JSON.parse(new TextDecoder().decode(readBundleFile(repo, bundleIndexPath))),
     expectedCommit,
   );
   for (const file of index.files) {
@@ -77,7 +92,23 @@ export async function verifyShardQualityBundle(
 
 if (import.meta.main) {
   const args = process.argv.slice(2);
-  if (args.length !== 2 || args[0] !== "--commit")
-    throw new Error("usage: verify-shard-quality-bundle.ts --commit <sha>");
-  console.log(await verifyShardQualityBundle(resolve(import.meta.dir, ".."), args[1]!));
+  const commitIndex = args.indexOf("--commit");
+  const indexIndex = args.indexOf("--index");
+  const valid =
+    commitIndex !== -1 &&
+    typeof args[commitIndex + 1] === "string" &&
+    (indexIndex === -1
+      ? args.length === 2
+      : args.length === 4 && typeof args[indexIndex + 1] === "string");
+  if (!valid)
+    throw new Error(
+      "usage: verify-shard-quality-bundle.ts --commit <sha> [--index <repo-relative-path>]",
+    );
+  console.log(
+    await verifyShardQualityBundle(
+      resolve(import.meta.dir, ".."),
+      args[commitIndex + 1]!,
+      indexIndex === -1 ? undefined : args[indexIndex + 1],
+    ),
+  );
 }

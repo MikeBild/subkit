@@ -177,3 +177,76 @@ test("irrelevant observation values never change an invariant fingerprint", () =
     { seed: 20261109, numRuns: 100 },
   );
 });
+
+test("schema fingerprints encode ordered keys and distinct canonical change arrays", () => {
+  const shape = {
+    kind: "schema_diff" as const,
+    before: { type: "string" as const },
+    after: { type: "number" as const },
+    added: ["b", "a"],
+    removed: ["d", "c"],
+    widened: ["f", "e"],
+  };
+  expect(signalFingerprint(shape)).toBe(
+    '{"added":["a","b"],"after":{"type":"number"},"before":{"type":"string"},"kind":"schema_diff","removed":["c","d"],"widened":["e","f"]}',
+  );
+  expect(signalFingerprint({ ...shape, added: [] })).not.toBe(signalFingerprint(shape));
+  expect(signalFingerprint({ ...shape, removed: [] })).not.toBe(signalFingerprint(shape));
+  expect(signalFingerprint({ ...shape, widened: [] })).not.toBe(signalFingerprint(shape));
+});
+
+test("an applied candidate still cannot claim an unrelated version", () => {
+  expect(
+    matchesCandidateBoundary(
+      {
+        status: "applied",
+        diff: { base_version_id: "before", applied_version_id: "after" },
+      },
+      { base_version_id: "unrelated" },
+    ),
+  ).toBe(false);
+});
+
+test("nested schema field insertion order does not change a drift fingerprint", () => {
+  const first = {
+    kind: "http_status_new_shape" as const,
+    status: 200,
+    request: { url: "https://example.org/items" },
+    response_before: null,
+    response_after: {
+      type: "object" as const,
+      properties: { z: { type: "number" as const }, a: { type: "string" as const } },
+    },
+  };
+  const second = {
+    ...first,
+    response_after: {
+      type: "object" as const,
+      properties: { a: { type: "string" as const }, z: { type: "number" as const } },
+    },
+  };
+  expect(signalFingerprint(first)).toBe(signalFingerprint(second));
+});
+
+test("gate fingerprints exclude observation metadata outside the repair boundary", () => {
+  const gate = {
+    kind: "gate_block" as const,
+    code: "gate",
+    reason: null,
+    fixer: "use_utf8_encoder" as const,
+    step_id: "send",
+  };
+  const observed = { ...gate, observed_at: "2026-11-09T00:00:00Z" };
+  expect(signalFingerprint(observed)).toBe(signalFingerprint(gate));
+});
+
+test("an empty request URL carries no location in a terminal fingerprint", () => {
+  const endpoint = {
+    kind: "endpoint_contract" as const,
+    severity: "removed" as const,
+    request: { url: "" },
+    sunset: null,
+    successor_uri: null,
+  };
+  expect(signalFingerprint(endpoint)).toBe(signalFingerprint({ ...endpoint, request: {} }));
+});

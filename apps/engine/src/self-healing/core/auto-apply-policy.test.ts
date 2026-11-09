@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { type AutohealPolicy, decideAutoApply } from "./auto-apply-policy.ts";
+import {
+  type AutohealPolicy,
+  DEFAULT_AUTOHEAL_POLICY,
+  decideAutoApply,
+} from "./auto-apply-policy.ts";
 
 test("gate repairs and never-auto policy always require review", () => {
   expect(
@@ -99,4 +103,24 @@ test("gate review overrides every policy and preserves frozen facts", () => {
     ),
     { seed: 20261109, numRuns: 100 },
   );
+});
+
+test("default auto-healing requires safe classification and honors failed fixtures", () => {
+  expect(DEFAULT_AUTOHEAL_POLICY).toBe("safe-patches");
+  expect(
+    decideAutoApply({
+      policy: DEFAULT_AUTOHEAL_POLICY,
+      classification: "unsafe",
+      has_fixture: true,
+      fixture_passed: true,
+    }),
+  ).toEqual({ auto_apply: false, reason: "unsafe_classification" });
+  expect(
+    decideAutoApply({
+      policy: DEFAULT_AUTOHEAL_POLICY,
+      classification: "safe",
+      has_fixture: true,
+      fixture_passed: false,
+    }),
+  ).toEqual({ auto_apply: false, reason: "fixture_failed" });
 });

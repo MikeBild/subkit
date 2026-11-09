@@ -126,3 +126,29 @@ test("repeated diagnoses do not add output and never mutate their original evide
     { seed: 20261109, numRuns: 100 },
   );
 });
+
+test("observed evidence alone cannot authorize a declaration fixer", () => {
+  expect(planForDiagnosis(definition, { ...diagnosis, evidence: { observed } })).toBeNull();
+});
+
+test("collapsing repairs keeps distinct steps, different fixers and unfixable diagnoses", () => {
+  const facts: GateDiagnosis[] = [
+    { ...diagnosis, code: "report_delivery_unobserved", fixer: "declare_report_delivery" },
+    {
+      ...diagnosis,
+      subject: { step_id: "other" },
+      code: "report_delivery_contradicted",
+      fixer: "declare_report_delivery",
+    },
+    { ...diagnosis, code: "report_delivery_contradicted", fixer: "use_utf8_encoder" },
+    diagnosis,
+    { ...diagnosis, code: "report_delivery_unobserved", subject: { step_id: "third" } },
+  ];
+  expect(collapseDiagnoses(facts)).toEqual(facts);
+});
+
+test("distinct unfixable diagnoses on one step are not merged", () => {
+  const first = { ...diagnosis, code: "report_delivery_unobserved" as const };
+  const second = { ...diagnosis, code: "report_delivery_contradicted" as const };
+  expect(collapseDiagnoses([first, second])).toEqual([first, second]);
+});

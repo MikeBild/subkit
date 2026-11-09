@@ -19,10 +19,8 @@ export function parseRenderableMessageContent(content: unknown): {
 }
 
 function isEffectivelyEmpty(content: unknown): boolean {
-  if (content === null || content === undefined) return true;
-  if (typeof content === "string") return content.length === 0;
   if (Array.isArray(content)) return content.length === 0;
-  return Object.keys(content as object).length === 0;
+  return Object.keys(Object(content)).length === 0;
 }
 
 function safeStringify(value: unknown): string {
@@ -135,7 +133,6 @@ function consumeMarkdownTable(
     const line = lines[cursor] ?? "";
     if (!line.includes("|")) break;
     const cells = splitTableCells(line);
-    if (cells.length === 0) break;
     rows.push(normalizeRowWidth(cells, headers.length));
   }
   return {
@@ -146,7 +143,6 @@ function consumeMarkdownTable(
 
 function splitTableCells(line: string): string[] {
   const trimmed = line.trim();
-  if (!trimmed.includes("|")) return [];
   const withoutLeading = trimmed.startsWith("|") ? trimmed.slice(1) : trimmed;
   const withoutTrailing = withoutLeading.endsWith("|")
     ? withoutLeading.slice(0, -1)
@@ -155,7 +151,8 @@ function splitTableCells(line: string): string[] {
 }
 
 function normalizeRowWidth(cells: string[], width: number): string[] {
-  if (cells.length === width) return cells;
-  if (cells.length > width) return cells.slice(0, width);
-  return [...cells, ...Array.from({ length: width - cells.length }, () => "")];
+  return [
+    ...cells.slice(0, width),
+    ...Array.from({ length: Math.max(0, width - cells.length) }, () => ""),
+  ];
 }

@@ -11,7 +11,7 @@ export interface PermissionRequest {
   permission: string;
   resource?: { type: string; id: string };
   portal_token: boolean;
-  portal_workflow_allowlist?: readonly string[] | "all";
+  portal_workflow_allowlist?: readonly string[] | "all" | undefined;
 }
 
 export interface PermissionFacts {
@@ -85,7 +85,6 @@ function deny(
 export function matchesPortalTokenAllowlist(request: PermissionRequest): boolean {
   if (!request.portal_token) return false;
   const allow = request.portal_workflow_allowlist;
-  if (allow === undefined) return false;
   if (request.permission === "workflow:run" || request.permission === "workflow:read")
     return (
       request.resource?.type === "workflow" &&
@@ -180,9 +179,7 @@ export function evaluateResourceAccess<T extends PermissionDecision>(
     return matchesPortalTokenAllowlist({
       permission: facts.permission,
       portal_token: facts.portal_token,
-      ...(facts.workflow_allowlist !== undefined
-        ? { portal_workflow_allowlist: facts.workflow_allowlist }
-        : {}),
+      portal_workflow_allowlist: facts.workflow_allowlist,
       resource: { type: facts.resource_type, id },
     });
   };

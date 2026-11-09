@@ -18,6 +18,7 @@ describe("mutation runtime provenance inputs", () => {
         "apps/engine/.mutation-equivalents.json",
         "apps/engine/scripts/audit/files.ts",
         "apps/engine/scripts/audit/mutation-floor.ts",
+        "apps/engine/scripts/audit/mutation-shard-score.ts",
         "apps/engine/scripts/audit/mutation-scope.ts",
         "apps/engine/scripts/audit/mutation-wave.ts",
         "apps/engine/scripts/audit/mutation-closure.ts",

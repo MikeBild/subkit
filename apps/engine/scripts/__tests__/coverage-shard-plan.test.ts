@@ -3,6 +3,26 @@ import { planCoverageShardExecution } from "../audit/coverage-shard-plan.ts";
 
 const target = "apps/engine/src/example/core.ts";
 
+test("keeps all direct contracts for one target in a single native coverage invocation", () => {
+  const other = "apps/engine/src/other/core.ts";
+  const plan = planCoverageShardExecution({
+    targets: [target, other],
+    tests: [
+      { path: "first.test.ts", kind: "direct", covers_targets: [target] },
+      { path: "second.test.ts", kind: "direct", covers_targets: [target, other] },
+      { path: "mocked.test.ts", kind: "direct", covers_targets: [target] },
+      { path: "consumer.test.ts", kind: "reverse_import", covers_targets: [target] },
+    ],
+    usesModuleMock: (test) => test === "mocked.test.ts",
+  });
+  expect(plan.coverageGroups).toEqual([
+    { target, tests: ["first.test.ts", "second.test.ts"] },
+    { target: other, tests: ["second.test.ts"] },
+  ]);
+  expect(plan.behaviorOnlyTests).toEqual(["consumer.test.ts", "mocked.test.ts"]);
+  expect(plan.errors).toEqual([]);
+});
+
 test("uses only unmocked direct tests for coverage and retains every other closure test for isolated behavior", () => {
   const plan = planCoverageShardExecution({
     targets: [target],

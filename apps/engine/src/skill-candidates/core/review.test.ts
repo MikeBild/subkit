@@ -68,6 +68,10 @@ test("review decisions keep terminal, stale, and context candidates out of mutat
   expect(
     decideCandidateReview(current, { kind: "approve", expected_review_digest: "fresh" }),
   ).toEqual({ kind: "approve" });
+  expect(decideCandidateReview(current, { kind: "approve" })).toEqual({ kind: "approve" });
+  expect(decideCandidateReview(current, { kind: "reject", expected_review_digest: "old" })).toEqual(
+    { kind: "reject" },
+  );
   expect(decideCandidateReview({ ...current, status: "approved" }, { kind: "reject" })).toEqual({
     kind: "already_decided",
   });

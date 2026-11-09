@@ -8,7 +8,12 @@ import {
   validateCoverageShardUnion,
 } from "./audit/coverage-union.ts";
 import { planMutationBatches } from "./audit/mutation-scheduler.ts";
+import {
+  inspectMutationShardScore,
+  summarizeMutationScores,
+} from "./audit/mutation-shard-score.ts";
 import { validateMutationShardUnion } from "./audit/mutation-union.ts";
+import { runtimePureTargetPaths } from "./audit/pure-targets.ts";
 import { validateExternalRuntimeAcceptance } from "./run-external-runtime-acceptance.ts";
 import { loadMutationWave } from "./run-mutation-shards.ts";
 
@@ -95,6 +100,7 @@ export async function verifyQualityShards(options: {
   if (hash(manifestText) !== mutation.manifest_sha256) throw new Error("frozen wave hash mismatch");
   const prepared = loadMutationWave(options.repo, manifestPath);
   const { wave, entries, baseConfig, equivalents } = prepared;
+  const runtimeScope = runtimePureTargetPaths(entries);
   if (options.requireVersionedPolicy && !wave.quality_policy_sha256)
     throw new Error("Release quality proof requires a versioned policy-bound wave");
   if ((wave.external_runtime_tests?.length ?? 0) > 0) {
@@ -123,12 +129,17 @@ export async function verifyQualityShards(options: {
   if (!mutationRunId || !coverageRunId) throw new Error("union run id missing");
   const mutationShards = wave.shards.map((shard) => {
     const root = join(mutationRoot, shard.id);
+    const receiptText = regular(join(root, "receipt.json"));
+    const receipt = object(receiptText, "mutation receipt");
+    if (typeof receipt.exit_code !== "number" || !Number.isInteger(receipt.exit_code))
+      throw new Error("mutation receipt exit code is invalid");
+    const hasRuntime = shard.targets.some((target) => runtimeScope.includes(target));
     return {
       id: shard.id,
-      receiptText: regular(join(root, "receipt.json")),
-      configText: regular(join(root, "stryker.json")),
-      reportText: regular(join(root, "mutation.json")),
-      exitCode: 0,
+      receiptText,
+      configText: hasRuntime ? regular(join(root, "stryker.json")) : "",
+      reportText: hasRuntime ? regular(join(root, "mutation.json")) : "",
+      exitCode: receipt.exit_code,
     };
   });
   const workersByShard = Object.fromEntries(
@@ -142,6 +153,7 @@ export async function verifyQualityShards(options: {
     manifestPath,
     baseConfig,
     canonicalScope: entries.map((entry) => entry.path),
+    runtimeScope,
     sourceSha256: wave.source_freeze_sha256,
     testSha256: wave.test_freeze_sha256,
     workersByShard,
@@ -154,6 +166,36 @@ export async function verifyQualityShards(options: {
   });
   if (mutationErrors.length > 0)
     throw new Error(`mutation union rejected: ${mutationErrors.join("; ")}`);
+  const scores = mutationShards.flatMap((result) => {
+    if (result.reportText === "") return [];
+    const targets = wave.shards
+      .find((shard) => shard.id === result.id)!
+      .targets.filter((target) => runtimeScope.includes(target));
+    return inspectMutationShardScore({
+      report: JSON.parse(result.reportText),
+      exitCode: result.exitCode,
+      manifest: {
+        ...equivalents,
+        equivalents: equivalents.equivalents.filter((entry) => targets.includes(entry.file)),
+      },
+      repo: options.repo,
+      expectedScope: targets,
+      sourceSha256ForFile: (file) => hash(readFileSync(join(options.repo, file))),
+    }).scores;
+  });
+  const mutationSummary = summarizeMutationScores(scores);
+  for (const [key, expected] of Object.entries({
+    mutation_score: mutationSummary.adjusted_score,
+    raw_mutation_score: mutationSummary.raw_score,
+    adjusted_mutation_score: mutationSummary.adjusted_score,
+  }))
+    if (mutation[key] !== undefined && mutation[key] !== expected)
+      throw new Error(`mutation union ${key} does not match raw reports`);
+  if (
+    mutation.score_summary !== undefined &&
+    JSON.stringify(mutation.score_summary) !== JSON.stringify(mutationSummary)
+  )
+    throw new Error("mutation union score summary does not match raw reports");
   const coverageReceipts: CoverageShardReceipt[] = [];
   const native: CoverageShardNative[] = [];
   for (const shard of wave.shards) {
@@ -163,6 +205,7 @@ export async function verifyQualityShards(options: {
       "coverage receipt",
     ) as unknown as CoverageShardReceipt;
     coverageReceipts.push(coordinatorReceipt);
+    if (!shard.targets.some((target) => runtimeScope.includes(target))) continue;
     const evidenceRoot = join(root, "coverage");
     const published = readPublishedCoverage(evidenceRoot);
     const nativeReceipt = object(regular(published.receiptPath), "native coverage receipt");
@@ -202,6 +245,7 @@ export async function verifyQualityShards(options: {
     manifestSha256: hash(manifestText),
     sourceSha256: wave.source_freeze_sha256,
     canonicalScope: entries.map((entry) => entry.path),
+    runtimeScope,
     shards: coverageReceipts,
     native,
     repo: options.repo,
@@ -222,7 +266,10 @@ export async function verifyQualityShards(options: {
       union_path: relative(options.repo, mutationPath),
       union_sha256: hash(mutationText),
       run_id: mutationRunId,
-      score: 100,
+      score: mutationSummary.adjusted_score,
+      raw_score: mutationSummary.raw_score,
+      adjusted_score: mutationSummary.adjusted_score,
+      score_summary: mutationSummary,
     },
     coverage: {
       union_path: relative(options.repo, coveragePath),

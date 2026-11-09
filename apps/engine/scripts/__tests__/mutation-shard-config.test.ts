@@ -25,7 +25,7 @@ const input = {
 };
 
 describe("isolated mutation shard configuration", () => {
-  test("keeps full nonincremental 100 percent gates and isolates reports and temp directories", () => {
+  test("keeps full nonincremental 100 percent gates with shared sandbox parent and isolated reports", () => {
     const before = structuredClone(input);
     const result = buildMutationShardConfig(input);
     expect(result).toMatchObject({
@@ -35,12 +35,12 @@ describe("isolated mutation shard configuration", () => {
       thresholds: { high: 100, low: 100, break: 100 },
       mutate: input.shard.targets,
       ignorePatterns: input.base.ignorePatterns,
-      tempDirName: ".stryker-tmp-baseline-run-1-cli",
+      tempDirName: ".stryker-tmp",
       jsonReporter: { fileName: "reports/mutation/runs/baseline/run-1/cli/mutation.json" },
     });
     expect(input).toEqual(before);
     const second = buildMutationShardConfig({ ...input, runId: "run-2" });
-    expect(second.tempDirName).not.toBe(result.tempDirName);
+    expect(second.tempDirName).toBe(result.tempDirName);
     expect(second.jsonReporter).not.toEqual(result.jsonReporter);
   });
 

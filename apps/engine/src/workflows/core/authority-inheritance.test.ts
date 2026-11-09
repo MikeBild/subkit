@@ -208,3 +208,82 @@ test("deduplicates and sorts read relaxation keys while preserving readonly prio
   );
   expect(initial.get("next")).toEqual(["headers.accept", "timeout_ms"]);
 });
+
+test("authority cannot cross driver or environment and anonymous targets retain their reason", () => {
+  for (const overrides of [{ driver: "graphql" }, { environment: "dev" }] as const) {
+    expect(growth([effect("granted")], [effect("next", overrides)]).growth).toEqual([
+      expect.objectContaining({ kind: "new_connector" }),
+    ]);
+  }
+  expect(growth([], [effect("next", { connector_id: null })]).growth).toEqual([
+    expect.objectContaining({ kind: "new_target", connector_id: null }),
+  ]);
+});
+
+test("relaxation selection keeps an exact earlier grant and the first equal-size explanation", () => {
+  const compare = (grantedRequests: Array<Record<string, unknown>>) =>
+    projectBoundaryGrowth(
+      manifest(ids.granted, [effect("first"), effect("second")]),
+      manifest(ids.next, [effect("next")]),
+      evidence(grantedRequests, [request("next", 2000, 2)]),
+    );
+  expect(compare([request("first", 2000, 2), request("second", 1000, 2)]).relaxed).toEqual(
+    new Map(),
+  );
+  expect(compare([request("first", 1000, 2), request("second", 2000, 0)]).relaxed).toEqual(
+    new Map([["next", ["timeout_ms"]]]),
+  );
+});
+
+test("a first relaxation starts with exactly its proven keys", () => {
+  const result = projectBoundaryGrowth(
+    manifest(ids.granted, [effect("granted")]),
+    manifest(ids.next, [effect("next")]),
+    evidence([request("granted", 1000)], [request("next", 2000)]),
+  );
+  expect(result.growth).toEqual([]);
+  expect(result.relaxed).toEqual(new Map([["next", ["timeout_ms"]]]));
+});
+
+test("non-relaxable read changes remain a boundary change", () => {
+  const result = projectBoundaryGrowth(
+    manifest(ids.granted, [effect("granted")]),
+    manifest(ids.next, [effect("next", { configuration_digest: "f".repeat(64) })]),
+    evidence(
+      [{ ...request("granted", 1000), headers: { "x-secret": "old" } }],
+      [{ ...request("next", 1000), headers: { "x-secret": "new" } }],
+    ),
+  );
+  expect(result.growth).toEqual([expect.objectContaining({ kind: "changed_boundary" })]);
+});
+
+test("identical configurations need no relaxed evidence", () => {
+  expect(growth([effect("granted")], [effect("next")])).toEqual({ growth: [], relaxed: new Map() });
+});
+
+test("effect authority covers the complete lattice and unknown operations require an exact match", () => {
+  const accepted = new Set([
+    "read:read",
+    "read:write",
+    "read:destructive",
+    "write:write",
+    "write:destructive",
+    "destructive:destructive",
+  ]);
+  for (const nextEffect of ["read", "write", "destructive", "unknown"] as const) {
+    for (const grantedEffect of ["read", "write", "destructive", "unknown"] as const) {
+      for (const operation of ["GET", "POST"]) {
+        const expected =
+          accepted.has(`${nextEffect}:${grantedEffect}`) ||
+          (nextEffect === "unknown" && grantedEffect === "unknown" && operation === "GET");
+        const result = growth(
+          [effect("granted", { effect: grantedEffect, operation: "GET" })],
+          [effect("next", { effect: nextEffect, operation })],
+        );
+        expect(result.growth).toEqual(
+          expected ? [] : [expect.objectContaining({ kind: "wider_effect", effect: nextEffect })],
+        );
+      }
+    }
+  }
+});

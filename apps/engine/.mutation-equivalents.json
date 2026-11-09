@@ -40,6 +40,1718 @@
       "statusReason": "EQ-DAG-STACK: unreachable initial sentinel below every DFS root",
       "reason": "The stack is local to detectCycles. Every DFS root is pushed above the initial array contents. SCC extraction pops through its current root and stops immediately at that root, never below it. Initial sentinel is never added to index, lowlink, or onStack and cannot affect reachability or reported components. This remains true when a public node has the same string because its own pushed occurrence is popped first. Applies only to this exact initial ArrayDeclaration replacement, not adjacency fallbacks, which have an explicit counterexample.",
       "independent_review": "Independently reviewed by dag_remaining_contracts and jsonata_pure_leaf; root traced stack push/pop and output consumers. Portable sentinel-ID and sparse-adjacency contracts plus 2000-case baseline differential protect the boundary. Ignored equivalence is not counted as killed."
+    },
+    {
+      "file": "apps/cockpit/src/pages/core/runs-filter.ts",
+      "source_sha256": "461b5c7deb8a3af71ecd14f2c627a01db652d296acd550dbbdb765522e1fdea0",
+      "location": {
+        "end": {
+          "column": 7,
+          "line": 46
+        },
+        "start": {
+          "column": 5,
+          "line": 46
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"Stryker was here!\"",
+      "original": "\"\"",
+      "statusReason": "EQ-RUNS-ABSENT: absent invalid filter sentinel",
+      "reason": "EQ-RUNS-ABSENT: This exact empty fallback is evaluated only for an absent URL parameter. The replacement Stryker was here! is rejected by the same timestamp/UUID/identifier grammar or status/source allowlist as the empty value. Both produce the same null/all public output; present parameter values bypass the fallback. This excludes only the exact replacement at this source-bound location, not other strings or validators.",
+      "independent_review": "Independently reviewed by jsonata_pure_leaf; root traced all five sites and verified that genuine regex anchor mutations are killed by expanded-year and trailing-NUL counterexamples. Missing/default, explicit filters and 200-character query limits are tested. Ignored equivalents are not counted as killed."
+    },
+    {
+      "file": "apps/cockpit/src/pages/core/runs-filter.ts",
+      "source_sha256": "461b5c7deb8a3af71ecd14f2c627a01db652d296acd550dbbdb765522e1fdea0",
+      "location": {
+        "end": {
+          "column": 7,
+          "line": 57
+        },
+        "start": {
+          "column": 5,
+          "line": 57
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"Stryker was here!\"",
+      "original": "\"\"",
+      "statusReason": "EQ-RUNS-ABSENT: absent invalid filter sentinel",
+      "reason": "EQ-RUNS-ABSENT: This exact empty fallback is evaluated only for an absent URL parameter. The replacement Stryker was here! is rejected by the same timestamp/UUID/identifier grammar or status/source allowlist as the empty value. Both produce the same null/all public output; present parameter values bypass the fallback. This excludes only the exact replacement at this source-bound location, not other strings or validators.",
+      "independent_review": "Independently reviewed by jsonata_pure_leaf; root traced all five sites and verified that genuine regex anchor mutations are killed by expanded-year and trailing-NUL counterexamples. Missing/default, explicit filters and 200-character query limits are tested. Ignored equivalents are not counted as killed."
+    },
+    {
+      "file": "apps/cockpit/src/pages/core/runs-filter.ts",
+      "source_sha256": "461b5c7deb8a3af71ecd14f2c627a01db652d296acd550dbbdb765522e1fdea0",
+      "location": {
+        "end": {
+          "column": 7,
+          "line": 70
+        },
+        "start": {
+          "column": 5,
+          "line": 70
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"Stryker was here!\"",
+      "original": "\"\"",
+      "statusReason": "EQ-RUNS-ABSENT: absent invalid filter sentinel",
+      "reason": "EQ-RUNS-ABSENT: This exact empty fallback is evaluated only for an absent URL parameter. The replacement Stryker was here! is rejected by the same timestamp/UUID/identifier grammar or status/source allowlist as the empty value. Both produce the same null/all public output; present parameter values bypass the fallback. This excludes only the exact replacement at this source-bound location, not other strings or validators.",
+      "independent_review": "Independently reviewed by jsonata_pure_leaf; root traced all five sites and verified that genuine regex anchor mutations are killed by expanded-year and trailing-NUL counterexamples. Missing/default, explicit filters and 200-character query limits are tested. Ignored equivalents are not counted as killed."
+    },
+    {
+      "file": "apps/cockpit/src/pages/core/runs-filter.ts",
+      "source_sha256": "461b5c7deb8a3af71ecd14f2c627a01db652d296acd550dbbdb765522e1fdea0",
+      "location": {
+        "end": {
+          "column": 7,
+          "line": 74
+        },
+        "start": {
+          "column": 5,
+          "line": 74
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"Stryker was here!\"",
+      "original": "\"\"",
+      "statusReason": "EQ-RUNS-ABSENT: absent invalid filter sentinel",
+      "reason": "EQ-RUNS-ABSENT: This exact empty fallback is evaluated only for an absent URL parameter. The replacement Stryker was here! is rejected by the same timestamp/UUID/identifier grammar or status/source allowlist as the empty value. Both produce the same null/all public output; present parameter values bypass the fallback. This excludes only the exact replacement at this source-bound location, not other strings or validators.",
+      "independent_review": "Independently reviewed by jsonata_pure_leaf; root traced all five sites and verified that genuine regex anchor mutations are killed by expanded-year and trailing-NUL counterexamples. Missing/default, explicit filters and 200-character query limits are tested. Ignored equivalents are not counted as killed."
+    },
+    {
+      "file": "apps/cockpit/src/pages/core/runs-filter.ts",
+      "source_sha256": "461b5c7deb8a3af71ecd14f2c627a01db652d296acd550dbbdb765522e1fdea0",
+      "location": {
+        "end": {
+          "column": 7,
+          "line": 130
+        },
+        "start": {
+          "column": 5,
+          "line": 130
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"Stryker was here!\"",
+      "original": "\"\"",
+      "statusReason": "EQ-RUNS-ABSENT: absent invalid filter sentinel",
+      "reason": "EQ-RUNS-ABSENT: This exact empty fallback is evaluated only for an absent URL parameter. The replacement Stryker was here! is rejected by the same timestamp/UUID/identifier grammar or status/source allowlist as the empty value. Both produce the same null/all public output; present parameter values bypass the fallback. This excludes only the exact replacement at this source-bound location, not other strings or validators.",
+      "independent_review": "Independently reviewed by jsonata_pure_leaf; root traced all five sites and verified that genuine regex anchor mutations are killed by expanded-year and trailing-NUL counterexamples. Missing/default, explicit filters and 200-character query limits are tested. Ignored equivalents are not counted as killed."
+    },
+    {
+      "file": "apps/cockpit/src/pages/core/audit-filter.ts",
+      "source_sha256": "f0c73f26c424b8fbb2da8a420fce3b7f3768ebefae8fe926b99de162d6b3e14d",
+      "location": {
+        "end": {
+          "column": 7,
+          "line": 54
+        },
+        "start": {
+          "column": 5,
+          "line": 54
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"Stryker was here!\"",
+      "original": "\"\"",
+      "statusReason": "EQ-AUDIT-ABSENT: absent invalid filter sentinel",
+      "reason": "EQ-AUDIT-ABSENT: The exact empty fallback only runs when its URL parameter is absent. The replacement Stryker was here! fails the same identifier/instant/trace/action grammar or fixed result catalog; both values yield the identical public null or empty action list. A present value bypasses this fallback. No other replacements, literals, parameter names, or validation mutations are excluded.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root. Public missing-parameter defaults, explicit invalid/valid filters, expanded-year and trailing-NUL timestamp counterexamples cover the surrounding validators. Each directive applies only to its own fallback literal. Exact source/range/replacement/statusReason matching is enforced; ignored equivalents are never counted as killed."
+    },
+    {
+      "file": "apps/cockpit/src/pages/core/audit-filter.ts",
+      "source_sha256": "f0c73f26c424b8fbb2da8a420fce3b7f3768ebefae8fe926b99de162d6b3e14d",
+      "location": {
+        "end": {
+          "column": 7,
+          "line": 62
+        },
+        "start": {
+          "column": 5,
+          "line": 62
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"Stryker was here!\"",
+      "original": "\"\"",
+      "statusReason": "EQ-AUDIT-ABSENT: absent invalid filter sentinel",
+      "reason": "EQ-AUDIT-ABSENT: The exact empty fallback only runs when its URL parameter is absent. The replacement Stryker was here! fails the same identifier/instant/trace/action grammar or fixed result catalog; both values yield the identical public null or empty action list. A present value bypasses this fallback. No other replacements, literals, parameter names, or validation mutations are excluded.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root. Public missing-parameter defaults, explicit invalid/valid filters, expanded-year and trailing-NUL timestamp counterexamples cover the surrounding validators. Each directive applies only to its own fallback literal. Exact source/range/replacement/statusReason matching is enforced; ignored equivalents are never counted as killed."
+    },
+    {
+      "file": "apps/cockpit/src/pages/core/audit-filter.ts",
+      "source_sha256": "f0c73f26c424b8fbb2da8a420fce3b7f3768ebefae8fe926b99de162d6b3e14d",
+      "location": {
+        "end": {
+          "column": 7,
+          "line": 98
+        },
+        "start": {
+          "column": 5,
+          "line": 98
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"Stryker was here!\"",
+      "original": "\"\"",
+      "statusReason": "EQ-AUDIT-ABSENT: absent invalid filter sentinel",
+      "reason": "EQ-AUDIT-ABSENT: The exact empty fallback only runs when its URL parameter is absent. The replacement Stryker was here! fails the same identifier/instant/trace/action grammar or fixed result catalog; both values yield the identical public null or empty action list. A present value bypasses this fallback. No other replacements, literals, parameter names, or validation mutations are excluded.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root. Public missing-parameter defaults, explicit invalid/valid filters, expanded-year and trailing-NUL timestamp counterexamples cover the surrounding validators. Each directive applies only to its own fallback literal. Exact source/range/replacement/statusReason matching is enforced; ignored equivalents are never counted as killed."
+    },
+    {
+      "file": "apps/cockpit/src/pages/core/audit-filter.ts",
+      "source_sha256": "f0c73f26c424b8fbb2da8a420fce3b7f3768ebefae8fe926b99de162d6b3e14d",
+      "location": {
+        "end": {
+          "column": 7,
+          "line": 114
+        },
+        "start": {
+          "column": 5,
+          "line": 114
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"Stryker was here!\"",
+      "original": "\"\"",
+      "statusReason": "EQ-AUDIT-ABSENT: absent invalid filter sentinel",
+      "reason": "EQ-AUDIT-ABSENT: The exact empty fallback only runs when its URL parameter is absent. The replacement Stryker was here! fails the same identifier/instant/trace/action grammar or fixed result catalog; both values yield the identical public null or empty action list. A present value bypasses this fallback. No other replacements, literals, parameter names, or validation mutations are excluded.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root. Public missing-parameter defaults, explicit invalid/valid filters, expanded-year and trailing-NUL timestamp counterexamples cover the surrounding validators. Each directive applies only to its own fallback literal. Exact source/range/replacement/statusReason matching is enforced; ignored equivalents are never counted as killed."
+    },
+    {
+      "file": "apps/cockpit/src/pages/core/audit-filter.ts",
+      "source_sha256": "f0c73f26c424b8fbb2da8a420fce3b7f3768ebefae8fe926b99de162d6b3e14d",
+      "location": {
+        "end": {
+          "column": 9,
+          "line": 130
+        },
+        "start": {
+          "column": 7,
+          "line": 130
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"Stryker was here!\"",
+      "original": "\"\"",
+      "statusReason": "EQ-AUDIT-ABSENT: absent invalid filter sentinel",
+      "reason": "EQ-AUDIT-ABSENT: The exact empty fallback only runs when its URL parameter is absent. The replacement Stryker was here! fails the same identifier/instant/trace/action grammar or fixed result catalog; both values yield the identical public null or empty action list. A present value bypasses this fallback. No other replacements, literals, parameter names, or validation mutations are excluded.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root. Public missing-parameter defaults, explicit invalid/valid filters, expanded-year and trailing-NUL timestamp counterexamples cover the surrounding validators. Each directive applies only to its own fallback literal. Exact source/range/replacement/statusReason matching is enforced; ignored equivalents are never counted as killed."
+    },
+    {
+      "file": "apps/engine/src/operator/core/health-digest.ts",
+      "source_sha256": "19dd91eef425929ce8bd4221511a5839815e4811ef2fce4d5b54a8c3360f83e6",
+      "location": {
+        "end": {
+          "column": 54,
+          "line": 102
+        },
+        "start": {
+          "column": 52,
+          "line": 102
+        }
+      },
+      "mutatorName": "ArrayDeclaration",
+      "replacement": "[\"Stryker was here\"]",
+      "original": "[]",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The exact injected string sentinel has undefined status and is removed by pickStoppingStep failed-status filtering before any selected row is observed; real row relative order is unchanged.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against all private-map readers, failed-step status filtering and plain group-record timestamp writes. Exact mutation only; opposite comparison, false guard, different sentinel and malformed inputs are not waived. Raw Stryker status remains Survived."
+    },
+    {
+      "file": "apps/engine/src/operator/core/health-digest.ts",
+      "source_sha256": "19dd91eef425929ce8bd4221511a5839815e4811ef2fce4d5b54a8c3360f83e6",
+      "location": {
+        "end": {
+          "column": 68,
+          "line": 108
+        },
+        "start": {
+          "column": 66,
+          "line": 108
+        }
+      },
+      "mutatorName": "ArrayDeclaration",
+      "replacement": "[\"Stryker was here\"]",
+      "original": "[]",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The exact string sentinel in the no-rows fallback has undefined status, so pickStoppingStep returns null just as for an empty list.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against all private-map readers, failed-step status filtering and plain group-record timestamp writes. Exact mutation only; opposite comparison, false guard, different sentinel and malformed inputs are not waived. Raw Stryker status remains Survived."
+    },
+    {
+      "file": "apps/engine/src/operator/core/health-digest.ts",
+      "source_sha256": "19dd91eef425929ce8bd4221511a5839815e4811ef2fce4d5b54a8c3360f83e6",
+      "location": {
+        "end": {
+          "column": 17,
+          "line": 109
+        },
+        "start": {
+          "column": 9,
+          "line": 109
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "stopping",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The private stepByExec map is only read via get followed by nullish fallback or optional properties. Storing null for a missing stopping row is observationally identical to the absent entry.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against all private-map readers, failed-step status filtering and plain group-record timestamp writes. Exact mutation only; opposite comparison, false guard, different sentinel and malformed inputs are not waived. Raw Stryker status remains Survived."
+    },
+    {
+      "file": "apps/engine/src/operator/core/health-digest.ts",
+      "source_sha256": "19dd91eef425929ce8bd4221511a5839815e4811ef2fce4d5b54a8c3360f83e6",
+      "location": {
+        "end": {
+          "column": 40,
+          "line": 132
+        },
+        "start": {
+          "column": 11,
+          "line": 132
+        }
+      },
+      "mutatorName": "EqualityOperator",
+      "replacement": "lastSeen >= existing.last_seen",
+      "original": "lastSeen > existing.last_seen",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The changed boundary only assigns lastSeen when it already equals the private plain-object last_seen field. Both values are identical primitive ISO strings; no setter or other observation exists.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against all private-map readers, failed-step status filtering and plain group-record timestamp writes. Exact mutation only; opposite comparison, false guard, different sentinel and malformed inputs are not waived. Raw Stryker status remains Survived."
+    },
+    {
+      "file": "apps/engine/src/operator/core/health-digest.ts",
+      "source_sha256": "19dd91eef425929ce8bd4221511a5839815e4811ef2fce4d5b54a8c3360f83e6",
+      "location": {
+        "end": {
+          "column": 41,
+          "line": 133
+        },
+        "start": {
+          "column": 11,
+          "line": 133
+        }
+      },
+      "mutatorName": "EqualityOperator",
+      "replacement": "lastSeen <= existing.first_seen",
+      "original": "lastSeen < existing.first_seen",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The changed boundary only assigns lastSeen when it already equals the private plain-object first_seen field. Both values are identical primitive ISO strings; no setter or other observation exists.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against all private-map readers, failed-step status filtering and plain group-record timestamp writes. Exact mutation only; opposite comparison, false guard, different sentinel and malformed inputs are not waived. Raw Stryker status remains Survived."
+    },
+    {
+      "file": "packages/cli-core/src/message-parts.ts",
+      "source_sha256": "b7c8f17f9fccb3a52799065a1e60a073a9e53c1b1852636e24366ff32dd6660f",
+      "location": {
+        "end": {
+          "column": 35,
+          "line": 72
+        },
+        "start": {
+          "column": 19,
+          "line": 72
+        }
+      },
+      "mutatorName": "EqualityOperator",
+      "replacement": "i <= lines.length",
+      "original": "i < lines.length",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "One extra final iteration reads an absent line as the empty string. It cannot match a fence or table; appending the empty line is removed by final trim, including fallback-to-original-source behavior.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using every private caller and exact source slice. Root additionally checked 5728 deterministic fence/table/text inputs against each exact mutant. Only this source-bound mutation is excluded; raw report stays Survived and raw/adjusted scores remain separate."
+    },
+    {
+      "file": "packages/cli-core/src/message-parts.ts",
+      "source_sha256": "b7c8f17f9fccb3a52799065a1e60a073a9e53c1b1852636e24366ff32dd6660f",
+      "location": {
+        "end": {
+          "column": 32,
+          "line": 73
+        },
+        "start": {
+          "column": 30,
+          "line": 73
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"Stryker was here!\"",
+      "original": "\"\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The private loop indexes a dense unmodified String.split result strictly below length, so this fallback is never evaluated.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using every private caller and exact source slice. Root additionally checked 5728 deterministic fence/table/text inputs against each exact mutant. Only this source-bound mutation is excluded; raw report stays Survived and raw/adjusted scores remain separate."
+    },
+    {
+      "file": "packages/cli-core/src/message-parts.ts",
+      "source_sha256": "b7c8f17f9fccb3a52799065a1e60a073a9e53c1b1852636e24366ff32dd6660f",
+      "location": {
+        "end": {
+          "column": 39,
+          "line": 109
+        },
+        "start": {
+          "column": 23,
+          "line": 109
+        }
+      },
+      "mutatorName": "EqualityOperator",
+      "replacement": "i <= lines.length",
+      "original": "i < lines.length",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The extra fence scan tests the empty fallback; it cannot match the mandatory three backticks and still returns null.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using every private caller and exact source slice. Root additionally checked 5728 deterministic fence/table/text inputs against each exact mutant. Only this source-bound mutation is excluded; raw report stays Survived and raw/adjusted scores remain separate."
+    },
+    {
+      "file": "packages/cli-core/src/message-parts.ts",
+      "source_sha256": "b7c8f17f9fccb3a52799065a1e60a073a9e53c1b1852636e24366ff32dd6660f",
+      "location": {
+        "end": {
+          "column": 39,
+          "line": 110
+        },
+        "start": {
+          "column": 37,
+          "line": 110
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"Stryker was here!\"",
+      "original": "\"\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The private fence scan indexes the dense unmodified String.split result strictly below length, so this fallback is never evaluated.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using every private caller and exact source slice. Root additionally checked 5728 deterministic fence/table/text inputs against each exact mutant. Only this source-bound mutation is excluded; raw report stays Survived and raw/adjusted scores remain separate."
+    },
+    {
+      "file": "packages/cli-core/src/message-parts.ts",
+      "source_sha256": "b7c8f17f9fccb3a52799065a1e60a073a9e53c1b1852636e24366ff32dd6660f",
+      "location": {
+        "end": {
+          "column": 52,
+          "line": 116
+        },
+        "start": {
+          "column": 50,
+          "line": 116
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"Stryker was here!\"",
+      "original": "\"\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The private table detector receives an in-range index from the unchanged outer loop into a dense String.split result; this header fallback is never evaluated.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using every private caller and exact source slice. Root additionally checked 5728 deterministic fence/table/text inputs against each exact mutant. Only this source-bound mutation is excluded; raw report stays Survived and raw/adjusted scores remain separate."
+    },
+    {
+      "file": "packages/cli-core/src/message-parts.ts",
+      "source_sha256": "b7c8f17f9fccb3a52799065a1e60a073a9e53c1b1852636e24366ff32dd6660f",
+      "location": {
+        "end": {
+          "column": 59,
+          "line": 117
+        },
+        "start": {
+          "column": 57,
+          "line": 117
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"Stryker was here!\"",
+      "original": "\"\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "At the final line the separator fallback is reachable. Both the empty string and exact sentinel split into one cell. A header with at least two cells fails the length equality; smaller headers fail the first condition. Neither becomes a table.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using every private caller and exact source slice. Root additionally checked 5728 deterministic fence/table/text inputs against each exact mutant. Only this source-bound mutation is excluded; raw report stays Survived and raw/adjusted scores remain separate."
+    },
+    {
+      "file": "packages/cli-core/src/message-parts.ts",
+      "source_sha256": "b7c8f17f9fccb3a52799065a1e60a073a9e53c1b1852636e24366ff32dd6660f",
+      "location": {
+        "end": {
+          "column": 53,
+          "line": 129
+        },
+        "start": {
+          "column": 51,
+          "line": 129
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"Stryker was here!\"",
+      "original": "\"\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The private table consumer is called only after successful two-line table detection, proving its dense header index is in range.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using every private caller and exact source slice. Root additionally checked 5728 deterministic fence/table/text inputs against each exact mutant. Only this source-bound mutation is excluded; raw report stays Survived and raw/adjusted scores remain separate."
+    },
+    {
+      "file": "packages/cli-core/src/message-parts.ts",
+      "source_sha256": "b7c8f17f9fccb3a52799065a1e60a073a9e53c1b1852636e24366ff32dd6660f",
+      "location": {
+        "end": {
+          "column": 31,
+          "line": 132
+        },
+        "start": {
+          "column": 10,
+          "line": 132
+        }
+      },
+      "mutatorName": "EqualityOperator",
+      "replacement": "cursor <= lines.length",
+      "original": "cursor < lines.length",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The extra table-consumer iteration reads empty fallback and immediately breaks because it has no pipe. Cursor and returned lastIndex equal the original loop termination values.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using every private caller and exact source slice. Root additionally checked 5728 deterministic fence/table/text inputs against each exact mutant. Only this source-bound mutation is excluded; raw report stays Survived and raw/adjusted scores remain separate."
+    },
+    {
+      "file": "packages/cli-core/src/message-parts.ts",
+      "source_sha256": "b7c8f17f9fccb3a52799065a1e60a073a9e53c1b1852636e24366ff32dd6660f",
+      "location": {
+        "end": {
+          "column": 37,
+          "line": 133
+        },
+        "start": {
+          "column": 35,
+          "line": 133
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"Stryker was here!\"",
+      "original": "\"\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The unchanged table consumer loop only reads in-range entries in a dense unmodified String.split array, so its fallback is never evaluated.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using every private caller and exact source slice. Root additionally checked 5728 deterministic fence/table/text inputs against each exact mutant. Only this source-bound mutation is excluded; raw report stays Survived and raw/adjusted scores remain separate."
+    },
+    {
+      "file": "apps/engine/src/execution/core/classify.ts",
+      "source_sha256": "f3073952620107ae3cc45e86676f716ce69b53cec74649e01869058ec22be80e",
+      "location": {
+        "end": {
+          "column": 97,
+          "line": 79
+        },
+        "start": {
+          "column": 89,
+          "line": 79
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"\"",
+      "original": "\"failed\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "This literal is reached only after timed_out and aborted have selected their own preceding branches. For every remaining run status, original passes 'failed' and the mutation passes empty status to classifyFailure; neither matches aborted/skipped/timed_out, so both traverse the identical code/message classification path.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against the exact source and every downstream status discriminator, native string Set membership and message regex. The synthetic fallback is not reached by the preceding special status branches. Raw reports remain unchanged. Comparator mutant is explicitly not covered."
+    },
+    {
+      "file": "apps/engine/src/execution/core/classify.ts",
+      "source_sha256": "f3073952620107ae3cc45e86676f716ce69b53cec74649e01869058ec22be80e",
+      "location": {
+        "end": {
+          "column": 22,
+          "line": 96
+        },
+        "start": {
+          "column": 10,
+          "line": 96
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "code != null",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "TRANSIENT_RUN_CODES is a native Set<string>. For a missing error code, Set.has(undefined) is false; for every present string, both sides evaluate the same membership predicate.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against the exact source and every downstream status discriminator, native string Set membership and message regex. The synthetic fallback is not reached by the preceding special status branches. Raw reports remain unchanged. Comparator mutant is explicitly not covered."
+    },
+    {
+      "file": "apps/engine/src/execution/core/classify.ts",
+      "source_sha256": "f3073952620107ae3cc45e86676f716ce69b53cec74649e01869058ec22be80e",
+      "location": {
+        "end": {
+          "column": 40,
+          "line": 109
+        },
+        "start": {
+          "column": 38,
+          "line": 109
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"Stryker was here!\"",
+      "original": "\"\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "These are nullish fallbacks only. The sentinel is neither a recognized error code/prefix nor any rate-limit, placeholder, auth, timeout, or abort regex match; it therefore reaches the same driver_error default as the empty fallback.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against the exact source and every downstream status discriminator, native string Set membership and message regex. The synthetic fallback is not reached by the preceding special status branches. Raw reports remain unchanged. Comparator mutant is explicitly not covered."
+    },
+    {
+      "file": "apps/engine/src/execution/core/classify.ts",
+      "source_sha256": "f3073952620107ae3cc45e86676f716ce69b53cec74649e01869058ec22be80e",
+      "location": {
+        "end": {
+          "column": 47,
+          "line": 110
+        },
+        "start": {
+          "column": 45,
+          "line": 110
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"Stryker was here!\"",
+      "original": "\"\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "These are nullish fallbacks only. The sentinel is neither a recognized error code/prefix nor any rate-limit, placeholder, auth, timeout, or abort regex match; it therefore reaches the same driver_error default as the empty fallback.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against the exact source and every downstream status discriminator, native string Set membership and message regex. The synthetic fallback is not reached by the preceding special status branches. Raw reports remain unchanged. Comparator mutant is explicitly not covered."
+    },
+    {
+      "file": "apps/engine/src/execution/core/classify.ts",
+      "source_sha256": "f3073952620107ae3cc45e86676f716ce69b53cec74649e01869058ec22be80e",
+      "location": {
+        "end": {
+          "column": 99,
+          "line": 157
+        },
+        "start": {
+          "column": 5,
+          "line": 157
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "failure.status === \"timed_out\" || failure.status === \"aborted\" || failure.status === \"skipped\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "For timed_out/aborted/skipped, original and replacement pass the same status. Every other persisted status is mapped to failed by the original; classifyFailure maps any non-special status through the same failure-code/message decision tree, so failed and the mutant value have the same result.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against the exact source and every downstream status discriminator, native string Set membership and message regex. The synthetic fallback is not reached by the preceding special status branches. Raw reports remain unchanged. Comparator mutant is explicitly not covered."
+    },
+    {
+      "file": "apps/engine/src/execution/core/classify.ts",
+      "source_sha256": "f3073952620107ae3cc45e86676f716ce69b53cec74649e01869058ec22be80e",
+      "location": {
+        "end": {
+          "column": 17,
+          "line": 159
+        },
+        "start": {
+          "column": 9,
+          "line": 159
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"\"",
+      "original": "\"failed\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "For timed_out/aborted/skipped, original and replacement pass the same status. Every other persisted status is mapped to failed by the original; classifyFailure maps any non-special status through the same failure-code/message decision tree, so failed and the mutant value have the same result.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against the exact source and every downstream status discriminator, native string Set membership and message regex. The synthetic fallback is not reached by the preceding special status branches. Raw reports remain unchanged. Comparator mutant is explicitly not covered."
+    },
+    {
+      "file": "apps/engine/src/execution/core/classify.ts",
+      "source_sha256": "f3073952620107ae3cc45e86676f716ce69b53cec74649e01869058ec22be80e",
+      "location": {
+        "end": {
+          "column": 48,
+          "line": 160
+        },
+        "start": {
+          "column": 18,
+          "line": 160
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "typeof err.reason === \"string\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The only consumer is reportRefusalReason, whose KNOWN_REFUSALS native Set<unknown> has only string members. Passing any non-string reason instead of omitting it leaves membership false; strings are passed unchanged.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against the exact source and every downstream status discriminator, native string Set membership and message regex. The synthetic fallback is not reached by the preceding special status branches. Raw reports remain unchanged. Comparator mutant is explicitly not covered."
+    },
+    {
+      "file": "apps/engine/src/execution/core/outcome.ts",
+      "source_sha256": "61cb1b0ab46357fe5b0194e4d8ffcbb45fefc0410eb798b886ee0faf164b7418",
+      "location": {
+        "end": {
+          "column": 77,
+          "line": 191
+        },
+        "start": {
+          "column": 75,
+          "line": 191
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"Stryker was here!\"",
+      "original": "\"\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The fallback is used only when output_contract is nullish and is immediately tested against OUTPUT_CONTRACT_VERDICTS {'passed','violated','none'}. Neither empty string nor the sentinel is a member, so both return 'none'.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against the exact source and every downstream status discriminator, native string Set membership and message regex. The synthetic fallback is not reached by the preceding special status branches. Raw reports remain unchanged. Comparator mutant is explicitly not covered."
+    },
+    {
+      "file": "packages/cli-core/src/turn-event-model.ts",
+      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "location": {
+        "end": {
+          "column": 41,
+          "line": 225
+        },
+        "start": {
+          "column": 16,
+          "line": 225
+        }
+      },
+      "mutatorName": "ArithmeticOperator",
+      "replacement": "state.messages.length + 1",
+      "original": "state.messages.length - 1",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The reverse scan reads through an explicit missing-element guard. Starting at length+1 visits two absent array slots, neither can match, then reaches the unchanged length-1 starting position. No result or state change occurs for the extra iterations.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using exact current source, loop guards, fresh array creation, and all changed branch returns. Optional-chain removals, failed execution status guards, and replay/payload mutations are explicitly not included. Raw reports remain untouched."
+    },
+    {
+      "file": "packages/cli-core/src/turn-event-model.ts",
+      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "location": {
+        "end": {
+          "column": 45,
+          "line": 493
+        },
+        "start": {
+          "column": 20,
+          "line": 493
+        }
+      },
+      "mutatorName": "ArithmeticOperator",
+      "replacement": "state.messages.length + 1",
+      "original": "state.messages.length - 1",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The reverse scan reads through an explicit missing-element guard. Starting at length+1 visits two absent array slots, neither can match, then reaches the unchanged length-1 starting position. No result or state change occurs for the extra iterations.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using exact current source, loop guards, fresh array creation, and all changed branch returns. Optional-chain removals, failed execution status guards, and replay/payload mutations are explicitly not included. Raw reports remain untouched."
+    },
+    {
+      "file": "packages/cli-core/src/turn-event-model.ts",
+      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "location": {
+        "end": {
+          "column": 41,
+          "line": 512
+        },
+        "start": {
+          "column": 16,
+          "line": 512
+        }
+      },
+      "mutatorName": "ArithmeticOperator",
+      "replacement": "state.messages.length + 1",
+      "original": "state.messages.length - 1",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The reverse scan reads through an explicit missing-element guard. Starting at length+1 visits two absent array slots, neither can match, then reaches the unchanged length-1 starting position. No result or state change occurs for the extra iterations.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using exact current source, loop guards, fresh array creation, and all changed branch returns. Optional-chain removals, failed execution status guards, and replay/payload mutations are explicitly not included. Raw reports remain untouched."
+    },
+    {
+      "file": "packages/cli-core/src/turn-event-model.ts",
+      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "location": {
+        "end": {
+          "column": 42,
+          "line": 536
+        },
+        "start": {
+          "column": 16,
+          "line": 536
+        }
+      },
+      "mutatorName": "ArithmeticOperator",
+      "replacement": "state.toolCalls.length + 1",
+      "original": "state.toolCalls.length - 1",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The reverse scan reads through an explicit missing-element guard. Starting at length+1 visits two absent array slots, neither can match, then reaches the unchanged length-1 starting position. No result or state change occurs for the extra iterations.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using exact current source, loop guards, fresh array creation, and all changed branch returns. Optional-chain removals, failed execution status guards, and replay/payload mutations are explicitly not included. Raw reports remain untouched."
+    },
+    {
+      "file": "packages/cli-core/src/turn-event-model.ts",
+      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "location": {
+        "end": {
+          "column": 26,
+          "line": 301
+        },
+        "start": {
+          "column": 11,
+          "line": 301
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "tail.length > 0",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "Only the empty expectedStreamTail case changes branch. With an empty event text the return preserves the same empty tail and streaming string; with nonempty event text startsWith(empty) is true and slice(0) appends exactly the original text. Both produce identical session fields.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using exact current source, loop guards, fresh array creation, and all changed branch returns. Optional-chain removals, failed execution status guards, and replay/payload mutations are explicitly not included. Raw reports remain untouched."
+    },
+    {
+      "file": "packages/cli-core/src/turn-event-model.ts",
+      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "location": {
+        "end": {
+          "column": 26,
+          "line": 301
+        },
+        "start": {
+          "column": 11,
+          "line": 301
+        }
+      },
+      "mutatorName": "EqualityOperator",
+      "replacement": "tail.length >= 0",
+      "original": "tail.length > 0",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "Only the empty expectedStreamTail case changes branch. With an empty event text the return preserves the same empty tail and streaming string; with nonempty event text startsWith(empty) is true and slice(0) appends exactly the original text. Both produce identical session fields.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using exact current source, loop guards, fresh array creation, and all changed branch returns. Optional-chain removals, failed execution status guards, and replay/payload mutations are explicitly not included. Raw reports remain untouched."
+    },
+    {
+      "file": "packages/cli-core/src/turn-event-model.ts",
+      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "location": {
+        "end": {
+          "column": 21,
+          "line": 348
+        },
+        "start": {
+          "column": 13,
+          "line": 348
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "existing",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The preceding nonnegative findIndex used a callback dereferencing the matching call object. The freshly cloned calls array is not changed between that lookup and this indexed read; the matched existing object is necessarily present. The forced true guard does not change the assignment.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using exact current source, loop guards, fresh array creation, and all changed branch returns. Optional-chain removals, failed execution status guards, and replay/payload mutations are explicitly not included. Raw reports remain untouched."
+    },
+    {
+      "file": "packages/cli-core/src/turn-event-model.ts",
+      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "location": {
+        "end": {
+          "column": 21,
+          "line": 410
+        },
+        "start": {
+          "column": 13,
+          "line": 410
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "existing",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The preceding nonnegative findIndex used a callback dereferencing the matching call object. The freshly cloned calls array is not changed between that lookup and this indexed read; the matched existing object is necessarily present. The forced true guard does not change the assignment.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using exact current source, loop guards, fresh array creation, and all changed branch returns. Optional-chain removals, failed execution status guards, and replay/payload mutations are explicitly not included. Raw reports remain untouched."
+    },
+    {
+      "file": "packages/cli-core/src/turn-event-model.ts",
+      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "location": {
+        "end": {
+          "column": 21,
+          "line": 428
+        },
+        "start": {
+          "column": 13,
+          "line": 428
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "existing",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The preceding nonnegative findIndex used a callback dereferencing the matching call object. The freshly cloned calls array is not changed between that lookup and this indexed read; the matched existing object is necessarily present. The forced true guard does not change the assignment.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using exact current source, loop guards, fresh array creation, and all changed branch returns. Optional-chain removals, failed execution status guards, and replay/payload mutations are explicitly not included. Raw reports remain untouched."
+    },
+    {
+      "file": "packages/cli-core/src/turn-event-model.ts",
+      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "location": {
+        "end": {
+          "column": 19,
+          "line": 408
+        },
+        "start": {
+          "column": 11,
+          "line": 408
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "idx >= 0",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "For a matching call the guard already evaluates true. For no matching call, index is -1 in the fresh spread-created array; existing is undefined and the retained inner guard prevents any assignment. The returned session fields are unchanged.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using exact current source, loop guards, fresh array creation, and all changed branch returns. Optional-chain removals, failed execution status guards, and replay/payload mutations are explicitly not included. Raw reports remain untouched."
+    },
+    {
+      "file": "packages/cli-core/src/turn-event-model.ts",
+      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "location": {
+        "end": {
+          "column": 19,
+          "line": 426
+        },
+        "start": {
+          "column": 11,
+          "line": 426
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "idx >= 0",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "For a matching call the guard already evaluates true. For no matching call, index is -1 in the fresh spread-created array; existing is undefined and the retained inner guard prevents any assignment. The returned session fields are unchanged.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using exact current source, loop guards, fresh array creation, and all changed branch returns. Optional-chain removals, failed execution status guards, and replay/payload mutations are explicitly not included. Raw reports remain untouched."
+    },
+    {
+      "file": "apps/engine/src/knowledge/core/dedup.ts",
+      "source_sha256": "1b7007b4aaf60662a23ec9c61dd4809bc2f997fc26adc6e26cd16b6c25994853",
+      "location": {
+        "end": {
+          "column": 35,
+          "line": 36
+        },
+        "start": {
+          "column": 7,
+          "line": 36
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "false",
+      "original": "a.size === 0 || b.size === 0",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "Line 35 has already returned 1 when both sizes are zero. Thus every path affected here has exactly one empty set. Falling through computes inter=0 and union=|nonempty|>0, so inter/union is exactly the original guard's 0.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against exact report slices and mathematical paths. Contract: a and b implement ordinary finite mathematical ReadonlySet semantics: nonnegative integral stable size, pure stable has(x), and normal finite iteration. No Proxy/getter/side-effect mock behavior is part of this numeric similarity helper's contract. Raw reports unchanged; no other mutants excluded."
+    },
+    {
+      "file": "apps/engine/src/knowledge/core/dedup.ts",
+      "source_sha256": "1b7007b4aaf60662a23ec9c61dd4809bc2f997fc26adc6e26cd16b6c25994853",
+      "location": {
+        "end": {
+          "column": 35,
+          "line": 36
+        },
+        "start": {
+          "column": 7,
+          "line": 36
+        }
+      },
+      "mutatorName": "LogicalOperator",
+      "replacement": "a.size === 0 && b.size === 0",
+      "original": "a.size === 0 || b.size === 0",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "Line 35 has already returned 1 when both sizes are zero. Thus every path affected here has exactly one empty set. Falling through computes inter=0 and union=|nonempty|>0, so inter/union is exactly the original guard's 0.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against exact report slices and mathematical paths. Contract: a and b implement ordinary finite mathematical ReadonlySet semantics: nonnegative integral stable size, pure stable has(x), and normal finite iteration. No Proxy/getter/side-effect mock behavior is part of this numeric similarity helper's contract. Raw reports unchanged; no other mutants excluded."
+    },
+    {
+      "file": "apps/engine/src/knowledge/core/dedup.ts",
+      "source_sha256": "1b7007b4aaf60662a23ec9c61dd4809bc2f997fc26adc6e26cd16b6c25994853",
+      "location": {
+        "end": {
+          "column": 19,
+          "line": 36
+        },
+        "start": {
+          "column": 7,
+          "line": 36
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "false",
+      "original": "a.size === 0",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "Line 35 has already returned 1 when both sizes are zero. Thus every path affected here has exactly one empty set. Falling through computes inter=0 and union=|nonempty|>0, so inter/union is exactly the original guard's 0.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against exact report slices and mathematical paths. Contract: a and b implement ordinary finite mathematical ReadonlySet semantics: nonnegative integral stable size, pure stable has(x), and normal finite iteration. No Proxy/getter/side-effect mock behavior is part of this numeric similarity helper's contract. Raw reports unchanged; no other mutants excluded."
+    },
+    {
+      "file": "apps/engine/src/knowledge/core/dedup.ts",
+      "source_sha256": "1b7007b4aaf60662a23ec9c61dd4809bc2f997fc26adc6e26cd16b6c25994853",
+      "location": {
+        "end": {
+          "column": 35,
+          "line": 36
+        },
+        "start": {
+          "column": 23,
+          "line": 36
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "false",
+      "original": "b.size === 0",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "Line 35 has already returned 1 when both sizes are zero. Thus every path affected here has exactly one empty set. Falling through computes inter=0 and union=|nonempty|>0, so inter/union is exactly the original guard's 0.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against exact report slices and mathematical paths. Contract: a and b implement ordinary finite mathematical ReadonlySet semantics: nonnegative integral stable size, pure stable has(x), and normal finite iteration. No Proxy/getter/side-effect mock behavior is part of this numeric similarity helper's contract. Raw reports unchanged; no other mutants excluded."
+    },
+    {
+      "file": "apps/engine/src/knowledge/core/dedup.ts",
+      "source_sha256": "1b7007b4aaf60662a23ec9c61dd4809bc2f997fc26adc6e26cd16b6c25994853",
+      "location": {
+        "end": {
+          "column": 40,
+          "line": 37
+        },
+        "start": {
+          "column": 24,
+          "line": 37
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "a.size <= b.size",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "All variants choose either a or b as the iteration set. Intersection cardinality is symmetric: sum over x in a of 1[b.has(x)] equals sum over x in b of 1[a.has(x)]. union=|a|+|b|-intersection is therefore unchanged.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against exact report slices and mathematical paths. Contract: a and b implement ordinary finite mathematical ReadonlySet semantics: nonnegative integral stable size, pure stable has(x), and normal finite iteration. No Proxy/getter/side-effect mock behavior is part of this numeric similarity helper's contract. Raw reports unchanged; no other mutants excluded."
+    },
+    {
+      "file": "apps/engine/src/knowledge/core/dedup.ts",
+      "source_sha256": "1b7007b4aaf60662a23ec9c61dd4809bc2f997fc26adc6e26cd16b6c25994853",
+      "location": {
+        "end": {
+          "column": 40,
+          "line": 37
+        },
+        "start": {
+          "column": 24,
+          "line": 37
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "false",
+      "original": "a.size <= b.size",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "All variants choose either a or b as the iteration set. Intersection cardinality is symmetric: sum over x in a of 1[b.has(x)] equals sum over x in b of 1[a.has(x)]. union=|a|+|b|-intersection is therefore unchanged.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against exact report slices and mathematical paths. Contract: a and b implement ordinary finite mathematical ReadonlySet semantics: nonnegative integral stable size, pure stable has(x), and normal finite iteration. No Proxy/getter/side-effect mock behavior is part of this numeric similarity helper's contract. Raw reports unchanged; no other mutants excluded."
+    },
+    {
+      "file": "apps/engine/src/knowledge/core/dedup.ts",
+      "source_sha256": "1b7007b4aaf60662a23ec9c61dd4809bc2f997fc26adc6e26cd16b6c25994853",
+      "location": {
+        "end": {
+          "column": 40,
+          "line": 37
+        },
+        "start": {
+          "column": 24,
+          "line": 37
+        }
+      },
+      "mutatorName": "EqualityOperator",
+      "replacement": "a.size < b.size",
+      "original": "a.size <= b.size",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "All variants choose either a or b as the iteration set. Intersection cardinality is symmetric: sum over x in a of 1[b.has(x)] equals sum over x in b of 1[a.has(x)]. union=|a|+|b|-intersection is therefore unchanged.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against exact report slices and mathematical paths. Contract: a and b implement ordinary finite mathematical ReadonlySet semantics: nonnegative integral stable size, pure stable has(x), and normal finite iteration. No Proxy/getter/side-effect mock behavior is part of this numeric similarity helper's contract. Raw reports unchanged; no other mutants excluded."
+    },
+    {
+      "file": "apps/engine/src/knowledge/core/dedup.ts",
+      "source_sha256": "1b7007b4aaf60662a23ec9c61dd4809bc2f997fc26adc6e26cd16b6c25994853",
+      "location": {
+        "end": {
+          "column": 40,
+          "line": 37
+        },
+        "start": {
+          "column": 24,
+          "line": 37
+        }
+      },
+      "mutatorName": "EqualityOperator",
+      "replacement": "a.size > b.size",
+      "original": "a.size <= b.size",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "All variants choose either a or b as the iteration set. Intersection cardinality is symmetric: sum over x in a of 1[b.has(x)] equals sum over x in b of 1[a.has(x)]. union=|a|+|b|-intersection is therefore unchanged.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against exact report slices and mathematical paths. Contract: a and b implement ordinary finite mathematical ReadonlySet semantics: nonnegative integral stable size, pure stable has(x), and normal finite iteration. No Proxy/getter/side-effect mock behavior is part of this numeric similarity helper's contract. Raw reports unchanged; no other mutants excluded."
+    },
+    {
+      "file": "apps/engine/src/knowledge/core/dedup.ts",
+      "source_sha256": "1b7007b4aaf60662a23ec9c61dd4809bc2f997fc26adc6e26cd16b6c25994853",
+      "location": {
+        "end": {
+          "column": 21,
+          "line": 41
+        },
+        "start": {
+          "column": 10,
+          "line": 41
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "false",
+      "original": "union === 0",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "After the two zero-size guards, both sets are nonempty. intersection <= min(|a|,|b|), hence union=|a|+|b|-intersection >= max(|a|,|b|)>0. The original conditional always returns inter/union.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against exact report slices and mathematical paths. Contract: a and b implement ordinary finite mathematical ReadonlySet semantics: nonnegative integral stable size, pure stable has(x), and normal finite iteration. No Proxy/getter/side-effect mock behavior is part of this numeric similarity helper's contract. Raw reports unchanged; no other mutants excluded."
+    },
+    {
+      "file": "apps/engine/src/skill-candidates/core/evidence.ts",
+      "source_sha256": "7440d433ed50137fc171d96ea1463d94a153691c4194d29d4c560c0e7fb7635b",
+      "location": {
+        "end": {
+          "column": 21,
+          "line": 27
+        },
+        "start": {
+          "column": 7,
+          "line": 27
+        }
+      },
+      "mutatorName": "EqualityOperator",
+      "replacement": "remaining < 0",
+      "original": "remaining <= 0",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "At remaining === 0, original returns a fresh empty array literal. The replacement evaluates uniqueEvidence/filter and calls slice(0, 0), which ECMAScript specifies to return a fresh empty Array. Neither result aliases existing or incoming and neither changes their values. This review deliberately excludes hostile Proxy/getter/iterable side effects: Evidence and readonly arrays are treated as the plain persisted data values accepted by this core helper; such effects are outside its data contract.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root against exact report slices and mathematical paths. Contract: Plain immutable persisted Evidence values; excludes side-effecting Proxy/getter inputs. Raw reports unchanged; no other mutants excluded."
+    },
+    {
+      "file": "apps/engine/src/knowledge/core/content.ts",
+      "source_sha256": "a2f6dc896322cc6d0fb541ee0d9e131c5d1d88fd7ff41689526815e75b6616a1",
+      "location": {
+        "end": {
+          "column": 50,
+          "line": 23
+        },
+        "start": {
+          "column": 44,
+          "line": 23
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"\"",
+      "original": "\"utf8\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "Buffer.byteLength uses UTF-8 for the exact empty encoding, as for explicit utf8. Thus the byte count and every downstream bound decision are unchanged for string inputs, including malformed UTF-16 replacement encoding. This does not waive other encoding replacements.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root with exact source slice. Bun 1.4 comparison covered all 65536 single UTF-16 units and 100000 randomized eight-unit strings without mismatch. Root inspected local Node 26.13 byteLength implementation: !encoding and encoding === utf8 select the same byteLengthUtf8 function. Runtime versions are bound in the final quality provenance; raw reports remain unchanged."
+    },
+    {
+      "file": "apps/engine/src/knowledge/core/chunking.ts",
+      "source_sha256": "2fb733694d9d7d968c2d8e924703c894cf6bb75333fc181b374fe207af74ac4b",
+      "location": {
+        "end": {
+          "column": 37,
+          "line": 110
+        },
+        "start": {
+          "column": 31,
+          "line": 110
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"\"",
+      "original": "\"utf8\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "Buffer.byteLength uses UTF-8 for the exact empty encoding, as for explicit utf8. Thus the byte count and every downstream bound decision are unchanged for string inputs, including malformed UTF-16 replacement encoding. This does not waive other encoding replacements.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root with exact source slice. Bun 1.4 comparison covered all 65536 single UTF-16 units and 100000 randomized eight-unit strings without mismatch. Root inspected local Node 26.13 byteLength implementation: !encoding and encoding === utf8 select the same byteLengthUtf8 function. Runtime versions are bound in the final quality provenance; raw reports remain unchanged."
+    },
+    {
+      "file": "apps/engine/src/knowledge/core/chunking.ts",
+      "source_sha256": "2fb733694d9d7d968c2d8e924703c894cf6bb75333fc181b374fe207af74ac4b",
+      "location": {
+        "end": {
+          "column": 23,
+          "line": 14
+        },
+        "start": {
+          "column": 7,
+          "line": 14
+        }
+      },
+      "mutatorName": "EqualityOperator",
+      "replacement": "words.length <= n",
+      "original": "words.length < n",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The only changed case is words.length === n. The original loop executes exactly once and adds fnv1a32(words.slice(0,n).join(' ')); the replacement adds fnv1a32(words.join(' ')). They are identical. This holds for every numeric n, not only default 5.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using exact source slices, positive budget invariant, code-point iteration and full caller flow. Outer packing/flush mutations have concrete counterexamples and are not excluded. Raw reports unchanged."
+    },
+    {
+      "file": "apps/engine/src/knowledge/core/chunking.ts",
+      "source_sha256": "2fb733694d9d7d968c2d8e924703c894cf6bb75333fc181b374fe207af74ac4b",
+      "location": {
+        "end": {
+          "column": 28,
+          "line": 75
+        },
+        "start": {
+          "column": 9,
+          "line": 75
+        }
+      },
+      "mutatorName": "EqualityOperator",
+      "replacement": "byteLen(s) >= budget",
+      "original": "byteLen(s) > budget",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "At equality the original flushes prior content and buffers the entire sentence s. The replacement flushes prior content and emits exactly s through the code-point helper. Since s fills the positive byte budget, the original must flush it before any later sentence can contribute; final flush emits it if no later sentence exists. Both yield the same sequence, including a trailing empty sentence.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using exact source slices, positive budget invariant, code-point iteration and full caller flow. Outer packing/flush mutations have concrete counterexamples and are not excluded. Raw reports unchanged."
+    },
+    {
+      "file": "apps/engine/src/knowledge/core/chunking.ts",
+      "source_sha256": "2fb733694d9d7d968c2d8e924703c894cf6bb75333fc181b374fe207af74ac4b",
+      "location": {
+        "end": {
+          "column": 10,
+          "line": 105
+        },
+        "start": {
+          "column": 7,
+          "line": 105
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "buf",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "splitByUtf8Budget is called only for a nonempty over-budget sentence. It either throws before completion for an unfit code point, or leaves buf holding a nonempty final code point sequence: every assignment to buf assigns a code point and overflow pushes before replacing it. The final guard is therefore always truthy on normal return.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using exact source slices, positive budget invariant, code-point iteration and full caller flow. Outer packing/flush mutations have concrete counterexamples and are not excluded. Raw reports unchanged."
+    },
+    {
+      "file": "apps/engine/src/knowledge/core/chunking.ts",
+      "source_sha256": "2fb733694d9d7d968c2d8e924703c894cf6bb75333fc181b374fe207af74ac4b",
+      "location": {
+        "end": {
+          "column": 24,
+          "line": 114
+        },
+        "start": {
+          "column": 7,
+          "line": 114
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "false",
+      "original": "byteLen(s) <= cap",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The only changed equality path has byteLen(s) === cap. The code-point loop accepts every prefix because each prefix byte length is at most the total cap, returning s. Forced false likewise returns s whenever byteLen(s)<=cap; for NaN, infinities, and negative cap both original and loop preserve their existing outcomes.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using exact source slices, positive budget invariant, code-point iteration and full caller flow. Outer packing/flush mutations have concrete counterexamples and are not excluded. Raw reports unchanged."
+    },
+    {
+      "file": "apps/engine/src/knowledge/core/chunking.ts",
+      "source_sha256": "2fb733694d9d7d968c2d8e924703c894cf6bb75333fc181b374fe207af74ac4b",
+      "location": {
+        "end": {
+          "column": 24,
+          "line": 114
+        },
+        "start": {
+          "column": 7,
+          "line": 114
+        }
+      },
+      "mutatorName": "EqualityOperator",
+      "replacement": "byteLen(s) < cap",
+      "original": "byteLen(s) <= cap",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The only changed equality path has byteLen(s) === cap. The code-point loop accepts every prefix because each prefix byte length is at most the total cap, returning s. Forced false likewise returns s whenever byteLen(s)<=cap; for NaN, infinities, and negative cap both original and loop preserve their existing outcomes.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts and root using exact source slices, positive budget invariant, code-point iteration and full caller flow. Outer packing/flush mutations have concrete counterexamples and are not excluded. Raw reports unchanged."
+    },
+    {
+      "file": "packages/cli-core/src/turn-event-model.ts",
+      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "location": {
+        "end": {
+          "column": 17,
+          "line": 246
+        },
+        "start": {
+          "column": 9,
+          "line": 246
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "existing",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "sameIdIdx is non-negative only after findIndex invoked the callback on that index and observed an assistant message with the requested id. For an ordinary, non-mutating messages array, messages[sameIdIdx] is that truthy message. Sparse/proxy arrays are outside the session-state value contract and a sparse hole would fail the callback before producing this index.",
+      "independent_review": "Independently reviewed by dag_remaining_contracts and root against exact current source and short-circuit/array lookup conditions. Ordinary session data is the input contract. The observable null tool-argument guard mutation is explicitly excluded from this equivalence review. Raw reports remain unchanged."
+    },
+    {
+      "file": "packages/cli-core/src/turn-event-model.ts",
+      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "location": {
+        "end": {
+          "column": 55,
+          "line": 282
+        },
+        "start": {
+          "column": 46,
+          "line": 282
+        }
+      },
+      "mutatorName": "OptionalChaining",
+      "replacement": "prior.id",
+      "original": "prior?.id",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The optional access is evaluated only after isUserEcho, whose definition requires prior?.role === 'user'. Therefore prior is present whenever the expression is evaluated.",
+      "independent_review": "Independently reviewed by dag_remaining_contracts and root against exact current source and short-circuit/array lookup conditions. Ordinary session data is the input contract. The observable null tool-argument guard mutation is explicitly excluded from this equivalence review. Raw reports remain unchanged."
+    },
+    {
+      "file": "packages/cli-core/src/turn-event-model.ts",
+      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "location": {
+        "end": {
+          "column": 32,
+          "line": 285
+        },
+        "start": {
+          "column": 9,
+          "line": 285
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "prior?.id !== undefined",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "Within the isUserEcho branch, a missing prior id already makes priorIsLocalEcho true. Replacing the second predicate can alter priorIsDifferentEnginePersist, but the only consumer is priorIsLocalEcho || priorIsDifferentEnginePersist, whose result remains true. A present id satisfies the original predicate.",
+      "independent_review": "Independently reviewed by dag_remaining_contracts and root against exact current source and short-circuit/array lookup conditions. Ordinary session data is the input contract. The observable null tool-argument guard mutation is explicitly excluded from this equivalence review. Raw reports remain unchanged."
+    },
+    {
+      "file": "packages/cli-core/src/turn-event-model.ts",
+      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "location": {
+        "end": {
+          "column": 18,
+          "line": 285
+        },
+        "start": {
+          "column": 9,
+          "line": 285
+        }
+      },
+      "mutatorName": "OptionalChaining",
+      "replacement": "prior.id",
+      "original": "prior?.id",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "Same isUserEcho presence proof as id 347: prior is a user message before this operand is evaluated.",
+      "independent_review": "Independently reviewed by dag_remaining_contracts and root against exact current source and short-circuit/array lookup conditions. Ordinary session data is the input contract. The observable null tool-argument guard mutation is explicitly excluded from this equivalence review. Raw reports remain unchanged."
+    },
+    {
+      "file": "apps/engine/src/execution/core/jsonata-contract.ts",
+      "source_sha256": "b3729cac7ffe0299968fa486461fe7d2a8e151aba8d06ee0a99de869495045e4",
+      "location": {
+        "end": {
+          "column": 28,
+          "line": 285
+        },
+        "start": {
+          "column": 26,
+          "line": 285
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"Stryker was here!\"",
+      "original": "\"\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "parseDeps obtains m only from matchAll over /\\$(input|scope|cred|connector|env)\\.([A-Za-z_][\\w.]*)/g. Both capture groups are mandatory: the second has a non-empty leading identifier character. Therefore m[2] is always a string and the nullish fallback is unreachable for every match the function processes.",
+      "independent_review": "Independently reviewed by dag_remaining_contracts and root against both mandatory regex captures and the exhaustive preceding root branches. This proof covers only dependency extraction, not JSONata AST parser mutations. Raw reports unchanged."
+    },
+    {
+      "file": "apps/engine/src/execution/core/jsonata-contract.ts",
+      "source_sha256": "b3729cac7ffe0299968fa486461fe7d2a8e151aba8d06ee0a99de869495045e4",
+      "location": {
+        "end": {
+          "column": 28,
+          "line": 290
+        },
+        "start": {
+          "column": 14,
+          "line": 290
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "root === \"env\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "root is exactly the first mandatory capture group and can only be input, scope, cred, connector, or env. The preceding if/else-if clauses consume the first four values. Reaching the final else-if therefore entails root === env, so replacing that condition with true preserves every returned dependency set.",
+      "independent_review": "Independently reviewed by dag_remaining_contracts and root against both mandatory regex captures and the exhaustive preceding root branches. This proof covers only dependency extraction, not JSONata AST parser mutations. Raw reports unchanged."
+    },
+    {
+      "file": "apps/engine/src/execution/core/jsonata-contract.ts",
+      "source_sha256": "b3729cac7ffe0299968fa486461fe7d2a8e151aba8d06ee0a99de869495045e4",
+      "location": {
+        "end": {
+          "column": 59,
+          "line": 110
+        },
+        "start": {
+          "column": 50,
+          "line": 110
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"\"",
+      "original": "\"unknown\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "For a defined numeric position p, both keys are exactly name + ':' + String(p). For an undefined position, each variant assigns one unique key per name: name + ':unknown' versus name + ':'. A numeric String(p) is never empty and never 'unknown', including NaN, Infinity, -Infinity, -0 and finite numbers. Thus an undefined-position key cannot collide with a numeric-position key in either version. Appending a fixed suffix is injective in name. This remains true for names with embedded or trailing colons (for example 'a:b', 'a:', and 'a:unknown'); their characters do not alter the final delimiter-plus-suffix distinction. The two key functions therefore induce exactly the same equality classes and preserve the same first element of every class. Returned objects are untouched.",
+      "independent_review": "Independently reviewed by dag_remaining_contracts; root reviewed exact current report source slices, installed JSONata 2.2.2 parser contract and adversarial valid-source probes. Evidence: raw-survived-independent-review-jsonata-readmodel.json. Raw survivor remains unchanged and is not counted as killed."
+    },
+    {
+      "file": "apps/engine/src/execution/core/jsonata-contract.ts",
+      "source_sha256": "b3729cac7ffe0299968fa486461fe7d2a8e151aba8d06ee0a99de869495045e4",
+      "location": {
+        "end": {
+          "column": 69,
+          "line": 128
+        },
+        "start": {
+          "column": 9,
+          "line": 128
+        }
+      },
+      "mutatorName": "LogicalOperator",
+      "replacement": "procedure?.type === \"path\" || Array.isArray(procedure.steps)",
+      "original": "procedure?.type === \"path\" && Array.isArray(procedure.steps)",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The upstream invocation parser assigns a procedure to every function, and processAST always assigns result.procedure. Its path construction always creates steps; non-path procedure nodes do not have steps. Therefore AND-to-OR, condition-to-true, and optional-chain removal select the same steps for every valid compiled function AST.",
+      "independent_review": "Independently reviewed by dag_remaining_contracts; root reviewed exact current report source slices, installed JSONata 2.2.2 parser contract and adversarial valid-source probes. Evidence: raw-survived-independent-review-jsonata-readmodel.json. Raw survivor remains unchanged and is not counted as killed."
+    },
+    {
+      "file": "apps/engine/src/execution/core/jsonata-contract.ts",
+      "source_sha256": "b3729cac7ffe0299968fa486461fe7d2a8e151aba8d06ee0a99de869495045e4",
+      "location": {
+        "end": {
+          "column": 35,
+          "line": 128
+        },
+        "start": {
+          "column": 9,
+          "line": 128
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "procedure?.type === \"path\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The upstream invocation parser assigns a procedure to every function, and processAST always assigns result.procedure. Its path construction always creates steps; non-path procedure nodes do not have steps. Therefore AND-to-OR, condition-to-true, and optional-chain removal select the same steps for every valid compiled function AST.",
+      "independent_review": "Independently reviewed by dag_remaining_contracts; root reviewed exact current report source slices, installed JSONata 2.2.2 parser contract and adversarial valid-source probes. Evidence: raw-survived-independent-review-jsonata-readmodel.json. Raw survivor remains unchanged and is not counted as killed."
+    },
+    {
+      "file": "apps/engine/src/execution/core/jsonata-contract.ts",
+      "source_sha256": "b3729cac7ffe0299968fa486461fe7d2a8e151aba8d06ee0a99de869495045e4",
+      "location": {
+        "end": {
+          "column": 24,
+          "line": 128
+        },
+        "start": {
+          "column": 9,
+          "line": 128
+        }
+      },
+      "mutatorName": "OptionalChaining",
+      "replacement": "procedure.type",
+      "original": "procedure?.type",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "The upstream invocation parser assigns a procedure to every function, and processAST always assigns result.procedure. Its path construction always creates steps; non-path procedure nodes do not have steps. Therefore AND-to-OR, condition-to-true, and optional-chain removal select the same steps for every valid compiled function AST.",
+      "independent_review": "Independently reviewed by dag_remaining_contracts; root reviewed exact current report source slices, installed JSONata 2.2.2 parser contract and adversarial valid-source probes. Evidence: raw-survived-independent-review-jsonata-readmodel.json. Raw survivor remains unchanged and is not counted as killed."
+    },
+    {
+      "file": "apps/engine/src/execution/core/jsonata-contract.ts",
+      "source_sha256": "b3729cac7ffe0299968fa486461fe7d2a8e151aba8d06ee0a99de869495045e4",
+      "location": {
+        "end": {
+          "column": 92,
+          "line": 128
+        },
+        "start": {
+          "column": 90,
+          "line": 128
+        }
+      },
+      "mutatorName": "ArrayDeclaration",
+      "replacement": "[\"Stryker was here\"]",
+      "original": "[]",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "On the false branch, the mutated singleton string is not a name-node target, so it emits nothing. On the true branch both forms use the parser-produced steps.",
+      "independent_review": "Independently reviewed by dag_remaining_contracts; root reviewed exact current report source slices, installed JSONata 2.2.2 parser contract and adversarial valid-source probes. Evidence: raw-survived-independent-review-jsonata-readmodel.json. Raw survivor remains unchanged and is not counted as killed."
+    },
+    {
+      "file": "apps/engine/src/execution/core/jsonata-contract.ts",
+      "source_sha256": "b3729cac7ffe0299968fa486461fe7d2a8e151aba8d06ee0a99de869495045e4",
+      "location": {
+        "end": {
+          "column": 70,
+          "line": 131
+        },
+        "start": {
+          "column": 38,
+          "line": 131
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "typeof target.value === \"string\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "A selected target is a parser-produced name step. Names have string values and numeric source positions; the parser's string-to-name conversion retains the literal string and token position. Both predicates are consequently true whenever reached.",
+      "independent_review": "Independently reviewed by dag_remaining_contracts; root reviewed exact current report source slices, installed JSONata 2.2.2 parser contract and adversarial valid-source probes. Evidence: raw-survived-independent-review-jsonata-readmodel.json. Raw survivor remains unchanged and is not counted as killed."
+    },
+    {
+      "file": "apps/engine/src/execution/core/jsonata-contract.ts",
+      "source_sha256": "b3729cac7ffe0299968fa486461fe7d2a8e151aba8d06ee0a99de869495045e4",
+      "location": {
+        "end": {
+          "column": 61,
+          "line": 132
+        },
+        "start": {
+          "column": 26,
+          "line": 132
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "typeof target.position === \"number\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "A selected target is a parser-produced name step. Names have string values and numeric source positions; the parser's string-to-name conversion retains the literal string and token position. Both predicates are consequently true whenever reached.",
+      "independent_review": "Independently reviewed by dag_remaining_contracts; root reviewed exact current report source slices, installed JSONata 2.2.2 parser contract and adversarial valid-source probes. Evidence: raw-survived-independent-review-jsonata-readmodel.json. Raw survivor remains unchanged and is not counted as killed."
+    },
+    {
+      "file": "apps/engine/src/execution/core/jsonata-contract.ts",
+      "source_sha256": "b3729cac7ffe0299968fa486461fe7d2a8e151aba8d06ee0a99de869495045e4",
+      "location": {
+        "end": {
+          "column": 26,
+          "line": 244
+        },
+        "start": {
+          "column": 11,
+          "line": 244
+        }
+      },
+      "mutatorName": "OptionalChaining",
+      "replacement": "procedure.type",
+      "original": "procedure?.type",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "Every function has a procedure. Parser-created variable procedures carry a string value: $foo() gives {type: variable, value: foo, position: 4}; the only generated no-position variable procedure is builtin exists for coalesce. Optional access and the value predicate cannot alter admission of a valid variable procedure.",
+      "independent_review": "Independently reviewed by dag_remaining_contracts; root reviewed exact current report source slices, installed JSONata 2.2.2 parser contract and adversarial valid-source probes. Evidence: raw-survived-independent-review-jsonata-readmodel.json. Raw survivor remains unchanged and is not counted as killed."
+    },
+    {
+      "file": "apps/engine/src/execution/core/jsonata-contract.ts",
+      "source_sha256": "b3729cac7ffe0299968fa486461fe7d2a8e151aba8d06ee0a99de869495045e4",
+      "location": {
+        "end": {
+          "column": 80,
+          "line": 244
+        },
+        "start": {
+          "column": 45,
+          "line": 244
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "typeof procedure.value === \"string\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "Every function has a procedure. Parser-created variable procedures carry a string value: $foo() gives {type: variable, value: foo, position: 4}; the only generated no-position variable procedure is builtin exists for coalesce. Optional access and the value predicate cannot alter admission of a valid variable procedure.",
+      "independent_review": "Independently reviewed by dag_remaining_contracts; root reviewed exact current report source slices, installed JSONata 2.2.2 parser contract and adversarial valid-source probes. Evidence: raw-survived-independent-review-jsonata-readmodel.json. Raw survivor remains unchanged and is not counted as killed."
+    },
+    {
+      "file": "apps/engine/src/execution/core/jsonata-contract.ts",
+      "source_sha256": "b3729cac7ffe0299968fa486461fe7d2a8e151aba8d06ee0a99de869495045e4",
+      "location": {
+        "end": {
+          "column": 59,
+          "line": 247
+        },
+        "start": {
+          "column": 21,
+          "line": 247
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "typeof procedure.position === \"number\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "All user-written variable calls have numeric token positions. The valid exceptional parser shape, foo ?? bar, creates unpositioned builtin exists, but the builtin filter removes it before returned-finding shaping and deduplication. Every emitted unknown call has a defined numeric position, so these mutations cannot affect output.",
+      "independent_review": "Independently reviewed by dag_remaining_contracts; root reviewed exact current report source slices, installed JSONata 2.2.2 parser contract and adversarial valid-source probes. Evidence: raw-survived-independent-review-jsonata-readmodel.json. Raw survivor remains unchanged and is not counted as killed."
+    },
+    {
+      "file": "apps/engine/src/execution/core/jsonata-contract.ts",
+      "source_sha256": "b3729cac7ffe0299968fa486461fe7d2a8e151aba8d06ee0a99de869495045e4",
+      "location": {
+        "end": {
+          "column": 38,
+          "line": 260
+        },
+        "start": {
+          "column": 11,
+          "line": 260
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "call.position !== undefined",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "All user-written variable calls have numeric token positions. The valid exceptional parser shape, foo ?? bar, creates unpositioned builtin exists, but the builtin filter removes it before returned-finding shaping and deduplication. Every emitted unknown call has a defined numeric position, so these mutations cannot affect output.",
+      "independent_review": "Independently reviewed by dag_remaining_contracts; root reviewed exact current report source slices, installed JSONata 2.2.2 parser contract and adversarial valid-source probes. Evidence: raw-survived-independent-review-jsonata-readmodel.json. Raw survivor remains unchanged and is not counted as killed."
+    },
+    {
+      "file": "apps/engine/src/execution/core/jsonata-contract.ts",
+      "source_sha256": "b3729cac7ffe0299968fa486461fe7d2a8e151aba8d06ee0a99de869495045e4",
+      "location": {
+        "end": {
+          "column": 4,
+          "line": 307
+        },
+        "start": {
+          "column": 11,
+          "line": 305
+        }
+      },
+      "mutatorName": "BlockStatement",
+      "replacement": "{}",
+      "original": "{\n    return null;\n  }",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "compile(source) throws for invalid source. With empty first catch, expr remains undefined and the existing second protected expr.ast() access throws TypeError, whose catch still returns null. Valid source has an assigned expression.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts; root reviewed exact current report source slices, installed JSONata 2.2.2 parser contract and adversarial valid-source probes. Evidence: raw-survived-independent-review-jsonata-readmodel-catch-coerce.json. Raw survivor remains unchanged and is not counted as killed."
+    },
+    {
+      "file": "apps/engine/src/execution/core/jsonata-contract.ts",
+      "source_sha256": "b3729cac7ffe0299968fa486461fe7d2a8e151aba8d06ee0a99de869495045e4",
+      "location": {
+        "end": {
+          "column": 4,
+          "line": 312
+        },
+        "start": {
+          "column": 11,
+          "line": 310
+        }
+      },
+      "mutatorName": "BlockStatement",
+      "replacement": "{}",
+      "original": "{\n    return null;\n  }",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "compile(source) already invokes expr.ast() in assertAstDepth before returning. Installed jsonata 2.2.2 Expression.ast is a zero-argument closure returning its captured normalized ast; no public source can make it throw after compile succeeded.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts; root reviewed exact current report source slices, installed JSONata 2.2.2 parser contract and adversarial valid-source probes. Evidence: raw-survived-independent-review-jsonata-readmodel-catch-coerce.json. Raw survivor remains unchanged and is not counted as killed."
+    },
+    {
+      "file": "apps/engine/src/execution/core/jsonata-contract.ts",
+      "source_sha256": "b3729cac7ffe0299968fa486461fe7d2a8e151aba8d06ee0a99de869495045e4",
+      "location": {
+        "end": {
+          "column": 40,
+          "line": 340
+        },
+        "start": {
+          "column": 23,
+          "line": 340
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "false",
+      "original": "raw === undefined",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "For undefined, both paths return 'JSONata error': mutated code skips primitive branches, JSON.stringify(undefined) returns undefined, and the final fallback returns the same string.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts; root reviewed exact current report source slices, installed JSONata 2.2.2 parser contract and adversarial valid-source probes. Evidence: raw-survived-independent-review-jsonata-readmodel-catch-coerce.json. Raw survivor remains unchanged and is not counted as killed."
+    },
+    {
+      "file": "apps/engine/src/execution/core/jsonata-contract.ts",
+      "source_sha256": "b3729cac7ffe0299968fa486461fe7d2a8e151aba8d06ee0a99de869495045e4",
+      "location": {
+        "end": {
+          "column": 58,
+          "line": 341
+        },
+        "start": {
+          "column": 34,
+          "line": 341
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "false",
+      "original": "typeof raw === \"boolean\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "For boolean true/false, original String(raw) and fallback JSON.stringify(raw) produce exactly 'true'/'false'. Other values are governed by the unchanged number branch or do not enter this subcondition.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts; root reviewed exact current report source slices, installed JSONata 2.2.2 parser contract and adversarial valid-source probes. Evidence: raw-survived-independent-review-jsonata-readmodel-catch-coerce.json. Raw survivor remains unchanged and is not counted as killed."
+    },
+    {
+      "file": "apps/engine/src/execution/core/jsonata-contract.ts",
+      "source_sha256": "b3729cac7ffe0299968fa486461fe7d2a8e151aba8d06ee0a99de869495045e4",
+      "location": {
+        "end": {
+          "column": 58,
+          "line": 341
+        },
+        "start": {
+          "column": 49,
+          "line": 341
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"\"",
+      "original": "\"boolean\"",
+      "status": "Survived",
+      "statusReason": "",
+      "reason": "This only disables the boolean primitive arm. Boolean fallback JSON.stringify is exactly the same lexical representation as String; no other type matches typeof raw === 'boolean'.",
+      "independent_review": "Independently reviewed by effect_manifest_contracts; root reviewed exact current report source slices, installed JSONata 2.2.2 parser contract and adversarial valid-source probes. Evidence: raw-survived-independent-review-jsonata-readmodel-catch-coerce.json. Raw survivor remains unchanged and is not counted as killed."
     }
   ]
 }

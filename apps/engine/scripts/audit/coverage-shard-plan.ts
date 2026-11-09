@@ -7,6 +7,7 @@ export interface CoverageShardTest {
 
 export interface CoverageShardExecutionPlan {
   coverageTests: string[];
+  coverageGroups: Array<{ target: string; tests: string[] }>;
   behaviorOnlyTests: string[];
   externalRuntimeTests: string[];
   directTargetsByTest: Map<string, string[]>;
@@ -40,6 +41,10 @@ export function planCoverageShardExecution(input: {
   const external = new Set(externalRuntimeTests);
   return {
     coverageTests,
+    coverageGroups: input.targets.map((target) => ({
+      target,
+      tests: coverageTests.filter((test) => directTargetsByTest.get(test)?.includes(target)),
+    })),
     behaviorOnlyTests: [...new Set(input.tests.map((test) => test.path))]
       .filter((test) => !coverage.has(test) && !external.has(test))
       .sort(),

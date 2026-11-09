@@ -7,9 +7,13 @@ export interface EngineErrorFacts {
   details: unknown;
 }
 
+function isFiniteNumber(value: unknown): value is number {
+  return Number.isFinite(value);
+}
+
 export function engineErrorFacts(status: number, body: unknown): EngineErrorFacts {
   const parsed =
-    typeof body === "object" && body !== null
+    typeof body === "object"
       ? (body as {
           code?: unknown;
           message?: unknown;
@@ -34,7 +38,7 @@ export function engineErrorFacts(status: number, body: unknown): EngineErrorFact
         : null,
     hint: parsed && typeof parsed.hint === "string" && parsed.hint.length > 0 ? parsed.hint : null,
     retryAfter:
-      parsed && typeof parsed.retry_after === "number" && Number.isFinite(parsed.retry_after)
+      parsed && isFiniteNumber(parsed.retry_after)
         ? Math.max(0, Math.ceil(parsed.retry_after))
         : null,
     details: parsed?.details ?? null,

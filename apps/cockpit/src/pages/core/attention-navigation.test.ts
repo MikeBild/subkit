@@ -15,8 +15,12 @@ test("review targets and permissions classify only supported review subjects", (
   expect(reviewTarget(`workflow:${workflowId}`)).toEqual({ kind: "workflow", workflowId });
   expect(reviewTarget("skills")).toEqual({ kind: "skills" });
   expect(reviewTarget("workflow:bad")).toEqual({ kind: "other" });
+  expect(reviewTarget(`prefix-workflow:${workflowId}`)).toEqual({ kind: "other" });
+  expect(reviewTarget(`workflow:${workflowId}-suffix`)).toEqual({ kind: "other" });
   expect(reviewAccess(reviewTarget(`workflow:${workflowId}`), ["workflow:read"])).toBe("readable");
   expect(reviewAccess(reviewTarget("skills"), [])).toBe("not_permitted");
+  expect(reviewAccess(reviewTarget("skills"), ["skill:read"])).toBe("readable");
+  expect(reviewAccess(reviewTarget(`workflow:${workflowId}`), [])).toBe("not_permitted");
   expect(reviewAccess(reviewTarget("connector:x"), ["connector:read"])).toBe("nothing");
 });
 
@@ -26,6 +30,8 @@ test("review forwarding and sheet opening preserve the action reference", () => 
   const external = Object.freeze({ verb: "review", href: "/cockpit?review=intake" });
   const chat = Object.freeze({ verb: "chat", href: "/cockpit/chat" });
   expect(opensReviewSheet(workflow, review, reviewHref)).toBe(true);
+  expect(opensReviewSheet(workflow, { verb: "review" }, reviewHref)).toBe(true);
+  expect(opensReviewSheet(workflow, { verb: "open" }, reviewHref)).toBe(false);
   expect(opensReviewSheet({ id: "connector:x" }, external, reviewHref)).toBe(true);
   expect(opensReviewSheet({ id: "connector:x" }, { verb: "open", href: "/x" }, reviewHref)).toBe(
     false,
@@ -35,6 +41,10 @@ test("review forwarding and sheet opening preserve the action reference", () => 
   expect(reviewForward(external, "nothing", reviewHref)).toBeNull();
   expect(reviewForward(review, "readable", reviewHref)).toBeNull();
   expect(reviewForward(chat, "nothing", reviewHref)).toBe(chat);
+  expect(reviewForward(chat, "readable", reviewHref)).toBe(chat);
+  expect(
+    reviewForward({ verb: "review", href: "/ordinary" }, "not_permitted", reviewHref),
+  ).toBeNull();
   expect(reviewForward({ verb: "review", href: "/x" }, "nothing", reviewHref)).toEqual({
     verb: "review",
     href: "/x",

@@ -136,19 +136,19 @@ export function attentionAllClear(attention: AttentionV1): boolean {
 
 const CLASS_RANK: Record<AttentionClass, number> = { stopped: 0, failing: 1, decide: 2 };
 
+function compareNullableDate(a: string | null, b: string | null): number {
+  if (a === null) return b === null ? 0 : 1;
+  if (b === null) return -1;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 export function compareAttentionItems(a: AttentionItem, b: AttentionItem): number {
   const byClass = CLASS_RANK[a.class] - CLASS_RANK[b.class];
   if (byClass !== 0) return byClass;
-  if (a.deadline !== b.deadline) {
-    if (a.deadline === null) return 1;
-    if (b.deadline === null) return -1;
-    return a.deadline < b.deadline ? -1 : 1;
-  }
-  if (a.since !== b.since) {
-    if (a.since === null) return 1;
-    if (b.since === null) return -1;
-    return a.since < b.since ? -1 : 1;
-  }
+  const byDeadline = compareNullableDate(a.deadline, b.deadline);
+  if (byDeadline !== 0) return byDeadline;
+  const bySince = compareNullableDate(a.since, b.since);
+  if (bySince !== 0) return bySince;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 

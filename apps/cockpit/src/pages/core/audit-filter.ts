@@ -48,12 +48,18 @@ const DECISION_ACTIONS = [
 ] as const;
 
 function identifierParam(params: URLSearchParams, key: string): string | null {
-  const raw = params.get(key)?.trim() ?? "";
+  const raw =
+    params.get(key)?.trim() ??
+    // Stryker disable next-line StringLiteral: EQ-AUDIT-ABSENT: absent invalid filter sentinel
+    "";
   return raw && raw.length <= 128 && /^[\w.:-]+$/.test(raw) ? raw : null;
 }
 
 function instantParam(params: URLSearchParams, key: string): string | null {
-  const raw = params.get(key)?.trim() ?? "";
+  const raw =
+    params.get(key)?.trim() ??
+    // Stryker disable next-line StringLiteral: EQ-AUDIT-ABSENT: absent invalid filter sentinel
+    "";
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/.test(raw))
     return null;
   const ms = Date.parse(raw);
@@ -86,7 +92,10 @@ export function normalizedAuditScope(
 }
 
 export function auditTraceFromUrl(search: string): string | null {
-  const raw = new URLSearchParams(search).get("trace_id")?.trim() ?? "";
+  const raw =
+    new URLSearchParams(search).get("trace_id")?.trim() ??
+    // Stryker disable next-line StringLiteral: EQ-AUDIT-ABSENT: absent invalid filter sentinel
+    "";
   return raw && raw.length <= 128 && /^[\w-]+$/.test(raw) ? raw : null;
 }
 
@@ -99,10 +108,14 @@ const MAX_LINKED_ACTIONS = 32;
 const ACTION_TOKEN = /^[a-z][a-z0-9_]*(\.[a-z0-9_]+)*$/;
 
 export function auditActionsFromUrl(search: string): string[] {
-  const tokens = (new URLSearchParams(search).get("action") ?? "")
+  const tokens = (
+    new URLSearchParams(search).get("action") ??
+    // Stryker disable next-line StringLiteral: EQ-AUDIT-ABSENT: absent invalid filter sentinel
+    ""
+  )
     .split(",")
     .map((token) => token.trim())
-    .filter((token) => token.length > 0 && token.length <= 96 && ACTION_TOKEN.test(token));
+    .filter((token) => token.length <= 96 && ACTION_TOKEN.test(token));
   return [...new Set(tokens)].slice(0, MAX_LINKED_ACTIONS);
 }
 
@@ -111,7 +124,11 @@ type AuditResultFilter = (typeof AUDIT_RESULTS)[number];
 
 export function auditResultFromUrl(search: string): AuditResultFilter | null {
   const raw = new URLSearchParams(search).get("result");
-  return (AUDIT_RESULTS as readonly string[]).includes(raw ?? "")
+  return (AUDIT_RESULTS as readonly string[]).includes(
+    raw ??
+      // Stryker disable next-line StringLiteral: EQ-AUDIT-ABSENT: absent invalid filter sentinel
+      "",
+  )
     ? (raw as AuditResultFilter)
     : null;
 }

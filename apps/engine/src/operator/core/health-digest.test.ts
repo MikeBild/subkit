@@ -335,3 +335,171 @@ test("pure projection is deterministic and never mutates frozen patch facts", ()
     { seed: 20261109, numRuns: 100 },
   );
 });
+
+test("single failing item headline and count variants remain readable without unread sources", () => {
+  expect(attentionHeadline(attention([item()]))).toBe("Needs attention: 1 item (1 failing).");
+  expect(
+    attentionHeadline({
+      ...attention([item()]),
+      sources: { ...SOURCES, risk: "failed", budget: "failed" },
+    }),
+  ).toBe("Needs attention: 1 item (1 failing). Could not read: budget, risk.");
+  expect(
+    attentionLine(
+      item({
+        counts: {
+          failures: 2,
+          patches: 1,
+          skills: 2,
+          intake: 1,
+          intake_by_category: [{ category: "research", count: 1 }],
+        },
+      }),
+    ),
+  ).toBe(
+    '- [failing] workflow "Daily": failing (2 failures, 1 fix, 2 skill proposals, 1 collected item to review, by category: research 1)',
+  );
+  expect(
+    attentionLine(
+      item({
+        repair: {
+          step_id: "fetch",
+          code: null,
+          remedy_kind: "patch",
+          steps: 1,
+          candidate_id: null,
+          execution_id: null,
+        },
+      }),
+    ),
+  ).toBe('- [failing] workflow "Daily": failing (step "fetch", remedy: patch)');
+});
+
+test("digest renders each independent section without empty unrelated headings", () => {
+  expect(renderDigest("Headline", 12, attention([item()]), [], [])).toBe(
+    'Headline\n\n- [failing] workflow "Daily": failing\n\nAsk me to walk through any of these.',
+  );
+  expect(
+    renderDigest(
+      "Headline",
+      12,
+      attention(),
+      [],
+      [
+        {
+          kind: "pool",
+          severity: "warn",
+          headline: "Queue rising",
+          detail: "Inspect workers",
+          metric: "queue",
+          value: 2,
+          threshold: 1,
+        },
+      ],
+    ),
+  ).toBe(
+    "Headline\n\nRisk signals (leading indicators):\n[warn] Queue rising\n   Inspect workers\n\nAsk me to walk through any of these.",
+  );
+  const groups = [
+    ...groupFailureFacts(
+      [execution({ workflow_id: null, source_kind: "draft", failure: null })],
+      [],
+    ).values(),
+  ];
+  for (const origin of ["authoring", "manual", "mixed"] as const) {
+    expect(renderDigest("Headline", 12, attention(), [{ ...groups[0]!, origin }], [])).toBe(
+      `Headline\n\nFailed runs in the last 12h, by cause:\n[${origin}] (draft) — failed once (last 2026-11-01T10:00:00.000Z)\n   The step driver failed: \n\nAsk me to walk through any of these.`,
+    );
+  }
+});
+
+test("failure groups retain earliest observations and consistent scheduled origin", () => {
+  const groups = [
+    ...groupFailureFacts(
+      [
+        execution({ id: "new", created_at: new Date("2026-11-03T10:00:00Z") }),
+        execution({ id: "old", created_at: new Date("2026-11-01T10:00:00Z") }),
+        execution({ id: "mid", created_at: new Date("2026-11-02T10:00:00Z") }),
+      ],
+      [step({ execution_id: "new" }), step({ execution_id: "old" }), step({ execution_id: "mid" })],
+    ).values(),
+  ];
+  expect(groups[0]).toMatchObject({
+    workflow_id: "wf",
+    origin: "scheduled",
+    count: 3,
+    scheduled_count: 3,
+    first_seen: "2026-11-01T10:00:00.000Z",
+    last_seen: "2026-11-03T10:00:00.000Z",
+  });
+  expect(failingScheduledGroups([{ ...groups[0]!, resolved_at: "2026-11-04T00:00:00Z" }])).toEqual(
+    [],
+  );
+  const saved = [
+    ...groupFailureFacts(
+      [execution({ source_ref: { name: "Ignored saved alias" }, failure: null })],
+      [],
+    ).values(),
+  ][0]!;
+  expect(saved.workflow_name).toBeNull();
+  const authored = [
+    ...groupFailureFacts(
+      [execution({ workflow_id: null, source_kind: "step", failure: null })],
+      [],
+    ).values(),
+  ][0]!;
+  expect(authored.origin).toBe("authoring");
+});
+
+test("failure causes use stopping-step status and execution status when no step exists", () => {
+  const fromStep = [
+    ...groupFailureFacts(
+      [execution()],
+      [step({ status: "timed_out", error: { code: "timeout", message: "timed out" } })],
+    ).values(),
+  ][0]!;
+  expect(fromStep.cause).toBe("The timed_out step exceeded its timeout.");
+  const noStep = [
+    ...groupFailureFacts([execution({ status: "timed_out", failure: null })], []).values(),
+  ][0]!;
+  expect(noStep.cause).toBe("The step step exceeded its timeout.");
+  const callable = function Callable() {};
+  const untrusted = [
+    ...groupFailureFacts(
+      [execution({ workflow_id: null, source_ref: callable, failure: null })],
+      [],
+    ).values(),
+  ][0]!;
+  expect(untrusted.workflow_name).toBeNull();
+});
+
+test("patches with equal age preserve peers and prioritize unsafe entries in either input order", () => {
+  const created_at = new Date("2026-11-01T00:00:00Z");
+  const rows = [
+    { id: "unsafe", workflow_id: "wf", classification: "unsafe" as const, created_at, diff: {} },
+    { id: "safe1", workflow_id: "wf", classification: "safe" as const, created_at, diff: {} },
+    { id: "safe2", workflow_id: "wf", classification: "safe" as const, created_at, diff: {} },
+  ];
+  expect(projectPendingPatches(rows, new Map(), created_at.getTime()).map((row) => row.id)).toEqual(
+    ["unsafe", "safe1", "safe2"],
+  );
+  expect(
+    projectPendingPatches([...rows].reverse(), new Map(), created_at.getTime()).map(
+      (row) => row.id,
+    ),
+  ).toEqual(["unsafe", "safe2", "safe1"]);
+});
+
+test("unsafe patches with equal age preserve their input order", () => {
+  const created_at = new Date("2026-11-01T00:00:00Z");
+  const rows = ["first", "second"].map((id) => ({
+    id,
+    workflow_id: "wf",
+    classification: "unsafe" as const,
+    created_at,
+    diff: {},
+  }));
+  expect(projectPendingPatches(rows, new Map(), created_at.getTime()).map((row) => row.id)).toEqual(
+    ["first", "second"],
+  );
+});

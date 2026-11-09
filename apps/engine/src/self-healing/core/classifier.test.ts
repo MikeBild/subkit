@@ -122,3 +122,68 @@ test("HTTP method writes are rejected even under a normally safe patch kind", ()
     reasons: ["patch touches HTTP method"],
   });
 });
+
+test("the full safe palette stays safe while unknown kinds require explicit review", () => {
+  for (const kind of [
+    "update_field_path",
+    "rename_param",
+    "add_header",
+    "change_type",
+    "rate_limited",
+  ]) {
+    expect(classifyPatch({ ...proposal, kind }, null)).toEqual({
+      classification: "safe",
+      reasons: ["rename/widening/optional-only patch"],
+    });
+  }
+  expect(classifyPatch({ ...proposal, kind: "replace_auth" }, null)).toEqual({
+    classification: "unsafe",
+    reasons: ["proposal.kind=replace_auth is outside the safe palette"],
+  });
+});
+
+test("unsafe structural changes retain their exact diagnostic reasons", () => {
+  for (const [patch, reason] of [
+    [{ required_removed: ["id"] }, "patch removes required fields"],
+    [{ status_semantics_change: true }, "patch alters status-code semantics"],
+    [{ url_change_beyond_path: true }, "patch changes destination URL beyond path segments"],
+  ] as const) {
+    expect(classifyPatch({ ...proposal, patch }, null)).toEqual({
+      classification: "unsafe",
+      reasons: [reason],
+    });
+  }
+  for (const required_removed of [[], "id"]) {
+    expect(classifyPatch({ ...proposal, patch: { required_removed } }, null)).toEqual({
+      classification: "safe",
+      reasons: ["rename/widening/optional-only patch"],
+    });
+  }
+});
+
+test("schema removals list every key and additive schema drift remains safe", () => {
+  const signal: DriftSignal = {
+    kind: "schema_diff",
+    before: { type: "object", properties: {} },
+    after: { type: "object", properties: {} },
+    added: [],
+    removed: [],
+    widened: [],
+  };
+  expect(classifyPatch(proposal, signal)).toEqual({
+    classification: "safe",
+    reasons: ["rename/widening/optional-only patch"],
+  });
+  expect(classifyPatch(proposal, { ...signal, removed: ["first", "second"] })).toEqual({
+    classification: "unsafe",
+    reasons: ["drift removes keys: first,second"],
+  });
+  expect(
+    classifyPatch(proposal, {
+      kind: "jsonata_path_miss",
+      expression: "item.name",
+      missing_path: "item.name",
+      prior_value: null,
+    }),
+  ).toEqual({ classification: "safe", reasons: ["rename/widening/optional-only patch"] });
+});

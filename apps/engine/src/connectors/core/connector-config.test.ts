@@ -149,3 +149,73 @@ test("slug normalization is deterministic for frozen inputs", () => {
     { seed: 20261109, numRuns: 100 },
   );
 });
+
+test("slug edge trimming preserves the previous normalization across Unicode inputs", () => {
+  fc.assert(
+    fc.property(fc.array(fc.integer({ min: 0, max: 0x10ffff }), { maxLength: 200 }), (points) => {
+      const name = String.fromCodePoint(...points);
+      const previous = name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 64);
+      expect(slugify(name)).toBe(previous);
+    }),
+    { seed: 20261109, numRuns: 1000 },
+  );
+});
+
+test("metadata patches distinguish omitted fields from explicit acceptance and nulls", () => {
+  expect(metadataPatchOf({ description: undefined, category: undefined })).toStrictEqual({});
+  expect(metadataPatchOf({ accept_description: undefined })).toStrictEqual({});
+  expect(metadataPatchOf({ accept_description: false })).toEqual({ accept_description: false });
+  expect(metadataPatchOf({ accept_description: true, category: null })).toEqual({
+    accept_description: true,
+    category: null,
+  });
+  expect(templateWasRebound("old", undefined, false)).toBe(false);
+  expect(templateWasRebound("old", null, undefined)).toBe(false);
+});
+
+test("OAuth scope and MCP trust ignore primitive or callable configuration blocks", () => {
+  const callable = Object.assign(() => undefined, { scope: "read" });
+  for (const config of [undefined, false, 1, "config", callable]) {
+    expect(oauthScopeOf(config)).toBeNull();
+    expect(mcpTrustedTools(config)).toEqual([]);
+  }
+  for (const oauth of [undefined, null, false, 1, callable]) {
+    expect(oauthScopeOf({ oauth })).toBeNull();
+  }
+  expect(oauthScopeOf(Object.assign(() => undefined, { oauth: { scope: "read" } }))).toBeNull();
+  expect(oauthScopeOf({ oauth: { scope: 42 } })).toBeNull();
+  const tools = { tools_without_confirmation: ["read"] };
+  const arrayBlock = Object.assign([], tools);
+  const callableBlock = Object.assign(() => undefined, tools);
+  expect(mcpTrustedTools(Object.assign(() => undefined, { mcp: tools }))).toEqual([]);
+  for (const mcp of [undefined, null, false, 1, "mcp", arrayBlock, callableBlock]) {
+    expect(mcpTrustedTools({ mcp })).toEqual([]);
+  }
+  expect(mcpTrustedTools({ mcp: { tools_without_confirmation: "read" } })).toEqual([]);
+});
+
+test("MCP trust survives a missing incoming block and preserves an empty trust state", () => {
+  const prior = { mcp: { tools_without_confirmation: ["read"] } };
+  const next = { display: "renamed" };
+  expect(decideMcpTrustCarryOver("mcp", prior, next)).toEqual({
+    kind: "accepted",
+    config: { display: "renamed", mcp: { tools_without_confirmation: ["read"] } },
+  });
+  expect(decideMcpTrustCarryOver("mcp", {}, next)).toEqual({ kind: "accepted", config: next });
+  expect(
+    decideMcpTrustCarryOver("mcp", prior, { mcp: { tools_without_confirmation: [] } }),
+  ).toEqual({ kind: "rejected" });
+});
+
+test("half-open circuits admit probes even while the previous opening is recent", () => {
+  expect(
+    isCircuitOpenBlocking(
+      { circuit_state: "half-open", circuit_opened_at: new Date(10), circuit_reset_ms: 100 },
+      11,
+    ),
+  ).toBe(false);
+});

@@ -5,6 +5,8 @@ import {
 import type { StepDef } from "../../workflows/types.ts";
 import type { RunResult, StepResult } from "../types.ts";
 
+type ClassificationInput = Pick<StepResult, "status" | "error">;
+
 export const CONNECTOR_DISABLED_CODE = "connector_disabled";
 
 export const PREVIEW_CLASSIFICATIONS = [
@@ -42,7 +44,7 @@ export interface PreviewStepSummary {
 
 function classifyStepResult(
   step: StepDef,
-  result: StepResult,
+  result: ClassificationInput,
   duration_ms: number,
 ): PreviewStepSummary {
   const classification = classifyFailure(result);
@@ -72,11 +74,9 @@ export function classifyRunResult(step: StepDef, run: RunResult): PreviewStepSum
       output_preview: run.output,
     };
   }
-  const syntheticResult: StepResult = {
+  const syntheticResult: ClassificationInput = {
     status:
       run.status === "timed_out" ? "timed_out" : run.status === "aborted" ? "aborted" : "failed",
-    retry_count: last?.retry_count ?? 0,
-    duration_ms,
     error: run.error ?? null,
   };
   return classifyStepResult(step, syntheticResult, duration_ms);
@@ -102,7 +102,7 @@ const RATE_LIMIT_CODES: ReadonlySet<string> = new Set([
   "graphql_throttle",
 ]);
 
-export function classifyFailure(result: StepResult): PreviewClassification {
+export function classifyFailure(result: StepResult | ClassificationInput): PreviewClassification {
   if (result.status === "aborted") return "aborted";
   if (result.status === "skipped") return "aborted";
   if (result.status === "timed_out") return "timeout";
@@ -160,8 +160,6 @@ export function classifyPersistedFailure(failure: PersistedFailure): PersistedFa
   const reason = typeof err.reason === "string" ? { reason: err.reason } : {};
   const classification = classifyFailure({
     status,
-    retry_count: 0,
-    duration_ms: 0,
     error: error_code ? { code: error_code, message, ...reason } : null,
   });
   return { classification, error_code, message, guidance };

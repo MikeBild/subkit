@@ -162,8 +162,24 @@ describe("scoreFiles", () => {
       REPO,
     );
     expect(scores).toEqual([
-      { file: "a/core.ts", detected: 1, undetected: 0, score: 100 },
-      { file: "b/core.ts", detected: 2, undetected: 2, score: 50 },
+      {
+        file: "a/core.ts",
+        raw_detected: 1,
+        raw_undetected: 0,
+        raw_score: 100,
+        detected: 1,
+        undetected: 0,
+        score: 100,
+      },
+      {
+        file: "b/core.ts",
+        raw_detected: 2,
+        raw_undetected: 2,
+        raw_score: 50,
+        detected: 2,
+        undetected: 2,
+        score: 50,
+      },
     ]);
   });
 
@@ -262,7 +278,18 @@ describe("reviewed mutation equivalents", () => {
         REPO,
         result.matches.map((match) => match.mutant),
       ),
-    ).toEqual([{ file, detected: 0, undetected: 0, score: 100, equivalent_excluded: 1 }]);
+    ).toEqual([
+      {
+        file,
+        raw_detected: 0,
+        raw_undetected: 0,
+        raw_score: 100,
+        detected: 0,
+        undetected: 0,
+        score: 100,
+        equivalent_excluded: 1,
+      },
+    ]);
   });
 
   test("fails closed for mismatched hashes, ranges, replacement, reason, status, and original", () => {
@@ -295,7 +322,9 @@ describe("reviewed mutation equivalents", () => {
   });
 
   test("rejects unregistered ignored mutants, duplicates, unconsumed entries, and ordinary survivors", () => {
-    expect(validate([]).errors).toEqual([`ignored mutant is not registered exactly: ${file}`]);
+    expect(validate([]).errors).toEqual([
+      `equivalent ignored or survived mutant is not registered exactly: ${file}`,
+    ]);
     expect(validate([entry(), entry()]).errors).toContain(
       `equivalence manifest has duplicate entry for ${file}`,
     );
@@ -306,7 +335,45 @@ describe("reviewed mutation equivalents", () => {
       `equivalence manifest entry is not matched exactly once: ${file}`,
     );
     const survivor = scoreFiles(reportWith({ ...mutant, status: "Survived" }), REPO);
-    expect(survivor).toEqual([{ file, detected: 0, undetected: 1, score: 0 }]);
+    expect(survivor).toEqual([
+      {
+        file,
+        raw_detected: 0,
+        raw_undetected: 1,
+        raw_score: 0,
+        detected: 0,
+        undetected: 1,
+        score: 0,
+      },
+    ]);
+  });
+
+  test("accepts only an exact raw survived equivalent and preserves its raw score", () => {
+    const survived = { ...mutant, status: "Survived", statusReason: undefined };
+    const survivedEntry = entry({ status: "Survived", statusReason: "" });
+    const result = validate([survivedEntry], survived);
+    expect(result.errors).toEqual([]);
+    expect(
+      scoreFiles(
+        reportWith(survived),
+        REPO,
+        result.matches.map((match) => match.mutant),
+      ),
+    ).toEqual([
+      {
+        file,
+        raw_detected: 0,
+        raw_undetected: 1,
+        raw_score: 0,
+        detected: 0,
+        undetected: 0,
+        score: 100,
+        equivalent_excluded: 1,
+      },
+    ]);
+    expect(validate([survivedEntry], { ...survived, status: "Timeout" }).errors).toContain(
+      `equivalence manifest entry is not matched exactly once: ${file}`,
+    );
   });
 
   test("rejects whitespace-only proofs and non-canonical POSIX paths", () => {
@@ -361,9 +428,20 @@ describe("judgeScores", () => {
 });
 
 describe("renderScore", () => {
-  test("prints path, score and counts", () => {
-    expect(renderScore({ file: "a.ts", detected: 3, undetected: 1, score: 75 })).toBe(
-      "a.ts  75.00 % (3 detected, 1 survived)",
+  test("prints distinct raw and adjusted scores with counts", () => {
+    expect(
+      renderScore({
+        file: "a.ts",
+        raw_detected: 3,
+        raw_undetected: 1,
+        raw_score: 75,
+        detected: 4,
+        undetected: 0,
+        score: 100,
+        equivalent_excluded: 1,
+      }),
+    ).toBe(
+      "a.ts  raw 75.00 % (3 detected, 1 survived); adjusted 100.00 % (4 detected, 0 survived, 1 equivalent excluded)",
     );
   });
 });

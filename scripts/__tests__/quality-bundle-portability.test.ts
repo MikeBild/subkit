@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import {
   cpSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
@@ -62,8 +63,20 @@ test("complete policy-bound evidence survives another checkout and rejects chang
     const checkout = join(transfer, "checkout");
     git(transfer, ["clone", "--quiet", "--no-hardlinks", source.root, checkout]);
     cpSync(bundle, checkout, { recursive: true });
-    const accepted = await verifyShardQualityBundle(checkout, commit);
+    const nestedIndex = "reports/quality-export/shards/quality-bundle.json";
+    const nestedDirectory = join(checkout, "reports/quality-export/shards");
+    mkdirSync(nestedDirectory, { recursive: true });
+    cpSync(join(bundle, "quality-bundle.json"), join(checkout, nestedIndex));
+    const accepted = await verifyShardQualityBundle(checkout, commit, nestedIndex);
     expect(JSON.parse(readFileSync(accepted, "utf8")).mutation.score).toBe(100);
+    await expect(verifyShardQualityBundle(checkout, "b".repeat(40), nestedIndex)).rejects.toThrow(
+      "Release checkout does not match expected commit",
+    );
+    rmSync(join(checkout, nestedIndex));
+    await expect(verifyShardQualityBundle(checkout, commit, nestedIndex)).rejects.toThrow(
+      "Run `bun run verify:quality:release-shards` first",
+    );
+    cpSync(join(bundle, "quality-bundle.json"), join(checkout, nestedIndex));
     const proof = index.files.find((file) => file.path.endsWith(".lcov"))!;
     writeFileSync(join(checkout, proof.path), "tampered");
     await expect(verifyShardQualityBundle(checkout, commit)).rejects.toThrow(

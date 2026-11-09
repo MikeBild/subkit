@@ -40,6 +40,7 @@ import {
 import { planCoverageShardExecution } from "./audit/coverage-shard-plan.ts";
 import { listFiles } from "./audit/files.ts";
 import { coverageRows, type LcovRecord, mergeLcov, parseLcov, renderLcov } from "./audit/lcov.ts";
+import { createClosureAnalysis, directTestPaths } from "./audit/mutation-closure.ts";
 import { mutationClosureFiles, mutationTestInputs } from "./audit/mutation-inputs.ts";
 import { PURE_MUTATION_TARGETS } from "./audit/mutation-scope.ts";
 import {
@@ -103,6 +104,7 @@ let waveContext:
     }
   | undefined;
 let waveDatabaseUrl: string | undefined;
+const canonicalTestsByTarget = new Map<string, string[]>();
 
 const coverageInputFiles = (): string[] => [
   ...COVERAGE_INPUT_ROOTS.flatMap((root) =>
@@ -413,6 +415,8 @@ async function persistCoverageArtifact(): Promise<string | undefined> {
 }
 
 function testsFor(file: string, floor: FloorEntry): string[] {
+  const canonicalTests = canonicalTestsByTarget.get(file);
+  if (canonicalTests) return [...new Set([...canonicalTests, ...(floor.tests ?? [])])].sort();
   if (floor.tests && floor.tests.length > 0) return floor.tests;
   const direct = testCandidates(file).filter((candidate) => existsSync(join(REPO, candidate)));
   const directory = join(REPO, dirname(file));
@@ -592,6 +596,20 @@ const sourceFiles = ["apps/cockpit/src", "apps/engine/src", "apps/sk/src", "pack
   (root) => listFiles(join(REPO, root), isSource).map((abs) => relative(REPO, abs)),
 );
 const canonicalEntries = assertCompletePureTargetInventory(sourceFiles);
+if (!waveContext) {
+  const readText = (path: string) => readFileSync(join(REPO, path), "utf8");
+  const analysis = createClosureAnalysis({
+    files: mutationClosureFiles(REPO),
+    readText,
+    tsconfig: readText("tsconfig.json"),
+    cockpitTsconfig: readText("apps/cockpit/tsconfig.json"),
+  });
+  for (const entry of canonicalEntries)
+    canonicalTestsByTarget.set(
+      entry.path,
+      directTestPaths(analysis, entry.path).filter((test) => !testUsesModuleMock(test)),
+    );
+}
 const typeOnlyTargets = new Set(
   canonicalEntries.filter((entry) => entry.runtime_kind === "type_only").map((entry) => entry.path),
 );
@@ -628,18 +646,13 @@ if (waveContext) {
       });
     }
   } else {
-    const coverage = await runCoverage(
-      execution.coverageTests,
-      "per_test",
-      [],
-      execution.directTargetsByTest,
-    );
-    for (const file of runtimeManifestTargets) {
+    for (const { target: file, tests } of execution.coverageGroups) {
       const floor = fileFloors.get(file);
       if (!floor) {
         results.push({ target: file, status: "FAIL", message: "file has no coverage floor" });
         continue;
       }
+      const coverage = await runCoverage(tests, "per_target", [file]);
       if ("error" in coverage)
         results.push({ target: file, status: "FAIL", message: coverage.error });
       else results.push({ target: file, ...judgeFile(file, floor, coverage.rows) });

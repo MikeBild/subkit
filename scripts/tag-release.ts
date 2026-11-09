@@ -106,11 +106,14 @@ try {
   process.exit(1);
 }
 
-console.log("release:tag: running the release gate (bun run verify:gate)\n");
+console.log("release:tag: running the release gate (bun run verify:gate:release)\n");
 try {
-  execFileSync("bun", ["run", "verify:gate"], { cwd: REPO, stdio: "inherit" });
+  execFileSync("bun", ["run", "verify:gate:release"], { cwd: REPO, stdio: "inherit" });
 } catch {
-  console.error(`release:tag: refusing to tag ${tag} — bun run verify:gate failed`);
+  console.error(
+    `release:tag: refusing to tag ${tag} — bun run verify:gate:release failed. ` +
+      "Run `bun run verify:quality:release-shards` first.",
+  );
   process.exit(1);
 }
 

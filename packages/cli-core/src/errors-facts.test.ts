@@ -63,9 +63,41 @@ test("primitive bodies and blank optional identifiers retain the public fallback
 });
 
 test("retry delays round up nonnegative finite values without mutating the response", () => {
-  for (const delay of [-10, -0.1, 0, 0.1, 1, 1.1, 100.5]) {
+  for (const [delay, expected] of [
+    [-10, 0],
+    [-0.1, 0],
+    [0, 0],
+    [0.1, 1],
+    [1, 1],
+    [1.1, 2],
+    [100.5, 101],
+  ] as const) {
     const body = Object.freeze({ retry_after: delay });
-    expect(engineErrorFacts(429, body).retryAfter).toBe(Math.max(0, Math.ceil(delay)));
+    expect(engineErrorFacts(429, body).retryAfter).toBe(expected);
     expect(body.retry_after).toBe(delay);
+  }
+});
+
+test("a callable object cannot supply trusted engine error fields", () => {
+  const body = Object.assign(() => undefined, {
+    message: "untrusted",
+    code: "untrusted_code",
+    trace_id: "untrusted_trace",
+    retry_after: 10,
+    details: { untrusted: true },
+  });
+  expect(engineErrorFacts(502, body)).toEqual({
+    message: "engine responded 502",
+    code: "http_502",
+    traceId: null,
+    hint: null,
+    retryAfter: null,
+    details: null,
+  });
+});
+
+test("retry delays never coerce other value kinds into numbers", () => {
+  for (const retry_after of [true, "2", 2n, Symbol("2"), [2], { valueOf: () => 2 }]) {
+    expect(engineErrorFacts(429, { retry_after }).retryAfter).toBeNull();
   }
 });

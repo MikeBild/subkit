@@ -29,7 +29,7 @@ function snapshot(value: unknown): string {
 }
 function scalar(value: unknown): string | null {
   if (typeof value === "string") return value.trim() || null;
-  return typeof value === "number" && Number.isFinite(value) ? String(value) : null;
+  return Number.isFinite(value) ? String(value) : null;
 }
 function recordedText(value: string | null | undefined): string | null {
   const text = value?.trim() ?? "";

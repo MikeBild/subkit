@@ -139,6 +139,62 @@ test("run projection preserves success output and failed summaries with optional
   ).toEqual({ code: "connector_not_found", message: "gone" });
 });
 
+test("run summaries use the last persisted step duration", () => {
+  const steps: RunResult["steps"] = [
+    {
+      step_key: "first",
+      step_index: 0,
+      kind: "transform",
+      status: "succeeded",
+      duration_ms: 12,
+      retry_count: 0,
+      error: null,
+    },
+    {
+      step_key: "last",
+      step_index: 1,
+      kind: "transform",
+      status: "failed",
+      duration_ms: 37,
+      retry_count: 2,
+      error: null,
+    },
+  ];
+  expect(classifyRunResult(step, { ...run("succeeded"), steps }).duration_ms).toBe(37);
+  expect(classifyRunResult(step, { ...run("failed"), steps }).duration_ms).toBe(37);
+});
+
+test("persisted errors reject callable records and ignore metadata without an error code", () => {
+  const callable = Object.assign(() => undefined, {
+    code: "connector_not_found",
+    message: "gone",
+    guidance: "reconnect",
+  });
+  expect(classifyPersistedFailure({ status: "failed", error: callable })).toEqual({
+    classification: "driver_error",
+    error_code: null,
+    message: "",
+    guidance: null,
+  });
+  expect(
+    classifyPersistedFailure({
+      status: "failed",
+      error: { message: "403 forbidden", reason: "not_json_raw" },
+    }),
+  ).toEqual({
+    classification: "driver_error",
+    error_code: null,
+    message: "403 forbidden",
+    guidance: null,
+  });
+  expect(
+    classifyPersistedFailure({
+      status: "failed",
+      error: { code: "execution_authority_changed", reason: 1 },
+    }).classification,
+  ).toBe("authority_mismatch");
+});
+
 test("human summaries provide actionable class-specific descriptions", () => {
   const cases = {
     auth_failed: "Authentication was rejected",

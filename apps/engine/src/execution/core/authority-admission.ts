@@ -58,8 +58,9 @@ export function credentialWithinBoundary(
   return (
     available !== null &&
     available.digest === expectedDigest &&
-    available.primary?.id === snapshot.credential_id &&
-    available.primary?.revision === snapshot.credential_revision &&
+    available.primary != null &&
+    available.primary.id === snapshot.credential_id &&
+    available.primary.revision === snapshot.credential_revision &&
     isDeepStrictEqual(available.connection, snapshot.connection_authority)
   );
 }

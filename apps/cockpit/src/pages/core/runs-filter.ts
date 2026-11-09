@@ -40,7 +40,10 @@ export interface RunsFilter {
 }
 
 function instantParam(params: URLSearchParams, key: string): string | null {
-  const raw = params.get(key)?.trim() ?? "";
+  const raw =
+    params.get(key)?.trim() ??
+    // Stryker disable next-line StringLiteral: EQ-RUNS-ABSENT: absent invalid filter sentinel
+    "";
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/.test(raw))
     return null;
   const ms = Date.parse(raw);
@@ -48,7 +51,10 @@ function instantParam(params: URLSearchParams, key: string): string | null {
 }
 
 function uuidParam(params: URLSearchParams, key: string): string | null {
-  const raw = params.get(key)?.trim() ?? "";
+  const raw =
+    params.get(key)?.trim() ??
+    // Stryker disable next-line StringLiteral: EQ-RUNS-ABSENT: absent invalid filter sentinel
+    "";
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw) ? raw : null;
 }
 
@@ -58,8 +64,14 @@ export function isKnownRequestSource(source: string): boolean {
 
 export function filterFromUrl(search: string): RunsFilter {
   const params = new URLSearchParams(search);
-  const status = params.get(RUNS_FILTER_PARAMS.status) ?? "";
-  const source = params.get(RUNS_FILTER_PARAMS.source) ?? "";
+  const status =
+    params.get(RUNS_FILTER_PARAMS.status) ??
+    // Stryker disable next-line StringLiteral: EQ-RUNS-ABSENT: absent invalid filter sentinel
+    "";
+  const source =
+    params.get(RUNS_FILTER_PARAMS.source) ??
+    // Stryker disable next-line StringLiteral: EQ-RUNS-ABSENT: absent invalid filter sentinel
+    "";
   return {
     status: RUN_STATUSES.includes(status as (typeof RUN_STATUSES)[number]) ? status : "all",
     q: (params.get(RUNS_FILTER_PARAMS.q) ?? "").slice(0, 200),
@@ -112,7 +124,10 @@ export function failedStatusesFor(status: string): string | null {
 
 export function runOverlayFromUrl(search: string): { list: boolean; runId: string | null } {
   const params = new URLSearchParams(search);
-  const raw = params.get("run")?.trim() ?? "";
+  const raw =
+    params.get("run")?.trim() ??
+    // Stryker disable next-line StringLiteral: EQ-RUNS-ABSENT: absent invalid filter sentinel
+    "";
   return {
     list: params.get("runs") === "all",
     runId: raw && raw.length <= 128 && /^[\w.:-]+$/.test(raw) ? raw : null,

@@ -35,3 +35,14 @@ test("scope refusal messages preserve wildcard, operator-only and mixed explanat
     "You cannot grant workflow:read, operator:a because your own credential does not hold it. Request only scopes you hold, or ask an admin who holds them. operator:a affects the whole engine; only the engine operator can grant it.",
   );
 });
+
+test("multiple operator permissions stay separately readable in refusal messages", () => {
+  expect(exceedsMessage(["operator:a", "operator:b"], ["operator:a", "operator:b"])).toBe(
+    "operator:a, operator:b affects the whole engine; only the engine operator can grant it.",
+  );
+  expect(
+    exceedsMessage(["workflow:read", "operator:a", "operator:b"], ["operator:a", "operator:b"]),
+  ).toBe(
+    "You cannot grant workflow:read, operator:a, operator:b because your own credential does not hold it. Request only scopes you hold, or ask an admin who holds them. operator:a, operator:b affects the whole engine; only the engine operator can grant it.",
+  );
+});

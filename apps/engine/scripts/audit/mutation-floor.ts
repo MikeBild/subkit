@@ -3,6 +3,9 @@ import { isAbsolute, posix, relative } from "node:path";
 
 interface FileScore {
   file: string;
+  raw_detected: number;
+  raw_undetected: number;
+  raw_score: number;
   detected: number;
   undetected: number;
   score: number;
@@ -25,6 +28,7 @@ export interface MutationEquivalent {
   replacement: string;
   original: string;
   statusReason: string;
+  status?: "Ignored" | "Survived";
   reason: string;
   independent_review: string;
 }
@@ -75,6 +79,7 @@ function equivalentKey(entry: MutationEquivalent): string {
     entry.mutatorName,
     entry.replacement,
     entry.statusReason,
+    entry.status ?? "Ignored",
   ]);
 }
 
@@ -137,8 +142,10 @@ export function readMutationEquivalentManifest(
       typeof entry.replacement !== "string" ||
       typeof entry.original !== "string" ||
       entry.original.length === 0 ||
+      (entry.status !== undefined && entry.status !== "Ignored" && entry.status !== "Survived") ||
       typeof entry.statusReason !== "string" ||
-      entry.statusReason.length === 0 ||
+      ((entry.status ?? "Ignored") === "Ignored" && entry.statusReason.length === 0) ||
+      ((entry.status ?? "Ignored") === "Survived" && entry.statusReason !== "") ||
       typeof entry.reason !== "string" ||
       entry.reason.trim().length === 0 ||
       typeof entry.independent_review !== "string" ||
@@ -158,6 +165,7 @@ export function readMutationEquivalentManifest(
       replacement: entry.replacement,
       original: entry.original,
       statusReason: entry.statusReason,
+      ...(entry.status ? { status: entry.status } : {}),
       reason: entry.reason,
       independent_review: entry.independent_review,
     });
@@ -225,10 +233,12 @@ export function validateMutationEquivalents(input: {
         location?: unknown;
       } | null;
       return (
-        value?.status === "Ignored" &&
+        value?.status === (entry.status ?? "Ignored") &&
         value.mutatorName === entry.mutatorName &&
         value.replacement === entry.replacement &&
-        value.statusReason === entry.statusReason &&
+        ((entry.status ?? "Ignored") === "Ignored"
+          ? value.statusReason === entry.statusReason
+          : value.statusReason === undefined || value.statusReason === "") &&
         sameLocation(entry.location, value.location)
       );
     });
@@ -248,9 +258,13 @@ export function validateMutationEquivalents(input: {
     const entry = raw as { mutants?: unknown } | null;
     if (!Array.isArray(entry?.mutants)) continue;
     for (const mutant of entry.mutants) {
-      if ((mutant as { status?: unknown } | null)?.status === "Ignored" && !matched.has(mutant))
+      if (
+        ((mutant as { status?: unknown } | null)?.status === "Ignored" ||
+          (mutant as { status?: unknown } | null)?.status === "Survived") &&
+        !matched.has(mutant)
+      )
         errors.push(
-          `ignored mutant is not registered exactly: ${normalizeReportPath(input.repo, file)}`,
+          `equivalent ignored or survived mutant is not registered exactly: ${normalizeReportPath(input.repo, file)}`,
         );
     }
   }
@@ -347,21 +361,34 @@ export function scoreFiles(
     if (!Array.isArray(mutants)) return { error: `${file} has no mutants array` };
     let detected = 0;
     let undetected = 0;
+    let rawDetected = 0;
+    let rawUndetected = 0;
     let equivalentExcluded = 0;
     for (const mutant of mutants) {
       const status = (mutant as { status?: unknown } | null)?.status;
+      if (typeof status !== "string") return { error: `${file} has a mutant without a status` };
       if (status === "Ignored" && equivalentMutants.includes(mutant)) {
         equivalentExcluded += 1;
         continue;
       }
-      if (typeof status !== "string") return { error: `${file} has a mutant without a status` };
+      if (DETECTED.has(status)) rawDetected += 1;
+      else if (UNDETECTED.has(status)) rawUndetected += 1;
+      else return { error: `${file} has non-terminal mutant status ${status}` };
+      if (status === "Survived" && equivalentMutants.includes(mutant)) {
+        equivalentExcluded += 1;
+        continue;
+      }
       if (DETECTED.has(status)) detected += 1;
       else if (UNDETECTED.has(status)) undetected += 1;
       else return { error: `${file} has non-terminal mutant status ${status}` };
     }
     const valid = detected + undetected;
+    const rawValid = rawDetected + rawUndetected;
     const score: FileScore = {
       file: normalizeReportPath(repo, file),
+      raw_detected: rawDetected,
+      raw_undetected: rawUndetected,
+      raw_score: rawValid === 0 ? 100 : (rawDetected / rawValid) * 100,
       detected,
       undetected,
       score: valid === 0 ? 100 : (detected / valid) * 100,
@@ -383,7 +410,7 @@ export function renderScore(score: FileScore): string {
   const equivalent = score.equivalent_excluded
     ? `, ${score.equivalent_excluded} equivalent excluded`
     : "";
-  return `${score.file}  ${score.score.toFixed(2)} % (${score.detected} detected, ${score.undetected} survived${equivalent})`;
+  return `${score.file}  raw ${score.raw_score.toFixed(2)} % (${score.raw_detected} detected, ${score.raw_undetected} survived); adjusted ${score.score.toFixed(2)} % (${score.detected} detected, ${score.undetected} survived${equivalent})`;
 }
 
 export interface MutationReceipt {

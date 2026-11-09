@@ -53,7 +53,7 @@ export function buildMutationShardConfig(input: {
     thresholds: { high: 100, low: 100, break: 100 },
     reporters: ["clear-text", "json"],
     jsonReporter: { fileName: `${artifactRoot}/mutation.json` },
-    tempDirName: `.stryker-tmp-${input.waveId}-${input.runId}-${input.shard.id}`,
+    tempDirName: ".stryker-tmp",
     cleanTempDir: "always",
     concurrency: input.workers,
   };

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import {
+  compareStoppingSteps,
   deriveExecutionOutcome,
   deriveRerunSafety,
   fixedPlannedSteps,
@@ -37,15 +38,18 @@ describe("execution outcome core", () => {
         source_kind: "saved",
         definition_valid: true,
         requires_preparation: true,
-      }).mode,
-    ).toBe("prepare_only");
+      }),
+    ).toEqual({
+      mode: "prepare_only",
+      reason: "the workflow may repeat external effects and requires preparation",
+    });
     expect(
       deriveRerunSafety({
         source_kind: "draft",
         definition_valid: true,
         requires_preparation: false,
-      }).mode,
-    ).toBe("unavailable");
+      }),
+    ).toEqual({ mode: "unavailable", reason: "only saved workflow executions can be rerun" });
   });
 
   test("does not leak failure facts into a successful projection", () => {
@@ -106,6 +110,42 @@ const outcomeFacts = {
   rerun_safety: rerunSafety,
   failure: failureFacts,
 };
+
+test("ordinary request metadata without extras is not a held row", () => {
+  const result = deriveExecutionOutcome(
+    { status: "succeeded", failure: null, output_contract: null },
+    [{ ...row("read", "succeeded", 1), request_meta: {} }],
+    outcomeFacts,
+  );
+  expect(result.steps).toEqual({ total: 1, succeeded: 1, failed: 0, held: 0, skipped: 0 });
+});
+
+test("mixed fixed and dynamic steps do not advertise a fixed planned count", () => {
+  expect(
+    fixedPlannedSteps([
+      { id: "read", kind: "request" },
+      { id: "loop", kind: "loop" },
+    ]),
+  ).toBeNull();
+});
+
+test("stopping-step ties preserve later input order across interleaved timestamp groups", () => {
+  fc.assert(
+    fc.property(
+      fc.array(fc.integer({ min: 0, max: 5 }), { minLength: 1, maxLength: 100 }),
+      (seconds) => {
+        const rows = seconds.map((second, index) => row(String(index), "failed", second));
+        let expected = rows[0]!;
+        for (const candidate of rows) {
+          if (candidate.started_at!.getTime() >= expected.started_at!.getTime())
+            expected = candidate;
+        }
+        expect(pickStoppingStep(rows, null)).toBe(expected);
+      },
+    ),
+    { seed: 20261109, numRuns: 1000 },
+  );
+});
 
 test("saved invalid definitions require preparation with an explicit reason", () => {
   expect(
@@ -278,4 +318,28 @@ test("projection leaves frozen facts and rows unchanged across repeated calls", 
     ),
     { seed: 20261109, numRuns: 100 },
   );
+});
+
+test("missing failure IDs cannot select similarly spelled loop steps", () => {
+  const latest = row("latest", "failed", 3);
+  for (const id of [null, undefined, ""]) {
+    expect(pickStoppingStep([row(`${id}[0]`, "failed", 1), latest], id)).toBe(latest);
+  }
+});
+
+test("stopping-step order prioritizes timestamps and preserves original order at ties", () => {
+  const indexed = (index: number, started_at: Date | null) => ({ index, row: { started_at } });
+  const early = indexed(8, new Date(10));
+  const late = indexed(2, new Date(20));
+  expect(compareStoppingSteps(early, late)).toBe(-10);
+  expect(compareStoppingSteps(late, early)).toBe(10);
+  for (const timestamp of [new Date(10), null, new Date(Number.NaN)]) {
+    const first = indexed(2, timestamp);
+    const second = indexed(8, timestamp);
+    expect(compareStoppingSteps(first, second)).toBe(-6);
+    expect(compareStoppingSteps(second, first)).toBe(6);
+    expect(compareStoppingSteps(first, first)).toBe(0);
+  }
+  expect(compareStoppingSteps(indexed(5, null), indexed(2, new Date(10)))).toBe(-10);
+  expect(compareStoppingSteps(indexed(5, new Date(Number.NaN)), indexed(2, new Date(10)))).toBe(3);
 });

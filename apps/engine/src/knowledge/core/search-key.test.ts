@@ -24,6 +24,12 @@ test("normalization preserves limit boundaries, case folding and unordered filte
   expect(knowledgeSearchCacheKey({ ...request, limit: 100 })).toBe(
     knowledgeSearchCacheKey({ ...request, limit: 50 }),
   );
+  expect(knowledgeSearchCacheKey(request)).toBe(
+    knowledgeSearchCacheKey({ ...request, tags: [], knowledge_source_ids: [] }),
+  );
+  expect(knowledgeSearchCacheKey({ ...request, query: "query" })).not.toBe(
+    knowledgeSearchCacheKey({ ...request, query: "query!" }),
+  );
   fc.assert(
     fc.property(fc.array(fc.string()), (tags) => {
       const before = [...tags];
@@ -36,4 +42,17 @@ test("normalization preserves limit boundaries, case folding and unordered filte
     }),
     { seed: 20261109, numRuns: 100 },
   );
+});
+
+test("cache identity encodes absent versus named scopes and all nonempty filters", () => {
+  expect(knowledgeSearchCacheKey(request)).toBe('tenant:["","",[],[],10,"query"]');
+  expect(
+    knowledgeSearchCacheKey({
+      ...request,
+      scope: "workflow",
+      workflow_id: "wf-1",
+      knowledge_source_ids: ["source-b", "source-a"],
+      tags: ["tag-b", "tag-a"],
+    }),
+  ).toBe('tenant:["workflow","wf-1",["source-a","source-b"],["tag-a","tag-b"],10,"query"]');
 });

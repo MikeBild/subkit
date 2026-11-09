@@ -252,8 +252,7 @@ function applyAssistantMessage(
     const prior = messages[messages.length - 1];
     const priorText = prior?.role === "assistant" ? prior.content.trim() : "";
     const newText = text.trim();
-    const duplicatesPrior =
-      priorText.length > 0 && (newText === priorText || newText.startsWith(priorText));
+    const duplicatesPrior = priorText.length > 0 && newText.startsWith(priorText);
     if (duplicatesPrior && prior) {
       accountedPrefix = text.startsWith(prior.content) ? prior.content : null;
     }
@@ -279,7 +278,7 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent, now: number
       }
       let messages = state.messages;
       const prior = messages[messages.length - 1];
-      const isUserEcho = ev.role === "user" && messages.length > 0 && prior?.role === "user";
+      const isUserEcho = ev.role === "user" && prior?.role === "user";
       const priorIsLocalEcho = isUserEcho && prior?.id === undefined;
       const priorIsDifferentEnginePersist =
         isUserEcho &&
@@ -386,7 +385,7 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent, now: number
       };
     }
     case "tool_call_start": {
-      const input = ev.input_partial === undefined ? undefined : ev.input_partial;
+      const input = ev.input_partial;
       return {
         ...state,
         toolCalls: [

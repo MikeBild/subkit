@@ -10,10 +10,44 @@ import { assertCompletePureTargetInventory } from "../../audit/pure-targets.ts";
 import { frozenWaveFixture } from "./frozen-wave.ts";
 
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
-export function qualityChainFixture(policyBound = false, externalRuntime = false) {
+export function qualityChainFixture(
+  policyBound = false,
+  externalRuntime = false,
+  equivalentSurvivor = false,
+) {
   const f = frozenWaveFixture();
   const { wave, put, root } = f;
   const allTargets = f.targets;
+  const equivalentTarget = allTargets[0]!;
+  const equivalentSource = "export const fixture = (true ? 1 : 1);\n";
+  const location = { start: { line: 1, column: 25 }, end: { line: 1, column: 29 } };
+  if (equivalentSurvivor) {
+    put(equivalentTarget, equivalentSource);
+    put(
+      wave.equivalence_manifest_path,
+      JSON.stringify({
+        version: 1,
+        equivalents: [
+          {
+            file: equivalentTarget,
+            source_sha256: hash(equivalentSource),
+            location,
+            mutatorName: "BooleanLiteral",
+            replacement: "false",
+            original: "true",
+            status: "Survived",
+            statusReason: "",
+            reason: "Both conditional arms return the same literal.",
+            independent_review:
+              "Fixture proves both arms have the same returned value and no effects.",
+          },
+        ],
+      }),
+    );
+    wave.equivalence_manifest_sha256 = digestWaveFiles(root, [wave.equivalence_manifest_path]);
+    wave.source_freeze_sha256 = digestWaveFiles(root, mutationTestInputs(root));
+  }
+
   if (externalRuntime) {
     put("tests/docker/fixture.docker.test.ts", "export {}\n");
     wave.external_runtime_tests = externalRuntimeDockerTests(root);
@@ -78,7 +112,22 @@ export function qualityChainFixture(policyBound = false, externalRuntime = false
       files: Object.fromEntries(
         targets.map((target) => [
           target,
-          { source: readFileSync(join(root, target), "utf8"), mutants: [{ status: "Killed" }] },
+          {
+            source: readFileSync(join(root, target), "utf8"),
+            mutants: [
+              { status: "Killed" },
+              ...(equivalentSurvivor && target === equivalentTarget
+                ? [
+                    {
+                      status: "Survived",
+                      mutatorName: "BooleanLiteral",
+                      replacement: "false",
+                      location,
+                    },
+                  ]
+                : []),
+            ],
+          },
         ]),
       ),
     });
@@ -94,6 +143,8 @@ export function qualityChainFixture(policyBound = false, externalRuntime = false
       target_digest_sha256: wave.target_digest_sha256,
       base_config_sha256: wave.config_sha256,
       targets,
+      runtime_targets: targets,
+      type_only_targets: [],
     };
     put(
       `${mutationRoot}/${shard.id}/receipt.json`,
@@ -107,7 +158,7 @@ export function qualityChainFixture(policyBound = false, externalRuntime = false
         equivalence_manifest_sha256: wave.equivalence_manifest_sha256,
         dynamic_import_ledger_sha256: wave.dynamic_import_ledger_sha256,
         workers: 2,
-        exit_code: 0,
+        exit_code: equivalentSurvivor && targets.includes(equivalentTarget) ? 1 : 0,
         started_at: "2026-01-01T00:00:00Z",
         finished_at: "2026-01-01T00:00:01Z",
       }),

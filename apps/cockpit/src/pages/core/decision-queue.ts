@@ -3,7 +3,7 @@ import type { DecidableKind, DecisionItem, DecisionKind } from "@/pages/decision
 export const AGED_AFTER_DAYS = 3;
 const EXPIRING_WITHIN_MS = 24 * 60 * 60 * 1000;
 
-type DecisionUrgency = "expired" | "expiring" | "blocking" | "deferred";
+type DecisionUrgency = "expired" | "expiring" | "blocking" | null;
 export type DecisionTotals = { patch: number; skill: number; conversation: number };
 export type DecisionRubrics = { current: DecisionItem[]; aged: DecisionItem[] };
 export type UrgencyRubrics = {
@@ -48,14 +48,10 @@ export function ageInDays(waitingSince: string, now: number): number {
 }
 
 function urgency(item: DecisionItem, now: number): DecisionUrgency {
-  if (item.expiresAt) {
-    const expires = Date.parse(item.expiresAt);
-    if (!Number.isNaN(expires)) {
-      if (expires <= now) return "expired";
-      if (expires - now <= EXPIRING_WITHIN_MS) return "expiring";
-    }
-  }
-  return item.kind === "conversation" ? "blocking" : "deferred";
+  const expires = Date.parse(String(item.expiresAt));
+  if (expires <= now) return "expired";
+  if (expires - now <= EXPIRING_WITHIN_MS) return "expiring";
+  return item.kind === "conversation" ? "blocking" : null;
 }
 
 export function sortDecisions(items: readonly DecisionItem[]): DecisionItem[] {
@@ -131,7 +127,7 @@ export function countOpenDecisions(input: {
     if (item.kind !== "conversation" && !isDecidable(item)) continue;
     const value = urgency(item, input.nowMs),
       age = ageInDays(item.waitingSince, input.nowMs);
-    if (isDecidable(item) && age > oldestAgeDays) oldestAgeDays = age;
+    if (isDecidable(item)) oldestAgeDays = Math.max(oldestAgeDays, age || 0);
     if (value === "expired") subsets.overdue += 1;
     else if (value === "blocking" || value === "expiring") subsets.blocking += 1;
     else if (age >= AGED_AFTER_DAYS) subsets.aging += 1;

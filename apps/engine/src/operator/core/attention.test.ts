@@ -102,3 +102,20 @@ test("projected order is deterministic and idempotent without mutating source or
     { seed: 20261109, numRuns: 100 },
   );
 });
+
+test("missing dates sort after present year-only timestamps", () => {
+  for (const key of ["deadline", "since"] as const) {
+    const absent = item("absent");
+    const present = { ...item("present"), [key]: "2026" };
+    expect(compareAttentionItems(absent, present)).toBe(1);
+    expect(compareAttentionItems(present, absent)).toBe(-1);
+  }
+});
+
+test("equal present dates defer to the remaining date and stable ID order", () => {
+  const a = { ...item("a"), deadline: "2026-01-01", since: "2025-01-01" };
+  const b = { ...item("b"), deadline: "2026-01-01", since: "2025-01-01" };
+  expect(compareAttentionItems(a, b)).toBe(-1);
+  expect(compareAttentionItems(b, a)).toBe(1);
+  expect(compareAttentionItems(a, a)).toBe(0);
+});

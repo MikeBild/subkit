@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { dedupeTags, isStructuralTag, mergeStructuralTags } from "./tags.ts";
+import { DOMAIN_TAG_PREFIX, dedupeTags, isStructuralTag, mergeStructuralTags } from "./tags.ts";
 
 describe("knowledge/isStructuralTag", () => {
   const structural = [
@@ -49,9 +49,21 @@ describe("knowledge/mergeStructuralTags", () => {
 });
 
 test("deduplication trims, removes empty/case duplicates and keeps first spelling", () => {
+  expect(DOMAIN_TAG_PREFIX).toBe("domain:");
   expect(dedupeTags([" ", " First ", "FIRST", "second", "first"])).toEqual(["First", "second"]);
   expect(dedupeTags(["a".repeat(45)])).toEqual(["a".repeat(40)]);
   expect(dedupeTags(Array.from({ length: 25 }, (_, n) => `tag-${n}`))).toEqual(
     Array.from({ length: 20 }, (_, n) => `tag-${n}`),
   );
+  expect(dedupeTags(["Domain:One", "domain:one", "DOMAIN:two"])).toEqual([
+    "Domain:One",
+    "DOMAIN:two",
+  ]);
+  expect(dedupeTags(["ß", "SS"])).toEqual(["ß", "SS"]);
+});
+
+test("structural matching trims and normalizes without admitting invalid terminal separators", () => {
+  expect(isStructuralTag("  café:paris  ")).toBe(true);
+  expect(isStructuralTag("domain:blog-")).toBe(true);
+  expect(isStructuralTag("domain:")).toBe(false);
 });

@@ -1,16 +1,17 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { TEST_DB_HOOK_TIMEOUT } from "../../db/tests/setup.ts";
 import { runExecution } from "../engine.ts";
 import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./setup.ts";
 
-let ctx: EngineTestCtx;
+let ctx!: EngineTestCtx;
 
 beforeAll(async () => {
   ctx = await createEngineCtx("validation-expression");
-});
+}, TEST_DB_HOOK_TIMEOUT);
 
 afterAll(async () => {
-  await ctx.cleanup();
-});
+  await ctx?.cleanup();
+}, TEST_DB_HOOK_TIMEOUT);
 
 describe("workflow.validation_expression", () => {
   test("truthy verdict leaves the run as succeeded with no validation error", async () => {

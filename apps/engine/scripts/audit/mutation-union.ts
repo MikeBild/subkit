@@ -1,10 +1,7 @@
 import { createHash } from "node:crypto";
-import {
-  type MutationEquivalentManifest,
-  scoreFiles,
-  validateMutationEquivalents,
-} from "./mutation-floor.ts";
+import type { MutationEquivalentManifest } from "./mutation-floor.ts";
 import { buildMutationShardConfig } from "./mutation-shard-config.ts";
+import { inspectMutationShardScore } from "./mutation-shard-score.ts";
 import type { MutationWaveManifest } from "./mutation-wave.ts";
 
 export interface MutationShardReceipt {
@@ -105,7 +102,6 @@ export function validateMutationShardUnion(input: MutationShardUnionInput): stri
       errors.push(`missing shard result: ${shard.id}`);
       continue;
     }
-    if (result.exitCode !== 0) errors.push(`shard ${shard.id} has nonzero exit`);
     const receipt = parse(result.receiptText, `shard ${shard.id} receipt`, errors);
     if (!receipt) continue;
     for (const [key, value] of [
@@ -254,16 +250,18 @@ export function validateMutationShardUnion(input: MutationShardUnionInput): stri
           if (
             mutant?.status !== "Killed" &&
             mutant?.status !== "Timeout" &&
-            mutant?.status !== "Ignored"
+            mutant?.status !== "Ignored" &&
+            mutant?.status !== "Survived"
           )
             errors.push(`shard ${shard.id} has undetected mutant: ${file}`);
     }
     for (const target of runtimeTargets)
       if (!seen.has(target)) errors.push(`shard ${shard.id} report misses target: ${target}`);
-    if (receipt.exit_code !== result.exitCode || result.exitCode !== 0)
+    if (receipt.exit_code !== result.exitCode)
       errors.push(`shard ${shard.id} receipt terminal metadata invalid`);
-    const equivalents = validateMutationEquivalents({
+    const scoring = inspectMutationShardScore({
       report,
+      exitCode: result.exitCode,
       manifest: {
         ...input.equivalenceManifest,
         equivalents: input.equivalenceManifest.equivalents.filter((entry) =>
@@ -274,19 +272,7 @@ export function validateMutationShardUnion(input: MutationShardUnionInput): stri
       expectedScope: runtimeTargets,
       sourceSha256ForFile: input.sourceSha256ForFile,
     });
-    if (equivalents.errors.length > 0)
-      errors.push(...equivalents.errors.map((error) => `shard ${shard.id} equivalence: ${error}`));
-    else {
-      const scores = scoreFiles(
-        report,
-        input.repo,
-        equivalents.matches.map((match) => match.mutant),
-      );
-      if ("error" in scores) errors.push(`shard ${shard.id} score: ${scores.error}`);
-      else
-        for (const score of scores)
-          if (score.score !== 100) errors.push(`shard ${shard.id} score below 100: ${score.file}`);
-    }
+    errors.push(...scoring.errors.map((error) => `shard ${shard.id}: ${error}`));
   }
   for (const id of actual.keys())
     if (!input.wave.shards.some((shard) => shard.id === id))

@@ -1,4 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import {
+  createLocalCliOAuthBrowser,
+  LOCAL_CLI_OAUTH_BROWSER_SUPPORTED,
+} from "./_helpers/local-cli-oauth-browser.ts";
 import { HAS_SK_BIN, runPtyScenario, SKIP_PTY } from "./_helpers/pty.ts";
 import { boot, cli, type E2EEnv, expectSuccess, shutdown } from "./setup.ts";
 
@@ -18,8 +24,50 @@ const E = (): E2EEnv => {
   return env;
 };
 
+const savedProfileEnv = { SUBKIT_API_KEY: "", SUBKIT_TENANT: "" };
+
+function savedDefaultProfile(homeDir: string): { api_key?: string; portal_locked?: boolean } {
+  const config = JSON.parse(readFileSync(path.join(homeDir, ".sk", "config.json"), "utf8")) as {
+    profiles?: Record<string, { api_key?: string; portal_locked?: boolean }>;
+  };
+  return config.profiles?.default ?? {};
+}
+
 describe("e2e matrix: sk CLI overhaul (live engine)", () => {
-  test.todo("device login renders the auth flow chrome — needs device-flow mock harness");
+  test.skipIf(!HAS_SK_BIN || !LOCAL_CLI_OAUTH_BROWSER_SUPPORTED)(
+    "OAuth authorization-code login authenticates the compiled CLI through a POSIX local browser flow",
+    async () => {
+      const browser = createLocalCliOAuthBrowser({
+        engineUrl: E().baseUrl,
+        apiKey: E().personas.admin.apiKey,
+      });
+      try {
+        const login = await cli(["login", "--engine-url", E().baseUrl, "--tenant", E().tenantId], {
+          env: E(),
+          persona: "admin",
+          extraEnv: browser.env,
+          timeout: 90_000,
+        });
+        expectSuccess(login, "local OAuth authorization-code login");
+        expect(login.stdout).toContain("signed in as");
+        expect(login.stdout).toContain("profile 'default' saved");
+        const profile = savedDefaultProfile(E().personas.admin.homeDir);
+        expect(Boolean(profile.api_key && profile.api_key !== E().personas.admin.apiKey)).toBe(
+          true,
+        );
+
+        const authenticated = await cli(["workflows", "list"], {
+          env: E(),
+          persona: "admin",
+          extraEnv: savedProfileEnv,
+        });
+        expectSuccess(authenticated, "OAuth-issued CLI profile workflows list");
+      } finally {
+        browser.cleanup();
+      }
+    },
+    120_000,
+  );
 
   test.skipIf(!HAS_SK_BIN)("api-key login stores a usable profile", async () => {
     const result = await cli(
@@ -31,7 +79,60 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     expect(result.stdout).toContain("engine health: live=ok ready=ready");
   });
 
-  test.todo("portal-token login boots and exits clean — needs portal-token mint harness");
+  test.skipIf(!HAS_SK_BIN)(
+    "minted portal token creates a locked compiled-CLI profile and rejects tenant switching",
+    async () => {
+      const issued = await fetch(`${E().baseUrl}/v1/identity/portal-tokens`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${E().personas.admin.apiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          user_id: E().personas.enduser.userId,
+          allowed_workflows: ["portal-matrix-workflow"],
+          ttl_minutes: 10,
+        }),
+      });
+      expect(issued.status).toBe(201);
+      const portal = (await issued.json()) as { plaintext_token?: string };
+      expect(portal.plaintext_token).toBeTruthy();
+
+      const login = await cli(
+        ["login", "--portal-token", portal.plaintext_token ?? "", "--engine-url", E().baseUrl],
+        { env: E(), persona: "enduser" },
+      );
+      expectSuccess(login, "minted portal-token login");
+      expect(login.stdout).toContain("tenant locked");
+      const profile = savedDefaultProfile(E().personas.enduser.homeDir);
+      expect(Boolean(profile.api_key && profile.api_key === portal.plaintext_token)).toBe(true);
+      expect(profile.portal_locked).toBe(true);
+
+      const status = await cli(["status"], {
+        env: E(),
+        persona: "enduser",
+        extraEnv: savedProfileEnv,
+      });
+      expectSuccess(status, "portal profile status");
+      expect(status.stdout).toContain("portal_lock  yes");
+
+      const portalWorkflows = await cli(["workflows", "list"], {
+        env: E(),
+        persona: "enduser",
+        extraEnv: savedProfileEnv,
+      });
+      expect(portalWorkflows.exitCode).toBe(2);
+      expect(portalWorkflows.stderr).toContain("forbidden: workflow_not_in_allowlist");
+
+      const switchTenant = await cli(["tenants", "other-tenant"], {
+        env: E(),
+        persona: "enduser",
+        extraEnv: savedProfileEnv,
+      });
+      expect(switchTenant.exitCode).toBe(2);
+      expect(switchTenant.stderr).toContain("cannot switch tenants as a portal-token user");
+    },
+  );
 
   test.skipIf(!HAS_SK_BIN)("headless `sk -p` resolves cleanly", async () => {
     const result = await cli(["--p", "say hello", "--output", "json"], {
@@ -115,7 +216,25 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     20_000,
   );
 
-  test.todo("enduser persona renders welcome hint — needs frame-text capture in PTY harness");
+  test.skipIf(SKIP_PTY)(
+    "enduser persona renders its real welcome frame without the admin tenant-inspection action",
+    async () => {
+      const result = await runPtyScenario(
+        [
+          { kind: "wait", pattern: "Resume work, create a connector", label: "enduser welcome" },
+          { kind: "ready" },
+          { kind: "send", text: "\u0004" },
+        ],
+        { persona: E().personas.enduser, engineUrl: E().baseUrl },
+      );
+      expect(result.exitCode).toBe(0);
+      const visible = result.visible.replace(/\s+/g, " ");
+      expect(visible).toContain("enduser");
+      expect(visible).toContain("Resume work, create a connector");
+      expect(visible).not.toContain("Inspect tenant state");
+    },
+    40_000,
+  );
 
   test.skipIf(SKIP_PTY)(
     "onboarding template entry point boots",

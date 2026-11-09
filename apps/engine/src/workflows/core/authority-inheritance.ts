@@ -5,12 +5,18 @@ import { type ReadInheritanceEvidence, readEffectInherits } from "../read-inheri
 
 type Effect = WorkflowEffectManifest["effects"][number];
 
-const EFFECT_RANK = { read: 0, write: 1, destructive: 2 } as const;
+const COVERING_EFFECTS: Readonly<
+  Record<Exclude<Effect["effect"], "unknown">, readonly Effect["effect"][]>
+> = {
+  read: ["read", "write", "destructive"],
+  write: ["write", "destructive"],
+  destructive: ["destructive"],
+};
 
 function effectCovered(next: Effect, granted: Effect): boolean {
-  if (next.effect === "unknown" || granted.effect === "unknown")
-    return next.effect === granted.effect && next.operation === granted.operation;
-  return EFFECT_RANK[next.effect] <= EFFECT_RANK[granted.effect];
+  if (next.effect === "unknown")
+    return granted.effect === "unknown" && next.operation === granted.operation;
+  return COVERING_EFFECTS[next.effect].includes(granted.effect);
 }
 
 const SUB_BOUNDARIES = [

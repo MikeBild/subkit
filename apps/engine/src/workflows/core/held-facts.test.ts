@@ -40,3 +40,26 @@ test("endpoint identities preserve arbitrary codes without normalizing them", ()
     { seed: 20261109, numRuns: 100 },
   );
 });
+
+test("loop suffixes accept multiple digits but never strip an internal bracket segment", () => {
+  const reason = REPORT_MESSAGE_REFUSALS[0]!;
+  const inspection = { ok: false as const, reason };
+  expect(
+    heldInspected([{ step_id: "send[12]", report_delivery_inspection: inspection }], "send"),
+  ).toBe(true);
+  expect(
+    heldReason([{ step_id: "send[12]", report_delivery_inspection: inspection }], "send"),
+  ).toBe(reason);
+  expect(
+    heldInspected(
+      [{ step_id: "send[1].child", report_delivery_inspection: inspection }],
+      "send.child",
+    ),
+  ).toBe(false);
+  expect(
+    heldReason(
+      [{ step_id: "send[1].child", report_delivery_inspection: inspection }],
+      "send.child",
+    ),
+  ).toBeNull();
+});

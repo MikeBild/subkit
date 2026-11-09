@@ -1,5 +1,13 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { mutationTestInputs } from "../audit/mutation-inputs.ts";
@@ -10,7 +18,11 @@ import {
   EXPLICIT_PURE_TARGET_PATHS,
   REVIEWED_ENGINE_CORE_TARGET_PATHS,
 } from "../audit/pure-targets.ts";
-import { loadMutationWave, parseMutationExecutorArgs } from "../run-mutation-shards.ts";
+import {
+  ensurePersistentStrykerTempParent,
+  loadMutationWave,
+  parseMutationExecutorArgs,
+} from "../run-mutation-shards.ts";
 
 const roots: string[] = [];
 test("mutation execution requires an unambiguous explicit run mode", () => {
@@ -35,6 +47,42 @@ test("mutation execution requires an unambiguous explicit run mode", () => {
 });
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+test("creates a persistent owned marker for the shared Stryker sandbox parent", () => {
+  const root = mkdtempSync(join(tmpdir(), "subkit-mutation-temp-parent-"));
+  roots.push(root);
+  ensurePersistentStrykerTempParent(root);
+  const marker = join(root, ".stryker-tmp", ".subkit-owned-parent");
+  expect(existsSync(marker)).toBe(true);
+  expect(readFileSync(marker, "utf8")).toBe("subkit persistent stryker temp parent v1\n");
+  ensurePersistentStrykerTempParent(root);
+  writeFileSync(marker, "foreign\n");
+  expect(() => ensurePersistentStrykerTempParent(root)).toThrow(
+    "Stryker temp parent marker is not owned by Subkit",
+  );
+});
+
+test("refuses symlinked Stryker parent and marker paths before writing", () => {
+  const parentRoot = mkdtempSync(join(tmpdir(), "subkit-mutation-temp-parent-link-"));
+  roots.push(parentRoot);
+  const parentTarget = join(parentRoot, "foreign-parent");
+  mkdirSync(parentTarget);
+  symlinkSync(parentTarget, join(parentRoot, ".stryker-tmp"));
+  expect(() => ensurePersistentStrykerTempParent(parentRoot)).toThrow(
+    "Stryker temp parent is not an owned directory",
+  );
+
+  const markerRoot = mkdtempSync(join(tmpdir(), "subkit-mutation-temp-marker-link-"));
+  roots.push(markerRoot);
+  const markerParent = join(markerRoot, ".stryker-tmp");
+  mkdirSync(markerParent);
+  const markerTarget = join(markerRoot, "foreign-marker");
+  writeFileSync(markerTarget, "subkit persistent stryker temp parent v1\n");
+  symlinkSync(markerTarget, join(markerParent, ".subkit-owned-parent"));
+  expect(() => ensurePersistentStrykerTempParent(markerRoot)).toThrow(
+    "Stryker temp parent marker is not owned by Subkit",
+  );
 });
 
 function fixture() {
@@ -161,7 +209,16 @@ test("fresh digests cannot hide an omitted runtime consumer", () => {
 });
 
 test("preflight rejects missing registered targets and stale runtime, test, config or lock inputs", () => {
-  for (const kind of ["missing", "source", "test", "config", "lock", "runner", "ledger"] as const) {
+  for (const kind of [
+    "missing",
+    "source",
+    "test",
+    "config",
+    "lock",
+    "runner",
+    "score_verifier",
+    "ledger",
+  ] as const) {
     const { root, manifestPath, targets, tests, put } = fixture();
     if (kind === "missing") rmSync(join(root, targets[0]!));
     else {
@@ -171,6 +228,7 @@ test("preflight rejects missing registered targets and stale runtime, test, conf
         config: "stryker.config.json",
         lock: "bun.lock",
         runner: "apps/engine/scripts/run-mutation-shards.ts",
+        score_verifier: "apps/engine/scripts/audit/mutation-shard-score.ts",
         ledger: ".artifacts/ledger.json",
       }[kind];
       put(path, "changed\n");

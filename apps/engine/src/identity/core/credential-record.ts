@@ -24,7 +24,7 @@ export function credentialStorageValues(
     user_id: facts.user_id,
     system_account_id: facts.system_account_id,
     creator_kind: actor?.kind ?? null,
-    creator_id: actor?.kind === "system" ? null : (actor?.id ?? null),
+    creator_id: actor?.id ?? null,
     credential_origin: facts.credential_origin,
     prefix: key.prefix,
     token_sha256: key.hash,

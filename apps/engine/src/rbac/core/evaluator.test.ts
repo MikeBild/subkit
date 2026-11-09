@@ -210,3 +210,82 @@ test("credentials within their explicit ceilings are not rejected", () => {
     ).toBeNull();
   }
 });
+
+test("every grant returns an affirmative decision and the selected provenance", () => {
+  for (const [flag, source] of [
+    ["builtin_admin", "builtin_admin"],
+    ["resource_grant", "resource_grant"],
+    ["group_grant", "group"],
+    ["role_grant", "role"],
+  ] as const) {
+    expect(evaluatePermission(request, { ...facts, [flag]: true })).toEqual({
+      allow: true,
+      source,
+    });
+  }
+});
+
+test("denial reasons and detail remain actionable for operator and credential boundaries", () => {
+  expect(evaluatePermission(request, { ...facts, operator_allowed: false })).toEqual({
+    allow: false,
+    source: "operator_boundary",
+    reason: "operator_boundary:operator_only",
+    detail: { required: "workflow:run", cause: "operator_only" },
+  });
+  expect(
+    evaluatePermission(request, { ...facts, credential_ceiling_cause: "scope_not_granted" }),
+  ).toEqual({
+    allow: false,
+    source: "credential_ceiling",
+    reason: "credential_ceiling:scope_not_granted",
+    detail: { required: "workflow:run", cause: "credential_ceiling:scope_not_granted" },
+  });
+});
+
+test("portal denial distinguishes workflow permissions from unrelated permissions", () => {
+  for (const portal_token of [true, false]) {
+    for (const permission of [
+      "workflow:run",
+      "workflow:read",
+      "conversation:read",
+      "connector:read",
+    ]) {
+      expect(evaluatePermission({ permission, portal_token }, facts)).toEqual({
+        allow: false,
+        reason:
+          portal_token && permission.startsWith("workflow:")
+            ? "workflow_not_in_allowlist"
+            : `permission_denied:${permission}`,
+        detail: {
+          required: permission,
+          cause: portal_token ? "workflow_not_in_allowlist" : "no_matching_grant",
+        },
+      });
+    }
+  }
+  expect(
+    matchesPortalTokenAllowlist({
+      permission: "workflow:run",
+      portal_token: true,
+      portal_workflow_allowlist: "all",
+    }),
+  ).toBe(false);
+});
+
+test("credential resource ceilings do not restrict another resource category", () => {
+  const ceiling = {
+    product_limited: false,
+    product_permission_allowed: true,
+    scope_limited: false,
+    scope_allows_permission: true,
+    connector_allowlist: [],
+    workflow_allowlist: [],
+  };
+  expect(
+    credentialCeilingCause(
+      { permission: "conversation:read", resource: { type: "conversation", id: "c" } },
+      ceiling,
+    ),
+  ).toBeNull();
+  expect(credentialCeilingCause({ permission: "workflow:read" }, ceiling)).toBeNull();
+});

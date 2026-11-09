@@ -104,3 +104,28 @@ test("view projection is deterministic for frozen facts", () => {
     { seed: 20261109, numRuns: 100 },
   );
 });
+
+test("connection, template and recovery facts remain available in the public view", () => {
+  const populated = Object.freeze({
+    base_url: "https://api.example.test/v1",
+    dsn: "postgres://localhost/example",
+    template_slug: "example-api",
+    template_name: "Example API",
+    template_version: 3,
+    template_snapshot: Object.freeze({ driver: "http", version: 3 }),
+    last_error: "upstream unavailable",
+    circuit_opened_at: new Date("2026-01-03T00:00:00Z"),
+    auth_failed_at: new Date("2026-01-04T00:00:00Z"),
+    auth_failed_reason: "token expired",
+    health_reason: "authentication required",
+    health_error_code: "needs_reauth",
+    sunset_at: new Date("2027-01-01T00:00:00Z"),
+    successor_uri: "https://api.example.test/v2",
+  });
+  const input = Object.freeze(facts(populated));
+  expect(toConnectorView(input)).toMatchObject(populated);
+  expect(toConnectorView(facts({ base_url: "", template_version: 0 }))).toMatchObject({
+    base_url: "",
+    template_version: 0,
+  });
+});

@@ -212,7 +212,7 @@ describe("DocsBundleSchema", () => {
         ],
       }).success;
     for (const value of ["0.0.0", "12.345.6789"]) expect(build(value), value).toBe(true);
-    for (const value of ["1.2", "1.2.3x", "x.2.3", "1.x.3", "1.2.x", "1.2.3.4"])
+    for (const value of ["1.2", "1.2.3x", "x1.2.3", "x.2.3", "1.x.3", "1.2.x", "1.2.3.4"])
       expect(build(value), value).toBe(false);
   });
 
