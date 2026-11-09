@@ -20,8 +20,8 @@ afterAll(() => {
 }, 180_000);
 
 async function eventually<T>(read: () => Promise<T | undefined>, message: string): Promise<T> {
-  const deadline = Date.now() + 45_000;
-  while (Date.now() < deadline) {
+  const deadline = performance.now() + 45_000;
+  while (performance.now() < deadline) {
     const value = await read();
     if (value !== undefined) return value;
     await Bun.sleep(200);
