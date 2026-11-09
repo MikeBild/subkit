@@ -176,6 +176,28 @@ describe("mutation shard union", () => {
       expect(validateMutationShardUnion(value).length).toBeGreaterThan(0);
     }
   });
+  test("rejects partial or noncanonical parent validation ticket bindings", () => {
+    for (const binding of [
+      { parent_validation_ticket_path: "reports/mutation-ticket.json" },
+      { parent_validation_ticket_sha256: token },
+      {
+        parent_validation_ticket_path: "../mutation-validation-ticket.json",
+        parent_validation_ticket_sha256: token,
+      },
+      {
+        parent_validation_ticket_path: "reports/mutation-ticket.json",
+        parent_validation_ticket_sha256: "bad",
+      },
+    ]) {
+      const value = input();
+      const receipt = JSON.parse(value.shards[0]!.receiptText);
+      Object.assign(receipt, binding);
+      value.shards[0]!.receiptText = JSON.stringify(receipt);
+      expect(validateMutationShardUnion(value).join("\n")).toContain(
+        "parent validation ticket binding",
+      );
+    }
+  });
   test("rejects weakened config, command mismatch, nonterminal, ignored and zero mutants", () => {
     const mutateConfig = (report: JsonRecord, change: (config: JsonRecord) => void) =>
       change(reportConfig(report));

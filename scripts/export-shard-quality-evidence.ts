@@ -64,6 +64,22 @@ export async function exportShardQualityEvidence(options: {
   const wave = JSON.parse(
     readFileSync(join(mutationRoot, "wave.json"), "utf8"),
   ) as MutationWaveManifest;
+  const mutationReceipts = wave.shards.map(
+    (shard) =>
+      JSON.parse(readFileSync(join(mutationRoot, shard.id, "receipt.json"), "utf8")) as {
+        parent_validation_ticket_path?: unknown;
+        parent_validation_ticket_sha256?: unknown;
+      },
+  );
+  const parentTicketPaths = new Set(
+    mutationReceipts.flatMap((receipt) =>
+      typeof receipt.parent_validation_ticket_path === "string"
+        ? [receipt.parent_validation_ticket_path]
+        : [],
+    ),
+  );
+  if (parentTicketPaths.size > 1)
+    throw new Error("Mutation receipts disagree on parent ticket path");
   for (const path of [
     acceptance,
     options.mutationUnionPath,
@@ -78,16 +94,19 @@ export async function exportShardQualityEvidence(options: {
       : []),
   ])
     add(path);
+  for (const path of parentTicketPaths) add(join(repo, path));
   if (options.externalRuntimeAcceptancePath) {
     const external = JSON.parse(
-      readBundleFile(repo, options.externalRuntimeAcceptancePath).toString("utf8"),
+      new TextDecoder().decode(readBundleFile(repo, options.externalRuntimeAcceptancePath)),
     ) as { commands?: Array<{ build_index_path?: string }> };
     for (const command of external.commands ?? []) {
       if (!isCanonicalRepoPath(command.build_index_path))
         throw new Error("External runtime build-index path is noncanonical");
       const indexPath = join(repo, command.build_index_path);
       add(indexPath);
-      const index = JSON.parse(readBundleFile(repo, command.build_index_path).toString("utf8")) as {
+      const index = JSON.parse(
+        new TextDecoder().decode(readBundleFile(repo, command.build_index_path)),
+      ) as {
         builds?: Array<{ receipt_path?: string }>;
       };
       for (const build of index.builds ?? []) {

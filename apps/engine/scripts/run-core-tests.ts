@@ -8,6 +8,7 @@ import { runIsolatedTestFile } from "../../sk/src/tests/run-isolated-test-file.t
 import { parseShardArgs, runShardTests, selectCanonicalCoreTests } from "./audit/core-tests.ts";
 import { createClosureAnalysis } from "./audit/mutation-closure.ts";
 import { mutationClosureFiles, mutationTestInputs } from "./audit/mutation-inputs.ts";
+import { validateParentMutationValidationTicket } from "./audit/mutation-validation-ticket.ts";
 import {
   readValidatedWaveManifest,
   validateWaveClosure,
@@ -34,46 +35,57 @@ if (args.mode === "shard") {
     console.error("shard mode accepts no test narrowing flags or paths");
     process.exit(1);
   }
-  const knownFiles = mutationClosureFiles(REPO);
-  const entries = assertCompletePureTargetInventory(knownFiles);
-  const typeOnlyTargets = entries
-    .filter((entry) => entry.runtime_kind === "type_only")
-    .map((entry) => entry.path);
   let manifest: ReturnType<typeof readValidatedWaveManifest>;
-  try {
-    manifest = readValidatedWaveManifest({
-      text: readFileSync(
-        isAbsolute(args.manifest) ? args.manifest : join(REPO, args.manifest),
-        "utf8",
-      ),
-      canonical_targets: entries.map((target) => target.path),
-      canonical_target_digest: canonicalPureTargetDigest(entries),
-      known_files: knownFiles,
+  const cached = validateParentMutationValidationTicket({
+    repo: process.env.SUBKIT_MUTATION_ORIGINAL_REPO ?? REPO,
+    sandboxRepo: REPO,
+    manifestPath: isAbsolute(args.manifest) ? args.manifest : join(REPO, args.manifest),
+    shardId: args.shard,
+    env: process.env,
+  });
+  if (cached) {
+    manifest = cached.wave;
+  } else {
+    const knownFiles = mutationClosureFiles(REPO);
+    const entries = assertCompletePureTargetInventory(knownFiles);
+    const typeOnlyTargets = entries
+      .filter((entry) => entry.runtime_kind === "type_only")
+      .map((entry) => entry.path);
+    try {
+      manifest = readValidatedWaveManifest({
+        text: readFileSync(
+          isAbsolute(args.manifest) ? args.manifest : join(REPO, args.manifest),
+          "utf8",
+        ),
+        canonical_targets: entries.map((target) => target.path),
+        canonical_target_digest: canonicalPureTargetDigest(entries),
+        known_files: knownFiles,
+        type_only_targets: typeOnlyTargets,
+      });
+    } catch (error) {
+      console.error((error as Error).message);
+      process.exit(1);
+    }
+    const freezeRepo = process.env.SUBKIT_MUTATION_ORIGINAL_REPO ?? REPO;
+    const closureErrors = validateWaveClosure({
+      repo: freezeRepo,
+      wave: manifest,
+      files: knownFiles,
       type_only_targets: typeOnlyTargets,
     });
-  } catch (error) {
-    console.error((error as Error).message);
-    process.exit(1);
-  }
-  const freezeRepo = process.env.SUBKIT_MUTATION_ORIGINAL_REPO ?? REPO;
-  const closureErrors = validateWaveClosure({
-    repo: freezeRepo,
-    wave: manifest,
-    files: knownFiles,
-    type_only_targets: typeOnlyTargets,
-  });
-  if (closureErrors.length > 0) {
-    console.error(`incomplete reviewed closure:\n${closureErrors.join("\n")}`);
-    process.exit(1);
-  }
-  const stale = validateWaveFreeze({
-    repo: freezeRepo,
-    manifest,
-    runtime_inputs: mutationTestInputs(freezeRepo),
-  });
-  if (stale.length > 0) {
-    console.error(`stale or manipulated shard freeze: ${stale.join(", ")}`);
-    process.exit(1);
+    if (closureErrors.length > 0) {
+      console.error(`incomplete reviewed closure:\n${closureErrors.join("\n")}`);
+      process.exit(1);
+    }
+    const stale = validateWaveFreeze({
+      repo: freezeRepo,
+      manifest,
+      runtime_inputs: mutationTestInputs(freezeRepo),
+    });
+    if (stale.length > 0) {
+      console.error(`stale or manipulated shard freeze: ${stale.join(", ")}`);
+      process.exit(1);
+    }
   }
   const shard = manifest.shards.find((entry) => entry.id === args.shard);
   if (!shard) {

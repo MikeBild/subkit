@@ -12,6 +12,7 @@ import {
   inspectMutationShardScore,
   summarizeMutationScores,
 } from "./audit/mutation-shard-score.ts";
+import { validateMutationValidationTicketEvidence } from "./audit/mutation-ticket-evidence.ts";
 import { validateMutationShardUnion } from "./audit/mutation-union.ts";
 import { runtimePureTargetPaths } from "./audit/pure-targets.ts";
 import { validateExternalRuntimeAcceptance } from "./run-external-runtime-acceptance.ts";
@@ -73,6 +74,44 @@ function validateUnionReceipts(
       throw new Error("union receipt hash mismatch");
   }
   if (seen.size !== ids.length) throw new Error("union is missing shard receipts");
+}
+
+function validateParentTicketBinding(
+  repo: string,
+  mutationRoot: string,
+  wave: ReturnType<typeof loadMutationWave>["wave"],
+  manifestText: string,
+  runId: string,
+  receipts: readonly Record<string, unknown>[],
+): void {
+  const bindings = receipts.map((receipt) => ({
+    path: receipt.parent_validation_ticket_path,
+    sha256: receipt.parent_validation_ticket_sha256,
+  }));
+  if (bindings.every(({ path, sha256 }) => path === undefined && sha256 === undefined)) return;
+  if (
+    bindings.some(
+      ({ path, sha256 }) =>
+        typeof path !== "string" || typeof sha256 !== "string" || !/^[a-f0-9]{64}$/.test(sha256),
+    )
+  )
+    throw new Error("mutation receipts have a partial parent validation ticket binding");
+  const first = bindings[0]! as { path: string; sha256: string };
+  if (bindings.some(({ path, sha256 }) => path !== first.path || sha256 !== first.sha256))
+    throw new Error("mutation receipts disagree on parent validation ticket binding");
+  const mutationRootPath = relative(resolve(repo), mutationRoot);
+  const ticketPath = under(repo, join(repo, first.path));
+  const ticketText = regular(ticketPath);
+  validateMutationValidationTicketEvidence({
+    repo,
+    wave,
+    waveText: manifestText,
+    runId,
+    mutationRoot: mutationRootPath,
+    ticketPath: first.path,
+    ticketSha256: first.sha256,
+    ticketText,
+  });
 }
 
 export async function verifyQualityShards(options: {
@@ -142,6 +181,14 @@ export async function verifyQualityShards(options: {
       exitCode: receipt.exit_code,
     };
   });
+  validateParentTicketBinding(
+    options.repo,
+    mutationRoot,
+    wave,
+    manifestText,
+    mutationRunId,
+    mutationShards.map((shard) => object(shard.receiptText, "mutation receipt")),
+  );
   const workersByShard = Object.fromEntries(
     planMutationBatches(wave.shards, wave.worker_budget)
       .flat()

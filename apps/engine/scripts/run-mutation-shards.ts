@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { verificationRunsRoot } from "../../../scripts/lib/verification-run-lifecycle.ts";
 import { runWithVerificationLog } from "../../../scripts/run-with-verification-log.ts";
 import { readMutationEquivalentManifest } from "./audit/mutation-floor.ts";
@@ -16,6 +16,10 @@ import {
   type MutationShardUnionInput,
   validateMutationShardUnion,
 } from "./audit/mutation-union.ts";
+import {
+  validateParentMutationValidationTicket,
+  writeMutationValidationTicket,
+} from "./audit/mutation-validation-ticket.ts";
 import {
   readValidatedWaveManifest,
   validateWaveClosure,
@@ -116,6 +120,23 @@ export async function executeMutationWave(options: {
   ensurePersistentStrykerTempParent(repo);
   const executionManifestPath = join(root, "wave.json");
   writeFileSync(executionManifestPath, manifestText, { flag: "wx" });
+  const ticket = writeMutationValidationTicket({
+    repo,
+    parentRunRoot: root,
+    copiedManifestPath: executionManifestPath,
+    manifestText,
+    wave,
+    entries,
+    runtimeInputs: mutationTestInputs(repo),
+    closureFiles: mutationClosureFiles(repo),
+    runId,
+  });
+  const ticketEnv = {
+    ...process.env,
+    SUBKIT_MUTATION_ORIGINAL_REPO: repo,
+    SUBKIT_MUTATION_PARENT_TICKET_PATH: ticket.path,
+    SUBKIT_MUTATION_PARENT_TICKET_SHA256: ticket.sha256,
+  };
   const batches = planMutationBatches(wave.shards, wave.worker_budget);
   const workersByShard = Object.fromEntries(
     batches.flat().map((assignment) => [assignment.id, assignment.workers]),
@@ -124,7 +145,14 @@ export async function executeMutationWave(options: {
   const assertUnchanged = () => {
     if (hash(readFileSync(executionManifestPath)) !== manifestSha256)
       throw new Error("Immutable mutation wave changed during execution");
-    const current = loadMutationWave(repo, manifestPath);
+    if (hash(readFileSync(manifestPath)) !== manifestSha256)
+      throw new Error("Original mutation wave changed during execution");
+    const current = validateParentMutationValidationTicket({
+      repo,
+      manifestPath: executionManifestPath,
+      env: ticketEnv,
+    });
+    if (!current) throw new Error("Parent mutation validation ticket is missing");
     if (hash(current.manifestText) !== manifestSha256)
       throw new Error("Mutation wave changed during execution");
   };
@@ -140,6 +168,8 @@ export async function executeMutationWave(options: {
         if (runtimeTargets.length === 0) {
           const receipt: MutationShardReceipt = {
             version: 1,
+            parent_validation_ticket_path: relative(repo, ticket.path),
+            parent_validation_ticket_sha256: ticket.sha256,
             wave_id: wave.wave_id,
             run_id: runId,
             shard_id: id,
@@ -200,13 +230,15 @@ export async function executeMutationWave(options: {
             "--force",
           ],
           cwd: repo,
-          env: { ...process.env, SUBKIT_MUTATION_ORIGINAL_REPO: repo },
+          env: ticketEnv,
           timeoutMs,
         });
         assertUnchanged();
         const reportText = readFileSync(join(directory, "mutation.json"), "utf8");
         const receipt: MutationShardReceipt = {
           version: 1,
+          parent_validation_ticket_path: relative(repo, ticket.path),
+          parent_validation_ticket_sha256: ticket.sha256,
           wave_id: wave.wave_id,
           run_id: runId,
           shard_id: id,
@@ -273,6 +305,7 @@ export async function executeMutationWave(options: {
     }
   }
   assertUnchanged();
+  loadMutationWave(repo, manifestPath);
   const errors = validateMutationShardUnion({
     wave,
     runId,

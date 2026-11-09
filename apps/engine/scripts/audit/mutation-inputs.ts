@@ -91,6 +91,8 @@ const RUNNER_INPUTS = [
   "apps/engine/scripts/run-coverage-shards.ts",
   "apps/engine/scripts/verify-quality-shards.ts",
   "apps/engine/scripts/audit/mutation-scheduler.ts",
+  "apps/engine/scripts/audit/mutation-validation-ticket.ts",
+  "apps/engine/scripts/audit/mutation-ticket-evidence.ts",
   "apps/engine/scripts/audit/mutation-shard-config.ts",
   "apps/engine/scripts/audit/mutation-union.ts",
   "apps/engine/scripts/audit/mutation-shard-score.ts",

@@ -20,6 +20,8 @@ export interface MutationShardReceipt {
   lock_sha256: string;
   equivalence_manifest_sha256: string;
   dynamic_import_ledger_sha256: string;
+  parent_validation_ticket_path?: string;
+  parent_validation_ticket_sha256?: string;
   started_at: string;
   finished_at: string;
   exit_code: number;
@@ -54,6 +56,12 @@ export interface MutationShardUnionInput {
 }
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+const SHA256 = /^[a-f0-9]{64}$/;
+const canonicalPath = (value: string) =>
+  value.length > 0 &&
+  !value.startsWith("/") &&
+  !value.includes("\\") &&
+  !value.split("/").some((part) => part === "" || part === "." || part === "..");
 const parse = (text: string, label: string, errors: string[]): Record<string, unknown> | null => {
   try {
     const value = JSON.parse(text);
@@ -78,6 +86,8 @@ const security = (config: Record<string, unknown>, key: string): unknown => {
 
 export function validateMutationShardUnion(input: MutationShardUnionInput): string[] {
   const errors: string[] = [];
+  let ticketPath: string | undefined;
+  let ticketSha256: string | undefined;
   const expected = new Set(input.canonicalScope);
   const runtimeScope = new Set(input.runtimeScope ?? input.canonicalScope);
   for (const equivalent of input.equivalenceManifest.equivalents)
@@ -104,6 +114,24 @@ export function validateMutationShardUnion(input: MutationShardUnionInput): stri
     }
     const receipt = parse(result.receiptText, `shard ${shard.id} receipt`, errors);
     if (!receipt) continue;
+    const receiptTicketPath = receipt.parent_validation_ticket_path;
+    const receiptTicketSha256 = receipt.parent_validation_ticket_sha256;
+    if (receiptTicketPath === undefined && receiptTicketSha256 === undefined) {
+      if (ticketPath !== undefined)
+        errors.push(`shard ${shard.id} receipt omits parent validation ticket binding`);
+    } else if (
+      typeof receiptTicketPath !== "string" ||
+      !canonicalPath(receiptTicketPath) ||
+      typeof receiptTicketSha256 !== "string" ||
+      !SHA256.test(receiptTicketSha256)
+    ) {
+      errors.push(`shard ${shard.id} receipt parent validation ticket binding is invalid`);
+    } else if (ticketPath === undefined) {
+      ticketPath = receiptTicketPath;
+      ticketSha256 = receiptTicketSha256;
+    } else if (ticketPath !== receiptTicketPath || ticketSha256 !== receiptTicketSha256) {
+      errors.push(`shard ${shard.id} receipt parent validation ticket binding differs`);
+    }
     for (const [key, value] of [
       ["version", 1],
       ["wave_id", input.wave.wave_id],
@@ -277,5 +305,15 @@ export function validateMutationShardUnion(input: MutationShardUnionInput): stri
   for (const id of actual.keys())
     if (!input.wave.shards.some((shard) => shard.id === id))
       errors.push(`extra shard result: ${id}`);
+  if (ticketPath !== undefined)
+    for (const shard of input.shards) {
+      const receipt = parse(shard.receiptText, `shard ${shard.id} receipt`, errors);
+      if (
+        receipt &&
+        (receipt.parent_validation_ticket_path !== ticketPath ||
+          receipt.parent_validation_ticket_sha256 !== ticketSha256)
+      )
+        errors.push(`shard ${shard.id} receipt parent validation ticket binding is incomplete`);
+    }
   return errors;
 }
