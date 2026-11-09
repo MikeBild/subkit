@@ -1,7 +1,7 @@
 export type ReleaseNotes = { version: string; notes: string[] };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: string[] } = {
-  "source": "d65c36f06b74e31a3ce6b099a4c05fbdda1b2c15",
+  "source": "ec9595f0335bfbc0928691e7680d4521c8ce3053",
   "releases": [
     {
       "version": "v1.0.0",
@@ -1628,9 +1628,117 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
       "notes": [
         "add optional HTTP service package setup"
       ]
+    },
+    {
+      "version": "v10.18.8",
+      "notes": [
+        "install optional service guides from chat"
+      ]
+    },
+    {
+      "version": "v10.18.9",
+      "notes": []
+    },
+    {
+      "version": "v10.18.10",
+      "notes": []
+    },
+    {
+      "version": "v10.18.11",
+      "notes": []
+    },
+    {
+      "version": "v10.18.12",
+      "notes": []
+    },
+    {
+      "version": "v10.18.13",
+      "notes": []
+    },
+    {
+      "version": "v10.18.14",
+      "notes": []
+    },
+    {
+      "version": "v10.19.0",
+      "notes": []
+    },
+    {
+      "version": "v10.19.1",
+      "notes": []
+    },
+    {
+      "version": "v10.19.2",
+      "notes": []
+    },
+    {
+      "version": "v10.19.3",
+      "notes": []
+    },
+    {
+      "version": "v10.20.0",
+      "notes": []
+    },
+    {
+      "version": "v10.20.1",
+      "notes": []
+    },
+    {
+      "version": "v10.20.2",
+      "notes": [
+        "show the size of a diagnostic transfer on the confirmation card"
+      ]
+    },
+    {
+      "version": "v10.20.3",
+      "notes": []
+    },
+    {
+      "version": "v10.20.4",
+      "notes": []
+    },
+    {
+      "version": "v10.20.5",
+      "notes": []
+    },
+    {
+      "version": "v10.20.6",
+      "notes": []
+    },
+    {
+      "version": "v10.20.7",
+      "notes": []
+    },
+    {
+      "version": "v10.20.8",
+      "notes": []
+    },
+    {
+      "version": "v10.20.9",
+      "notes": []
+    },
+    {
+      "version": "v10.20.10",
+      "notes": []
+    },
+    {
+      "version": "v10.20.11",
+      "notes": []
     }
   ],
   "unpublished": [
-    "install optional service guides from chat"
+    "knowledge chunks preserve Unicode characters within byte limits",
+    "cancelled connector requests no longer leak rejected operations",
+    "Escape closes the settings editor before the settings dialog",
+    "writes wait briefly for a busy tenant catalog instead of failing at once",
+    "a typed slash command with its Enter in one chunk runs at once and docker tests pass",
+    "built-in role names are reserved in the database and duplicate role names answer 409",
+    "reserved role names, tenant-scoped role lookup, safe S3 range reads and clear refusals",
+    "draft test runs behave like the saved workflow",
+    "unreadable template imports answer 422 and chat runs need dev connectors",
+    "settings readers see pending secret approvals",
+    "clearing a category or description works and API-key templates store their key",
+    "sk subscription deliveries, onboarding credentials and resumed approvals work",
+    "sk commands, cockpit and settings send and show what the engine API defines"
   ]
 };
