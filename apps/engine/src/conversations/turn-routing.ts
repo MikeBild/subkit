@@ -1,3 +1,4 @@
+import { detectAuthoringIntent } from "./loop/authoring-intent.ts";
 import type { DraftDocument } from "./types.ts";
 
 type TurnIntent =
@@ -403,7 +404,14 @@ export function planTurnRouting(args: {
     }
   }
 
-  if (mode === "connector_authoring" || matchesAny(text, CONNECTOR_PATTERNS)) {
+  const explicitWorkflowCreation = detectAuthoringIntent(text);
+
+  if (
+    mode === "connector_authoring" ||
+    (mode !== "workflow_authoring" &&
+      !explicitWorkflowCreation &&
+      matchesAny(text, CONNECTOR_PATTERNS))
+  ) {
     const connectorGrounding: string[] = [];
     if (containsUrl) connectorGrounding.push("match_connector_template_by_url");
     if (looksLikeSpec) connectorGrounding.push("import_connector_from_spec");
@@ -424,7 +432,11 @@ export function planTurnRouting(args: {
     };
   }
 
-  if (mode === "workflow_authoring" || matchesAny(text, WORKFLOW_PATTERNS)) {
+  if (
+    mode === "workflow_authoring" ||
+    explicitWorkflowCreation ||
+    matchesAny(text, WORKFLOW_PATTERNS)
+  ) {
     return {
       intent: "author_workflow",
       confidence: mode === "workflow_authoring" ? "high" : "medium",

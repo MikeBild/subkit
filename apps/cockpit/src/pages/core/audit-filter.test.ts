@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import {
+  AUDIT_AREAS,
   auditAreaParams,
   auditCorrelationFromUrl,
   auditCountKey,
@@ -12,6 +13,51 @@ import {
   isAuditScope,
   normalizedAuditScope,
 } from "./audit-filter.ts";
+
+test("audit areas publish the complete stable resource vocabulary", () => {
+  expect(AUDIT_AREAS).toEqual({
+    all: [],
+    runs: ["execution", "execution_step"],
+    workflows: [
+      "workflow",
+      "workflow_version",
+      "workflow_execution_authority",
+      "workflow_schedule",
+    ],
+    connectors: ["connector", "credential", "connection"],
+    knowledge: ["knowledge_source", "knowledge_source_version", "skill", "skill_candidate"],
+    files: ["file"],
+    conversations: ["conversation", "conversation_elicitation"],
+    people: [
+      "user",
+      "user_identity",
+      "group",
+      "role",
+      "resource_grant",
+      "api_key",
+      "system_account",
+      "mcp_oauth_client",
+    ],
+  });
+  expect(auditAreaParams("runs")).toEqual({ resource_types: "execution,execution_step" });
+  expect(auditAreaParams("workflows")).toEqual({
+    resource_types: "workflow,workflow_version,workflow_execution_authority,workflow_schedule",
+  });
+  expect(auditAreaParams("connectors")).toEqual({
+    resource_types: "connector,credential,connection",
+  });
+  expect(auditAreaParams("knowledge")).toEqual({
+    resource_types: "knowledge_source,knowledge_source_version,skill,skill_candidate",
+  });
+  expect(auditAreaParams("files")).toEqual({ resource_types: "file" });
+  expect(auditAreaParams("conversations")).toEqual({
+    resource_types: "conversation,conversation_elicitation",
+  });
+  expect(auditAreaParams("people")).toEqual({
+    resource_types:
+      "user,user_identity,group,role,resource_grant,api_key,system_account,mcp_oauth_client",
+  });
+});
 
 test("audit filter scopes preserve their only permitted server constraints", () => {
   expect(isAuditScope("all")).toBe(true);

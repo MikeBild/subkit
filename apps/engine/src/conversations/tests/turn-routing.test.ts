@@ -9,6 +9,11 @@ function draft(overrides: Partial<DraftDocument> = {}): DraftDocument {
   } as DraftDocument;
 }
 
+const WORKFLOW_WITH_OPTIONAL_CONNECTOR =
+  "Create a workflow that fetches https://jsonplaceholder.typicode.com/users with one GET request and returns its response. " +
+  "Use author_workflow, then inspect and preview the draft through dry_run_workflow. " +
+  "Prepare and probe a connector first if required. Follow the normal approval and save path.";
+
 describe("planTurnRouting", () => {
   test("routes workflow deletion to the explicit cleanup tool", () => {
     const plan = planTurnRouting({
@@ -80,6 +85,51 @@ describe("planTurnRouting", () => {
     expect(plan.required_grounding).toContain("inspect_workflow_draft");
   });
 
+  test("prioritizes explicit workflow creation over supplemental connector preparation", () => {
+    expect(
+      planTurnRouting({
+        draft: draft(),
+        user_message: WORKFLOW_WITH_OPTIONAL_CONNECTOR,
+      }).intent,
+    ).toBe("author_workflow");
+    expect(
+      planTurnRouting({
+        draft: draft({ mode: "workflow_authoring" }),
+        user_message: WORKFLOW_WITH_OPTIONAL_CONNECTOR,
+      }).intent,
+    ).toBe("author_workflow");
+    expect(
+      planTurnRouting({
+        draft: draft({ mode: "connector_authoring" }),
+        user_message: WORKFLOW_WITH_OPTIONAL_CONNECTOR,
+      }).intent,
+    ).toBe("author_connector");
+  });
+
+  test("keeps connector creation and connector-only preparation in connector authoring", () => {
+    expect(
+      planTurnRouting({
+        draft: draft(),
+        user_message: "Create a connector for the daily-report workflow.",
+      }).intent,
+    ).toBe("author_connector");
+    expect(
+      planTurnRouting({
+        draft: draft(),
+        user_message: "Prepare and probe a connector first if required.",
+      }).intent,
+    ).toBe("author_connector");
+  });
+
+  test("keeps an active workflow draft ahead of a connector-only request", () => {
+    expect(
+      planTurnRouting({
+        draft: draft({ mode: "workflow_authoring" }),
+        user_message: "Create a connector for the daily-report workflow.",
+      }).intent,
+    ).toBe("author_workflow");
+  });
+
   test("routes generic capability questions to tenant-grounded guidance", () => {
     const plan = planTurnRouting({
       draft: draft(),
@@ -115,7 +165,7 @@ describe("planTurnRouting", () => {
       draft: draft(),
       user_message: "what is a skill?",
     });
-    expect(plan.intent).not.toBe("tenant_read");
+    expect(plan.intent).toBe("product_help");
   });
 
   test("routes a failing-run question to execution-grounded diagnosis", () => {

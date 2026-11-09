@@ -2,9 +2,33 @@ import { expect, test } from "bun:test";
 import {
   isReportMessageRefusal,
   REPORT_DELIVERY_DISCREPANCIES,
+  REPORT_DELIVERY_REFUSALS,
   REPORT_MESSAGE_REFUSALS,
   reportRefusalReason,
 } from "./report-refusal.ts";
+
+test("delivery refusal vocabulary combines each documented message and boundary discrepancy", () => {
+  expect(REPORT_DELIVERY_REFUSALS).toEqual([
+    "not_json_raw",
+    "not_base64url",
+    "not_utf8",
+    "header_control_byte",
+    "header_folded",
+    "header_not_allowed",
+    "header_duplicate",
+    "missing_headers",
+    "sender_invalid",
+    "recipient_invalid",
+    "extra_recipients",
+    "multipart_unsupported",
+    "content_type_unsupported",
+    "transfer_encoding_unsupported",
+    "body_not_base64",
+    "recipient_differs",
+    "sender_differs",
+    "content_type_differs",
+  ]);
+});
 
 test("message faults and delivery discrepancies are recognized only for the authority-change code", () => {
   for (const reason of [...REPORT_MESSAGE_REFUSALS, ...REPORT_DELIVERY_DISCREPANCIES]) {

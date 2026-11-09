@@ -9,6 +9,7 @@ import {
   classifyRunResult,
   humanizeClassification,
   isTransientRunResult,
+  PREVIEW_CLASSIFICATIONS,
 } from "./classify.ts";
 
 const failed = (
@@ -23,6 +24,28 @@ const run = (status: RunResult["status"], error: RunResult["error"] = null): Run
   output: null,
   error,
   steps: [],
+});
+
+test("preview classifications retain every public result category", () => {
+  expect(PREVIEW_CLASSIFICATIONS).toEqual([
+    "ok",
+    "auth_failed",
+    "placeholder_unresolved",
+    "schema_mismatch",
+    "timeout",
+    "aborted",
+    "connector_missing",
+    "budget_exhausted",
+    "connector_unavailable",
+    "refused_before_start",
+    "authority_mismatch",
+    "payload_invalid",
+    "driver_error",
+    "preview_unsupported",
+    "unknown",
+    "incomplete_read",
+    "rate_limited",
+  ]);
 });
 
 test("terminal statuses override codes, codes override message heuristics", () => {

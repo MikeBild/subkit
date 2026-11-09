@@ -88,6 +88,14 @@ test("untrusted URL enums and identifiers cannot become query filters", () => {
 });
 
 test("all supported access, source, actor and result alternatives round-trip", () => {
+  expect(ACCESS_TYPES).toEqual([
+    "api_key",
+    "browser_session",
+    "mcp_oauth",
+    "token_exchange",
+    "external_bearer",
+    "portal_token",
+  ]);
   for (const access of ACCESS_TYPES)
     expect(auditFilterFromSearch(`?access_type=${access}`, now, "UTC").accessType).toBe(access);
   for (const source of SOURCES) {

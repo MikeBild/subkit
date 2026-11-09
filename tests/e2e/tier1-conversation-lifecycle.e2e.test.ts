@@ -61,7 +61,13 @@ function adminAuth() {
 
 interface CreateOutcome {
   conversation: { id: string; status: string; target_workflow_id: string | null };
-  events: Array<{ type: string; output?: unknown; tool?: string }>;
+  events: Array<{
+    type: string;
+    output?: unknown;
+    tool?: string;
+    tool_name?: string;
+    elicitation_id?: string;
+  }>;
   pending_elicitation_id?: string;
 }
 
@@ -113,6 +119,7 @@ async function getConversation(id: string): Promise<{
   conversation: { id: string; status: string; target_workflow_id: string | null };
   messages: Array<{ role: string; parts: unknown[] }>;
   tool_calls: Array<{ tool: string; outcome: string | null; output: unknown }>;
+  draft: unknown;
 }> {
   const r = await fetch(`${env.baseUrl}/v1/conversations/${id}`, { headers: adminAuth() });
   if (r.status !== 200) throw new Error(`GET conversation: ${r.status} ${await r.text()}`);
@@ -120,6 +127,7 @@ async function getConversation(id: string): Promise<{
     conversation: { id: string; status: string; target_workflow_id: string | null };
     messages: Array<{ role: string; parts: unknown[] }>;
     tool_calls: Array<{ tool: string; outcome: string | null; output: unknown }>;
+    draft: unknown;
   };
 }
 
@@ -135,6 +143,7 @@ function diagnosticText(text: string, maxLength = 1_000): string {
 }
 
 function conversationToolSummary(detail: Awaited<ReturnType<typeof getConversation>>): string {
+  const workflow = record(record(detail.draft)?.workflow);
   const finalAssistant = [...detail.messages]
     .reverse()
     .find((message) => message.role === "assistant");
@@ -158,21 +167,133 @@ function conversationToolSummary(detail: Awaited<ReturnType<typeof getConversati
     message_count: detail.messages.length,
     message_roles: detail.messages.map((message) => message.role),
     final_assistant_text: assistant_text,
+    workflow_shape: workflow
+      ? {
+          execution_privacy: workflow.execution_privacy === "sensitive" ? "sensitive" : "standard",
+          has_validation_expression: Boolean(workflow.validation_expression),
+          has_validation_function: Boolean(workflow.validation_function),
+          has_input_schema: Boolean(workflow.input_schema),
+          has_output_schema: Boolean(workflow.output_schema),
+          step_kinds: Array.isArray(workflow.steps)
+            ? workflow.steps.map((step) => {
+                const kind = record(step)?.kind;
+                return typeof kind === "string" ? diagnosticText(kind, 40) : null;
+              })
+            : [],
+        }
+      : null,
     tool_errors,
   });
 }
 
-async function runWithApprovals(
+const MAX_AUTHORING_CONTINUATIONS = 2;
+const AUTHORING_CONTINUATION_MESSAGE =
+  "Continue the original requested authoring work through all remaining authorized preparation, inspection, validation, preview or probe, and save steps. Do not invent missing input; pause through the normal question or confirmation flow whenever actual user input is required.";
+
+function pendingConfirmationId(outcome: CreateOutcome): string | null {
+  if (!outcome.pending_elicitation_id) return null;
+  return outcome.events.some(
+    (event) =>
+      event.type === "elicit_request" &&
+      event.elicitation_id === outcome.pending_elicitation_id &&
+      event.tool_name === "ask_user_confirm",
+  )
+    ? outcome.pending_elicitation_id
+    : null;
+}
+
+function canContinueAuthoring(outcome: CreateOutcome, continuations: number): boolean {
+  return (
+    outcome.conversation.status === "active" &&
+    outcome.conversation.target_workflow_id === null &&
+    !outcome.pending_elicitation_id &&
+    continuations < MAX_AUTHORING_CONTINUATIONS
+  );
+}
+
+async function runAuthoringWithApprovals(
   initial_message: string,
+  isComplete: (outcome: CreateOutcome) => boolean | Promise<boolean>,
   maxApprovals = 6,
 ): Promise<{ conversation_id: string; final: CreateOutcome }> {
   let outcome = await createConversation(initial_message);
   const id = outcome.conversation.id;
-  for (let i = 0; i < maxApprovals && outcome.pending_elicitation_id; i++) {
-    outcome = await respondElicitation(id, outcome.pending_elicitation_id, { confirmed: true });
+  let approvals = 0;
+  let continuations = 0;
+
+  while (true) {
+    if (await isComplete(outcome)) break;
+    const confirmationId = pendingConfirmationId(outcome);
+    if (confirmationId) {
+      if (approvals >= maxApprovals) break;
+      outcome = await respondElicitation(id, confirmationId, { confirmed: true });
+      approvals += 1;
+      continue;
+    }
+    if (!canContinueAuthoring(outcome, continuations)) break;
+    outcome = await appendMessage(id, AUTHORING_CONTINUATION_MESSAGE);
+    continuations += 1;
   }
   return { conversation_id: id, final: outcome };
 }
+
+test("authoring continuation only advances active non-pending turns within its budget", () => {
+  const active: CreateOutcome = {
+    conversation: { id: "workflow-continuation", status: "active", target_workflow_id: null },
+    events: [],
+  };
+  expect(canContinueAuthoring(active, 0)).toBe(true);
+  expect(canContinueAuthoring(active, MAX_AUTHORING_CONTINUATIONS)).toBe(false);
+  expect(canContinueAuthoring({ ...active, pending_elicitation_id: "confirmation" }, 0)).toBe(
+    false,
+  );
+  expect(
+    canContinueAuthoring(
+      { ...active, conversation: { ...active.conversation, status: "committed" } },
+      0,
+    ),
+  ).toBe(false);
+  expect(
+    canContinueAuthoring(
+      { ...active, conversation: { ...active.conversation, target_workflow_id: "workflow-id" } },
+      0,
+    ),
+  ).toBe(false);
+  expect(
+    pendingConfirmationId({
+      ...active,
+      pending_elicitation_id: "confirmation",
+      events: [
+        {
+          type: "elicit_request",
+          elicitation_id: "confirmation",
+          tool_name: "ask_user_confirm",
+        },
+      ],
+    }),
+  ).toBe("confirmation");
+  expect(
+    pendingConfirmationId({
+      ...active,
+      pending_elicitation_id: "form",
+      events: [{ type: "elicit_request", elicitation_id: "form", tool_name: "ask_user_form" }],
+    }),
+  ).toBeNull();
+  expect(
+    pendingConfirmationId({
+      ...active,
+      pending_elicitation_id: "form",
+      events: [
+        {
+          type: "elicit_request",
+          elicitation_id: "previous-confirmation",
+          tool_name: "ask_user_confirm",
+        },
+        { type: "elicit_request", elicitation_id: "form", tool_name: "ask_user_form" },
+      ],
+    }),
+  ).toBeNull();
+});
 
 describe.skipIf(!SHOULD_RUN)("Tier 1.1 — simple conversation (real LLM)", () => {
   test("POST /v1/conversations with `hello` returns 201 + a completed turn", async () => {
@@ -206,14 +327,25 @@ describe.skipIf(!SHOULD_RUN)(
         headers: adminAuth(),
       }).then((r) => r.json() as Promise<{ items: Array<{ slug: string }> }>);
       const beforeSlugs = new Set(before.items.map((c) => c.slug));
+      const expectedConnectorSlug = "open-meteo";
+      const expectedConnectorPersisted = async (): Promise<boolean> => {
+        const current = await fetch(`${env.baseUrl}/v1/connectors?limit=200`, {
+          headers: adminAuth(),
+        }).then((r) => r.json() as Promise<{ items: Array<{ slug: string }> }>);
+        return current.items.some(
+          (connector) =>
+            connector.slug === expectedConnectorSlug && !beforeSlugs.has(connector.slug),
+        );
+      };
 
-      const { conversation_id } = await runWithApprovals(
+      const { conversation_id } = await runAuthoringWithApprovals(
         "Create a connector using start_connector_from_description " +
           "(name 'open-meteo', driver 'http', auth_type 'none', base_url " +
           "'https://api.open-meteo.com'). Then continue through the normal " +
           "probe/save path before building the workflow. When probing, use " +
           "path '/v1/forecast' with query latitude=52.52, longitude=13.41, " +
           "current_weather=true — the API root returns 400 by design.",
+        expectedConnectorPersisted,
       );
 
       const detail = await getConversation(conversation_id);
@@ -223,14 +355,21 @@ describe.skipIf(!SHOULD_RUN)(
         "start_connector_from_template",
       ] as const;
       const usedEntry = CONNECTOR_ENTRY_TOOLS.find((t) => tools.includes(t));
-      expect(usedEntry).toBeDefined();
-
-      if (usedEntry) {
-        const after = await fetch(`${env.baseUrl}/v1/connectors?limit=200`, {
-          headers: adminAuth(),
-        }).then((r) => r.json() as Promise<{ items: Array<{ slug: string; name: string }> }>);
-        const newOnes = after.items.filter((c) => !beforeSlugs.has(c.slug));
-        expect(newOnes.length).toBeGreaterThanOrEqual(1);
+      const after = await fetch(`${env.baseUrl}/v1/connectors?limit=200`, {
+        headers: adminAuth(),
+      }).then((r) => r.json() as Promise<{ items: Array<{ slug: string; name: string }> }>);
+      const newOnes = after.items.filter((c) => !beforeSlugs.has(c.slug));
+      try {
+        expect(usedEntry).toBeDefined();
+        if (usedEntry) {
+          expect(newOnes.length).toBeGreaterThanOrEqual(1);
+          expect(newOnes.some((connector) => connector.slug === expectedConnectorSlug)).toBe(true);
+        }
+      } catch (error) {
+        const original = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `connector authoring contract failed: ${diagnosticText(original, 600)}; ${conversationToolSummary(detail)}; ${JSON.stringify({ expected_connector_slug: expectedConnectorSlug, new_connector_slugs: newOnes.map((connector) => connector.slug) })}`,
+        );
       }
     }, 180_000);
   },
@@ -240,10 +379,11 @@ describe.skipIf(!SHOULD_RUN)(
   "Tier 1.4 — workflow authoring engages the real tool palette (real LLM)",
   () => {
     test("the model authors and previews a workflow through the supported tools", async () => {
-      const { conversation_id } = await runWithApprovals(
+      const { conversation_id } = await runAuthoringWithApprovals(
         "Create a workflow that fetches https://jsonplaceholder.typicode.com/users with one GET request and returns its response. " +
           "Use author_workflow, then inspect and preview the draft through dry_run_workflow. " +
           "Prepare and probe a connector first if required. Follow the normal approval and save path.",
+        (outcome) => outcome.conversation.target_workflow_id !== null,
       );
 
       const detail = await getConversation(conversation_id);
@@ -252,6 +392,7 @@ describe.skipIf(!SHOULD_RUN)(
       try {
         const STEP_AUTHORING_TOOLS = ["author_workflow"] as const;
         expect(STEP_AUTHORING_TOOLS.some((t) => tools.includes(t))).toBe(true);
+        expect(tools).toContain("dry_run_workflow");
 
         const workflowId = detail.conversation.target_workflow_id;
         expect(workflowId).toBeTruthy();

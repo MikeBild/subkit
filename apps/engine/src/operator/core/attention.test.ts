@@ -1,13 +1,65 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 import {
+  ATTENTION_REASONS,
+  ATTENTION_SCHEMA_VERSION,
   ATTENTION_SOURCES,
+  ATTENTION_SUBJECT_KINDS,
   type AttentionItem,
   type AttentionV1,
   attentionAllClear,
   compareAttentionItems,
   projectAttentionItems,
 } from "./attention.ts";
+
+test("attention schema publishes its stable sources, reasons, and subject kinds", () => {
+  expect(ATTENTION_SCHEMA_VERSION).toBe("attention.v1");
+  expect(ATTENTION_SOURCES).toEqual([
+    "conversations",
+    "schedules",
+    "freshness",
+    "failures",
+    "patches",
+    "connectors",
+    "connections",
+    "secret_approvals",
+    "skills",
+    "intake",
+    "budget",
+    "risk",
+  ]);
+  expect(ATTENTION_REASONS).toEqual([
+    "awaiting_answer",
+    "execution_authority_required",
+    "execution_authority_unavailable",
+    "version_awaiting_approval",
+    "version_needs_repair",
+    "approval_expiring",
+    "scheduler_stale",
+    "failing",
+    "patch_proposed",
+    "needs_reauth",
+    "needs_update",
+    "degraded",
+    "unhealthy",
+    "refresh_refused",
+    "refresh_failed",
+    "expired_no_refresh",
+    "secret_unreadable",
+    "secret_prepared",
+    "skills_proposed",
+    "intake_collected",
+    "budget_critical",
+    "risk_critical",
+  ]);
+  expect(ATTENTION_SUBJECT_KINDS).toEqual([
+    "workflow",
+    "conversation",
+    "connector",
+    "connection",
+    "secret",
+  ]);
+});
 
 const item = (id: string): AttentionItem => ({
   id,

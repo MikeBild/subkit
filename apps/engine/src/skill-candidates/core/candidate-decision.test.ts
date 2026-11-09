@@ -4,6 +4,7 @@ import {
   decideExistingCandidate,
   decideSignalUpsert,
   initialCandidateStatus,
+  LEARNING_PATTERN_KINDS,
 } from "./candidate-decision.ts";
 import {
   evidenceIdentity,
@@ -16,6 +17,10 @@ const evidence = (summary: string, execution_id: string | null = null) => ({
   evidence_type: "success",
   summary,
   execution_id,
+});
+
+test("learning pattern kinds are the public persisted vocabulary", () => {
+  expect(LEARNING_PATTERN_KINDS).toEqual(["session_learning", "knowledge_learning"]);
 });
 
 test("learning signals are context while other signals need a proposal review", () => {

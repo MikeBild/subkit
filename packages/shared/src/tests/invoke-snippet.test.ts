@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   INVOKE_ENVIRONMENTS,
   INVOKE_HEADER_NAMES,
+  INVOKE_RUN_PATH,
   INVOKE_SNIPPET_LANGUAGES,
   invokeRunBody,
   invokeRunUrl,
@@ -13,6 +14,13 @@ import {
 
 const WORKFLOW = "3fb5fc90-1c2d-4e5f-8a6b-7c8d9e0f1a2b";
 const BASE = { engineUrl: "https://engine.example.com", workflowId: WORKFLOW } as const;
+
+test("invoke snippets expose the stable language, environment, route, and header contract", () => {
+  expect(INVOKE_SNIPPET_LANGUAGES).toEqual(["curl", "node", "python"]);
+  expect(INVOKE_ENVIRONMENTS).toEqual(["dev", "prod"]);
+  expect(INVOKE_RUN_PATH).toBe("/v1/executions");
+  expect(INVOKE_HEADER_NAMES).toEqual(["authorization", "x-subkit-environment", "content-type"]);
+});
 
 describe("renderInvokeSnippet", () => {
   test("curl posts to the run route with the environment spelled out", () => {

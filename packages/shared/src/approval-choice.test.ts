@@ -1,18 +1,40 @@
 import { describe, expect, test } from "bun:test";
 import {
+  APPROVAL_ENVIRONMENTS,
   type ApprovalPreviewLike,
   approvalChoice,
   approvalRemedy,
+  ENVIRONMENT_BLOCK_CODES,
+  ENVIRONMENT_RECOMMENDATION_REASONS,
   type EnvironmentAssessments,
   type EnvironmentBlock,
   recommendEnvironment,
 } from "./approval-choice.ts";
+
 import {
   automationEnvironment,
   automationEnvironmentDecision,
   type ScheduleLike,
   type WorkflowAuthority,
 } from "./workflow-automation.ts";
+
+test("approval uses the complete public environment and explanation vocabularies", () => {
+  expect(APPROVAL_ENVIRONMENTS).toEqual(["dev", "prod"]);
+  expect(ENVIRONMENT_BLOCK_CODES).toEqual([
+    "connector_missing",
+    "connector_without_sign_in",
+    "connector_needs_sign_in_again",
+    "connector_switched_off",
+  ]);
+  expect(ENVIRONMENT_RECOMMENDATION_REASONS).toEqual([
+    "only_possible",
+    "schedule",
+    "inbound_hook",
+    "existing_approval",
+    "started_manually",
+    "none_possible",
+  ]);
+});
 
 const NOW = Date.parse("2026-03-01T12:00:00.000Z");
 const CONNECTOR = "00000000-0000-4000-8000-000000000001";

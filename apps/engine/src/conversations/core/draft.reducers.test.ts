@@ -168,6 +168,17 @@ describe("connector reducers", () => {
     expect(noMode.mode).toBe("onboarding");
   });
 
+  test("reopening a saved connector remains connector authoring without workflow steps", () => {
+    const reopened = withConnectorDraft(
+      now,
+      createEmptyDraftDocument(now, "workflow_authoring"),
+      { ...connector, saved_connector_id: resource("connector").id },
+      "reopen_connector",
+    );
+    expect(reopened.mode).toBe("connector_authoring");
+    expect(reopened.summary?.active_target.kind).toBe("connector");
+  });
+
   test("records each connector checkpoint with its tool and the injected clock", () => {
     let draft = withConnectorDraft(now, createEmptyDraftDocument(now), connector, null);
     draft = withConnectorInspection(now, draft);

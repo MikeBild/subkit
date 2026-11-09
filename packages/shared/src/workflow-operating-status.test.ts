@@ -1,8 +1,25 @@
 import { describe, expect, test } from "bun:test";
-import { workflowOperatingStatus } from "./workflow-operating-status.ts";
+import {
+  WORKFLOW_OPERATING_STATUSES,
+  workflowOperatingStatus,
+} from "./workflow-operating-status.ts";
 import { workflowStrip } from "./workflow-strip.ts";
 
 describe("workflow operating status", () => {
+  test("publishes every user-facing operating status", () => {
+    expect(WORKFLOW_OPERATING_STATUSES).toEqual([
+      "active",
+      "waiting_approval",
+      "waiting_connector",
+      "failing",
+      "stopped",
+      "repair_required",
+      "unapproved",
+      "disabled",
+      "unknown",
+    ]);
+  });
+
   test("keeps unverifiable and loading states separate from active", () => {
     for (const kind of ["loading", "failed", "unknown"] as const)
       expect(workflowOperatingStatus(kind)).toBe("unknown");
