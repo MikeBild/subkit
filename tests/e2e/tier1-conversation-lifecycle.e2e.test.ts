@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { scrubString } from "../../apps/engine/src/logging/scrub-secrets.ts";
 import {
   boot,
   cli,
@@ -23,6 +24,19 @@ let env: E2EEnv;
 beforeAll(async () => {
   if (!SHOULD_RUN) return;
   env = await boot("tier1-real");
+  const { applySkillSeedsForAllTenants, loadEmbeddedSkillSeeds } = await import(
+    "../../apps/engine/src/skills/seed.ts"
+  );
+  const embeddedSkills = loadEmbeddedSkillSeeds();
+  if (embeddedSkills.errors.length > 0) {
+    throw new Error(
+      `embedded skill seeds could not load: ${embeddedSkills.errors.map((error) => error.code).join(", ")}`,
+    );
+  }
+  const seedOutcomes = await applySkillSeedsForAllTenants(embeddedSkills.skills, env.db);
+  if (!seedOutcomes.some((outcome) => outcome.tenant_id === env.tenantId)) {
+    throw new Error("embedded skill seed did not complete for the Tier 1 tenant");
+  }
   const { detectConfiguredProvider } = await import(
     "../../apps/engine/src/llm/runtime/model-init.ts"
   );
@@ -98,15 +112,54 @@ async function respondElicitation(
 async function getConversation(id: string): Promise<{
   conversation: { id: string; status: string; target_workflow_id: string | null };
   messages: Array<{ role: string; parts: unknown[] }>;
-  tool_calls: Array<{ tool: string }>;
+  tool_calls: Array<{ tool: string; outcome: string | null; output: unknown }>;
 }> {
   const r = await fetch(`${env.baseUrl}/v1/conversations/${id}`, { headers: adminAuth() });
   if (r.status !== 200) throw new Error(`GET conversation: ${r.status} ${await r.text()}`);
   return (await r.json()) as {
     conversation: { id: string; status: string; target_workflow_id: string | null };
     messages: Array<{ role: string; parts: unknown[] }>;
-    tool_calls: Array<{ tool: string }>;
+    tool_calls: Array<{ tool: string; outcome: string | null; output: unknown }>;
   };
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function diagnosticText(text: string, maxLength = 1_000): string {
+  const scrubbed = scrubString(text);
+  return scrubbed.length > maxLength ? `${scrubbed.slice(0, maxLength)}…` : scrubbed;
+}
+
+function conversationToolSummary(detail: Awaited<ReturnType<typeof getConversation>>): string {
+  const finalAssistant = [...detail.messages]
+    .reverse()
+    .find((message) => message.role === "assistant");
+  const assistant_text = (finalAssistant?.parts ?? [])
+    .flatMap((part) => {
+      const fields = record(part);
+      return fields?.type === "text" && typeof fields.text === "string" ? [fields.text] : [];
+    })
+    .map((text) => diagnosticText(text));
+  const tool_errors = detail.tool_calls.flatMap((call) => {
+    const output = record(call.output);
+    return typeof output?.error === "string"
+      ? [{ tool: call.tool, outcome: call.outcome, error: diagnosticText(output.error, 240) }]
+      : [];
+  });
+  return JSON.stringify({
+    conversation_id: detail.conversation.id,
+    status: detail.conversation.status,
+    target_workflow_id: detail.conversation.target_workflow_id,
+    tool_names: detail.tool_calls.map((call) => call.tool),
+    message_count: detail.messages.length,
+    message_roles: detail.messages.map((message) => message.role),
+    final_assistant_text: assistant_text,
+    tool_errors,
+  });
 }
 
 async function runWithApprovals(
@@ -196,21 +249,28 @@ describe.skipIf(!SHOULD_RUN)(
       const detail = await getConversation(conversation_id);
       const tools = detail.tool_calls.map((t) => t.tool);
 
-      const STEP_AUTHORING_TOOLS = ["author_workflow"] as const;
-      expect(STEP_AUTHORING_TOOLS.some((t) => tools.includes(t))).toBe(true);
+      try {
+        const STEP_AUTHORING_TOOLS = ["author_workflow"] as const;
+        expect(STEP_AUTHORING_TOOLS.some((t) => tools.includes(t))).toBe(true);
 
-      const workflowId = detail.conversation.target_workflow_id;
-      expect(workflowId).toBeTruthy();
-      const wfRes = await fetch(`${env.baseUrl}/v1/workflows?limit=200`, {
-        headers: adminAuth(),
-      });
-      const wfBody = (await wfRes.json()) as { items: Array<{ id: string }> };
-      expect(wfBody.items.some((workflow) => workflow.id === workflowId)).toBe(true);
+        const workflowId = detail.conversation.target_workflow_id;
+        expect(workflowId).toBeTruthy();
+        const wfRes = await fetch(`${env.baseUrl}/v1/workflows?limit=200`, {
+          headers: adminAuth(),
+        });
+        const wfBody = (await wfRes.json()) as { items: Array<{ id: string }> };
+        expect(wfBody.items.some((workflow) => workflow.id === workflowId)).toBe(true);
 
-      const audit = await fetch(`${env.baseUrl}/v1/audit-log?action=workflow.created&limit=20`, {
-        headers: adminAuth(),
-      }).then((r) => r.json() as Promise<{ items: Array<{ resource_id: string }> }>);
-      expect(audit.items.some((entry) => entry.resource_id === workflowId)).toBe(true);
+        const audit = await fetch(`${env.baseUrl}/v1/audit-log?action=workflow.created&limit=20`, {
+          headers: adminAuth(),
+        }).then((r) => r.json() as Promise<{ items: Array<{ resource_id: string }> }>);
+        expect(audit.items.some((entry) => entry.resource_id === workflowId)).toBe(true);
+      } catch (error) {
+        const original = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `workflow authoring contract failed: ${diagnosticText(original, 600)}; ${conversationToolSummary(detail)}`,
+        );
+      }
     }, 240_000);
   },
 );

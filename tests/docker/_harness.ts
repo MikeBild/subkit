@@ -180,6 +180,31 @@ export async function replaceEngineContainer(): Promise<string> {
   return dockerBaseUrl();
 }
 
+export async function crashAndRestartEngineContainer(
+  opts: { afterKill?: () => Promise<void> } = {},
+): Promise<string> {
+  const run = dockerRun();
+  if (!run.owned) throw new Error("refusing to kill an engine outside an owned Docker test run");
+  const predecessor = compose(["ps", "-q", SERVICE]).stdout.trim();
+  if (!predecessor) throw new Error("owned engine container id is unavailable before crash test");
+  const killed = compose(["kill", SERVICE]);
+  if (killed.status !== 0)
+    throw new Error(`compose kill failed (${killed.status}):\n${killed.stdout}\n${killed.stderr}`);
+  await opts.afterKill?.();
+  const replaced = compose(["up", "-d", "--force-recreate", "--no-deps", "--wait", SERVICE]);
+  if (replaced.status !== 0) {
+    throw new Error(
+      `engine restart after hard kill failed (${replaced.status}):\n${replaced.stdout}\n${replaced.stderr}`,
+    );
+  }
+  const successor = compose(["ps", "-q", SERVICE]).stdout.trim();
+  if (!successor || successor === predecessor)
+    throw new Error("hard-kill recovery did not replace the owned engine container");
+  resolvePublishedPorts();
+  await waitForDockerHealth();
+  return dockerBaseUrl();
+}
+
 export function engineMounts(): Array<{ Destination?: string; Type?: string }> {
   const id = compose(["ps", "-q", SERVICE]).stdout.trim();
   if (!id) throw new Error("engine container id is unavailable");

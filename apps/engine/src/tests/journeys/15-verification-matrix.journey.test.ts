@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { and, eq } from "drizzle-orm";
-import { executions, workflows } from "../../db/schema/index.ts";
+import { getConfig, setConfigKey } from "../../config/loader.ts";
+import { chatIdentities, executions, workflows } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import {
   createJourneyCtx,
@@ -189,7 +190,87 @@ describe("journey: verification matrix (docs/33)", () => {
     expect(res.status).toBe(201);
   });
 
-  test.todo("07. Install chat workspaces (Slack/Teams/Google)", () => {});
+  test("07. Install supported Slack and Google Chat workspaces; refuse Teams locally", async () => {
+    const previousSigningSecret = getConfig().platform.slack.signing_secret;
+    await setConfigKey("platform.slack.signing_secret", "matrix-local-signing-secret", {
+      force: true,
+    });
+    try {
+      const slack = await journeyFetch(ctx, "/v1/chat/workspaces", {
+        method: "POST",
+        body: JSON.stringify({
+          platform: "slack",
+          workspace_id: "T_MATRIX_LOCAL",
+          bot_token: "xoxb-matrix-local-token",
+          installer_platform_user_id: "U_MATRIX_LOCAL",
+          default_channel: "C_MATRIX_LOCAL",
+        }),
+      });
+      expect(slack.status).toBe(201);
+      expect(await slack.json()).toMatchObject({
+        platform: "slack",
+        workspace_id: "T_MATRIX_LOCAL",
+        default_channel: "C_MATRIX_LOCAL",
+      });
+
+      const installer = "users/matrix-google-installer";
+      await ctx.db.insert(chatIdentities).values({
+        tenant_id: ctx.tenantId,
+        user_id: ctx.userId,
+        platform: "google_chat",
+        workspace_id: "spaces/matrix-preinstalled",
+        platform_user_id: installer,
+      });
+      const google = await journeyFetch(ctx, "/v1/chat/workspaces", {
+        method: "POST",
+        body: JSON.stringify({
+          platform: "google_chat",
+          workspace_id: "spaces/MATRIX_LOCAL",
+          installer_platform_user_id: installer,
+          default_channel: "spaces/MATRIX_LOCAL",
+        }),
+      });
+      expect(google.status).toBe(201);
+      expect(await google.json()).toMatchObject({
+        platform: "google_chat",
+        workspace_id: "spaces/MATRIX_LOCAL",
+      });
+
+      const teams = await journeyFetch(ctx, "/v1/chat/workspaces", {
+        method: "POST",
+        body: JSON.stringify({
+          platform: "teams",
+          workspace_id: "teams-matrix-local",
+          bot_token: "teams-local-token",
+          installer_platform_user_id: "teams-matrix-installer",
+        }),
+      });
+      expect(teams.status).toBe(400);
+      expect(await teams.json()).toMatchObject({
+        code: "bad_request",
+        message: expect.stringContaining("not supported"),
+      });
+
+      const listed = await journeyFetch(ctx, "/v1/chat/workspaces");
+      expect(listed.status).toBe(200);
+      const items = (await listed.json()) as {
+        items: Array<{ platform: string; workspace_id: string }>;
+      };
+      expect(items.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ platform: "slack", workspace_id: "T_MATRIX_LOCAL" }),
+          expect.objectContaining({ platform: "google_chat", workspace_id: "spaces/MATRIX_LOCAL" }),
+        ]),
+      );
+      expect(
+        items.items.some(
+          (item) => item.platform === "teams" && item.workspace_id === "teams-matrix-local",
+        ),
+      ).toBe(false);
+    } finally {
+      await setConfigKey("platform.slack.signing_secret", previousSigningSecret, { force: true });
+    }
+  });
 
   test("08. Conversational authoring inside chat — module reachable", async () => {
     const mod = await import("../../chat/dispatcher.ts");
@@ -268,8 +349,6 @@ describe("journey: verification matrix (docs/33)", () => {
     });
     expect([200, 202, 404, 409]).toContain(cancel.status);
   });
-
-  test.todo("15. Crash and recover mid-execution (requires docker kill)", () => {});
 
   test("16. Promote dev -> prod — `x-subkit-environment: prod` tags the run", async () => {
     const prodRes = await journeyFetch(ctx, "/v1/connectors", {

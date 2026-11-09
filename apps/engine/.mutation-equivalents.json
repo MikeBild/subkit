@@ -1752,6 +1752,90 @@
       "statusReason": "",
       "reason": "This only disables the boolean primitive arm. Boolean fallback JSON.stringify is exactly the same lexical representation as String; no other type matches typeof raw === 'boolean'.",
       "independent_review": "Independently reviewed by effect_manifest_contracts; root reviewed exact current report source slices, installed JSONata 2.2.2 parser contract and adversarial valid-source probes. Evidence: raw-survived-independent-review-jsonata-readmodel-catch-coerce.json. Raw survivor remains unchanged and is not counted as killed."
+    },
+    {
+      "file": "packages/shared/src/workflow-review-environment.ts",
+      "source_sha256": "393fa4999aad53e0c0d710b084fe71b089216090f8e2ed9a836023a4b474b924",
+      "location": {
+        "end": {
+          "column": 35,
+          "line": 29
+        },
+        "start": {
+          "column": 33,
+          "line": 29
+        }
+      },
+      "mutatorName": "ArrayDeclaration",
+      "replacement": "[\"Stryker was here\"]",
+      "original": "[]",
+      "statusReason": "",
+      "reason": "Only the undefined/null issues fallback changes. The injected value is an Array whose sole primitive-string element has code undefined, so the existing predicate rejects it and mismatched remains empty. Defined issues bypass both fallbacks. No extra read of a public getter is introduced.",
+      "independent_review": "Independently reviewed by jsonata_pure_leaf in equivalence-independent-review-workflow-review-environment-and-conversation-reference.json, approved prior mutant 21. Fresh patched-instrumenter report SHA256 79bf342c6bde051dd5e5a67ae65135288dcc81bf6763fe2e66137a931e71bf1a matches exact location/mutator/replacement as mutant 88; four rejected getter cases and conversation guard were killed by new regressions.",
+      "status": "Survived"
+    },
+    {
+      "file": "packages/shared/src/workflow-review-environment.ts",
+      "source_sha256": "393fa4999aad53e0c0d710b084fe71b089216090f8e2ed9a836023a4b474b924",
+      "location": {
+        "end": {
+          "column": 54,
+          "line": 36
+        },
+        "start": {
+          "column": 52,
+          "line": 36
+        }
+      },
+      "mutatorName": "ArrayDeclaration",
+      "replacement": "[\"Stryker was here\"]",
+      "original": "[]",
+      "statusReason": "",
+      "reason": "Only a nullish effects fallback changes. The injected Array element is a primitive string: reading step_id yields undefined, so the existing first loop guard continues. Defined effects bypass the fallback. This does not add a read of review or effect properties.",
+      "independent_review": "Independently reviewed by jsonata_pure_leaf in equivalence-independent-review-workflow-review-environment-and-conversation-reference.json, approved prior mutant 38. Fresh patched-instrumenter report SHA256 79bf342c6bde051dd5e5a67ae65135288dcc81bf6763fe2e66137a931e71bf1a matches exact location/mutator/replacement as mutant 105; four rejected getter cases and conversation guard were killed by new regressions.",
+      "status": "Survived"
+    },
+    {
+      "file": "packages/shared/src/workflow-review-environment.ts",
+      "source_sha256": "393fa4999aad53e0c0d710b084fe71b089216090f8e2ed9a836023a4b474b924",
+      "location": {
+        "end": {
+          "column": 36,
+          "line": 42
+        },
+        "start": {
+          "column": 34,
+          "line": 42
+        }
+      },
+      "mutatorName": "ArrayDeclaration",
+      "replacement": "[\"Stryker was here\"]",
+      "original": "[]",
+      "statusReason": "",
+      "reason": "Only a nullish effects fallback changes. Mapping the injected primitive string obtains undefined step_id and the existing string-and-membership filter rejects it. Defined effects bypass the fallback; no new public-property read is introduced.",
+      "independent_review": "Independently reviewed by jsonata_pure_leaf in equivalence-independent-review-workflow-review-environment-and-conversation-reference.json, approved prior mutant 53. Fresh patched-instrumenter report SHA256 79bf342c6bde051dd5e5a67ae65135288dcc81bf6763fe2e66137a931e71bf1a matches exact location/mutator/replacement as mutant 120; four rejected getter cases and conversation guard were killed by new regressions.",
+      "status": "Survived"
+    },
+    {
+      "file": "packages/shared/src/workflow-review-environment.ts",
+      "source_sha256": "393fa4999aad53e0c0d710b084fe71b089216090f8e2ed9a836023a4b474b924",
+      "location": {
+        "end": {
+          "column": 65,
+          "line": 44
+        },
+        "start": {
+          "column": 41,
+          "line": 44
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "typeof step === \"string\"",
+      "statusReason": "",
+      "reason": "mismatched is a local native Set built exclusively after typeof step === 'string'. In the accounting filter, step is already the local mapped value, not a second getter read. Therefore mismatched.has(step) implies step is a string, and removal of the redundant typeof conjunct cannot alter the predicate.",
+      "independent_review": "Independently reviewed by jsonata_pure_leaf in equivalence-independent-review-workflow-review-environment-and-conversation-reference.json, approved prior mutant 59. Fresh patched-instrumenter report SHA256 79bf342c6bde051dd5e5a67ae65135288dcc81bf6763fe2e66137a931e71bf1a matches exact location/mutator/replacement as mutant 126; four rejected getter cases and conversation guard were killed by new regressions.",
+      "status": "Survived"
     }
   ]
 }

@@ -1,9 +1,71 @@
-import { readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { listFiles } from "./files.ts";
 
 const RUNTIME_ROOTS = ["apps/cockpit/src", "apps/engine/src", "apps/sk/src", "packages"];
 const RUNTIME_FILE = /\.(?:ts|tsx|js|jsx|mjs|cjs|json|md|sql|wat)$/;
+
+interface PackagePatchManifest {
+  readonly patchedDependencies?: Record<string, unknown>;
+}
+
+function isInsideRepo(repo: string, file: string): boolean {
+  const pathFromRepo = relative(repo, file);
+  return pathFromRepo !== "" && !pathFromRepo.startsWith(`..${sep}`) && pathFromRepo !== "..";
+}
+
+function hasSymlinkPathComponent(repo: string, file: string): boolean {
+  let current = repo;
+  for (const component of relative(repo, file).split(sep)) {
+    current = join(current, component);
+    if (lstatSync(current).isSymbolicLink()) return true;
+  }
+  return false;
+}
+
+export function patchedDependencyInputs(repo: string): string[] {
+  const repoRoot = realpathSync(repo);
+  const packageManifest = JSON.parse(
+    readFileSync(join(repoRoot, "package.json"), "utf8"),
+  ) as PackagePatchManifest;
+  const declarations =
+    packageManifest.patchedDependencies === undefined ? {} : packageManifest.patchedDependencies;
+  if (typeof declarations !== "object" || declarations === null || Array.isArray(declarations))
+    throw new Error("package.json patchedDependencies must be an object");
+
+  const declared = Object.entries(declarations).map(([dependency, patch]) => {
+    if (typeof patch !== "string" || patch.length === 0)
+      throw new Error(`patched dependency ${dependency} must declare a nonempty patch path`);
+    if (isAbsolute(patch))
+      throw new Error(`patched dependency ${dependency} uses an absolute patch path`);
+    const candidate = resolve(repoRoot, patch);
+    if (!isInsideRepo(repoRoot, candidate))
+      throw new Error(`patched dependency ${dependency} escapes the repository`);
+    if (!existsSync(candidate))
+      throw new Error(`patched dependency ${dependency} patch is missing`);
+    if (hasSymlinkPathComponent(repoRoot, candidate))
+      throw new Error(`patched dependency ${dependency} patch must not traverse a symlink`);
+    const metadata = lstatSync(candidate);
+    if (!metadata.isFile() || metadata.isSymbolicLink())
+      throw new Error(`patched dependency ${dependency} patch must be a regular non-symlink file`);
+    const canonical = realpathSync(candidate);
+    if (!isInsideRepo(repoRoot, canonical))
+      throw new Error(`patched dependency ${dependency} patch resolves outside the repository`);
+    return relative(repoRoot, canonical);
+  });
+  if (new Set(declared).size !== declared.length)
+    throw new Error("patchedDependencies must not bind more than one dependency to the same patch");
+
+  const patchRoot = join(repoRoot, "patches");
+  const actual = existsSync(patchRoot)
+    ? listFiles(patchRoot, (file) => file.endsWith(".patch")).map((file) =>
+        relative(repoRoot, file),
+      )
+    : [];
+  const unbound = actual.filter((file) => !declared.includes(file));
+  if (unbound.length > 0) throw new Error(`unbound patch files: ${unbound.sort().join(", ")}`);
+  return declared.sort();
+}
 export function mutationClosureFiles(repo: string): string[] {
   return [...RUNTIME_ROOTS, "tests"]
     .flatMap((root) =>
@@ -86,7 +148,7 @@ export function mutationTestInputs(repo: string): string[] {
       relative(repo, file),
     ),
   );
-  return [...new Set([...candidates, ...RUNNER_INPUTS])].sort();
+  return [...new Set([...candidates, ...RUNNER_INPUTS, ...patchedDependencyInputs(repo)])].sort();
 }
 
 export function digestFiles(

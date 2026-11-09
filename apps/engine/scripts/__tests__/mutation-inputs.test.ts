@@ -1,9 +1,32 @@
-import { describe, expect, test } from "bun:test";
-import { dirname, resolve } from "node:path";
+import { afterEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mutationTestInputs } from "../audit/mutation-inputs.ts";
+import {
+  digestFiles,
+  mutationTestInputs,
+  patchedDependencyInputs,
+} from "../audit/mutation-inputs.ts";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const temporaryRoots: string[] = [];
+
+function fixtureRoot(): string {
+  const root = mkdtempSync(join(tmpdir(), "subkit-mutation-patches-"));
+  temporaryRoots.push(root);
+  mkdirSync(join(root, "patches"));
+  return root;
+}
+
+function writeManifest(root: string, patchedDependencies: unknown): void {
+  writeFileSync(join(root, "package.json"), JSON.stringify({ patchedDependencies }));
+}
+
+afterEach(() => {
+  for (const root of temporaryRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
 
 describe("mutation runtime provenance inputs", () => {
   test("includes transitive helpers, Bun preloads, configuration, tests and JSON fixtures", () => {
@@ -42,7 +65,69 @@ describe("mutation runtime provenance inputs", () => {
         "bun.lock",
         "tsconfig.json",
         "tsconfig.base.json",
+        "patches/@stryker-mutator%2Finstrumenter@10.1.1.patch",
       ]),
     );
+  });
+
+  test("binds every declared regular patch file and rejects unbound or symlink patch bytes", () => {
+    const root = fixtureRoot();
+    const patches = join(root, "patches");
+    writeManifest(root, { "example@1.0.0": "patches/example.patch" });
+    writeFileSync(join(patches, "example.patch"), "diff --git a/a b/a\n");
+    expect(patchedDependencyInputs(root)).toEqual(["patches/example.patch"]);
+
+    writeFileSync(join(patches, "unbound.patch"), "diff --git a/b b/b\n");
+    expect(() => patchedDependencyInputs(root)).toThrow("unbound patch files");
+  });
+
+  test("refuses a declared patch symlink even when its target is inside the repository", () => {
+    const root = fixtureRoot();
+    const patches = join(root, "patches");
+    writeFileSync(join(patches, "target.patch"), "diff --git a/a b/a\n");
+    symlinkSync("target.patch", join(patches, "example.patch"));
+    writeManifest(root, { "example@1.0.0": "patches/example.patch" });
+    expect(() => patchedDependencyInputs(root)).toThrow("must not traverse a symlink");
+  });
+
+  test("rejects missing, escaping and invalid patch declarations", () => {
+    const missing = fixtureRoot();
+    writeManifest(missing, { "example@1.0.0": "patches/missing.patch" });
+    expect(() => patchedDependencyInputs(missing)).toThrow("patch is missing");
+
+    const escaping = fixtureRoot();
+    writeManifest(escaping, { "example@1.0.0": "../outside.patch" });
+    expect(() => patchedDependencyInputs(escaping)).toThrow("escapes the repository");
+
+    const invalid = fixtureRoot();
+    writeManifest(invalid, []);
+    expect(() => patchedDependencyInputs(invalid)).toThrow("must be an object");
+
+    const nullValue = fixtureRoot();
+    writeManifest(nullValue, null);
+    expect(() => patchedDependencyInputs(nullValue)).toThrow("must be an object");
+  });
+
+  test("rejects an unbound patch even without a patchedDependencies field", () => {
+    const root = fixtureRoot();
+    writeFileSync(join(root, "package.json"), "{}");
+    writeFileSync(join(root, "patches", "orphan.patch"), "diff --git a/a b/a\n");
+    expect(() => patchedDependencyInputs(root)).toThrow("unbound patch files");
+  });
+
+  test("includes patch bytes in the freeze digest", () => {
+    const root = fixtureRoot();
+    const patch = join(root, "patches", "example.patch");
+    writeManifest(root, { "example@1.0.0": "patches/example.patch" });
+    writeFileSync(patch, "diff --git a/a b/a\n");
+    const digest = (parts: readonly (string | Uint8Array)[]) =>
+      createHash("sha256")
+        .update(
+          Buffer.concat(parts.map((part) => (typeof part === "string" ? Buffer.from(part) : part))),
+        )
+        .digest("hex");
+    const before = digestFiles(root, patchedDependencyInputs(root), digest);
+    writeFileSync(patch, "diff --git a/a b/a\n+patched\n");
+    expect(digestFiles(root, patchedDependencyInputs(root), digest)).not.toBe(before);
   });
 });

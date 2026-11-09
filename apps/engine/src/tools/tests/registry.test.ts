@@ -92,8 +92,60 @@ describe("tools/registry — providers (active)", () => {
   });
 });
 
-describe("tools/registry — pending (todo)", () => {
-  test.todo("get(name) returns the same descriptor regardless of which surface asked", () => {});
-  test.todo("list({surface:'mcp', mcpMode:'authoring'}) is a strict superset of product (modulo disabled descriptors)", () => {});
-  test.todo("list({surface:'mcp', mcpMode:'admin'}) is a strict superset of authoring", () => {});
+describe("tools/registry — surface contracts", () => {
+  const registry = buildRegistry([staticToolProvider, conversationToolProvider]);
+
+  test("tools visible on chat and MCP retain their descriptor and resource policy", () => {
+    const chat = { surface: "chat" } as const;
+    const mcp = { surface: "mcp", mcpMode: "admin" } as const;
+    const mcpNames = new Set(registry.list(mcp).map((tool) => tool.name));
+    const common = registry.list(chat).filter((tool) => mcpNames.has(tool.name));
+    expect(common.map((tool) => tool.name)).toContain("probe_connector");
+    for (const tool of common) {
+      const chatEntry = registry.get(tool.name, chat);
+      const mcpEntry = registry.get(tool.name, mcp);
+      expect(chatEntry).toBeDefined();
+      expect(mcpEntry).toBeDefined();
+      expect(JSON.stringify(chatEntry?.descriptor)).toBe(JSON.stringify(mcpEntry?.descriptor));
+      const chatResource = chatEntry?.descriptor.rbac?.resource;
+      const mcpResource = mcpEntry?.descriptor.rbac?.resource;
+      expect(typeof chatResource).toBe(typeof mcpResource);
+      for (const args of [
+        {},
+        {
+          id: "resource-id",
+          workflow_id: "workflow-id",
+          execution_id: "execution-id",
+          connector_id: "connector-id",
+          role_id: "role-id",
+          knowledge_source_id: "knowledge-source-id",
+          candidate_id: "candidate-id",
+          candidate_ids: ["candidate-id"],
+        },
+      ]) {
+        expect(chatResource?.(args)).toEqual(mcpResource?.(args));
+      }
+    }
+  });
+
+  test("MCP authoring preserves product tools and adds write tools without draft-only tools", () => {
+    const product = registry.list({ surface: "mcp", mcpMode: "product" });
+    const authoring = registry.list({ surface: "mcp", mcpMode: "authoring" });
+    const names = new Set(authoring.map((tool) => tool.name));
+    for (const tool of product) expect(names.has(tool.name)).toBe(true);
+    expect(authoring.length).toBeGreaterThan(product.length);
+    expect(names.has("create_knowledge_source")).toBe(true);
+    expect(product.some((tool) => tool.name === "create_knowledge_source")).toBe(false);
+    expect(authoring.some((tool) => tool.category === "draft_write")).toBe(false);
+  });
+
+  test("MCP admin preserves authoring tools and adds the administrative operations", () => {
+    const authoring = registry.list({ surface: "mcp", mcpMode: "authoring" });
+    const admin = registry.list({ surface: "mcp", mcpMode: "admin" });
+    const names = new Set(admin.map((tool) => tool.name));
+    for (const tool of authoring) expect(names.has(tool.name)).toBe(true);
+    expect(admin.length).toBeGreaterThan(authoring.length);
+    expect(names.has("self_healing_scan")).toBe(true);
+    expect(authoring.some((tool) => tool.name === "self_healing_scan")).toBe(false);
+  });
 });

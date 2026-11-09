@@ -27,6 +27,21 @@ test("conversation references expose the exact cross-surface discriminants", () 
   );
 });
 
+test("the type predicate still rejects non-strings after a JavaScript consumer mutates its export", () => {
+  const original = [...CONVERSATION_REFERENCE_TYPES];
+  try {
+    Reflect.apply(Array.prototype.push, CONVERSATION_REFERENCE_TYPES, [1]);
+    expect(isConversationReferenceType(1)).toBe(false);
+  } finally {
+    Reflect.apply(Array.prototype.splice, CONVERSATION_REFERENCE_TYPES, [
+      0,
+      CONVERSATION_REFERENCE_TYPES.length,
+      ...original,
+    ]);
+  }
+  expect([...CONVERSATION_REFERENCE_TYPES]).toEqual(original);
+});
+
 test("suggestion feedback retains its public wire values", () => {
   expect(SUGGEST_NEXT_KINDS).toEqual(["text", "slash"]);
   expect(SUGGEST_NEXT_REASONS).toEqual([
