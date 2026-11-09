@@ -5,15 +5,14 @@ function abortError(reason: unknown): Error {
 }
 
 export function settleOnAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) return Promise.reject(abortError(signal.reason));
-
   return new Promise<T>((resolve, reject) => {
     const onAbort = () => {
       signal.removeEventListener("abort", onAbort);
       reject(abortError(signal.reason));
     };
 
-    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
     operation.then(
       (value) => {
         signal.removeEventListener("abort", onAbort);
