@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
+import { validateWorkflowDef } from "../core/validator.ts";
 import { WorkflowDefSchema } from "../types.ts";
-import { validateWorkflowDef } from "../validator.ts";
 
 const CONNECTOR = "00000000-0000-4000-8000-000000000001";
 

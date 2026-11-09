@@ -1,5 +1,5 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { upsertKnowledgeBundle } from "../../knowledge/bundle-service.ts";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import * as localProvider from "../../embeddings/local-provider.ts";
 import { readKnowledgeTool } from "../tools/engine-api/knowledge-sources.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
@@ -7,6 +7,9 @@ import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts"
 let ctx: ConversationTestCtx;
 let sourceId = "";
 let bigSourceId = "";
+let upsertKnowledgeBundle: typeof import("../../knowledge/bundle-service.ts").upsertKnowledgeBundle;
+let originalEmbeddingsAvailable: typeof localProvider.embeddingsAvailable | undefined;
+let embeddingsAvailable: ReturnType<typeof spyOn> | undefined;
 
 function toolCtx(): ToolContext {
   // biome-ignore lint/suspicious/noExplicitAny: minimal stub matching ToolContext for in-process service calls
@@ -27,6 +30,9 @@ function toolCtx(): ToolContext {
 }
 
 beforeAll(async () => {
+  originalEmbeddingsAvailable = localProvider.embeddingsAvailable;
+  embeddingsAvailable = spyOn(localProvider, "embeddingsAvailable").mockResolvedValue(false);
+  ({ upsertKnowledgeBundle } = await import("../../knowledge/bundle-service.ts"));
   ctx = await createConversationTestCtx("read_knowledge_tool");
 
   const wiki = await upsertKnowledgeBundle(
@@ -63,7 +69,14 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await ctx.cleanup();
+  try {
+    await ctx.cleanup();
+  } finally {
+    if (embeddingsAvailable && originalEmbeddingsAvailable) {
+      embeddingsAvailable.mockRestore();
+      expect(localProvider.embeddingsAvailable).toBe(originalEmbeddingsAvailable);
+    }
+  }
 }, 60_000);
 
 describe("read_knowledge tool", () => {

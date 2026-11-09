@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { changeRows as coreChangeRows } from "./core/decision-facts";
 import {
   ageInDays,
   conversationDecision,
@@ -13,6 +14,12 @@ import {
   splitByAge,
 } from "./decisions-model";
 import { daysAgo, item, NOW } from "./decisions-model-fixtures.ts";
+
+test("decision facts core retains precomputed multi-line rows", () => {
+  expect(
+    coreChangeRows([{ path: "x", inline: null, rows: [{ type: "context", text: "kept" }] }]),
+  ).toEqual([{ type: "context", text: "kept" }]);
+});
 
 describe("decision age", () => {
   test("counts whole days waited", () => {

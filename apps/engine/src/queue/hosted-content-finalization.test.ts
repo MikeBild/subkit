@@ -16,6 +16,7 @@ import {
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { provisionSelfServiceTenant } from "../identity/self-service.ts";
+import { setMcpTaskFailureIfNotTerminal } from "../mcp/tasks/store.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
 import { now } from "../utils/clock.ts";
@@ -69,6 +70,25 @@ async function queued() {
     .returning();
   if (!row) throw new Error("accepted execution missing");
   return row;
+}
+async function queuedTask(forTenantId = tenantId) {
+  const [conversation] = await connection.db
+    .insert(conversations)
+    .values({ tenant_id: forTenantId, status: "active" })
+    .returning();
+  if (!conversation) throw new Error("conversation missing");
+  const [task] = await connection.db
+    .insert(mcpTasks)
+    .values({
+      tenant_id: forTenantId,
+      conversation_id: conversation.id,
+      kind: "start",
+      turn_seq: 1,
+      job_id: nextId(),
+    })
+    .returning();
+  if (!task?.job_id) throw new Error("queued task or job id missing");
+  return task;
 }
 async function usage() {
   const [row] = await connection.db
@@ -139,6 +159,76 @@ test("exactly full byte and audit row caps permit one atomic terminal receipt an
   const after = await usage();
   expect(after.logical_bytes).toBe(before.logical_bytes);
   expect(after.resource_counts.audit_log).toBe(before.resource_counts.audit_log);
+});
+
+test("simultaneous execution and conversation quota finalizers expose any escaping rejection", async () => {
+  const execution = await queued();
+  const task = await queuedTask();
+  const taskJobId = task.job_id;
+  if (!taskJobId) throw new Error("queued task must have a job ID");
+  const before = await usage();
+  await policy(before.logical_bytes.toString(), Number(before.resource_counts.audit_log));
+  const settled = await Promise.allSettled([
+    finalizeHostedContentQuota(connection.db, {
+      tenantId,
+      resourceType: "execution",
+      resourceId: execution.id,
+      code,
+    }),
+    finalizeHostedContentQuota(connection.db, {
+      tenantId,
+      resourceType: "mcp_task",
+      resourceId: task.id,
+      expectedJobId: taskJobId,
+      code,
+    }),
+  ]);
+  expect(settled.map((result) => result.status)).toEqual(["fulfilled", "fulfilled"]);
+  expect(settled).toEqual([
+    { status: "fulfilled", value: "finalized" },
+    { status: "fulfilled", value: "finalized" },
+  ]);
+});
+
+test("a concurrent tenant quota lock rejects an ordinary MCP task settlement as retryable", async () => {
+  const isolated = await provisionSelfServiceTenant(
+    {
+      issuer_url: "https://identity.example.test",
+      subject: `quota-lock-${nextId()}`,
+      email: `quota-lock-${nextId()}@example.test`,
+      email_verified: true,
+    },
+    connection.db,
+  );
+  const isolatedTenantId = isolated.tenant.id;
+  const task = await queuedTask(isolatedTenantId);
+  const client = await connection.pool.connect();
+  try {
+    await client.query("SELECT pg_advisory_lock(hashtextextended($1::text, 741937))", [
+      isolatedTenantId,
+    ]);
+    let rejected: unknown;
+    try {
+      await setMcpTaskFailureIfNotTerminal(
+        isolatedTenantId,
+        task.id,
+        "transient-settlement",
+        connection.db,
+      );
+    } catch (error) {
+      rejected = error;
+    }
+    expect(hostedQuotaError(rejected)).toMatchObject({
+      code: "40001",
+      name: "HostedQuotaRetryError",
+      message: "Workspace quota state changed concurrently; retry in a read committed transaction.",
+    });
+  } finally {
+    await client.query("SELECT pg_advisory_unlock(hashtextextended($1::text, 741937))", [
+      isolatedTenantId,
+    ]);
+    client.release();
+  }
 });
 
 for (const variant of [

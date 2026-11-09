@@ -18,21 +18,21 @@ const SURFACES: readonly Surface[] = [
     file: "apps/engine/src/http/routes/conversations/messages.ts",
     registerCall: "registerConversationAbort(principal.tenant_id, id, db)",
     unregisterCall: "unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl)",
-    serviceCall: "svc.appendUserMessage",
+    serviceCall: "appendUserMessage(",
   },
   {
     label: "HTTP messages upload — POST /v1/conversations/{id}/messages/upload",
     file: "apps/engine/src/http/routes/conversations/messages.ts",
     registerCall: "registerConversationAbort(principal.tenant_id, id, db)",
     unregisterCall: "unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl)",
-    serviceCall: "svc.appendUserMessage",
+    serviceCall: "appendUserMessage(",
   },
   {
     label: "HTTP elicitations route — POST /v1/conversations/{id}/elicitations/{eid}/respond",
     file: "apps/engine/src/http/routes/conversations/elicitations.ts",
     registerCall: "registerConversationAbort(principal.tenant_id, id, db)",
     unregisterCall: "unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl)",
-    serviceCall: "svc.respondElicitation",
+    serviceCall: "respondElicitation(",
   },
   {
     label: "conversation.run-turn worker — backgrounded turn register/unregister",
@@ -40,7 +40,7 @@ const SURFACES: readonly Surface[] = [
     registerCall: "registerConversationAbort(data.tenant_id, data.conversation_id, db,",
     unregisterCall:
       "unregisterConversationAbort(data.tenant_id, data.conversation_id, turnAbortCtrl)",
-    serviceCall: "svc.runConversationTurn",
+    serviceCall: "runConversationTurn(",
   },
   {
     label: "Chat dispatcher — Slack / Teams append + respond paths",

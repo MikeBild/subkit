@@ -14,7 +14,6 @@ import {
   hostedTenantUsage,
   hostedWorkAdmissions,
   mcpTasks,
-  roles,
   sessions,
   users,
   workflows,
@@ -47,6 +46,67 @@ let connection: ReturnType<typeof createDbFromUrl>;
 let boss: PgBoss;
 let env: EnvHandle;
 const nextId = createDeterministicUuidFactory(9181);
+const WORKER_ERROR_MESSAGES = new Set([
+  "hosted_storage_quota_exhausted",
+  "hosted_resource_count_exhausted",
+  "hosted_quota_terminal_receipt_required",
+  "hosted_quota_control_receipt_invalid",
+  "hosted_quota_concurrent_write",
+  "hosted_quota_requires_read_committed",
+  "Workspace quota state changed concurrently; retry in a read committed transaction.",
+]);
+
+function safeWorkerError(value: unknown) {
+  if (!value || typeof value !== "object") return { kind: typeof value };
+  const message = Reflect.get(value, "message");
+  const name = Reflect.get(value, "name");
+  const code = Reflect.get(value, "code");
+  const stack = Reflect.get(value, "stack");
+  const message_category =
+    typeof message !== "string"
+      ? null
+      : message === "hosted_quota_concurrent_write" ||
+          message === "hosted_quota_requires_read_committed" ||
+          message ===
+            "Workspace quota state changed concurrently; retry in a read committed transaction." ||
+          name === "HostedQuotaRetryError"
+        ? "mapped_hosted_quota_retry"
+        : message === "Catalog vocabulary stayed busy; retry the operation"
+          ? "catalog_vocabulary_busy"
+          : /serializ|concurrent update/i.test(message)
+            ? "postgres_serialization_failure"
+            : /deadlock/i.test(message)
+              ? "postgres_deadlock"
+              : "other";
+  const stack_functions =
+    typeof stack === "string"
+      ? stack
+          .split("\n")
+          .map((line) => /^\s*at\s+([^\s(]+)/.exec(line)?.[1])
+          .filter((name): name is string => Boolean(name))
+          .slice(0, 8)
+      : [];
+  return {
+    kind: "object",
+    code: typeof code === "string" ? code : null,
+    name: name === "HostedQuotaRetryError" ? name : null,
+    message: typeof message === "string" && WORKER_ERROR_MESSAGES.has(message) ? message : null,
+    message_category,
+    has_message: typeof message === "string",
+    stack_functions,
+  };
+}
+
+function safeWorkerPhases(tenantId: string) {
+  return logRing
+    .tail({ limit: 200, visible_to_tenant: tenantId, include_engine: false })
+    .map(({ level, module, action }) => ({
+      level,
+      module: module ?? null,
+      action: action ?? null,
+    }));
+}
+
 beforeAll(async () => {
   env = withTestEnv({ LLM_PROVIDER: "mock" });
   fixture = await createTestDb("hosted-content-quota-workers");
@@ -247,7 +307,19 @@ test("accepted execution and conversation tasks terminate safely when shared con
         })
         .from(mcpTasks)
         .where(and(eq(mcpTasks.tenant_id, tenantId), eq(mcpTasks.id, task.id)));
-      throw new Error(JSON.stringify({ executed, chatted }), { cause: error });
+      const chatJobs = await boss.findJobs(CONVERSATION_RUN_TURN_QUEUE, { id: jobId });
+      throw new Error(
+        JSON.stringify({
+          executed,
+          chatted,
+          chat_jobs: chatJobs.map((job) => ({
+            state: job.state,
+            output: safeWorkerError(Reflect.get(job, "output")),
+          })),
+          chat_phases: safeWorkerPhases(tenantId),
+        }),
+        { cause: error },
+      );
     });
     await waitFor(
       async () => {

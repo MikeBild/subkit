@@ -1,6 +1,7 @@
 import type { ConnectorView } from "../connectors/types.ts";
 import type { CredentialAuthorityMetadata } from "../credentials/authority-metadata.ts";
 import type { RequestStep } from "../workflows/types.ts";
+import { CONNECTOR_DISABLED_CODE } from "./core/classify.ts";
 import type { RefusedConnector } from "./state.ts";
 import { classifyRequestStepSideEffects } from "./steps/request/side-effects.ts";
 import type { StepErrorDetail } from "./types.ts";
@@ -48,7 +49,7 @@ export function preparedReferenceRefusalMessage(refusal: PreparedReferenceRefusa
   }
 }
 
-export const CONNECTOR_DISABLED_CODE = "connector_disabled";
+export { CONNECTOR_DISABLED_CODE } from "./core/classify.ts";
 
 export function disabledConnectorRefusal(
   connector: Pick<

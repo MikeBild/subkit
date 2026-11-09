@@ -137,6 +137,30 @@ describe("effectHits", () => {
     ]);
   });
 
+  test("flags direct runtime effects and unresolved module loading", () => {
+    expect(
+      hits(
+        [
+          'import { readFileSync } from "node:fs";',
+          "fetch('/api');",
+          "process.stdout.write('x');",
+          "process.exit(1);",
+          "crypto.randomBytes(4);",
+          "import(name);",
+          "require(name);",
+        ].join("\n"),
+      ),
+    ).toEqual([
+      "fetch",
+      "process.stdout",
+      "process.exit",
+      "randomBytes",
+      "computed dynamic import",
+      "require",
+    ]);
+    expect(pureCoreImportHits([imp("node:fs")])).toEqual([{ line: 1, what: "import node:fs" }]);
+  });
+
   test("allows dates from parameters and text that only mentions the APIs", () => {
     expect(
       hits(
@@ -203,14 +227,25 @@ describe("conversationsLeafHits", () => {
     ).toEqual([`${prefix}loop.ts`, `${prefix}tools/sdk-wrap/invoke.ts`]);
   });
 
-  test("allows the two entry points and imports from inside conversations", () => {
+  test("allows only the explicit public entry points and imports from inside conversations", () => {
     expect(
       conversationsLeafHits("apps/engine/src/mcp/server.ts", [
         imp("../conversations/tools", `${prefix}tools/index.ts`),
         imp("../conversations/types.ts", `${prefix}types.ts`),
+        imp("../conversations/public/lifecycle.ts", `${prefix}public/lifecycle.ts`),
+        imp("../conversations/public/authoring.ts", `${prefix}public/authoring.ts`),
+        imp("../conversations/public/context.ts", `${prefix}public/context.ts`),
+        imp("../conversations/public/elicitation.ts", `${prefix}public/elicitation.ts`),
+        imp("../conversations/public/policy.ts", `${prefix}public/policy.ts`),
+        imp("../conversations/public/tool-contract.ts", `${prefix}public/tool-contract.ts`),
         imp("../conversations-extra/x.ts", "apps/engine/src/conversations-extra/x.ts"),
       ]),
     ).toEqual([]);
+    expect(
+      conversationsLeafHits("apps/engine/src/mcp/server.ts", [
+        imp("../conversations/public/other.ts", `${prefix}public/other.ts`),
+      ]),
+    ).toEqual([{ line: 1, what: `${prefix}public/other.ts` }]);
     expect(
       conversationsLeafHits(`${prefix}loop.ts`, [imp("./intent.ts", `${prefix}intent.ts`)]),
     ).toEqual([]);

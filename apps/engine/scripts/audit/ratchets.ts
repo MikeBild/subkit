@@ -9,19 +9,21 @@ import {
   shrinkBudgets,
 } from "./budgets.ts";
 import { listFiles } from "./files.ts";
+import { parseTsconfigPaths } from "./import-graph.ts";
 import { collectImportsFromSource, parseSource, resolveImport } from "./imports.ts";
+import { assertCompletePureTargetInventory, discoverPureTargets } from "./pure-targets.ts";
 import {
   conversationsLeafHits,
   dbImportHits,
   effectHits,
   getDbFallbackHits,
-  isCorePath,
   isGetDbFallbackScope,
   isTestPath,
   lineCount,
   pureCoreImportHits,
   type ResolvedImport,
 } from "./rules.ts";
+import { findTransitivePurityHits } from "./transitive-purity.ts";
 import { routeSchemaHits, toolSchemaHits } from "./zod-boundaries.ts";
 
 const SIZE_LIMIT = 600;
@@ -66,6 +68,10 @@ class SourceCache {
     return refs;
   }
 
+  exists(rel: string): boolean {
+    return existsSync(join(this.repo, rel));
+  }
+
   list(roots: readonly string[], predicate: (rel: string) => boolean): string[] {
     const out = new Set<string>();
     for (const root of roots) {
@@ -103,6 +109,20 @@ function oversized(cache: SourceCache, files: readonly string[]): Map<string, nu
 }
 
 const ENGINE = "apps/engine/src";
+
+function purityScopes(cache: SourceCache) {
+  const readConfig = (path: string) => {
+    try {
+      return readFileSync(join(cache.repo, path), "utf8");
+    } catch {
+      return "{}";
+    }
+  };
+  return [
+    parseTsconfigPaths("", readConfig("tsconfig.json")),
+    parseTsconfigPaths("apps/cockpit", readConfig("apps/cockpit/tsconfig.json")),
+  ];
+}
 
 export const RATCHETS: readonly Ratchet[] = [
   {
@@ -155,15 +175,28 @@ export const RATCHETS: readonly Ratchet[] = [
   {
     id: "pure_core",
     allowlist: "pure-core.txt",
-    rule: "core.ts or core/** importing db/, llm/, audit/, queue/ or drizzle-orm, or reading Date.now, new Date(), Math.random, randomUUID, process.env",
+    rule: "a canonical pure target or runtime helper reaching db/, llm/, audit/, queue/, filesystem/network/process I/O, unresolved require/dynamic imports, clock or entropy",
     unit: "hits",
-    measure: (cache) =>
-      countBy(
-        cache.list([ENGINE, "apps/sk/src", "packages"], (rel) => isCorePath(rel)),
-        (rel) =>
-          pureCoreImportHits(cache.resolvedImports(rel)).length +
-          effectHits(cache.tree(rel)).length,
-      ),
+    measure: (cache) => {
+      const files = cache.list([ENGINE, "apps/cockpit/src", "apps/sk/src", "packages"], () => true);
+      assertCompletePureTargetInventory(files);
+      const scopes = purityScopes(cache);
+      return countBy(
+        discoverPureTargets(files).map((target) => target.path),
+        (rel) => {
+          const direct =
+            pureCoreImportHits(cache.resolvedImports(rel)).length +
+            effectHits(cache.tree(rel)).length;
+          const transitive = findTransitivePurityHits({
+            target: rel,
+            files,
+            scopes,
+            readText: (path) => (cache.exists(path) ? cache.text(path) : null),
+          }).filter((hit) => hit.chain.length > 1).length;
+          return direct + transitive;
+        },
+      );
+    },
   },
   {
     id: "conversations_leaf",

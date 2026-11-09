@@ -4,15 +4,22 @@ import { z } from "zod";
 import { actorOf } from "../../audit/actor.ts";
 import { principalOrigin } from "../../auth/origin.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { type ElicitationRecord, getElicitation } from "../../conversations/elicitations.ts";
-import * as svc from "../../conversations/service.ts";
+import { appendUserMessage, createConversation } from "../../conversations/public/authoring.ts";
+import {
+  type ElicitationRecord,
+  getElicitation,
+  stageElicitationAnswer,
+} from "../../conversations/public/elicitation.ts";
+import {
+  getConversation,
+  withReservedConversationTurn,
+} from "../../conversations/public/lifecycle.ts";
 import {
   approvalHandleFromElicitationInput,
   elicitationInputForClient,
-} from "../../conversations/tools/ask-user/commit-intent.ts";
-import { resolvePublicBaseUrl } from "../../conversations/tools/usage-guidance.ts";
-import { suggestConversationsByTopic } from "../../conversations/topic-routing.ts";
-import { withReservedConversationTurn } from "../../conversations/turns.ts";
+  resolvePublicBaseUrl,
+  suggestConversationsByTopic,
+} from "../../conversations/public/tool-contract.ts";
 import type { Db } from "../../db/client.ts";
 import * as intake from "../../knowledge/index.ts";
 import { logger } from "../../logging/logger.ts";
@@ -423,7 +430,7 @@ export async function handleConversationTool(
         if (selected.some((item) => item === null))
           return errorText("selected intake item not found");
       }
-      const created = await svc.createConversation(
+      const created = await createConversation(
         {
           tenant_id: principal.tenant_id,
           actor_id: principal.id,
@@ -461,7 +468,7 @@ export async function handleConversationTool(
         principal.tenant_id,
         parsed.data.conversation_id,
         async (turn_id) => {
-          const appended = await svc.appendUserMessage(
+          const appended = await appendUserMessage(
             {
               tenant_id: principal.tenant_id,
               conversation_id: parsed.data.conversation_id,
@@ -499,7 +506,6 @@ export async function handleConversationTool(
         principal.tenant_id,
         parsed.data.conversation_id,
         async (turn_id) => {
-          const { stageElicitationAnswer } = await import("../../conversations/elicitations.ts");
           const staged = await stageElicitationAnswer(
             {
               tenant_id: principal.tenant_id,
@@ -583,7 +589,7 @@ async function conversationGet(
     permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
   } = {},
 ): Promise<HandleConversationToolResult> {
-  const detail = await svc.getConversation(principal.tenant_id, conversation_id, db);
+  const detail = await getConversation(principal.tenant_id, conversation_id, db);
   if (!detail) return errorText("conversation not found");
 
   const { latestMcpTaskForConversation } = await import("../tasks/store.ts");
@@ -622,7 +628,7 @@ async function conversationGet(
     detail.conversation.status === "awaiting_input" && !respondInFlight
       ? await (async () => {
           const { listElicitationsForConversation } = await import(
-            "../../conversations/elicitations.ts"
+            "../../conversations/public/elicitation.ts"
           );
           return (await listElicitationsForConversation(principal.tenant_id, conversation_id, db))
             .filter((e) => e.status === "pending")

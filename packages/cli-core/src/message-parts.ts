@@ -22,8 +22,7 @@ function isEffectivelyEmpty(content: unknown): boolean {
   if (content === null || content === undefined) return true;
   if (typeof content === "string") return content.length === 0;
   if (Array.isArray(content)) return content.length === 0;
-  if (typeof content === "object") return Object.keys(content as object).length === 0;
-  return false;
+  return Object.keys(content as object).length === 0;
 }
 
 function safeStringify(value: unknown): string {

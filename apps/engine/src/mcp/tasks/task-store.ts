@@ -4,7 +4,7 @@ import type {
 } from "@modelcontextprotocol/sdk/experimental/tasks/index.js";
 import type { Request, RequestId, Result, Task } from "@modelcontextprotocol/sdk/types.js";
 import { and, eq } from "drizzle-orm";
-import { stopConversationTaskTurn } from "../../conversations/turns.ts";
+import { stopConversationTaskTurn } from "../../conversations/public/lifecycle.ts";
 import type { Db } from "../../db/client.ts";
 import {
   conversationElicitations,

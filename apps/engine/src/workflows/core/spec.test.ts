@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import type { WorkflowSpec } from "../draft-schemas.ts";
+import { readStoredSpec } from "../stored-spec.ts";
 import {
   carriedSpecColumns,
   personOriginRefused,
-  readStoredSpec,
   speaksAsPerson,
   workflowSpecDigest,
 } from "./spec.ts";

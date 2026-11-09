@@ -1,7 +1,7 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { conversationLifecycleOperations } from "../../../api/operations/conversation-lifecycle.ts";
 import { toHonoRoute } from "../../../api/operations/hono.ts";
-import * as svc from "../../../conversations/index.ts";
+import * as svc from "../../../conversations/public/lifecycle.ts";
 import type { AppEnv } from "../../openapi.ts";
 
 export function registerLifecycleRoutes(app: OpenAPIHono<AppEnv>): void {

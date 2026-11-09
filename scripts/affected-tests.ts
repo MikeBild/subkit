@@ -94,7 +94,7 @@ const selection = selectAffected({
   changed,
   testFiles: files.filter(isTestFile),
   reverse,
-  depth: args.depth,
+  depth: args.depth ?? Number.POSITIVE_INFINITY,
   testText: (test) => readText(test) ?? "",
 });
 
@@ -107,7 +107,7 @@ if (selection.tests.length === 0) {
   process.exit(0);
 }
 console.log(
-  `${selection.tests.length} affected test file(s) for ${changed.length} changed file(s), ${args.workers} worker(s)`,
+  `${selection.tests.length} affected test file(s) for ${changed.length} changed file(s), ${args.workers} worker(s), ${args.depth === null ? "full dependency graph" : `depth ${args.depth}`}`,
 );
 const outcomes = await runPool(selection.tests, args.workers, runTest);
 const summary = summarize(outcomes);

@@ -1,0 +1,76 @@
+import { expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
+import {
+  cpSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { qualityChainFixture } from "../../apps/engine/scripts/__tests__/fixtures/quality-chain.ts";
+import { exportShardQualityEvidence } from "../export-shard-quality-evidence.ts";
+import { verifyShardQualityBundle } from "../verify-shard-quality-bundle.ts";
+
+test("complete policy-bound evidence survives another checkout and rejects changed proof bytes", async () => {
+  const source = qualityChainFixture(true, true);
+  const transfer = realpathSync(mkdtempSync(join(tmpdir(), "subkit-quality-transfer-")));
+  const git = (cwd: string, args: string[]) =>
+    execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  try {
+    writeFileSync(join(source.root, ".gitignore"), "reports/\n.artifacts/\nquality-bundle.json\n");
+    git(source.root, ["init", "--quiet"]);
+    git(source.root, ["add", "."]);
+    git(source.root, [
+      "-c",
+      "user.name=Quality Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "-c",
+      "commit.gpgsign=false",
+      "commit",
+      "--quiet",
+      "-m",
+      "quality fixture",
+    ]);
+    const commit = git(source.root, ["rev-parse", "HEAD"]);
+    const rejectedBundle = join(transfer, "missing-external-receipt");
+    await expect(
+      exportShardQualityEvidence({ ...source.options, destination: rejectedBundle }),
+    ).rejects.toThrow("requires external runtime acceptance evidence");
+    expect(existsSync(rejectedBundle)).toBe(false);
+    const externalRuntimeAcceptancePath = source.createExternalRuntimeAcceptance();
+    const bundle = join(transfer, "bundle");
+    const indexPath = await exportShardQualityEvidence({
+      ...source.options,
+      externalRuntimeAcceptancePath,
+      destination: bundle,
+    });
+    const index = JSON.parse(readFileSync(indexPath, "utf8")) as {
+      files: { path: string }[];
+      commit_sha: string;
+    };
+    expect(index.commit_sha).toBe(commit);
+    expect(index.files.some((file) => file.path.endsWith("runner.log"))).toBe(false);
+    expect(
+      index.files.filter((file) => file.path.includes(".build-index.json.receipts/")).length,
+    ).toBe(10);
+    expect(index.files.some((file) => file.path === externalRuntimeAcceptancePath)).toBe(true);
+    const checkout = join(transfer, "checkout");
+    git(transfer, ["clone", "--quiet", "--no-hardlinks", source.root, checkout]);
+    cpSync(bundle, checkout, { recursive: true });
+    const accepted = await verifyShardQualityBundle(checkout, commit);
+    expect(JSON.parse(readFileSync(accepted, "utf8")).mutation.score).toBe(100);
+    const proof = index.files.find((file) => file.path.endsWith(".lcov"))!;
+    writeFileSync(join(checkout, proof.path), "tampered");
+    await expect(verifyShardQualityBundle(checkout, commit)).rejects.toThrow(
+      "Quality bundle file changed",
+    );
+  } finally {
+    rmSync(source.root, { recursive: true, force: true });
+    rmSync(transfer, { recursive: true, force: true });
+  }
+}, 30_000);

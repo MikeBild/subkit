@@ -1,9 +1,12 @@
-import { beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
+  composeDown,
   type DockerEnv,
   dockerApi,
   dockerBoot,
   engineMounts,
+  finishRestartSeedScenario,
+  prepareRestartSeedState,
   replaceEngineContainer,
 } from "./_harness.ts";
 
@@ -11,6 +14,10 @@ let env: DockerEnv;
 beforeAll(async () => {
   env = await dockerBoot();
 }, 600_000);
+
+afterAll(() => {
+  composeDown();
+});
 
 describe("stateless application replacement", () => {
   test("PostgreSQL settings and S3 bytes survive a container replacement", async () => {
@@ -45,7 +52,8 @@ describe("stateless application replacement", () => {
     }>(env, "GET", "/v1/settings/runtime");
     expect(runtimeBefore.status).toBe(200);
 
-    await replaceEngineContainer();
+    const seedReceipt = await prepareRestartSeedState();
+    env.baseUrl = await replaceEngineContainer();
     expect(engineMounts()).toEqual([]);
 
     const workflowAfter = await dockerApi(env, "GET", `/v1/workflows/${workflow.body.id}`);
@@ -62,5 +70,6 @@ describe("stateless application replacement", () => {
     });
     expect(bytes.status).toBe(200);
     expect(await bytes.text()).toBe(content);
+    await finishRestartSeedScenario(seedReceipt);
   }, 180_000);
 });

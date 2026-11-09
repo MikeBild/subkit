@@ -2,25 +2,12 @@ import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useRouter, useRouterState } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
-import {
-  Building2,
-  Cable,
-  ClipboardList,
-  Inbox,
-  LifeBuoy,
-  type LucideIcon,
-  MessageSquare,
-  PenLine,
-  Workflow,
-} from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { Cable, Inbox, type LucideIcon, MessageSquare, Workflow } from "lucide-react";
+import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiCall } from "@/api/call";
-import { ApiError } from "@/api/client";
 import { listProposedSkillCandidates } from "@/api/decisions";
 import { listIntakeClips } from "@/api/intake";
-import { useActorDirectory } from "@/app/actor-directory";
-import { type ActorDirectory, actorDirectoryName } from "@/app/actor-directory-model";
 import {
   absolute,
   chatNewHref,
@@ -30,7 +17,6 @@ import {
   workflowHref,
 } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
-import { useDirtyGuard } from "@/app/version-notice";
 import { CatalogSummary, useCatalogCreatedBy } from "@/components/cockpit/catalog-categories";
 import {
   CatalogCategoryChips,
@@ -47,9 +33,7 @@ import {
 } from "@/components/cockpit/catalog-metadata";
 import { recordCategory } from "@/components/cockpit/catalog-metadata-model";
 import { ConversationsAbout } from "@/components/cockpit/conversations-about";
-import { VersionChange } from "@/components/cockpit/diff-card";
 import { type UsageCard, UsageCards } from "@/components/cockpit/knowledge-usage";
-import { RestoreVersionConfirm } from "@/components/cockpit/knowledge-versions";
 import { usePackageActions } from "@/components/cockpit/package-dialogs";
 import {
   ActionMenu,
@@ -64,27 +48,18 @@ import {
   DetailPage,
   type Fact,
   FactList,
-  Field,
-  FieldError,
-  FieldLabel,
   FilterBar,
   GroupingTabs,
   IconTile,
-  Input,
   MarkdownDocument,
-  MarkdownEditor,
   OnboardingFrame,
   Page,
   PageHeader,
-  RecordSheet,
-  SaveBar,
   SectionHeading,
-  SegmentedControl,
   StatusBadge,
   TabBody,
   TemplateCard,
   TemplateGrid,
-  Timeline,
 } from "@/components/cockpit/patterns";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
 import { ForbiddenState } from "@/components/failure-state";
@@ -95,43 +70,32 @@ import { useInfiniteList } from "@/lib/use-infinite-list";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { documentUnderTitle } from "@/pages/knowledge-sources-model";
-import { keptVersionCount } from "@/pages/knowledge-versions-model";
 import {
-  SKILL_APPLIES_TO,
   SKILL_TEMPLATES,
   type SkillAppliesTo,
   type SkillTemplate,
-  type SkillVersionRow,
-  skillAppliesToOptionKey,
   skillChangedAt,
-  skillHistoryGap,
   skillScope,
   skillScopeKey,
   skillScopePhraseKey,
   skillStateLabelKey,
   skillsListView,
   skillsLoadState,
-  skillTemplateFromSearch,
   skillTemplateKeys,
   skillTemplates,
-  skillVersionBasis,
-  skillVersionChange,
   skillVersionRows,
   skillWhereKey,
 } from "@/pages/skills-model";
+import { SkillEditor } from "./skills-editor";
+import { useSkill, useSkillHistory } from "./skills-queries";
+import { TEMPLATE_ICONS } from "./skills-template-icons";
+import { SkillVersions } from "./skills-versions";
 
 type Skill = components["schemas"]["Skill"];
 type Translate = ReturnType<typeof useI18n>["t"];
 
 const ENDPOINT = "/v1/skills";
 const PROPOSALS_KEY = ["skill-candidates", "proposed"];
-
-const TEMPLATE_ICONS: Record<SkillTemplate, LucideIcon> = {
-  tone: PenLine,
-  report: ClipboardList,
-  errors: LifeBuoy,
-  company: Building2,
-};
 
 export function skillsLine(t: Translate, skills: number, proposals: number): ReactNode {
   const count = t(skills === 1 ? "skills.summary.one" : "skills.summary.other", { count: skills });
@@ -510,26 +474,8 @@ export function SkillPage({ permissions }: { permissions: readonly string[] }): 
   );
 }
 
-function useSkill(id: string, enabled: boolean) {
-  const live = useLiveQueryOptions();
-  return useQuery({
-    queryKey: ["skill", id],
-    queryFn: () => apiCall("get", "/v1/skills/{id}", { path: { id } }),
-    enabled: enabled && Boolean(id) && id !== "new",
-    ...live,
-  });
-}
-
 function editHref(id: string): string {
   return `${absolute(recordHref("skills", id))}?mode=edit`;
-}
-
-function actorName(directory: ActorDirectory, id: string | null, t: Translate): string {
-  return (
-    actorDirectoryName(directory, "user", id) ??
-    actorDirectoryName(directory, "system_account", id) ??
-    t("runs.caller.unknown")
-  );
 }
 
 function Chip({ icon: Icon, children }: { icon?: LucideIcon; children: ReactNode }) {
@@ -544,19 +490,6 @@ function Chip({ icon: Icon, children }: { icon?: LucideIcon; children: ReactNode
 function whereChips(appliesTo: string | null | undefined): SkillAppliesTo[] {
   if (appliesTo === "chat" || appliesTo === "authoring") return [appliesTo];
   return ["chat", "authoring"];
-}
-
-function useSkillHistory(
-  id: string,
-  enabled: boolean,
-  live?: ReturnType<typeof useLiveQueryOptions>,
-) {
-  return useQuery({
-    queryKey: ["skill", id, "history"],
-    queryFn: () => apiCall("get", "/v1/skills/{id}/history", { path: { id } }),
-    enabled,
-    ...live,
-  });
 }
 
 function SkillRecord({ id, permissions }: { id: string; permissions: readonly string[] }) {
@@ -925,438 +858,5 @@ function SkillUsage({ skill, permissions }: { skill: Skill; permissions: readonl
         </p>
       )}
     </TabBody>
-  );
-}
-
-function SkillVersions({ skill, canWrite }: { skill: Skill; canWrite: boolean }) {
-  const { t, dateTime } = useI18n();
-  const client = useQueryClient();
-  const live = useLiveQueryOptions();
-  const directory = useActorDirectory(true);
-  const [selected, setSelected] = useSearchParamState("version", "");
-  const history = useSkillHistory(skill.id, true, live);
-  const restore = useMutation({
-    mutationFn: (entry: SkillVersionRow) =>
-      apiCall("post", "/v1/skills/{id}/restore", {
-        path: { id: skill.id },
-        body: { audit_entry_id: entry.audit_entry_id },
-      }),
-    onSuccess: (saved) => {
-      toast.success(t("skills.versions.restored", { version: saved.version }));
-      client.setQueryData(["skill", saved.id], saved);
-      void client.invalidateQueries({ queryKey: ["skill", saved.id, "history"] });
-      void client.invalidateQueries({ queryKey: ["catalog"] });
-      setSelected("");
-    },
-    onError: (error) =>
-      toast.error(
-        error instanceof ApiError && error.status === 409
-          ? t("skills.conflict")
-          : t("common.actionFailed"),
-      ),
-  });
-  const rows = skillVersionRows(history.data?.items ?? [], skill.version);
-  const gap = skillHistoryGap(rows, skill.version);
-  const open = rows.find((row) => row.audit_entry_id === selected) ?? null;
-  const label = (row: SkillVersionRow) =>
-    row.version === null
-      ? t("skills.versions.unnumbered")
-      : t("skills.versions.entry", { version: row.version });
-  return (
-    <TabBody
-      testId="skill-versions"
-      summary={
-        history.data
-          ? t(
-              keptVersionCount(rows.length) === 1 ? "skills.versions.one" : "skills.versions.other",
-              { count: keptVersionCount(rows.length) },
-            )
-          : undefined
-      }
-    >
-      {history.isPending ? (
-        <DataState state="loading" />
-      ) : history.error ? (
-        <DataState
-          state="error"
-          line={t("skills.versions.loadFailed")}
-          onRetry={() => void history.refetch()}
-          testId="skill-versions-failed"
-        />
-      ) : rows.length === 0 ? (
-        <DataState state="empty" line={t("skills.versions.empty")} testId="skill-versions-empty" />
-      ) : (
-        <Timeline
-          testId="skill-versions-timeline"
-          groups={[
-            {
-              items: rows.map((row) => ({
-                id: row.audit_entry_id,
-                tone: row.current ? "info" : "neutral",
-                title: label(row),
-                meta: `${t(skillStateLabelKey(row.lifecycle ?? "active"))} · ${actorName(directory, row.actor_id, t)}`,
-                aside: (
-                  <>
-                    {row.current ? (
-                      <StatusBadge state="active" label={t("knowledge.versions.current")} />
-                    ) : null}
-                    <span className="text-xs text-muted-foreground">
-                      {dateTime(row.updated_at)}
-                    </span>
-                  </>
-                ),
-                onOpen: () => setSelected(row.audit_entry_id),
-                label: label(row),
-                testId: `skill-version-${row.audit_entry_id}`,
-              })),
-            },
-          ]}
-        />
-      )}
-      {history.data && gap ? (
-        <p className="text-sm text-muted-foreground" data-testid="skill-versions-gap">
-          {gap.through === 1
-            ? t("skills.versions.gap.one")
-            : t("skills.versions.gap.other", { through: gap.through })}
-        </p>
-      ) : null}
-      <SkillVersionSheet
-        skillId={skill.id}
-        row={open}
-        rows={rows}
-        label={open ? label(open) : ""}
-        canWrite={canWrite}
-        restoring={restore.isPending}
-        onRestore={(row) => restore.mutateAsync(row)}
-        directory={directory}
-        onClose={() => setSelected("")}
-      />
-    </TabBody>
-  );
-}
-
-function SkillVersionSheet({
-  skillId,
-  row,
-  rows,
-  label,
-  canWrite,
-  restoring,
-  onRestore,
-  directory,
-  onClose,
-}: {
-  skillId: string;
-  row: SkillVersionRow | null;
-  rows: readonly SkillVersionRow[];
-  label: string;
-  canWrite: boolean;
-  restoring: boolean;
-  onRestore: (row: SkillVersionRow) => Promise<unknown>;
-  directory: ActorDirectory;
-  onClose: () => void;
-}) {
-  const { t, dateTime } = useI18n();
-  const [confirming, setConfirming] = useState(false);
-  const entryId = row?.audit_entry_id ?? "";
-  const detail = useQuery({
-    queryKey: ["skill", skillId, "history", entryId],
-    queryFn: () =>
-      apiCall("get", "/v1/skills/{id}/history/{audit_entry_id}", {
-        path: { id: skillId, audit_entry_id: entryId },
-      }),
-    enabled: row?.has_snapshot === true,
-  });
-  const change = detail.data ? skillVersionChange(detail.data) : null;
-  const basis = row ? skillVersionBasis(rows, row) : null;
-  const author = row ? actorName(directory, row.actor_id, t) : "";
-  const facts: Fact[] = row
-    ? [
-        { label: t("knowledge.versions.savedBy"), value: author },
-        { label: t("knowledge.versions.at"), value: dateTime(row.updated_at) },
-        {
-          label: t("resource.field.status"),
-          value: t(skillStateLabelKey(row.lifecycle ?? "active")),
-        },
-        ...(row.title ? [{ label: t("common.name"), value: row.title }] : []),
-        ...(change?.renamedFrom
-          ? [{ label: t("skills.versions.renamedFrom"), value: change.renamedFrom }]
-          : []),
-      ]
-    : [];
-  return (
-    <RecordSheet
-      open={row !== null}
-      onOpenChange={(next) => !next && onClose()}
-      title={label}
-      subtitle={row ? `${author} · ${dateTime(row.updated_at)}` : undefined}
-      badge={
-        row?.current ? (
-          <StatusBadge state="active" label={t("knowledge.versions.current")} />
-        ) : undefined
-      }
-      action={
-        row && canWrite && row.restorable ? (
-          <Button
-            pending={restoring}
-            onClick={() => setConfirming(true)}
-            data-testid="skill-version-restore"
-          >
-            {t("knowledge.versions.restore")}
-          </Button>
-        ) : undefined
-      }
-      testId="skill-version-sheet"
-      closeTestId="skill-version-close"
-    >
-      {row ? (
-        <div className="flex flex-col gap-6">
-          <FactList testId="skill-version-facts" items={facts} />
-          {!row.has_snapshot ? null : detail.isPending ? (
-            <DataState state="loading" />
-          ) : detail.error ? (
-            <DataState
-              state="error"
-              line={t("skills.versions.loadFailed")}
-              onRetry={() => void detail.refetch()}
-              testId="skill-version-failed"
-            />
-          ) : change ? (
-            <VersionChange
-              label={
-                basis !== null
-                  ? t("knowledge.versions.changeSince", { version: basis })
-                  : t("skills.versions.change")
-              }
-              rows={change.rows}
-              testId="skill-version"
-            />
-          ) : null}
-          <p className="text-sm text-muted-foreground" data-testid="skill-version-hint">
-            {row.current
-              ? t("skills.versions.currentHint")
-              : row.restorable
-                ? t("skills.versions.restoreHint")
-                : t("skills.versions.noSnapshot")}
-          </p>
-          <CollapsibleSection label={t("common.technical")} testId="skill-version-technical">
-            <FactList
-              items={[
-                {
-                  label: t("skills.versions.auditEntry"),
-                  value: <span className="font-mono text-xs">{row.audit_entry_id}</span>,
-                },
-              ]}
-            />
-          </CollapsibleSection>
-          <RestoreVersionConfirm
-            open={confirming}
-            onOpenChange={setConfirming}
-            pending={restoring}
-            onConfirm={() => onRestore(row)}
-            testId="skill-version-restore-confirm"
-          />
-        </div>
-      ) : null}
-    </RecordSheet>
-  );
-}
-
-function SkillEditor({
-  id,
-  permissions,
-  search,
-}: {
-  id: string;
-  permissions: readonly string[];
-  search: string;
-}) {
-  const { t } = useI18n();
-  const router = useRouter();
-  const client = useQueryClient();
-  const isNew = id === "new";
-  const canWrite = permissions.includes("skill:write");
-  const query = useSkill(id, permissions.includes("skill:read"));
-  const skill = query.data;
-  const template = isNew ? skillTemplateFromSearch(search) : null;
-  const original = {
-    title: skill?.title ?? "",
-    body: skill?.body ?? "",
-    appliesTo: (skill?.applies_to ?? "both") as SkillAppliesTo,
-  };
-  const [title, setTitle] = useState(() =>
-    template ? t(skillTemplateKeys(template).title) : original.title,
-  );
-  const [body, setBody] = useState(() =>
-    template ? t(skillTemplateKeys(template).body) : original.body,
-  );
-  const [appliesTo, setAppliesTo] = useState<SkillAppliesTo>(original.appliesTo);
-  const [problem, setProblem] = useState<string | null>(null);
-  useEffect(() => {
-    if (isNew) return;
-    setTitle(skill?.title ?? "");
-    setBody(skill?.body ?? "");
-    setAppliesTo((skill?.applies_to ?? "both") as SkillAppliesTo);
-  }, [isNew, skill?.title, skill?.body, skill?.applies_to]);
-  const changes =
-    (title !== original.title ? 1 : 0) +
-    (body !== original.body ? 1 : 0) +
-    (appliesTo !== original.appliesTo ? 1 : 0);
-  const dirty = changes > 0;
-  useDirtyGuard(dirty);
-
-  const save = useMutation({
-    mutationFn: () =>
-      isNew
-        ? apiCall("post", "/v1/skills", {
-            body: {
-              scope: "global",
-              title: title.trim(),
-              body,
-              applies_to: appliesTo,
-              status: "active",
-              source: "manual",
-            },
-          })
-        : apiCall("patch", "/v1/skills/{id}", {
-            path: { id },
-            body: {
-              title: title.trim(),
-              body,
-              applies_to: appliesTo,
-              expected_version: skill?.version,
-            },
-          }),
-    onSuccess: (saved) => {
-      toast.success(t("skills.saved"));
-      client.setQueryData(["skill", saved.id], saved);
-      void client.invalidateQueries({ queryKey: ["catalog"] });
-      router.history.push(absolute(recordHref("skills", saved.id)));
-    },
-    onError: (error) =>
-      setProblem(
-        error instanceof ApiError && error.status === 409
-          ? t("skills.conflict")
-          : t("detail.saveFailed"),
-      ),
-  });
-  const submit = () => {
-    setProblem(null);
-    if (!title.trim()) return setProblem(t("skills.nameMissing"));
-    if (!body.trim()) return setProblem(t("skills.bodyMissing"));
-    save.mutate();
-  };
-  const applyTemplate = (next: SkillTemplate) => {
-    const keys = skillTemplateKeys(next);
-    if (!title.trim()) setTitle(t(keys.title));
-    setBody(t(keys.body));
-  };
-
-  const back = isNew
-    ? { to: "/skills", label: t("nav.skills") }
-    : { to: recordHref("skills", id), label: skill?.title ?? t("nav.skills") };
-  const header = (
-    <PageHeader back={back} title={isNew ? t("skills.newTitle") : t("skills.editTitle")} />
-  );
-  if (!canWrite)
-    return (
-      <Page kind="detail" surface="detail" scroll="page" testId="skill-editor" header={header}>
-        <ForbiddenState />
-      </Page>
-    );
-  if (!isNew && query.isPending)
-    return (
-      <Page kind="detail" surface="detail" scroll="page" testId="skill-editor" header={header}>
-        <DataState state="loading" />
-      </Page>
-    );
-
-  return (
-    <Page kind="detail" surface="detail" scroll="page" testId="skill-editor" header={header}>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field>
-          <FieldLabel htmlFor="skill-name">{t("common.name")}</FieldLabel>
-          <Input
-            id="skill-name"
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder={t("skills.editor.namePlaceholder")}
-            data-testid="skill-name"
-          />
-        </Field>
-        <Field>
-          <FieldLabel>{t("skills.editor.appliesTo")}</FieldLabel>
-          <SegmentedControl
-            label={t("skills.editor.appliesTo")}
-            value={appliesTo}
-            onValueChange={(next) => setAppliesTo(next as SkillAppliesTo)}
-            options={SKILL_APPLIES_TO.map((value) => ({
-              value,
-              label: t(skillAppliesToOptionKey(value)),
-              testId: `skill-applies-to-${value}`,
-            }))}
-            testId="skill-applies-to"
-          />
-        </Field>
-        <Field className="sm:col-span-2">
-          <FieldLabel htmlFor="skill-body">{t("skills.editor.body")}</FieldLabel>
-          {isNew ? (
-            <div
-              className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
-              data-testid="skill-templates"
-            >
-              {t("skills.editor.useTemplate")}
-              {SKILL_TEMPLATES.map((entry) => {
-                const Icon = TEMPLATE_ICONS[entry];
-                return (
-                  <button
-                    key={entry}
-                    type="button"
-                    onClick={() => applyTemplate(entry)}
-                    className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    data-testid={`skill-template-${entry}`}
-                  >
-                    <Icon aria-hidden="true" className="size-3.5" />
-                    {t(skillTemplateKeys(entry).title)}
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-          <MarkdownEditor
-            id="skill-body"
-            label={t("skills.editor.body")}
-            value={body}
-            onChange={setBody}
-            placeholder={t("skills.editor.bodyPlaceholder")}
-            rows={16}
-            invalid={problem === t("skills.bodyMissing")}
-            testId="skill-body"
-          />
-        </Field>
-        {problem && !dirty ? (
-          <FieldError className="sm:col-span-2" data-testid="skill-editor-error">
-            {problem}
-          </FieldError>
-        ) : null}
-      </div>
-      {dirty ? (
-        <SaveBar
-          count={changes}
-          notice={problem ?? undefined}
-          discard={{
-            onClick: () => {
-              setTitle(original.title);
-              setBody(original.body);
-              setAppliesTo(original.appliesTo);
-              setProblem(null);
-            },
-            testId: "skill-discard",
-          }}
-          save={{ onClick: submit, pending: save.isPending, testId: "skill-save" }}
-          testId="skill-save-bar"
-        />
-      ) : null}
-    </Page>
   );
 }

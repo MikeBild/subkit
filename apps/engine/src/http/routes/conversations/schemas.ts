@@ -1,7 +1,10 @@
 import { z } from "@hono/zod-openapi";
 import { CONVERSATION_REFERENCE_TYPES } from "@shared/conversation-reference.ts";
-import type * as svc from "../../../conversations/index.ts";
-import { PlaybookViewSchema, ResumeFormFieldSchema } from "../../../conversations/index.ts";
+import type { ConversationTurnOutcome } from "../../../conversations/public/authoring.ts";
+import {
+  PlaybookViewSchema,
+  ResumeFormFieldSchema,
+} from "../../../conversations/public/authoring.ts";
 import { resolveEngineUrl } from "../../../llm/index.ts";
 
 export function buildRuntimeContextFromRequest(
@@ -545,7 +548,7 @@ export const ToolPoliciesResponse = z
   })
   .openapi("ToolPoliciesResponse");
 
-export function serializeConversation(c: svc.ConversationTurnOutcome): RunOutcomeJson {
+export function serializeConversation(c: ConversationTurnOutcome): RunOutcomeJson {
   const out: RunOutcomeJson = {
     conversation: c.conversation,
     events: c.result.events,
@@ -562,7 +565,7 @@ export function wantsSSE(accept: string | null | undefined): boolean {
   return accept.toLowerCase().includes("text/event-stream");
 }
 
-export function outcomeFrame(c: svc.ConversationTurnOutcome): { event: string; data: string } {
+export function outcomeFrame(c: ConversationTurnOutcome): { event: string; data: string } {
   const json = serializeConversation(c);
   const { events: _drop, ...rest } = json;
   void _drop;

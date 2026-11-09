@@ -1,91 +1,104 @@
 {
-  "_comment": "Coverage floors enforced by `bun run check:coverage-floor` and shape-checked by the audit-invariants `coverage_floor` check. `subsystems` are LOC-weighted directory aggregates; `files` are single files; `core_default` applies to every core.ts and core/** file not excluded. Bun reports no branch coverage, so branch_min is recorded but unmeasured.",
+  "_comment": "Coverage floors enforce measured line and function coverage. Branch coverage is unsupported by Bun and branch_min is rejected fail-closed.",
   "subsystems": {
     "apps/engine/src/rbac": {
       "line_min": 90,
-      "branch_min": 85,
+      "function_min": 85,
       "rationale": "RBAC mediates every authorisation decision; high coverage matches the highest enterprise-control-plane risk surface.",
       "observed": {
         "line": 92,
-        "branch": null
+        "function": null
       }
     },
     "apps/engine/src/audit": {
       "line_min": 90,
-      "branch_min": 85,
+      "function_min": 85,
       "rationale": "Audit log is the immutable evidence trail for SOC2/ISO27001/GDPR; redaction, tenant scoping, and tx rollback are non-negotiable contracts.",
+      "tests": ["apps/engine/src/conversations/tools/tests/loop-gate-probe-evidence.test.ts"],
       "observed": {
         "line": 95,
-        "branch": null
+        "function": null
       }
     },
     "apps/engine/src/identity": {
       "line_min": 80,
-      "branch_min": 70,
+      "function_min": 70,
       "rationale": "Identity covers OIDC, JWKS, JIT provisioning, portal tokens, sessions; the floor is below rbac/audit because some service-level paths only fire under live OIDC traffic that's covered by integration tests with real IdP fixtures.",
       "observed": {
         "line": 80,
-        "branch": null
+        "function": null
       }
     },
     "apps/engine/src/auth": {
       "line_min": 80,
-      "branch_min": 70,
-      "rationale": "Auth providers (api_key, portal_token, oidc) gate every request; negative paths (revoked, expired, malformed, hash mismatch, not_yet_active) all pinned by tests."
+      "function_min": 70,
+      "rationale": "Auth providers (api_key, portal_token, oidc) gate every request; negative paths (revoked, expired, malformed, hash mismatch, not_yet_active) all pinned by tests. Includes HTTP sign-in, tenant membership switching, and session lifecycle consumer contracts in addition to every local auth test.",
+      "tests": [
+        "apps/engine/src/http/routes/identity/login.test.ts",
+        "apps/engine/src/http/routes/identity/memberships.test.ts",
+        "apps/engine/src/http/routes/identity/memberships.tenant-switch.test.ts",
+        "apps/engine/src/http/routes/identity/sessions.test.ts"
+      ]
     },
     "apps/engine/src/credentials": {
       "line_min": 75,
-      "branch_min": 65,
+      "function_min": 65,
       "rationale": "Credential vault + OAuth2 refresh logic. Floor is set lower than auth because OAuth2 refresh loops include backoff/retry branches that fire only under flaky upstreams; raising this floor requires the OAuth2 fixture suite to grow."
     },
     "apps/engine/src/connectors/drivers": {
       "line_min": 60,
-      "branch_min": 50,
+      "function_min": 50,
       "rationale": "Driver code is mostly thin adapters over external libraries; full integration coverage requires real services (testcontainers / docker-in-docker, tracked in the driver-integration follow-up). Unit-level coverage of DSN parsing, arg validation, and connection-failure paths is what the floor reflects today."
     },
     "apps/engine/src/execution": {
       "line_min": 70,
-      "branch_min": 60,
+      "function_min": 60,
       "rationale": "DAG executor + step dispatch. The floor is below 80% because the large loop.ts / request.ts files still need decomposition that will reshape this surface; raise once that lands."
     },
     "apps/engine/src/self-healing": {
       "line_min": 70,
-      "branch_min": 60,
+      "function_min": 60,
       "rationale": "Drift detection, classifier, fixture dry-run, approve/reject reviewer helpers. Loop test + approve-reject test together cover the main control flow."
     },
     "apps/engine/src/scheduler": {
       "line_min": 75,
-      "branch_min": 65,
+      "function_min": 65,
       "rationale": "Cron reconciler with CAS-guarded exactly-once semantics; race + dedup tests pin the contract. Calendar-gate / trigger-bind paths are also covered.",
       "observed": {
         "line": 93,
-        "branch": null
+        "function": null
       }
     },
     "apps/engine/src/http/routes": {
       "line_min": 51,
-      "branch_min": 41,
+      "function_min": 41,
       "rationale": "Route coverage is now enforced. The route boundary harness plus per-route tests pin Zod/RBAC/tenant/audit contracts; the floor sits three points under the observed LOC-weighted aggregate and should ratchet up as the large route files are split into per-resource files.",
       "observed": {
         "line": 54.85,
-        "branch": null
+        "function": null
       }
     }
   },
   "core_default": {
     "line_min": 100,
-    "branch_min": 100,
+    "function_min": 100,
     "exclude": [],
     "rationale": "Pure cores take time, ids and randomness as parameters, so every line is reachable from a plain example or property test."
   },
   "files": {
+    "apps/cockpit/src/pages/knowledge-source-request.ts": {
+      "line_min": 100,
+      "function_min": 100,
+      "rationale": "Pure URL-source request mapping; its named URL-contract test is intentionally distinct from the extracted helper filename.",
+      "tests": ["apps/cockpit/src/pages/knowledge-sources-url.test.ts"]
+    },
     "packages/shared/src/approval-choice.ts": {
       "line_min": 100,
-      "branch_min": 100,
+      "function_min": 100,
       "rationale": "Pure approval-choice mapping shared by engine, sk and cockpit; first Stryker target.",
       "observed": {
         "line": 100,
-        "branch": null
+        "function": null
       }
     }
   }

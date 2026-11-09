@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 import { workflowJsonDigest } from "../canonical-json.ts";
-import { compileWorkflowEffectManifest, type ResolvedEffectBinding } from "../effect-manifest.ts";
+import {
+  compileWorkflowEffectManifest,
+  type ResolvedEffectBinding,
+} from "../core/effect-manifest.ts";
 import { WorkflowDefSchema } from "../types.ts";
 
 const tenant = "00000000-0000-4000-8000-000000000001";

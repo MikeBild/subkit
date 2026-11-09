@@ -2,8 +2,10 @@ import { findTemplateAliasMatches } from "../connectors/template-resolver.ts";
 import type { ConnectorTemplate } from "../connectors/templates.ts";
 import { loadBuiltinTemplates } from "../connectors/templates.ts";
 import type { AuthType, DriverName } from "../connectors/types.ts";
+import { extractTemplatePlaceholders } from "./core/template-placeholders.ts";
 
-const TEMPLATE_PLACEHOLDER_RE = /\{([a-zA-Z0-9._-]+)\}/g;
+export { extractTemplatePlaceholders };
+
 const GENERIC_MATCH_TOKENS = new Set([
   "api",
   "app",
@@ -75,17 +77,6 @@ function scoreConnectorTemplate(
     else if (kwl.includes(q)) score += 4;
   }
   return score;
-}
-
-export function extractTemplatePlaceholders(value?: string | null): string[] {
-  if (!value) return [];
-  const seen = new Set<string>();
-  for (const match of value.matchAll(TEMPLATE_PLACEHOLDER_RE)) {
-    const name = match[1]?.trim();
-    if (!name) continue;
-    seen.add(name);
-  }
-  return [...seen];
 }
 
 export function suggestConnectorTemplates(args: {

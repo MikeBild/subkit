@@ -3,21 +3,24 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { principalOrigin } from "../auth/origin.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
-import { humanChatAnswer } from "../conversations/answer-actor.ts";
-import type { RunLoopResult } from "../conversations/loop/index.ts";
 import {
   appendUserMessage,
   createConversation,
+  describeTurnFailure,
+  humanChatAnswer,
+  runConversationTurn,
+  type TurnFailure,
+} from "../conversations/public/authoring.ts";
+import {
   PendingElicitationBlockedError,
   respondElicitation,
-  runConversationTurn,
-} from "../conversations/service.ts";
-import { describeTurnFailure, type TurnFailure } from "../conversations/turn-failure.ts";
+} from "../conversations/public/elicitation.ts";
 import {
   conversationTurnId,
-  acquireConversationTurn as registerConversationAbort,
-  releaseConversationTurn as unregisterConversationAbort,
-} from "../conversations/turns.ts";
+  registerConversationAbort,
+  unregisterConversationAbort,
+} from "../conversations/public/lifecycle.ts";
+import type { RunLoopResult } from "../conversations/types.ts";
 import type { Db } from "../db/client.ts";
 import { chatIdentities, chatSessions, chatWorkspaces } from "../db/schema/index.ts";
 import { errorFields, log, logger } from "../logging/logger.ts";

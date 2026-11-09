@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { apiCall, resolveApiPath } from "./call";
+import { apiCall, apiMultipart, resolveApiPath } from "./call";
 
 const originalFetch = globalThis.fetch;
 
@@ -52,6 +52,37 @@ describe("resolveApiPath", () => {
 });
 
 describe("apiCall", () => {
+  test("multipart keeps file bytes, metadata, session credentials and cancellation", async () => {
+    const calls = capture(200, { archive_file_id: "archive-1" });
+    const controller = new AbortController();
+    const archive = new File(["archive bytes"], "fixture.zip", { type: "application/zip" });
+    await apiMultipart("/v1/packages/import/preview", {
+      body: { archive },
+      signal: controller.signal,
+      headers: { "x-custom": "preserved" },
+    });
+    const init = calls[0]?.init;
+    expect(init?.credentials).toBe("same-origin");
+    expect(init?.signal).toBe(controller.signal);
+    const headers = new Headers(init?.headers);
+    expect(headers.get("content-type")).toBeNull();
+    expect(headers.get("x-subkit-client")).toBe("cockpit");
+    expect(headers.get("x-custom")).toBe("preserved");
+    expect(init?.body).toBeInstanceOf(FormData);
+    const body = init?.body;
+    if (!(body instanceof FormData)) throw new Error("multipart request body is missing");
+    const file = body.get("archive") as File;
+    expect(file.name).toBe("fixture.zip");
+    expect(await file.text()).toBe("archive bytes");
+  });
+
+  test("multipart encodes optional metadata without serializing absent fields", async () => {
+    const calls = capture(201, { id: "knowledge-1" });
+    await apiMultipart("/v1/knowledge-sources", { body: { metadata: '{"name":"example"}' } });
+    const form = calls[0]?.init.body as FormData;
+    expect(form.get("metadata")).toBe('{"name":"example"}');
+    expect(form.has("file")).toBe(false);
+  });
   test("sends method, resolved path and JSON body and returns the parsed body", async () => {
     const calls = capture(200, { id: "s-1" });
     const result = await apiCall("patch", "/v1/skills/{id}", {

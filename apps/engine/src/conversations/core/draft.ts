@@ -11,6 +11,8 @@ import {
   normalizeWorkflowDraft,
   surfaceModeFor,
 } from "../authoring-state/normalize.ts";
+import { pruneTracesForMutation, retainFingerprintValidTraces } from "../step-fingerprint.ts";
+import { canonicalJson } from "../text-line-diff.ts";
 import {
   checkpointSeq,
   checkpointView,
@@ -24,9 +26,7 @@ import {
   computeStage,
   computeSurfaceMode,
   computeWorkflowMissingFields,
-} from "../authoring-state/summary.ts";
-import { pruneTracesForMutation, retainFingerprintValidTraces } from "../step-fingerprint.ts";
-import { canonicalJson } from "../text-line-diff.ts";
+} from "./authoring-summary.ts";
 
 const INTAKE_ITEM_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -52,10 +52,9 @@ export type DraftClock = () => string;
 
 type RefreshedDraft = DraftDocument & { state: AuthoringState; summary: AuthoringSummary };
 
-export function createEmptyDraftDocument(
-  now: DraftClock,
-  mode: AuthoringMode = "onboarding",
-): RefreshedDraft {
+type DraftSummaryInput = Omit<DraftDocument, "mode"> & { mode?: AuthoringMode | undefined };
+
+export function createEmptyDraftDocument(now: DraftClock, mode?: AuthoringMode): RefreshedDraft {
   return refreshDraftSummary(now, {
     mode,
     workflow: createEmptyWorkflowDraft(),
@@ -65,7 +64,7 @@ export function createEmptyDraftDocument(
   });
 }
 
-function inferDraftMode(draft: DraftDocument): AuthoringMode {
+function inferDraftMode(draft: DraftSummaryInput): AuthoringMode {
   if (
     draft.mode === "onboarding" ||
     draft.mode === "connector_authoring" ||
@@ -208,7 +207,7 @@ function applyWorkflowMutation(
   });
 }
 
-export function refreshDraftSummary(now: DraftClock, draft: DraftDocument): RefreshedDraft {
+export function refreshDraftSummary(now: DraftClock, draft: DraftSummaryInput): RefreshedDraft {
   const workflow = normalizeWorkflowDraft(draft);
   const connector = draft.connector ?? null;
   const mode = inferDraftMode({ ...draft, workflow, connector });

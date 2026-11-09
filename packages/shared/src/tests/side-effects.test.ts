@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  classifyGraphqlOverHttp,
   classifyHttpSideEffect,
   classifyMcpToolSideEffect,
   graphqlOverHttpRequest,
@@ -7,6 +8,23 @@ import {
   inferGraphqlOperation,
   sqlIsSelect,
 } from "../side-effects.ts";
+
+test("missing GraphQL documents fail closed at the parser boundary", () => {
+  for (const query of [null, undefined, ""]) expect(inferGraphqlOperation(query)).toBeNull();
+  expect(classifyHttpSideEffect({ graphql: {} })).toBe("write");
+  expect(classifyHttpSideEffect({ graphql: { query: null } })).toBe("write");
+});
+
+test("SQL line comments consume only the first line and leave EOF comments non-readable", () => {
+  for (const query of [
+    "-- note\nSELECT\n1",
+    " \t-- first\n-- second\nSELECT 1",
+    "SELECT 1 -- note",
+  ])
+    expect(sqlIsSelect(query)).toBe(true);
+  for (const query of ["-- SELECT 1", " \t-- SELECT 1", "SEL-- note\nECT 1"])
+    expect(sqlIsSelect(query)).toBe(false);
+});
 
 describe("classifyHttpSideEffect — HTTP method", () => {
   test("GET / HEAD / OPTIONS are reads", () => {
@@ -33,6 +51,7 @@ describe("classifyHttpSideEffect — HTTP method", () => {
 describe("classifyHttpSideEffect — override (author escape hatch)", () => {
   test("override:read wins over a POST", () => {
     expect(classifyHttpSideEffect({ method: "POST", override: "read" })).toBe("read");
+    expect(classifyHttpSideEffect({ override: "read" })).toBe("read");
   });
 
   test("override:write wins over a GET", () => {
@@ -42,6 +61,18 @@ describe("classifyHttpSideEffect — override (author escape hatch)", () => {
   test("override:read cannot downgrade structurally mutating HTTP methods", () => {
     for (const method of ["PUT", "PATCH", "DELETE"]) {
       expect(classifyHttpSideEffect({ method, override: "read" })).toBe("write");
+    }
+  });
+
+  test("override:read cannot bypass an explicit structural mode over POST", () => {
+    const base = { method: "POST" as const, override: "read" as const };
+    for (const input of [
+      { ...base, mcp: { operation: "call_tool" as const } },
+      { ...base, graphql: { operation: "mutation" as const, query: "{ me }" } },
+      { ...base, sql: { query: "INSERT INTO items VALUES (1)" } },
+      { ...base, s3: true },
+    ]) {
+      expect(classifyHttpSideEffect(input)).toBe("write");
     }
   });
 });
@@ -79,6 +110,9 @@ describe("classifyHttpSideEffect — GraphQL", () => {
       expect(classifyHttpSideEffect({ graphql: { operation: "query", query } })).toBe("write");
       expect(classifyHttpSideEffect({ graphql: { query }, override: "read" })).toBe("write");
     }
+    expect(classifyHttpSideEffect({ graphql: { operation: "mutation", query: "{ me }" } })).toBe(
+      "write",
+    );
   });
 
   test("fragment-first reads remain reads, but missing or invalid operations fail closed", () => {
@@ -148,6 +182,8 @@ describe("classifyHttpSideEffect — S3", () => {
   });
 
   test("override:read cannot downgrade an S3 mutation", () => {
+    expect(classifyHttpSideEffect({ s3: true, method: "LIST", override: "read" })).toBe("read");
+    expect(classifyHttpSideEffect({ s3: true, method: "OPTIONS", override: "read" })).toBe("write");
     expect(classifyHttpSideEffect({ s3: true, method: "PUT", override: "read" })).toBe("write");
     expect(classifyHttpSideEffect({ s3: true, method: "DELETE", override: "read" })).toBe("write");
   });
@@ -172,6 +208,15 @@ describe("helpers", () => {
   test("sqlIsSelect", () => {
     expect(sqlIsSelect("  SELECT 1")).toBe(true);
     expect(sqlIsSelect("UPDATE t SET x=1")).toBe(false);
+  });
+
+  test("SQL comments are stripped only at the beginning and only complete comments are ignored", () => {
+    expect(sqlIsSelect("\n-- one\n/* two */\nSELECT 1")).toBe(true);
+    expect(sqlIsSelect("/* unfinished SELECT 1")).toBe(false);
+    expect(sqlIsSelect("-- comment without newline")).toBe(false);
+    expect(sqlIsSelect("SELECT 1 -- DELETE FROM accounts")).toBe(true);
+    expect(sqlIsSelect("SEL-- comment\nECT 1")).toBe(false);
+    expect(sqlIsSelect("SEL/* comment */ECT 1")).toBe(false);
   });
 });
 
@@ -241,6 +286,8 @@ describe("classifyHttpSideEffect — GraphQL over plain HTTP", () => {
         override: "read",
       }),
     ).toBe("write");
+    expect(classifyHttpSideEffect({ mcp: { operation: "read_resource" } })).toBe("read");
+    expect(classifyHttpSideEffect({ mcp: { operation: "get_prompt" } })).toBe("read");
   });
 
   test("an unparseable or runtime-assembled document fails closed", () => {
@@ -305,6 +352,52 @@ describe("classifyHttpSideEffect — GraphQL over plain HTTP", () => {
     expect(
       graphqlOverHttpRequest({ method: "POST", target: null, body: { query: "x" } }),
     ).toBeNull();
+  });
+
+  test("normalizes target and base URL boundaries before endpoint detection", () => {
+    const query = { query: "query { a }" };
+    expect(
+      graphqlOverHttpRequest({
+        method: "POST",
+        target: "//graphql",
+        baseUrl: "https://api.example.test///",
+        body: query,
+      }),
+    ).toEqual({ endpoint: true, documents: ["query { a }"] });
+    expect(
+      graphqlOverHttpRequest({
+        method: "POST",
+        target: "ftp://host/graphql",
+        body: { query: "x" },
+      }),
+    ).toEqual({ endpoint: true, documents: ["x"] });
+    expect(
+      graphqlOverHttpRequest({
+        method: "POST",
+        target: "",
+        baseUrl: "https://api.example.test/graphql",
+        body: { query: "x" },
+      }),
+    ).toEqual({ endpoint: true, documents: ["x"] });
+  });
+
+  test("GraphQL-over-HTTP refuses structural protocol inputs and every non-query document", () => {
+    const query = { method: "POST" as const, target: "/graphql", body: { query: "query { a }" } };
+    for (const structural of [
+      { graphql: { query: "query { a }" } },
+      { sql: { query: "SELECT 1" } },
+      { mcp: { operation: "read_resource" as const } },
+      { s3: true },
+    ]) {
+      expect(classifyGraphqlOverHttp({ ...query, ...structural })).toBeNull();
+    }
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored workflow placeholder
+    expect(classifyGraphqlOverHttp({ ...query, body: { query: "${runtime.query}" } })).toBe(
+      "write",
+    );
+    expect(classifyGraphqlOverHttp({ ...query, body: { query: "mutation { a }" } })).toBe("write");
+    expect(classifyGraphqlOverHttp({ ...query, body: { query: "query { a }" } })).toBe("read");
+    expect(classifyGraphqlOverHttp({ ...query, target: "/v1/search" })).toBeNull();
   });
 
   describe("a read label cannot cover a GraphQL request it cannot read", () => {

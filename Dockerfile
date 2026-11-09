@@ -6,6 +6,17 @@ WORKDIR /app
 
 COPY . .
 
+RUN set -eu; \
+    mkdir -p /out; \
+    LC_ALL=C TZ=UTC0 tar --sort=name --format=posix --pax-option=delete=atime,delete=ctime \
+      --mtime='@0' --owner=0 --group=0 --numeric-owner \
+      -cf /tmp/subkit-build-context.tar .; \
+    LC_ALL=C TZ=UTC0 tar -tvf /tmp/subkit-build-context.tar > /out/BUILD_CONTEXT_MANIFEST.txt; \
+    sha256sum /tmp/subkit-build-context.tar | awk '{print $1}' > /out/BUILD_CONTEXT_DIGEST; \
+    test "$(wc -l < /out/BUILD_CONTEXT_MANIFEST.txt)" -gt 0; \
+    test "$(wc -c < /out/BUILD_CONTEXT_DIGEST)" -eq 65; \
+    rm /tmp/subkit-build-context.tar
+
 RUN set -eux; \
     for attempt in 1 2 3 4 5; do \
       bun install --frozen-lockfile && break; \
@@ -22,7 +33,7 @@ RUN bun scripts/fetch-embedding-assets.ts
 ARG ENGINE_VERSION
 RUN set -eux; \
     VERSION="${ENGINE_VERSION:-$(bun -e 'console.log(require("./package.json").version)')}"; \
-    bun build apps/engine/src/index.ts --compile \
+    bun build apps/engine/src/index.ts apps/engine/src/embeddings/embedding-worker.ts --compile --root . \
       --external cpu-features \
       --define "process.env.NODE_ENV=process.env.NODE_ENV" \
       --define "BUILD_VERSION=\"$VERSION\"" \
@@ -65,6 +76,8 @@ RUN set -eux; \
 
 COPY --from=builder /out/engine /usr/local/bin/engine.bin
 COPY --from=builder /out/sk /usr/local/bin/sk.bin
+COPY --from=builder /out/BUILD_CONTEXT_MANIFEST.txt /usr/local/share/subkit/BUILD_CONTEXT_MANIFEST.txt
+COPY --from=builder /out/BUILD_CONTEXT_DIGEST /usr/local/share/subkit/BUILD_CONTEXT_DIGEST
 COPY --from=cli-binaries /out/binaries /usr/local/share/subkit/binaries
 COPY LICENSE /usr/local/share/subkit/LICENSE
 COPY --from=builder /out/THIRD_PARTY_NOTICES.txt /usr/local/share/subkit/THIRD_PARTY_NOTICES.txt

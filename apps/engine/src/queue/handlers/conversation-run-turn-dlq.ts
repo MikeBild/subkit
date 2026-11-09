@@ -2,9 +2,11 @@ import type { Job, PgBoss } from "pg-boss";
 import { auditAwait } from "../../audit/audit.ts";
 import { resolveActor } from "../../audit/recorders/types.ts";
 import { AuditAction } from "../../audit/types.ts";
-import { recordConversationTurnFailure } from "../../conversations/service.ts";
-import { workerExpiredTurnFailure } from "../../conversations/turn-failure.ts";
-import { stopConversationTaskTurn } from "../../conversations/turns.ts";
+import { workerExpiredTurnFailure } from "../../conversations/public/authoring.ts";
+import {
+  recordConversationTurnFailure,
+  stopConversationTaskTurn,
+} from "../../conversations/public/lifecycle.ts";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
 import {

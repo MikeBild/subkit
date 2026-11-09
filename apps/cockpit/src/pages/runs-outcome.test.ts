@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { causeClassLabel } from "@/lib/cause-class";
 import { type Locale, translate } from "@/lib/i18n";
+import { runDurationMs as coreRunDurationMs } from "@/pages/core/run-outcome";
 import {
   type ExecutionOutcome,
   payloadEvidence,
@@ -17,6 +18,27 @@ const tr =
     translate(locale, key, values);
 const de = tr("de");
 const en = tr("en");
+
+test("run outcome core rejects incomplete, malformed, and backwards durations", () => {
+  expect(
+    coreRunDurationMs({ started_at: null, finished_at: "2026-01-01T00:00:00.000Z" }),
+  ).toBeNull();
+  expect(
+    coreRunDurationMs({ started_at: "invalid", finished_at: "2026-01-01T00:00:00.000Z" }),
+  ).toBeNull();
+  expect(
+    coreRunDurationMs({
+      started_at: "2026-01-02T00:00:00.000Z",
+      finished_at: "2026-01-01T00:00:00.000Z",
+    }),
+  ).toBeNull();
+  expect(
+    coreRunDurationMs({
+      started_at: "2026-01-01T00:00:00.000Z",
+      finished_at: "2026-01-01T00:00:01.000Z",
+    }),
+  ).toBe(1_000);
+});
 
 test("a held outcome overrides a succeeded transport status", () => {
   expect(runDisplayState("succeeded", { kind: "held" })).toBe("held");

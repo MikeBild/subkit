@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { validateWorkflowDef } from "../validator.ts";
+import { validateWorkflowDef } from "../core/validator.ts";
 
 function errorsFor(for_each: string): string[] {
   return validateWorkflowDef({

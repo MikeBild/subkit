@@ -5,13 +5,11 @@ import type { ToolCategory } from "../../tools/types.ts";
 import type { ElicitationBridge } from "../elicitation-bridge.ts";
 import type { DraftDocument } from "../types.ts";
 import { analyzeScrapeTargetTool } from "./analyze-scrape-target.ts";
-import {
-  askUserChoiceTool,
-  askUserConfirmTool,
-  askUserFormTool,
-  askUserMultiTool,
-  askUserTextTool,
-} from "./ask-user/index.ts";
+import { askUserChoiceTool } from "./ask-user/choice.ts";
+import { askUserConfirmTool } from "./ask-user/confirm.ts";
+import { askUserFormTool } from "./ask-user/form.ts";
+import { askUserMultiTool } from "./ask-user/multi.ts";
+import { askUserTextTool } from "./ask-user/text.ts";
 import { authenticateOAuthTool } from "./authenticate-oauth.ts";
 import { authorWorkflowTool } from "./author-workflow.ts";
 import { callConnectorTool } from "./call-connector.ts";

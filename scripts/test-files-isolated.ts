@@ -1,5 +1,6 @@
 import { statSync } from "node:fs";
 import path from "node:path";
+import { runIsolatedTestFile } from "../apps/sk/src/tests/run-isolated-test-file";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
 const args = process.argv.slice(2);
@@ -137,38 +138,5 @@ for (const [index, file] of orderedTests.entries()) {
   process.stdout.write(
     `[isolated-test] ${index + 1}/${orderedTests.length}${shardLabel} ${file}\n`,
   );
-  const childEnv = { ...process.env, NODE_ENV: "test" };
-  childEnv.LLM_PROVIDER ??= "mock";
-  const child = Bun.spawn(["bun", "test", "--timeout", "120000", file], {
-    cwd: repoRoot,
-    env: childEnv,
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  const exited = child.exited;
-  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
-  const outcome = await Promise.race([
-    exited.then((exitCode) => ({ kind: "exit" as const, exitCode })),
-    new Promise<{ kind: "timeout" }>((resolve) => {
-      deadlineTimer = setTimeout(() => resolve({ kind: "timeout" }), 150_000);
-    }),
-  ]);
-  if (deadlineTimer) clearTimeout(deadlineTimer);
-  if (outcome.kind === "timeout") {
-    child.kill("SIGTERM");
-    let stopTimer: ReturnType<typeof setTimeout> | undefined;
-    const stopped = await Promise.race([
-      exited.then(() => true),
-      new Promise<false>((resolve) => {
-        stopTimer = setTimeout(() => resolve(false), 5_000);
-      }),
-    ]);
-    if (stopTimer) clearTimeout(stopTimer);
-    if (!stopped) child.kill("SIGKILL");
-    await exited;
-    throw new Error(`${file} exceeded the 150000ms process deadline`);
-  }
-  if (outcome.exitCode !== 0) {
-    throw new Error(`${file} failed with exit code ${outcome.exitCode}`);
-  }
+  await runIsolatedTestFile(file, { cwd: repoRoot });
 }

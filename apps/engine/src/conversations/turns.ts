@@ -4,10 +4,13 @@ import pg from "pg";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db, Executor } from "../db/client.ts";
+import { hostedQuotaError } from "../db/hosted-quota-errors.ts";
 import { conversations, conversationTurns } from "../db/schema/index.ts";
+import { retryTransient } from "../db/transient.ts";
 import { logger } from "../logging/logger.ts";
 import { setMcpTaskFailureIfNotTerminal } from "../mcp/tasks/store.ts";
 import { registerConversationAbort, unregisterConversationAbort } from "./abort.ts";
+import { ConversationTurnInProgressError } from "./errors.ts";
 import { ConversationNotFoundError } from "./service/shared.ts";
 
 const workerId = randomUUID();
@@ -128,15 +131,6 @@ async function reconcileInterruptedConversationTurn(
       );
   } finally {
     await releaseLease(proof, row.id);
-  }
-}
-
-export class ConversationTurnInProgressError extends Error {
-  readonly code = "conversation_turn_in_progress";
-  constructor() {
-    super(
-      "A response is already running for this conversation. Wait for it to finish before sending another message.",
-    );
   }
 }
 
@@ -299,20 +293,35 @@ export async function acquireConversationTurn(
   if (!proof) throw new ConversationTurnInProgressError();
   let ctrl: AbortController | undefined;
   try {
-    const [row] = await db
-      .update(conversationTurns)
-      .set({ state: "running", attempt_id: attempt, worker_id: workerId, updated_at: new Date() })
-      .where(
-        and(
-          eq(conversationTurns.tenant_id, tenantId),
-          eq(conversationTurns.conversation_id, conversationId),
-          eq(conversationTurns.id, id),
-          inArray(conversationTurns.state, ["queued", "parked"]),
-          ...(queued ? [eq(conversationTurns.attempt_id, attempt)] : []),
-        ),
-      )
-      .returning({ id: conversationTurns.id });
-    if (!row) throw new ConversationTurnInProgressError();
+    await retryTransient(
+      () =>
+        db.transaction(async (tx) => {
+          const [row] = await tx
+            .update(conversationTurns)
+            .set({
+              state: "running",
+              attempt_id: attempt,
+              worker_id: workerId,
+              updated_at: new Date(),
+            })
+            .where(
+              and(
+                eq(conversationTurns.tenant_id, tenantId),
+                eq(conversationTurns.conversation_id, conversationId),
+                eq(conversationTurns.id, id),
+                inArray(conversationTurns.state, ["queued", "parked"]),
+                ...(queued ? [eq(conversationTurns.attempt_id, attempt)] : []),
+              ),
+            )
+            .returning({ id: conversationTurns.id });
+          if (!row) throw new ConversationTurnInProgressError();
+          await changed(tx, tenantId, conversationId, id, "running");
+        }),
+      {
+        label: "conversation_turn_acquire",
+        shouldRetry: (error) => hostedQuotaError(error)?.code === "40001",
+      },
+    );
     ctrl = registerConversationAbort(tenantId, conversationId);
     const ownedController = ctrl;
     clientSessions.get(proof)?.controllers.set(id, ownedController);
@@ -326,7 +335,6 @@ export async function acquireConversationTurn(
     }, 1000);
     timer.unref();
     timers.set(ctrl, timer);
-    await changed(db, tenantId, conversationId, id, "running");
     return ctrl;
   } catch (error) {
     if (ctrl) {
@@ -504,3 +512,5 @@ export async function releaseConversationTurn(
     unregisterConversationAbort(tenantId, conversationId, ctrl);
   }
 }
+
+export { ConversationTurnInProgressError } from "./errors.ts";

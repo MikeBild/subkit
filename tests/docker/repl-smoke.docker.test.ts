@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { runPtyScenario, SKIP_PTY_WHEN_NO_EXPECT } from "../e2e/_helpers/pty.ts";
 import { exit, quickStartReady } from "../e2e/_helpers/pty-steps.ts";
-import { collectContainerLogs, type DockerEnv, dockerBoot } from "./_harness.ts";
+import { collectContainerLogs, composeDown, type DockerEnv, dockerBoot } from "./_harness.ts";
 
 let env: DockerEnv;
 beforeAll(async () => {
@@ -11,9 +13,11 @@ beforeAll(async () => {
 
 afterAll(() => {
   collectContainerLogs(path.resolve(import.meta.dir, "../../engine-docker-repl.log"));
+  composeDown();
+  rmSync(HOME, { recursive: true, force: true });
 }, 60_000);
 
-const HOME = path.resolve(import.meta.dir, "../../.docker-repl-home");
+const HOME = mkdtempSync(path.join(tmpdir(), "subkit-docker-repl-home-"));
 
 describe("sk REPL against the container", () => {
   test.skipIf(SKIP_PTY_WHEN_NO_EXPECT)(
@@ -21,6 +25,7 @@ describe("sk REPL against the container", () => {
     async () => {
       const result = await runPtyScenario([quickStartReady(), exit()], {
         engineUrl: env.baseUrl,
+        binary: process.env.SUBKIT_DOCKER_HOST_CLI || undefined,
         env: {
           SUBKIT_API_KEY: env.adminKey,
           SUBKIT_ENGINE_URL: env.baseUrl,

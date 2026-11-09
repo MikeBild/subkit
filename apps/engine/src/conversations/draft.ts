@@ -11,9 +11,10 @@ import {
 } from "../db/schema/index.ts";
 import { executionVisibilityFilter } from "../execution/execution-owner.ts";
 import { isSensitivePayload } from "../execution/sensitive-payload.ts";
-import { readStoredSpec, workflowSpecDigest } from "../workflows/core/spec.ts";
+import { workflowSpecDigest } from "../workflows/core/spec.ts";
 import { workflowUsesSandboxedJs } from "../workflows/runtime-annotation.ts";
 import { buildScopeAtStep } from "../workflows/scope-shape.ts";
+import { readStoredSpec } from "../workflows/stored-spec.ts";
 import { WorkflowDefSchema } from "../workflows/types.ts";
 import {
   bindPersistedWorkflow,

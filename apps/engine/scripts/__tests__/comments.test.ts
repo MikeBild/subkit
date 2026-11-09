@@ -31,4 +31,14 @@ describe("findComments", () => {
     ].join("\n");
     expect(findComments("a.tsx", source)).toEqual([]);
   });
+
+  test("recognizes real Stryker directives while reporting ordinary Stryker commentary", () => {
+    expect(
+      findComments(
+        "a.ts",
+        "try { JSON.parse(body); } catch /* Stryker disable next-line BlockStatement: reviewed equivalent */ { return null; }",
+      ),
+    ).toEqual([]);
+    expect(findComments("a.ts", "// Stryker is useful\nconst a = 1;")).toHaveLength(1);
+  });
 });

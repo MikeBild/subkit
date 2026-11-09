@@ -1,4 +1,3 @@
-import { isDeepStrictEqual } from "node:util";
 import { z } from "@hono/zod-openapi";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import type { RequestDispatchPolicy } from "../connectors/drivers/http.ts";
@@ -50,6 +49,12 @@ import {
 } from "./caller-context.ts";
 import { type CallerOrigin, resolveExecutionCallerOrigin } from "./caller-origin.ts";
 import { type AdmissionDecision, boundaryOfExecution, decideAdmission } from "./core/admission.ts";
+import {
+  credentialWithinBoundary,
+  findAuthorizedEffect,
+  governingExecutionCanDispatch,
+  referenceWithinBoundary,
+} from "./core/authority-admission.ts";
 import { resolveLiveSuccessor } from "./live-successor.ts";
 import { resolveDefinition } from "./resolve-definition.ts";
 import { isSensitivePayload, recoverExecutionPayload } from "./sensitive-payload.ts";
@@ -369,7 +374,7 @@ export async function assertExecutionAuthorityCurrent(
     | { request_id: string; step_id: string; request_source: "webhook" | "scheduler" }
     | undefined;
   for (const row of governing) {
-    if (row.abort_requested_at || !["queued", "running"].includes(row.status))
+    if (!governingExecutionCanDispatch(row.status, Boolean(row.abort_requested_at)))
       fail(
         "execution_boundary_mismatch",
         "the authorized execution is cancelled or already terminal",
@@ -427,12 +432,7 @@ export async function assertExecutionAuthorityCurrent(
     const manifest = WorkflowEffectManifestSchema.safeParse(boundary.effect_manifest);
     const effect =
       parsed.success && manifest.success
-        ? manifest.data.effects.find(
-            (candidate) =>
-              candidate.step_id === parsed.data.step_id &&
-              candidate.configuration_digest === parsed.data.configuration_digest &&
-              isDeepStrictEqual(candidate.call_path ?? [], path),
-          )
+        ? findAuthorizedEffect(manifest.data.effects, parsed.data, path)
         : undefined;
     if (!parsed.success || !effect)
       fail(
@@ -440,13 +440,7 @@ export async function assertExecutionAuthorityCurrent(
         "the loaded request configuration is outside its approved boundary",
       );
     for (const reference of referencedAuthorities ?? []) {
-      if (
-        reference.connector_id !== effect.connector_id ||
-        reference.configuration_digest !== parsed.data.configuration_digest ||
-        (reference.credential_id !== null &&
-          (reference.credential_id !== parsed.data.credential_id ||
-            reference.credential_revision !== parsed.data.credential_revision))
-      )
+      if (!referenceWithinBoundary(reference, effect.connector_id, parsed.data))
         fail(
           "execution_authority_changed",
           "a placeholder of the request reads a connector outside its approved boundary",
@@ -545,18 +539,21 @@ export async function assertExecutionAuthorityCurrent(
     if (parsed.data.credential_id !== null || (system && system.connector.auth_type !== "none")) {
       const metadata = await system?.getAuthorityMetadata();
       if (
-        !metadata?.available ||
-        workflowJsonDigest(metadata.binding) !== effect.credential_binding_digest ||
-        metadata.binding.primary?.id !== parsed.data.credential_id ||
-        metadata.binding.primary?.revision !== parsed.data.credential_revision ||
-        !isDeepStrictEqual(
-          metadata.binding.connection
+        !credentialWithinBoundary(
+          parsed.data,
+          effect.credential_binding_digest,
+          metadata?.available
             ? {
-                id: metadata.binding.connection.id,
-                revision: metadata.binding.connection.revision,
+                digest: workflowJsonDigest(metadata.binding),
+                primary: metadata.binding.primary,
+                connection: metadata.binding.connection
+                  ? {
+                      id: metadata.binding.connection.id,
+                      revision: metadata.binding.connection.revision,
+                    }
+                  : null,
               }
             : null,
-          parsed.data.connection_authority,
         )
       )
         fail(

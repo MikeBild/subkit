@@ -1,5 +1,5 @@
 import { workflowJsonDigest } from "../canonical-json.ts";
-import { type WorkflowSpec, WorkflowSpecSchema } from "../draft-schemas.ts";
+import type { DomainWorkflowSpec } from "../domain-types.ts";
 
 export interface SpecCarrier {
   spec: Record<string, unknown> | null;
@@ -7,11 +7,6 @@ export interface SpecCarrier {
 
 export function carriedSpecColumns(base: SpecCarrier | null | undefined): SpecCarrier {
   return { spec: base?.spec ?? null };
-}
-
-export function readStoredSpec(value: unknown): WorkflowSpec | null {
-  const parsed = WorkflowSpecSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
 }
 
 export interface SpecAuthority {
@@ -29,7 +24,7 @@ export function speaksAsPerson(authority: SpecAuthority | null | undefined): boo
 }
 
 export function personOriginRefused(
-  requested: WorkflowSpec | undefined,
+  requested: DomainWorkflowSpec | undefined,
   base: unknown,
   authority: SpecAuthority | null | undefined,
 ): boolean {

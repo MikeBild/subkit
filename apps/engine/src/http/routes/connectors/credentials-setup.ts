@@ -16,7 +16,7 @@ import {
   releaseDraftCredentialNativeUrlElicitation,
   setDraftCredential,
   validateDraftCredentialSetup,
-} from "../../../conversations/index.ts";
+} from "../../../conversations/public/elicitation.ts";
 import * as credsvc from "../../../credentials/index.ts";
 import { logger } from "../../../logging/index.ts";
 import type { AppEnv } from "../../openapi.ts";

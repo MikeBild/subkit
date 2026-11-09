@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isStructuralTag, mergeStructuralTags } from "../tags.ts";
+import { dedupeTags, isStructuralTag, mergeStructuralTags } from "./tags.ts";
 
 describe("knowledge/isStructuralTag", () => {
   const structural = [
@@ -46,4 +46,12 @@ describe("knowledge/mergeStructuralTags", () => {
       ),
     ).toEqual(["domain:harmoniqs", "café:paris", "akkorde"]);
   });
+});
+
+test("deduplication trims, removes empty/case duplicates and keeps first spelling", () => {
+  expect(dedupeTags([" ", " First ", "FIRST", "second", "first"])).toEqual(["First", "second"]);
+  expect(dedupeTags(["a".repeat(45)])).toEqual(["a".repeat(40)]);
+  expect(dedupeTags(Array.from({ length: 25 }, (_, n) => `tag-${n}`))).toEqual(
+    Array.from({ length: 20 }, (_, n) => `tag-${n}`),
+  );
 });

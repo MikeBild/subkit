@@ -1,4 +1,4 @@
-import type { RunLoopResult } from "../conversations/loop/index.ts";
+import type { RunLoopResult } from "../conversations/types.ts";
 
 export interface DispatchOutcome {
   status: "ok" | "workspace_not_found" | "ignored" | "help" | "approved" | "rejected";

@@ -1,13 +1,13 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import * as svc from "../../../conversations/index.ts";
 import {
   harvestCitationsFromPersisted,
   keepResolvableCitations,
   messageHasText,
   serializeEvent,
   type TurnEvent,
-  withoutApprovalHandle,
-} from "../../../conversations/index.ts";
+} from "../../../conversations/public/authoring.ts";
+import { getConversation } from "../../../conversations/public/lifecycle.ts";
+import { withoutApprovalHandle } from "../../../conversations/public/tool-contract.ts";
 import { monthlyUsage, resolveModelRoute } from "../../../llm/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -20,7 +20,7 @@ export function registerStreamRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const id = c.req.param("id");
-    const detail = await svc.getConversation(
+    const detail = await getConversation(
       principal.tenant_id,
       id,
       db,
@@ -35,7 +35,7 @@ export function registerStreamRoutes(app: OpenAPIHono<AppEnv>): void {
           serializeEvent({ type: "data_part", data_type: "playbook", payload: detail.playbook }),
         );
       const { listElicitationsForConversation } = await import(
-        "../../../conversations/elicitations.ts"
+        "../../../conversations/public/elicitation.ts"
       );
       const allElicitations = await listElicitationsForConversation(principal.tenant_id, id, db);
       const pendingElicitations = allElicitations.filter((e) => e.status === "pending");

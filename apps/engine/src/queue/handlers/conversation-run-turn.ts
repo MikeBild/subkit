@@ -4,24 +4,32 @@ import type { Job, PgBoss } from "pg-boss";
 import { auditAwait } from "../../audit/audit.ts";
 import { resolveActor } from "../../audit/recorders/types.ts";
 import { AuditAction } from "../../audit/types.ts";
-import { isExpectedCancellation } from "../../conversations/abort.ts";
 import {
+  type ConversationTurnOutcome,
+  describeTurnFailure,
   humanInBandAnswer,
   humanPortalAnswer,
+  isExpectedCancellation,
   MODEL_RELAYED_ANSWER,
-} from "../../conversations/answer-actor.ts";
-import * as svc from "../../conversations/service.ts";
-import { describeTurnFailure } from "../../conversations/turn-failure.ts";
+  runConversationTurn,
+} from "../../conversations/public/authoring.ts";
+import {
+  ElicitationValidationError,
+  getElicitation,
+  respondElicitation,
+} from "../../conversations/public/elicitation.ts";
 import {
   bindConversationTurn,
+  clearConversationTurnFailure,
   conversationTurnId,
   finishConversationTurn,
   parkConversationTurn,
-  acquireConversationTurn as registerConversationAbort,
+  recordConversationTurnFailure,
+  registerConversationAbort,
   reserveConversationTurn,
   stopConversationTaskTurn,
-  releaseConversationTurn as unregisterConversationAbort,
-} from "../../conversations/turns.ts";
+  unregisterConversationAbort,
+} from "../../conversations/public/lifecycle.ts";
 import type { Db } from "../../db/client.ts";
 import { hostedQuotaError } from "../../db/hosted-quota-errors.ts";
 import { conversationMessages, users } from "../../db/schema/index.ts";
@@ -100,7 +108,7 @@ async function userMessageTextById(
   return typeof content?.text === "string" ? content.text : "";
 }
 
-function toEnvelope(outcome: svc.ConversationTurnOutcome): ConversationTurnEnvelope {
+function toEnvelope(outcome: ConversationTurnOutcome): ConversationTurnEnvelope {
   return {
     conversation_id: outcome.conversation.id,
     ...(outcome.turn_id ? { turn_id: outcome.turn_id } : {}),
@@ -292,7 +300,7 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
       });
       return;
     }
-    await svc.clearConversationTurnFailure(db, data.tenant_id, data.conversation_id);
+    await clearConversationTurnFailure(db, data.tenant_id, data.conversation_id);
 
     const principal = await rehydrateExecutionPrincipal(
       db,
@@ -315,17 +323,16 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
       throw Object.assign(new Error("The queued conversation is no longer authorized."), {
         code: "execution_authentication_unavailable",
       });
-    let outcome: svc.ConversationTurnOutcome;
+    let outcome: ConversationTurnOutcome;
     if (data.kind === "respond_elicitation") {
       if (!data.elicitation_id) {
         throw new Error("respond_elicitation job missing elicitation_id");
       }
-      const { getElicitation } = await import("../../conversations/elicitations.ts");
       const elicitation = await getElicitation(data.tenant_id, data.elicitation_id, db);
       if (!elicitation || elicitation.conversation_id !== data.conversation_id) {
         throw new Error("respond_elicitation job has no conversation_elicitations row");
       }
-      outcome = await svc.respondElicitation(
+      outcome = await respondElicitation(
         {
           tenant_id: data.tenant_id,
           conversation_id: data.conversation_id,
@@ -361,7 +368,7 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
         data.conversation_id,
         task.user_message_id,
       );
-      outcome = await svc.runConversationTurn(
+      outcome = await runConversationTurn(
         {
           tenant_id: data.tenant_id,
           conversation_id: data.conversation_id,
@@ -455,7 +462,7 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
       });
       return;
     }
-    if (err instanceof svc.ElicitationValidationError) {
+    if (err instanceof ElicitationValidationError) {
       const validationResult = {
         conversation_id: data.conversation_id,
         status: "awaiting_input",
@@ -559,7 +566,7 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
       });
       return;
     }
-    await svc.recordConversationTurnFailure(db, data.tenant_id, data.conversation_id, turnFailure);
+    await recordConversationTurnFailure(db, data.tenant_id, data.conversation_id, turnFailure);
     recordUsageEvent(db, {
       tenantId: data.tenant_id,
       surface: "conversations",

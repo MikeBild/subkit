@@ -12,7 +12,7 @@ import {
 import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig } from "../../config/loader.ts";
-import { registerNativeUrlElicitationCompletion } from "../../conversations/native-url-elicitation.ts";
+import { registerNativeUrlElicitationCompletion } from "../../conversations/public/elicitation.ts";
 import type { Db } from "../../db/client.ts";
 import { executions } from "../../db/schema/index.ts";
 import { cancel } from "../../execution/abort.ts";

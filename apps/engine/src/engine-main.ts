@@ -5,7 +5,7 @@ import { ChatAdapterRegistry } from "./chat/registry.ts";
 import { SkCliAdapter } from "./chat/sk-cli/adapter.ts";
 import { closeAllPools } from "./connectors/drivers/postgres.ts";
 import { assertCryptoKeyOrExit } from "./crypto/aes-gcm.ts";
-import { closeDb, getDb, getPool } from "./db/client.ts";
+import { closeDb, getDb, getPool, readAdvisoryLockSnapshot } from "./db/client.ts";
 import { type DriftReport, detectDrift, runMigrationsFromUrl } from "./db/migrate.ts";
 import { printIssuedKey, seedAtBoot } from "./db/seed.ts";
 import {
@@ -31,6 +31,12 @@ import { seedKnowledgeAtBoot } from "./knowledge/seed.ts";
 import { newTraceId, withContext } from "./logging/context.ts";
 import { errorFields, logger } from "./logging/logger.ts";
 import {
+  diagnoseOperation,
+  runtimeDiagnosticEvent,
+  runtimeDiagnosticsEnabled,
+  startRuntimeDiagnosticSampler,
+} from "./observability/runtime-diagnostics.ts";
+import {
   bootPhase,
   readMemoryUsage,
   startBootHeartbeat,
@@ -40,7 +46,7 @@ import {
 import { startTracing } from "./observability/tracing.ts";
 import * as bootstrap from "./onboarding/bootstrap.ts";
 import { startListener, stopListener } from "./pubsub/listener.ts";
-import { startBoss, stopBoss } from "./queue/boss.ts";
+import { bossPoolCounts, startBoss, stopBoss } from "./queue/boss.ts";
 import { EVENT_FANOUT_QUEUE } from "./queue/handlers/event-fanout.ts";
 import { registerAllHandlers } from "./queue/handlers/index.ts";
 import type { RuntimeConfigCoordinator as Coordinator } from "./runtime-config/coordinator.ts";
@@ -70,6 +76,13 @@ async function runServer(): Promise<void> {
   let requestedExitCode = shutdownExitCode("signal");
   const SHUTDOWN_DRAIN_TIMEOUT_MS = 120_000;
   const HTTP_CLOSE_ABANDON_MS = 10_000;
+  if (runtimeDiagnosticsEnabled()) {
+    runtimeDiagnosticEvent("boot.diagnostics_requested");
+    await lifetime.acquire(
+      () => startEventLoopLagMonitor({ intervalMs: 250, thresholdMs: 50 }),
+      (stop) => stop(),
+    );
+  }
   const shutdown = (
     signal: NodeJS.Signals | "restart" | "boot_failure",
     exitCode = shutdownExitCode("signal"),
@@ -324,6 +337,23 @@ async function runServer(): Promise<void> {
     await lifetime.step(() =>
       bootPhase("queue_handlers", () => registerAllHandlers({ boss, db, chatRegistry })),
     );
+    if (runtimeDiagnosticsEnabled()) {
+      const appPool = getPool();
+      await lifetime.acquire(
+        () =>
+          startRuntimeDiagnosticSampler({
+            appPool: () => ({
+              total: appPool.totalCount,
+              idle: appPool.idleCount,
+              waiting: appPool.waitingCount,
+              max: appPool.options.max,
+            }),
+            bossPool: () => bossPoolCounts(boss),
+            advisoryLockSnapshot: () => readAdvisoryLockSnapshot(appPool),
+          }),
+        (stop) => stop(),
+      );
+    }
 
     try {
       const { hydrateChatRegistry } = await lifetime.step(() => import("./chat/hydrate.ts"));
@@ -536,7 +566,10 @@ async function runServer(): Promise<void> {
               });
               return;
             }
-            const outcomes = await applySkillSeedsForAllTenants(loaded.skills, db);
+            const outcomes = await diagnoseOperation({
+              action: "boot.skill_seed",
+              fn: () => applySkillSeedsForAllTenants(loaded.skills, db),
+            });
             const totals = outcomes.reduce(
               (acc, o) => {
                 acc.inserted += o.inserted;
@@ -563,7 +596,11 @@ async function runServer(): Promise<void> {
               ...errorFields(err),
             });
           } finally {
-            if (!lifetime.stopping) await seedKnowledgeAtBoot(db);
+            if (!lifetime.stopping)
+              await diagnoseOperation({
+                action: "boot.knowledge_seed",
+                fn: () => seedKnowledgeAtBoot(db),
+              });
             if (!lifetime.stopping) await prewarmSandbox();
           }
         },
@@ -578,7 +615,10 @@ async function runServer(): Promise<void> {
     } else {
       lifetime.background(
         async () => {
-          await seedKnowledgeAtBoot(db);
+          await diagnoseOperation({
+            action: "boot.knowledge_seed",
+            fn: () => seedKnowledgeAtBoot(db),
+          });
           if (!lifetime.stopping) await prewarmSandbox();
         },
         (error) =>
@@ -638,7 +678,8 @@ async function runServer(): Promise<void> {
         }),
       (stop) => stop(),
     );
-    await lifetime.acquire(startEventLoopLagMonitor, (stop) => stop());
+    if (!runtimeDiagnosticsEnabled())
+      await lifetime.acquire(startEventLoopLagMonitor, (stop) => stop());
 
     await lifetime.step(emitBootComplete);
 

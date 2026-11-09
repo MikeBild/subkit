@@ -1,6 +1,6 @@
 import { definitionWithoutDescription } from "../canonical-json.ts";
-import { buildStepDag, type CycleReport, detectCycles, renderCycleReport } from "../dag.ts";
-import type { WorkflowDef } from "../types.ts";
+import type { DomainWorkflowDef } from "../domain-types.ts";
+import { buildStepDag, type CycleReport, detectCycles, renderCycleReport } from "./dag.ts";
 
 export const SLUG_MAX_LENGTH = 64;
 export const WORKFLOW_MAX_STEPS = 200;
@@ -29,11 +29,11 @@ interface DefinitionIssue {
   rule_id: "workflow_cycle_detected";
 }
 
-export function stepCycles(def: Pick<WorkflowDef, "name" | "steps">): CycleReport {
-  return detectCycles(buildStepDag(def as WorkflowDef));
+export function stepCycles(def: Pick<DomainWorkflowDef, "name" | "steps">): CycleReport {
+  return detectCycles(buildStepDag(def));
 }
 
-export function cycleIssues(def: Pick<WorkflowDef, "name" | "steps">): DefinitionIssue[] {
+export function cycleIssues(def: Pick<DomainWorkflowDef, "name" | "steps">): DefinitionIssue[] {
   const found = stepCycles(def);
   const cycles = found.cycles.filter((cycle) => cycle.nodes.length > 1);
   if (cycles.length === 0) return [];

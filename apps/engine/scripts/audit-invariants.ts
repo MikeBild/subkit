@@ -64,7 +64,7 @@ function checkAiSdkLocality(): Result {
 }
 
 function checkJsonataLocality(): Result {
-  const allowed = "apps/engine/src/execution/jsonata-engine.ts";
+  const allowed = "apps/engine/src/execution/core/jsonata-contract.ts";
   const VALUE_IMPORT = /(?:^|\n)\s*import\s+(?!type\s)[^"';]+from\s+["']jsonata["']/;
   const violations: string[] = [];
   for (const f of listFiles(ENGINE_SRC, (p) => p.endsWith(".ts") && !p.endsWith(".test.ts"))) {
@@ -155,6 +155,14 @@ function checkRouteLayering(): Result {
     "observability",
     "logging",
   ]);
+  const explicitConversationFacades = new Set([
+    "conversations/public/lifecycle.ts",
+    "conversations/public/authoring.ts",
+    "conversations/public/context.ts",
+    "conversations/public/elicitation.ts",
+    "conversations/public/policy.ts",
+    "conversations/public/tool-contract.ts",
+  ]);
   for (const f of routeFiles) {
     const rel = relative(REPO, f);
     const text = readFileSync(f, "utf8");
@@ -166,7 +174,9 @@ function checkRouteLayering(): Result {
       if (fullPath.endsWith(".json")) continue;
       const tail = fullPath.split(`/${subsystem}/`)[1] ?? "";
       const isIndex = tail === "index" || tail === "index.ts" || tail === "";
-      if (!isIndex) {
+      const explicitFacade =
+        subsystem === "conversations" && explicitConversationFacades.has(`${subsystem}/${tail}`);
+      if (!isIndex && !explicitFacade) {
         violations.push(`${rel}: imports ../${subsystem}/${tail}`);
       }
     }
@@ -374,7 +384,7 @@ function checkCoverageFloor(): Result {
   return {
     id: "coverage_floor",
     status: "PASS",
-    message: `floors declared for ${Object.keys(subsystems).length} subsystems and ${Object.keys(files).length} files${core_default ? `, core default ${core_default.line_min}/${core_default.branch_min}` : ""} (numeric enforcement via \`bun run check:coverage-floor\`)`,
+    message: `floors declared for ${Object.keys(subsystems).length} subsystems and ${Object.keys(files).length} files${core_default ? `, core default line ${core_default.line_min}/function ${core_default.function_min}` : ""} (numeric enforcement via \`bun run check:coverage-floor\`)`,
   };
 }
 
@@ -730,7 +740,10 @@ function checkTestServersBindLoopback(): Result {
 }
 
 function checkNoComments(): Result {
-  const files = execFileSync("git", ["ls-files"], { cwd: REPO, encoding: "utf8" })
+  const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], {
+    cwd: REPO,
+    encoding: "utf8",
+  })
     .split("\n")
     .filter((f) => COMMENT_SCOPE.test(f) && !COMMENT_EXEMPT.test(f));
   const violations: string[] = [];

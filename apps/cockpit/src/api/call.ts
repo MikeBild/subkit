@@ -1,5 +1,5 @@
 import type { paths } from "@cli-core/engine-api/openapi";
-import { apiRequest, type RequestLimits } from "./client";
+import { apiRequest, type RequestLimits } from "./transport";
 
 export type ApiMethod = "get" | "post" | "put" | "patch" | "delete";
 
@@ -30,6 +30,16 @@ export type ApiQueryParams<P extends ApiPath, M extends ApiMethod> =
 
 export type ApiRequestBody<P extends ApiPath, M extends ApiMethod> =
   Operation<P, M> extends { requestBody?: infer R } ? JsonContent<NonNullable<R>> : never;
+
+type MultipartContent<T> = T extends { content: { "multipart/form-data": infer B } } ? B : never;
+export type ApiMultipartBody<P extends ApiPath, M extends ApiMethod> =
+  Operation<P, M> extends { requestBody?: infer R } ? MultipartContent<NonNullable<R>> : never;
+type MultipartFields<T> = {
+  [K in keyof T]: T[K] extends string | undefined ? string | Blob : never;
+};
+type MultipartPath<M extends ApiMethod> = {
+  [P in ApiPath]: [ApiMultipartBody<P, M>] extends [never] ? never : P;
+}[ApiPath];
 
 type SuccessStatus = 200 | 201 | 202 | 204;
 
@@ -102,4 +112,30 @@ export function apiCall<P extends ApiPath, M extends MethodsOf<P>>(
   if (options.signal) init.signal = options.signal;
   if (options.headers) init.headers = { ...options.headers };
   return apiRequest<ApiResponse<P, M>>(target, init, options.limits ?? {});
+}
+
+export function apiMultipart<P extends MultipartPath<"post">>(
+  path: P,
+  options: Omit<ApiCallOptions<P, "post">, "body"> & {
+    body: MultipartFields<ApiMultipartBody<P, "post">>;
+  },
+): Promise<ApiResponse<P, "post">> {
+  const body = new FormData();
+  for (const [key, value] of Object.entries(options.body)) {
+    if (value !== undefined) body.set(key, value as string | Blob);
+  }
+  return apiRequest<ApiResponse<P, "post">>(
+    resolveApiPath(
+      path,
+      options.path as Record<string, string | number> | undefined,
+      options.query as Record<string, QueryValue> | undefined,
+    ),
+    {
+      method: "POST",
+      body,
+      ...(options.signal ? { signal: options.signal } : {}),
+      ...(options.headers ? { headers: { ...options.headers } } : {}),
+    },
+    options.limits ?? {},
+  );
 }

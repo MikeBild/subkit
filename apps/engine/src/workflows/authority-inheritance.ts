@@ -1,4 +1,3 @@
-import { isDeepStrictEqual } from "node:util";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import { resolveActor } from "../audit/recorders/types.ts";
@@ -15,16 +14,11 @@ import type { BoundaryGrowth } from "./authority-growth.ts";
 import { authorityLive } from "./authority-live.ts";
 import { contentBoundariesFromManifest } from "./content-publication-proposal.ts";
 import { carryForward } from "./core/authority.ts";
+import { projectBoundaryGrowth } from "./core/authority-inheritance.ts";
 import { type WorkflowEffectManifest, WorkflowEffectManifestSchema } from "./effect-manifest.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
-import {
-  type ReadInheritanceEvidence,
-  readEffectInherits,
-  requestStepsOf,
-} from "./read-inheritance.ts";
+import { type ReadInheritanceEvidence, requestStepsOf } from "./read-inheritance.ts";
 import { reportBoundariesFromManifest } from "./report-delivery-proposal.ts";
-
-type Effect = WorkflowEffectManifest["effects"][number];
 
 export async function nameGrowth(
   db: Executor,
@@ -78,100 +72,15 @@ export async function referenceApprovedManifest(
   return row ? parseManifest(row.approved ?? row.own) : null;
 }
 
-const EFFECT_RANK = { read: 0, write: 1, destructive: 2 } as const;
-
-function effectCovered(next: Effect, granted: Effect): boolean {
-  if (next.effect === "unknown" || granted.effect === "unknown")
-    return next.effect === granted.effect && next.operation === granted.operation;
-  return EFFECT_RANK[next.effect] <= EFFECT_RANK[granted.effect];
-}
-
-const SUB_BOUNDARIES = [
-  "transactional_delivery",
-  "outbox_delivery",
-  "report_delivery",
-  "content_publication",
-  "read_path",
-  "storage",
-  "boundary",
-  "read_query",
-] as const;
-
-function sameConfiguration(next: Effect, granted: Effect): boolean {
-  return (
-    next.configuration_digest === granted.configuration_digest &&
-    next.credential_binding_digest === granted.credential_binding_digest &&
-    next.rewrites_target === granted.rewrites_target &&
-    SUB_BOUNDARIES.every((key) => isDeepStrictEqual(next[key], granted[key]))
-  );
-}
-
 export function boundaryGrowth(
   granted: WorkflowEffectManifest,
   next: WorkflowEffectManifest,
   evidence?: ReadInheritanceEvidence,
   relaxed?: Map<string, string[]>,
 ): BoundaryGrowth[] {
-  const growth = new Map<string, BoundaryGrowth>();
-  const add = (kind: BoundaryGrowth["kind"], effect: Effect) => {
-    const entry = {
-      kind,
-      connector_id: effect.connector_id,
-      target: effect.target,
-      effect: effect.effect,
-    };
-    growth.set(JSON.stringify(entry), entry);
-  };
-  for (const effect of next.effects) {
-    const sameConnector = granted.effects.filter(
-      (candidate) =>
-        candidate.connector_id === effect.connector_id &&
-        candidate.driver === effect.driver &&
-        candidate.environment === effect.environment,
-    );
-    if (sameConnector.length === 0) {
-      add(effect.connector_id ? "new_connector" : "new_target", effect);
-      continue;
-    }
-    const sameTarget = sameConnector.filter((candidate) => candidate.target === effect.target);
-    if (sameTarget.length === 0) {
-      add("new_target", effect);
-      continue;
-    }
-    const sameShape = sameTarget.flatMap((candidate) => {
-      const read = evidence
-        ? readEffectInherits(effect, candidate, evidence, SUB_BOUNDARIES)
-        : null;
-      if (read === null)
-        return sameConfiguration(effect, candidate) ? [{ candidate, keys: [] }] : [];
-      return read ? [{ candidate, keys: read.relaxed }] : [];
-    });
-    if (sameShape.length === 0) {
-      add("changed_boundary", effect);
-      continue;
-    }
-    const covering = sameShape.filter((shape) => effectCovered(effect, shape.candidate));
-    if (covering.length === 0) {
-      add("wider_effect", effect);
-      continue;
-    }
-    const keys = covering.reduce((a, b) => (b.keys.length < a.keys.length ? b : a)).keys;
-    if (relaxed && keys.length > 0)
-      relaxed.set(
-        effect.step_id,
-        [...new Set([...(relaxed.get(effect.step_id) ?? []), ...keys])].sort(),
-      );
-  }
-  if (!isDeepStrictEqual(granted.caller_guards ?? null, next.caller_guards ?? null)) {
-    const entry = {
-      kind: "changed_boundary" as const,
-      connector_id: null,
-      target: "execution_guards",
-      effect: "write" as const,
-    };
-    growth.set(JSON.stringify(entry), entry);
-  }
-  return [...growth.values()];
+  const result = projectBoundaryGrowth(granted, next, evidence, relaxed);
+  if (relaxed) for (const [step, keys] of result.relaxed) relaxed.set(step, keys);
+  return result.growth;
 }
 
 function parseManifest(raw: unknown): WorkflowEffectManifest | null {

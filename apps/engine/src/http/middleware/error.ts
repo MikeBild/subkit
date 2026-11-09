@@ -4,16 +4,17 @@ import { HTTPException } from "hono/http-exception";
 import { DescriptionAcceptanceError } from "../../api/catalog-metadata.ts";
 import { HostedChatOwnershipRequired } from "../../chat/hosted-ownership.ts";
 import {
-  ConversationNotFoundError,
-  ElicitationNotFoundError,
-} from "../../conversations/service/elicit.ts";
-import { PendingElicitationBlockedError } from "../../conversations/service/shared.ts";
-import {
   describeTurnFailure,
   timeoutPhaseOf,
   turnFailureFramePayload,
-} from "../../conversations/turn-failure.ts";
-import { ConversationTurnInProgressError } from "../../conversations/turns.ts";
+} from "../../conversations/public/authoring.ts";
+import {
+  ConversationNotFoundError,
+  ConversationTurnInProgressError,
+  ElicitationNotFoundError,
+  PendingElicitationBlockedError,
+} from "../../conversations/types.ts";
+import { CatalogVocabularyBusyError } from "../../db/catalog-vocabulary.ts";
 import { hostedQuotaError } from "../../db/hosted-quota-errors.ts";
 import { HostedFileQuotaError } from "../../files/hosted-quota.ts";
 import { ApiKeyOwnerNotFoundError } from "../../identity/api-key-owner.ts";
@@ -186,19 +187,24 @@ const CONVERSATION_TURN_ABORT_MESSAGES: Record<string, string> = {
 
 export function mapKnownErrorResponse(c: Context<AppEnv>, err: unknown): Response | null {
   let databaseError = err;
+  let transactionConflict = false;
   for (let depth = 0; depth < 4 && databaseError instanceof Error; depth++) {
-    if (
-      "code" in databaseError &&
-      (databaseError.code === "40001" || databaseError.code === "40P01")
-    )
+    if (databaseError instanceof CatalogVocabularyBusyError)
       return envelope(
         c,
         409,
         "catalog_vocabulary_changed",
         "Catalog changed concurrently; reload and retry",
       );
+    if (
+      "code" in databaseError &&
+      (databaseError.code === "40001" || databaseError.code === "40P01")
+    )
+      transactionConflict = true;
     databaseError = databaseError.cause;
   }
+  if (transactionConflict)
+    return envelope(c, 409, "conflict", "Concurrent operation conflicted; reload and retry");
   if (err instanceof DescriptionAcceptanceError)
     return envelope(c, err.code === "description_changed" ? 409 : 400, err.code, err.message);
   if (err instanceof ApiKeyOwnerNotFoundError) return envelope(c, 404, err.code, err.message);

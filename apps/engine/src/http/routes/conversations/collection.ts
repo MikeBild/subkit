@@ -3,7 +3,31 @@ import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { conversationCollectionOperations } from "../../../api/operations/conversation-collection.ts";
 import { toHonoRoute } from "../../../api/operations/hono.ts";
 import { principalOrigin } from "../../../auth/index.ts";
-import * as svc from "../../../conversations/index.ts";
+import {
+  type ConversationTurnOutcome,
+  type CreateConversationResult,
+  createConversation,
+  describeTurnFailure,
+  humanChatAnswer,
+  loadFocusExecution,
+  runConversationTurn,
+  serializeEvent,
+  surfaceFromClientHeader,
+  type TurnEvent,
+  turnFailureFramePayload,
+} from "../../../conversations/public/authoring.ts";
+import {
+  buildMessages,
+  countConversations,
+  getConversation,
+  isConversationHiddenFor,
+  listConversations,
+  patchConversation,
+  readConversationUsage,
+  recordConversationTurnFailure,
+  registerConversationAbort,
+  unregisterConversationAbort,
+} from "../../../conversations/public/lifecycle.ts";
 import * as intake from "../../../knowledge/index.ts";
 import { BadRequestError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -37,7 +61,15 @@ const createRouteSpec = createRoute({
 });
 
 export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
-  const operations = conversationCollectionOperations(svc);
+  const operations = conversationCollectionOperations({
+    buildMessages,
+    countConversations,
+    getConversation,
+    isConversationHiddenFor,
+    listConversations,
+    patchConversation,
+    readConversationUsage,
+  });
   toHonoRoute(app, operations.list);
 
   app.openapi(createRouteSpec, async (c) => {
@@ -60,7 +92,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     if (body.execution_id)
       await ensurePermission(c, "execution:read", { type: "execution", id: body.execution_id });
     const focus = body.execution_id
-      ? await svc.loadFocusExecution(principal.tenant_id, body.execution_id, db, principal)
+      ? await loadFocusExecution(principal.tenant_id, body.execution_id, db, principal)
       : null;
     if (body.execution_id && !focus) throw new NotFoundError("execution");
     if (focus && body.workflow_id && focus.workflow_id !== body.workflow_id) {
@@ -87,21 +119,21 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       ...(intakeItemIds.length ? { intake_item_ids: intakeItemIds } : {}),
       ...(body.references && body.references.length > 0 ? { references: body.references } : {}),
       origin_client: principalOrigin(principal),
-      surface: svc.surfaceFromClientHeader(c.req.header("x-subkit-client")),
+      surface: surfaceFromClientHeader(c.req.header("x-subkit-client")),
     } as const;
     const runtimeContext = buildRuntimeContextFromRequest(c, principal);
 
     const driveTurn = async (
-      created: svc.CreateConversationResult,
-      onEvent?: (ev: svc.TurnEvent) => void,
-    ): Promise<svc.ConversationTurnOutcome> => {
-      const turnAbortCtrl = await svc.registerConversationAbort(
+      created: CreateConversationResult,
+      onEvent?: (ev: TurnEvent) => void,
+    ): Promise<ConversationTurnOutcome> => {
+      const turnAbortCtrl = await registerConversationAbort(
         principal.tenant_id,
         created.conversation.id,
         db,
       );
       try {
-        return await svc.runConversationTurn(
+        return await runConversationTurn(
           {
             tenant_id: principal.tenant_id,
             conversation_id: created.conversation.id,
@@ -110,7 +142,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
             locale: conversationLocale(c.req.header("cookie"), c.req.header("accept-language")),
             user_message: created.initial_message ?? "",
             ...(created.references ? { user_references: created.references } : {}),
-            answer_actor: svc.humanChatAnswer(principal),
+            answer_actor: humanChatAnswer(principal),
             user_memory: created.user_memory,
             turn_abort_ctrl: turnAbortCtrl,
             runtime_context: runtimeContext,
@@ -121,7 +153,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
           db,
         );
       } finally {
-        await svc.unregisterConversationAbort(
+        await unregisterConversationAbort(
           principal.tenant_id,
           created.conversation.id,
           turnAbortCtrl,
@@ -133,7 +165,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       return streamSSE(c, async (stream) => {
         let createdId: string | null = null;
         try {
-          const created = await svc.createConversation(createParams, db);
+          const created = await createConversation(createParams, db);
           createdId = created.conversation.id;
           await stream.writeSSE({
             event: "conversation_started",
@@ -148,23 +180,23 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
             );
             return;
           }
-          const outcome = await driveTurn(created, (ev: svc.TurnEvent) => {
-            void stream.writeSSE(svc.serializeEvent(ev));
+          const outcome = await driveTurn(created, (ev: TurnEvent) => {
+            void stream.writeSSE(serializeEvent(ev));
           });
           await stream.writeSSE(outcomeFrame(outcome));
         } catch (error) {
-          const failure = svc.describeTurnFailure(error);
+          const failure = describeTurnFailure(error);
           if (createdId) {
-            await svc
-              .recordConversationTurnFailure(db, principal.tenant_id, createdId, failure)
-              .catch(() => {});
+            await recordConversationTurnFailure(db, principal.tenant_id, createdId, failure).catch(
+              () => {},
+            );
           }
-          await stream.writeSSE(errorFrame(svc.turnFailureFramePayload(failure)));
+          await stream.writeSSE(errorFrame(turnFailureFramePayload(failure)));
         }
       }) as Response & RouteConfigToTypedResponse<typeof createRouteSpec>;
     }
 
-    const created = await svc.createConversation(createParams, db);
+    const created = await createConversation(createParams, db);
     if (!created.initial_message) {
       return c.json(
         serializeConversation({

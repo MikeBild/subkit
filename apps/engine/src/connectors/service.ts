@@ -1,8 +1,6 @@
 import { and, asc, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   type CatalogGroupBy,
-  type CatalogMetadataPatch,
-  catalogMetadataView,
   humanMetadataWrite,
   metadataChange,
 } from "../api/catalog-metadata.ts";
@@ -23,13 +21,19 @@ import { connectors, credentials } from "../db/schema/index.ts";
 import { BadRequestError, HttpError } from "../http/errors.ts";
 import { evictServer as evictMcpServer } from "../mcp/client/pool.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
+import { validateConnectorConfigOrThrow, withMcpConfigDefaults } from "./config-schemas.ts";
 import {
-  validateConnectorAuthType,
-  validateConnectorConfigOrThrow,
-  validateMcpAuthConsistency,
-  validateSignedJwtAuthConfig,
-  withMcpConfigDefaults,
-} from "./config-schemas.ts";
+  authTypeIssue,
+  connectorEnvironmentKey as environmentKey,
+  isCircuitOpenBlocking as isCircuitOpenBlockingAt,
+  mcpAuthConsistencyIssue,
+  metadataPatchOf,
+  oauthScopeOf,
+  signedJwtAuthConfigIssue,
+  slugify as slugStem,
+  templateWasRebound,
+} from "./core/connector-config.ts";
+import { toConnectorView } from "./core/view.ts";
 import { closePoolForConnector } from "./drivers/postgres.ts";
 import { connectorCountsAgainstHealth } from "./health-ratio.ts";
 import { carryMcpTrustList } from "./mcp-tool-trust.ts";
@@ -49,10 +53,9 @@ import type {
 
 function assertAuthTypeAllowedForDriver(
   driver: DriverName,
-  auth_type: ConnectorView["auth_type"] | undefined,
+  auth_type: ConnectorView["auth_type"],
 ): void {
-  const issues = validateConnectorAuthType(driver, auth_type);
-  const first = issues[0];
+  const first = authTypeIssue(driver, auth_type);
   if (!first) return;
   throw new BadRequestError(first.message, { field: first.path, driver });
 }
@@ -62,7 +65,7 @@ function assertMcpAuthConfigConsistent(
   auth_type: ConnectorView["auth_type"],
   config: Record<string, unknown> | undefined,
 ): void {
-  const first = validateMcpAuthConsistency(driver, auth_type, config)[0];
+  const first = mcpAuthConsistencyIssue(driver, auth_type, config);
   if (!first) return;
   throw new BadRequestError(first.message, { field: first.path, driver });
 }
@@ -71,74 +74,17 @@ function assertSignedJwtAuthConfig(
   auth_type: ConnectorView["auth_type"],
   config: Record<string, unknown> | undefined,
 ): void {
-  const first = validateSignedJwtAuthConfig(auth_type, config)[0];
+  const first = signedJwtAuthConfigIssue(auth_type, config);
   if (!first) return;
   throw new BadRequestError(first.message, { field: first.path });
 }
 
 function slugify(name: string): string {
-  return (
-    name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 64) || `cn-${Math.random().toString(36).slice(2, 8)}`
-  );
-}
-
-function metadataPatchOf(input: {
-  accept_description?: boolean | undefined;
-  description?: string | null | undefined;
-  category?: string | null | undefined;
-}): CatalogMetadataPatch {
-  return {
-    ...(input.description !== undefined ? { description: input.description } : {}),
-    ...(input.accept_description !== undefined
-      ? { accept_description: input.accept_description }
-      : {}),
-    ...(input.category !== undefined ? { category: input.category } : {}),
-  };
+  return slugStem(name) || `cn-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function toView(row: typeof connectors.$inferSelect): ConnectorView {
-  return {
-    id: row.id,
-    tenant_id: row.tenant_id,
-    slug: row.slug,
-    display_name: row.display_name,
-    ...catalogMetadataView(row),
-    driver: row.driver as DriverName,
-    environment: row.environment as Environment,
-    auth_type: row.auth_type as ConnectorView["auth_type"],
-    base_url: row.base_url ?? null,
-    dsn: row.dsn ?? null,
-    config: (row.config as Record<string, unknown>) ?? {},
-    operator_quirks: ((row.operator_quirks as ConnectorView["operator_quirks"]) ??
-      {}) as ConnectorView["operator_quirks"],
-    template_slug: row.template_slug ?? null,
-    template_name: row.template_name ?? null,
-    template_source: row.template_source ?? null,
-    template_version: row.template_version ?? null,
-    template_snapshot: (row.template_snapshot as Record<string, unknown> | null) ?? null,
-    self_description: (row.self_description as ConnectorView["self_description"]) ?? {},
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-    enabled: row.enabled ?? true,
-    last_error: row.last_error ?? null,
-    circuit_state: (row.circuit_state as ConnectorView["circuit_state"]) ?? "closed",
-    circuit_opened_at: row.circuit_opened_at ?? null,
-    circuit_failure_count: row.circuit_failure_count ?? 0,
-    circuit_threshold: row.circuit_threshold ?? 5,
-    circuit_reset_ms: row.circuit_reset_ms ?? 300000,
-    needs_reauth: row.needs_reauth ?? false,
-    auth_failed_at: row.auth_failed_at ?? null,
-    auth_failed_reason: row.auth_failed_reason ?? null,
-    health_state: row.health_state ?? "ok",
-    health_reason: row.health_reason ?? null,
-    health_error_code: row.health_error_code ?? null,
-    sunset_at: row.sunset_at ?? null,
-    successor_uri: row.successor_uri ?? null,
-  };
+  return toConnectorView(row);
 }
 
 async function resolveCreateTemplateBinding(
@@ -262,8 +208,11 @@ export async function createConnector(
       { base_url: effective.base_url, config: effective.config, dsn: effective.dsn },
       existing ?? null,
       {
-        template_rebound:
-          resolved.binding != null && resolved.binding.template_slug !== existing?.template_slug,
+        template_rebound: templateWasRebound(
+          existing?.template_slug,
+          resolved.binding?.template_slug,
+          false,
+        ),
       },
     );
     const config = carryMcpTrustList(
@@ -564,9 +513,7 @@ export function isCircuitOpenBlocking(
   connector: Pick<ConnectorView, "circuit_state" | "circuit_opened_at" | "circuit_reset_ms">,
   now_ms: number = Date.now(),
 ): boolean {
-  if (connector.circuit_state !== "open") return false;
-  if (connector.circuit_opened_at === null) return false;
-  return now_ms - connector.circuit_opened_at.getTime() < connector.circuit_reset_ms;
+  return isCircuitOpenBlockingAt(connector, now_ms);
 }
 
 export interface ConnectorEnvironmentRequest {
@@ -575,7 +522,7 @@ export interface ConnectorEnvironmentRequest {
 }
 
 export function connectorEnvironmentKey(connector_id: string, environment: Environment): string {
-  return `${connector_id}:${environment}`;
+  return environmentKey(connector_id, environment);
 }
 
 export async function getConnectorsForEnvironments(
@@ -649,14 +596,6 @@ export async function getConnectorForEnvironment(
   return rows.get(connectorEnvironmentKey(id, environment)) ?? null;
 }
 
-function oauthScopeOf(config: unknown): string | null {
-  if (!config || typeof config !== "object") return null;
-  const oauth = (config as Record<string, unknown>).oauth;
-  if (!oauth || typeof oauth !== "object") return null;
-  const scope = (oauth as Record<string, unknown>).scope;
-  return typeof scope === "string" && scope.trim() ? scope.trim() : null;
-}
-
 export async function updateConnector(
   tenant_id: string,
   id: string,
@@ -682,9 +621,11 @@ export async function updateConnector(
     const prior = existing[0];
     if (!prior) return null;
     const patch = restoreMaskedConnectorSecrets(requested, prior, {
-      template_rebound:
-        requested.clear_template_binding === true ||
-        (requested.template_slug != null && requested.template_slug !== prior.template_slug),
+      template_rebound: templateWasRebound(
+        prior.template_slug,
+        requested.template_slug,
+        requested.clear_template_binding,
+      ),
     });
     if (patch.clear_template_binding && patch.template_slug) {
       throw new HttpError(

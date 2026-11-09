@@ -89,6 +89,16 @@ describe("renderInvokeSnippet", () => {
     expect(python).toContain(`"tags": ["a", 1]`);
   });
 
+  test("python renders unsupported values as None", () => {
+    const python = renderInvokeSnippet({
+      ...BASE,
+      lang: "python",
+      environment: "prod",
+      input: { odd: Symbol("odd") },
+    });
+    expect(python).toContain('"odd": None');
+  });
+
   test("node prints the body as an indented object literal", () => {
     const node = renderInvokeSnippet({ ...BASE, lang: "node", environment: "dev" });
     expect(node).toContain('await fetch("https://engine.example.com/v1/executions", {');
@@ -96,6 +106,76 @@ describe("renderInvokeSnippet", () => {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: the placeholder the snippet prints.
     expect(node).toContain("authorization: `Bearer ${process.env.SK_API_KEY}`,");
     expect(node).toContain('    "source": "saved",');
+  });
+
+  test("node and Python snippets retain every protocol line", () => {
+    expect(renderInvokeSnippet({ ...BASE, lang: "node", environment: "prod" })).toBe(
+      [
+        'const res = await fetch("https://engine.example.com/v1/executions", {',
+        '  method: "POST",',
+        "  headers: {",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: emitted Node snippet placeholder.
+        "    authorization: `Bearer ${process.env.SK_API_KEY}`,",
+        '    "x-subkit-environment": "prod",',
+        '    "content-type": "application/json",',
+        "  },",
+        "  body: JSON.stringify({",
+        '    "source": "saved",',
+        `    "workflow_id": "${WORKFLOW}",`,
+        '    "input": {}',
+        "  }),",
+        "});",
+        "const result = await res.json();",
+        "console.log(result);",
+      ].join("\n"),
+    );
+    expect(renderInvokeSnippet({ ...BASE, lang: "python", environment: "dev" })).toBe(
+      [
+        "import os",
+        "import requests",
+        "",
+        "res = requests.post(",
+        '    "https://engine.example.com/v1/executions",',
+        "    headers={",
+        `        "authorization": f"Bearer {os.environ['SK_API_KEY']}",`,
+        '        "x-subkit-environment": "dev",',
+        '        "content-type": "application/json",',
+        "    },",
+        `    json={"source": "saved", "workflow_id": "${WORKFLOW}", "input": {}},`,
+        ")",
+        "print(res.json())",
+      ].join("\n"),
+    );
+  });
+
+  test("empty and undefined object members have deliberate cross-language representations", () => {
+    const options = {
+      ...BASE,
+      environment: "dev" as const,
+      input: { omit: undefined, empty: {}, list: [] },
+    };
+    const curl = renderInvokeSnippet({ ...options, lang: "curl" });
+    const node = renderInvokeSnippet({ ...options, lang: "node" });
+    const python = renderInvokeSnippet({ ...options, lang: "python" });
+    expect(curl).toContain('"input":{"empty":{},"list":[]}');
+    expect(node).toContain('"empty": {}');
+    expect(node).toContain('"list": []');
+    expect(node).not.toContain('"omit"');
+    expect(python).toContain('"omit": None');
+    expect(python).toContain('"empty": {}');
+    expect(python).toContain('"list": []');
+  });
+
+  test("node literals preserve null and make non-finite values JSON null", () => {
+    const node = renderInvokeSnippet({
+      ...BASE,
+      lang: "node",
+      environment: "dev",
+      input: { empty: {}, nullish: null, nonFinite: Number.NaN },
+    });
+    expect(node).toContain('"empty": {}');
+    expect(node).toContain('"nullish": null');
+    expect(node).toContain('"nonFinite": null');
   });
 });
 

@@ -4,7 +4,6 @@ import { type conversations, systemAccounts, users } from "../../db/schema/index
 import { createEmptyDraftDocument } from "../authoring-state/index.ts";
 import { appendSnapshot } from "../draft.ts";
 import type { RunLoopResult } from "../loop/index.ts";
-import { elicitationInputForClient } from "../tools/ask-user/commit-intent.ts";
 import type {
   ConversationOwner,
   ConversationPermissionMode,
@@ -12,13 +11,6 @@ import type {
   ConversationStatus,
   DraftDocument,
 } from "../types.ts";
-
-export class ConversationNotFoundError extends Error {
-  readonly code = "CONVERSATION_NOT_FOUND";
-  constructor(public readonly conversation_id: string) {
-    super(`conversation not found in this tenant: ${conversation_id}`);
-  }
-}
 
 export function normalizePermissionMode(value: unknown): ConversationPermissionMode | null {
   return value === "auto" || value === "ask" || value === "plan" || value === "yolo" ? value : null;
@@ -90,49 +82,6 @@ export interface ConversationTurnOutcome {
   result: RunLoopResult;
 }
 
-export interface PendingElicitationSummary {
-  id: string;
-  tool_name: string;
-  summary: string;
-  tool_call_id?: string | null;
-  input?: unknown;
-}
-
-export class PendingElicitationBlockedError extends Error {
-  readonly code = "pending_elicitation_blocked";
-  readonly pending_elicitation: PendingElicitationSummary;
-
-  constructor(pending: PendingElicitationSummary) {
-    super("resolve the pending dialog before sending another prompt");
-    this.name = "PendingElicitationBlockedError";
-    this.pending_elicitation =
-      "input" in pending
-        ? { ...pending, input: elicitationInputForClient(pending.input) }
-        : pending;
-  }
-}
-
-export class ElicitationAlreadyResolvedError extends Error {
-  readonly elicitation_id: string;
-  readonly status: "resolved" | "cancelled" | "timeout";
-  readonly previous_output: unknown;
-  readonly previous_decision_reason: string | null;
-
-  constructor(p: {
-    elicitation_id: string;
-    status: "resolved" | "cancelled" | "timeout";
-    previous_output: unknown;
-    previous_decision_reason: string | null;
-  }) {
-    super(`elicitation ${p.elicitation_id} is already ${p.status}`);
-    this.name = "ElicitationAlreadyResolvedError";
-    this.elicitation_id = p.elicitation_id;
-    this.status = p.status;
-    this.previous_output = p.previous_output;
-    this.previous_decision_reason = p.previous_decision_reason;
-  }
-}
-
 export async function loadOwners(
   tenant_id: string,
   ownerIds: Array<string | null>,
@@ -155,3 +104,10 @@ export async function loadOwners(
   for (const m of machines) out.set(m.id, { id: m.id, kind: "system_account", name: m.name });
   return out;
 }
+
+export type { PendingElicitationSummary } from "../errors.ts";
+export {
+  ConversationNotFoundError,
+  ElicitationAlreadyResolvedError,
+  PendingElicitationBlockedError,
+} from "../errors.ts";

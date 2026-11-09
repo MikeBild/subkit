@@ -15,7 +15,7 @@ mock.module(
   }),
 );
 
-const { embedTexts } = await import("../local-provider.ts");
+const { embedTexts } = await import("../local-runtime.ts");
 
 test("bounds tokenizer input for large API catalogs while preserving batch alignment", async () => {
   const short = "GET /v1/apps";

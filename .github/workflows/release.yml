@@ -13,13 +13,19 @@ permissions:
   contents: write
   packages: write
   statuses: read
+  actions: read
 
 concurrency:
   group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
+  quality:
+    uses: ./.github/workflows/quality.yml
+    with:
+      ref: ${{ inputs.tag || github.ref }}
   release:
+    needs: quality
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -44,6 +50,16 @@ jobs:
       - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
         with:
           bun-version: 1.4.0
+
+      - name: Revalidate exact-commit shard quality evidence
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          bun run build:clipper
+          gh run download "$GITHUB_RUN_ID" --name quality-shard-evidence --dir .
+          bun run scripts/verify-shard-quality-bundle.ts --commit "$RELEASE_COMMIT"
 
       - name: Require mandatory local release gate
         env:

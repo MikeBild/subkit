@@ -1,11 +1,14 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
-import type { Executor } from "../db/client.ts";
+import type { Transaction } from "../db/client.ts";
 import { tenants } from "../db/schema/index.ts";
 import { RuntimeConfigValidationError } from "./contracts.ts";
 
-export async function assertTenantRuntimeSecretAllowed(db: Executor, name: string): Promise<void> {
+export async function assertTenantRuntimeSecretAllowed(
+  db: Transaction,
+  name: string,
+): Promise<void> {
   const tenantOverlay = name.startsWith("tenants.");
   if (!tenantOverlay && !name.startsWith("connection.")) return;
   if (

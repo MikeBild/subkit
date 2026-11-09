@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type AttentionItem, compareAttentionItems } from "./attention.ts";
+import { type AttentionItem, compareAttentionItems } from "./core/attention.ts";
 
 function item(
   id: string,

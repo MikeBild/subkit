@@ -1,5 +1,8 @@
 import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
-import { isConversationTitleOpening, refreshConversationTitle } from "../conversations/title.ts";
+import {
+  isConversationTitleOpening,
+  refreshConversationTitle,
+} from "../conversations/public/lifecycle.ts";
 import type { Db } from "../db/client.ts";
 import { conversations, dataMigrations, tenants } from "../db/schema/index.ts";
 import { withTenantWork } from "../execution/tenant-work.ts";

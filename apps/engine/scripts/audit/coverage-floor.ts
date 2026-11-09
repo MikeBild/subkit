@@ -3,15 +3,15 @@ import { isCorePath, isTestPath } from "./rules.ts";
 
 export interface FloorEntry {
   line_min: number;
-  branch_min: number;
+  function_min: number;
   rationale?: string;
   tests?: string[];
-  observed?: { line?: number | null; branch?: number | null };
+  observed?: { line?: number | null; function?: number | null };
 }
 
 interface CoreDefault {
   line_min: number;
-  branch_min: number;
+  function_min: number;
   exclude: string[];
 }
 
@@ -25,16 +25,37 @@ export interface CoverageRow {
   file: string;
   funcs: number;
   lines: number;
+  functions_covered?: number | null;
+  functions_total?: number | null;
+  lines_covered?: number | null;
+  lines_total?: number | null;
 }
+
+export interface CoverageCommandResult {
+  status: number | null;
+  signal: NodeJS.Signals | null;
+  error?: Error;
+  stdout?: string;
+  stderr?: string;
+}
+
+export type CoverageRun = { rows: CoverageRow[] } | { error: string };
 
 const isFloor = (entry: unknown): entry is FloorEntry =>
   typeof entry === "object" &&
   entry !== null &&
   typeof (entry as FloorEntry).line_min === "number" &&
-  typeof (entry as FloorEntry).branch_min === "number" &&
+  typeof (entry as FloorEntry).function_min === "number" &&
+  (entry as { branch_min?: unknown }).branch_min === undefined &&
   ((entry as FloorEntry).tests === undefined ||
     (Array.isArray((entry as FloorEntry).tests) &&
-      ((entry as FloorEntry).tests as unknown[]).every((t) => typeof t === "string")));
+      ((entry as FloorEntry).tests as unknown[]).every(
+        (t) =>
+          typeof t === "string" &&
+          t.length > 0 &&
+          !t.startsWith("/") &&
+          !t.split(/[\\/]/).includes(".."),
+      )));
 
 export function parseFloorFile(raw: unknown): { floors: FloorFile } | { errors: string[] } {
   const errors: string[] = [];
@@ -49,7 +70,10 @@ export function parseFloorFile(raw: unknown): { floors: FloorFile } | { errors: 
     const out: Record<string, FloorEntry> = {};
     for (const [name, entry] of Object.entries(value)) {
       if (isFloor(entry)) out[name] = entry;
-      else errors.push(`${key}.${name}: needs numeric line_min and branch_min (tests: string[])`);
+      else
+        errors.push(
+          `${key}.${name}: needs numeric line_min and function_min; branch_min is unsupported (tests: string[])`,
+        );
     }
     return out;
   };
@@ -66,11 +90,13 @@ export function parseFloorFile(raw: unknown): { floors: FloorFile } | { errors: 
     ) {
       coreDefault = {
         line_min: d.line_min as number,
-        branch_min: d.branch_min as number,
+        function_min: d.function_min as number,
         exclude: d.exclude ?? [],
       };
     } else {
-      errors.push("core_default: needs numeric line_min and branch_min (exclude: string[])");
+      errors.push(
+        "core_default: needs numeric line_min and function_min; branch_min is unsupported (exclude: string[])",
+      );
     }
   }
   if (Object.keys(subsystems).length === 0 && Object.keys(files).length === 0 && !errors.length) {
@@ -91,7 +117,7 @@ export function resolveFileFloors(
       if (!isCorePath(file) || d.exclude.some((prefix) => file.startsWith(prefix))) continue;
       out.set(file, {
         line_min: d.line_min,
-        branch_min: d.branch_min,
+        function_min: d.function_min,
         rationale: "core_default",
       });
     }
@@ -139,19 +165,29 @@ export function parseCoverageTable(text: string): CoverageRow[] {
   return rows;
 }
 
+export function readCoverageRun(result: CoverageCommandResult): CoverageRun {
+  if (result.error) return { error: `could not start coverage command: ${result.error.message}` };
+  if (result.signal) return { error: `coverage command terminated by signal ${result.signal}` };
+  if (result.status !== 0)
+    return { error: `coverage command exited with status ${result.status ?? "unknown"}` };
+  return { rows: parseCoverageTable(`${result.stdout ?? ""}\n${result.stderr ?? ""}`) };
+}
+
 export function aggregateByPrefix(
   rows: readonly CoverageRow[],
   prefix: string,
-  totalLinesOf: (file: string) => number,
+  metric: "lines" | "functions",
 ): number | null {
   const dir = prefix.endsWith("/") ? prefix : `${prefix}/`;
   let total = 0;
   let covered = 0;
   for (const row of rows) {
     if (!row.file.startsWith(dir) || isTestPath(row.file)) continue;
-    const lines = totalLinesOf(row.file) || 1;
-    total += lines;
-    covered += (row.lines / 100) * lines;
+    const count = metric === "lines" ? row.lines_total : row.functions_total;
+    const hit = metric === "lines" ? row.lines_covered : row.functions_covered;
+    if (count === undefined || count === null || hit === undefined || hit === null) return null;
+    total += count;
+    covered += hit;
   }
   return total === 0 ? null : (covered / total) * 100;
 }
@@ -170,15 +206,21 @@ export function judgeFile(
   if (!row) {
     return { status: "FAIL", message: "file missing from the coverage table; no test loads it" };
   }
-  const branch = `branch=unmeasured (bun reports no branch coverage; floor ${floor.branch_min})`;
-  if (row.lines < floor.line_min) {
+  if (row.lines_total === 0)
+    return { status: "FAIL", message: "file has no LCOV line mappings; coverage is unmeasured" };
+  if (row.functions_total === null || row.functions_total === undefined)
     return {
       status: "FAIL",
-      message: `line=${row.lines.toFixed(2)} (<${floor.line_min}) funcs=${row.funcs.toFixed(2)} ${branch}`,
+      message: "file has no LCOV function mappings; coverage is unmeasured",
+    };
+  if (row.lines < floor.line_min || row.funcs < floor.function_min) {
+    return {
+      status: "FAIL",
+      message: `line=${row.lines.toFixed(2)} (floor ${floor.line_min}) funcs=${row.funcs.toFixed(2)} (floor ${floor.function_min})`,
     };
   }
   return {
     status: "PASS",
-    message: `line=${row.lines.toFixed(2)} (>=${floor.line_min}) funcs=${row.funcs.toFixed(2)} ${branch}`,
+    message: `line=${row.lines.toFixed(2)} (>=${floor.line_min}) funcs=${row.funcs.toFixed(2)} (>=${floor.function_min})`,
   };
 }

@@ -13,7 +13,7 @@ import {
 import {
   importConnectorDraftFromSpec,
   importConnectorFromSpecInputSchema,
-} from "../../../conversations/index.ts";
+} from "../../../conversations/public/authoring.ts";
 import type { AppEnv } from "../../openapi.ts";
 
 const ConnectorIssue = z

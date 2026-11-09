@@ -1,6 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/index.ts";
+import * as localProvider from "../../embeddings/local-provider.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { runWithTestEnv } from "../../test-helpers/determinism/env.ts";
@@ -11,11 +12,19 @@ import {
   KnowledgeVersionConflictError,
   updateKnowledgeSourceContent,
 } from "../content.ts";
-import { createKnowledgeSource, updateKnowledgeSource } from "../service.ts";
 import type { KnowledgeSourceView } from "../types.ts";
 import { ctx, nextUuid, skip, useKnowledgeServiceDb } from "./service-fixtures.ts";
 
+const originalEmbeddingsAvailable = localProvider.embeddingsAvailable;
+const embeddingsAvailable = spyOn(localProvider, "embeddingsAvailable").mockResolvedValue(false);
+const { createKnowledgeSource, updateKnowledgeSource } = await import("../service.ts");
+
 useKnowledgeServiceDb();
+
+afterAll(() => {
+  embeddingsAvailable.mockRestore();
+  expect(localProvider.embeddingsAvailable).toBe(originalEmbeddingsAvailable);
+});
 
 describe.skipIf(skip)("knowledge/service", () => {
   test("EngineClient knowledge mutations retain typed actor provenance", async () => {

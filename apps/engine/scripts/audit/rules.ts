@@ -51,6 +51,24 @@ export function dbImportHits(imports: readonly ResolvedImport[]): RuleHit[] {
 }
 
 const IMPURE_SUBSYSTEMS = ["db", "llm", "audit", "queue"] as const;
+const EFFECT_MODULES = new Set([
+  "fs",
+  "fs/promises",
+  "node:fs",
+  "node:fs/promises",
+  "http",
+  "https",
+  "node:http",
+  "node:https",
+  "net",
+  "node:net",
+  "tls",
+  "node:tls",
+  "child_process",
+  "node:child_process",
+  "readline",
+  "node:readline",
+]);
 
 function subsystemOf(path: string): string | null {
   if (!path.startsWith(ENGINE_SRC_PREFIX)) return null;
@@ -62,6 +80,10 @@ function subsystemOf(path: string): string | null {
 export function pureCoreImportHits(imports: readonly ResolvedImport[]): RuleHit[] {
   const hits: RuleHit[] = [];
   for (const imp of imports) {
+    if (EFFECT_MODULES.has(imp.specifier)) {
+      hits.push({ line: imp.line, what: `import ${imp.specifier}` });
+      continue;
+    }
     if (imp.specifier === "drizzle-orm" || imp.specifier.startsWith("drizzle-orm/")) {
       hits.push({ line: imp.line, what: `import ${imp.specifier}` });
       continue;
@@ -93,20 +115,41 @@ export function effectHits(sf: ts.SourceFile): RuleHit[] {
       if (isNamed(node.expression, "Date") && prop === "now") push(node, "Date.now");
       else if (isNamed(node.expression, "Math") && prop === "random") push(node, "Math.random");
       else if (isNamed(node.expression, "process") && prop === "env") push(node, "process.env");
-      else if (prop === "randomUUID") push(node, "randomUUID");
+      else if (
+        (isNamed(node.expression, "crypto") &&
+          ["randomUUID", "randomBytes", "randomFill", "randomFillSync", "randomInt"].includes(
+            prop,
+          )) ||
+        prop === "randomUUID"
+      )
+        push(node, prop);
+      else if (
+        isNamed(node.expression, "process") &&
+        ["stdout", "stderr", "exit", "exitCode"].includes(prop)
+      )
+        push(node, `process.${prop}`);
     } else if (
       ts.isNewExpression(node) &&
       isNamed(node.expression, "Date") &&
       (node.arguments?.length ?? 0) === 0
     ) {
       push(node, "new Date()");
-    } else if (ts.isCallExpression(node) && isNamed(node.expression, "randomUUID")) {
-      push(node, "randomUUID");
+    } else if (ts.isCallExpression(node)) {
+      if (isNamed(node.expression, "randomUUID")) push(node, "randomUUID");
+      else if (isNamed(node.expression, "fetch")) push(node, "fetch");
+      else if (isNamed(node.expression, "require")) push(node, "require");
+      else if (
+        node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+        (!node.arguments[0] || !ts.isStringLiteralLike(node.arguments[0]))
+      )
+        push(node, "computed dynamic import");
     } else if (
       ts.isImportSpecifier(node) &&
-      (node.propertyName ?? node.name).text === "randomUUID"
+      ["randomUUID", "randomBytes", "randomFill", "randomFillSync", "randomInt"].includes(
+        (node.propertyName ?? node.name).text,
+      )
     ) {
-      push(node, "randomUUID");
+      push(node, (node.propertyName ?? node.name).text);
     }
     ts.forEachChild(node, visit);
   };
@@ -155,6 +198,12 @@ const CONVERSATIONS_PREFIX = `${ENGINE_SRC_PREFIX}conversations/`;
 const CONVERSATIONS_ENTRY_POINTS: ReadonlySet<string> = new Set([
   `${CONVERSATIONS_PREFIX}tools/index.ts`,
   `${CONVERSATIONS_PREFIX}types.ts`,
+  `${CONVERSATIONS_PREFIX}public/lifecycle.ts`,
+  `${CONVERSATIONS_PREFIX}public/authoring.ts`,
+  `${CONVERSATIONS_PREFIX}public/context.ts`,
+  `${CONVERSATIONS_PREFIX}public/elicitation.ts`,
+  `${CONVERSATIONS_PREFIX}public/policy.ts`,
+  `${CONVERSATIONS_PREFIX}public/tool-contract.ts`,
 ]);
 
 export function conversationsLeafHits(file: string, imports: readonly ResolvedImport[]): RuleHit[] {

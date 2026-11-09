@@ -7,8 +7,8 @@ import {
 } from "../scheduler/trigger-bindings.ts";
 import { type ListWorkflowsOptions, loadCategoryVocabulary } from "./catalog-view.ts";
 import { listConnectorRefs } from "./connector-refs.ts";
-import { getWorkflow, getWorkflowBySlug, listWorkflows } from "./service.ts";
 import type { WorkflowView } from "./view.ts";
+import { getWorkflow, getWorkflowBySlug, listWorkflows } from "./workflow-queries.ts";
 
 export interface WorkflowListEntry {
   workflow: WorkflowView;

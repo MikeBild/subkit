@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildStepDag, detectCycles } from "../dag.ts";
+import { buildStepDag, detectCycles } from "../core/dag.ts";
 import type { WorkflowDef } from "../types.ts";
 
 function wf(steps: WorkflowDef["steps"]): WorkflowDef {
@@ -46,4 +46,45 @@ describe("dag · bare-path edges", () => {
     );
     expect(dag.edges).toEqual([]);
   });
+});
+
+test("data selectors add bounded step references without self or partial-name dependencies", () => {
+  const dag = buildStepDag(
+    wf([
+      { id: "fetch-data", kind: "transform", expression: "1" },
+      { id: "fetch", kind: "transform", expression: "2" },
+      { id: "unused", kind: "transform", expression: "3" },
+      {
+        id: "shape",
+        kind: "transform",
+        expression: "4",
+        data_selector: "fetch-data.items + shape",
+      },
+    ]),
+  );
+  expect(dag.edges.filter((edge) => edge.reason === "data_selector")).toEqual([
+    { from: "shape", to: "fetch-data", reason: "data_selector" },
+  ]);
+  expect(dag.adjacency.get("shape")).toEqual(["fetch-data"]);
+});
+
+test("data selector references at either boundary remain dependencies", () => {
+  for (const data_selector of ["fetch", "(fetch)", "fetch.items", "items[fetch]"]) {
+    const dag = buildStepDag(
+      wf([
+        { id: "fetch", kind: "transform", expression: "1" },
+        { id: "shape", kind: "transform", expression: "2", data_selector },
+      ]),
+    );
+    expect(dag.edges).toContainEqual({ from: "shape", to: "fetch", reason: "data_selector" });
+  }
+  for (const data_selector of ["prefixfetch", "fetch_suffix", "fetch-extra", "not_fetch"]) {
+    const dag = buildStepDag(
+      wf([
+        { id: "fetch", kind: "transform", expression: "1" },
+        { id: "shape", kind: "transform", expression: "2", data_selector },
+      ]),
+    );
+    expect(dag.edges.filter((edge) => edge.reason === "data_selector")).toEqual([]);
+  }
 });

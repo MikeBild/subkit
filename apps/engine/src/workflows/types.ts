@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { FileRefSchema } from "../api/files-schemas.ts";
 import { WORKFLOW_MAX_STEPS } from "./core/definition.ts";
+import type { JsonValue } from "./domain-types.ts";
 import { OutboxDeliveryBoundarySchema } from "./outbox-delivery-boundary.ts";
 import { ReportDeliveryBoundarySchema } from "./report-delivery-boundary.ts";
 import { RequestBoundaryScopeSchema } from "./request-boundary.ts";
@@ -27,7 +28,6 @@ export {
 } from "./types-web-scraper.ts";
 
 const JsonLiteralSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
-type JsonValue = z.infer<typeof JsonLiteralSchema> | { [k: string]: JsonValue } | JsonValue[];
 export const JsonValueSchema: z.ZodType<JsonValue> = z
   .lazy(() =>
     z.union([

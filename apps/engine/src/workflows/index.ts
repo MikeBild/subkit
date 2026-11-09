@@ -41,7 +41,6 @@ export {
 export { isOpenEnded, remainingRuns } from "./core/authority.ts";
 export {
   carriedSpecColumns,
-  readStoredSpec,
   type SpecCarrier,
   workflowSpecDigest,
 } from "./core/spec.ts";
@@ -87,6 +86,7 @@ export * from "./review-receipt.ts";
 export { normalizeWorkflowRunInput } from "./run-input.ts";
 export * from "./service.ts";
 export * from "./stored-definition.ts";
+export { readStoredSpec } from "./stored-spec.ts";
 export * from "./tenant-validator.ts";
 export * from "./types.ts";
 export * from "./validator.ts";

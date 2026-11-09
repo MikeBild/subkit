@@ -1,18 +1,19 @@
 import { NoSuchToolError } from "ai";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
-import { humanChatAnswer } from "../conversations/answer-actor.ts";
+import { humanChatAnswer } from "../conversations/public/authoring.ts";
 import {
   ConversationNotFoundError,
   ElicitationActorMismatchError,
+  ElicitationAlreadyResolvedError,
   ElicitationNotFoundError,
   ElicitationValidationError,
-} from "../conversations/service/elicit.ts";
-import { ElicitationAlreadyResolvedError, respondElicitation } from "../conversations/service.ts";
+  respondElicitation,
+} from "../conversations/public/elicitation.ts";
 import {
-  acquireConversationTurn as registerConversationAbort,
-  releaseConversationTurn as unregisterConversationAbort,
-} from "../conversations/turns.ts";
+  registerConversationAbort,
+  unregisterConversationAbort,
+} from "../conversations/public/lifecycle.ts";
 import type { Db } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
 import {

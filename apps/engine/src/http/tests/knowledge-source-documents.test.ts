@@ -1,14 +1,18 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq, ne } from "drizzle-orm";
 import { issueBrowserSession } from "../../auth/browser-session.ts";
 import { auditLog } from "../../db/schema/audit.ts";
 import { apiKeys, fileLinks, files, knowledgeSources, users } from "../../db/schema/index.ts";
+import * as localProvider from "../../embeddings/local-provider.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
-import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
+import type { HttpTestServer } from "./setup.ts";
 
+const originalEmbeddingsAvailable = localProvider.embeddingsAvailable;
 let srv: HttpTestServer;
+let createHttpTestServer: typeof import("./setup.ts").createHttpTestServer;
+let embeddingsAvailable: ReturnType<typeof spyOn>;
 let readerKey = "";
 let otherTenantKey = "";
 let readScopeKey = "";
@@ -45,6 +49,8 @@ async function readContent(id: string) {
 }
 
 beforeAll(async () => {
+  embeddingsAvailable = spyOn(localProvider, "embeddingsAvailable").mockResolvedValue(false);
+  ({ createHttpTestServer } = await import("./setup.ts"));
   srv = await createHttpTestServer("knowledge-documents");
   const readerToken = "wf_live_rdr_documents_token";
   const otherTenantToken = "wf_live_oth_documents_token";
@@ -109,7 +115,12 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await srv.cleanup();
+  try {
+    await srv.cleanup();
+  } finally {
+    embeddingsAvailable.mockRestore();
+    expect(localProvider.embeddingsAvailable).toBe(originalEmbeddingsAvailable);
+  }
 }, 60_000);
 
 describe("POST /v1/knowledge-sources/{id}/documents", () => {

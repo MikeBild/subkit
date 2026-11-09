@@ -1,51 +1,26 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { knowledgeSources, tenants } from "../../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../db/tests/setup.ts";
+import * as localProvider from "../../embeddings/local-provider.ts";
 import { loadEmbeddedSkillSeeds } from "../../skills/seed.ts";
 import { EMBEDDED_KNOWLEDGE_SEEDS } from "../embedded-seeds.ts";
-import {
-  applyKnowledgeSeeds,
-  applyKnowledgeSeedsForAllTenants,
-  loadEmbeddedKnowledgeSeeds,
-  loadKnowledgeSeedsFromContent,
-  type SeedSource,
-} from "../seed.ts";
-import { searchKnowledge } from "../service.ts";
+import { NEW_SKILL_SLUGS, src, validKnowledgeMd } from "./seed.test-helpers.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
-
-function validKnowledgeMd(opts: {
-  slug: string;
-  name?: string;
-  description?: string;
-  tags?: string[];
-  scope?: string;
-  body?: string;
-  version?: number;
-}): string {
-  const tagsLine = opts.tags ? `tags: [${opts.tags.join(", ")}]` : "tags: []";
-  return [
-    "---",
-    `slug: ${opts.slug}`,
-    `name: ${opts.name ?? "Test Knowledge Source"}`,
-    `description: ${opts.description ?? "A test knowledge source."}`,
-    tagsLine,
-    `scope: ${opts.scope ?? "global"}`,
-    `version: ${opts.version ?? 1}`,
-    "---",
-    "",
-    opts.body ?? "# Body\n\nSomething useful here.",
-  ].join("\n");
-}
-
-function src(name: string, content: string): SeedSource {
-  return { file: `${name}.md`, content };
-}
 
 let dbCtx: TestDb;
 let tenantA: string;
 let tenantB: string;
+const originalEmbeddingsAvailable = localProvider.embeddingsAvailable;
+const embeddingsAvailable = spyOn(localProvider, "embeddingsAvailable").mockResolvedValue(false);
+const {
+  applyKnowledgeSeeds,
+  applyKnowledgeSeedsForAllTenants,
+  loadEmbeddedKnowledgeSeeds,
+  loadKnowledgeSeedsFromContent,
+} = await import("../seed.ts");
+const { searchKnowledge } = await import("../service.ts");
 
 beforeAll(async () => {
   if (skip) return;
@@ -64,7 +39,12 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  if (!skip && dbCtx?.cleanup) await dbCtx.cleanup();
+  try {
+    if (!skip && dbCtx?.cleanup) await dbCtx.cleanup();
+  } finally {
+    embeddingsAvailable.mockRestore();
+    expect(localProvider.embeddingsAvailable).toBe(originalEmbeddingsAvailable);
+  }
 }, 30_000);
 
 describe("loadEmbeddedKnowledgeSeeds — all 8 embedded files", () => {
@@ -302,14 +282,6 @@ describe("loadKnowledgeSeedsFromContent — error paths", () => {
     expect(r.errors[0]!.code).toBe("bad_yaml");
   });
 });
-
-const NEW_SKILL_SLUGS = [
-  "webhooks-and-triggers",
-  "engine-rest-api",
-  "engine-status-and-capabilities",
-  "external-chat-integration",
-  "sk-cli-reference",
-] as const;
 
 describe("5 new seed skills — skill parser contract", () => {
   test("all 5 new skill slugs are present in the embedded skill catalogue", () => {

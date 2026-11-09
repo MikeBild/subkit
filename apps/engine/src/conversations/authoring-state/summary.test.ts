@@ -1,5 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
+import {
+  computeBlockedBy,
+  computeNextAction,
+  computeNextSuggestedTool,
+  computeReadiness,
+} from "../core/authoring-summary.ts";
 import type {
   AuthoringSummary,
   ConnectorDraftDocument,
@@ -7,12 +13,6 @@ import type {
   WorkflowDraftPreviewSummary,
 } from "../types.ts";
 import { createEmptyState } from "./normalize.ts";
-import {
-  computeBlockedBy,
-  computeNextAction,
-  computeNextSuggestedTool,
-  computeReadiness,
-} from "./summary.ts";
 
 function activeConnector(): AuthoringSummary["active_target"] {
   return {

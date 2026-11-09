@@ -367,3 +367,7 @@ describe("persistence and execution reducers", () => {
     expect(focused.summary?.last_action).toBe("execution_focused");
   });
 });
+
+test("omitting the authoring mode normalizes to the explicit onboarding state", () => {
+  expect(createEmptyDraftDocument(now)).toStrictEqual(createEmptyDraftDocument(now, "onboarding"));
+});

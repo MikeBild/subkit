@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { signalFingerprint } from "./terminal-dedup.ts";
+import { signalFingerprint } from "./core/terminal-dedup.ts";
 
 test("new observations of the same missing path do not create new decisions", () => {
   const signal = {

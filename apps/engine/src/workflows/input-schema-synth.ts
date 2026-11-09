@@ -1,7 +1,7 @@
-import { extractAst } from "../execution/jsonata-engine.ts";
-import { parsePlaceholders } from "../llm/substitution/parser.ts";
+import { extractAst } from "../execution/core/jsonata-contract.ts";
+import { parsePlaceholders } from "./core/placeholder-parser.ts";
+import type { DomainStepDef, DomainWorkflowDef } from "./domain-types.ts";
 import { sampleToSchema } from "./sample-to-schema.ts";
-import type { StepDef, WorkflowDef } from "./types.ts";
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
 
@@ -149,7 +149,7 @@ function collectJsInputRefs(code: string, into: ObservationMap): void {
   }
 }
 
-function collectFromStep(step: StepDef, into: ObservationMap): void {
+function collectFromStep(step: DomainStepDef, into: ObservationMap): void {
   collectFromJson(step as unknown as JsonValue, into);
 
   if (
@@ -166,7 +166,7 @@ function collectFromStep(step: StepDef, into: ObservationMap): void {
   }
 }
 
-export function synthesizeInputSchema(dag: WorkflowDef): JsonSchemaObject | null {
+export function synthesizeInputSchema(dag: DomainWorkflowDef): JsonSchemaObject | null {
   const observations: ObservationMap = new Map();
   for (const step of dag.steps) collectFromStep(step, observations);
   if (observations.size === 0) return null;
@@ -185,7 +185,7 @@ interface WorkflowInputContract {
   required: string[];
 }
 
-function sampleDerivedSchema(dag: WorkflowDef): Record<string, unknown> | null {
+function sampleDerivedSchema(dag: DomainWorkflowDef): Record<string, unknown> | null {
   const sample = dag.input_schema_sample;
   if (sample === undefined || sample === null) return null;
   const schema = sampleToSchema(sample);
@@ -197,7 +197,7 @@ function sampleDerivedSchema(dag: WorkflowDef): Record<string, unknown> | null {
   return schema;
 }
 
-export function resolveWorkflowInputContract(dag: WorkflowDef): WorkflowInputContract | null {
+export function resolveWorkflowInputContract(dag: DomainWorkflowDef): WorkflowInputContract | null {
   const declared =
     dag.input_schema && typeof dag.input_schema === "object"
       ? (dag.input_schema as Record<string, unknown>)

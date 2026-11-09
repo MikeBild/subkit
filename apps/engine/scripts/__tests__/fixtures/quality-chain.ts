@@ -1,0 +1,254 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { gitVisibleSourceDigest } from "../../../../../scripts/lib/source-digest.ts";
+import { externalRuntimeDockerTests } from "../../audit/external-runtime-tests.ts";
+import { mutationTestInputs } from "../../audit/mutation-inputs.ts";
+import { buildMutationShardConfig } from "../../audit/mutation-shard-config.ts";
+import { digestWaveFiles } from "../../audit/mutation-wave.ts";
+import { assertCompletePureTargetInventory } from "../../audit/pure-targets.ts";
+import { frozenWaveFixture } from "./frozen-wave.ts";
+
+const hash = (text: string) => createHash("sha256").update(text).digest("hex");
+export function qualityChainFixture(policyBound = false, externalRuntime = false) {
+  const f = frozenWaveFixture();
+  const { wave, put, root } = f;
+  const allTargets = f.targets;
+  if (externalRuntime) {
+    put("tests/docker/fixture.docker.test.ts", "export {}\n");
+    wave.external_runtime_tests = externalRuntimeDockerTests(root);
+  }
+  if (policyBound) {
+    const entries = assertCompletePureTargetInventory(allTargets);
+    const owners = [...new Set(entries.map((entry) => entry.owner_shard))].sort();
+    const tests = wave.shards[0]!.tests;
+    wave.shards = owners.map((id) => {
+      const targets = entries
+        .filter((entry) => entry.owner_shard === id)
+        .map((entry) => entry.path);
+      return {
+        id,
+        targets,
+        tests: tests.filter((test) =>
+          test.covers_targets.some((target) => targets.includes(target)),
+        ),
+        consumers: [],
+        resource_tags: ["db"],
+      };
+    });
+    const policyPath = "apps/engine/.quality-shard-policy.json";
+    put(
+      policyPath,
+      JSON.stringify({
+        version: 1,
+        worker_budget: wave.worker_budget,
+        equivalence_manifest_path: wave.equivalence_manifest_path,
+        shards: wave.shards.map(({ id, resource_tags }) => ({ id, resource_tags })),
+      }),
+    );
+    put(
+      wave.dynamic_import_ledger_path,
+      JSON.stringify({ version: 1, entries: [], runtime_witnesses: [] }),
+    );
+    wave.quality_policy_sha256 = digestWaveFiles(root, [policyPath]);
+    wave.dynamic_import_ledger_sha256 = digestWaveFiles(root, [wave.dynamic_import_ledger_path]);
+    wave.source_freeze_sha256 = digestWaveFiles(root, mutationTestInputs(root));
+  }
+  const manifestText = JSON.stringify(wave);
+  const manifestHash = hash(manifestText);
+  const mutationRoot = "reports/mutation/runs/preflight-fixture/run-mutation";
+  const coverageRoot = "reports/coverage/shards/preflight-fixture/run-coverage";
+  put(`${mutationRoot}/wave.json`, manifestText);
+  put(`${coverageRoot}/wave.json`, manifestText);
+  let nativeRoot = "";
+  for (const shard of wave.shards) {
+    const targets = shard.targets;
+    const config = buildMutationShardConfig({
+      base: JSON.parse(readFileSync(join(root, "stryker.config.json"), "utf8")),
+      waveId: wave.wave_id,
+      runId: "run-mutation",
+      manifestPath: join(root, mutationRoot, "wave.json"),
+      shard,
+      ...(policyBound ? { repo: root } : {}),
+      workers: 2,
+    });
+    const configText = JSON.stringify(config);
+    const reportText = JSON.stringify({
+      config,
+      files: Object.fromEntries(
+        targets.map((target) => [
+          target,
+          { source: readFileSync(join(root, target), "utf8"), mutants: [{ status: "Killed" }] },
+        ]),
+      ),
+    });
+    put(`${mutationRoot}/${shard.id}/stryker.json`, configText);
+    put(`${mutationRoot}/${shard.id}/mutation.json`, reportText);
+    const common = {
+      version: 1,
+      wave_id: wave.wave_id,
+      shard_id: shard.id,
+      manifest_sha256: manifestHash,
+      source_sha256: wave.source_freeze_sha256,
+      test_sha256: wave.test_freeze_sha256,
+      target_digest_sha256: wave.target_digest_sha256,
+      base_config_sha256: wave.config_sha256,
+      targets,
+    };
+    put(
+      `${mutationRoot}/${shard.id}/receipt.json`,
+      JSON.stringify({
+        ...common,
+        run_id: "run-mutation",
+        config_sha256: hash(configText),
+        report_sha256: hash(reportText),
+        canonical_target_sha256: wave.target_digest_sha256,
+        lock_sha256: wave.lock_sha256,
+        equivalence_manifest_sha256: wave.equivalence_manifest_sha256,
+        dynamic_import_ledger_sha256: wave.dynamic_import_ledger_sha256,
+        workers: 2,
+        exit_code: 0,
+        started_at: "2026-01-01T00:00:00Z",
+        finished_at: "2026-01-01T00:00:01Z",
+      }),
+    );
+    const proofs = targets.map((target) => {
+      const lcov = `SF:${target}\nFN:1,f\nFNDA:1,f\nFNF:1\nFNH:1\nDA:1,1\nLF:1\nLH:1\nend_of_record\n`;
+      return { target, path: `targets/${hash(target)}.lcov`, sha256: hash(lcov), lcov };
+    });
+    const refs = proofs.map(({ lcov: _lcov, ...ref }) => ref);
+    nativeRoot = `${coverageRoot}/${shard.id}/coverage/runs/native-fixture-run`;
+    for (const proof of proofs) put(`${nativeRoot}/${proof.path}`, proof.lcov);
+    const lcovText = proofs.map((proof) => proof.lcov).join("");
+    const coverageConfig = hash("coverage-config");
+    const provenanceText = JSON.stringify({
+      version: 4,
+      wave_id: wave.wave_id,
+      shard_id: shard.id,
+      manifest_sha256: manifestHash,
+      wave_source_freeze_sha256: wave.source_freeze_sha256,
+      wave_test_freeze_sha256: wave.test_freeze_sha256,
+      wave_target_digest_sha256: wave.target_digest_sha256,
+      wave_base_config_sha256: wave.config_sha256,
+      config_sha256: coverageConfig,
+      direct_target_evidence: refs,
+    });
+    const nativeReceiptText = JSON.stringify({
+      version: 1,
+      run_id: "native-fixture-run",
+      lcov: { path: "lcov.info", sha256: hash(lcovText) },
+      provenance: { path: "provenance.json", sha256: hash(provenanceText) },
+      direct_target_evidence: refs,
+    });
+    put(`${nativeRoot}/lcov.info`, lcovText);
+    put(`${nativeRoot}/provenance.json`, provenanceText);
+    put(`${nativeRoot}/receipt.json`, nativeReceiptText);
+    put(
+      `${coverageRoot}/${shard.id}/coverage/latest.json`,
+      JSON.stringify({
+        version: 1,
+        run_id: "native-fixture-run",
+        receipt: "runs/native-fixture-run/receipt.json",
+        receipt_sha256: hash(nativeReceiptText),
+      }),
+    );
+    put(
+      `${coverageRoot}/${shard.id}/receipt.json`,
+      JSON.stringify({
+        ...common,
+        run_id: "run-coverage",
+        coverage_config_sha256: coverageConfig,
+        native_receipt_sha256: hash(nativeReceiptText),
+        native_provenance_sha256: hash(provenanceText),
+        native_lcov_sha256: hash(lcovText),
+        direct_target_evidence: proofs,
+      }),
+    );
+  }
+  for (const [path, id] of [
+    [mutationRoot, "run-mutation"],
+    [coverageRoot, "run-coverage"],
+  ])
+    put(
+      `${path}/union.json`,
+      JSON.stringify({
+        version: 1,
+        wave_id: wave.wave_id,
+        manifest_sha256: manifestHash,
+        run_id: id,
+        target_count: allTargets.length,
+        shards: wave.shards.map((shard) => ({
+          id: shard.id,
+          receipt_sha256: hash(readFileSync(join(root, path!, shard.id, "receipt.json"), "utf8")),
+        })),
+      }),
+    );
+  const externalRoot = `reports/external-runtime/runs/${wave.wave_id}/fixture-run`;
+  const createExternalRuntimeAcceptance = () => {
+    if (!externalRuntime) throw new Error("external runtime fixture was not requested");
+    const tests = externalRuntimeDockerTests(root);
+    const visible = gitVisibleSourceDigest(root).digest;
+    const command = (mode: "cold" | "warm") => {
+      const builds = Array.from({ length: 5 }, (_, index) => {
+        const attempt = index + 1;
+        const native = {
+          project: `fixture-${mode}-${attempt}`,
+          image_id: `sha256:${attempt.toString(16).repeat(64)}`,
+          platform: "linux/amd64",
+          source: { digest: visible },
+          context: { digest: "c".repeat(64) },
+        };
+        const receiptPath = `${mode}.build-index.json.receipts/${attempt}.json`;
+        const nativeText = JSON.stringify(native);
+        put(`${externalRoot}/${receiptPath}`, nativeText);
+        return {
+          attempt,
+          project: native.project,
+          image_id: native.image_id,
+          platform: native.platform,
+          source: native.source,
+          context_digest: native.context.digest,
+          receipt_path: receiptPath,
+          receipt_sha256: hash(nativeText),
+        };
+      });
+      const indexText = JSON.stringify({ mode, repeat: 5, tests, builds });
+      const build_index_path = `${externalRoot}/${mode}.build-index.json`;
+      put(build_index_path, indexText);
+      return {
+        mode,
+        repeat: 5 as const,
+        exit_code: 0 as const,
+        build_index_path,
+        build_index_sha256: hash(indexText),
+      };
+    };
+    const acceptancePath = `${externalRoot}/acceptance.json`;
+    put(
+      acceptancePath,
+      JSON.stringify({
+        version: 1,
+        wave_id: wave.wave_id,
+        manifest_sha256: manifestHash,
+        source_sha256: wave.source_freeze_sha256,
+        test_sha256: wave.test_freeze_sha256,
+        git_source_digest: visible,
+        tests,
+        commands: [command("cold"), command("warm")],
+      }),
+    );
+    return acceptancePath;
+  };
+  return {
+    ...f,
+    mutationRoot,
+    coverageRoot,
+    nativeRoot,
+    createExternalRuntimeAcceptance,
+    options: {
+      repo: root,
+      mutationUnionPath: join(root, mutationRoot, "union.json"),
+      coverageUnionPath: join(root, coverageRoot, "union.json"),
+    },
+  };
+}

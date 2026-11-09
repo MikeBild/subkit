@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { sql } from "drizzle-orm";
 import { tenants } from "../../db/schema/index.ts";
+import { runKnowledgeFts } from "../search-fts.ts";
 import {
   createKnowledgeSource,
   invalidateKnowledgeCache,
@@ -70,6 +72,44 @@ describe.skipIf(skip)("knowledge/search", () => {
     expect(hits.length).toBeGreaterThan(0);
     expect(hits[0]!.snippet).toBeDefined();
     expect(hits[0]!.rank).toBeGreaterThan(0);
+  });
+
+  test("equal-rank FTS results keep deterministic order across row updates and limits", async () => {
+    const sourceIds: string[] = [];
+    for (const slug of ["zulu-order-proof", "alpha-order-proof"]) {
+      const source = await createKnowledgeSource(
+        {
+          tenant_id: ctx.tenantId,
+          input: { name: slug, slug, scope: "global" },
+          upload: {
+            buffer: Buffer.from("stabilitytoken"),
+            filename: "stable.txt",
+            mime: "text/plain",
+          },
+          actor: null,
+        },
+        ctx.testDb.db,
+      );
+      sourceIds.push(source.id);
+    }
+    const search = (limit: number) =>
+      runKnowledgeFts(
+        ctx.testDb.db,
+        ctx.tenantId,
+        sql`plainto_tsquery('english', 'stabilitytoken')`,
+        sql``,
+        limit,
+        [],
+      );
+    const before = await search(2);
+    expect(before.map((hit) => hit.knowledge_source_id)).toEqual([sourceIds[1]!, sourceIds[0]!]);
+    expect(before[0]!.rank).toBe(before[1]!.rank);
+    await ctx.testDb.db.execute(
+      sql`UPDATE knowledge_chunks SET content = content WHERE knowledge_source_id = ${sourceIds[1]!}`,
+    );
+    const after = await search(2);
+    expect(after.map((hit) => hit.id)).toEqual(before.map((hit) => hit.id));
+    expect((await search(1)).map((hit) => hit.id)).toEqual([before[0]!.id]);
   });
 
   test("search returns empty for no matches", async () => {

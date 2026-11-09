@@ -1,6 +1,7 @@
 import { and, eq, isNull, ne } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { roles, users } from "../db/schema/index.ts";
+import { decideAdministratorChange } from "./core/administrators.ts";
 
 export class LastAdminError extends Error {
   readonly code = "last_admin";
@@ -16,7 +17,8 @@ export async function assertAdminRemains(
   tx: Executor,
   input: { tenant_id: string; user_id: string; nextEffectiveRole: string | null },
 ): Promise<void> {
-  if (input.nextEffectiveRole === "admin") return;
+  if (decideAdministratorChange(input.user_id, input.nextEffectiveRole, null).kind === "allowed")
+    return;
   const rows = await tx
     .select({
       id: users.id,
@@ -33,7 +35,6 @@ export async function assertAdminRemains(
       ),
     )
     .for("update", { of: users });
-  const admins = rows.filter((row) => row.assigned === "admin");
-  if (!admins.some((row) => row.id === input.user_id)) return;
-  if (admins.length <= 1) throw new LastAdminError();
+  if (decideAdministratorChange(input.user_id, input.nextEffectiveRole, rows).kind === "rejected")
+    throw new LastAdminError();
 }

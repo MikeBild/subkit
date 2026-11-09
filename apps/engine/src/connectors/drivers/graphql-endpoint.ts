@@ -1,4 +1,4 @@
-import { looksLikeGraphQLUrl } from "@shared/index.ts";
+import { looksLikeGraphQLUrl } from "@shared/graphql-url.ts";
 import { resolveUrl } from "./resolve-url.ts";
 
 type GraphqlEndpointCode =

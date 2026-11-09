@@ -17,6 +17,12 @@ import { defineCommand } from "citty";
 import pc from "picocolors";
 import { configDir, resolveProfile } from "../config.ts";
 import { debugLog } from "../debug.ts";
+import {
+  type AgentFile,
+  MAX_BRIEFING_BUDGET_TOKENS,
+  MIN_BRIEFING_BUDGET_TOKENS,
+  parseAgentFile,
+} from "../domain/agent/agent-file.ts";
 import { EngineClient, type FetchLike } from "../engine-client.ts";
 import { cockpitIntakeUrl } from "../lib/intake-review.ts";
 import { wireClaudeHooks, wireCodexHooks, writeJsonFilesAtomically } from "./agent-hook-config.ts";
@@ -30,19 +36,10 @@ const CODEX_HOOKS_RELPATH = join(".codex", "hooks.json");
 const TRANSCRIPT_MAX_CHARS = 1_000_000;
 const PROMPT_MAX_CHARS = 2_000;
 const HOOK_REQUEST_TIMEOUT_MS = 4_000;
-const MIN_BRIEFING_BUDGET_TOKENS = 500;
-const MAX_BRIEFING_BUDGET_TOKENS = 16_000;
 const HOOK_BRIEFING_BUDGET_TOKENS = 1_800;
 const MAX_HOOK_CONTEXT_CHARS = 9_500;
 const BRIEFED_DIR = "agent-sessions";
 const BRIEFED_TTL_MS = 2 * 24 * 60 * 60 * 1000;
-
-interface AgentFile {
-  domains: string[];
-  budget_tokens?: number;
-  inferred?: boolean;
-  inferred_folder_domain?: string | null;
-}
 
 export function findAgentFile(startDir: string): { path: string; config: AgentFile } | null {
   let dir = startDir;
@@ -55,53 +52,7 @@ export function findAgentFile(startDir: string): { path: string; config: AgentFi
       } catch (err) {
         throw new Error(`${AGENT_FILE_RELPATH}: invalid JSON`, { cause: err });
       }
-      const rawDomains =
-        parsed && typeof parsed === "object" && Array.isArray((parsed as AgentFile).domains)
-          ? (parsed as AgentFile).domains
-          : null;
-      const domains = rawDomains
-        ?.filter((d): d is string => typeof d === "string" && d.trim().length > 0)
-        .map((d) => d.trim());
-      if (!domains?.length) {
-        throw new Error(`${AGENT_FILE_RELPATH}: domains must contain at least one domain slug`);
-      }
-      const budget = (parsed as AgentFile).budget_tokens;
-      if (
-        budget !== undefined &&
-        (!Number.isInteger(budget) ||
-          budget < MIN_BRIEFING_BUDGET_TOKENS ||
-          budget > MAX_BRIEFING_BUDGET_TOKENS)
-      ) {
-        throw new Error(
-          `${AGENT_FILE_RELPATH}: budget_tokens must be an integer from ${MIN_BRIEFING_BUDGET_TOKENS} to ${MAX_BRIEFING_BUDGET_TOKENS}`,
-        );
-      }
-      const inferred = (parsed as AgentFile).inferred === true;
-      const rawInferredFolderDomain = (parsed as AgentFile).inferred_folder_domain;
-      if (
-        inferred &&
-        rawInferredFolderDomain !== undefined &&
-        rawInferredFolderDomain !== null &&
-        (typeof rawInferredFolderDomain !== "string" || !rawInferredFolderDomain.trim())
-      ) {
-        throw new Error(
-          `${AGENT_FILE_RELPATH}: inferred_folder_domain must be a domain slug or null`,
-        );
-      }
-      const inferredFolderDomain = inferred
-        ? typeof rawInferredFolderDomain === "string"
-          ? rawInferredFolderDomain.trim()
-          : (domains.find((domain) => domain !== "subkit") ?? null)
-        : null;
-      return {
-        path: candidate,
-        config: {
-          domains,
-          ...(inferred ? { inferred: true } : {}),
-          ...(inferred ? { inferred_folder_domain: inferredFolderDomain } : {}),
-          ...(typeof budget === "number" ? { budget_tokens: budget } : {}),
-        },
-      };
+      return { path: candidate, config: parseAgentFile(parsed) };
     }
     const parent = dirname(dir);
     if (parent === dir) return null;
@@ -419,7 +370,10 @@ function launchDetachedCapture(): void {
     env: process.env,
   });
   child.on("error", (err) => {
-    debugLog("agent.capture_hook_failed", { failure: "detached_spawn", error: String(err) });
+    debugLog("agent.capture_hook_failed", {
+      failure: "detached_spawn",
+      error: String(err),
+    });
   });
   child.stdin.end(payload);
   child.unref();
@@ -445,7 +399,11 @@ export function planBriefing(p: {
   if (p.explicit && p.explicit.length > 0) return { kind: "explicit", domains: [...p.explicit] };
   if (p.hook && p.prompt) {
     return p.declared.length > 0
-      ? { kind: "prompt", prompt: p.prompt.slice(0, PROMPT_MAX_CHARS), declared: [...p.declared] }
+      ? {
+          kind: "prompt",
+          prompt: p.prompt.slice(0, PROMPT_MAX_CHARS),
+          declared: [...p.declared],
+        }
       : { kind: "repo", prompt: p.prompt.slice(0, PROMPT_MAX_CHARS) };
   }
   if (p.declared.length > 0) return { kind: "declared", domains: [...p.declared] };
@@ -458,9 +416,16 @@ async function resolveHookDomains(
   declared: readonly string[],
   inferredFolderDomain: string | null,
   prompt: string | null,
-): Promise<{ domains: string[]; folderDomains: string[]; sharedDomains: string[] }> {
+): Promise<{
+  domains: string[];
+  folderDomains: string[];
+  sharedDomains: string[];
+}> {
   const [folderResolution, prompted] = await Promise.all([
-    client.resolveAgentDomains({ prompt: "subkit", ...(folder ? { folder } : {}) }),
+    client.resolveAgentDomains({
+      prompt: "subkit",
+      ...(folder ? { folder } : {}),
+    }),
     prompt ? client.resolveAgentDomains({ prompt }) : Promise.resolve(null),
   ]);
   const sharedDomains = folderResolution.from_prompt;
@@ -483,7 +448,11 @@ async function resolveHookDomains(
 }
 
 export function agentEngineClient(
-  profile: { engine_url: string; api_key: string; active_tenant_id: string | null },
+  profile: {
+    engine_url: string;
+    api_key: string;
+    active_tenant_id: string | null;
+  },
   hook: boolean,
   fetchImpl?: FetchLike,
 ): EngineClient | null {
@@ -637,13 +606,23 @@ const captureCommand = defineCommand({
     description: "Send a session transcript to the engine to collect learnings for review",
   },
   args: {
-    transcript: { type: "string", description: "Path to the transcript file (JSONL or text)" },
+    transcript: {
+      type: "string",
+      description: "Path to the transcript file (JSONL or text)",
+    },
     domains: {
       type: "string",
       description: "Comma-separated domain slugs (default: .sk/agent.json of the repo)",
     },
-    agent: { type: "string", description: "Producing agent name", default: "claude-code" },
-    "session-id": { type: "string", description: "Session id for evidence attribution" },
+    agent: {
+      type: "string",
+      description: "Producing agent name",
+      default: "claude-code",
+    },
+    "session-id": {
+      type: "string",
+      description: "Session id for evidence attribution",
+    },
     hook: {
       type: "boolean",
       description: "SessionEnd/Stop-hook mode: read hook JSON from stdin, never fail",
@@ -767,7 +746,10 @@ const initCommand = defineCommand({
       required: true,
       description: "Comma-separated domains for this repository (e.g. accounting, blog-de)",
     },
-    budget: { type: "string", description: "Optional token budget for each briefing" },
+    budget: {
+      type: "string",
+      description: "Optional token budget for each briefing",
+    },
     "skip-claude": {
       type: "boolean",
       description: "Do not touch ~/.claude/settings.json",

@@ -3,7 +3,7 @@ import { and, eq, inArray, isNull, lt, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
-import { type Executor, getDb } from "../db/client.ts";
+import { type Executor, getDb, type Transaction } from "../db/client.ts";
 import {
   authIdentities,
   chatWorkspaces,
@@ -43,7 +43,7 @@ export interface TenantErasureDependencies {
   objects: ObjectStore;
 }
 
-async function dueTenant(tenantId: string, tx: Executor) {
+async function dueTenant(tenantId: string, tx: Transaction) {
   await lockCatalogVocabulary(tx, tenantId);
   const [tenant] = await tx
     .select()

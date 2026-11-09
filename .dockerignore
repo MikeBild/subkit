@@ -12,6 +12,11 @@ tsconfig.tsbuildinfo
 .git/
 .github/
 .githooks/
+.agents/
+.claude/
+.codex/
+.devtools/
+.sk/
 .vscode/
 .idea/
 .DS_Store
@@ -23,6 +28,8 @@ tests/
 
 apps/engine/eval/out/
 coverage/
+.stryker-tmp*/
+reports/
 
 *.log
 docker/binaries/
@@ -30,8 +37,12 @@ docker/binaries/
 .artifacts/
 .agent-prime.json
 claude-key.txt
+gh-key
+gh-key.*
 openai-key.txt
 upraft-key.txt
+upraft-git-token-key
+upraft-git-token-key.*
 creds.txt
 subkit.config.json
 .superdesign/

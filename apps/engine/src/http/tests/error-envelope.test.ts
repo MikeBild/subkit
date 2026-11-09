@@ -273,6 +273,17 @@ describe("error envelope wire — a tenant catalog that stayed busy", () => {
         cause: Object.assign(new Error("deadlock detected"), { code: "40P01" }),
       });
     });
+    app.get("/__test__/serialization", () => {
+      throw Object.assign(new Error("private query must not leave the server"), { code: "40001" });
+    });
+    app.get("/__test__/wrapped-busy", () => {
+      throw Object.assign(
+        new Error("transaction failed", {
+          cause: new CatalogVocabularyBusyError("private catalog details"),
+        }),
+        { code: "40001" },
+      );
+    });
     server = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
     const addr = (server as unknown as { address: () => { port: number } | null }).address();
     if (!addr || typeof addr !== "object") throw new Error("test server address resolution failed");
@@ -289,9 +300,25 @@ describe("error envelope wire — a tenant catalog that stayed busy", () => {
     expect(((await res.json()) as ErrorBody).code).toBe("catalog_vocabulary_changed");
   });
 
-  test("a deadlock while waiting answers the same retryable 409", async () => {
+  test("a database deadlock is not mislabeled as a catalog change", async () => {
     const res = await fetch(`${baseUrl}/__test__/deadlock`);
     expect(res.status).toBe(409);
-    expect(((await res.json()) as ErrorBody).code).toBe("catalog_vocabulary_changed");
+    expect(((await res.json()) as ErrorBody).code).toBe("conflict");
+  });
+
+  test("a serialization conflict does not expose the database error", async () => {
+    const res = await fetch(`${baseUrl}/__test__/serialization`);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as ErrorBody;
+    expect(body.code).toBe("conflict");
+    expect(JSON.stringify(body)).not.toContain("private query");
+  });
+
+  test("a nested catalog refusal keeps its specific conflict code", async () => {
+    const res = await fetch(`${baseUrl}/__test__/wrapped-busy`);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as ErrorBody;
+    expect(body.code).toBe("catalog_vocabulary_changed");
+    expect(JSON.stringify(body)).not.toContain("private catalog");
   });
 });

@@ -3,9 +3,9 @@ import {
   describeUnknownFunction,
   findUnknownFunctionCalls,
 } from "../../execution/jsonata-engine.ts";
+import { validateWorkflowDef } from "../core/validator.ts";
 import { jsonataSiteErrors, workflowJsonataSites } from "../jsonata-sites.ts";
 import { WorkflowDefSchema } from "../types.ts";
-import { validateWorkflowDef } from "../validator.ts";
 
 const FETCH = {
   id: "fetch",

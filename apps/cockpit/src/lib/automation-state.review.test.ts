@@ -11,6 +11,7 @@ import {
   EXTEND_BELOW_RUN_SHARE,
   EXTEND_WITHIN_DAYS,
 } from "@/lib/automation-state";
+import { recommendedAutomationEnvironment } from "@/lib/core/automation-presentation";
 import { CATALOGS } from "@/lib/i18n";
 import {
   ACTIVE,
@@ -350,4 +351,10 @@ describe("carry-over choice", () => {
   test("a missing preview goes through the review", () => {
     expect(carryOverChoice(null, true)).toBe("review");
   });
+});
+test("automation presentation core reads only a declared recommendation", () => {
+  expect(recommendedAutomationEnvironment(null)).toBeNull();
+  expect(
+    recommendedAutomationEnvironment({ recommended_environment: { environment: "prod" } }),
+  ).toBe("prod");
 });

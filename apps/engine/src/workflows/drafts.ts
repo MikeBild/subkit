@@ -14,19 +14,19 @@ import { toStoredDefinition, workflowSlug } from "./core/definition.ts";
 import {
   carriedSpecColumns,
   personOriginRefused,
-  readStoredSpec,
   type SpecAuthority,
   type SpecCarrier,
   workflowSpecDigest,
 } from "./core/spec.ts";
 import { decide, describeRejection, evolve } from "./core/workflow.ts";
-import { type WorkflowSpec, WorkflowSpecSchema } from "./draft-schemas.ts";
+import { projectWorkflowDraft, type WorkflowDraftView } from "./draft-projection.ts";
+import { WorkflowSpecSchema } from "./draft-schemas.ts";
 import { prepareWorkflowSave } from "./prepare-save.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
 import type { ServicePackageWorkflowSource } from "./service-package-provenance.ts";
 import { packageWorkflowNote } from "./service-package-provenance.ts";
 import { slugConflictResult } from "./slug-conflict.ts";
-import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
+import { readStoredSpec } from "./stored-spec.ts";
 import { type VersionActor, versionAuthorColumns } from "./version-author.ts";
 import { loadVersionSpec } from "./version-spec.ts";
 import {
@@ -36,15 +36,7 @@ import {
 } from "./version-write-lock.ts";
 import { writeWorkflowMetadata } from "./workflow-metadata.ts";
 
-export interface WorkflowDraftView {
-  workflow_id: string;
-  version_id: string;
-  version: number;
-  digest: string;
-  current_version_id: string | null;
-  definition: WorkflowDef;
-  spec: WorkflowSpec | null;
-}
+export type { WorkflowDraftView } from "./draft-projection.ts";
 
 type DraftErrorCode =
   | "invalid_definition"
@@ -85,26 +77,6 @@ const PERSON_ORIGIN_REFUSAL: SaveWorkflowDraftResult = {
   errors: ["only a signed-in person can state a spec as their own; send origin chat or derived"],
 };
 
-function draftView(
-  wf: typeof workflows.$inferSelect,
-  version: typeof workflowVersions.$inferSelect,
-): WorkflowDraftView {
-  const stored = WorkflowDefSchema.parse(version.dag);
-  const definition: WorkflowDef =
-    stored.description === undefined && wf.description
-      ? { ...stored, description: wf.description }
-      : stored;
-  return {
-    workflow_id: wf.id,
-    version_id: version.id,
-    version: version.version,
-    digest: workflowJsonDigest(version.dag),
-    current_version_id: wf.current_version_id,
-    definition,
-    spec: readStoredSpec(version.spec),
-  };
-}
-
 export async function getWorkflowDraft(
   tenant_id: string,
   workflow_id: string,
@@ -129,7 +101,7 @@ export async function getWorkflowDraft(
       ),
     )
     .limit(1);
-  return row ? draftView(row.wf, row.version) : null;
+  return row ? projectWorkflowDraft(row.wf, row.version) : null;
 }
 
 async function versionConflict(
@@ -356,7 +328,7 @@ export async function saveWorkflowDraft(
           tx,
         );
       }
-      return { draft: draftView(wf, version) };
+      return { draft: projectWorkflowDraft(wf, version) };
     });
   } catch (error) {
     if (input.workflow_id && error instanceof CatalogVocabularyBusyError) {

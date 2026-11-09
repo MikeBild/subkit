@@ -1,9 +1,10 @@
 import type { components } from "@cli-core/engine-api/openapi";
 import type { ReactNode } from "react";
 import { type ActorDirectory, actorDirectoryName } from "@/app/actor-directory-model";
-import { auditHref, instantParam, RUNS_FILTER_PARAMS, uuidParam } from "@/app/links";
+import { auditHref } from "@/app/links";
 import { statusTone } from "@/components/cockpit/patterns/status-badge";
 import { causeClassLabel } from "@/lib/cause-class";
+import { shortIdentifier } from "@/lib/core/identifier";
 import {
   formatRelativeTime,
   LOCALE_TAGS,
@@ -12,18 +13,39 @@ import {
   type TranslationKey,
 } from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
-import { shortIdentifier } from "@/pages/audit-model";
+import {
+  latestFailedRun as coreLatestFailedRun,
+  payloadEvidence as corePayloadEvidence,
+  runDisplayState as coreRunDisplayState,
+  runDurationMs as coreRunDurationMs,
+  runPermissionBasis as coreRunPermissionBasis,
+  runPermissionEvidence as coreRunPermissionEvidence,
+  runTraceEvidence as coreRunTraceEvidence,
+  runVerdict as coreRunVerdict,
+  stepEffectKind as coreStepEffectKind,
+  stepWasHeld as coreStepWasHeld,
+  stoppingStep as coreStoppingStep,
+  truncatedSteps as coreTruncatedSteps,
+} from "@/pages/core/run-outcome";
+import { FAILED_RUN_STATUSES } from "@/pages/core/runs-filter";
+
+export type { RunsFilter } from "@/pages/core/runs-filter";
+export {
+  executionsQuery,
+  FAILED_RUN_STATUSES,
+  failedStatusesFor,
+  filterFromUrl,
+  initialRunsFilter,
+  isKnownRequestSource,
+  REQUEST_SOURCES,
+  RUN_STATUSES,
+  RUNS_FILTER_KEYS,
+  runOverlayFromUrl,
+  runOverlaySearch,
+  runsFilterSearch,
+} from "@/pages/core/runs-filter";
 
 type Execution = components["schemas"]["Execution"];
-
-export const RUN_STATUSES = [
-  "queued",
-  "running",
-  "succeeded",
-  "failed",
-  "aborted",
-  "timed_out",
-] as const;
 
 export const SOURCE_KIND_KEYS: Record<Execution["source_kind"], TranslationKey> = {
   saved: "runs.sourceKind.saved",
@@ -42,100 +64,6 @@ const REQUEST_SOURCE_KEYS: Partial<Record<string, TranslationKey>> = {
   ui: "runs.source.ui",
   queue: "runs.source.queue",
 };
-
-export const REQUEST_SOURCES: readonly string[] = Object.keys(REQUEST_SOURCE_KEYS);
-
-export function isKnownRequestSource(source: string): boolean {
-  return source in REQUEST_SOURCE_KEYS;
-}
-
-export interface RunsFilter {
-  status: string;
-  q: string;
-  source: string;
-  workflowId: string | null;
-  startedFrom: string | null;
-  startedTo: string | null;
-}
-
-export function filterFromUrl(search: string): RunsFilter {
-  const params = new URLSearchParams(search);
-  const status = params.get(RUNS_FILTER_PARAMS.status) ?? "";
-  const source = params.get(RUNS_FILTER_PARAMS.source) ?? "";
-  return {
-    status: RUN_STATUSES.includes(status as (typeof RUN_STATUSES)[number]) ? status : "all",
-    q: (params.get(RUNS_FILTER_PARAMS.q) ?? "").slice(0, 200),
-    source: isKnownRequestSource(source) ? source : "all",
-    workflowId: uuidParam(params, RUNS_FILTER_PARAMS.workflowId),
-    startedFrom: instantParam(params, RUNS_FILTER_PARAMS.startedFrom),
-    startedTo: instantParam(params, RUNS_FILTER_PARAMS.startedTo),
-  };
-}
-
-export function executionsQuery(
-  filter: RunsFilter,
-  page: { limit: number; offset: number },
-): URLSearchParams {
-  const params = new URLSearchParams({ limit: String(page.limit), offset: String(page.offset) });
-  if (filter.status !== "all") params.set("status", filter.status);
-  if (filter.source !== "all") params.set("request_source", filter.source);
-  if (filter.workflowId) params.set("workflow_id", filter.workflowId);
-  if (filter.startedFrom) params.set("started_from", filter.startedFrom);
-  if (filter.startedTo) params.set("started_to", filter.startedTo);
-  const needle = filter.q.trim();
-  if (needle) params.set("q", needle);
-  return params;
-}
-
-export const RUNS_FILTER_KEYS: readonly string[] = Object.values(RUNS_FILTER_PARAMS);
-
-export function runsFilterSearch(
-  search: string,
-  filter: Pick<RunsFilter, "status" | "source" | "q">,
-): string {
-  const params = new URLSearchParams(search);
-  const written: [string, string][] = [
-    [RUNS_FILTER_PARAMS.status, filter.status === "all" ? "" : filter.status],
-    [RUNS_FILTER_PARAMS.source, filter.source === "all" ? "" : filter.source],
-    [RUNS_FILTER_PARAMS.q, filter.q.trim()],
-  ];
-  for (const [key, value] of written) {
-    if (value) params.set(key, value);
-    else params.delete(key);
-  }
-  const query = params.toString();
-  return query ? `?${query}` : "";
-}
-
-export function failedStatusesFor(status: string): string | null {
-  if (status === "all") return [...FAILED_RUN_STATUSES].join(",");
-  return FAILED_RUN_STATUSES.has(status) ? status : null;
-}
-
-export function runOverlayFromUrl(search: string): { list: boolean; runId: string | null } {
-  const params = new URLSearchParams(search);
-  const raw = params.get("run")?.trim() ?? "";
-  return {
-    list: params.get("runs") === "all",
-    runId: raw && raw.length <= 128 && /^[\w.:-]+$/.test(raw) ? raw : null,
-  };
-}
-
-export function runOverlaySearch(
-  search: string,
-  next: { list: boolean; runId: string | null },
-): string {
-  const params = new URLSearchParams(search);
-  if (next.list) params.set("runs", "all");
-  else {
-    params.delete("runs");
-    for (const key of RUNS_FILTER_KEYS) params.delete(key);
-  }
-  if (next.runId) params.set("run", next.runId);
-  else params.delete("run");
-  const query = params.toString();
-  return query ? `?${query}` : "";
-}
 
 export function isExecutionRecord(value: unknown): value is Execution {
   if (typeof value !== "object" || value === null) return false;
@@ -288,9 +216,7 @@ export function formatRunDuration(locale: Locale, ms: number): string {
 }
 
 export function runDurationMs(run: Pick<Execution, "started_at" | "finished_at">): number | null {
-  if (!run.started_at || !run.finished_at) return null;
-  const ms = Date.parse(run.finished_at) - Date.parse(run.started_at);
-  return Number.isFinite(ms) && ms >= 0 ? ms : null;
+  return coreRunDurationMs(run);
 }
 
 export function runCostFacts(cost: unknown, t: Translate, locale: Locale): Array<[string, string]> {
@@ -417,13 +343,7 @@ export function stoppingStep<T extends StepLike>(
   steps: readonly T[],
   outcome: ExecutionOutcome | null,
 ): T | null {
-  const key = outcome?.failed_step?.step_key;
-  if (key) {
-    const named = steps.find((step) => step.step_key === key);
-    if (named) return named;
-  }
-  if (outcome && outcome.kind !== "failed" && outcome.kind !== "partial") return null;
-  return steps.find((step) => previewText(step.error) !== null) ?? null;
+  return coreStoppingStep(steps, outcome);
 }
 
 export function payloadEvidence<T extends StepLike>(
@@ -431,18 +351,8 @@ export function payloadEvidence<T extends StepLike>(
   runStatus: string,
   outcome: ExecutionOutcome | null = null,
 ): { text: string; stepKey: string | null; preview: boolean } | null {
-  const last = [...steps]
-    .reverse()
-    .find((step) => previewText(step.output_preview ?? step.result_preview) !== null);
-  if (!last) return null;
-  const text = previewText(last.output_preview ?? last.result_preview);
-  if (!text) return null;
-  if (outcome?.kind === "held") return { text, stepKey: null, preview: true };
-  const succeeded = outcome ? outcome.kind === "succeeded" : runStatus === "succeeded";
-  return { text, stepKey: succeeded ? null : last.step_key, preview: false };
+  return corePayloadEvidence(steps, runStatus, outcome);
 }
-
-export const FAILED_RUN_STATUSES: ReadonlySet<string> = new Set(["failed", "timed_out", "aborted"]);
 
 interface RunVerdict {
   label: string;
@@ -457,39 +367,8 @@ interface TruncatedStep {
   limit: PaginationLimit | null;
 }
 
-const PAGINATION_LIMITS: ReadonlySet<unknown> = new Set(["max_pages", "max_items", "max_bytes"]);
-
-function record(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function knownLimit(value: unknown): PaginationLimit | null {
-  return PAGINATION_LIMITS.has(value) ? (value as PaginationLimit) : null;
-}
-
-function truncationOf(step: StepLike): TruncatedStep | null {
-  const pagination = record(record(step.request_meta)?.pagination);
-  if (pagination?.truncated === true)
-    return { step: step.step_key, limit: knownLimit(pagination.limit) };
-  const warnings = record(step.output_preview)?.warnings;
-  const warning = Array.isArray(warnings)
-    ? warnings.map(record).find((entry) => entry?.code === "pagination_truncated")
-    : undefined;
-  return warning
-    ? { step: step.step_key, limit: knownLimit(record(warning.details)?.limit) }
-    : null;
-}
-
 export function truncatedSteps(steps: readonly StepLike[]): TruncatedStep[] {
-  const seen = new Set<string>();
-  return steps.flatMap((step) => {
-    const truncation = truncationOf(step);
-    if (!truncation || seen.has(truncation.step)) return [];
-    seen.add(truncation.step);
-    return [truncation];
-  });
+  return coreTruncatedSteps(steps);
 }
 
 const TRUNCATION_KEYS: Record<PaginationLimit, TranslationKey> = {
@@ -517,28 +396,7 @@ export function runVerdict(
   statusWord: (status: string) => string,
   truncated: readonly TruncatedStep[] = [],
 ): RunVerdict {
-  const finishedCleanly = outcome ? outcome.kind === "succeeded" : status === "succeeded";
-  if (finishedCleanly && truncated.length > 0)
-    return { label: t("runs.state.partial"), tone: "warning", truncated: true };
-  if (outcome) {
-    switch (outcome.kind) {
-      case "held":
-        return { label: t("runs.state.held"), tone: null };
-      case "partial":
-        return { label: t("runs.state.partial"), tone: "warning" };
-      case "failed":
-        return {
-          label: statusWord(FAILED_RUN_STATUSES.has(status) ? status : "failed"),
-          tone: "critical",
-        };
-      default:
-        return { label: statusWord(status), tone: null };
-    }
-  }
-  return {
-    label: statusWord(status),
-    tone: FAILED_RUN_STATUSES.has(status) ? "critical" : null,
-  };
+  return coreRunVerdict(status, outcome, t, statusWord, truncated);
 }
 
 export function runStatusSentence(statusWord: string, t: Translate): OutcomeSentence {
@@ -568,7 +426,7 @@ export function rerunFailureText(
 }
 
 export function latestFailedRun<T extends { status: string }>(runs: readonly T[]): T | null {
-  return runs.find((run) => FAILED_RUN_STATUSES.has(run.status)) ?? null;
+  return coreLatestFailedRun(runs, FAILED_RUN_STATUSES);
 }
 
 export function stepConnectorId(step: StepLike | null): string | null {
@@ -636,38 +494,12 @@ export function stepCredentialSnapshots(step: {
   });
 }
 
-export function initialRunsFilter(search: string, now: number): RunsFilter {
-  const filter = filterFromUrl(search);
-  if (
-    filter.startedFrom ||
-    filter.startedTo ||
-    filter.workflowId ||
-    new URLSearchParams(search).has("run")
-  )
-    return filter;
-  return {
-    ...filter,
-    startedFrom: new Date(now - 7 * 86400000).toISOString(),
-    startedTo: new Date(now).toISOString(),
-  };
-}
-
 export function stepEffectKind(step: { request_meta?: unknown }): "read" | "write" | null {
-  const meta = step.request_meta;
-  if (!meta || typeof meta !== "object" || !("extras" in meta)) return null;
-  const extras = meta.extras;
-  if (!extras || typeof extras !== "object" || !("effect_kind" in extras)) return null;
-  return extras.effect_kind === "read" || extras.effect_kind === "write"
-    ? extras.effect_kind
-    : null;
+  return coreStepEffectKind(step);
 }
 
 export function stepWasHeld(step: { held?: boolean; request_meta?: unknown }): boolean {
-  if (step.held === true) return true;
-  const meta = step.request_meta;
-  if (!meta || typeof meta !== "object" || !("extras" in meta)) return false;
-  const extras = meta.extras;
-  return Boolean(extras && typeof extras === "object" && "held" in extras && extras.held === true);
+  return coreStepWasHeld(step);
 }
 
 export function runDisplayState(
@@ -675,31 +507,20 @@ export function runDisplayState(
   outcome: { kind?: string } | null | undefined,
   heldEffects = false,
 ): string {
-  return outcome?.kind === "held" || heldEffects ? "held" : status;
+  return coreRunDisplayState(status, outcome, heldEffects);
 }
 
 export function runTraceEvidence(
   run: unknown,
   mayReadAudit: boolean,
 ): { id: string | null; href: string | null } {
-  const raw = run && typeof run === "object" && "trace_id" in run ? run.trace_id : null;
-  const id = typeof raw === "string" && raw.trim().length > 0 ? raw : null;
-  return { id, href: id && mayReadAudit ? auditHref({ traceId: id, scope: "all" }) : null };
+  return coreRunTraceEvidence(run, mayReadAudit, (id) => auditHref({ traceId: id, scope: "all" }));
 }
 
 export function runPermissionBasis(
   value: unknown,
 ): "builtin_admin" | "resource_grant" | "group" | "role" | "portal_token_allowlist" | null {
-  switch (value) {
-    case "builtin_admin":
-    case "resource_grant":
-    case "group":
-    case "role":
-    case "portal_token_allowlist":
-      return value;
-    default:
-      return null;
-  }
+  return coreRunPermissionBasis(value);
 }
 
 export function runPermissionEvidence(run: {
@@ -707,17 +528,7 @@ export function runPermissionEvidence(run: {
   permission_phase?: unknown;
   permission_checked_at?: unknown;
 }) {
-  const basis = runPermissionBasis(run.permission_basis);
-  const phase = run.permission_phase;
-  const checkedAt = run.permission_checked_at;
-  if (
-    !basis ||
-    (phase !== "admission" && phase !== "start") ||
-    typeof checkedAt !== "string" ||
-    !Number.isFinite(Date.parse(checkedAt))
-  )
-    return null;
-  return { basis, phase, checkedAt } as const;
+  return coreRunPermissionEvidence(run);
 }
 
 export function lastRunLine(

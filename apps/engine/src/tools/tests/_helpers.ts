@@ -31,7 +31,7 @@ export function makeTestPrincipal(overrides: Partial<ResolvedPrincipal> = {}): R
     id: "00000000-0000-4000-8000-000000000001",
     tenant_id: "00000000-0000-4000-8000-000000000002",
     authoring_role_id: null,
-    scopes: new Set(),
+    scopes: [],
     permission_grants: [],
     role_ids: [],
     api_key_id: null,

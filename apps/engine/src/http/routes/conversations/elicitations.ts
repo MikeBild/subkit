@@ -1,12 +1,22 @@
 import { createRoute, type OpenAPIHono, type RouteConfigToTypedResponse } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import * as svc from "../../../conversations/index.ts";
 import {
+  describeTurnFailure,
   humanChatAnswer,
-  registerConversationAbort,
   serializeEvent,
+  turnFailureFramePayload,
+} from "../../../conversations/public/authoring.ts";
+import {
+  ElicitationAlreadyResolvedError,
+  ElicitationValidationError,
+  respondElicitation,
+} from "../../../conversations/public/elicitation.ts";
+import {
+  clearConversationTurnFailure,
+  recordConversationTurnFailure,
+  registerConversationAbort,
   unregisterConversationAbort,
-} from "../../../conversations/index.ts";
+} from "../../../conversations/public/lifecycle.ts";
 import { HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -103,8 +113,8 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
       if (wantsSSE(c.req.header("accept"))) {
         const response = streamSSE(c, async (stream) => {
           try {
-            await svc.clearConversationTurnFailure(db, principal.tenant_id, id).catch(() => {});
-            const outcome = await svc.respondElicitation(
+            await clearConversationTurnFailure(db, principal.tenant_id, id).catch(() => {});
+            const outcome = await respondElicitation(
               {
                 ...baseParams,
                 onEvent: (ev) => {
@@ -116,7 +126,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
             await unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
             await stream.writeSSE(outcomeFrame(outcome));
           } catch (error) {
-            if (error instanceof svc.ElicitationAlreadyResolvedError) {
+            if (error instanceof ElicitationAlreadyResolvedError) {
               await stream.writeSSE(
                 errorFrame({
                   code: "elicitation_already_resolved",
@@ -125,7 +135,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
               );
               return;
             }
-            if (error instanceof svc.ElicitationValidationError) {
+            if (error instanceof ElicitationValidationError) {
               await stream.writeSSE(
                 errorFrame({
                   code: "elicitation_validation_failed",
@@ -138,11 +148,11 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
               );
               return;
             }
-            const failure = svc.describeTurnFailure(error);
-            await svc
-              .recordConversationTurnFailure(db, principal.tenant_id, id, failure)
-              .catch(() => {});
-            await stream.writeSSE(errorFrame(svc.turnFailureFramePayload(failure)));
+            const failure = describeTurnFailure(error);
+            await recordConversationTurnFailure(db, principal.tenant_id, id, failure).catch(
+              () => {},
+            );
+            await stream.writeSSE(errorFrame(turnFailureFramePayload(failure)));
           } finally {
             await unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
           }
@@ -151,11 +161,11 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
         return response;
       }
 
-      let outcome: Awaited<ReturnType<typeof svc.respondElicitation>>;
+      let outcome: Awaited<ReturnType<typeof respondElicitation>>;
       try {
-        outcome = await svc.respondElicitation(baseParams, db);
+        outcome = await respondElicitation(baseParams, db);
       } catch (error) {
-        if (error instanceof svc.ElicitationAlreadyResolvedError) {
+        if (error instanceof ElicitationAlreadyResolvedError) {
           throw new HttpError(409, "elicitation_already_resolved", error.message, {
             details: {
               elicitation_id: error.elicitation_id,
@@ -165,7 +175,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
             },
           });
         }
-        if (error instanceof svc.ElicitationValidationError) {
+        if (error instanceof ElicitationValidationError) {
           throw new HttpError(422, "elicitation_validation_failed", error.message, {
             details: {
               elicitation_id: error.elicitation_id,
@@ -190,7 +200,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
     const { id, tool_call_id } = c.req.valid("param");
     const body = c.req.valid("json");
     const { getPendingElicitationByToolCall } = await import(
-      "../../../conversations/elicitations.ts"
+      "../../../conversations/public/elicitation.ts"
     );
     const elicit = await getPendingElicitationByToolCall(principal.tenant_id, id, tool_call_id, db);
     if (!elicit) {
@@ -216,8 +226,8 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
       if (wantsSSE(c.req.header("accept"))) {
         const response = streamSSE(c, async (stream) => {
           try {
-            await svc.clearConversationTurnFailure(db, principal.tenant_id, id).catch(() => {});
-            const outcome = await svc.respondElicitation(
+            await clearConversationTurnFailure(db, principal.tenant_id, id).catch(() => {});
+            const outcome = await respondElicitation(
               {
                 ...baseParams,
                 onEvent: (ev) => {
@@ -229,7 +239,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
             await unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
             await stream.writeSSE(outcomeFrame(outcome));
           } catch (error) {
-            if (error instanceof svc.ElicitationAlreadyResolvedError) {
+            if (error instanceof ElicitationAlreadyResolvedError) {
               await stream.writeSSE(
                 errorFrame({
                   code: "elicitation_already_resolved",
@@ -238,7 +248,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
               );
               return;
             }
-            if (error instanceof svc.ElicitationValidationError) {
+            if (error instanceof ElicitationValidationError) {
               await stream.writeSSE(
                 errorFrame({
                   code: "elicitation_validation_failed",
@@ -251,11 +261,11 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
               );
               return;
             }
-            const failure = svc.describeTurnFailure(error);
-            await svc
-              .recordConversationTurnFailure(db, principal.tenant_id, id, failure)
-              .catch(() => {});
-            await stream.writeSSE(errorFrame(svc.turnFailureFramePayload(failure)));
+            const failure = describeTurnFailure(error);
+            await recordConversationTurnFailure(db, principal.tenant_id, id, failure).catch(
+              () => {},
+            );
+            await stream.writeSSE(errorFrame(turnFailureFramePayload(failure)));
           } finally {
             await unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
           }
@@ -264,11 +274,11 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
         return response;
       }
 
-      let outcome: Awaited<ReturnType<typeof svc.respondElicitation>>;
+      let outcome: Awaited<ReturnType<typeof respondElicitation>>;
       try {
-        outcome = await svc.respondElicitation(baseParams, db);
+        outcome = await respondElicitation(baseParams, db);
       } catch (error) {
-        if (error instanceof svc.ElicitationAlreadyResolvedError) {
+        if (error instanceof ElicitationAlreadyResolvedError) {
           throw new HttpError(409, "elicitation_already_resolved", error.message, {
             details: {
               elicitation_id: error.elicitation_id,
@@ -278,7 +288,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
             },
           });
         }
-        if (error instanceof svc.ElicitationValidationError) {
+        if (error instanceof ElicitationValidationError) {
           throw new HttpError(422, "elicitation_validation_failed", error.message, {
             details: {
               elicitation_id: error.elicitation_id,

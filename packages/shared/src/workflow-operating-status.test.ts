@@ -33,7 +33,15 @@ describe("workflow operating status", () => {
     expect(workflowOperatingStatus("failing")).toBe("failing");
     expect(workflowOperatingStatus("paused")).toBe("stopped");
     expect(workflowOperatingStatus("repairPrepared")).toBe("repair_required");
+    expect(workflowOperatingStatus("invalid")).toBe("repair_required");
     expect(workflowOperatingStatus("unapproved")).toBe("unapproved");
     expect(workflowOperatingStatus("empty")).toBe("unapproved");
   });
+});
+
+test("all preparation and paused aliases map to the user-facing status", () => {
+  expect(workflowOperatingStatus("grant")).toBe("waiting_approval");
+  expect(workflowOperatingStatus("expiring")).toBe("waiting_approval");
+  expect(workflowOperatingStatus("stopped")).toBe("stopped");
+  expect(workflowOperatingStatus("repair")).toBe("repair_required");
 });

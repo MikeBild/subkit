@@ -1,4 +1,4 @@
-import { ConversationTurnInProgressError } from "../conversations/turns.ts";
+import { ConversationTurnInProgressError } from "../conversations/types.ts";
 
 const tails = new Map<string, Promise<unknown>>();
 

@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { routerTarget } from "@/app/links";
+import { entryActions } from "./core/attention-projection";
 import {
   type Attention,
   type AttentionItem,
   actionLabelKey,
   attentionBadge,
   attentionEntries,
-  entryActions,
   entrySnapshot,
   opensReviewSheet,
   overviewSections,

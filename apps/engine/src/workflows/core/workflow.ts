@@ -202,7 +202,9 @@ export function evolve(state: WorkflowState | null, event: WorkflowEvent): Workf
 
 export function nextVersion(versions: ReadonlyArray<number>): number {
   let highest = 0;
-  for (const version of versions) if (version > highest) highest = version;
+  for (const version of versions) {
+    highest = Math.max(highest, Number.isNaN(version) ? 0 : version);
+  }
   return highest + 1;
 }
 

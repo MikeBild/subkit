@@ -3,7 +3,7 @@
 // topoSort, and renderCycleReport. Pure data, no I/O.
 
 import { describe, expect, test } from "bun:test";
-import { buildStepDag, detectCycles, renderCycleReport, topoSort } from "../dag.ts";
+import { buildStepDag, detectCycles, renderCycleReport, topoSort } from "../core/dag.ts";
 import type { WorkflowDef } from "../types.ts";
 
 function wf(steps: WorkflowDef["steps"]): WorkflowDef {

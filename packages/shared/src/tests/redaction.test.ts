@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
+  DEFAULT_REDACTED,
   findSecretSpans,
   redactSecretShapes,
   redactWithMaxDepth,
+  referencesKeyMaterialPath,
   scrubSecrets,
   scrubString,
   scrubStringsDeep,
@@ -35,7 +37,6 @@ describe("scrubString — vendor pattern positives", () => {
     expect(out).toBe("//registry.npmjs.org/:_authToken=***REDACTED:pat***");
   });
 });
-
 describe("scrubString — generic high-entropy pattern (code-context-suppressed)", () => {
   test("bare 40-char mixed-case blob IS redacted (shape-only, no code framing)", () => {
     const out = scrubString(`the value ${GENERIC_BLOB} leaked`);
@@ -128,7 +129,6 @@ describe("scrubString — generic high-entropy pattern (code-context-suppressed)
     expect(scrubString(text)).toBe(text);
   });
 });
-
 describe("scrubString — bearer pattern over prose", () => {
   test('prose "bearer auth" / "Bearer tokens" is NOT matched (operand < 16 chars)', () => {
     const text = "proceed with bearer auth — most vendors accept Bearer tokens here";
@@ -219,6 +219,11 @@ describe("scrubStringsDeep — pattern-only walk", () => {
 });
 
 describe("redactWithMaxDepth — logger boundary inherits the new patterns", () => {
+  test("redacts sensitive object keys inside arrays while retaining safe values", () => {
+    expect(redactWithMaxDepth([{ token: "raw", nested: ["safe"] }], 4)).toEqual([
+      { token: DEFAULT_REDACTED, nested: ["safe"] },
+    ]);
+  });
   test("an AI_InvalidToolInputError-shaped payload leaks no raw token", () => {
     const payload = {
       error_message: `Invalid input for tool: {"config":{"token":"${ATLASSIAN_TOKEN}"}}`,
@@ -433,6 +438,20 @@ describe("prompt-key net — the body half collapses strings, not carriers", () 
 });
 
 describe("redactSecretShapes", () => {
+  test("removes the complete query of signed cloud URLs", () => {
+    const url =
+      "https://bucket.example/object?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=secret";
+    expect(scrubString(url)).toBe("https://bucket.example/object?<presign-redacted>");
+    expect(redactSecretShapes(url)).toEqual({
+      text: "https://bucket.example/object?<presign-redacted>",
+      count: 1,
+    });
+  });
+
+  test("recognizes representative private-key material paths", () => {
+    expect(referencesKeyMaterialPath("read ~/.ssh/id_ed25519")).toBe(true);
+    expect(referencesKeyMaterialPath("read /var/tmp/notes.txt")).toBe(false);
+  });
   test("redacts known secret shapes and counts them", () => {
     const pat = `ghp_${"a1B2".repeat(9)}`;
     const key = "-----BEGIN PRIVATE KEY-----\nZml4dHVyZQ==\n-----END PRIVATE KEY-----";

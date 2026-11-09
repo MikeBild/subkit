@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { validateWorkflowDef } from "../core/validator.ts";
 import { GMAIL_SEND_TARGET } from "../report-delivery-boundary.ts";
-import { validateWorkflowDef } from "../validator.ts";
 
 const CONNECTOR_ID = "5b0f3c1e-7a2d-4c8e-9f10-2a3b4c5d6e7f";
 const baseUrls = new Map([[CONNECTOR_ID, ["https://gmail.googleapis.com/gmail/v1"]]]);

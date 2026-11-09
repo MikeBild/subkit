@@ -220,6 +220,11 @@ export function registerRawMcpAuthOpenApi(app: OpenAPIHono<AppEnv>): void {
       200: {
         description:
           "Logged out; end_session_url signs the browser out at the identity provider that issued the session",
+        content: json({
+          type: "object",
+          required: ["end_session_url"],
+          properties: { end_session_url: { type: "string", format: "uri" } },
+        }),
       },
       204: {
         description:

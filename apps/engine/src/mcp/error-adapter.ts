@@ -1,5 +1,7 @@
-import { PendingElicitationBlockedError } from "../conversations/service/shared.ts";
-import { ConversationTurnInProgressError } from "../conversations/turns.ts";
+import {
+  ConversationTurnInProgressError,
+  PendingElicitationBlockedError,
+} from "../conversations/types.ts";
 import { HttpError } from "../http/errors.ts";
 
 const CONVERSATION_TURN_ABORT_REASONS = [

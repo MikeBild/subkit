@@ -2,12 +2,14 @@ import type { z } from "@hono/zod-openapi";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
-import { runConfirmGate } from "../conversations/confirmation.ts";
-import { describeToolExecutionFailure } from "../conversations/tool-execution-failure.ts";
+import {
+  checkBeforeGate,
+  describeToolExecutionFailure,
+  prepareGate,
+  runConfirmGate,
+  toolFailureEnvelope,
+} from "../conversations/public/tool-contract.ts";
 import type { ToolContext, ToolPrecheck, ToolResult } from "../conversations/tools/index.ts";
-import { toolFailureEnvelope } from "../conversations/tools/result-payload.ts";
-import { prepareGate } from "../conversations/tools/sdk-wrap/gate-subjects.ts";
-import { checkBeforeGate } from "../conversations/tools/sdk-wrap/pregate.ts";
 import type { Db } from "../db/client.ts";
 import { withTenantWork } from "../execution/tenant-work.ts";
 import { assertTenantActive } from "../identity/tenant-status.ts";

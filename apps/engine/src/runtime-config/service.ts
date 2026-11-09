@@ -4,7 +4,7 @@ import { getConfig, installRuntimeConfig, modelSettingMismatch } from "../config
 import { type Config, ConfigSchema } from "../config/schema.ts";
 import { dottedPath, findLeafByPath, listConfigLeaves } from "../config/walk.ts";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
-import type { Db, Executor } from "../db/client.ts";
+import type { Db, Executor, Transaction } from "../db/client.ts";
 import {
   runtimeConfigReplicas,
   runtimeConfigRevisions,
@@ -82,7 +82,7 @@ export interface PendingSecretVersionInput {
 }
 
 async function createSecretVersionInTransaction(
-  tx: Executor,
+  tx: Transaction,
   name: string,
   plaintext: string,
   createdBy: string | null,
@@ -195,7 +195,10 @@ export async function listSecretVersions(db: Executor): Promise<
 }
 
 async function readSecret(db: Executor, name: string, version: number): Promise<string> {
-  if (name.startsWith("connection.")) await assertTenantRuntimeSecretAllowed(db, name);
+  if (name.startsWith("connection.")) {
+    if (!("rollback" in db)) return db.transaction((tx) => readSecret(tx, name, version));
+    await assertTenantRuntimeSecretAllowed(db, name);
+  }
   // tenant-filter:exempt — references address the product-global secret registry.
   const [row] = await db
     .select(SECRET_VERSION_COLUMNS)
@@ -265,7 +268,7 @@ async function validateAndResolveDocument(
 }
 
 async function externalizeSeedSecrets(
-  tx: Executor,
+  tx: Transaction,
   document: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const stored = clone(document);

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { validateWorkflowDef } from "../validator.ts";
+import { validateWorkflowDef } from "../core/validator.ts";
 
 const definition = {
   name: "Nested input contract",

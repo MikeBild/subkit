@@ -13,6 +13,7 @@ import { backfillEmbeddings } from "../embeddings/backfill.ts";
 import { admitSystemWorkflowExecution } from "../execution/authority-admission.ts";
 import { withContext } from "../logging/context.ts";
 import { errorFields, logger } from "../logging/logger.ts";
+import { diagnoseOperation, runtimeDiagnosticEvent } from "../observability/runtime-diagnostics.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import { enqueueApprovalElicitationResume } from "../queue/approval-resume.ts";
 import { enqueueGateDiagnosis } from "../queue/handlers/workflow-repair.ts";
@@ -192,7 +193,9 @@ export class SchedulerReconciler {
     const period = this.opts.intervalMs ?? 60_000;
     const timer = setInterval(() => {
       if (this.stopped) return;
-      this.track(this.reconcileOnce()).catch((err) => {
+      this.track(
+        diagnoseOperation({ action: "scheduler.reconcile", fn: () => this.reconcileOnce() }),
+      ).catch((err) => {
         logger.error({
           module: "scheduler",
           action: "reconcile_failed",
@@ -203,15 +206,18 @@ export class SchedulerReconciler {
     }, period);
     this.timer = timer;
     (timer as unknown as { unref?: () => void }).unref?.();
-    const firstPass = this.track(Promise.resolve().then(() => this.reconcileOnce())).catch(
-      (error) => {
-        if (this.timer === timer) {
-          clearInterval(timer);
-          this.timer = null;
-        }
-        throw error;
-      },
-    );
+    runtimeDiagnosticEvent("scheduler.first_pass.scheduled");
+    const firstPass = this.track(
+      Promise.resolve().then(() =>
+        diagnoseOperation({ action: "scheduler.first_pass", fn: () => this.reconcileOnce() }),
+      ),
+    ).catch((error) => {
+      if (this.timer === timer) {
+        clearInterval(timer);
+        this.timer = null;
+      }
+      throw error;
+    });
     this.installation = { installed: true, firstPass };
     return this.installation;
   }

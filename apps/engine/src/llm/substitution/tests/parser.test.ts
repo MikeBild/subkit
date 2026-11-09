@@ -1,10 +1,15 @@
 import { describe, expect, test } from "bun:test";
+import { parsePlaceholders as parsePlaceholdersCore } from "../../../workflows/core/placeholder-parser.ts";
 import {
   collectTokenNames,
   hasPlaceholders,
   parsePlaceholders,
   stripPlaceholders,
 } from "../parser.ts";
+
+test("public parser facade preserves the pure parser identity", () => {
+  expect(parsePlaceholders).toBe(parsePlaceholdersCore);
+});
 
 describe("parsePlaceholders — happy-path token shapes", () => {
   test("cred token extracts slug and field", () => {

@@ -1,6 +1,6 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal placeholder fixtures
 import { describe, expect, test } from "bun:test";
-import { validateWorkflowDef } from "../validator.ts";
+import { validateWorkflowDef } from "../core/validator.ts";
 
 describe("validateWorkflowDef · request step.url shapes", () => {
   test("absolute https URL is accepted", () => {

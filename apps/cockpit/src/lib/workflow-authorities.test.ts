@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { untilRevokedOffer as coreUntilRevokedOffer } from "@/lib/core/authority-decision";
 import { translate } from "@/lib/i18n";
 import {
   AUTHORITY_EFFECT_KEYS,
@@ -47,6 +48,13 @@ const authority: WorkflowAuthority = {
   ready_for_new_run: true,
   state: "approved",
 };
+
+test("authority core offers a bounded approval only when it is active and writable", () => {
+  const now = Date.parse("2026-01-01T00:00:00.000Z");
+  expect(coreUntilRevokedOffer(authority, now, true)).toEqual({ days: 1 });
+  expect(coreUntilRevokedOffer(authority, now, false)).toBeNull();
+  expect(coreUntilRevokedOffer({ ...authority, revoked_at: UNTIL }, now, true)).toBeNull();
+});
 const during = Date.parse("2026-01-01T12:00:00.000Z");
 
 const preview: WorkflowAuthorityPreview = {

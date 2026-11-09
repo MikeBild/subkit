@@ -1,3 +1,7 @@
+import { saveWorkflow } from "./workflow-save.ts";
+
+export { workflowDefinition } from "./workflow-file-model.ts";
+
 import { exitCodeFor, reportCommandError } from "@cli-core/errors";
 import { emitGroupedList, emitList, printJson } from "@cli-core/format";
 import {
@@ -10,12 +14,8 @@ import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import type { ExecutionRunDraftDefinition } from "../engine-client/executions.ts";
-import type { CreateWorkflowRequest, ValidateWorkflowBody } from "../engine-client/workflows.ts";
-import {
-  EngineClient,
-  type RunExecutionBody,
-  type RunExecutionResponse,
-} from "../engine-client.ts";
+import type { ValidateWorkflowBody } from "../engine-client/workflows.ts";
+import { EngineClient, type RunExecutionBody } from "../engine-client.ts";
 import {
   catalogMetadataArgs,
   catalogMetadataBody,
@@ -30,13 +30,6 @@ import {
 } from "../lib/invoke-snippet-source.ts";
 import { pickId } from "../lib/pick.ts";
 import {
-  createBodyFor,
-  parseBinds,
-  recipeWorkflowSource,
-  SOLUTIONS_VERTICAL,
-  type WorkflowSource,
-} from "../lib/recipe-source.ts";
-import {
   environmentMismatchHint,
   invalidRunEnvironmentMessage,
   parseRunEnvironment,
@@ -44,72 +37,10 @@ import {
 } from "../lib/run-environment.ts";
 import { printRunResult } from "../lib/run-result.ts";
 import { exitCodeForTerminalStatus, tailExecution } from "../lib/tail-execution.ts";
-import { formatAutomationReadiness } from "../render/automation-readiness.ts";
-import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
-import type {
-  PlanStep,
-  WorkflowIntent,
-  WorkflowSummary,
-  WorkflowTrigger,
-} from "../render/types.ts";
 import { formatFileRef } from "../utils/file-ref.ts";
 import { makeClient } from "./command-runtime.ts";
 import { uploadPath } from "./files.ts";
 import { WORKFLOW_LIST_COLUMNS } from "./list-columns.ts";
-
-function parseTrigger(raw: unknown): WorkflowTrigger {
-  if (raw && typeof raw === "object") {
-    const t = raw as Record<string, unknown>;
-    if (t.kind === "schedule") {
-      return {
-        kind: "schedule",
-        cron: typeof t.cron === "string" ? t.cron : "?",
-        tz: typeof t.tz === "string" ? t.tz : "UTC",
-      };
-    }
-    if (t.kind === "webhook") {
-      return {
-        kind: "webhook",
-        source: typeof t.source === "string" ? t.source : "?",
-        events: Array.isArray(t.events) ? t.events.filter((e) => typeof e === "string") : [],
-      };
-    }
-  }
-  return { kind: "request" };
-}
-
-function intentFromBody(body: Record<string, unknown>): WorkflowIntent {
-  const definition =
-    Array.isArray(body.steps) || body.trigger !== undefined
-      ? body
-      : ((body.definition as Record<string, unknown>) ?? {});
-  const rawSteps = Array.isArray(definition.steps) ? definition.steps : [];
-  const steps = rawSteps.map((s) => {
-    const r = (s ?? {}) as Record<string, unknown>;
-    return {
-      key: typeof r.key === "string" ? r.key : typeof r.id === "string" ? r.id : "(step)",
-      kind: typeof r.kind === "string" ? r.kind : "step",
-    };
-  });
-  return {
-    kind: "workflow",
-    name: typeof body.name === "string" ? body.name : "(workflow)",
-    ...(typeof body.slug === "string" ? { slug: body.slug } : {}),
-    trigger: parseTrigger(definition.trigger),
-    steps,
-  };
-}
-
-type WorkflowFileDefinition = CreateWorkflowRequest & ExecutionRunDraftDefinition;
-
-function isWorkflowDefinition(body: Record<string, unknown>): body is WorkflowFileDefinition {
-  return typeof body.name === "string" && Array.isArray(body.steps);
-}
-
-export function workflowDefinition(body: Record<string, unknown>): WorkflowFileDefinition {
-  if (isWorkflowDefinition(body)) return body;
-  throw new Error("the workflow definition needs a name and a steps array");
-}
 
 const fetchWorkflowRows = async (client: EngineClient) => {
   const { items } = await client.listWorkflows({ limit: 50 });
@@ -643,166 +574,6 @@ const restoreCommand = defineCommand({
     }
   },
 });
-
-async function loadWorkflowSource(
-  client: EngineClient,
-  args: Record<string, unknown>,
-): Promise<WorkflowSource> {
-  if (args["from-recipe"]) {
-    const binds = parseBinds(args.bind);
-    const [pack, known] = await Promise.all([
-      client.getRecipePack(SOLUTIONS_VERTICAL),
-      Object.keys(binds).length > 0
-        ? client.listConnectors({ limit: 1000 })
-        : Promise.resolve({ items: [] }),
-    ]);
-    const connectors = known.items.map((item) => ({
-      id: String(item.id),
-      slug: String(item.slug),
-      template_slug: typeof item.template_slug === "string" ? item.template_slug : null,
-    }));
-    return recipeWorkflowSource(pack, String(args["from-recipe"]), binds, connectors);
-  }
-  const { readFileSync } = await import("node:fs");
-  return {
-    body: JSON.parse(readFileSync(String(args.file), "utf8")) as Record<string, unknown>,
-    previewInput: undefined,
-    recipe: null,
-  };
-}
-
-async function saveWorkflow(
-  target: { kind: "create" } | { kind: "update"; id: string },
-  args: Record<string, unknown>,
-): Promise<void> {
-  const client = makeClient();
-  const jsonMode = Boolean(args.json);
-  try {
-    {
-      const source = await loadWorkflowSource(client, args);
-      const body = workflowDefinition(source.body);
-      const skip = Boolean(args["skip-checks"]);
-      const intent = intentFromBody(body);
-      intent.action = target.kind === "create" ? "Create" : "Update";
-      await renderIntent(intent, { jsonMode });
-
-      let previewExecutionId: string | undefined;
-
-      if (!skip) {
-        const validation = await client.validateWorkflowDraft(body);
-        if (!validation.ok) {
-          const firstErr = (validation.errors ?? [])[0];
-          const detail = firstErr ? `${firstErr.path}: ${firstErr.message}` : "validation failed";
-          const phases: PlanStep[] = [
-            { id: "validate", label: "Validate", status: "failed", detail },
-            { id: "preview", label: "Preview", status: "pending" },
-            { id: "save", label: "Save", status: "pending" },
-          ];
-          await renderTaskList(phases, { jsonMode });
-          process.exit(1);
-        }
-
-        let input: unknown = source.previewInput;
-        if (args.input) {
-          try {
-            input = JSON.parse(args.input as string);
-          } catch {
-            process.stderr.write("invalid JSON for --input\n");
-            process.exit(1);
-          }
-        }
-
-        const environment = parseRunEnvironment(args.environment);
-        if (!environment) {
-          process.stderr.write(`${invalidRunEnvironmentMessage(args.environment)}\n`);
-          process.exit(1);
-        }
-        const preview: RunExecutionResponse = await client.runExecution(
-          {
-            source: "draft",
-            definition: body,
-            ...(input !== undefined ? { input } : {}),
-            request_source: "cli",
-          },
-          { environment },
-        );
-
-        const previewWarnings = (preview.warnings ?? []) as ReadonlyArray<{
-          step_key?: string;
-          code?: string;
-          message?: string;
-        }>;
-
-        if (preview.status !== "succeeded") {
-          const phases: PlanStep[] = [
-            { id: "validate", label: "Validate", status: "succeeded" },
-            {
-              id: "preview",
-              label: "Preview",
-              status: "failed",
-              detail: `status=${preview.status}`,
-            },
-            { id: "save", label: "Save", status: "pending" },
-          ];
-          await renderTaskList(phases, { jsonMode });
-          const mismatchHint = environmentMismatchHint(preview, environment);
-          if (mismatchHint && !jsonMode) process.stderr.write(`${mismatchHint}\n`);
-          process.exit(1);
-        }
-
-        if (previewWarnings.length > 0) {
-          const codes = previewWarnings
-            .map((w) => w.code)
-            .filter((c): c is string => typeof c === "string" && c.length > 0);
-          const codeList = codes.length > 0 ? codes.join(", ") : "(no code)";
-          const phases: PlanStep[] = [
-            { id: "validate", label: "Validate", status: "succeeded" },
-            {
-              id: "preview",
-              label: "Preview",
-              status: "warning",
-              detail: `${previewWarnings.length} warning(s): ${codeList}`,
-            },
-            { id: "save", label: "Save", status: "pending" },
-          ];
-          await renderTaskList(phases, { jsonMode });
-        }
-
-        previewExecutionId = preview.execution_id;
-      } else if (!jsonMode) {
-        process.stderr.write(
-          `${pc.yellow("warning:")} --skip-checks active; no validate or preview was run\n`,
-        );
-      }
-
-      const created = await (target.kind === "create"
-        ? client.createWorkflow(workflowDefinition(createBodyFor(source)))
-        : client.updateWorkflow(target.id, body));
-      printJson(created);
-
-      const summary: WorkflowSummary = {
-        kind: "workflow",
-        id: created.id ?? "(unknown)",
-        version: created.current_version ?? 1,
-        name: created.name ?? intent.name,
-        trigger: intent.trigger,
-        action: target.kind === "create" ? "Created" : "Updated",
-        ...(previewExecutionId ? { preview_execution_id: previewExecutionId } : {}),
-      };
-      await renderSummary(summary, { jsonMode });
-      if (!jsonMode) process.stderr.write(formatAutomationReadiness(created.automation_readiness));
-
-      if (!jsonMode && summary.id !== "(unknown)") {
-        process.stderr.write(
-          `\n${pc.dim("Next:")} sk workflows run ${summary.id} --follow\n` +
-            `${pc.dim("Tip:")} sk workflows invoke-snippet ${summary.id} --lang node\n`,
-        );
-      }
-    }
-  } catch (err) {
-    reportCommandError(err, { json: jsonMode });
-  }
-}
 
 const SAVE_ARGS = {
   environment: {

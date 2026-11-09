@@ -24,7 +24,18 @@ import {
 } from "../rbac/scope-issuance.ts";
 import { now } from "../utils/clock.ts";
 import { generateKey, hashKey } from "./api-key.ts";
-import { ApiKeyOwnerNotFoundError, assertApiKeyOwnerInTenant } from "./api-key-owner.ts";
+import { ApiKeyOwnerNotFoundError, apiKeyOwnerFacts } from "./api-key-owner.ts";
+import { credentialIssueMetadata, credentialStorageValues } from "./core/credential-record.ts";
+import { type ApiKeyView, toApiKeyView } from "./core/credential-view.ts";
+import {
+  type ApiKeyCreator,
+  apiKeyActorId,
+  decideApiKeyRotation,
+  decideApiKeyRotationOwner,
+  decideCredentialCreator,
+  decideCredentialIssue,
+  rotationOverlapDeadline,
+} from "./core/credentials.ts";
 import { assertAdminRemains } from "./last-admin.ts";
 import { generatePortalToken } from "./portal-token.ts";
 import { assertTenantActive } from "./self-service.ts";
@@ -346,72 +357,23 @@ export async function deleteSystemAccount(input: DeleteSystemAccountInput, db: E
   });
 }
 
-export interface ApiKeyView {
-  id: string;
-  tenant_id: string;
-  prefix: string;
-  name: string | null;
-  scopes: string[];
-  user_id: string | null;
-  system_account_id: string | null;
-  creator: ApiKeyCreator | null;
-  allowed_workflows: string[] | null;
-  allowed_connectors: string[] | null;
-  created_at: Date;
-  last_used_at: Date | null;
-  expires_at: Date | null;
-  rotating_out_at: Date | null;
-  rotated_from_id: string | null;
-  revoked_at: Date | null;
-}
+export type { ApiKeyView } from "./core/credential-view.ts";
 
-export type ApiKeyCreator =
-  | { kind: "user"; id: string }
-  | { kind: "system_account"; id: string }
-  | { kind: "system"; id: null };
+export type { ApiKeyCreator } from "./core/credentials.ts";
 
 function resolveApiKeyCreator(
   actor: ApiKeyCreator | null | undefined,
   actorId: string | null | undefined,
 ): ApiKeyCreator | null {
-  if (actor === undefined) return null;
-  const expectedActorId = actor && actor.kind !== "system" ? actor.id : null;
-  if (actorId !== undefined && actorId !== expectedActorId) {
-    throw new Error("api_key_actor_provenance_mismatch");
-  }
-  return actor;
+  const decision = decideCredentialCreator(actor, actorId);
+  if (decision.kind === "provenance_mismatch") throw new Error("api_key_actor_provenance_mismatch");
+  return decision.actor;
 }
 
-function apiKeyActorId(actor: ApiKeyCreator | null | undefined): string | null {
-  return actor && actor.kind !== "system" ? actor.id : null;
-}
-
-function toApiKeyView(row: typeof apiKeys.$inferSelect): ApiKeyView {
-  return {
-    id: row.id,
-    tenant_id: row.tenant_id,
-    prefix: row.prefix,
-    name: row.name ?? null,
-    scopes: row.scopes,
-    user_id: row.user_id ?? null,
-    system_account_id: row.system_account_id ?? null,
-    creator:
-      row.creator_kind === "user" && row.creator_id
-        ? { kind: "user", id: row.creator_id }
-        : row.creator_kind === "system_account" && row.creator_id
-          ? { kind: "system_account", id: row.creator_id }
-          : row.creator_kind === "system" && row.creator_id === null
-            ? { kind: "system", id: null }
-            : null,
-    allowed_workflows: row.allowed_workflows ?? null,
-    allowed_connectors: row.allowed_connectors ?? null,
-    created_at: row.created_at,
-    last_used_at: row.last_used_at ?? null,
-    expires_at: row.expires_at ?? null,
-    rotating_out_at: row.rotating_out_at ?? null,
-    rotated_from_id: row.rotated_from_id ?? null,
-    revoked_at: row.revoked_at ?? null,
-  };
+function assertCredentialOwnerDecision(
+  decision: ReturnType<typeof decideCredentialIssue> | ReturnType<typeof decideApiKeyRotation>,
+): void {
+  if (decision.kind !== "accepted") throw new ApiKeyOwnerNotFoundError(decision.owner_kind);
 }
 
 export async function listApiKeys(tenantId: string, db: Executor): Promise<ApiKeyView[]> {
@@ -481,25 +443,39 @@ async function issueApiKeyInternal(
   const key = generateKey();
   return db.transaction(async (tx) => {
     await assertTenantActive(input.tenant_id, tx);
-    await assertApiKeyOwnerInTenant(tx, input.tenant_id, input.owner_kind, input.owner_id);
+    const ownerFacts = await apiKeyOwnerFacts(
+      tx,
+      input.tenant_id,
+      input.owner_kind,
+      input.owner_id,
+    );
+    assertCredentialOwnerDecision(
+      decideCredentialIssue({
+        owner_kind: input.owner_kind,
+        owner_id: input.owner_id,
+        ...ownerFacts,
+      }),
+    );
     const [row] = await tx
       .insert(apiKeys)
-      .values({
-        tenant_id: input.tenant_id,
-        user_id: input.owner_kind === "user" ? input.owner_id : null,
-        system_account_id: input.owner_kind === "system_account" ? input.owner_id : null,
-        creator_kind: actor?.kind ?? null,
-        creator_id: actor?.kind === "system" ? null : (actor?.id ?? null),
-        credential_origin: credentialOrigin,
-        prefix: key.prefix,
-        token_sha256: key.hash,
-        name: input.name ?? null,
-        scopes,
-        allowed_workflows: input.allowed_workflows ?? null,
-        allowed_connectors: input.allowed_connectors ?? null,
-        expires_at: input.expires_at ?? null,
-        rotated_from_id: input.rotated_from_id ?? null,
-      })
+      .values(
+        credentialStorageValues(
+          {
+            tenant_id: input.tenant_id,
+            user_id: input.owner_kind === "user" ? input.owner_id : null,
+            system_account_id: input.owner_kind === "system_account" ? input.owner_id : null,
+            credential_origin: credentialOrigin,
+            name: input.name ?? null,
+            scopes,
+            allowed_workflows: input.allowed_workflows ?? null,
+            allowed_connectors: input.allowed_connectors ?? null,
+            expires_at: input.expires_at ?? null,
+            rotated_from_id: input.rotated_from_id ?? null,
+          },
+          actor,
+          key,
+        ),
+      )
       .returning();
     assertInsertRow(row, "api_keys");
     await auditAwait(
@@ -511,12 +487,12 @@ async function issueApiKeyInternal(
         resource_type: "api_key",
         resource_id: row.id,
         result: "success",
-        metadata: {
+        metadata: credentialIssueMetadata({
           owner_kind: input.owner_kind,
           owner_id: input.owner_id,
           prefix: row.prefix,
           rotated_from_id: input.rotated_from_id ?? null,
-        },
+        }),
       },
       tx,
     );
@@ -554,7 +530,7 @@ export async function rotateApiKey(
 ): Promise<RotateApiKeyResult | null> {
   const actor = resolveApiKeyCreator(input.actor, input.actor_id);
   const actorId = apiKeyActorId(input.actor);
-  const overlapMs = (input.overlap_minutes ?? 60) * 60_000;
+  const overlapMinutes = input.overlap_minutes;
   return db.transaction(async (tx) => {
     const existingRows = await tx
       .select()
@@ -564,34 +540,41 @@ export async function rotateApiKey(
     const existing = existingRows[0];
     if (!existing) return null;
     await authorizeRetainedScopes(tx, input.issuer, existing.scopes, existing.tenant_id);
-    const ownerKind = existing.user_id ? "user" : "system_account";
-    const ownerId = existing.user_id ?? existing.system_account_id;
-    if (!ownerId) throw new ApiKeyOwnerNotFoundError(ownerKind);
-    await assertApiKeyOwnerInTenant(tx, existing.tenant_id, ownerKind, ownerId);
+    const owner = decideApiKeyRotationOwner(existing);
+    if (owner.kind === "owner_missing") throw new ApiKeyOwnerNotFoundError(owner.owner_kind);
+    const ownerFacts = await apiKeyOwnerFacts(
+      tx,
+      existing.tenant_id,
+      owner.owner_kind,
+      owner.owner_id,
+    );
+    assertCredentialOwnerDecision(decideApiKeyRotation(existing, ownerFacts));
 
     const key = generateKey();
     const [created] = await tx
       .insert(apiKeys)
-      .values({
-        tenant_id: existing.tenant_id,
-        user_id: existing.user_id ?? null,
-        system_account_id: existing.system_account_id ?? null,
-        creator_kind: actor?.kind ?? null,
-        creator_id: actor?.kind === "system" ? null : (actor?.id ?? null),
-        credential_origin: existing.credential_origin,
-        prefix: key.prefix,
-        token_sha256: key.hash,
-        name: existing.name ?? null,
-        scopes: existing.scopes,
-        allowed_workflows: existing.allowed_workflows ?? null,
-        allowed_connectors: existing.allowed_connectors ?? null,
-        expires_at: existing.expires_at ?? null,
-        rotated_from_id: existing.id,
-      })
+      .values(
+        credentialStorageValues(
+          {
+            tenant_id: existing.tenant_id,
+            user_id: existing.user_id ?? null,
+            system_account_id: existing.system_account_id ?? null,
+            credential_origin: existing.credential_origin,
+            name: existing.name ?? null,
+            scopes: existing.scopes,
+            allowed_workflows: existing.allowed_workflows ?? null,
+            allowed_connectors: existing.allowed_connectors ?? null,
+            expires_at: existing.expires_at ?? null,
+            rotated_from_id: existing.id,
+          },
+          actor,
+          key,
+        ),
+      )
       .returning();
     assertInsertRow(created, "api_keys");
 
-    const overlapDeadline = new Date(now() + overlapMs);
+    const overlapDeadline = new Date(rotationOverlapDeadline(now(), overlapMinutes));
     const [rotatedOut] = await tx
       .update(apiKeys)
       .set({ rotating_out_at: overlapDeadline })
@@ -608,12 +591,12 @@ export async function rotateApiKey(
         resource_type: "api_key",
         resource_id: created.id,
         result: "success",
-        metadata: {
+        metadata: credentialIssueMetadata({
           owner_kind: existing.user_id ? "user" : "system_account",
           owner_id: existing.user_id ?? existing.system_account_id,
           prefix: created.prefix,
           rotated_from_id: existing.id,
-        },
+        }),
       },
       tx,
     );

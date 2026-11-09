@@ -16,7 +16,7 @@ import {
   prepareReportAuthorityOperation,
   workflowAutomationStatusOperation,
 } from "../../api/operations/workflow-authority-review.ts";
-import { continueConversationDevLiveTest } from "../../conversations/index.ts";
+import { continueConversationDevLiveTest } from "../../conversations/public/authoring.ts";
 import { getBoss } from "../../queue/index.ts";
 import type { AppEnv } from "../openapi.ts";
 

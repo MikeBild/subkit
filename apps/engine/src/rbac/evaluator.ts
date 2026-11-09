@@ -16,6 +16,15 @@ import { log } from "../logging/logger.ts";
 import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 import { now } from "../utils/clock.ts";
 import { isOperatorPermission } from "./catalog.ts";
+import {
+  credentialCeilingCause,
+  credentialCeilingDecision,
+  deriveConnectorAccessLevel,
+  evaluatePermission,
+  evaluateResourceAccess,
+  matchesPortalTokenAllowlist,
+  type PermissionFacts,
+} from "./core/evaluator.ts";
 import { isOperatorPrincipal } from "./operator.ts";
 
 export type DecisionSource =
@@ -202,27 +211,6 @@ async function hasResourceGrant(
   return rows.length > 0;
 }
 
-function matchesPortalTokenAllowlist(check: PermissionCheck): boolean {
-  if (check.principal.provider !== "portal_token") return false;
-  const allow = check.principal.allowed_workflows;
-  if (allow === undefined) return false;
-  const perm = check.permission;
-  if (perm === "workflow:run" || perm === "workflow:read") {
-    if (check.resource?.type !== "workflow") return false;
-    if (allow === "all") return true;
-    return Array.isArray(allow) && allow.includes(check.resource.id);
-  }
-  if (
-    perm === "conversation:read" ||
-    perm === "conversation:write" ||
-    perm === "conversation:cancel"
-  ) {
-    if (allow === "all") return true;
-    return Array.isArray(allow) && allow.length > 0;
-  }
-  return false;
-}
-
 export function hasBuiltinAdminRole(principal: ResolvedPrincipal): boolean {
   return principal.roles?.includes("admin") === true;
 }
@@ -236,19 +224,37 @@ const rbacCtx = (check: PermissionCheck) => ({
 });
 
 function ceilingDeny(check: PermissionCheck, cause: string): Decision {
-  const reason = `credential_ceiling:${cause}`;
+  const decision = credentialCeilingDecision(coreRequest(check), {
+    credential_ceiling_cause: cause,
+  });
+  if (!decision) throw new Error("credential ceiling decision missing cause");
+  const reason = decision.reason!;
   recordMetric("deny", check.permission, "credential_ceiling");
   emitDeny(check, reason, "credential_ceiling");
+  return decision;
+}
+
+function coreRequest(check: PermissionCheck) {
   return {
-    allow: false,
-    reason,
-    source: "credential_ceiling",
-    detail: {
-      required: check.permission,
-      ...(check.resource ? { resource: check.resource } : {}),
-      cause: reason,
-    },
-  };
+    permission: check.permission,
+    ...(check.resource ? { resource: check.resource } : {}),
+    portal_token: check.principal.provider === "portal_token",
+    ...(check.principal.allowed_workflows !== undefined
+      ? { portal_workflow_allowlist: check.principal.allowed_workflows }
+      : {}),
+  } as const;
+}
+
+function coreDecision(check: PermissionCheck, facts: Partial<PermissionFacts>): Decision {
+  return evaluatePermission(coreRequest(check), {
+    operator_allowed: true,
+    builtin_admin: false,
+    permission_known: true,
+    resource_grant: false,
+    group_grant: false,
+    role_grant: false,
+    ...facts,
+  });
 }
 
 export const PRODUCT_PERMISSIONS: ReadonlySet<string> = new Set([
@@ -259,58 +265,32 @@ export const PRODUCT_PERMISSIONS: ReadonlySet<string> = new Set([
 
 function credentialCeiling(check: PermissionCheck): Decision | null {
   const { principal } = check;
-  if (principal.product_id && !PRODUCT_PERMISSIONS.has(check.permission)) {
-    return ceilingDeny(check, "product_permission_not_granted");
-  }
   if (principal.provider === "portal_token") return null;
-
   const scopes = principal.scopes;
-  if (scopes && scopes.length > 0 && !scopes.includes(WILDCARD_SCOPE)) {
-    const ceiling = scopes.filter(isCeilingScope);
-    if (ceiling.length > 0 && !ceiling.includes(check.permission)) {
-      return ceilingDeny(check, "scope_not_granted");
-    }
-  }
-
-  const connectors = principal.allowed_connectors;
-  if (
-    connectors &&
-    connectors !== "all" &&
-    check.resource?.type === "connector" &&
-    !connectors.includes(check.resource.id)
-  ) {
-    return ceilingDeny(check, "connector_not_in_allowlist");
-  }
-
-  const workflows = principal.allowed_workflows;
-  if (
-    workflows &&
-    workflows !== "all" &&
-    check.resource?.type === "workflow" &&
-    !workflows.includes(check.resource.id)
-  ) {
-    return ceilingDeny(check, "workflow_not_in_allowlist");
-  }
-
-  return null;
+  const ceiling = scopes?.includes(WILDCARD_SCOPE) ? [] : (scopes?.filter(isCeilingScope) ?? []);
+  const cause = credentialCeilingCause(coreRequest(check), {
+    product_limited: Boolean(principal.product_id),
+    product_permission_allowed: PRODUCT_PERMISSIONS.has(check.permission),
+    scope_limited: ceiling.length > 0,
+    scope_allows_permission: ceiling.includes(check.permission),
+    ...(principal.allowed_connectors !== undefined
+      ? { connector_allowlist: principal.allowed_connectors }
+      : {}),
+    ...(principal.allowed_workflows !== undefined
+      ? { workflow_allowlist: principal.allowed_workflows }
+      : {}),
+  });
+  return cause ? ceilingDeny(check, cause) : null;
 }
 
 export const OPERATOR_ONLY_CAUSE = "operator_only";
 
 function operatorDeny(check: PermissionCheck): Decision {
-  const reason = `operator_boundary:${OPERATOR_ONLY_CAUSE}`;
+  const decision = coreDecision(check, { operator_allowed: false });
+  const reason = decision.reason!;
   recordMetric("deny", check.permission, "operator_boundary");
   emitDeny(check, reason, "operator_boundary");
-  return {
-    allow: false,
-    reason,
-    source: "operator_boundary",
-    detail: {
-      required: check.permission,
-      ...(check.resource ? { resource: check.resource } : {}),
-      cause: OPERATOR_ONLY_CAUSE,
-    },
-  };
+  return decision;
 }
 
 export async function can(db: Executor, check: PermissionCheck): Promise<Decision> {
@@ -324,17 +304,14 @@ export async function can(db: Executor, check: PermissionCheck): Promise<Decisio
   if (hasBuiltinAdminRole(check.principal)) {
     recordMetric("allow", check.permission, "builtin_admin");
     log.rbac.checked({ allow: true, source: "builtin_admin", ...rbacCtx(check) });
-    return { allow: true, source: "builtin_admin" };
+    return coreDecision(check, { builtin_admin: true });
   }
 
   const permissionId = await lookupPermissionId(db, check.permission);
   if (!permissionId) {
     recordMetric("deny", check.permission, "unknown_permission");
     emitDeny(check, `permission_unknown:${check.permission}`, "unknown_permission");
-    return {
-      allow: false,
-      reason: `permission_unknown:${check.permission}`,
-    };
+    return coreDecision(check, { permission_known: false });
   }
 
   const isPortalToken = check.principal.provider === "portal_token";
@@ -344,7 +321,7 @@ export async function can(db: Executor, check: PermissionCheck): Promise<Decisio
     if (granted) {
       recordMetric("allow", check.permission, "resource_grant");
       log.rbac.checked({ allow: true, source: "resource_grant", ...rbacCtx(check) });
-      return { allow: true, source: "resource_grant" };
+      return coreDecision(check, { resource_grant: true });
     }
   }
 
@@ -358,7 +335,7 @@ export async function can(db: Executor, check: PermissionCheck): Promise<Decisio
     if (granted) {
       recordMetric("allow", check.permission, "group");
       log.rbac.checked({ allow: true, source: "group", ...rbacCtx(check) });
-      return { allow: true, source: "group" };
+      return coreDecision(check, { group_grant: true });
     }
   }
 
@@ -369,32 +346,22 @@ export async function can(db: Executor, check: PermissionCheck): Promise<Decisio
       if (granted) {
         recordMetric("allow", check.permission, "role");
         log.rbac.checked({ allow: true, source: "role", ...rbacCtx(check) });
-        return { allow: true, source: "role" };
+        return coreDecision(check, { role_grant: true });
       }
     }
   }
 
-  if (matchesPortalTokenAllowlist(check)) {
+  if (matchesPortalTokenAllowlist(coreRequest(check))) {
     recordMetric("allow", check.permission, "portal_token_allowlist");
     log.rbac.checked({ allow: true, source: "portal_token_allowlist", ...rbacCtx(check) });
-    return { allow: true, source: "portal_token_allowlist" };
+    return coreDecision(check, {});
   }
 
   recordMetric("deny", check.permission, "none");
-  const reason =
-    isPortalToken && (check.permission === "workflow:run" || check.permission === "workflow:read")
-      ? "workflow_not_in_allowlist"
-      : `permission_denied:${check.permission}`;
+  const denial = coreDecision(check, {});
+  const reason = denial.reason!;
   emitDeny(check, reason, "none");
-  return {
-    allow: false,
-    reason,
-    detail: {
-      required: check.permission,
-      ...(check.resource ? { resource: check.resource } : {}),
-      cause: isPortalToken ? "workflow_not_in_allowlist" : "no_matching_grant",
-    },
-  };
+  return denial;
 }
 
 interface ResourceAccess {
@@ -420,22 +387,26 @@ export async function resourceAccess(
     permission,
     ...(check.quiet ? { quiet: true } : {}),
   });
-  if (tenantWide.source === "credential_ceiling" || tenantWide.source === "operator_boundary") {
-    return { tenantWide, allows: () => false, any: false };
-  }
   const isPortalToken = principal.provider === "portal_token";
-  const ceilingAllows = (id: string): boolean => {
-    const list =
-      resource_type === "workflow"
-        ? principal.allowed_workflows
-        : resource_type === "connector"
-          ? principal.allowed_connectors
-          : undefined;
-    return isPortalToken || !list || list === "all" || list.includes(id);
-  };
-  if (tenantWide.allow) {
-    return { tenantWide, allows: ceilingAllows, any: true };
-  }
+  const project = (granted_ids: readonly string[]): ResourceAccess =>
+    evaluateResourceAccess(tenantWide, {
+      portal_token: isPortalToken,
+      permission,
+      resource_type,
+      granted_ids,
+      ...(principal.allowed_workflows !== undefined
+        ? { workflow_allowlist: principal.allowed_workflows }
+        : {}),
+      ...(principal.allowed_connectors !== undefined
+        ? { connector_allowlist: principal.allowed_connectors }
+        : {}),
+    });
+  if (
+    tenantWide.source === "credential_ceiling" ||
+    tenantWide.source === "operator_boundary" ||
+    tenantWide.allow
+  )
+    return project([]);
   const granted = new Set<string>();
   if (!isPortalToken) {
     const permissionId = await lookupPermissionId(db, permission);
@@ -472,23 +443,7 @@ export async function resourceAccess(
       for (const row of rows) granted.add(row.id);
     }
   }
-  const allows = (id: string): boolean => {
-    if (!ceilingAllows(id)) return false;
-    if (granted.has(id)) return true;
-    return matchesPortalTokenAllowlist({
-      tenant_id: check.tenant_id,
-      principal,
-      permission,
-      resource: { type: resource_type, id },
-    });
-  };
-  const allowlist = principal.allowed_workflows;
-  const portalReaches =
-    isPortalToken &&
-    (permission === "workflow:read" || permission === "workflow:run") &&
-    resource_type === "workflow" &&
-    (allowlist === "all" || (Array.isArray(allowlist) && allowlist.length > 0));
-  return { tenantWide, allows, any: granted.size > 0 || portalReaches };
+  return project([...granted]);
 }
 
 export async function catalogVisibility(
@@ -555,9 +510,7 @@ export async function connectorAccessLevel(
     can(db, { ...base, permission: "connector:read" }),
     can(db, { ...base, permission: "connector:write" }),
   ]);
-  if (write.allow) return "read-write";
-  if (read.allow) return "read-only";
-  return "none";
+  return deriveConnectorAccessLevel(read, write);
 }
 
 export { rolesTable as rbacRoles };

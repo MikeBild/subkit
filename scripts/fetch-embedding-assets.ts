@@ -45,6 +45,7 @@ function assertAsset(bytes: Uint8Array, expected: AssetDigest, source: string): 
 export function isTransient(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
   return (
+    (err instanceof Error && err.name === "TimeoutError") ||
     /socket connection was closed|ECONNRESET|ETIMEDOUT|EAI_AGAIN|network|Unable to connect|fetch failed/i.test(
       message,
     ) ||

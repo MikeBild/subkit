@@ -146,6 +146,25 @@ describe("recommended environment", () => {
       ),
     ).toEqual({ environment: null, reason: "none_possible" });
   });
+
+  test("context fallback is symmetric and recommendation reasons are never erased", () => {
+    expect(
+      recommendEnvironment(
+        { environment: "dev", reason: "schedule" },
+        assess([block("connector_missing")], []),
+      ),
+    ).toEqual({ environment: "prod", reason: "only_possible" });
+    expect(
+      recommendEnvironment({ environment: "prod", reason: "inbound_hook" }, assess([], [])),
+    ).toEqual({ environment: "prod", reason: "inbound_hook" });
+  });
+
+  test("does not let an incomplete assessment turn a context choice into an approval", () => {
+    const partial = { dev: { possible: true, reasons: [] } } as unknown as EnvironmentAssessments;
+    expect(() =>
+      recommendEnvironment(context({ schedules: [schedule("prod")] }), partial),
+    ).toThrow();
+  });
 });
 
 describe("approval choice", () => {
@@ -192,6 +211,43 @@ describe("approval choice", () => {
         { ...block("connector_missing"), environment: "prod" },
       ],
     });
+  });
+
+  test("a contradictory recommendation and an impossible recommendation are both blocked", () => {
+    const environments = assess([], [block("connector_missing")]);
+    expect(
+      approvalChoice({
+        environments,
+        recommended_environment: { environment: null, reason: "schedule" },
+      }),
+    ).toEqual({ kind: "none", reasons: [{ ...block("connector_missing"), environment: "prod" }] });
+    expect(
+      approvalChoice({
+        environments,
+        recommended_environment: { environment: "prod", reason: "schedule" },
+      }),
+    ).toEqual({ kind: "none", reasons: [{ ...block("connector_missing"), environment: "prod" }] });
+  });
+
+  test("a none-possible reason blocks even if the selected environment says possible", () => {
+    expect(
+      approvalChoice({
+        environments: assess([], []),
+        recommended_environment: { environment: "dev", reason: "none_possible" },
+      }),
+    ).toEqual({ kind: "none", reasons: [] });
+  });
+
+  test("a null recommendation is blocked even when a partial runtime assessment has a null key", () => {
+    const environments = Object.assign(assess([], []), {
+      null: { possible: true, reasons: [] },
+    }) as EnvironmentAssessments;
+    expect(
+      approvalChoice({
+        environments,
+        recommended_environment: { environment: null, reason: "existing_approval" },
+      }),
+    ).toEqual({ kind: "none", reasons: [] });
   });
 });
 
@@ -254,6 +310,52 @@ describe("approval remedy", () => {
 
   test("no reasons have no remedy", () => {
     expect(approvalRemedy([])).toBeNull();
+  });
+
+  test("selects the least-blocked environment and preserves stable ordering for ties", () => {
+    const reasons = [
+      { ...block("connector_missing", "dev-first"), environment: "dev" as const },
+      { ...block("connector_missing", "prod-only"), environment: "prod" as const },
+    ];
+    expect(approvalRemedy(reasons)).toMatchObject({ environment: "dev", step_id: "dev-first" });
+    expect(approvalRemedy(reasons, "prod")).toMatchObject({
+      environment: "prod",
+      step_id: "prod-only",
+    });
+  });
+
+  test("remedy priority is strict within one environment", () => {
+    const reasons = [
+      { ...block("connector_missing", "missing"), environment: "dev" as const },
+      { ...block("connector_switched_off", "off"), environment: "dev" as const },
+      { ...block("connector_without_sign_in", "login"), environment: "dev" as const },
+      { ...block("connector_needs_sign_in_again", "again"), environment: "dev" as const },
+    ];
+    expect(approvalRemedy(reasons)).toEqual({
+      kind: "sign_in_again",
+      environment: "dev",
+      step_id: "again",
+      connector_id: CONNECTOR,
+    });
+  });
+
+  test("an unknown runtime block keeps its historical before-known priority", () => {
+    const unknown = {
+      ...block("connector_missing", "unknown"),
+      code: "future_connector_state" as EnvironmentBlock["code"],
+      environment: "dev" as const,
+    };
+    expect(
+      approvalRemedy([
+        { ...block("connector_needs_sign_in_again", "reauth"), environment: "dev" },
+        unknown,
+      ]),
+    ).toEqual({
+      kind: "open_connector",
+      environment: "dev",
+      step_id: "unknown",
+      connector_id: CONNECTOR,
+    });
   });
 });
 

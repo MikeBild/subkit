@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { validateWorkflowDef } from "../validator.ts";
+import { validateWorkflowDef } from "../core/validator.ts";
 import {
   convertedProjectItemsStep,
   NOTION_SEARCH_STEP,

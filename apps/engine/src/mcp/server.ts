@@ -3,8 +3,10 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { ElicitResultSchema as McpElicitResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { CatalogKind } from "../api/catalog-metadata.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
-import { listElicitationsForConversation } from "../conversations/elicitations.ts";
-import { registerNativeUrlElicitationCompletion } from "../conversations/native-url-elicitation.ts";
+import {
+  listElicitationsForConversation,
+  registerNativeUrlElicitationCompletion,
+} from "../conversations/public/elicitation.ts";
 import type { Db } from "../db/client.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import { buildOperatorHealthSummary } from "../operator/health-digest.ts";

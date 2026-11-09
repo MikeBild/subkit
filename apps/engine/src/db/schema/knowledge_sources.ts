@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { KnowledgeVersionContent } from "../../knowledge/core/version-content.ts";
 import { catalogMetadata, catalogMetadataConstraints, tenantId, timestamps } from "./_common.ts";
 import { files } from "./files.ts";
 import { tenants } from "./identity.ts";
@@ -108,9 +109,7 @@ export const knowledgeChunks = pgTable(
   ],
 );
 
-export type KnowledgeVersionContent =
-  | { kind: "document"; filename: string; mime: string | null; text: string }
-  | { kind: "bundle"; filename: string; files: { path: string; content: string }[] };
+export type { KnowledgeVersionContent } from "../../knowledge/core/version-content.ts";
 
 export const knowledgeSourceVersions = pgTable(
   "knowledge_source_versions",

@@ -6,11 +6,11 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
-import type { Db, Executor } from "../db/client.ts";
+import type { Db, Executor, Transaction } from "../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../db/schema/knowledge_sources.ts";
 import { retryTransient } from "../db/transient.ts";
+import { DEDUP_THRESHOLD } from "../docs-ingestion/budgets.ts";
 import { fingerprintChunks } from "../docs-ingestion/chunker.ts";
-import { dedupChunks } from "../docs-ingestion/dedup.ts";
 import type { FingerprintedChunk } from "../docs-ingestion/types.ts";
 import { backfillEmbeddings } from "../embeddings/backfill.ts";
 import { embeddingsAvailable } from "../embeddings/local-provider.ts";
@@ -28,6 +28,10 @@ import {
   KNOWLEDGE_SOURCE_MAX_BYTES,
   KnowledgeBudgetExceededError,
 } from "./budgets.ts";
+import { assessSourceSize, decodeUpload, toSlug } from "./core/content.ts";
+import { prepareKnowledgeChunks } from "./core/ingestion-plan.ts";
+import { knowledgeSearchCacheKey } from "./core/search-key.ts";
+import { dedupeTags, mergeStructuralTags } from "./core/tags.ts";
 import {
   isKnowledgeSlugViolation,
   KnowledgeSourceAddressConflictError,
@@ -44,7 +48,6 @@ import {
 import { detectFormat, parseFileToChunks } from "./parsers.ts";
 import { domainTaggedSourceIds, runKnowledgeFts } from "./search-fts.ts";
 import { fuseKnowledgeWithVectors } from "./search-vectors.ts";
-import { dedupeTags, mergeStructuralTags } from "./tags.ts";
 import type {
   AnalyzeKnowledgeSourceParams,
   CreateKnowledgeSourceParams,
@@ -77,14 +80,6 @@ function knowledgeAuditActor(
   if (actor) return auditActor(actor);
   if (legacyActorId) return { actor_type: "unknown" as const, actor_id: null };
   return auditActor(null);
-}
-
-function toSlug(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 100);
 }
 
 export async function knowledgeSourceChanged(
@@ -123,16 +118,12 @@ export async function kickSourceEmbeddingBackfill(
   }
 }
 
-function decodeUpload(buffer: Buffer | Uint8Array | string): string {
-  return typeof buffer === "string" ? buffer : new TextDecoder().decode(buffer);
-}
-
 function assertSourceSize(content: string): void {
-  const byteSize = Buffer.byteLength(content, "utf8");
-  if (byteSize > KNOWLEDGE_SOURCE_MAX_BYTES) {
+  const size = assessSourceSize(content, KNOWLEDGE_SOURCE_MAX_BYTES);
+  if (size.kind === "exceeded") {
     throw new KnowledgeBudgetExceededError(
       `File exceeds maximum size of ${KNOWLEDGE_SOURCE_MAX_BYTES} bytes`,
-      byteSize,
+      size.bytes,
       KNOWLEDGE_SOURCE_MAX_BYTES,
     );
   }
@@ -160,9 +151,11 @@ function parseKnowledgeCreate(p: CreateKnowledgeSourceParams): ParsedKnowledgeCr
   const format = detectFormat(p.upload.filename, p.upload.mime);
   const rawChunks = p.parsed_chunks ?? parseFileToChunks(content, p.upload.filename, format);
   const fingerprinted = fingerprintChunks(rawChunks);
-  const { accepted, skipped } = p.parsed_chunks
-    ? { accepted: fingerprinted, skipped: 0 }
-    : dedupChunks(fingerprinted);
+  const { accepted, skipped, total_bytes } = prepareKnowledgeChunks(
+    fingerprinted,
+    Boolean(p.parsed_chunks),
+    DEDUP_THRESHOLD,
+  );
   const source_type = p.source_type_override ?? "file_upload";
   return {
     slug: p.input.slug ?? toSlug(p.input.name),
@@ -170,7 +163,7 @@ function parseKnowledgeCreate(p: CreateKnowledgeSourceParams): ParsedKnowledgeCr
     source_type,
     accepted,
     skipped,
-    total_bytes: accepted.reduce((s, c) => s + c.byte_size, 0),
+    total_bytes,
     content: knowledgeVersionContent({
       source_type,
       upload: p.upload,
@@ -182,7 +175,7 @@ function parseKnowledgeCreate(p: CreateKnowledgeSourceParams): ParsedKnowledgeCr
 
 export async function prepareKnowledgeCreate(
   p: CreateKnowledgeSourceParams,
-  db: Executor,
+  db: Transaction,
 ): Promise<PreparedKnowledgeCreate> {
   await lockCatalogVocabulary(db, p.tenant_id);
   await lockActiveTenant(p.tenant_id, db);
@@ -194,7 +187,7 @@ export async function prepareKnowledgeCreate(
 }
 
 export async function applyKnowledgeCreate(
-  tx: Executor,
+  tx: Transaction,
   p: CreateKnowledgeSourceParams,
   prepared: PreparedKnowledgeCreate,
 ): Promise<KnowledgeSourceView> {
@@ -642,15 +635,17 @@ async function parseKnowledgeIngest(
     fn: () => p.parsed_chunks ?? parseFileToChunks(content, p.upload.filename, format),
   });
   const fingerprinted = fingerprintChunks(rawChunks);
-  const { accepted, skipped } = p.parsed_chunks
-    ? { accepted: fingerprinted, skipped: 0 }
-    : dedupChunks(fingerprinted);
+  const { accepted, skipped, total_bytes } = prepareKnowledgeChunks(
+    fingerprinted,
+    Boolean(p.parsed_chunks),
+    DEDUP_THRESHOLD,
+  );
   return {
     format,
     hash: knowledgeContentHash(content),
     accepted,
     skipped,
-    total_bytes: accepted.reduce((s, c) => s + c.byte_size, 0),
+    total_bytes,
     text: content,
   };
 }
@@ -695,7 +690,7 @@ async function completeKnowledgeIngest(
 
 export async function prepareKnowledgeIngest(
   p: IngestKnowledgeSourceParams,
-  db: Executor,
+  db: Transaction,
 ): Promise<PreparedKnowledgeIngest> {
   await lockCatalogVocabulary(db, p.tenant_id);
   await lockActiveTenant(p.tenant_id, db);
@@ -704,7 +699,7 @@ export async function prepareKnowledgeIngest(
 }
 
 export async function applyKnowledgeIngest(
-  tx: Executor,
+  tx: Transaction,
   p: IngestKnowledgeSourceParams,
   prepared: PreparedKnowledgeIngest,
 ): Promise<AppliedKnowledgeIngest | null> {
@@ -898,24 +893,17 @@ const knowledgeSearchCache = new TtlCache<KnowledgeSearchHit[]>({
   maxEntries: 256,
   ttlMs: 60_000,
 });
+let knowledgeSearchCacheToken = {};
+let beforeKnowledgeSearchCachePublish: (() => Promise<void>) | undefined;
 
-function knowledgeSearchCacheKey(p: SearchKnowledgeParams): string {
-  const limit = Math.min(Math.max(1, p.limit ?? 10), 50);
-  const normQuery = p.query.trim().toLowerCase();
-  const ids = (p.knowledge_source_ids ?? []).slice().sort().join(",");
-  const tags = (p.tags ?? []).slice().sort().join(",");
-  return [
-    p.tenant_id,
-    p.scope ?? "",
-    p.workflow_id ?? "",
-    ids,
-    tags,
-    String(limit),
-    normQuery,
-  ].join(":");
+export function setKnowledgeSearchCachePublishHookForTests(
+  hook: (() => Promise<void>) | undefined,
+): void {
+  beforeKnowledgeSearchCachePublish = hook;
 }
 
 export function invalidateKnowledgeCache(tenant_id: string): void {
+  knowledgeSearchCacheToken = {};
   knowledgeSearchCache.invalidatePrefix(`${tenant_id}:`);
 }
 
@@ -934,6 +922,8 @@ export async function searchKnowledge(
   if (cached) return cached;
 
   if (!p.query || p.query.trim().length === 0) return [];
+
+  const cacheToken = knowledgeSearchCacheToken;
 
   let scopeFilter = sql`AND ks.deleted_at IS NULL AND ks.status = 'active'`;
 
@@ -972,6 +962,8 @@ export async function searchKnowledge(
     limit,
   });
 
-  knowledgeSearchCache.set(cacheKey, fused);
+  const beforePublish = beforeKnowledgeSearchCachePublish;
+  if (beforePublish) await beforePublish();
+  if (cacheToken === knowledgeSearchCacheToken) knowledgeSearchCache.set(cacheKey, fused);
   return fused;
 }

@@ -22,6 +22,7 @@ import {
   resolveExecutionCallerActor,
   resolveExecutionCallerOrigin,
 } from "./caller-origin.ts";
+import type { RefusedConnector } from "./core/outcome.ts";
 import {
   type ExecutionOutcome,
   NON_TERMINAL_EXECUTION_STATUSES,
@@ -286,10 +287,7 @@ interface ExecutionFailureDetail {
   connector?: RefusedConnector;
 }
 
-export interface RefusedConnector {
-  connector_id: string | null;
-  reason: string;
-}
+export type { RefusedConnector } from "./core/outcome.ts";
 
 const NON_TERMINAL_STATUSES: ExecutionStatus[] = [...NON_TERMINAL_EXECUTION_STATUSES];
 

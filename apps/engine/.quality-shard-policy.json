@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "worker_budget": 2,
+  "equivalence_manifest_path": "apps/engine/.mutation-equivalents.json",
+  "shards": [
+    {
+      "id": "cli-core",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
+      "id": "cockpit",
+      "resource_tags": []
+    },
+    {
+      "id": "connectors",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
+      "id": "conversations",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
+      "id": "credentials",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
+      "id": "execution",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
+      "id": "identity",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
+      "id": "knowledge",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
+      "id": "operator",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
+      "id": "rbac",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
+      "id": "self-healing",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
+      "id": "shared",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
+      "id": "sk",
+      "resource_tags": ["db", "global-state"]
+    },
+    {
+      "id": "skill-candidates",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
+      "id": "workflows",
+      "resource_tags": ["db", "ports", "global-state"]
+    }
+  ]
+}

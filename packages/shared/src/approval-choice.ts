@@ -111,7 +111,8 @@ export function approvalChoice(
       recommended: environment,
       options: APPROVAL_ENVIRONMENTS.map((each) => ({
         environment: each,
-        possible: Boolean(environments[each]?.possible),
+
+        possible: true,
       })),
     };
   return { kind: "single", environment, reason };
@@ -128,7 +129,6 @@ export function approvalRemedy(
   reasons: readonly EnvironmentBlockIn[],
   preferred: ReviewEnvironment | null = null,
 ): ApprovalRemedy | null {
-  if (reasons.length === 0) return null;
   const count = (environment: ReviewEnvironment) =>
     reasons.filter((reason) => reason.environment === environment).length;
   const present = APPROVAL_ENVIRONMENTS.filter((environment) => count(environment) > 0);

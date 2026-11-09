@@ -87,6 +87,25 @@ describe("download retry loop", () => {
     rmSync(dest, { force: true });
   });
 
+  test("a fetch deadline retries with backoff before installing verified bytes", async () => {
+    let calls = 0;
+    const delays: number[] = [];
+    const timedOut = new DOMException("The operation timed out.", "TimeoutError");
+    expect(isTransient(timedOut)).toBe(true);
+    expect(isTransient(new DOMException("Cancelled", "AbortError"))).toBe(false);
+    const flaky = (async () => {
+      if (++calls < 3) throw timedOut;
+      return body(64);
+    }) as unknown as typeof fetch;
+    const dest = tmp();
+    await download("https://example.test/deadline", dest, expected, flaky, async (ms) => {
+      delays.push(ms);
+    });
+    expect(calls).toBe(3);
+    expect(delays).toEqual([1000, 2000]);
+    expect(await matchesAsset(dest, expected)).toBe(true);
+  });
+
   test("a 404 is not retried", async () => {
     let calls = 0;
     const gone = (async () => {

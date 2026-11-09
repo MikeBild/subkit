@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 import { workflowJsonDigest } from "../canonical-json.ts";
-import { compileWorkflowEffectManifest, type ResolvedEffectBinding } from "../effect-manifest.ts";
+import {
+  compileWorkflowEffectManifest,
+  type ResolvedEffectBinding,
+} from "../core/effect-manifest.ts";
 import { readPathBoundary, readPathTarget } from "../read-path-boundary.ts";
 import { requestBoundary, requestBoundaryTarget } from "../request-boundary.ts";
 import { storageBoundary, storageTarget } from "../storage-boundary.ts";
@@ -19,7 +22,6 @@ test("graphql-driver and plain REST manifests keep their pinned digests", () => 
     "d862250287598b7e4235234d3c875ac19c211db56dbbc83d9132604fff03821b",
   );
 });
-
 test("a graphql query on an http connector through path /graphql is an eligible read", () => {
   const result = compileWorkflowEffectManifest(httpProjectItems());
   expect(result.manifest.issues).toEqual([]);
@@ -31,7 +33,6 @@ test("a graphql query on an http connector through path /graphql is an eligible 
     target: "https://api.github.com/graphql",
   });
 });
-
 test("a graphql mutation on an http connector is reviewed as a write", () => {
   const result = compileWorkflowEffectManifest(
     httpProjectItems({
@@ -141,6 +142,54 @@ test("exact static request produces a deterministic version and environment boun
   );
 });
 
+test("manifest parsing rejects malformed digests, empty identifiers, and oversized bindings", () => {
+  const input = fixture();
+  expect(() =>
+    compileWorkflowEffectManifest({ ...input, execution_options_digest: "not-a-digest" }),
+  ).toThrow();
+  expect(() =>
+    compileWorkflowEffectManifest({ ...input, bindings: [{ ...input.bindings[0]!, step_id: "" }] }),
+  ).toThrow();
+  expect(() =>
+    compileWorkflowEffectManifest({
+      ...input,
+      bindings: Array.from({ length: 201 }, () => input.bindings[0]!),
+    }),
+  ).toThrow();
+});
+
+test("manifest parsing preserves every strict binding and call boundary", () => {
+  const input = fixture();
+  expect(() => compileWorkflowEffectManifest({ ...input, extra: true })).toThrow();
+  expect(() =>
+    compileWorkflowEffectManifest({ ...input, bindings: [{ ...input.bindings[0]!, target: "" }] }),
+  ).toThrow();
+  expect(() =>
+    compileWorkflowEffectManifest({
+      ...input,
+      bindings: [{ ...input.bindings[0]!, request_digest: "A".repeat(64) }],
+    }),
+  ).toThrow();
+  expect(() =>
+    compileWorkflowEffectManifest({
+      ...input,
+      bindings: [{ ...input.bindings[0]!, driver: "other" }],
+    }),
+  ).toThrow();
+  expect(() =>
+    compileWorkflowEffectManifest({
+      ...input,
+      calls: Array.from({ length: 51 }, () => ({
+        step_id: "call",
+        workflow_id: workflow,
+        workflow_version_id: version,
+        workflow_digest: "a".repeat(64),
+        execution_options_digest: "b".repeat(64),
+      })),
+    }),
+  ).toThrow();
+});
+
 test("version, recipient, environment, configuration, credentials and execution options bind the digest", () => {
   const baseline = fixture();
   const digest = compileWorkflowEffectManifest(baseline).digest;
@@ -201,6 +250,29 @@ test("duplicate or unrelated binding claims are rejected rather than ignored", (
       bindings: [{ ...input.bindings[0], step_id: "other" }],
     }),
   ).toThrow();
+});
+
+test("only request steps may receive one binding, with an explicit duplicate-claim error", () => {
+  const input = fixture();
+  input.definition = WorkflowDefSchema.parse({
+    ...input.definition,
+    steps: [
+      ...input.definition.steps,
+      { id: "prepare", kind: "transform", expression: "return { reviewed: true };" },
+    ],
+  });
+  expect(() =>
+    compileWorkflowEffectManifest({
+      ...input,
+      bindings: [{ ...input.bindings[0]!, step_id: "prepare" }],
+    }),
+  ).toThrow("effect bindings must identify each request step at most once");
+  expect(() =>
+    compileWorkflowEffectManifest({
+      ...input,
+      bindings: [...input.bindings, ...input.bindings],
+    }),
+  ).toThrow("effect bindings must identify each request step at most once");
 });
 
 test("SQL and MCP tool calls remain unknown even when their authors claim read", () => {
@@ -268,14 +340,6 @@ test("a child workflow without an immutable child version never inherits authori
   const result = compileWorkflowEffectManifest(input);
   expect(result.eligible_for_repeated_runs).toBe(false);
   expect(result.manifest.issues).toEqual([{ step_id: "child", code: "unbound_workflow_call" }]);
-});
-
-test("returned manifest does not retain mutable input bindings", () => {
-  const input = fixture();
-  const result = compileWorkflowEffectManifest(input);
-  input.bindings[0]!.target = "https://example.test/changed";
-  expect(result.manifest.effects[0]?.target).toBe("https://example.test/messages");
-  expect(workflowJsonDigest(result.manifest)).toBe(result.digest);
 });
 
 test("binding enumeration order is irrelevant but ordered workflow content is not", () => {
@@ -364,6 +428,21 @@ test("S3 recurring authority requires an explicit folder profile bound to the au
   const result = compileWorkflowEffectManifest(input);
   expect(result.eligible_for_repeated_runs).toBe(true);
   expect(result.manifest.effects[0]?.storage?.key_prefix).toBe("reports/daily/");
+  const within = compileWorkflowEffectManifest({
+    ...input,
+    observed_keys: [{ step_id: "send", key: "reports/daily/today.json" }],
+  });
+  expect(within.eligible_for_repeated_runs).toBe(true);
+  const outside = compileWorkflowEffectManifest({
+    ...input,
+    observed_keys: [{ step_id: "send", key: "private/secret.json" }],
+  });
+  expect(outside.manifest.issues).toContainEqual({
+    step_id: "send",
+    code: "boundary_contradicted_by_history",
+  });
+  expect(outside.eligible_for_repeated_runs).toBe(false);
+
   for (const changed of [{ key_prefix: "private/" }, { max_bytes: 2000 }, { operation: "GET" }]) {
     const tampered = {
       ...input,

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { cockpitInstallationIdFromPath, signLoginState } from "../../auth/index.ts";
 import { getConfig } from "../../config/loader.ts";
-import { completeApprovalBackedElicitation } from "../../conversations/index.ts";
+import { completeApprovalBackedElicitation } from "../../conversations/public/authoring.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/index.ts";
 import { enqueueApprovalElicitationResume, getBoss } from "../../queue/index.ts";

@@ -1,3 +1,15 @@
+import { heldInspected, heldReason } from "./core/gate-diagnosis.ts";
+
+export { gateEndpointKey } from "./core/gate-diagnosis.ts";
+
+import {
+  collapseDiagnoses,
+  immediateReportRemedy,
+  observedReportRemedy,
+} from "./core/gate-diagnosis.ts";
+
+export { planForDiagnosis } from "./core/gate-diagnosis.ts";
+
 import { z } from "@hono/zod-openapi";
 import { and, desc, eq, gt, inArray, isNotNull, isNull, ne, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -11,13 +23,7 @@ import {
 } from "../db/schema/index.ts";
 import type { ManifestIssueCode } from "./effect-manifest.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
-import {
-  type GateFixer,
-  GateFixerSchema,
-  type GateFixPlan,
-  planReportDeliveryDeclaration,
-  planUtf8EncoderFix,
-} from "./gate-fix.ts";
+import { type GateFixer, GateFixerSchema } from "./gate-fix.ts";
 import {
   assertHistoryScope,
   assertHistoryStep,
@@ -28,12 +34,10 @@ import {
 } from "./history-read-facts.ts";
 import {
   GMAIL_SEND_TARGET,
-  isReportMessageRefusal,
   type ReportDeliveryBoundary,
   ReportDeliveryBoundarySchema,
   type ReportDeliveryRefusal,
   ReportDeliveryRefusalSchema,
-  type ReportMessageRefusal,
   reportRefusalReason,
 } from "./report-delivery-boundary.ts";
 import { inspectHeldPreviewEvidence } from "./report-delivery-proposal.ts";
@@ -114,10 +118,6 @@ type HeldEvidence = Awaited<ReturnType<typeof inspectHeldPreviewEvidence>>;
 const stepKeyOf = (key: string) => key.replace(/\[[0-9]+\]$/, "");
 const LOOP_SUFFIX = "\\[[0-9]+\\]$";
 
-export function gateEndpointKey(code: string): string {
-  return `gate:${code}`;
-}
-
 export async function diagnoseWorkflow(
   db: Executor,
   tenant_id: string,
@@ -195,7 +195,7 @@ export async function diagnoseWorkflow(
       ? options.held
       : await inspectHeldPreviewEvidence(input, db, options.facts);
   const refused = await newestRefusedStep(db, input, options.facts);
-  const diagnoses = collapse(
+  const diagnoses = collapseDiagnoses(
     await buildDiagnoses(db, {
       ...input,
       definition: version.dag,
@@ -336,7 +336,8 @@ async function buildDiagnoses(db: Executor, input: DiagnosisInput): Promise<Gate
     });
   }
   if (refused) {
-    const reason = reportRefusalReason(refused.error) ?? heldReason(input, refused.step_id);
+    const reason =
+      reportRefusalReason(refused.error) ?? heldReason(input.held?.steps, refused.step_id);
     const subject = { step_id: refused.step_id };
     out.push(
       reason
@@ -350,42 +351,11 @@ async function buildDiagnoses(db: Executor, input: DiagnosisInput): Promise<Gate
             code: "execution_authority_changed",
             subject,
             evidence: { execution_id: refused.execution_id },
-            remedy_kind: heldInspected(input, refused.step_id) ? "author" : "prepare",
+            remedy_kind: heldInspected(input.held?.steps, refused.step_id) ? "author" : "prepare",
           },
     );
   }
   return out;
-}
-
-export function planForDiagnosis(
-  definition: unknown,
-  diagnosis: GateDiagnosis,
-): GateFixPlan | null {
-  if (diagnosis.fixer === "use_utf8_encoder")
-    return planUtf8EncoderFix(definition, diagnosis.subject.step_id);
-  if (diagnosis.fixer === "declare_report_delivery" && diagnosis.evidence.observed)
-    return planReportDeliveryDeclaration(
-      definition,
-      diagnosis.subject.step_id,
-      diagnosis.evidence.observed,
-    );
-  return null;
-}
-
-const ENCODER_REASONS: ReadonlySet<string> = new Set([
-  "not_utf8",
-  "header_control_byte",
-] satisfies ReportMessageRefusal[]);
-
-function heldInspected(input: DiagnosisInput, step_id: string): boolean {
-  const step = input.held?.steps.find((entry) => stepKeyOf(entry.step_id) === step_id);
-  return step?.report_delivery_inspection !== undefined;
-}
-
-function heldReason(input: DiagnosisInput, step_id: string): ReportMessageRefusal | null {
-  const step = input.held?.steps.find((entry) => stepKeyOf(entry.step_id) === step_id);
-  const inspection = step?.report_delivery_inspection;
-  return inspection && !inspection.ok ? inspection.reason : null;
 }
 
 async function reportRemedy(
@@ -395,23 +365,10 @@ async function reportRemedy(
   reason: ReportDeliveryRefusal | null,
   execution_id: string | undefined,
 ): Promise<Pick<GateDiagnosis, "evidence" | "remedy_kind" | "fixer">> {
-  const evidence = execution_id ? { execution_id } : {};
-  if (reason && ENCODER_REASONS.has(reason))
-    return planUtf8EncoderFix(input.definition, step_id)
-      ? { evidence, remedy_kind: "patch", fixer: "use_utf8_encoder" }
-      : { evidence, remedy_kind: "author" };
-  if (isReportMessageRefusal(reason)) return { evidence, remedy_kind: "author" };
+  const immediate = immediateReportRemedy(input.definition, step_id, reason, execution_id);
+  if (immediate) return immediate;
   const observation = await successfulObservation(db, input, step_id);
-  const plan = observation
-    ? planReportDeliveryDeclaration(input.definition, step_id, observation.observed)
-    : null;
-  return plan && observation
-    ? {
-        evidence: { execution_id: observation.execution_id, observed: observation.observed },
-        remedy_kind: "declare",
-        fixer: "declare_report_delivery",
-      }
-    : { evidence, remedy_kind: "declare" };
+  return observedReportRemedy(input.definition, step_id, execution_id, observation);
 }
 
 async function requestDiagnosis(
@@ -429,13 +386,13 @@ async function requestDiagnosis(
       return { code, subject, ...(await reportRemedy(db, input, step_id, null, undefined)) };
     case "report_delivery_unobserved":
     case "report_delivery_contradicted": {
-      const reason = heldReason(input, step_id);
+      const reason = heldReason(input.held?.steps, step_id);
       if (code === "report_delivery_unobserved" && !reason)
         return {
           code,
           subject,
           evidence: heldRun ? { execution_id: heldRun } : {},
-          remedy_kind: heldInspected(input, step_id) ? "author" : "prepare",
+          remedy_kind: heldInspected(input.held?.steps, step_id) ? "author" : "prepare",
         };
       return {
         code,
@@ -504,29 +461,6 @@ async function successfulObservation(db: Executor, input: DiagnosisInput, step_i
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function collapse(diagnoses: GateDiagnosis[]): GateDiagnosis[] {
-  const byFix = new Map<string, GateDiagnosis>();
-  const seen = new Set<string>();
-  const out: GateDiagnosis[] = [];
-  for (const diagnosis of diagnoses) {
-    const identity = `${diagnosis.subject.step_id}\u0000${diagnosis.code}`;
-    if (seen.has(identity)) continue;
-    seen.add(identity);
-    if (diagnosis.fixer) {
-      const key = `${diagnosis.subject.step_id}\u0000${diagnosis.fixer}`;
-      const kept = byFix.get(key);
-      if (kept) {
-        if (!kept.evidence.execution_id && diagnosis.evidence.execution_id)
-          kept.evidence.execution_id = diagnosis.evidence.execution_id;
-        continue;
-      }
-      byFix.set(key, diagnosis);
-    }
-    out.push(diagnosis);
-  }
-  return out;
 }
 
 export async function findGateCandidate(

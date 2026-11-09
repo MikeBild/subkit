@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { validateWorkflowDef } from "../validator.ts";
+import { validateWorkflowDef } from "../core/validator.ts";
 
 const workflow = (expression: string) => ({
   name: "lint fixture",

@@ -1,11 +1,15 @@
-import { beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { pollUntil } from "../e2e/_helpers/poll.ts";
-import { type DockerEnv, dockerApi, dockerBoot, skDocker } from "./_harness.ts";
+import { composeDown, type DockerEnv, dockerApi, dockerBoot, skDocker } from "./_harness.ts";
 
 let env: DockerEnv;
 beforeAll(async () => {
   env = await dockerBoot();
 }, 600_000);
+
+afterAll(() => {
+  composeDown();
+});
 
 // allow-wall-clock: per-run uniqueness token for slugs against a persistent volume.
 const RUN_ID = `${process.pid.toString(36)}${Date.now().toString(36).slice(-4)}`;
@@ -91,11 +95,9 @@ describe("knowledge sources over the wire", () => {
 
     const hit = await pollUntil(
       async () => {
-        const res = await dockerApi<{ hits: Array<{ knowledge_source_id: string }> }>(
-          env,
-          "GET",
-          `/v1/knowledge-sources/search?q=${token}&limit=10`,
-        );
+        const res = await dockerApi<{
+          hits: Array<{ knowledge_source_id: string }>;
+        }>(env, "GET", `/v1/knowledge-sources/search?q=${token}&limit=10`);
         if (res.status !== 200) return null;
         return res.body.hits.find((h) => h.knowledge_source_id === created.body.id) ?? null;
       },

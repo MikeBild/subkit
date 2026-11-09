@@ -27,7 +27,6 @@ import { can } from "../rbac/evaluator.ts";
 import { stripCalendarGates } from "../scheduler/calendar-gates.ts";
 import { activateReviewedDraft } from "./activate-reviewed-draft.ts";
 import { carryApprovalsForward } from "./authority-inheritance.ts";
-import { workflowJsonDigest } from "./canonical-json.ts";
 import {
   type ContentPublicationBoundaries,
   contentBoundariesFromManifest,
@@ -35,9 +34,13 @@ import {
 import {
   AUTHORITY_WINDOW_MAX_DAYS,
   replacementFor,
-  sameBoundary,
   windowValid,
+  workflowAuthorityOptionsDigest,
 } from "./core/authority.ts";
+import {
+  decideAuthorityExtension,
+  reusableOpenEndedSuccessor,
+} from "./core/authority-extension.ts";
 import { resolveWorkflowEffectManifest } from "./effect-resolution.ts";
 import type { WorkflowReadFacts } from "./read-facts.ts";
 import {
@@ -69,13 +72,7 @@ function fail(code: string, message: string): never {
   throw Object.assign(new Error(message), { code });
 }
 
-export function workflowAuthorityExecutionOptions(environment: "dev" | "prod") {
-  return {
-    execution_mode: environment,
-    self_healing: { enabled: false },
-    hold_writes: false,
-  } as const;
-}
+export { workflowAuthorityExecutionOptions } from "./core/authority.ts";
 
 export function previewWorkflowAuthority(
   input: {
@@ -95,12 +92,10 @@ export function previewWorkflowAuthority(
   return resolveWorkflowEffectManifest(
     {
       ...input,
-      execution_options_digest: workflowJsonDigest({
-        ...workflowAuthorityExecutionOptions(input.execution_environment),
-        default_workflow_timeout_ms: WORKFLOW_TIMEOUT_DEFAULT_MS,
-        default_request_timeout_ms: REQUEST_TIMEOUT_DEFAULT_MS,
-        default_request_max_retries: REQUEST_MAX_RETRIES_DEFAULT,
-        step_output_fixtures: null,
+      execution_options_digest: workflowAuthorityOptionsDigest(input.execution_environment, {
+        workflow_timeout_ms: WORKFLOW_TIMEOUT_DEFAULT_MS,
+        request_timeout_ms: REQUEST_TIMEOUT_DEFAULT_MS,
+        request_max_retries: REQUEST_MAX_RETRIES_DEFAULT,
       }),
     },
     db,
@@ -616,25 +611,37 @@ export async function makeWorkflowAuthorityUntilRevoked(
       .for("update")
       .limit(1);
     if (!previous) fail("authority_not_found", "execution authority unavailable");
-    if (previous.effect_manifest_digest !== input.expected_manifest_digest)
-      fail("authority_manifest_changed", "the reviewed approval changed; review again");
+    const review = decideAuthorityExtension({
+      stage: "review",
+      previous_digest: previous.effect_manifest_digest,
+      expected_digest: input.expected_manifest_digest,
+    });
+    if (review.kind === "rejected") fail(review.code, review.message);
     if (previous.superseded_by) {
       const successor = await authorityRow(tx, principal.tenant_id, previous.superseded_by);
-      if (successor && successor.valid_until === null && sameBoundary(successor, previous))
+      if (successor && reusableOpenEndedSuccessor(successor, previous))
         return { authority: successor, changed: false };
     }
-    if (previous.revoked_at)
-      fail("authority_revoked", "this approval was revoked; review a new boundary");
-    if (previous.valid_until === null) return { authority: previous, changed: false };
+    const prior = decideAuthorityExtension({
+      stage: "previous",
+      revoked: Boolean(previous.revoked_at),
+      open_ended: previous.valid_until === null,
+    });
+    if (prior.kind === "rejected") fail(prior.code, prior.message);
+    if (prior.kind === "unchanged") return { authority: previous, changed: false };
+    const previousValidUntil = previous.valid_until!;
     const clock = await tx.execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
     const now = clock.rows[0]?.now;
     if (!now) throw new Error("database clock unavailable");
-    if (
-      previous.valid_from > new Date(now) ||
-      previous.valid_until <= new Date(now) ||
-      (previous.max_runs !== null && previous.reserved_runs >= previous.max_runs)
-    )
-      fail("authority_not_live", "only an approval that currently applies can be made open-ended");
+    const live = decideAuthorityExtension({
+      stage: "live",
+      valid_from_ms: previous.valid_from.getTime(),
+      valid_until_ms: previousValidUntil.getTime(),
+      now_ms: new Date(now).getTime(),
+      max_runs: previous.max_runs,
+      reserved_runs: previous.reserved_runs,
+    });
+    if (live.kind === "rejected") fail(live.code, live.message);
     const current = await previewWorkflowAuthority(
       {
         tenant_id: principal.tenant_id,
@@ -648,13 +655,13 @@ export async function makeWorkflowAuthorityUntilRevoked(
         content_boundaries: contentBoundariesFromManifest(previous.effect_manifest),
       },
     );
-    if (current.digest !== previous.effect_manifest_digest)
-      fail("authority_manifest_changed", "what the workflow may do changed; review again");
-    if (!current.eligible_for_repeated_runs)
-      fail(
-        "authority_effect_unbound",
-        "the workflow requires concrete-run review for an unbound or unavailable effect",
-      );
+    const preview = decideAuthorityExtension({
+      stage: "preview",
+      current_digest: current.digest,
+      previous_digest: previous.effect_manifest_digest,
+      eligible_for_repeated_runs: current.eligible_for_repeated_runs,
+    });
+    if (preview.kind === "rejected") fail(preview.code, preview.message);
     const [successor] = await tx
       .insert(workflowExecutionAuthorities)
       .values({
@@ -705,7 +712,7 @@ export async function makeWorkflowAuthorityUntilRevoked(
           execution_environment: successor.execution_environment,
           effect_manifest_digest: successor.effect_manifest_digest,
           replaced_authority_id: previous.id,
-          previous_valid_until: previous.valid_until.toISOString(),
+          previous_valid_until: previousValidUntil.toISOString(),
           valid_from: successor.valid_from.toISOString(),
           valid_until: null,
           max_runs: successor.max_runs,

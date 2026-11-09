@@ -1,4 +1,5 @@
 import type { ts as TsApi } from "ts-morph";
+import { ts } from "ts-morph";
 import {
   SANDBOX_GLOBAL_NAMES,
   SANDBOX_SK_FMT_MEMBERS,
@@ -10,11 +11,8 @@ import { suggestClosest } from "./levenshtein.ts";
 
 type Node = TsApi.Node;
 
-let tsModule: typeof TsApi | undefined;
-
 export function loadTs(): typeof TsApi {
-  tsModule ??= (require("ts-morph") as typeof import("ts-morph")).ts;
-  return tsModule;
+  return ts;
 }
 
 type JsLintCode =

@@ -6,28 +6,31 @@ import {
   reportRefusalReason,
 } from "../workflows/report-delivery-boundary.ts";
 import { WorkflowDefSchema } from "../workflows/types.ts";
+import { classifyRunFailure, type PreviewClassification } from "./core/classify.ts";
+
+export { classifyRunFailure } from "./core/classify.ts";
+
 import {
-  classifyPersistedFailure,
-  type PersistedFailureClass,
-  type PreviewClassification,
-} from "./classify.ts";
-import type { OutputContractVerdict, RefusedConnector } from "./state.ts";
+  type ExecutionOutcome as CoreExecutionOutcome,
+  deriveExecutionOutcome as deriveCoreExecutionOutcome,
+  deriveRerunSafety as deriveCoreRerunSafety,
+  FAILED_STEP_STATUSES,
+  fixedPlannedSteps,
+  isFailedRunStatus,
+  type OutcomeDefinitionStep,
+  type OutcomeStepRow,
+  pickStoppingStep,
+  refusedConnector,
+} from "./core/outcome.ts";
+import type { RefusedConnector } from "./state.ts";
 import { requestRequiresPreparationHold } from "./steps/request/side-effects.ts";
 
-type OutcomeKind = "succeeded" | "failed" | "held" | "partial" | "running";
-
-export interface ExecutionOutcome {
-  kind: OutcomeKind;
-  failed_step: { step_key: string; kind: string } | null;
-  cause_class: PreviewClassification | null;
-  error_code: string | null;
-  refusal_reason: ReportDeliveryRefusal | null;
-  connector: RefusedConnector | null;
-  steps: { total: number; succeeded: number; failed: number; held: number; skipped: number };
-  output_contract: OutputContractVerdict;
-  planned_steps?: number | null;
-  rerun_safety: { mode: "repeat_safe" | "prepare_only" | "unavailable"; reason: string };
-}
+export type { OutcomeStepRow } from "./core/outcome.ts";
+export type ExecutionOutcome = CoreExecutionOutcome<
+  PreviewClassification,
+  ReportDeliveryRefusal,
+  RefusedConnector
+>;
 
 interface ExecutionFailureSummary {
   step_key: string | null;
@@ -40,137 +43,26 @@ type ExecutionRow = typeof executions.$inferSelect;
 type OutcomeExecution = Pick<ExecutionRow, "status" | "failure" | "output_contract"> &
   Partial<Pick<ExecutionRow, "source_kind">>;
 
-export interface OutcomeStepRow {
-  step_key: string;
-  kind: string;
-  status: string;
-  error: unknown;
-  held: boolean;
-  request_meta?: unknown;
-  started_at: Date | null;
-}
-
-function isHeldRow(row: OutcomeStepRow): boolean {
-  if (row.held) return true;
-  const meta = row.request_meta as { extras?: { held?: unknown } } | null | undefined;
-  return meta?.extras?.held === true;
-}
-
-const FAILED_STEP_STATUSES = new Set(["failed", "timed_out", "aborted"]);
-const FAILED_RUN_STATUSES = new Set(["failed", "timed_out", "aborted"]);
-const OUTPUT_CONTRACT_VERDICTS = new Set<string>(["passed", "violated", "none"]);
-
-function rowOfStep(stepKey: string, stepId: string): boolean {
-  return stepKey === stepId || stepKey.startsWith(`${stepId}[`);
-}
-
-export function pickStoppingStep<
-  T extends Pick<OutcomeStepRow, "step_key" | "status" | "started_at">,
->(rows: readonly T[], failureStepId: string | null | undefined): T | null {
-  const failed = rows
-    .map((row, index) => ({ row, index }))
-    .filter(({ row }) => FAILED_STEP_STATUSES.has(row.status))
-    .sort(
-      (a, b) =>
-        (a.row.started_at?.getTime() ?? 0) - (b.row.started_at?.getTime() ?? 0) ||
-        a.index - b.index,
-    )
-    .map(({ row }) => row);
-  if (failureStepId) {
-    const named = failed.filter((row) => rowOfStep(row.step_key, failureStepId));
-    if (named.length > 0) return named[named.length - 1] ?? null;
-  }
-  return failed[failed.length - 1] ?? null;
-}
-
-export function refusedConnector(failure: ExecutionRow["failure"]): RefusedConnector | null {
-  const connector = failure?.connector;
-  if (!connector || typeof connector.reason !== "string") return null;
-  return {
-    connector_id: typeof connector.connector_id === "string" ? connector.connector_id : null,
-    reason: connector.reason,
-  };
-}
-
-export function classifyRunFailure(
-  exec: Pick<ExecutionRow, "status" | "failure">,
-  stopping: Pick<OutcomeStepRow, "status" | "error"> | null,
-): PersistedFailureClass | null {
-  if (stopping) return classifyPersistedFailure(stopping);
-  if (exec.failure) {
-    return classifyPersistedFailure({
-      status: exec.status,
-      error: { code: exec.failure.error_code, message: exec.failure.error_message },
-    });
-  }
-  return null;
-}
+export { fixedPlannedSteps, pickStoppingStep, refusedConnector } from "./core/outcome.ts";
 
 export function deriveExecutionOutcome(
   exec: OutcomeExecution,
   rows: readonly OutcomeStepRow[],
   definition: unknown = [],
 ): ExecutionOutcome {
-  const definitionSteps = Array.isArray(definition)
-    ? definition.filter(
-        (step): step is { id: string; kind: string } =>
-          Boolean(step) &&
-          typeof step === "object" &&
-          typeof (step as { id?: unknown }).id === "string" &&
-          typeof (step as { kind?: unknown }).kind === "string",
-      )
-    : topLevelSteps(definition);
-  const running = exec.status === "queued" || exec.status === "running";
-  let succeeded = 0;
-  let failed = 0;
-  let held = 0;
-  let skipped = 0;
-  for (const row of rows) {
-    if (isHeldRow(row)) held += 1;
-    else if (FAILED_STEP_STATUSES.has(row.status)) failed += 1;
-    else if (row.status === "skipped") skipped += 1;
-    else if (row.status === "succeeded") succeeded += 1;
-  }
-  const unrun = running
-    ? 0
-    : definitionSteps.filter((step) => !rows.some((row) => rowOfStep(row.step_key, step.id)))
-        .length;
-  skipped += unrun;
-
-  let kind: OutcomeKind;
-  if (running) kind = "running";
-  else if (FAILED_RUN_STATUSES.has(exec.status)) kind = "failed";
-  else if (held > 0) kind = "held";
-  else if (failed > 0) kind = "partial";
-  else kind = "succeeded";
-
-  const reportsFailure = kind === "failed" || kind === "partial";
-  const stopping = reportsFailure ? pickStoppingStep(rows, exec.failure?.step_id) : null;
-  const cause = reportsFailure ? classifyRunFailure(exec, stopping) : null;
-  const namedStepId = kind === "failed" ? exec.failure?.step_id : null;
-  const failed_step = stopping
-    ? { step_key: stopping.step_key, kind: stopping.kind }
-    : namedStepId
-      ? {
-          step_key: namedStepId,
-          kind: definitionSteps.find((s) => s.id === namedStepId)?.kind ?? "unknown",
-        }
-      : null;
-
-  return {
-    kind,
-    failed_step,
-    cause_class: cause?.classification ?? null,
-    error_code: cause?.error_code ?? null,
-    refusal_reason: stopping ? reportRefusalReason(stopping.error) : null,
-    connector: kind === "failed" ? refusedConnector(exec.failure) : null,
-    steps: { total: rows.length + unrun, succeeded, failed, held, skipped },
-    output_contract:
-      exec.output_contract && OUTPUT_CONTRACT_VERDICTS.has(exec.output_contract)
-        ? (exec.output_contract as OutputContractVerdict)
-        : "none",
+  const definitionSteps = normalizedDefinitionSteps(definition);
+  const stopping = pickStoppingStep(rows, exec.failure?.step_id);
+  const cause = classifyRunFailure(exec, stopping);
+  return deriveCoreExecutionOutcome(exec, rows, {
+    definition_steps: definitionSteps,
     rerun_safety: deriveRerunSafety(exec.source_kind, definition),
-  };
+    failure: {
+      classification: cause?.classification ?? null,
+      error_code: cause?.error_code ?? null,
+      refusal_reason: stopping ? reportRefusalReason(stopping.error) : null,
+      connector: refusedConnector(exec.failure),
+    },
+  });
 }
 
 export function deriveRerunSafety(
@@ -178,25 +70,37 @@ export function deriveRerunSafety(
   definition: unknown,
 ): ExecutionOutcome["rerun_safety"] {
   if (sourceKind !== "saved")
-    return { mode: "unavailable", reason: "only saved workflow executions can be rerun" };
+    return deriveCoreRerunSafety({
+      source_kind: sourceKind,
+      definition_valid: false,
+      requires_preparation: false,
+    });
   const parsed = WorkflowDefSchema.safeParse(definition);
   if (!parsed.success)
-    return {
-      mode: "prepare_only",
-      reason: "the persisted workflow definition is unavailable or invalid",
-    };
-  for (const step of parsed.data.steps) {
-    if (step.kind === "call" || (step.kind === "request" && requestRequiresPreparationHold(step))) {
-      return {
-        mode: "prepare_only",
-        reason: "the workflow may repeat external effects and requires preparation",
-      };
-    }
-  }
-  return {
-    mode: "repeat_safe",
-    reason: "the complete workflow definition contains only read or local operations",
-  };
+    return deriveCoreRerunSafety({
+      source_kind: sourceKind,
+      definition_valid: false,
+      requires_preparation: false,
+    });
+  return deriveCoreRerunSafety({
+    source_kind: sourceKind,
+    definition_valid: true,
+    requires_preparation: parsed.data.steps.some(
+      (step) =>
+        step.kind === "call" || (step.kind === "request" && requestRequiresPreparationHold(step)),
+    ),
+  });
+}
+
+function normalizedDefinitionSteps(definition: unknown): OutcomeDefinitionStep[] {
+  const rawSteps = Array.isArray(definition) ? definition : topLevelSteps(definition);
+  return rawSteps.filter(
+    (step): step is OutcomeDefinitionStep =>
+      Boolean(step) &&
+      typeof step === "object" &&
+      typeof (step as { id?: unknown }).id === "string" &&
+      typeof (step as { kind?: unknown }).kind === "string",
+  );
 }
 
 function topLevelSteps(dag: unknown): Array<{ id: string; kind: string }> {
@@ -262,7 +166,7 @@ export async function loadFailureSummaries(
   db: Executor,
 ): Promise<Map<string, ExecutionFailureSummary>> {
   const out = new Map<string, ExecutionFailureSummary>();
-  const failedRuns = execs.filter((e) => FAILED_RUN_STATUSES.has(e.status));
+  const failedRuns = execs.filter((e) => isFailedRunStatus(e.status));
   if (failedRuns.length === 0) return out;
   const rows = await db
     .select({
@@ -301,11 +205,4 @@ export async function loadFailureSummaries(
     });
   }
   return out;
-}
-
-export function fixedPlannedSteps(steps: readonly { id: string; kind: string }[]): number | null {
-  return steps.length > 0 &&
-    steps.every((step) => step.kind === "request" || step.kind === "transform")
-    ? steps.length
-    : null;
 }

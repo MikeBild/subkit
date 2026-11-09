@@ -1,4 +1,4 @@
-import { markConnectorNativeUrlElicitationsComplete } from "../../../conversations/index.ts";
+import { markConnectorNativeUrlElicitationsComplete } from "../../../conversations/public/elicitation.ts";
 import type { Db } from "../../../db/client.ts";
 import { writeEvent } from "../../../db/events.ts";
 import { logger } from "../../../logging/index.ts";

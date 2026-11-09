@@ -1,4 +1,18 @@
 import pc from "picocolors";
+import {
+  engineErrorDetailLines,
+  isEngineError,
+  isTransportError,
+} from "./errors-classification.ts";
+import { engineErrorFacts } from "./errors-facts.ts";
+
+export {
+  engineErrorDetailLines,
+  exitCodeFor,
+  formatError,
+  isEngineError,
+  isTransportError,
+} from "./errors-classification.ts";
 
 export class EngineError extends Error {
   public readonly status: number;
@@ -10,38 +24,15 @@ export class EngineError extends Error {
   public readonly body: unknown;
 
   constructor(status: number, body: unknown) {
-    const parsed =
-      typeof body === "object" && body !== null
-        ? (body as {
-            code?: unknown;
-            message?: unknown;
-            trace_id?: unknown;
-            hint?: unknown;
-            retry_after?: unknown;
-            details?: unknown;
-          })
-        : null;
-    const msg =
-      parsed && typeof parsed.message === "string"
-        ? parsed.message
-        : typeof body === "string" && body.length > 0
-          ? body
-          : `engine responded ${status}`;
-    super(msg);
+    const facts = engineErrorFacts(status, body);
+    super(facts.message);
     this.name = "EngineError";
     this.status = status;
-    this.code = parsed && typeof parsed.code === "string" ? parsed.code : `http_${status}`;
-    this.trace_id =
-      parsed && typeof parsed.trace_id === "string" && parsed.trace_id.length > 0
-        ? parsed.trace_id
-        : null;
-    this.hint =
-      parsed && typeof parsed.hint === "string" && parsed.hint.length > 0 ? parsed.hint : null;
-    this.retry_after =
-      parsed && typeof parsed.retry_after === "number" && Number.isFinite(parsed.retry_after)
-        ? Math.max(0, Math.ceil(parsed.retry_after))
-        : null;
-    this.details = parsed?.details ?? null;
+    this.code = facts.code;
+    this.trace_id = facts.traceId;
+    this.hint = facts.hint;
+    this.retry_after = facts.retryAfter;
+    this.details = facts.details;
     this.body = body;
   }
 }
@@ -58,69 +49,12 @@ export class TransportError extends Error {
   }
 }
 
-export function isEngineError(err: unknown): err is EngineError {
-  return (
-    err instanceof Error &&
-    err.name === "EngineError" &&
-    typeof (err as EngineError).status === "number"
-  );
-}
-
-export function isTransportError(err: unknown): err is TransportError {
-  return err instanceof Error && err.name === "TransportError";
-}
-
-export function formatError(err: unknown): string {
-  if (isEngineError(err)) {
-    const trace = err.trace_id ? ` [trace=${err.trace_id}]` : "";
-    return `${err.code}: ${err.message}${trace}`;
-  }
-  if (isTransportError(err)) return err.message;
-  if (err instanceof Error) return err.message;
-  return String(err);
-}
-
-export function exitCodeFor(err: unknown): number {
-  if (isEngineError(err)) {
-    if (err.status === 400 || err.status === 409 || err.status === 422) return 1;
-    return 2;
-  }
-  if (isTransportError(err)) return 2;
-  return 1;
-}
-
 const REPORTED = Symbol.for("sk.cli.errorReported");
 
 export function wasReported(err: unknown): boolean {
   return (
     typeof err === "object" && err !== null && (err as Record<symbol, unknown>)[REPORTED] === true
   );
-}
-
-export function engineErrorDetailLines(details: unknown): string[] {
-  if (!details || typeof details !== "object") return [];
-  const d = details as Record<string, unknown>;
-  const lines: string[] = [];
-  if (Array.isArray(d.formErrors)) {
-    for (const m of d.formErrors) if (typeof m === "string" && m) lines.push(m);
-  }
-  if (d.fieldErrors && typeof d.fieldErrors === "object") {
-    for (const [field, msgs] of Object.entries(d.fieldErrors as Record<string, unknown>)) {
-      const list = Array.isArray(msgs) ? msgs.filter((m) => typeof m === "string") : [];
-      for (const m of list) lines.push(`${field}: ${m}`);
-    }
-  }
-  if (Array.isArray(d.issues)) {
-    for (const i of d.issues) {
-      if (!i || typeof i !== "object") continue;
-      const issue = i as Record<string, unknown>;
-      const path = Array.isArray(issue.path) ? issue.path.join(".") : issue.path;
-      if (typeof issue.message === "string") {
-        lines.push(path ? `${String(path)}: ${issue.message}` : issue.message);
-      }
-    }
-  }
-  return lines;
 }
 
 export function reportCommandError(err: unknown, opts?: { json?: boolean }): never {

@@ -1,8 +1,31 @@
 import type { Conversation } from "@/api/client";
 import type { PatchCandidate, SkillCandidate } from "@/api/decisions";
 import type { TranslationKey } from "@/lib/i18n";
-import { computeLineDiff, type FocusedRow, focusDiff, toDiffLines } from "@/lib/line-diff";
+import type { FocusedRow } from "@/lib/line-diff";
 import { clipAtWord, conversationExcerpt, hideTechnicalIdentifiers } from "@/lib/presentation";
+import {
+  approveBlockedReason as coreApproveBlockedReason,
+  changeFacts as coreChangeFacts,
+  changeRows as coreChangeRows,
+  humanStep as coreHumanStep,
+  patchChangeKind as corePatchChangeKind,
+  patchTitle as corePatchTitle,
+  suggestionTargets as coreSuggestionTargets,
+} from "@/pages/core/decision-facts";
+import {
+  ageInDays as coreAgeInDays,
+  badgeCount as coreBadgeCount,
+  bannerSubset as coreBannerSubset,
+  countOpenDecisions as coreCountOpenDecisions,
+  filterByKinds as coreFilterByKinds,
+  openDecisionQueue as coreOpenDecisionQueue,
+  partitionByUrgency as corePartitionByUrgency,
+  queueChips as coreQueueChips,
+  queueDisplayState as coreQueueDisplayState,
+  searchWithoutBucket as coreSearchWithoutBucket,
+  sortDecisions as coreSortDecisions,
+  splitByAge as coreSplitByAge,
+} from "@/pages/core/decision-queue";
 import {
   type ConversationEvidence,
   fixerKey,
@@ -113,9 +136,7 @@ interface SkillSections {
 const AGED_AFTER_DAYS = 3;
 
 export function ageInDays(waitingSince: string, now: number): number {
-  const started = Date.parse(waitingSince);
-  if (Number.isNaN(started)) return 0;
-  return Math.max(0, Math.floor((now - started) / 86_400_000));
+  return coreAgeInDays(waitingSince, now);
 }
 
 export function patchChangeKind(candidate: PatchCandidate): {
@@ -123,12 +144,7 @@ export function patchChangeKind(candidate: PatchCandidate): {
   driftKind: string | null;
   fixer: string | null;
 } {
-  const envelope = readDiffEnvelope(candidate.diff);
-  return {
-    proposalKind: envelope.proposalKind,
-    driftKind: envelope.driftKind,
-    fixer: envelope.fixer,
-  };
+  return corePatchChangeKind(candidate);
 }
 
 interface PatchTitle {
@@ -137,12 +153,7 @@ interface PatchTitle {
 }
 
 export function patchTitle(input: { workflow: string | null; change: string | null }): PatchTitle {
-  const workflow = input.workflow?.trim() || null;
-  const change = input.change?.trim() || null;
-  if (workflow && change) return { key: "decisions.patchTitle", params: { workflow, change } };
-  if (workflow) return { key: "decisions.patchTitleWorkflow", params: { workflow } };
-  if (change) return { key: "decisions.patchTitleChange", params: { change } };
-  return { key: "decisions.fallbackTitle.patch", params: {} };
+  return corePatchTitle(input);
 }
 
 export function isWholeQueue(view: {
@@ -413,16 +424,7 @@ function decisionUrgency(item: DecisionItem, now: number): DecisionUrgency {
 }
 
 export function sortDecisions(items: readonly DecisionItem[]): DecisionItem[] {
-  const rank: Record<DecisionKind, number> = { conversation: 0, patch: 1, skill: 2 };
-  return [...items].sort((a, b) => {
-    const aExpiry = a.expiresAt ? Date.parse(a.expiresAt) : Number.POSITIVE_INFINITY;
-    const bExpiry = b.expiresAt ? Date.parse(b.expiresAt) : Number.POSITIVE_INFINITY;
-    const aDue = Number.isNaN(aExpiry) ? Number.POSITIVE_INFINITY : aExpiry;
-    const bDue = Number.isNaN(bExpiry) ? Number.POSITIVE_INFINITY : bExpiry;
-    if (aDue !== bDue) return aDue - bDue;
-    if (rank[a.kind] !== rank[b.kind]) return rank[a.kind] - rank[b.kind];
-    return Date.parse(a.waitingSince) - Date.parse(b.waitingSince);
-  });
+  return coreSortDecisions(items);
 }
 
 interface DecisionRubrics {
@@ -431,11 +433,7 @@ interface DecisionRubrics {
 }
 
 export function splitByAge(items: readonly DecisionItem[], now: number): DecisionRubrics {
-  const sorted = sortDecisions(items);
-  return {
-    current: sorted.filter((item) => ageInDays(item.waitingSince, now) < AGED_AFTER_DAYS),
-    aged: sorted.filter((item) => ageInDays(item.waitingSince, now) >= AGED_AFTER_DAYS),
-  };
+  return coreSplitByAge(items, now);
 }
 
 interface UrgencyRubrics {
@@ -445,17 +443,7 @@ interface UrgencyRubrics {
 }
 
 export function partitionByUrgency(items: readonly DecisionItem[], now: number): UrgencyRubrics {
-  const sorted = sortDecisions(items);
-  const expired: DecisionItem[] = [];
-  const blocking: DecisionItem[] = [];
-  const deferred: DecisionItem[] = [];
-  for (const item of sorted) {
-    const urgency = decisionUrgency(item, now);
-    if (urgency === "expired") expired.push(item);
-    else if (urgency === "blocking" || urgency === "expiring") blocking.push(item);
-    else deferred.push(item);
-  }
-  return { expired, blocking, deferred: splitByAge(deferred, now) };
+  return corePartitionByUrgency(items, now);
 }
 
 export function hasOverdue(items: readonly DecisionItem[], now: number): boolean {
@@ -496,41 +484,7 @@ export function countOpenDecisions(input: {
   totals: DecisionTotals | null;
   nowMs: number;
 }): OpenDecisions {
-  const seen = new Map<string, DecisionItem>();
-  for (const item of input.items) {
-    const key = decisionKey(item);
-    if (!seen.has(key)) seen.set(key, item);
-  }
-  const unique = [...seen.values()];
-  const counted = input.totals
-    ? { ...input.totals }
-    : unique.reduce(
-        (counts, item) => {
-          if (item.kind === "conversation" || item.reviewable !== false) counts[item.kind] += 1;
-          return counts;
-        },
-        { patch: 0, skill: 0, conversation: 0 } as DecisionTotals,
-      );
-  const total = counted.patch + counted.skill;
-  const subsets: OpenDecisionSubsets = { blocking: 0, overdue: 0, aging: 0 };
-  let oldestAgeDays = 0;
-  for (const item of unique) {
-    if (item.kind !== "conversation" && !isDecidable(item)) continue;
-    const urgency = decisionUrgency(item, input.nowMs);
-    const age = ageInDays(item.waitingSince, input.nowMs);
-    if (isDecidable(item) && age > oldestAgeDays) oldestAgeDays = age;
-    if (urgency === "expired") subsets.overdue += 1;
-    else if (urgency === "blocking" || urgency === "expiring") subsets.blocking += 1;
-    else if (age >= AGED_AFTER_DAYS) subsets.aging += 1;
-  }
-  return {
-    total,
-    decidable: counted.patch + counted.skill,
-    byKind: { patch: counted.patch, skill: counted.skill, conversation: counted.conversation },
-    subsets,
-    oldestAgeDays,
-    capped: unique.filter(isDecidable).length < total,
-  };
+  return coreCountOpenDecisions(input);
 }
 
 interface BannerSubset {
@@ -543,26 +497,14 @@ interface BannerSubset {
 }
 
 export function bannerSubset(open: OpenDecisions): BannerSubset {
-  const blocking = open.subsets.blocking;
-  const overdue = open.subsets.overdue;
-  const count = blocking + overdue;
-  const total = open.byKind.conversation;
-  return {
-    blocking,
-    overdue,
-    count,
-    total,
-    atLeast: open.capped && count > 0,
-    shown: count > 0 && total > 0,
-  };
+  return coreBannerSubset(open);
 }
 
 export function filterByKinds(
   items: readonly DecisionItem[],
   kinds: readonly DecisionKind[],
 ): DecisionItem[] {
-  if (kinds.length === 0) return [...items];
-  return items.filter((item) => kinds.includes(item.kind));
+  return coreFilterByKinds(items, kinds);
 }
 
 type QueueDisplayState = "rows" | "filtered-empty" | "empty";
@@ -574,12 +516,10 @@ export function queueDisplayState(input: {
   total: number;
   narrowed: boolean;
 }): QueueDisplayState {
-  if (input.shown > 0 || input.held > 0 || input.failing > 0) return "rows";
-  return input.narrowed && input.total > 0 ? "filtered-empty" : "empty";
+  return coreQueueDisplayState(input);
 }
 
 type QueueKind = DecidableKind | "schedule";
-const QUEUE_KINDS: readonly QueueKind[] = ["patch", "skill", "schedule"];
 
 export function openDecisionQueue(input: {
   items: readonly DecisionItem[];
@@ -588,16 +528,7 @@ export function openDecisionQueue(input: {
   failing: number;
   nowMs: number;
 }): OpenDecisions {
-  const open = countOpenDecisions({
-    items: input.items,
-    totals: input.totals,
-    nowMs: input.nowMs,
-  });
-  return {
-    ...open,
-    total: open.total + input.held + input.failing,
-    subsets: { ...open.subsets, blocking: open.subsets.blocking + input.held + input.failing },
-  };
+  return coreOpenDecisionQueue(input);
 }
 
 export type SourceState = "answered" | "failed" | "not_permitted";
@@ -615,21 +546,7 @@ export function queueChips(input: {
   held: number;
   failing: { state: SourceState; count: number };
 }): QueueChip[] | null {
-  const open = input.open;
-  if (!open) return null;
-  const failed = input.failing.state === "failed";
-  return readableQueueKinds(input.readable).map((kind) => {
-    const index = QUEUE_KINDS.indexOf(kind);
-    if (kind !== "schedule") return { kind, index, count: open.byKind[kind], partial: false };
-    const held = input.readable.patches ? input.held : 0;
-    const failing = input.failing.state === "answered" ? input.failing.count : 0;
-    return {
-      kind,
-      index,
-      count: failed && !input.readable.patches ? null : held + failing,
-      partial: failed && input.readable.patches,
-    };
-  });
+  return coreQueueChips(input);
 }
 
 interface ReadableSources {
@@ -638,20 +555,8 @@ interface ReadableSources {
   failing: boolean;
 }
 
-function readableQueueKinds(readable: ReadableSources): QueueKind[] {
-  return QUEUE_KINDS.filter((kind) =>
-    kind === "patch"
-      ? readable.patches
-      : kind === "skill"
-        ? readable.skills
-        : readable.patches || readable.failing,
-  );
-}
-
 export function badgeCount(chips: readonly QueueChip[] | null): number | null {
-  if (!chips) return null;
-  const total = chips.reduce((sum, chip) => sum + (chip.count ?? 0), 0);
-  return total > 0 ? total : null;
+  return coreBadgeCount(chips);
 }
 
 interface DecisionView {
@@ -664,10 +569,7 @@ export function resetView(): DecisionView {
 }
 
 export function searchWithoutBucket(search: string): string {
-  const params = new URLSearchParams(search);
-  params.delete("bucket");
-  const rest = params.toString();
-  return rest ? `?${rest}` : "";
+  return coreSearchWithoutBucket(search);
 }
 
 export function approveBlockedReason(input: {
@@ -677,31 +579,17 @@ export function approveBlockedReason(input: {
   reviewDigest: string | null | undefined;
   preview: { reviewable?: boolean | null; review_digest?: string | null } | undefined;
 }): TranslationKey | null {
-  if (!input.canDecide) return "decisions.approveNeedsRole";
-  if (!input.expanded) return "decisions.approveNeedsReview";
-  if (input.kind === "skill") return input.reviewDigest ? null : "decisions.approveNotReviewable";
-  if (!input.preview) return null;
-  return input.preview.reviewable && input.preview.review_digest
-    ? null
-    : "decisions.approveNotReviewable";
+  return coreApproveBlockedReason(input);
 }
 
 export function suggestionTargets(
   items: readonly DecisionItem[],
 ): Array<{ item: DecisionItem; workflowId: string }> {
-  const out: Array<{ item: DecisionItem; workflowId: string }> = [];
-  for (const item of items) {
-    if (item.kind === "conversation" || isDecidable(item)) continue;
-    const detail = item.detail;
-    const workflowId =
-      detail.kind === "patch" || detail.kind === "skill" ? detail.evidence.workflowId : null;
-    if (workflowId) out.push({ item, workflowId });
-  }
-  return out;
+  return coreSuggestionTargets(items);
 }
 
 export function humanStep(stepKey: string): string {
-  return stepKey.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  return coreHumanStep(stepKey);
 }
 
 export interface ChangeFact {
@@ -710,51 +598,8 @@ export interface ChangeFact {
   rows: FocusedRow[];
 }
 
-const CHANGE_FACT_LIMIT = 3;
-const CHANGE_VALUE_LIMIT = 120;
-
-function valueAt(source: unknown, path: string): unknown {
-  return path
-    .split(".")
-    .reduce<unknown>(
-      (current, key) =>
-        current && typeof current === "object"
-          ? (current as Record<string, unknown>)[key]
-          : undefined,
-      source,
-    );
-}
-
-function shownValue(value: unknown): string {
-  if (value === undefined) return "—";
-  return typeof value === "string" ? value : JSON.stringify(value);
-}
-
-function fitsOnALine(text: string): boolean {
-  return !text.includes("\n") && text.length <= CHANGE_VALUE_LIMIT;
-}
-
-function focusedRows(before: unknown, after: unknown): FocusedRow[] {
-  return focusDiff(computeLineDiff(toDiffLines(before), toDiffLines(after)));
-}
-
-function changeFact(path: string, before: unknown, after: unknown): ChangeFact {
-  const shownBefore = shownValue(before);
-  const shownAfter = shownValue(after);
-  return fitsOnALine(shownBefore) && fitsOnALine(shownAfter)
-    ? { path, inline: { before: shownBefore, after: shownAfter }, rows: [] }
-    : { path, inline: null, rows: focusedRows(before, after) };
-}
-
 export function changeRows(facts: readonly ChangeFact[]): FocusedRow[] {
-  return facts.flatMap((fact): FocusedRow[] =>
-    fact.inline
-      ? [
-          { type: "removed", text: fact.inline.before },
-          { type: "added", text: fact.inline.after },
-        ]
-      : fact.rows,
-  );
+  return coreChangeRows(facts);
 }
 
 export function changeFacts(
@@ -762,10 +607,5 @@ export function changeFacts(
   after: unknown,
   paths: readonly string[] | null | undefined,
 ): ChangeFact[] {
-  const listed = (paths ?? []).slice(0, CHANGE_FACT_LIMIT);
-  if (listed.length === 0) {
-    const rows = focusedRows(before, after);
-    return rows.length > 0 ? [{ path: "", inline: null, rows }] : [];
-  }
-  return listed.map((path) => changeFact(path, valueAt(before, path), valueAt(after, path)));
+  return coreChangeFacts(before, after, paths);
 }

@@ -163,6 +163,12 @@ describe("selectAffected", () => {
     ]);
   });
 
+  test("an unbounded walk reaches every transitive importer", () => {
+    expect(select(["apps/engine/src/a/core.ts"], Number.POSITIVE_INFINITY).tests).toContain(
+      "apps/engine/src/b/deep.test.ts",
+    );
+  });
+
   test("keeps changed test files, drops deleted ones and finds importers of deleted modules", () => {
     expect(select(["packages/shared/src/s.spec.ts", "gone.test.ts"]).tests).toEqual([
       "packages/shared/src/s.spec.ts",
@@ -218,8 +224,13 @@ describe("runPool", () => {
 });
 
 describe("parseAffectedArgs", () => {
-  test("defaults to depth 2, four workers and the working tree", () => {
-    expect(parseAffectedArgs([], {})).toEqual({ list: false, depth: 2, workers: 4, range: null });
+  test("defaults to the full dependency graph, four workers and the working tree", () => {
+    expect(parseAffectedArgs([], {})).toEqual({
+      list: false,
+      depth: null,
+      workers: 4,
+      range: null,
+    });
   });
 
   test("reads options, the range and SUBKIT_TEST_WORKERS", () => {
@@ -228,7 +239,7 @@ describe("parseAffectedArgs", () => {
     ).toEqual({ list: true, depth: 0, workers: 2, range: "main..HEAD" });
     expect(parseAffectedArgs(["--workers", "8"], {})).toEqual({
       list: false,
-      depth: 2,
+      depth: null,
       workers: 8,
       range: null,
     });

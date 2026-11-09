@@ -2,6 +2,8 @@ import ts from "typescript";
 
 const DIRECTIVE =
   /biome-ignore|@ts-expect-error|@ts-ignore|@ts-nocheck|@ts-check|eslint-disable|tenant-filter:exempt|-allowed:|allow-wall-clock|allow-random|@__PURE__|#__PURE__|@jsxImportSource|^\/\/\/\s*<reference|@vite-ignore|prettier-ignore/;
+const STRYKER_DIRECTIVE =
+  /^(?:\/\/|\/\*)\s*Stryker (?:disable|restore)(?: next-line)? (?:all|[A-Za-z]+(?:,\s*[A-Za-z]+)*)(?::[^\r\n]*)?(?:\s*\*\/)?$/;
 
 export const COMMENT_SCOPE = /^(apps|packages|scripts|tests)\/.*\.(ts|tsx|mjs|js)$/;
 
@@ -40,7 +42,11 @@ export function findComments(file: string, text: string): CommentHit[] {
         const body = text.slice(r.pos, r.end);
         const adjacent = prevEnd >= 0 && /^[ \t]*\r?\n[ \t]*$/.test(text.slice(prevEnd, r.pos));
         prevEnd = r.end;
-        if (DIRECTIVE.test(body) || (r.pos === 0 && body.startsWith("#!"))) {
+        if (
+          DIRECTIVE.test(body) ||
+          STRYKER_DIRECTIVE.test(body) ||
+          (r.pos === 0 && body.startsWith("#!"))
+        ) {
           run = true;
           kept.add(r.pos);
           continue;

@@ -9,12 +9,16 @@ export class ApiKeyOwnerNotFoundError extends Error {
   }
 }
 
-export async function assertApiKeyOwnerInTenant(
+export interface ApiKeyOwnerFacts {
+  owner_found_in_tenant: boolean;
+}
+
+export async function apiKeyOwnerFacts(
   tx: Executor,
   tenantId: string,
   ownerKind: "user" | "system_account",
   ownerId: string,
-): Promise<void> {
+): Promise<ApiKeyOwnerFacts> {
   const rows =
     ownerKind === "user"
       ? await tx
@@ -35,5 +39,17 @@ export async function assertApiKeyOwnerInTenant(
             ),
           )
           .limit(1);
-  if (rows.length === 0) throw new ApiKeyOwnerNotFoundError(ownerKind);
+  return {
+    owner_found_in_tenant: rows.length > 0,
+  };
+}
+
+export async function assertApiKeyOwnerInTenant(
+  tx: Executor,
+  tenantId: string,
+  ownerKind: "user" | "system_account",
+  ownerId: string,
+): Promise<void> {
+  const facts = await apiKeyOwnerFacts(tx, tenantId, ownerKind, ownerId);
+  if (!facts.owner_found_in_tenant) throw new ApiKeyOwnerNotFoundError(ownerKind);
 }

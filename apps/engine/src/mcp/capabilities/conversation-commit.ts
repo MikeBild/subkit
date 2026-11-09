@@ -1,10 +1,12 @@
 import { z } from "zod";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { persistedWorkflowResource } from "../../conversations/authoring-state/summary.ts";
-import { loadDraft } from "../../conversations/draft.ts";
-import { classifyDraftVsPersisted } from "../../conversations/persistence/draft-diff.ts";
-import * as svc from "../../conversations/service.ts";
-import { buildWorkflowUsage } from "../../conversations/tools/usage-guidance.ts";
+import { loadDraft } from "../../conversations/public/authoring.ts";
+import { getConversation } from "../../conversations/public/lifecycle.ts";
+import {
+  buildWorkflowUsage,
+  classifyDraftVsPersisted,
+  persistedWorkflowResource,
+} from "../../conversations/public/tool-contract.ts";
 import type { Db } from "../../db/client.ts";
 import { getWorkflowDraft } from "../../workflows/drafts.ts";
 import { getWorkflow, getWorkflowBySlug } from "../../workflows/service.ts";
@@ -36,7 +38,7 @@ export async function readConversationCommit(
   principal: ResolvedPrincipal,
   conversation_id: string,
 ): Promise<HandleConversationToolResult> {
-  const detail = await svc.getConversation(principal.tenant_id, conversation_id, db);
+  const detail = await getConversation(principal.tenant_id, conversation_id, db);
   if (!detail) return errorText("conversation not found");
 
   const draft = await loadDraft(principal.tenant_id, detail.conversation.id, db);

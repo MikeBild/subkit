@@ -11,7 +11,7 @@
 // same grammar the resolver uses and rejects at commit.
 
 import { describe, expect, test } from "bun:test";
-import { validateWorkflowDef } from "../validator.ts";
+import { validateWorkflowDef } from "../core/validator.ts";
 
 function defWithSteps(steps: unknown[]): unknown {
   return { name: "resolvability probe", steps };

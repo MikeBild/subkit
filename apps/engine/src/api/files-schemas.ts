@@ -1,5 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { FILE_LINK_RESOURCE_TYPES } from "@shared/index.ts";
+import { FILE_LINK_RESOURCE_TYPES } from "@shared/files-constants.ts";
 import {
   AcceptDescriptionSchema,
   CatalogGroupBySchema,
@@ -298,7 +298,7 @@ export const FileVersionListSchema = z
 
 export const FILE_VERSION_RETENTION = 20;
 
-export { MAX_INLINE_BYTES } from "@shared/index.ts";
+export { MAX_INLINE_BYTES } from "@shared/files-constants.ts";
 
 export type FileWire = z.infer<typeof FileSchema>;
 export type InlineUpload = z.infer<typeof InlineUploadSchema>;

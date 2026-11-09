@@ -117,12 +117,9 @@ export function applyAuthMaterial(
       throw new Error(
         "oauth2_private_key credentials are not directly applied to HTTP requests — they are consumed by the MCP client pool's PrivateKeyJwtProvider.",
       );
-    default: {
-      const unsignedMode: "none" | "aws_sigv4" | "signed_jwt" = credential.mode;
-      void unsignedMode;
-      return;
-    }
   }
+
+  void (credential.mode satisfies "none" | "aws_sigv4" | "signed_jwt");
 }
 
 export function deriveAppliedAuthMethod(

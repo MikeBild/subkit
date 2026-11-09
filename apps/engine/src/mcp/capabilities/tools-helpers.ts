@@ -5,7 +5,7 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import {
   normalizeWorkflowInput,
   workflowInputRecord,
-} from "../../conversations/tools/workflow-input-normalize.ts";
+} from "../../conversations/public/tool-contract.ts";
 import type { Db } from "../../db/client.ts";
 import { executionSteps, workflows } from "../../db/schema/index.ts";
 import { supportsToolSchema } from "../../llm/runtime/tool-schema-compatibility.ts";

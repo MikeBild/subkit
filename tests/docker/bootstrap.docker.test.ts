@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import path from "node:path";
 import {
   collectContainerLogs,
+  composeDown,
   type DockerEnv,
   dockerApi,
   dockerBoot,
@@ -16,24 +17,27 @@ beforeAll(async () => {
 
 afterAll(() => {
   collectContainerLogs(path.resolve(import.meta.dir, "../../engine-docker.log"));
+  composeDown();
 }, 60_000);
 
 describe("container bootstrap", () => {
   test("health and readiness implement the family contract", async () => {
-    const res = await dockerApi<{ status: string; service: string; version: string }>(
-      env,
-      "GET",
-      "/health",
-    );
+    const res = await dockerApi<{
+      status: string;
+      service: string;
+      version: string;
+    }>(env, "GET", "/health");
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ status: "ok", service: "subkit" });
-    const ready = await dockerApi<{ status: string; checks: { database: string } }>(
-      env,
-      "GET",
-      "/ready",
-    );
+    const ready = await dockerApi<{
+      status: string;
+      checks: { database: string };
+    }>(env, "GET", "/ready");
     expect(ready.status).toBe(200);
-    expect(ready.body).toMatchObject({ status: "ready", checks: { database: "pass" } });
+    expect(ready.body).toMatchObject({
+      status: "ready",
+      checks: { database: "pass" },
+    });
   });
 
   test("first-run onboarding minted a wf_live_ admin key", () => {

@@ -3,8 +3,6 @@ import {
   absolute,
   connectorHref,
   conversationHref,
-  identifierParam,
-  instantParam,
   recordHref,
   runHref,
   workflowHref,
@@ -12,6 +10,31 @@ import {
 import type { CatalogResource } from "@/app/route-table";
 import type { TranslationKey } from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
+import {
+  auditDetailFacts as coreAuditDetailFacts,
+  auditEvidenceBlocks as coreAuditEvidenceBlocks,
+  auditMetadataFacts as coreAuditMetadataFacts,
+  auditObjectName as coreAuditObjectName,
+} from "@/pages/core/audit-evidence";
+
+export { shortIdentifier } from "@/lib/core/identifier";
+
+export type { AuditArea, AuditLinkFilter, AuditScope } from "@/pages/core/audit-filter";
+export {
+  AUDIT_AREAS,
+  auditActionsFromUrl,
+  auditAreaParams,
+  auditCorrelationFromUrl,
+  auditCountKey,
+  auditFilterFromUrl,
+  auditLinkParams,
+  auditResultFromUrl,
+  auditScopeParams,
+  auditTraceFromUrl,
+  initialAuditFilter,
+  isAuditScope,
+  normalizedAuditScope,
+} from "@/pages/core/audit-filter";
 
 type AuditEntry = Omit<components["schemas"]["AuditEntry"], "resource_name"> & {
   resource_name?: string | null;
@@ -354,139 +377,6 @@ export function searchedActionParams(
   return actions.length > 0 ? { ...params, action: actions.join(",") } : null;
 }
 
-const DECISION_ACTIONS = [
-  "patch_candidate.approved",
-  "patch_candidate.rejected",
-  "skill_candidate.approved",
-  "skill_candidate.rejected",
-  "approval.granted",
-  "approval.approved",
-  "approval.rejected",
-  "approval.declined",
-  "workflow.authority_granted",
-  "workflow.authority_revoked",
-  "workflow.authority_expiry_removed",
-  "policy.denied",
-  "approval.dispatch_denied",
-  "execution.boundary_refused",
-  "rbac.role_created",
-  "rbac.role_deleted",
-  "rbac.permission_granted",
-  "rbac.permission_revoked",
-  "rbac.user_role_assigned",
-  "rbac.user_role_revoked",
-  "user.created",
-  "user.deleted",
-  "user.role_changed",
-  "api_key.issued",
-  "api_key.revoked",
-  "workflow.deleted",
-  "workflow.version_restored",
-  "knowledge_source.restored",
-  "schedule.created",
-  "schedule.deleted",
-  "connector.deleted",
-  "secret.version_created",
-  "secret.version_revoked",
-  "settings.changed",
-] as const;
-
-export type AuditScope = "all" | "decisions" | "operations";
-
-export function isAuditScope(value: unknown): value is AuditScope {
-  return value === "all" || value === "decisions" || value === "operations";
-}
-
-export function auditScopeParams(scope: AuditScope): Record<string, string> {
-  if (scope === "decisions") return { action: DECISION_ACTIONS.join(",") };
-  if (scope === "operations") return { actor_type: "system" };
-  return {};
-}
-
-export function normalizedAuditScope(
-  scope: AuditScope,
-  action: string,
-  actorType: string,
-): AuditScope {
-  if (
-    scope === "decisions" &&
-    action &&
-    action.split(",").some((item) => !DECISION_ACTIONS.some((decision) => decision === item))
-  )
-    return "all";
-  if (scope === "operations" && actorType && actorType !== "system") return "all";
-  return scope;
-}
-
-export function auditTraceFromUrl(search: string): string | null {
-  const raw = new URLSearchParams(search).get("trace_id")?.trim() ?? "";
-  if (!raw || raw.length > 128 || !/^[\w-]+$/.test(raw)) return null;
-  return raw;
-}
-
-export function auditCorrelationFromUrl(search: string): string | null {
-  const raw = new URLSearchParams(search).get("correlation_id");
-  return raw && /^[0-9a-f]{32}$/.test(raw) ? raw : null;
-}
-
-interface AuditLinkFilter {
-  resourceType: string | null;
-  resourceId: string | null;
-  traceId: string | null;
-  scope: AuditScope | null;
-  actions: string[];
-  tsFrom: string | null;
-  tsTo: string | null;
-}
-
-const MAX_LINKED_ACTIONS = 32;
-const ACTION_TOKEN = /^[a-z][a-z0-9_]*(\.[a-z0-9_]+)*$/;
-
-export function auditActionsFromUrl(search: string): string[] {
-  const raw = new URLSearchParams(search).get("action") ?? "";
-  const tokens = raw
-    .split(",")
-    .map((token) => token.trim())
-    .filter((token) => token.length > 0 && token.length <= 96 && ACTION_TOKEN.test(token));
-  return [...new Set(tokens)].slice(0, MAX_LINKED_ACTIONS);
-}
-
-const AUDIT_RESULTS = ["success", "denied", "error"] as const;
-type AuditResultFilter = (typeof AUDIT_RESULTS)[number];
-
-export function auditResultFromUrl(search: string): AuditResultFilter | null {
-  const raw = new URLSearchParams(search).get("result");
-  return (AUDIT_RESULTS as readonly string[]).includes(raw ?? "")
-    ? (raw as AuditResultFilter)
-    : null;
-}
-
-export function auditFilterFromUrl(search: string): AuditLinkFilter {
-  const params = new URLSearchParams(search);
-  const resourceType = identifierParam(params, "resource_type");
-  const scope = params.get("scope");
-  return {
-    resourceType,
-    resourceId: resourceType ? identifierParam(params, "resource_id") : null,
-    traceId: auditTraceFromUrl(search),
-    scope: isAuditScope(scope) ? scope : null,
-    actions: auditActionsFromUrl(search),
-    tsFrom: instantParam(params, "ts_from"),
-    tsTo: instantParam(params, "ts_to"),
-  };
-}
-
-export function auditLinkParams(filter: AuditLinkFilter): Record<string, string> {
-  const params: Record<string, string> = {};
-  if (filter.resourceType) params.resource_type = filter.resourceType;
-  if (filter.resourceId) params.resource_id = filter.resourceId;
-  if (filter.traceId) params.trace_id = filter.traceId;
-  if (filter.actions.length > 0) params.action = filter.actions.join(",");
-  if (filter.tsFrom) params.ts_from = filter.tsFrom;
-  if (filter.tsTo) params.ts_to = filter.tsTo;
-  return params;
-}
-
 export function isAuditEntry(value: unknown): value is AuditEntry {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Record<string, unknown>;
@@ -504,20 +394,10 @@ interface AuditEvidenceBlock {
   text: string;
 }
 
-function formatSnapshot(value: unknown): string {
-  return JSON.stringify(value, null, 2) ?? String(value);
-}
-
 export function auditEvidenceBlocks(
   entry: Pick<AuditEntry, "before" | "after">,
 ): AuditEvidenceBlock[] {
-  const blocks: AuditEvidenceBlock[] = [];
-  for (const kind of ["before", "after"] as const) {
-    const value = entry[kind];
-    if (value === null || value === undefined) continue;
-    blocks.push({ kind, text: formatSnapshot(value) });
-  }
-  return blocks;
+  return coreAuditEvidenceBlocks(entry);
 }
 
 interface AuditMetadataFact {
@@ -563,167 +443,32 @@ const METADATA_VALUES: Readonly<Record<string, TranslationKey>> = {
   count: "audit.meta.count",
 };
 
-function scalarText(value: unknown): string | null {
-  if (typeof value === "string") return value.trim() || null;
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  return null;
-}
-
 export function auditMetadataFacts(
   metadata: Readonly<Record<string, unknown>> | null | undefined,
   t: Translate,
 ): { facts: AuditMetadataFact[]; rest: string | null } {
-  const facts: AuditMetadataFact[] = [];
-  const rest: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(metadata ?? {})) {
-    const reference = METADATA_REFERENCES[key];
-    const text = scalarText(value);
-    if (reference && text) {
-      facts.push({
-        key,
-        label: t(reference.label),
-        value: `${t(reference.open)} · ${text}`,
-        href: reference.href(text),
-      });
-      continue;
-    }
-    const label = METADATA_VALUES[key];
-    if (label && text) {
-      facts.push({ key, label: t(label), value: text, href: null });
-      continue;
-    }
-    rest[key] = value;
-  }
-  return {
-    facts,
-    rest: Object.keys(rest).length > 0 ? formatSnapshot(rest) : null,
-  };
-}
-
-interface AuditFact {
-  label: string;
-  value: string | null;
-  mono?: boolean;
-  prominent?: boolean;
-  help?: string;
-}
-
-function recordedText(value: string | null | undefined): string | null {
-  const text = value?.trim() ?? "";
-  return text.length > 0 ? text : null;
-}
-
-function labelFact(label: string, value: CatalogLabel | null): AuditFact {
-  return value
-    ? { label, value: value.text, ...(value.machine ? { mono: true } : {}) }
-    : { label, value: null };
+  return coreAuditMetadataFacts(metadata, t, {
+    references: METADATA_REFERENCES,
+    values: METADATA_VALUES,
+  });
 }
 
 export function auditDetailFacts(
   entry: AuditEntry,
   t: Translate,
   dateTime: FormatDateTime,
-): AuditFact[] {
-  return [
-    { label: t("audit.column.time"), value: dateTime(entry.ts) },
-    labelFact(t("audit.column.result"), auditResultLabel(entry.result, t)),
-    labelFact(t("audit.column.actor"), auditActorName(entry, t)),
-    { label: t("audit.detail.actorId"), value: recordedText(entry.actor_id), mono: true },
-    labelFact(t("audit.column.resource"), auditResourceLabel(entry.resource_type, t)),
-    { label: t("audit.detail.resourceId"), value: recordedText(entry.resource_id), mono: true },
-    labelFact(t("audit.column.reason"), auditReasonLabel(entry.reason, t)),
-    {
-      label: t("audit.detail.trace"),
-      value: recordedText(entry.trace_id),
-      mono: true,
-      prominent: true,
-      help: t("audit.detail.traceHelp"),
-    },
-    { label: t("audit.detail.ip"), value: recordedText(entry.ip), mono: true },
-    { label: t("audit.detail.userAgent"), value: recordedText(entry.user_agent), mono: true },
-    { label: t("audit.detail.record"), value: recordedText(entry.id), mono: true },
-  ];
-}
-
-export function shortIdentifier(value: string): string {
-  const looksLikeAnId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-    value,
-  );
-  return looksLikeAnId ? `${value.slice(0, 8)}…` : value;
-}
-
-export const AUDIT_AREAS = {
-  all: [],
-  runs: ["execution", "execution_step"],
-  workflows: ["workflow", "workflow_version", "workflow_execution_authority", "workflow_schedule"],
-  connectors: ["connector", "credential", "connection"],
-  knowledge: ["knowledge_source", "knowledge_source_version", "skill", "skill_candidate"],
-  files: ["file"],
-  conversations: ["conversation", "conversation_elicitation"],
-  people: [
-    "user",
-    "user_identity",
-    "group",
-    "role",
-    "resource_grant",
-    "api_key",
-    "system_account",
-    "mcp_oauth_client",
-  ],
-} as const;
-
-type AuditArea = keyof typeof AUDIT_AREAS;
-
-export function auditAreaParams(area: AuditArea): Record<string, string> {
-  return area === "all" ? {} : { resource_types: AUDIT_AREAS[area].join(",") };
+): ReturnType<typeof coreAuditDetailFacts> {
+  return coreAuditDetailFacts(entry, t, dateTime, {
+    result: (value) => auditResultLabel(value.result, t),
+    actor: (value) => auditActorName(value, t),
+    resource: (value) => auditResourceLabel(value.resource_type, t),
+    reason: (value) => auditReasonLabel(value.reason, t),
+  });
 }
 
 export function auditObjectName(
   entry: Pick<AuditEntry, "resource_type" | "resource_id" | "resource_name">,
   t: Translate,
 ): string {
-  if (entry.resource_name?.trim()) return entry.resource_name.trim();
-  const type = auditResourceLabel(entry.resource_type, t).text;
-  const id = entry.resource_id?.trim();
-  return id ? `${type} · ${id}` : type;
-}
-
-export function initialAuditFilter(search: string, now: number) {
-  const filter = auditFilterFromUrl(search);
-  if (
-    filter.tsFrom ||
-    filter.tsTo ||
-    filter.traceId ||
-    filter.resourceId ||
-    auditCorrelationFromUrl(search)
-  )
-    return filter;
-  return { ...filter, tsFrom: new Date(now - 30 * 86_400_000).toISOString() };
-}
-
-function hasExplicitAuditWindow(search: string): boolean {
-  const params = new URLSearchParams(search);
-  return params.has("ts_from") || params.has("ts_to");
-}
-
-export function auditCountKey(
-  search: string,
-  filter: AuditLinkFilter,
-  count: number,
-  hasNextPage: boolean,
-): TranslationKey {
-  const defaultWindow =
-    filter.tsFrom !== null &&
-    filter.tsTo === null &&
-    !hasExplicitAuditWindow(search) &&
-    filter.traceId === null &&
-    filter.resourceId === null &&
-    auditCorrelationFromUrl(search) === null;
-  if (defaultWindow)
-    return hasNextPage
-      ? "audit.countWindowMore"
-      : count === 1
-        ? "audit.countWindow.one"
-        : "audit.countWindow";
-  return hasNextPage ? "audit.countMore" : count === 1 ? "audit.count.one" : "audit.count";
+  return coreAuditObjectName(entry, (resourceType) => auditResourceLabel(resourceType, t).text);
 }

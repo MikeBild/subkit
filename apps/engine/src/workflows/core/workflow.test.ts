@@ -416,3 +416,9 @@ describe("properties", () => {
     );
   });
 });
+
+test("version allocation ignores non-increasing values, including NaN", () => {
+  expect(nextVersion([NaN, -3, 0, 4, 4, 2])).toBe(5);
+  expect(nextVersion([NaN, -Infinity])).toBe(1);
+  expect(nextVersion([Infinity])).toBe(Infinity);
+});

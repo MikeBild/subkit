@@ -3,8 +3,8 @@ import {
   describeUnknownFunction,
   findUnboundFunctionCalls,
   findUnknownFunctionCalls,
-} from "../execution/jsonata-engine.ts";
-import type { WorkflowDef } from "./types.ts";
+} from "../execution/core/jsonata-contract.ts";
+import type { DomainWorkflowDef } from "./domain-types.ts";
 import type { ValidationError } from "./validator.ts";
 
 interface JsonataSite {
@@ -16,7 +16,7 @@ function isLoopSelector(over: string): boolean {
   return over === "$" || over.startsWith("$.");
 }
 
-export function workflowJsonataSites(def: WorkflowDef): JsonataSite[] {
+export function workflowJsonataSites(def: DomainWorkflowDef): JsonataSite[] {
   const sites: JsonataSite[] = [];
   for (const step of def.steps) {
     if (step.kind === "branch") {
@@ -40,7 +40,7 @@ export function workflowJsonataSites(def: WorkflowDef): JsonataSite[] {
   return sites;
 }
 
-export function jsonataSiteErrors(def: WorkflowDef): ValidationError[] {
+export function jsonataSiteErrors(def: DomainWorkflowDef): ValidationError[] {
   const errors: ValidationError[] = [];
   for (const { path, expression } of workflowJsonataSites(def)) {
     try {

@@ -93,3 +93,28 @@ export function carryForward(
   if (remaining === 0) return { kind: "exhausted" };
   return { kind: "carry", max_runs: remaining, valid_until: parent.valid_until };
 }
+
+export function workflowAuthorityExecutionOptions(environment: "dev" | "prod") {
+  return {
+    execution_mode: environment,
+    self_healing: { enabled: false },
+    hold_writes: false,
+  } as const;
+}
+
+export function workflowAuthorityOptionsDigest(
+  environment: "dev" | "prod",
+  defaults: Readonly<{
+    workflow_timeout_ms: number;
+    request_timeout_ms: number;
+    request_max_retries: number;
+  }>,
+): string {
+  return workflowJsonDigest({
+    ...workflowAuthorityExecutionOptions(environment),
+    default_workflow_timeout_ms: defaults.workflow_timeout_ms,
+    default_request_timeout_ms: defaults.request_timeout_ms,
+    default_request_max_retries: defaults.request_max_retries,
+    step_output_fixtures: null,
+  });
+}

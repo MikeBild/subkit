@@ -15,7 +15,10 @@ import {
 import { invalidateTenantState } from "../operator/index.ts";
 import { createSkill, retireReplacedConnectorSkills } from "../skills/service.ts";
 import { now } from "../utils/clock.ts";
-import { initialCandidateStatus, skillReviewDigest, toView } from "./candidate-view.ts";
+import { skillReviewDigest, toView } from "./candidate-view.ts";
+import { decideSignalUpsert } from "./core/candidate-decision.ts";
+import { mergeCandidateEvidence, uniqueEvidence } from "./core/evidence.ts";
+import { decideCandidateReview } from "./core/review.ts";
 import { measureCorrectionEffectiveness } from "./correction-effectiveness.ts";
 import { collectCorrectionIntake } from "./correction-intake.ts";
 import {
@@ -23,7 +26,6 @@ import {
   detectRepairPatterns,
   detectSuccessPatterns,
 } from "./detectors/index.ts";
-import { evidenceIdentity, uniqueEvidence } from "./evidence-identity.ts";
 import {
   type AnalysisResult,
   type ApproveSkillCandidateParams,
@@ -211,7 +213,6 @@ export async function upsertFromSignal(
   signal: PatternSignal,
   exec: Db,
 ): Promise<UpsertCandidateResult> {
-  const status = initialCandidateStatus(signal.pattern_kind);
   return await exec.transaction(async (tx) => {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtextextended(${`skill-candidates:${tenant_id}`}, 0))`,
@@ -229,21 +230,13 @@ export async function upsertFromSignal(
 
     if (existing[0]) {
       const row = existing[0];
-      if (row.status === "rejected" || row.status === "superseded") {
+      const decision = decideSignalUpsert(row, signal);
+      if (decision.kind === "skip") {
         log.skill.candidate.dedup({
           candidate_id: row.id,
           tenant_id,
           pattern_kind: signal.pattern_kind,
-          reason: row.status,
-        });
-        return { action: "skipped" as const, candidate_id: row.id };
-      }
-      if (row.status === "approved") {
-        log.skill.candidate.dedup({
-          candidate_id: row.id,
-          tenant_id,
-          pattern_kind: signal.pattern_kind,
-          reason: "approved",
+          reason: decision.reason,
         });
         return { action: "skipped" as const, candidate_id: row.id };
       }
@@ -251,7 +244,7 @@ export async function upsertFromSignal(
         .update(skillCandidates)
         .set({
           confidence: signal.confidence,
-          version: row.version + 1,
+          version: decision.version,
           evidence: signal.evidence,
           title: signal.title,
           body: signal.body,
@@ -276,23 +269,21 @@ export async function upsertFromSignal(
         .from(skillCandidateEvidence)
         .where(eq(skillCandidateEvidence.skill_candidate_id, row.id));
 
-      const remaining = MAX_EVIDENCE_PER_CANDIDATE - existingEvidence.length;
-      if (remaining > 0) {
-        const existingKeys = new Set(existingEvidence.map(evidenceIdentity));
-        const newEvidence = uniqueEvidence(signal.evidence)
-          .filter((e) => !existingKeys.has(evidenceIdentity(e)))
-          .slice(0, remaining);
-        if (newEvidence.length > 0) {
-          await tx.insert(skillCandidateEvidence).values(
-            newEvidence.map((e) => ({
-              skill_candidate_id: row.id,
-              execution_id: e.execution_id ?? null,
-              patch_candidate_id: e.patch_candidate_id ?? null,
-              evidence_type: e.evidence_type,
-              summary: e.summary,
-            })),
-          );
-        }
+      const newEvidence = mergeCandidateEvidence(
+        existingEvidence,
+        signal.evidence,
+        MAX_EVIDENCE_PER_CANDIDATE,
+      ).additions;
+      if (newEvidence.length > 0) {
+        await tx.insert(skillCandidateEvidence).values(
+          newEvidence.map((e) => ({
+            skill_candidate_id: row.id,
+            execution_id: e.execution_id ?? null,
+            patch_candidate_id: e.patch_candidate_id ?? null,
+            evidence_type: e.evidence_type,
+            summary: e.summary,
+          })),
+        );
       }
 
       await auditAwait(
@@ -306,7 +297,7 @@ export async function upsertFromSignal(
           metadata: {
             pattern_kind: signal.pattern_kind,
             confidence: signal.confidence,
-            version: row.version + 1,
+            version: decision.version,
             scope: signal.scope,
             connector_id: signal.connector_id ?? null,
           },
@@ -317,8 +308,9 @@ export async function upsertFromSignal(
       return { action: "updated" as const, candidate_id: row.id };
     }
 
+    const insertDecision = decideSignalUpsert(null, signal);
     let supersededCount = 0;
-    if (!signal.endpoint_key) {
+    if (insertDecision.supersede_open) {
       const tenantSupersedeScope = [
         eq(skillCandidates.tenant_id, tenant_id),
         inArray(skillCandidates.status, OPEN_STATUSES),
@@ -382,7 +374,7 @@ export async function upsertFromSignal(
         examples: signalDetails(signal),
         evidence: signal.evidence,
         confidence: signal.confidence,
-        status,
+        status: insertDecision.initial_status,
         fingerprint: signal.fingerprint,
         tags: signal.tags ?? [],
         proposed_by_user_id: proposer.user_id,
@@ -394,15 +386,15 @@ export async function upsertFromSignal(
 
     if (signal.evidence.length > 0) {
       await tx.insert(skillCandidateEvidence).values(
-        uniqueEvidence(signal.evidence)
-          .slice(0, MAX_EVIDENCE_PER_CANDIDATE)
-          .map((e) => ({
+        mergeCandidateEvidence([], signal.evidence, MAX_EVIDENCE_PER_CANDIDATE).additions.map(
+          (e) => ({
             skill_candidate_id: row.id,
             execution_id: e.execution_id ?? null,
             patch_candidate_id: e.patch_candidate_id ?? null,
             evidence_type: e.evidence_type,
             summary: e.summary,
-          })),
+          }),
+        ),
       );
     }
 
@@ -411,7 +403,7 @@ export async function upsertFromSignal(
         tenant_id,
         ...auditActor(signal.proposer ?? null),
         action:
-          status === "context"
+          insertDecision.initial_status === "context"
             ? AuditAction.SKILL_CANDIDATE_CONTEXT_RECORDED
             : AuditAction.SKILL_CANDIDATE_PROPOSED,
         resource_type: "skill_candidate",
@@ -435,7 +427,7 @@ export async function upsertFromSignal(
       confidence: signal.confidence,
       superseded_count: supersededCount,
     };
-    if (status === "context") {
+    if (insertDecision.initial_status === "context") {
       log.skill.candidate.contextRecorded(logged);
       return { action: "recorded" as const, candidate_id: row.id };
     }
@@ -492,19 +484,7 @@ export async function runPatternAnalysis(
   };
 }
 
-type SkillCandidateApprovalFailure = "not_found" | "already_decided" | "changed_since_review";
-
-export function approvalFailureOf(
-  current: Pick<SkillCandidateView, "status" | "pattern_kind"> | null,
-): SkillCandidateApprovalFailure {
-  if (
-    !current ||
-    current.status === "context" ||
-    (LEARNING_PATTERN_KINDS as readonly string[]).includes(current.pattern_kind)
-  )
-    return "not_found";
-  return current.status === "proposed" ? "changed_since_review" : "already_decided";
-}
+export { approvalFailureOf } from "./core/review.ts";
 
 interface ApproveSkillCandidateResult {
   candidate: SkillCandidateView;
@@ -537,8 +517,18 @@ export async function approveSkillCandidate(
       .limit(1);
     const row = rows[0];
     if (!row) return null;
-    if (p.expected_review_digest && p.expected_review_digest !== skillReviewDigest(row))
-      return null;
+    const review = decideCandidateReview(
+      {
+        status: row.status,
+        pattern_kind: row.pattern_kind,
+        review_digest: skillReviewDigest(row),
+      },
+      {
+        kind: "approve",
+        ...(p.expected_review_digest ? { expected_review_digest: p.expected_review_digest } : {}),
+      },
+    );
+    if (review.kind !== "approve") return null;
     const blob = (row.examples ?? {}) as Record<string, unknown>;
 
     await lockCatalogVocabulary(tx, p.tenant_id);

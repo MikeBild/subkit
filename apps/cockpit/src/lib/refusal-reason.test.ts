@@ -16,9 +16,10 @@ function constArray(source: string, name: string): string[] {
 }
 
 const REPORT_SOURCE = engine("workflows/report-delivery-boundary.ts");
+const REPORT_REASONS_SOURCE = engine("workflows/core/report-refusal.ts");
 const ENGINE_REASONS = [
-  ...constArray(REPORT_SOURCE, "REPORT_MESSAGE_REFUSALS"),
-  ...constArray(REPORT_SOURCE, "REPORT_DELIVERY_DISCREPANCIES"),
+  ...constArray(REPORT_REASONS_SOURCE, "REPORT_MESSAGE_REFUSALS"),
+  ...constArray(REPORT_REASONS_SOURCE, "REPORT_DELIVERY_DISCREPANCIES"),
 ];
 
 function engineRequestRefusals(): string[] {

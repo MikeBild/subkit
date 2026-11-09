@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { urlSourceBody } from "./knowledge-sources";
+import { urlSourceBody } from "./knowledge-source-request";
 
 describe("creating a source from an address", () => {
   test("a source that is never read again sends no refresh_cron, since the contract takes a string only", () => {

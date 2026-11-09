@@ -23,6 +23,12 @@ import { getLatestShape } from "../schema-versions/service.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
 import { autoApplyPatch, logPatchNotApplied } from "./auto-apply.ts";
 import { classifyPatch } from "./classifier.ts";
+import { decideExistingRepair, type SignalSource } from "./core/repair-decision.ts";
+import {
+  decideRepairDisposition,
+  evolveRepairAttempt,
+  finalRepairGate,
+} from "./core/retry-chain.ts";
 import { analyzeStepFailure, type FailingStepSnapshot, renderDriftDiff } from "./drift-detector.ts";
 import { runFixtureDryRun } from "./fixture-runner.ts";
 import { closeIfUndecidable } from "./open-decisions.ts";
@@ -52,7 +58,7 @@ export interface RunSelfHealingParams extends WorkflowRepairJob {
   step_snapshot?: FailingStepSnapshot;
 }
 
-export type SignalSource = "reactive" | "proactive_scheduler" | "proactive_admin" | "proactive_mcp";
+export type { SignalSource } from "./core/repair-decision.ts";
 
 export interface SignalContext {
   tenant_id: string;
@@ -139,20 +145,21 @@ async function refreshOrSkipExistingCandidate(
 
   const policy = await resolvePolicy(ctx.tenant_id, ctx.workflow_id, db);
 
-  if (existing.status === "applied") {
-    if (ctx.source === "reactive") {
-      logger.warn({
-        module: "self-healing",
-        action: "patch.applied_but_recurred",
-        msg: "drift recurred reactively after an applied patch — proposing a fresh candidate",
-        tenant_id: ctx.tenant_id,
-        workflow_id: ctx.workflow_id,
-        patch_candidate_id: existing.id,
-        connector_id: ctx.connector_id ?? null,
-        endpoint_key: ctx.endpoint_key ?? null,
-      });
-      return null;
-    }
+  const existingDecision = decideExistingRepair({ status: existing.status, source: ctx.source });
+  if (existingDecision.kind === "repropose") {
+    logger.warn({
+      module: "self-healing",
+      action: "patch.applied_but_recurred",
+      msg: "drift recurred reactively after an applied patch — proposing a fresh candidate",
+      tenant_id: ctx.tenant_id,
+      workflow_id: ctx.workflow_id,
+      patch_candidate_id: existing.id,
+      connector_id: ctx.connector_id ?? null,
+      endpoint_key: ctx.endpoint_key ?? null,
+    });
+    return null;
+  }
+  if (existingDecision.kind === "return_applied") {
     logger.debug({
       module: "self-healing",
       action: "patch.already_applied",
@@ -487,7 +494,13 @@ async function processDriftSignalLocked(
     const classifierOk = decision.classification === "safe";
     const fixtureOk = !fixture || !ctx.dry_run_step || dryRunOk;
     const executable = resolvePathRewrite(proposal) !== null;
-    if (classifierOk && fixtureOk && executable) break;
+    const attemptDisposition = evolveRepairAttempt({
+      classification: decision.classification,
+      fixture_required: Boolean(fixture && ctx.dry_run_step),
+      fixture_passed: dryRunOk,
+      executable,
+    });
+    if (attemptDisposition.kind === "accept") break;
 
     const reason = !executable
       ? "No executable patch: use update_field_path with an exact old path and new path value; schema descriptions cannot change a workflow."
@@ -523,7 +536,10 @@ async function processDriftSignalLocked(
     fixture_passed: dryRunOk,
     has_fixture: !!fixture && !!ctx.dry_run_step,
   });
-  const autoApply = options.allowAutoApply && wouldAutoApply;
+  const autoApply = finalRepairGate({
+    caller_allows_auto_apply: options.allowAutoApply,
+    policy_allows_auto_apply: wouldAutoApply,
+  });
 
   logger.info({
     module: "self-healing",
@@ -676,7 +692,7 @@ async function processDriftSignalLocked(
   return {
     candidate_id: txOut.candidate.id,
     classification: decision.classification,
-    status: auto_applied ? "applied" : closed ? "inapplicable" : "proposed",
+    status: decideRepairDisposition({ auto_applied, closed }),
     auto_applied,
     dry_run_passed: fixture && ctx.dry_run_step ? dryRunOk : null,
     proposal,

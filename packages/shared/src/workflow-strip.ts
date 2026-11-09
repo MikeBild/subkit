@@ -33,6 +33,8 @@ export type StripAction =
 
 type StripTone = "ok" | "info" | "warn" | "error";
 
+type RenderedStripKind = Exclude<StripKind, "grant">;
+
 interface WorkflowStrip {
   kind: StripKind;
   tone: StripTone;
@@ -58,7 +60,7 @@ export interface StripInput {
   rights: { write: boolean; chat: boolean };
 }
 
-const TONES: Record<StripKind, StripTone> = {
+const TONES: Record<RenderedStripKind, StripTone> = {
   loading: "ok",
   failed: "error",
   invalid: "error",
@@ -69,7 +71,6 @@ const TONES: Record<StripKind, StripTone> = {
   repair: "warn",
   unapproved: "info",
   apply: "warn",
-  grant: "warn",
   unknown: "warn",
   connector: "warn",
   failing: "error",
@@ -85,13 +86,14 @@ function hasAction(state: AutomationState, kind: AutomationAction["kind"]): bool
 
 export function workflowStrip(input: StripInput): WorkflowStrip {
   const { automation, rights } = input;
-  if (input.failed) return { kind: "failed", tone: "error", action: { kind: "retry" }, lower: [] };
+  if (input.failed)
+    return { kind: "failed", tone: TONES.failed, action: { kind: "retry" }, lower: [] };
   if (input.noSteps && !input.disabled)
-    return { kind: "empty", tone: "info", action: null, lower: [] };
+    return { kind: "empty", tone: TONES.empty, action: null, lower: [] };
   if (!automation && !input.disabled)
-    return { kind: "loading", tone: "ok", action: null, lower: [] };
+    return { kind: "loading", tone: TONES.loading, action: null, lower: [] };
 
-  const candidates: { kind: StripKind; action: StripAction | null }[] = [];
+  const candidates: { kind: RenderedStripKind; action: StripAction | null }[] = [];
   const approvable = rights.write && automation?.target != null;
   if (automation?.state === "invalid")
     candidates.push({ kind: "invalid", action: rights.chat ? { kind: "chat" } : null });
@@ -99,9 +101,10 @@ export function workflowStrip(input: StripInput): WorkflowStrip {
     candidates.push({ kind: "disabled", action: rights.write ? { kind: "enable" } : null });
   if (input.waitingConnector?.state === "deleted")
     candidates.push({ kind: "connector", action: rights.chat ? { kind: "chat" } : null });
-  switch (input.disabled ? null : automation?.state) {
+
+  switch (input.disabled ? null : automation!.state) {
     case "paused": {
-      const resume = automation?.primaryAction;
+      const resume = automation!.primaryAction;
       candidates.push({
         kind: "paused",
         action:
@@ -115,7 +118,7 @@ export function workflowStrip(input: StripInput): WorkflowStrip {
       candidates.push({ kind: "repair", action: null });
       break;
     case "grant": {
-      const once = (automation?.history.length ?? 0) > 0;
+      const once = automation!.history.length > 0;
       candidates.push({
         kind: once ? "stopped" : "unapproved",
         action: approvable ? { kind: "approve", via: "grant" } : null,
@@ -123,7 +126,7 @@ export function workflowStrip(input: StripInput): WorkflowStrip {
       break;
     }
     case "manual":
-      if (automation?.primaryAction?.kind === "grant" && !automation.facts.inactive)
+      if (automation!.primaryAction?.kind === "grant" && !automation!.facts.inactive)
         candidates.push({
           kind: "unapproved",
           action: approvable ? { kind: "approve", via: "grant" } : null,
@@ -137,8 +140,6 @@ export function workflowStrip(input: StripInput): WorkflowStrip {
       break;
     case "unknown":
       candidates.push({ kind: "unknown", action: { kind: "recheck" } });
-      break;
-    default:
       break;
   }
   if (input.waitingConnector && input.waitingConnector.state !== "deleted")
@@ -162,8 +163,8 @@ export function workflowStrip(input: StripInput): WorkflowStrip {
 
   const [top, ...rest] = candidates;
   if (!top) {
-    const calm = automation?.state === "approved" ? "approved" : "manual";
-    return { kind: calm, tone: "ok", action: null, lower: [] };
+    const calm = automation!.state === "approved" ? "approved" : "manual";
+    return { kind: calm, tone: TONES[calm], action: null, lower: [] };
   }
   return {
     kind: top.kind,

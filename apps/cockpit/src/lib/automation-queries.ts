@@ -6,6 +6,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { apiCall } from "@/api/call";
 import { apiRequest } from "@/api/client";
 import { carryOverChoice } from "@/lib/automation-state";
 import { useI18n } from "@/lib/i18n-context";
@@ -35,6 +36,33 @@ export async function invalidateWorkflowAutomation(
 }
 
 export const AUTOMATION_REFRESH_MS = 30_000;
+
+export function activateDraftWithCarryOver({
+  workflowId,
+  versionId,
+  expectedCurrentVersionId,
+  expectedManifestDigest,
+  environment,
+  conversationId,
+}: {
+  workflowId: string;
+  versionId: string;
+  expectedCurrentVersionId: string | null;
+  expectedManifestDigest: string;
+  environment: "dev" | "prod";
+  conversationId?: string;
+}) {
+  return apiCall("post", "/v1/workflows/{id}/activate-draft", {
+    path: { id: workflowId },
+    body: {
+      ...(conversationId ? { conversation_id: conversationId } : {}),
+      workflow_version_id: versionId,
+      expected_current_version_id: expectedCurrentVersionId,
+      expected_manifest_digest: expectedManifestDigest,
+      execution_environment: environment,
+    },
+  });
+}
 
 export function useAuthorityCarryOver({
   workflowId,
@@ -67,15 +95,13 @@ export function useAuthorityCarryOver({
     mutationFn: () => {
       if (!preview.data || !activation || !versionId || choice !== "adopt")
         throw new Error("carry_over_unavailable");
-      return apiRequest(`/v1/workflows/${encodeURIComponent(workflowId)}/activate-draft`, {
-        method: "POST",
-        body: JSON.stringify({
-          ...(conversationId ? { conversation_id: conversationId } : {}),
-          workflow_version_id: versionId,
-          expected_current_version_id: activation.expected_current_version_id,
-          expected_manifest_digest: preview.data.digest,
-          execution_environment: environment,
-        }),
+      return activateDraftWithCarryOver({
+        workflowId,
+        versionId,
+        expectedCurrentVersionId: activation.expected_current_version_id,
+        expectedManifestDigest: preview.data.digest,
+        environment,
+        conversationId,
       });
     },
     onSuccess: () => toast.success(t("authority.adopted")),

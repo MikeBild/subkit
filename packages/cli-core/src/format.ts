@@ -1,18 +1,9 @@
-export function toJson(value: unknown): string {
-  return JSON.stringify(value, null, 2);
-}
+import { renderTable, stringifyCell, toJson } from "./format-render.ts";
+
+export { renderTable, toJson } from "./format-render.ts";
 
 export function printJson(value: unknown): void {
   process.stdout.write(`${toJson(value)}\n`);
-}
-
-export function renderTable(columns: readonly string[], rows: Record<string, unknown>[]): string {
-  if (rows.length === 0) return "";
-  const header = columns.join("\t");
-  const body = rows
-    .map((row) => columns.map((col) => stringifyCell(row[col])).join("\t"))
-    .join("\n");
-  return `${header}\n${body}`;
 }
 
 export function printTable(columns: readonly string[], rows: Record<string, unknown>[]): void {
@@ -21,18 +12,6 @@ export function printTable(columns: readonly string[], rows: Record<string, unkn
     return;
   }
   process.stdout.write(`${renderTable(columns, rows)}\n`);
-}
-
-function stringifyCell(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  if (value instanceof Date) return value.toISOString();
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
 }
 
 export function printKeyValue(record: Record<string, unknown>): void {

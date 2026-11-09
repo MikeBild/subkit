@@ -1,5 +1,8 @@
-import { type ConnectorHeaderPolicy, requestHeaderViolations } from "../connectors/index.ts";
-import type { StepDef } from "./types.ts";
+import {
+  type ConnectorHeaderPolicy,
+  requestHeaderViolations,
+} from "../connectors/request-header-policy.ts";
+import type { DomainStepDef } from "./domain-types.ts";
 
 interface ReservedAuthHeaderViolation {
   step_id: string;
@@ -13,7 +16,7 @@ interface DetectReservedAuthHeadersOptions {
 }
 
 export function detectReservedAuthHeaders(
-  steps: ReadonlyArray<StepDef> | ReadonlyArray<unknown>,
+  steps: ReadonlyArray<DomainStepDef> | ReadonlyArray<unknown>,
   opts: DetectReservedAuthHeadersOptions = {},
 ): ReservedAuthHeaderViolation[] {
   const violations: ReservedAuthHeaderViolation[] = [];

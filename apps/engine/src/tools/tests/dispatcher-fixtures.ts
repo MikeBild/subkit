@@ -10,13 +10,9 @@ export const PRINCIPAL: ResolvedPrincipal = {
   kind: "user",
   id: "00000000-0000-4000-8000-000000000001",
   tenant_id: "00000000-0000-4000-8000-000000000002",
-  authoring_role_id: null,
-  scopes: new Set(),
-  permission_grants: [],
-  role_ids: [],
-  api_key_id: null,
-  // biome-ignore lint/suspicious/noExplicitAny: stub for tests
-} as any;
+  scopes: [],
+  roles: [],
+};
 
 // biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape
 const UPDATE_STUB: any = {
@@ -39,8 +35,7 @@ export let testDb: TestDb;
 let dbTenantId: string;
 
 export function dbPrincipal(overrides: Partial<ResolvedPrincipal> = {}): ResolvedPrincipal {
-  // biome-ignore lint/suspicious/noExplicitAny: mirrors the PRINCIPAL stub above
-  return { ...(PRINCIPAL as any), tenant_id: dbTenantId, ...overrides } as ResolvedPrincipal;
+  return { ...PRINCIPAL, tenant_id: dbTenantId, ...overrides };
 }
 
 export async function approvalAuditRows(

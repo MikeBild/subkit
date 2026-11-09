@@ -1,26 +1,22 @@
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { reissueExpiredDraftCredentialSetup } from "../../conversations/draft-credential-setup.ts";
-import {
-  type ElicitationResult,
-  type ElicitFormParams,
-  type ElicitOobParams,
-  FORM_FAST_CANCEL_MS,
-} from "../../conversations/elicitation-bridge.ts";
 import {
   acknowledgeNativeUrlElicitation,
   claimNativeElicitationDelivery,
   type ElicitationRecord,
-  releaseNativeElicitationDelivery,
-  stageElicitationAnswer,
-} from "../../conversations/elicitations.ts";
-import {
+  type ElicitationResult,
+  type ElicitFormParams,
+  type ElicitOobParams,
+  FORM_FAST_CANCEL_MS,
   type FormBridgeToolName,
   mapAskUserToPrimitiveSchema,
   mapElicitResultToAskUserOutput,
-} from "../../conversations/tools/ask-user/elicit-bridge.ts";
-import { validateElicitationAnswer } from "../../conversations/tools/ask-user/validate-answer.ts";
-import { withReservedConversationTurn } from "../../conversations/turns.ts";
+  reissueExpiredDraftCredentialSetup,
+  releaseNativeElicitationDelivery,
+  stageElicitationAnswer,
+  validateElicitationAnswer,
+} from "../../conversations/public/elicitation.ts";
+import { withReservedConversationTurn } from "../../conversations/public/lifecycle.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PatchProposal } from "../../llm/flows/repair.ts";
-import { classifyPatch } from "../classifier.ts";
+import { classifyPatch } from "../core/classifier.ts";
 import type { DriftSignal } from "../types.ts";
 
 function makeProposal(over: Partial<PatchProposal>): PatchProposal {

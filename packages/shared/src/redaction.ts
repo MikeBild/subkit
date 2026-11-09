@@ -54,10 +54,8 @@ const LOG_SCRUBBERS: ReadonlyArray<RegExp> = [
 ];
 
 export function isLogSensitiveKey(key: string): boolean {
-  return (
-    LOG_SENSITIVE_KEYS.has(key.toLowerCase()) ||
-    LOG_SENSITIVE_KEYS.has(key.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase())
-  );
+  const normalized = key.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
+  return LOG_SENSITIVE_KEYS.has(key.toLowerCase()) || LOG_SENSITIVE_KEYS.has(normalized);
 }
 
 export const SENSITIVE_KEY_PATTERN: RegExp =
@@ -102,9 +100,6 @@ const GENERIC_TOKEN_RE: RegExp =
 const CODEC_ALPHABETS: ReadonlyArray<string> = [
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_",
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567",
-  "0123456789abcdefghijklmnopqrstuvwxyz",
-  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ",
 ];
 
 function isCodecAlphabet(match: string): boolean {
@@ -120,12 +115,12 @@ const CODE_CONTEXT_MAX_LOOKBACK = 256;
 
 function isCodeAssignmentValue(text: string, start: number): boolean {
   const floor = Math.max(0, start - CODE_CONTEXT_MAX_LOOKBACK);
-  const newline = text.lastIndexOf("\n", start - 1);
-  const windowStart = Math.max(floor, newline + 1);
+  const newline = text.lastIndexOf("\n", start);
+  const windowStart = Math.max(floor, newline);
   const window = text.slice(windowStart, start);
   const m = CODE_ASSIGNMENT_RE.exec(window);
   if (!m) return false;
-  const varName = m[1] ?? "";
+  const varName = m[1]!;
   return !SECRET_VAR_NAME_RE.test(varName);
 }
 
@@ -133,33 +128,24 @@ function isCodeLiteral(text: string, start: number, match: string): boolean {
   return isCodecAlphabet(match) || isCodeAssignmentValue(text, start);
 }
 
-function scanGenericTokens(
-  text: string,
-  isCovered: (start: number, end: number) => boolean,
-): Array<{ start: number; end: number; match: string }> {
+function scanGenericTokens(text: string): Array<{ start: number; end: number; match: string }> {
   const out: Array<{ start: number; end: number; match: string }> = [];
-  GENERIC_TOKEN_RE.lastIndex = 0;
-  let g: RegExpExecArray | null = GENERIC_TOKEN_RE.exec(text);
-  while (g !== null) {
+  for (const g of text.matchAll(GENERIC_TOKEN_RE)) {
     const start = g.index;
     const end = g.index + g[0].length;
     if (
       !isCodeLiteral(text, start, g[0]) &&
       !isPresentableToken(g[0]) &&
-      !isPresentableModelId(text, start) &&
-      !isCovered(start, end)
+      !isPresentableModelId(text, start)
     ) {
       out.push({ start, end, match: g[0] });
     }
-    g = GENERIC_TOKEN_RE.exec(text);
   }
-  GENERIC_TOKEN_RE.lastIndex = 0;
   return out;
 }
 
 function redactGenericTokens(value: string): string {
-  const spans = scanGenericTokens(value, () => false);
-  if (spans.length === 0) return value;
+  const spans = scanGenericTokens(value);
   let out = value;
   for (let i = spans.length - 1; i >= 0; i--) {
     const s = spans[i] as { start: number; end: number };
@@ -173,12 +159,10 @@ const PRESIGN_QUERY_RE =
 const PRESIGN_REDACTED_QUERY = "?<presign-redacted>";
 
 function scrubPresignUrls(value: string): string {
-  if (value.indexOf("?") === -1) return value;
-  return value.replace(PRESIGN_QUERY_RE, (match) => {
-    const q = match.indexOf("?");
-    if (q === -1) return match;
-    return `${match.slice(0, q)}${PRESIGN_REDACTED_QUERY}`;
-  });
+  return value.replace(
+    PRESIGN_QUERY_RE,
+    (match) => `${match.slice(0, match.indexOf("?"))}${PRESIGN_REDACTED_QUERY}`,
+  );
 }
 
 const PRESENTABLE_TOKEN_RE = /^(?:[A-Za-z]+=)?sk(?:og|sg|ag)_[A-Za-z0-9_-]{20,}$/;
@@ -193,7 +177,6 @@ const ORG_MODEL_PREFIX_AT_START_RE = new RegExp(`^${ORG_SEGMENT}/$`);
 const ORG_MODEL_MAX_LOOKBACK = 128;
 
 function isPresentableModelId(text: string, start: number): boolean {
-  if (start === 0 || text[start - 1] !== "/") return false;
   const floor = Math.max(0, start - ORG_MODEL_MAX_LOOKBACK);
   const window = text.slice(floor, start);
   if (ORG_MODEL_PREFIX_RE.test(window)) return true;
@@ -203,11 +186,6 @@ function isPresentableModelId(text: string, start: number): boolean {
 export function scrubString(value: string): string {
   let out = scrubPresignUrls(value);
   for (const { kind, regex } of SECRET_PATTERNS) {
-    if (out.indexOf("REDACTED:") !== -1 && !regex.test(out)) {
-      regex.lastIndex = 0;
-      continue;
-    }
-    regex.lastIndex = 0;
     out = out.replace(regex, (match) => (isPresentableToken(match) ? match : REDACTED(kind)));
   }
   out = redactGenericTokens(out);
@@ -221,15 +199,10 @@ interface SecretShapeRedaction {
 
 export function redactSecretShapes(value: string): SecretShapeRedaction {
   let count = 0;
-  let out =
-    value.indexOf("?") === -1
-      ? value
-      : value.replace(PRESIGN_QUERY_RE, (match) => {
-          const q = match.indexOf("?");
-          if (q === -1) return match;
-          count++;
-          return `${match.slice(0, q)}${PRESIGN_REDACTED_QUERY}`;
-        });
+  let out = value.replace(PRESIGN_QUERY_RE, (match) => {
+    count++;
+    return `${match.slice(0, match.indexOf("?"))}${PRESIGN_REDACTED_QUERY}`;
+  });
   for (const { kind, regex } of SECRET_PATTERNS) {
     out = out.replace(regex, (match) => {
       if (isPresentableToken(match)) return match;
@@ -258,20 +231,15 @@ function overlapsAny(
 }
 
 export function findSecretSpans(text: string): SecretSpan[] {
-  const markers: Array<{ start: number; end: number }> = [];
-  REDACTED_MARKER_RE.lastIndex = 0;
-  let marker: RegExpExecArray | null = REDACTED_MARKER_RE.exec(text);
-  while (marker !== null) {
-    markers.push({ start: marker.index, end: marker.index + marker[0].length });
-    marker = REDACTED_MARKER_RE.exec(text);
-  }
-  REDACTED_MARKER_RE.lastIndex = 0;
+  const markers = Array.from(text.matchAll(REDACTED_MARKER_RE), (marker) => ({
+    start: marker.index,
+    end: marker.index + marker[0].length,
+  }));
 
   const spans: SecretSpan[] = [];
   for (const { kind, regex } of SECRET_PATTERNS) {
     regex.lastIndex = 0;
-    let m: RegExpExecArray | null = regex.exec(text);
-    while (m !== null) {
+    for (const m of text.matchAll(regex)) {
       const start = m.index;
       const end = m.index + m[0].length;
       if (
@@ -281,16 +249,14 @@ export function findSecretSpans(text: string): SecretSpan[] {
       ) {
         spans.push({ start, end, kind, match: m[0] });
       }
-      m = regex.exec(text);
     }
     regex.lastIndex = 0;
   }
 
-  for (const s of scanGenericTokens(
-    text,
-    (start, end) => overlapsAny(start, end, markers) || overlapsAny(start, end, spans),
-  )) {
-    spans.push({ start: s.start, end: s.end, kind: "generic", match: s.match });
+  for (const s of scanGenericTokens(text)) {
+    if (!overlapsAny(s.start, s.end, markers) && !overlapsAny(s.start, s.end, spans)) {
+      spans.push({ start: s.start, end: s.end, kind: "generic", match: s.match });
+    }
   }
 
   return spans.sort((a, b) => a.start - b.start);
@@ -326,7 +292,7 @@ function scrubSecretValue(
   seen: WeakSet<object>,
   promptKeys: boolean,
 ): unknown {
-  if (input === null || input === undefined) return input;
+  if (input === null) return input;
   if (typeof input === "string") return scrubString(input);
   if (typeof input !== "object") return input;
   if (depth >= SCRUB_SECRETS_MAX_DEPTH) return "[depth-exceeded]";
@@ -361,7 +327,7 @@ export function scrubSecrets(payload: unknown, options?: ScrubOptions): unknown 
 }
 
 function scrubStringsDeepValue(input: unknown, depth: number, seen: WeakSet<object>): unknown {
-  if (input === null || input === undefined) return input;
+  if (input === null) return input;
   if (typeof input === "string") return scrubString(input);
   if (typeof input !== "object") return input;
   if (depth >= SCRUB_SECRETS_MAX_DEPTH) return "[depth-exceeded]";
@@ -427,7 +393,7 @@ const KEY_MATERIAL_PATH_PATTERNS: ReadonlyArray<RegExp> = [
   new RegExp(`${PATH_START}(?:[\\w.~-]*\\/)*\\.env(?:\\.[\\w-]+)*(?![\\w-])`, "i"),
   /(?:~|\$HOME|(?<![\w.-])[\w.-]*)\/\.(?:ssh|gnupg)(?![\w-])/i,
   /\bid_(?:rsa|dsa|ecdsa|ed25519)(?![\w-])/i,
-  /\/etc\/(?:[\w.-]+\/)+[\w.-]*(?:key|secret|credential)s?[\w.-]*/i,
+  /\/etc\/(?:[\w.-]+\/)+[\w.-]*(?:key|secret|credential)/i,
   /(?:\/run\/secrets|\/\.aws\/credentials|\/\.docker\/config\.json|\/\.netrc|\/\.pgpass)(?![\w-])/i,
 ];
 

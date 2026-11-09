@@ -1,4 +1,4 @@
-import { generateMainAgentSystemPrompt } from "../../../conversations/agent/context.ts";
+import { generateMainAgentSystemPrompt } from "../../../conversations/public/context.ts";
 import type { AuthoringPromptHint, LlmFlow } from "../../types.ts";
 
 export type ConversationSurface = "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";

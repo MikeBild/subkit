@@ -1,10 +1,10 @@
 import type { ts as TsApi } from "ts-morph";
 import { type ActiveConventions, conventionKey } from "../skills/conventions.ts";
 import type { SkillRule } from "../skills/types.ts";
+import type { DomainWorkflowDef } from "./domain-types.ts";
 import { loadTs } from "./js-body-lint.ts";
 import { workflowJsonataSites } from "./jsonata-sites.ts";
 import { buildStepTopology, type PriorWorkflowRef } from "./prior-workflows.ts";
-import type { WorkflowDef } from "./types.ts";
 import { TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION } from "./types-web-scraper.ts";
 import type { ValidationError } from "./validator.ts";
 
@@ -61,7 +61,7 @@ function rawScheduleTz(input: unknown): string | null {
 
 function scheduleTimezoneWarnings(
   input: unknown,
-  wf: WorkflowDef,
+  wf: DomainWorkflowDef,
   rule: RuleOf<"timezone"> | undefined,
 ): ValidationError[] {
   if (wf.trigger?.kind !== "schedule") return [];
@@ -88,7 +88,7 @@ function scheduleTimezoneWarnings(
 }
 
 function namingTargets(
-  wf: WorkflowDef,
+  wf: DomainWorkflowDef,
   appliesTo: string,
 ): Array<{ path: string; label: string; value: string }> {
   const target = appliesTo.toLowerCase().replace(/[^a-z0-9]+/g, "_");
@@ -114,7 +114,7 @@ function compilePattern(pattern: string): RegExp | null {
   return null;
 }
 
-function namingWarnings(wf: WorkflowDef, rules: readonly SkillRule[]): ValidationError[] {
+function namingWarnings(wf: DomainWorkflowDef, rules: readonly SkillRule[]): ValidationError[] {
   const warnings: ValidationError[] = [];
   for (const rule of rules) {
     if (rule.type !== "naming") continue;
@@ -138,7 +138,7 @@ interface JsSurface {
   lintedForLocale: boolean;
 }
 
-function javascriptSurfaces(wf: WorkflowDef): JsSurface[] {
+function javascriptSurfaces(wf: DomainWorkflowDef): JsSurface[] {
   const surfaces: JsSurface[] = [];
   for (const step of wf.steps) {
     if (
@@ -232,7 +232,7 @@ function language(tag: string): string {
   return tag.split(/[-_]/)[0]?.toLowerCase() ?? tag.toLowerCase();
 }
 
-function localeWarnings(wf: WorkflowDef, rules: readonly SkillRule[]): ValidationError[] {
+function localeWarnings(wf: DomainWorkflowDef, rules: readonly SkillRule[]): ValidationError[] {
   const localeRule = firstRule(rules, "locale");
   const timezoneRule = firstRule(rules, "timezone");
   const fmtHint = "sk.fmt.date(value, { tz, pattern, locale }) or sk.fmt.number(value, { locale })";
@@ -289,7 +289,7 @@ function topologyKey(topology: PriorWorkflowRef["step_topology"]): string | null
   );
 }
 
-function duplicateWarnings(wf: WorkflowDef, context: ConsistencyContext): ValidationError[] {
+function duplicateWarnings(wf: DomainWorkflowDef, context: ConsistencyContext): ValidationError[] {
   const name = wf.name.trim().toLowerCase();
   const steps = topologyKey(buildStepTopology(wf));
   const siblings = context.siblings
@@ -318,7 +318,7 @@ function duplicateWarnings(wf: WorkflowDef, context: ConsistencyContext): Valida
 
 export function consistencyLintWarnings(
   input: unknown,
-  wf: WorkflowDef,
+  wf: DomainWorkflowDef,
   context: ConsistencyContext,
 ): ValidationError[] {
   const rules = settledRules(context.conventions);

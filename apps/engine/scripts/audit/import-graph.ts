@@ -83,12 +83,14 @@ export function buildReverseGraph(
   readText: (repoPath: string) => string | null,
   scopes: readonly AliasScope[],
   exists: (repoPath: string) => boolean,
+  options: { includeTypeOnly?: boolean } = {},
 ): ReverseGraph {
   const out = new Map<string, Set<string>>();
   for (const file of files) {
     const text = readText(file);
     if (text === null) continue;
     for (const ref of collectImports(file, text)) {
+      if (ref.typeOnly && options.includeTypeOnly === false) continue;
       const target = resolveSpecifier(file, ref.specifier, scopes, exists);
       let importers = out.get(target);
       if (!importers) {
@@ -212,7 +214,7 @@ export async function runPool<T, R>(
 
 interface AffectedArgs {
   list: boolean;
-  depth: number;
+  depth: number | null;
   workers: number;
   range: string | null;
 }
@@ -222,7 +224,7 @@ export function parseAffectedArgs(
   env: Readonly<Record<string, string | undefined>>,
 ): AffectedArgs | { error: string } {
   const workersRaw = env.SUBKIT_TEST_WORKERS ?? "4";
-  const out: AffectedArgs = { list: false, depth: 2, workers: Number(workersRaw), range: null };
+  const out: AffectedArgs = { list: false, depth: null, workers: Number(workersRaw), range: null };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] as string;
     if (arg === "--list") out.list = true;

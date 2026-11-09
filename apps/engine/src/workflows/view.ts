@@ -1,6 +1,7 @@
 import type { WorkflowOperatingStatus } from "@shared/workflow-operating-status.ts";
 import type { CatalogSource } from "../api/catalog-metadata.ts";
 import type { WorkflowConnectorReference } from "./connector-refs.ts";
+import type { WorkflowLifecycle } from "./domain-types.ts";
 import type { WorkflowAuthorityEnvironmentSummary } from "./operating-status.ts";
 import type { WorkflowDef } from "./types.ts";
 import type { VersionAuthor } from "./version-author.ts";
@@ -19,7 +20,7 @@ export interface WorkflowView {
   description_source: CatalogSource;
   category: string;
   category_source: CatalogSource;
-  lifecycle: "draft" | "active" | "archived";
+  lifecycle: WorkflowLifecycle;
   current_version_id: string | null;
   draft_version_id?: string | null;
   current_version: number | null;

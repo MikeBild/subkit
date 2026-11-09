@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { rewriteLoopsToForEach } from "../migrate-loop-to-for-each.ts";
+import type { DomainWorkflowDef } from "../domain-types.ts";
+import { rewriteLoopsToForEach, rewriteLoopsToForEachDomain } from "../migrate-loop-to-for-each.ts";
 import type { WorkflowDef } from "../types.ts";
 
 function mkDef(overrides: Partial<WorkflowDef> & { steps: WorkflowDef["steps"] }): WorkflowDef {
@@ -10,6 +11,28 @@ function mkDef(overrides: Partial<WorkflowDef> & { steps: WorkflowDef["steps"] }
 }
 
 describe("rewriteLoopsToForEach", () => {
+  test("domain rewrite is pure and has no schema-validation dependency", () => {
+    const definition: DomainWorkflowDef = {
+      name: "pure",
+      steps: [
+        { id: "loop", kind: "loop", over: "rows", body: ["request"] },
+        { id: "request", kind: "request", url: "https://example.test" },
+      ],
+    };
+    const result = rewriteLoopsToForEachDomain(definition);
+    expect(result).toMatchObject({ ok: true, changed: true });
+    if (!result.ok || !result.changed) return;
+    expect(result.def.steps).toEqual([
+      {
+        id: "request",
+        kind: "request",
+        url: "https://example.test",
+        for_each: "(sourceData) => sourceData.rows",
+      },
+    ]);
+    expect(definition.steps).toHaveLength(2);
+  });
+
   test("verified connector policies preserve dynamic Authorization during rewriting", () => {
     const connectorId = "00000000-0000-4000-8000-000000000081";
     const def = mkDef({

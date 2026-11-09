@@ -1,4 +1,4 @@
-import { z } from "@hono/zod-openapi";
+import type { z } from "@hono/zod-openapi";
 import type { EgressGuardContext } from "../../connectors/egress-guard.ts";
 import {
   fetchGoogleDiscoverySpec,
@@ -16,34 +16,8 @@ import { parseHar } from "../../llm/flows/document-parsers/har.ts";
 import { parseOpenApiWithMetadata } from "../../llm/flows/document-parsers/openapi.ts";
 import { parsePostman } from "../../llm/flows/document-parsers/postman.ts";
 import { findReusableConnectorByUrl, type ReusedConnectorEnvelope } from "./connector-reuse.ts";
+import { importConnectorFromSpecInputSchema as inputSchema } from "./import-connector-from-spec-contract.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
-
-const SourceEnum = z.enum([
-  "postman",
-  "har",
-  "openapi",
-  "google_discovery",
-  "graphql",
-  "graphql_introspection",
-  "curl",
-]);
-
-const inputSchema = z
-  .object({
-    source: SourceEnum,
-    content: z.string().min(1),
-    headers: z.record(z.string(), z.string()).optional(),
-    name: z.string().min(1).optional(),
-    environment: z.enum(["dev", "prod"]).default("dev"),
-    base_url_environment: z.string().optional(),
-    force_new: z
-      .boolean()
-      .optional()
-      .describe(
-        "Set true only when the operator explicitly wants a SEPARATE connector on a base_url that already has one. Skips URL reuse and mints an independent draft.",
-      ),
-  })
-  .openapi("ImportConnectorFromSpecToolInput");
 
 type Parsed = {
   endpoints: EndpointSpec[];
@@ -232,7 +206,7 @@ export async function importConnectorDraftFromSpec(
   };
 }
 
-export const importConnectorFromSpecInputSchema = inputSchema;
+export { importConnectorFromSpecInputSchema } from "./import-connector-from-spec-contract.ts";
 
 function baseUrlDomain(url: string): string | null {
   try {

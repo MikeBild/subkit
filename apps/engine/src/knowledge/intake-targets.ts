@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { type Actor, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
-import { type Executor, getDb } from "../db/client.ts";
+import { type Executor, getDb, type Transaction } from "../db/client.ts";
 import { connectors } from "../db/schema/connectors.ts";
 import {
   type IntakeKnowledgeTarget,
@@ -254,7 +254,7 @@ export interface PublishedIntakeTarget {
 }
 
 async function publishKnowledge(
-  tx: Executor,
+  tx: Transaction,
   tenant_id: string,
   actor: Actor,
   proposal_id: string,
@@ -441,7 +441,7 @@ async function publishSkill(
 }
 
 export async function publishIntakeRevision(
-  tx: Executor,
+  tx: Transaction,
   tenant_id: string,
   actor: Actor,
   proposal_id: string,

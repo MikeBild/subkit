@@ -28,7 +28,10 @@ export interface GateDiagnosis {
   remedy_kind: string;
 }
 
-function observedAuthorityState(authority: WorkflowAuthority, now: number) {
+export function observedAuthorityState(
+  authority: Pick<WorkflowAuthority, "state" | "valid_until" | "valid_from" | "remaining_runs">,
+  now: number,
+) {
   if (authority.state !== "approved") return authority.state;
   const until = authority.valid_until === null ? null : Date.parse(authority.valid_until);
   const from = Date.parse(authority.valid_from);
@@ -49,7 +52,8 @@ function reviewEnvironment(
     if (authority.valid_until && Date.parse(authority.valid_until) <= now.getTime()) continue;
     return authority.execution_environment;
   }
-  return authorities[0]?.execution_environment ?? "dev";
+
+  return authorities[0]!.execution_environment;
 }
 
 export type AutomationStateKind =
@@ -118,9 +122,7 @@ export interface AutomationInputs<A extends WorkflowAuthority = WorkflowAuthorit
   now: number;
 }
 
-export interface AutomationTrigger {
-  kind: "schedule" | "hook";
-  id: string | null;
+interface AutomationTriggerBase {
   cron: string | null;
   timezone: string | null;
   slug: string | null;
@@ -128,6 +130,10 @@ export interface AutomationTrigger {
   paused: boolean;
   nextRunAt: string | null;
 }
+
+export type AutomationTrigger =
+  | (AutomationTriggerBase & { kind: "schedule"; id: string })
+  | (AutomationTriggerBase & { kind: "hook"; id: null });
 
 export type AutomationAction =
   | { kind: "resume"; scheduleIds: string[] }
@@ -182,13 +188,14 @@ export function grantNeedsExtension(
   grant: Pick<WorkflowAuthority, "valid_until" | "remaining_runs" | "max_runs">,
   now: number,
 ): boolean {
-  const until = grant.valid_until === null ? Number.NaN : Date.parse(grant.valid_until);
+  const until = Date.parse(String(grant.valid_until));
+
+  const maxRuns = Number(grant.max_runs);
   if (Number.isFinite(until) && until - now < EXTEND_WITHIN_MS) return true;
   return (
-    grant.max_runs !== null &&
     grant.remaining_runs !== null &&
-    grant.max_runs > 0 &&
-    grant.remaining_runs / grant.max_runs < EXTEND_BELOW_RUN_SHARE
+    maxRuns > 0 &&
+    grant.remaining_runs / maxRuns < EXTEND_BELOW_RUN_SHARE
   );
 }
 
@@ -196,9 +203,9 @@ function automationTriggers(
   status: AutomationStatusLike | null,
   schedules: readonly ScheduleLike[] | null,
 ): AutomationTrigger[] {
-  const paused = new Map((schedules ?? []).map((schedule) => [schedule.id, schedule.paused]));
+  const paused = new Map(schedules?.map((schedule) => [schedule.id, schedule.paused] as const));
   const listed = (schedules ?? []).map(
-    (schedule): AutomationTrigger => ({
+    (schedule): Extract<AutomationTrigger, { kind: "schedule" }> => ({
       kind: "schedule",
       id: schedule.id,
       cron: schedule.cron,
@@ -224,7 +231,7 @@ function automationTriggers(
         nextRunAt: row.next_run_at,
       }),
     ),
-    ...listed.filter((trigger) => trigger.id !== null && !verified.has(trigger.id)),
+    ...listed.filter((trigger) => !verified.has(trigger.id)),
     ...status.inbound_hooks.map(
       (row): AutomationTrigger => ({
         kind: "hook",
@@ -254,7 +261,7 @@ export interface EnvironmentDecision {
 
 interface EnvironmentSource {
   environment: ReviewEnvironment;
-  kind: "schedule" | "hook";
+  isSchedule: boolean;
 }
 
 function sourceDecision(
@@ -263,41 +270,37 @@ function sourceDecision(
 ): EnvironmentDecision {
   return {
     environment,
-    reason: sources.some(
-      (source) => source.environment === environment && source.kind === "schedule",
-    )
+    reason: sources.some((source) => source.environment === environment && source.isSchedule)
       ? "schedule"
       : "inbound_hook",
   };
 }
 
-function pendingRowSources(status: AutomationStatusLike | null): EnvironmentSource[] {
-  if (!status) return [];
+function pendingRowSources(status: AutomationStatusLike): EnvironmentSource[] {
   return [
     ...status.schedules
       .filter((row) => row.state !== "paused" && row.state !== "authorized")
-      .map((row) => ({ environment: row.environment, kind: "schedule" as const })),
+      .map((row) => ({ environment: row.environment, isSchedule: true })),
     ...status.inbound_hooks
       .filter((row) => row.state !== "paused" && row.state !== "authorized")
-      .map((row) => ({ environment: row.environment, kind: "hook" as const })),
+      .map((row) => ({ environment: row.environment, isSchedule: false })),
   ];
 }
 
 function pendingRowEnvironments(status: AutomationStatusLike | null): ReviewEnvironment[] {
+  if (!status) return [];
   return productionFirst(pendingRowSources(status).map((source) => source.environment));
 }
 
 function startedSources(
   input: Pick<AutomationInputs, "workflow" | "schedules">,
 ): EnvironmentSource[] {
-  return [
-    ...automationTriggers(null, input.schedules)
-      .filter((trigger) => !trigger.paused)
-      .map((trigger) => ({ environment: trigger.environment, kind: trigger.kind })),
-    ...((input.workflow.webhooks_active ?? 0) > 0
-      ? [{ environment: "prod" as const, kind: "hook" as const }]
-      : []),
-  ];
+  const sources = automationTriggers(null, input.schedules)
+    .filter((trigger) => !trigger.paused)
+    .map((trigger) => ({ environment: trigger.environment, isSchedule: true }));
+  if ((input.workflow.webhooks_active ?? 0) > 0)
+    sources.push({ environment: "prod", isSchedule: false });
+  return sources;
 }
 
 function uncoveredEnvironments(
@@ -305,13 +308,10 @@ function uncoveredEnvironments(
 ): ReviewEnvironment[] {
   if (input.status) return [];
   const started = productionFirst(startedSources(input).map((source) => source.environment));
-  return started.filter(
-    (environment) =>
-      !(input.authorities ?? []).some(
-        (authority) =>
-          authority.execution_environment === environment && authorityIsLive(authority, input.now),
-      ),
-  );
+  const covered = input.authorities
+    ?.filter((authority) => authorityIsLive(authority, input.now))
+    .map((authority) => authority.execution_environment);
+  return started.filter((environment) => !covered?.includes(environment));
 }
 
 type EnvironmentInputs = Pick<
@@ -327,15 +327,20 @@ export function automationEnvironmentDecision(
   if (pending)
     return sourceDecision(
       pending,
-      pendingRows.includes(pending) ? pendingRowSources(input.status) : startedSources(input),
+      pendingRows.includes(pending) ? pendingRowSources(input.status!) : startedSources(input),
     );
   const triggers = automationTriggers(input.status, input.schedules);
   const running = triggers.filter((trigger) => !trigger.paused);
   const pool = running.length > 0 ? running : triggers;
-  if (pool.some((trigger) => trigger.environment === "prod")) return sourceDecision("prod", pool);
+  const poolSources = pool.map((trigger) => ({
+    environment: trigger.environment,
+    isSchedule: trigger.kind === "schedule",
+  }));
+  if (pool.some((trigger) => trigger.environment === "prod"))
+    return sourceDecision("prod", poolSources);
   if ((input.workflow.webhooks_active ?? 0) > 0)
     return { environment: "prod", reason: "inbound_hook" };
-  if (pool.length > 0) return sourceDecision("dev", pool);
+  if (pool.length > 0) return sourceDecision("dev", poolSources);
   if (input.authorities !== null && input.authorities.length > 0)
     return {
       environment: reviewEnvironment(input.authorities, undefined, new Date(input.now)),
@@ -398,18 +403,18 @@ export function automationState<A extends WorkflowAuthority>(
     (workflow.webhooks_active ?? 0) > 0 && !triggers.some((trigger) => trigger.kind === "hook");
   const hasAutomation = triggers.length > 0 || hiddenHooks;
   const running = triggers.filter((trigger) => !trigger.paused);
-  const rows: AutomationRowState[] = input.status
-    ? [...input.status.schedules, ...input.status.inbound_hooks]
+  const status = input.status;
+  const rows: AutomationRowState[] = status
+    ? [...status.schedules, ...status.inbound_hooks]
         .map((row) => row.state)
         .filter((state) => state !== "paused")
     : [];
   const blocks = input.diagnosis?.diagnoses ?? [];
 
   const pendingRows = [...pendingRowEnvironments(input.status), ...uncoveredEnvironments(input)];
-  const startedIn = productionFirst([
-    ...running.map((trigger) => trigger.environment),
-    ...(hiddenHooks ? (["prod"] as const) : []),
-  ]);
+  const startedEnvironments = running.map((trigger) => trigger.environment);
+  if (hiddenHooks) startedEnvironments.push("prod");
+  const startedIn = productionFirst(startedEnvironments);
   const base = {
     environment,
     target,
@@ -443,9 +448,10 @@ export function automationState<A extends WorkflowAuthority>(
   }
 
   if (triggers.length > 0 && running.length === 0 && !hiddenHooks) {
-    const scheduleIds = triggers.flatMap((trigger) =>
-      trigger.kind === "schedule" && trigger.id ? [trigger.id] : [],
-    );
+    const scheduleIds = triggers.flatMap((trigger) => {
+      if (!trigger.id) return [];
+      return [trigger.id];
+    });
     return {
       ...base,
       state: "paused",
@@ -550,9 +556,7 @@ export function automationState<A extends WorkflowAuthority>(
     const hookUnverified =
       hiddenHooks &&
       allAuthorized &&
-      !(input.status?.schedules ?? []).some(
-        (row) => row.environment === "prod" && row.state === "authorized",
-      );
+      !status!.schedules.some((row) => row.environment === "prod" && row.state === "authorized");
     if (hookUnverified) return grant ? unknown() : needsGrant();
     if (verified ? allAuthorized : grant !== null) return approved();
     return needsGrant();
@@ -586,17 +590,10 @@ export function automationActionPermitted(
   action: AutomationAction,
   rights: AutomationRights,
 ): boolean {
-  switch (action.kind) {
-    case "view":
-      return true;
-    case "resume":
-    case "apply":
-    case "grant":
-    case "extend":
-      return rights.write;
-    case "repair":
-      if (action.via === "prepare") return rights.run;
-      if (action.via === "chat") return rights.chat;
-      return rights.write;
-  }
+  if (action.kind === "view") return true;
+  const requiredRight =
+    action.kind === "repair"
+      ? ({ prepare: "run", chat: "chat", review: "write", auto: "write" } as const)[action.via]
+      : "write";
+  return rights[requiredRight];
 }

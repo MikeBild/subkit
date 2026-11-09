@@ -1,4 +1,4 @@
-import { decideToolMode } from "../conversations/tool-policies.ts";
+import { decideToolMode } from "../conversations/public/policy.ts";
 import type {
   ConfirmEnvelope,
   ConfirmReason,

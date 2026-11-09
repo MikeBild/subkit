@@ -32245,7 +32245,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uri */
+                        end_session_url: string;
+                    };
+                };
             };
             /** @description Logged out; the session came from no identity provider with a logout endpoint */
             204: {

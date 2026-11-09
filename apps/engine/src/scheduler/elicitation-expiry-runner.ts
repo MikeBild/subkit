@@ -2,7 +2,7 @@ import {
   type ElicitationExpiryDeps,
   type ElicitationExpiryTally,
   expireDueElicitations,
-} from "../conversations/elicitation-expiry.ts";
+} from "../conversations/public/elicitation.ts";
 import type { Db } from "../db/client.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 

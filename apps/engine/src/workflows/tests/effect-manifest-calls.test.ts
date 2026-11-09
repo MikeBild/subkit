@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 import { workflowJsonDigest } from "../canonical-json.ts";
-import { compileWorkflowEffectManifest, type ResolvedEffectBinding } from "../effect-manifest.ts";
+import {
+  compileWorkflowEffectManifest,
+  type ResolvedEffectBinding,
+} from "../core/effect-manifest.ts";
+import { GMAIL_SEND_TARGET } from "../report-delivery-boundary.ts";
 import { WorkflowDefSchema } from "../types.ts";
 
 const tenant = "00000000-0000-4000-8000-000000000001";
@@ -140,6 +144,22 @@ test("a child that calls a workflow itself is refused, and nothing of it is fold
   expect(result.manifest.calls).toBeUndefined();
 });
 
+test("an invalid JSON child definition is unavailable and contributes no effects", () => {
+  const result = compileWorkflowEffectManifest({
+    ...parent(),
+    calls: [
+      resolvedChild({
+        definition: { name: "broken", steps: [{ kind: "unsupported" }] },
+        bindings: [],
+      }),
+    ],
+  });
+  expect(result.call_refusals).toEqual([{ step_id: "run_child", reason: "child_unavailable" }]);
+  expect(result.manifest.issues).toEqual([{ step_id: "run_child", code: "unbound_workflow_call" }]);
+  expect(result.manifest.effects.map((effect) => effect.step_id)).toEqual(["collect"]);
+  expect(result.manifest.calls).toBeUndefined();
+});
+
 test("a call step that does not name exactly one fixed workflow is refused", () => {
   const both = compileWorkflowEffectManifest({
     ...parent({ workflow_slug: "publish-essay" }),
@@ -162,6 +182,24 @@ test("a call step that does not name exactly one fixed workflow is refused", () 
     ]);
     expect(result.manifest.calls).toBeUndefined();
   }
+});
+
+test("a slug-targeted child must resolve to that exact reviewed slug", () => {
+  const accepted = compileWorkflowEffectManifest({
+    ...parent({ workflow_id: undefined, workflow_slug: "publish-essay" }),
+    calls: [resolvedChild()],
+  });
+  expect(accepted.call_refusals).toEqual([]);
+  expect(accepted.manifest.calls?.[0]?.workflow_id).toBe(child_workflow);
+
+  const rejected = compileWorkflowEffectManifest({
+    ...parent({ workflow_id: undefined, workflow_slug: "publish-essay" }),
+    calls: [resolvedChild({ workflow_slug: "other-child" })],
+  });
+  expect(rejected.call_refusals).toEqual([{ step_id: "run_child", reason: "target_not_static" }]);
+  expect(rejected.manifest.issues).toEqual([
+    { step_id: "run_child", code: "unbound_workflow_call" },
+  ]);
 });
 
 test("a parent and its child may share a step id without merging", () => {
@@ -232,10 +270,34 @@ test("a resolved call must name a call step of this workflow, once", () => {
   ).toThrow(/at most once/);
 });
 
+test("call claims use the exact public duplicate-or-unrelated refusal", () => {
+  expect(() =>
+    compileWorkflowEffectManifest({
+      ...parent(),
+      calls: [resolvedChild(), resolvedChild()],
+    }),
+  ).toThrow("resolved calls must identify each call step at most once");
+  expect(() =>
+    compileWorkflowEffectManifest({
+      ...parent(),
+      calls: [resolvedChild({ step_id: "collect" })],
+    }),
+  ).toThrow("resolved calls must identify each call step at most once");
+});
+
 test("a child carrying a proposal-derived profile is reported, not silently folded", () => {
-  const child = def([request("mail", { path: "/messages/send" })], "child");
+  const child = def(
+    [
+      request("mail", {
+        url: GMAIL_SEND_TARGET,
+        path: undefined,
+        body: { raw: "${scope.render.data.raw}" },
+      }),
+    ],
+    "child",
+  );
   const withProfile = {
-    ...binding(child, "mail", "https://mail.test/messages/send"),
+    ...binding(child, "mail", GMAIL_SEND_TARGET),
     report_delivery: {
       kind: "gmail_report" as const,
       to: "reviewed@example.test",
@@ -243,14 +305,213 @@ test("a child carrying a proposal-derived profile is reported, not silently fold
       content_type: "text/plain" as const,
     },
   };
+  const childInput = {
+    tenant_id: tenant,
+    workflow_id: child_workflow,
+    workflow_version_id: child_version,
+    execution_environment: "dev" as const,
+    execution_options_digest: "d".repeat(64),
+    definition: child,
+    bindings: [withProfile],
+  };
+  expect(compileWorkflowEffectManifest(childInput).manifest.issues).toEqual([]);
   const result = compileWorkflowEffectManifest({
     ...parent(),
     calls: [resolvedChild({ definition: child, bindings: [withProfile] })],
   });
-  expect(
-    result.manifest.issues.some(
-      (i) => i.code === "binding_mismatch" && i.call_path?.[0] === "run_child",
-    ),
-  ).toBe(true);
+  expect(result.manifest.issues).toEqual([
+    { step_id: "mail", code: "binding_mismatch", call_path: ["run_child"] },
+  ]);
   expect(result.eligible_for_repeated_runs).toBe(false);
+});
+
+test("a clean transactional child is still reported to its caller", () => {
+  const transactional = {
+    kind: "gmail_transactional" as const,
+    webhook_id: "0d4c6f7e-3b2a-4a1c-8d9e-1f2a3b4c5d6e",
+    event_type: "reviewed",
+    event_type_input: "body.type",
+    recipient_input: "body.email",
+    request_id_input: "body.id",
+    from: "robot@example.test",
+    content_type: "text/plain" as const,
+    max_body_bytes: 1024,
+  };
+  const child = WorkflowDefSchema.parse({
+    name: "transactional child",
+    execution_privacy: "sensitive",
+    steps: [
+      {
+        id: "mail",
+        kind: "request",
+        connector_id: connector,
+        method: "POST",
+        url: GMAIL_SEND_TARGET,
+        max_retries: 0,
+        body: { raw: "${scope.render.data.raw}" },
+        transactional_delivery: transactional,
+      },
+    ],
+  });
+  const childBinding = {
+    ...binding(child, "mail", GMAIL_SEND_TARGET),
+    transactional_delivery: transactional,
+  };
+  expect(
+    compileWorkflowEffectManifest({
+      tenant_id: tenant,
+      workflow_id: child_workflow,
+      workflow_version_id: child_version,
+      execution_environment: "dev",
+      execution_options_digest: "d".repeat(64),
+      definition: child,
+      bindings: [childBinding],
+    }).manifest.issues,
+  ).toEqual([]);
+  const result = compileWorkflowEffectManifest({
+    ...parent(),
+    calls: [resolvedChild({ definition: child, bindings: [childBinding] })],
+  });
+  expect(result.manifest.issues).toEqual([
+    { step_id: "mail", code: "binding_mismatch", call_path: ["run_child"] },
+  ]);
+});
+
+test("a clean outbox child is still reported to its caller", () => {
+  const outbox = {
+    kind: "gmail_outbox" as const,
+    source_step_id: "source",
+    recipient_field: "email",
+    item_id_field: "id",
+    from: "robot@example.test",
+    content_type: "text/plain" as const,
+    max_body_bytes: 1024,
+    max_per_day: 1,
+  };
+  const child = WorkflowDefSchema.parse({
+    name: "outbox child",
+    execution_privacy: "sensitive",
+    steps: [
+      {
+        id: "source",
+        kind: "request",
+        connector_id: connector,
+        method: "GET",
+        url: "https://queue.example.test/next",
+      },
+      {
+        id: "mail",
+        kind: "request",
+        connector_id: connector,
+        method: "POST",
+        url: GMAIL_SEND_TARGET,
+        max_retries: 0,
+        body: { raw: "${scope.render.data.raw}" },
+        outbox_delivery: outbox,
+      },
+    ],
+  });
+  const bindings = [
+    binding(child, "source", "https://queue.example.test/next"),
+    { ...binding(child, "mail", GMAIL_SEND_TARGET), outbox_delivery: outbox },
+  ];
+  expect(
+    compileWorkflowEffectManifest({
+      tenant_id: tenant,
+      workflow_id: child_workflow,
+      workflow_version_id: child_version,
+      execution_environment: "dev",
+      execution_options_digest: "d".repeat(64),
+      definition: child,
+      bindings,
+    }).manifest.issues,
+  ).toEqual([]);
+  const result = compileWorkflowEffectManifest({
+    ...parent(),
+    calls: [resolvedChild({ definition: child, bindings })],
+  });
+  expect(result.manifest.issues).toEqual([
+    { step_id: "mail", code: "binding_mismatch", call_path: ["run_child"] },
+  ]);
+});
+
+test("a clean content-publication child is still reported to its caller", () => {
+  const origin = "https://content.example.test";
+  const item = "00000000-0000-4000-8000-000000000007";
+  const child = WorkflowDefSchema.parse({
+    name: "publication child",
+    steps: [
+      {
+        id: "revise",
+        kind: "request",
+        connector_id: connector,
+        method: "PUT",
+        path: "/v1/content/${item.item_id}/revisions",
+        body: "${item.markdown}",
+        headers: { "Content-Type": "text/markdown" },
+      },
+    ],
+  });
+  const childBinding = {
+    ...binding(child, "revise", `${origin}/v1/content/{approved-item}/revisions`),
+    content_publication: {
+      kind: "content_revision" as const,
+      origin,
+      item_ids: [item],
+      max_bytes: 1024,
+    },
+  };
+  expect(
+    compileWorkflowEffectManifest({
+      tenant_id: tenant,
+      workflow_id: child_workflow,
+      workflow_version_id: child_version,
+      execution_environment: "dev",
+      execution_options_digest: "d".repeat(64),
+      definition: child,
+      bindings: [childBinding],
+    }).manifest.issues,
+  ).toEqual([]);
+  const result = compileWorkflowEffectManifest({
+    ...parent(),
+    calls: [resolvedChild({ definition: child, bindings: [childBinding] })],
+  });
+  expect(result.manifest.issues).toEqual([
+    { step_id: "revise", code: "binding_mismatch", call_path: ["run_child"] },
+  ]);
+});
+
+test("child effects sharing a call path retain deterministic step ordering", () => {
+  const child = def([request("zeta"), request("alpha")], "child");
+  const result = compileWorkflowEffectManifest({
+    ...parent(),
+    calls: [
+      resolvedChild({
+        definition: child,
+        bindings: [
+          binding(child, "zeta", "https://example.test/zeta"),
+          binding(child, "alpha", "https://example.test/alpha"),
+        ],
+      }),
+    ],
+  });
+  expect(result.manifest.effects.map((effect) => [effect.call_path, effect.step_id])).toEqual([
+    [undefined, "collect"],
+    [["run_child"], "alpha"],
+    [["run_child"], "zeta"],
+  ]);
+});
+
+test("unavailable child refusals are sorted independently of authored call order", () => {
+  const result = compileWorkflowEffectManifest(
+    parent({}, [
+      { id: "z_child", kind: "call", workflow_id: child_workflow },
+      { id: "a_child", kind: "call", workflow_id: child_workflow },
+    ]),
+  );
+  expect(result.call_refusals).toEqual([
+    { step_id: "a_child", reason: "child_unavailable" },
+    { step_id: "run_child", reason: "child_unavailable" },
+    { step_id: "z_child", reason: "child_unavailable" },
+  ]);
 });

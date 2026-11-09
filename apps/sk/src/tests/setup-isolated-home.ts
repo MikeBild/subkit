@@ -14,15 +14,34 @@
 // Bun's `bunfig.toml [test].preload` array runs this once per test
 // process before any test imports the production modules — so HOME is
 // already redirected by the time the slash registry loads.
-//
-// We deliberately do NOT clean up on process exit. The tempdir lives in
-// `os.tmpdir()`, gets gc'd by the OS, and the lifecycle invariant we
-// care about is "tests in this process never write to the real HOME".
 
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { afterAll } from "bun:test";
+import {
+  claimIsolatedTestHome,
+  createIsolatedTestHome,
+  removeIsolatedTestHome,
+} from "./isolated-test-home";
 
-const SK_HOME = mkdtempSync(join(tmpdir(), "sk-test-home-"));
-process.env.HOME = SK_HOME;
-process.env.USERPROFILE = SK_HOME;
+const registeredPath = process.env.SUBKIT_TEST_HOME;
+const registeredToken = process.env.SUBKIT_TEST_HOME_TOKEN;
+if ((registeredPath === undefined) !== (registeredToken === undefined)) {
+  throw new Error("incomplete registered test home");
+}
+const ownedHome = registeredPath === undefined ? createIsolatedTestHome() : undefined;
+const home = ownedHome?.path ?? claimIsolatedTestHome(registeredPath!, registeredToken!);
+process.env.HOME = home;
+process.env.USERPROFILE = home;
+delete process.env.SUBKIT_TEST_HOME;
+delete process.env.SUBKIT_TEST_HOME_TOKEN;
+
+if (ownedHome) {
+  let removed = false;
+  const removeHome = () => {
+    if (!removed) {
+      removed = true;
+      removeIsolatedTestHome(ownedHome);
+    }
+  };
+  afterAll(removeHome);
+  process.on("exit", removeHome);
+}

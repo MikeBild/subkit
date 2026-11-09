@@ -5,6 +5,26 @@ import { causeClassKey } from "@/lib/cause-class";
 import { CONNECTOR_STRIP_KEYS } from "@/lib/connector-strip";
 import { CATALOGS, type PluralKey, pluralKey, type TranslationKey } from "@/lib/i18n";
 import { clipAtWord } from "@/lib/presentation";
+import {
+  opensReviewSheet as coreOpensReviewSheet,
+  reviewAccess as coreReviewAccess,
+  reviewForward as coreReviewForward,
+  reviewSettles as coreReviewSettles,
+  reviewTarget as coreReviewTarget,
+  type ReviewAccess,
+  type ReviewTarget,
+} from "@/pages/core/attention-navigation";
+import {
+  attentionBadge as coreAttentionBadge,
+  attentionEntries as coreAttentionEntries,
+  entryActions as coreEntryActions,
+  entrySnapshot as coreEntrySnapshot,
+  failedSources as coreFailedSources,
+  isHidden as coreIsHidden,
+  overviewSections as coreOverviewSections,
+  overviewView as coreOverviewView,
+  settleHidden as coreSettleHidden,
+} from "@/pages/core/attention-projection";
 
 export type Attention = components["schemas"]["AttentionV1"];
 export type AttentionItem = components["schemas"]["AttentionItem"];
@@ -18,50 +38,25 @@ export type HiddenEntries = ReadonlyMap<string, string>;
 export const NO_HIDDEN: HiddenEntries = new Map();
 
 export function entrySnapshot(item: AttentionItem): string {
-  return JSON.stringify([
-    item.reason,
-    item.class,
-    item.counts,
-    item.actions.find((action) => action.primary)?.verb ?? null,
-  ]);
+  return coreEntrySnapshot(item);
 }
 
 export function isHidden(item: AttentionItem, hidden: HiddenEntries): boolean {
-  return hidden.get(item.id) === entrySnapshot(item);
+  return coreIsHidden(item, hidden);
 }
 
 export function settleHidden(
   hidden: HiddenEntries,
   items: readonly AttentionItem[],
 ): HiddenEntries {
-  const byId = new Map(items.map((item) => [item.id, item]));
-  const next = new Map(
-    [...hidden].filter(([id, snapshot]) => {
-      const item = byId.get(id);
-      return item !== undefined && entrySnapshot(item) === snapshot;
-    }),
-  );
-  return next.size === hidden.size ? hidden : next;
-}
-
-function subjectKey(item: AttentionItem): string {
-  return item.subject ? `${item.subject.kind}:${item.subject.id}` : item.id;
+  return coreSettleHidden(hidden, items);
 }
 
 export function attentionEntries(
   items: readonly AttentionItem[],
   hidden: HiddenEntries = NO_HIDDEN,
 ): AttentionItem[] {
-  const seen = new Set<string>();
-  const entries: AttentionItem[] = [];
-  for (const item of items) {
-    if (isHidden(item, hidden)) continue;
-    const key = subjectKey(item);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    entries.push(item);
-  }
-  return entries;
+  return coreAttentionEntries(items, hidden);
 }
 
 type OverviewView =
@@ -71,22 +66,14 @@ type OverviewView =
   | { kind: "nothing_readable" };
 
 export function failedSources(attention: Attention): AttentionSource[] {
-  return (Object.keys(attention.sources) as AttentionSource[]).filter(
-    (source) => attention.sources[source] === "failed",
-  );
+  return coreFailedSources(attention);
 }
 
 export function overviewView(
   attention: Attention,
   hidden: HiddenEntries = NO_HIDDEN,
 ): OverviewView {
-  const items = attentionEntries(attention.items, hidden);
-  const unread = failedSources(attention);
-  if (items.length > 0) return { kind: "items", items, unread };
-  if (unread.length > 0) return { kind: "unread", unread };
-  const readable = Object.values(attention.sources).some((state) => state !== "not_permitted");
-  if (!readable) return { kind: "nothing_readable" };
-  return { kind: "calm", status: attention.status };
+  return coreOverviewView(attention, hidden);
 }
 
 type OverviewSection = "operations" | "attention" | "calm" | "unread" | "history";
@@ -95,24 +82,14 @@ export function overviewSections(
   view: OverviewView,
   can: { operations: boolean; history: boolean },
 ): OverviewSection[] {
-  const sections: OverviewSection[] = can.operations ? ["operations"] : [];
-  if (view.kind === "items") {
-    sections.push("attention");
-    if (view.unread.length > 0) sections.push("unread");
-  } else if (view.kind === "calm") sections.push("calm");
-  else if (view.kind === "unread") sections.push("unread");
-  if (can.history) sections.push("history");
-  return sections;
+  return coreOverviewSections(view, can);
 }
 
 export function attentionBadge(
   attention: Attention | undefined,
   hidden: HiddenEntries = NO_HIDDEN,
 ): { count: number; stopped: boolean } | null {
-  if (!attention) return null;
-  const items = attentionEntries(attention.items, hidden);
-  if (items.length === 0) return null;
-  return { count: items.length, stopped: items.some((item) => item.class === "stopped") };
+  return coreAttentionBadge(attention, hidden);
 }
 
 const REASON_KEYS = {
@@ -385,9 +362,7 @@ export function entryActions(item: AttentionItem): {
   primary: AttentionAction | null;
   secondary: AttentionAction | null;
 } {
-  const primary = item.actions.find((action) => action.primary) ?? null;
-  const secondary = item.actions.find((action) => !action.primary) ?? null;
-  return { primary, secondary };
+  return coreEntryActions(item);
 }
 
 export function actionLabelKey(action: AttentionAction, item: AttentionItem): TranslationKey {
@@ -469,26 +444,14 @@ export function statusLine(
   return `${health} · ${next}`;
 }
 
-export type ReviewTarget =
-  | { kind: "workflow"; workflowId: string }
-  | { kind: "skills" }
-  | { kind: "other" };
+export type { ReviewAccess, ReviewTarget } from "@/pages/core/attention-navigation";
 
 export function reviewTarget(id: string): ReviewTarget {
-  if (id === "skills") return { kind: "skills" };
-  const match = /^workflow:([0-9a-f-]{36})$/i.exec(id);
-  if (match?.[1]) return { kind: "workflow", workflowId: match[1] };
-  return { kind: "other" };
+  return coreReviewTarget(id);
 }
 
-export type ReviewAccess = "readable" | "not_permitted" | "nothing";
-
 export function reviewAccess(target: ReviewTarget, permissions: readonly string[]): ReviewAccess {
-  if (target.kind === "workflow")
-    return permissions.includes("workflow:read") ? "readable" : "not_permitted";
-  if (target.kind === "skills")
-    return permissions.includes("skill:read") ? "readable" : "not_permitted";
-  return "nothing";
+  return coreReviewAccess(target, permissions);
 }
 
 function reviewLink(href: string): boolean {
@@ -498,18 +461,14 @@ function reviewLink(href: string): boolean {
 }
 
 export function opensReviewSheet(item: AttentionItem, action: AttentionAction): boolean {
-  if (action.verb !== "review") return false;
-  return reviewTarget(item.id).kind !== "other" || reviewLink(action.href);
+  return coreOpensReviewSheet(item, action, reviewLink);
 }
 
 export function reviewForward(
   action: AttentionAction | null,
   access: ReviewAccess,
 ): AttentionAction | null {
-  if (!action?.href) return null;
-  if (action.verb !== "review") return action;
-  if (access !== "nothing" || reviewLink(action.href)) return null;
-  return action;
+  return coreReviewForward(action, access, reviewLink);
 }
 
 export function reviewSettles(review: {
@@ -518,9 +477,7 @@ export function reviewSettles(review: {
   listedBefore: boolean;
   listedNow: boolean;
 }): boolean {
-  if (review.openNow > 0) return false;
-  if (review.openBefore !== null && review.openBefore > 0) return true;
-  return review.listedBefore && !review.listedNow;
+  return coreReviewSettles(review);
 }
 
 export interface ReviewHistory {

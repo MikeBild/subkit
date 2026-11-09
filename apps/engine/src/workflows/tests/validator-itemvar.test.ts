@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { validateWorkflowDef } from "../core/validator.ts";
 import { validateBareIterationIdentifiers } from "../reference-validator.ts";
 import { executableDefinition, readStoredDefinition } from "../stored-definition.ts";
-import { validateWorkflowDef } from "../validator.ts";
 
 const baseSteps = [
   { id: "get_numbers", kind: "transform", expression: "[1, 2, 3]" },

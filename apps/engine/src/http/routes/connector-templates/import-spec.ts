@@ -77,7 +77,7 @@ const importConnectorSpecOperation = defineOperation<
   permission: "connector:write",
   effect: "read",
   handler: async (_scope, body) => {
-    const tool = await import("../../../conversations/tools/import-connector-from-spec.ts");
+    const tool = await import("../../../conversations/public/authoring.ts");
     try {
       const result = await tool.importConnectorFromSpecTool.execute(
         {} as Parameters<typeof tool.importConnectorFromSpecTool.execute>[0],

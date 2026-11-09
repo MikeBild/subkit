@@ -79,7 +79,7 @@ export async function runKnowledgeFts(
     WHERE kc.tenant_id = ${tenant_id}
       AND ${match}
       ${scopeFilter}
-    ORDER BY rank DESC
+    ORDER BY rank DESC, ks.slug ASC, kc.path ASC, kc.ordinal ASC, kc.id ASC
     LIMIT ${limit}
   `);
 

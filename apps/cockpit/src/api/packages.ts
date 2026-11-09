@@ -1,6 +1,5 @@
 import type { components } from "@cli-core/engine-api/openapi";
-import { apiCall } from "./call";
-import { apiRequest } from "./client";
+import { apiCall, apiMultipart } from "./call";
 import { tenantContentHref } from "./tenant-context";
 
 export const PACKAGE_KINDS = [
@@ -46,9 +45,7 @@ export function packageArchiveHref(fileId: string): string {
 }
 
 export function previewPackageFile(file: File): Promise<PackagePreviewResult> {
-  const form = new FormData();
-  form.set("archive", file, file.name);
-  return apiRequest("/v1/packages/import/preview", { method: "POST", body: form });
+  return apiMultipart("/v1/packages/import/preview", { body: { archive: file } });
 }
 
 export function previewStoredPackage(archiveFileId: string): Promise<PackagePreviewResult> {

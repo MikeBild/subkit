@@ -6,6 +6,7 @@ import { AuditAction } from "../audit/types.ts";
 import type { Executor } from "../db/client.ts";
 import { connectors } from "../db/schema/index.ts";
 import { BadRequestError } from "../http/errors.ts";
+import { decideMcpTrustCarryOver, mcpTrustedTools } from "./core/connector-config.ts";
 
 const MCP_TRUST_KEY = "tools_without_confirmation";
 
@@ -17,37 +18,20 @@ function mcpBlock(config: unknown): Record<string, unknown> | null {
     : null;
 }
 
-export function mcpTrustedTools(config: unknown): string[] {
-  const list = mcpBlock(config)?.[MCP_TRUST_KEY];
-  if (!Array.isArray(list)) return [];
-  return [...new Set(list.filter((v): v is string => typeof v === "string"))].sort();
-}
-
-function sameList(a: readonly string[], b: readonly string[]): boolean {
-  return a.length === b.length && a.every((v, i) => v === b[i]);
-}
+export { mcpTrustedTools } from "./core/connector-config.ts";
 
 export function carryMcpTrustList(
   driver: string,
   prior: unknown,
   next: Record<string, unknown> | undefined,
 ): Record<string, unknown> | undefined {
-  if (driver !== "mcp" || next === undefined) return next;
-  const stored = mcpTrustedTools(prior);
-  const incomingBlock = mcpBlock(next);
-  const incoming = incomingBlock?.[MCP_TRUST_KEY];
-  if (incoming !== undefined) {
-    if (!sameList(mcpTrustedTools(next), stored)) {
-      throw new BadRequestError(
-        "config.mcp.tools_without_confirmation is set per tool by an operator " +
-          "(PUT /v1/connectors/{id}/mcp/tool-confirmation), not through a connector edit",
-        { field: `config.mcp.${MCP_TRUST_KEY}` },
-      );
-    }
-    return next;
-  }
-  if (stored.length === 0) return next;
-  return { ...next, mcp: { ...(incomingBlock ?? {}), [MCP_TRUST_KEY]: stored } };
+  const decision = decideMcpTrustCarryOver(driver, prior, next);
+  if (decision.kind === "accepted") return decision.config;
+  throw new BadRequestError(
+    "config.mcp.tools_without_confirmation is set per tool by an operator " +
+      "(PUT /v1/connectors/{id}/mcp/tool-confirmation), not through a connector edit",
+    { field: `config.mcp.${MCP_TRUST_KEY}` },
+  );
 }
 
 export function withoutMcpTrustList(config: unknown): Record<string, unknown> {

@@ -1,31 +1,12 @@
 import { actorFromColumns } from "../audit/actor.ts";
 import type { skillCandidates } from "../db/schema/skills.ts";
-import { workflowJsonDigest } from "../workflows/canonical-json.ts";
+import { skillReviewDigest } from "./core/review.ts";
+
+export { skillReviewDigest } from "./core/review.ts";
+
 import { SkillCandidateFactsSchema, type SkillCandidateView } from "./types.ts";
 
-const CONTEXT_PATTERN_KINDS: ReadonlySet<string> = new Set([
-  "failure_pattern",
-  "authoring_capability",
-]);
-
-export function initialCandidateStatus(kind: string): "proposed" | "context" {
-  return CONTEXT_PATTERN_KINDS.has(kind) ? "context" : "proposed";
-}
-
-export function skillReviewDigest(row: typeof skillCandidates.$inferSelect): string {
-  return workflowJsonDigest({
-    tenant: row.tenant_id,
-    id: row.id,
-    scope: row.scope,
-    connector: row.connector_id,
-    endpoint: row.endpoint_key,
-    workflow: row.workflow_id,
-    title: row.title,
-    body: row.body,
-    examples: row.examples,
-    tags: row.tags,
-  });
-}
+export { initialCandidateStatus } from "./core/candidate-decision.ts";
 
 export function toView(
   row: typeof skillCandidates.$inferSelect,

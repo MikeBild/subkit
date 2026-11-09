@@ -8,7 +8,7 @@ export ENGINE_LISTEN_HOST="${ENGINE_LISTEN_HOST:-0.0.0.0}"
 
 export CONFIGURATION_DIRECTORY="${CONFIGURATION_DIRECTORY:-/tmp/subkit-state}"
 export STATE_DIRECTORY="${STATE_DIRECTORY:-/tmp/subkit-state}"
-mkdir -p "$CONFIGURATION_DIRECTORY" "$STATE_DIRECTORY" "${HOME:-/tmp/subkit-home}"
+mkdir -p "$CONFIGURATION_DIRECTORY" "$STATE_DIRECTORY" "${HOME:-/tmp/subkit-home}" /tmp/subkit-profiles
 
 read_secret_file() {
   name="$1"

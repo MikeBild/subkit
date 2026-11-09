@@ -2,6 +2,7 @@ import { z } from "@hono/zod-openapi";
 import type { Actor } from "../audit/actor.ts";
 import type { AuditActorType } from "../audit/types.ts";
 import { PREVIEW_CLASSIFICATIONS } from "../execution/classify.ts";
+import type { LEARNING_PATTERN_KINDS } from "./core/candidate-decision.ts";
 
 export const SkillCandidateStatusSchema = z.enum([
   "proposed",
@@ -26,7 +27,7 @@ export type SkillCandidateStatus = z.infer<typeof SkillCandidateStatusSchema>;
 export type SkillCandidateConfidence = z.infer<typeof SkillCandidateConfidenceSchema>;
 export type SkillCandidatePattern = z.infer<typeof SkillCandidatePatternSchema>;
 
-export const LEARNING_PATTERN_KINDS = ["session_learning", "knowledge_learning"] as const;
+export { LEARNING_PATTERN_KINDS } from "./core/candidate-decision.ts";
 
 export type DetectorPatternKind = Exclude<
   SkillCandidatePattern,

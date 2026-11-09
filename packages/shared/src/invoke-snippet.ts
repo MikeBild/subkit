@@ -113,7 +113,7 @@ export function renderInvokeSnippet(options: InvokeSnippetOptions): string {
 }
 
 function pythonLiteral(value: unknown): string {
-  if (value === null || value === undefined) return "None";
+  if (value === null) return "None";
   if (value === true) return "True";
   if (value === false) return "False";
   if (typeof value === "number") return Number.isFinite(value) ? String(value) : "None";

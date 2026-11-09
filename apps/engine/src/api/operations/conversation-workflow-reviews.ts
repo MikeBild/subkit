@@ -7,7 +7,7 @@ import {
   getWorkflowReview,
   prepareWorkflowReview,
   WorkflowReviewError,
-} from "../../conversations/workflow-review.ts";
+} from "../../conversations/public/tool-contract.ts";
 import { HttpError } from "../../http/errors.ts";
 import { requireSignedInPerson } from "../../http/middleware/auth.ts";
 import {

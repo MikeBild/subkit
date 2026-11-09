@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "equivalents": [
+    {
+      "file": "packages/shared/src/side-effects.ts",
+      "source_sha256": "cb90923c1c9794e70dc19a9988ad845973f6f22f52a0b111a2615540fc4fc742",
+      "location": {
+        "end": {
+          "column": 4,
+          "line": 55
+        },
+        "start": {
+          "column": 100,
+          "line": 53
+        }
+      },
+      "mutatorName": "BlockStatement",
+      "replacement": "{}",
+      "original": "{\n    return null;\n  }",
+      "statusReason": "EQ-JSON: null/undefined yield no records",
+      "reason": "EQ-JSON: parsedBody is private. A throwing JSON string yields null, while the exact empty catch BlockStatement yields implicit undefined. Both are non-arrays and fail isRecord, so graphqlOverHttpRequest observes records=[], documents=[], shaped=false. Its endpoint result and both public side-effect classifiers are identical. This proof does not cover returning an object literal or suppressing any other block.",
+      "independent_review": "Independently reviewed by automation_survivors and redaction_survivors. Both traced every direct consumer and confirmed the exact empty-catch mapping. The redaction review explicitly disproved return {}: it produces documents:[null] instead of documents:[], so the allowlist must bind the BlockStatement kind, original catch-body range and replacement {} exactly."
+    },
+    {
+      "file": "apps/engine/src/workflows/core/dag.ts",
+      "source_sha256": "abc0bd5cb656328706017b4e2c4544811c7f7bbaa5e7673753182eaec767a31a",
+      "location": {
+        "start": {
+          "line": 176,
+          "column": 27
+        },
+        "end": {
+          "line": 176,
+          "column": 29
+        }
+      },
+      "mutatorName": "ArrayDeclaration",
+      "replacement": "[\"Stryker was here\"]",
+      "original": "[]",
+      "statusReason": "EQ-DAG-STACK: unreachable initial sentinel below every DFS root",
+      "reason": "The stack is local to detectCycles. Every DFS root is pushed above the initial array contents. SCC extraction pops through its current root and stops immediately at that root, never below it. Initial sentinel is never added to index, lowlink, or onStack and cannot affect reachability or reported components. This remains true when a public node has the same string because its own pushed occurrence is popped first. Applies only to this exact initial ArrayDeclaration replacement, not adjacency fallbacks, which have an explicit counterexample.",
+      "independent_review": "Independently reviewed by dag_remaining_contracts and jsonata_pure_leaf; root traced stack push/pop and output consumers. Portable sentinel-ID and sparse-adjacency contracts plus 2000-case baseline differential protect the boundary. Ignored equivalence is not counted as killed."
+    }
+  ]
+}

@@ -11,9 +11,9 @@ import {
   runOutcomeSentence,
   runStatusSentence,
   runTruncationSentence,
-  runVerdict,
   truncatedSteps,
 } from "@/pages/runs-model";
+import { runVerdict } from "./core/run-outcome";
 
 const tr =
   (locale: Locale) =>

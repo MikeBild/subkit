@@ -579,6 +579,17 @@ export interface UIMessage {
 }
 
 export type { GateOutcome, GateRecord } from "./confirmation.ts";
+export {
+  ConversationNotFoundError,
+  ConversationTurnInProgressError,
+  ElicitationActorMismatchError,
+  ElicitationAlreadyResolvedError,
+  ElicitationAnswerActorUnavailableError,
+  ElicitationNotFoundError,
+  ElicitationValidationError,
+  PendingElicitationBlockedError,
+} from "./errors.ts";
 export type { ConversationSurface } from "./lifecycle-view.ts";
+export type { RunLoopResult } from "./loop/types.ts";
 export type { TimeoutPhase } from "./turn-failure.ts";
 export type { WorkflowDef };

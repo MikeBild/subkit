@@ -9,10 +9,15 @@ import { log } from "../../logging/logger.ts";
 import type { AnswerActor } from "../answer-actor.ts";
 import { decidedByAuditActor, decidedByFor } from "../decided-by.ts";
 import type { ElicitationBridge } from "../elicitation-bridge.ts";
+import {
+  ElicitationActorMismatchError,
+  ElicitationAnswerActorUnavailableError,
+  ElicitationNotFoundError,
+  ElicitationValidationError,
+} from "../errors.ts";
 import { runLoop } from "../loop/index.ts";
 import { applyElicitationOutcome } from "../persistence/apply-outcome.ts";
 import { isProseQuestionElicitation } from "../prose-question-answer.ts";
-import { elicitationInputForClient } from "../tools/ask-user/commit-intent.ts";
 import {
   interpretConfirmDecision,
   normalizeConfirmOutput,
@@ -49,61 +54,7 @@ export interface RespondElicitationParams {
   locale?: "de" | "en";
 }
 
-export class ElicitationActorMismatchError extends Error {
-  readonly code = "ELICITATION_ACTOR_MISMATCH";
-  constructor(
-    public readonly conversation_id: string,
-    public readonly actor_id: string | null,
-  ) {
-    super(`actor ${actor_id ?? "(anon)"} is not the owner of conversation ${conversation_id}`);
-  }
-}
-
-export class ElicitationAnswerActorUnavailableError extends Error {
-  readonly code = "ELICITATION_ANSWER_ACTOR_UNAVAILABLE";
-  constructor(public readonly user_id: string) {
-    super(`human answer actor ${user_id} is not an active user in this tenant`);
-  }
-}
-
 export { ConversationNotFoundError } from "./shared.ts";
-
-export class ElicitationNotFoundError extends Error {
-  readonly code = "ELICITATION_NOT_FOUND";
-  constructor(public readonly elicitation_id: string) {
-    super(`elicitation ${elicitation_id} not found in this tenant`);
-  }
-}
-
-export class ElicitationValidationError extends Error {
-  readonly pending_elicitation: {
-    id: string;
-    tool_name: string;
-    summary: string;
-    input: unknown;
-  };
-  readonly code = "ELICITATION_VALIDATION_FAILED";
-  constructor(
-    public readonly elicitation_id: string,
-    public readonly field_errors: Array<{ name: string; message: string }>,
-    pending_elicitation: {
-      id: string;
-      tool_name: string;
-      summary: string;
-      input: unknown;
-    },
-  ) {
-    super(
-      `elicitation answer failed validation: ${field_errors
-        .map((e) => `${e.name}: ${e.message}`)
-        .join("; ")}`,
-    );
-    this.pending_elicitation = {
-      ...pending_elicitation,
-      input: elicitationInputForClient(pending_elicitation.input),
-    };
-  }
-}
 
 function mergeFieldErrorsIntoInput(
   tool_name: string,
@@ -419,3 +370,10 @@ async function driveElicitation(
   }
   return { conversation: updated.conversation, result };
 }
+
+export {
+  ElicitationActorMismatchError,
+  ElicitationAnswerActorUnavailableError,
+  ElicitationNotFoundError,
+  ElicitationValidationError,
+} from "../errors.ts";

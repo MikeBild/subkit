@@ -1,13 +1,18 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { eq } from "drizzle-orm";
 import { apiKeys, executionFixtures, executions, users } from "../../db/schema/index.ts";
+import * as localProvider from "../../embeddings/local-provider.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
-import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
+import type { McpTestSuite } from "./setup.ts";
+
+const originalEmbeddingsAvailable = localProvider.embeddingsAvailable;
+const embeddingsAvailable = spyOn(localProvider, "embeddingsAvailable").mockResolvedValue(false);
+const { startMcpTestSuite } = await import("./setup.ts");
 
 function sha256Hex(s: string): string {
   return createHash("sha256").update(s).digest("hex");
@@ -40,7 +45,12 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await suite?.cleanup();
+  try {
+    await suite?.cleanup();
+  } finally {
+    embeddingsAvailable.mockRestore();
+    expect(localProvider.embeddingsAvailable).toBe(originalEmbeddingsAvailable);
+  }
 }, 60_000);
 
 describe("mcp resources", () => {

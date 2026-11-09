@@ -14,6 +14,8 @@ export type LogRequestSource =
 export type LogContext = {
   execution_privacy?: "sensitive" | undefined;
   trace_id?: string;
+
+  db_tx_id?: string;
   audit_trace_id?: string | undefined;
   span_id?: string;
   tenant_id?: string;

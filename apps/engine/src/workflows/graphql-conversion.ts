@@ -1,4 +1,4 @@
-import { graphqlOverHttpRequest } from "@shared/index.ts";
+import { graphqlOverHttpRequest } from "@shared/side-effects.ts";
 
 export const GRAPHQL_OVER_HTTP_REPAIR =
   'The supported repair keeps the graphql block with its cursor_pagination on the existing http connector and sets path "/graphql" (for GitHub the connector base_url is https://api.github.com, so the request goes to https://api.github.com/graphql with that connector\'s credential). Do not set url. A graphql connector whose base_url is the GraphQL endpoint, or a step against the REST endpoint, also works.';

@@ -1,6 +1,6 @@
 {
   "name": "subkit",
-  "version": "10.20.12",
+  "version": "10.20.13",
   "private": true,
   "workspaces": [
     "apps/cockpit"
@@ -19,10 +19,14 @@
   },
   "scripts": {
     "audit:invariants": "bun run apps/engine/scripts/audit-invariants.ts",
+    "artifacts:prune:apply": "bun run scripts/prune-verification-runs.ts --apply",
+    "artifacts:prune:preview": "bun run scripts/prune-verification-runs.ts --preview",
+    "coverage:prune:apply": "bun run scripts/prune-coverage-runs.ts --apply",
+    "coverage:prune:preview": "bun run scripts/prune-coverage-runs.ts --preview",
     "build:all": "bun run build:engine && bun run build:sk",
     "build:cockpit": "bun run gen:cockpit-icons && NODE_ENV=production bunx vite build --config apps/cockpit/vite.config.ts && bun run gen:cockpit",
-    "build:engine": "bun run build:clipper && bun run build:cockpit && bun scripts/fetch-embedding-assets.ts && bun build apps/engine/src/index.ts --compile --external cpu-features --define \"process.env.NODE_ENV=process.env.NODE_ENV\" --define \"BUILD_VERSION=\\\"$(node -p 'require(\"./package.json\").version')\\\"\" --outfile dist/engine && ([ \"$(uname)\" != Darwin ] || sh scripts/codesign-macos.sh dist/engine)",
-    "build:engine:linux-x64": "bun run build:clipper && bun run build:cockpit && bun scripts/fetch-embedding-assets.ts && bun build apps/engine/src/index.ts --compile --external cpu-features --target=bun-linux-x64 --define \"process.env.NODE_ENV=process.env.NODE_ENV\" --define \"BUILD_VERSION=\\\"${ENGINE_VERSION:-$(node -p 'require(\"./package.json\").version')}\\\"\" --outfile dist/engine-linux-x64",
+    "build:engine": "bun run build:clipper && bun run build:cockpit && bun scripts/fetch-embedding-assets.ts && bun build apps/engine/src/index.ts apps/engine/src/embeddings/embedding-worker.ts --compile --root . --external cpu-features --define \"process.env.NODE_ENV=process.env.NODE_ENV\" --define \"BUILD_VERSION=\\\"$(node -p 'require(\"./package.json\").version')\\\"\" --outfile dist/engine && ([ \"$(uname)\" != Darwin ] || sh scripts/codesign-macos.sh dist/engine)",
+    "build:engine:linux-x64": "bun run build:clipper && bun run build:cockpit && bun scripts/fetch-embedding-assets.ts && bun build apps/engine/src/index.ts apps/engine/src/embeddings/embedding-worker.ts --compile --root . --external cpu-features --target=bun-linux-x64 --define \"process.env.NODE_ENV=process.env.NODE_ENV\" --define \"BUILD_VERSION=\\\"${ENGINE_VERSION:-$(node -p 'require(\"./package.json\").version')}\\\"\" --outfile dist/engine-linux-x64",
     "build:sk": "bun run build:clipper && bun build apps/sk/src/index.ts --compile --external cpu-features --define \"process.env.NODE_ENV=process.env.NODE_ENV\" --define \"BUILD_VERSION=\\\"$(node -p 'require(\"./package.json\").version')\\\"\" --outfile dist/sk && ([ \"$(uname)\" != Darwin ] || sh scripts/codesign-macos.sh dist/sk)",
     "bump": "bun run scripts/bump-version.ts",
     "check:cockpit-drift": "bun run build:cockpit && git diff --exit-code apps/cockpit/src/lib/service-icons.generated.ts apps/cockpit/src/lib/service-icon-marks.generated.ts",
@@ -81,8 +85,8 @@
     "test:unit": "bun run scripts/test-layer.ts unit",
     "typecheck": "bash scripts/typecheck.sh",
     "check:bun-version": "bun run scripts/check-bun-version.ts",
-    "verify:gate": "bun run check:bun-version && bun run lint && bun run typecheck && bun run lint:recipes && bun run audit:invariants && bun run check:deps-phantom && bun run check:sandbox-tools-drift && bun run check:config-example-drift && bun run check:embedded-drift && bun run check:clipper-drift && bun run check:cockpit-drift && bun run check:release-notes-drift && bun run check:llms-txt-drift && bun run check:docs && bun run check:openapi-drift && bun run test:contract && bun run test:determinism",
-    "verify": "bun run check:bun-version && bun run lint && bun run typecheck && bun run lint:recipes && bun run audit:invariants && bun run check:deps-phantom && bun run check:sandbox-tools-drift && bun run benchmark:runtime:smoke && bun run check:config-example-drift && bun run check:embedded-drift && bun run check:clipper-drift && bun run check:llms-txt-drift && bun run check:docs && bun run check:cockpit-drift && bun run check:release-notes-drift && bun run check:openapi-drift && bun run test:contract && bun run test:determinism && bun run scripts/test-files-isolated.ts apps packages scripts && bun run verify:ai && bun run verify:clipper-binaries && bun run test:e2e",
+    "verify:gate": "bun run check:bun-version && bun run lint && bun run typecheck && bun run lint:recipes && bun run audit:invariants && bun run check:deps-phantom && bun run check:sandbox-tools-drift && bun run check:config-example-drift && bun run check:embedded-drift && bun run check:clipper-drift && bun run check:cockpit-drift && bun run check:release-notes-drift && bun run check:llms-txt-drift && bun run check:docs && bun run check:openapi-drift && bun run test:contract && bun run test:determinism && bun run verify:quality",
+    "verify": "bun run check:bun-version && bun run lint && bun run typecheck && bun run lint:recipes && bun run audit:invariants && bun run check:deps-phantom && bun run check:sandbox-tools-drift && bun run benchmark:runtime:smoke && bun run check:config-example-drift && bun run check:embedded-drift && bun run check:clipper-drift && bun run check:llms-txt-drift && bun run check:docs && bun run check:cockpit-drift && bun run check:release-notes-drift && bun run check:openapi-drift && bun run test:contract && bun run test:determinism && bun run scripts/test-files-isolated.ts apps packages scripts && bun run verify:ai && bun run verify:clipper-binaries && bun run test:e2e && bun run verify:quality",
     "verify:ai": "bun run eval",
     "verify:llm-live": "bun run scripts/verify-llm-live.ts",
     "verify:release": "bun run scripts/verify-release.ts",
@@ -106,9 +110,15 @@
     "benchmark:runtime:full": "bun scripts/runtime-benchmark.ts capture --profile full --label candidate --source . --output .artifacts/runtime-benchmark/candidate.json --require-helpers",
     "gen:cockpit-icons": "bun run scripts/gen-cockpit-icons.ts",
     "test:core": "bun run apps/engine/scripts/run-core-tests.ts",
-    "test:mutation": "bunx stryker run --force && bun run apps/engine/scripts/check-mutation-floor.ts",
+    "test:mutation": "bun run apps/engine/scripts/prepare-mutation-run.ts && bunx stryker run --force && bun run apps/engine/scripts/check-mutation-floor.ts",
+    "test:mutation:shards": "bun run apps/engine/scripts/run-mutation-shards.ts --run",
+    "test:coverage:shards": "bun run apps/engine/scripts/run-coverage-shards.ts --run",
+    "prepare:mutation:shards": "bun run apps/engine/scripts/prepare-mutation-shards.ts",
     "test:affected": "bun run scripts/affected-tests.ts",
-    "test:journeys": "bun run scripts/test-layer.ts journey"
+    "test:journeys": "bun run scripts/test-layer.ts journey",
+    "verify:quality": "bun run check:coverage-floor && bun run test:mutation",
+    "verify:quality:shards": "bun run apps/engine/scripts/verify-quality-shards.ts",
+    "verify:quality:release-shards": "bun run apps/engine/scripts/verify-quality-release-shards.ts"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^5",

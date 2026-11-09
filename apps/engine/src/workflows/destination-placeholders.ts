@@ -1,5 +1,5 @@
-import { walkStrings } from "./reference-validator.ts";
-import type { WorkflowDef } from "./types.ts";
+import { walkStrings } from "./core/walk-strings.ts";
+import type { DomainWorkflowDef } from "./domain-types.ts";
 import type { ValidationError } from "./validator.ts";
 
 export type PlaceholderTier = "tokens" | "all";
@@ -139,7 +139,7 @@ function placeholderDetail(match: string): string {
 }
 
 export function detectPlaceholderDestinations(
-  def: WorkflowDef,
+  def: DomainWorkflowDef,
   opts: { tier: PlaceholderTier },
 ): DestinationPlaceholderViolation[] {
   const violations: DestinationPlaceholderViolation[] = [];

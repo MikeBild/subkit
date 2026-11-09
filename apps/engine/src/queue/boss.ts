@@ -3,10 +3,42 @@ import { PgBoss } from "pg-boss";
 import { databasePoolOptions } from "../db/connection-options.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import { setDlqJobCount, setQueueDepth, setQueueLag } from "../observability/instrumentation.ts";
+import {
+  diagnoseOperation,
+  runtimeDiagnosticsEnabled,
+} from "../observability/runtime-diagnostics.ts";
 import { queueErrorFields } from "./error-fields.ts";
 import { QUEUE_DEFINITIONS, QUEUE_NAMES, type QueueName } from "./queues.ts";
 
 const ownedBossSchemas = new WeakMap<PgBoss, string>();
+const diagnosticBosses = new WeakSet<PgBoss>();
+
+export function bossPoolCounts(boss: PgBoss): {
+  total: number;
+  idle: number;
+  waiting: number;
+  max: number;
+} | null {
+  const counts = boss.getDb().poolCounts?.();
+  return counts
+    ? { total: counts.total, idle: counts.idle, waiting: counts.waiting, max: counts.max }
+    : null;
+}
+
+function installBossDiagnostics(boss: PgBoss): void {
+  if (!runtimeDiagnosticsEnabled() || diagnosticBosses.has(boss)) return;
+  const db = boss.getDb();
+  const original = db.executeSql.bind(db);
+  db.executeSql = (text, values) =>
+    diagnoseOperation({
+      action: "boss.query",
+      pool: "boss",
+      poolCounts: () => bossPoolCounts(boss),
+
+      fn: () => original(text, values),
+    });
+  diagnosticBosses.add(boss);
+}
 
 export function createBossReadOnlyReader(boss: PgBoss, db: BossDb): PgBoss {
   const schema = ownedBossSchemas.get(boss);
@@ -143,6 +175,7 @@ export async function createBoss(opts: StartBossOptions): Promise<PgBoss> {
   };
   const boss = new PgBoss(bossOptions);
   ownedBossSchemas.set(boss, bossOptions.schema ?? "pgboss");
+  installBossDiagnostics(boss);
 
   boss.on("error", (err: unknown) => {
     logger.error({

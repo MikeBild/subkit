@@ -50,7 +50,7 @@ function parsedBody(body: unknown): unknown {
   if (typeof body !== "string") return body;
   try {
     return JSON.parse(body);
-  } catch {
+  } catch /* Stryker disable next-line BlockStatement: EQ-JSON: null/undefined yield no records */ {
     return null;
   }
 }
@@ -64,7 +64,7 @@ function isPersistedQuery(entry: Record<string, unknown>): boolean {
 }
 
 export function graphqlOverHttpRequest(input: GraphqlOverHttpInput): GraphqlOverHttpRequest | null {
-  if ((input.method ?? "GET").toUpperCase() !== "POST") return null;
+  if (input.method?.toUpperCase() !== "POST") return null;
   const baseUrl = input.baseUrl?.trim() || RELATIVE_TARGET_ORIGIN;
   const endpoint = looksLikeGraphQLUrl(absoluteTarget(input.target?.trim() ?? "", baseUrl));
   const body = parsedBody(input.body);
@@ -87,9 +87,7 @@ export function classifyGraphqlOverHttp(input: SideEffectInput): SideEffect | nu
     request.documents.length > 0 &&
     request.documents.every(
       (document) =>
-        document !== null &&
-        !RUNTIME_PLACEHOLDER.test(document) &&
-        inferGraphqlOperation(document) === "query",
+        !RUNTIME_PLACEHOLDER.test(String(document)) && inferGraphqlOperation(document) === "query",
     );
   if (!everyDocumentIsQuery) return "write";
   return request.endpoint ? "read" : null;
@@ -100,9 +98,9 @@ export function httpMethodIsRead(method: string): boolean {
   return m === "GET" || m === "HEAD" || m === "OPTIONS";
 }
 
-export function inferGraphqlOperation(query: string): GraphqlOperation | null {
+export function inferGraphqlOperation(query: string | null | undefined): GraphqlOperation | null {
   try {
-    const operations = parse(query, { maxTokens: 10_000 }).definitions.filter(
+    const operations = parse(String(query), { maxTokens: 10_000 }).definitions.filter(
       (definition) => definition.kind === Kind.OPERATION_DEFINITION,
     );
     if (operations.some((operation) => operation.operation === "mutation")) return "mutation";
@@ -117,10 +115,11 @@ export function inferGraphqlOperation(query: string): GraphqlOperation | null {
 export function sqlIsSelect(query: string): boolean {
   let s = query;
   for (;;) {
-    const next = s
-      .replace(/^\s+/, "")
-      .replace(/^--[^\n]*\n?/, "")
-      .replace(/^\/\*[\s\S]*?\*\//, "");
+    const trimmed = s.trimStart();
+    const withoutLineComment = trimmed.startsWith("--")
+      ? trimmed.slice(trimmed.indexOf("\n") + 1)
+      : trimmed;
+    const next = withoutLineComment.replace(/^\/\*[\s\S]*?\*\//, "");
     if (next === s) break;
     s = next;
   }
@@ -146,7 +145,7 @@ export function classifyHttpSideEffect(input: SideEffectInput): SideEffect {
   if (input.override === "write") return "write";
   const overHttp = classifyGraphqlOverHttp(input);
   if (overHttp) return overHttp;
-  if (input.override === "read" && readOverrideIsSafe(input)) return "read";
+  if (input.override === "read" && readOverrideAllowsHttpPost(input)) return "read";
   if (input.mcp) {
     return input.mcp.operation === "call_tool" ? "write" : "read";
   }
@@ -164,14 +163,12 @@ export function classifyHttpSideEffect(input: SideEffectInput): SideEffect {
   return httpMethodIsRead(method) ? "read" : "write";
 }
 
-function readOverrideIsSafe(input: SideEffectInput): boolean {
-  if (input.mcp || input.graphql || input.sql) return false;
-  const method = (input.method ?? "GET").toUpperCase();
-  if (input.s3) return S3_READ_METHODS.has(method);
-  return httpMethodIsRead(method) || method === "POST";
+function readOverrideAllowsHttpPost(input: SideEffectInput): boolean {
+  if (input.mcp || input.graphql || input.sql || input.s3) return false;
+  return input.method?.toUpperCase() === "POST";
 }
 
 function graphqlDocumentIsRead(input: NonNullable<SideEffectInput["graphql"]>): boolean {
   if (input.operation && input.operation !== "query") return false;
-  return inferGraphqlOperation(input.query ?? "") === "query";
+  return inferGraphqlOperation(input.query) === "query";
 }

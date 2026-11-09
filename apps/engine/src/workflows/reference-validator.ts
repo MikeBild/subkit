@@ -1,7 +1,7 @@
 import { findUnsupportedPlaceholders } from "../llm/substitution/unsupported.ts";
 import { findBareItemRefs, rewriteBareItemRefs } from "./bare-item-refs.ts";
+import type { DomainWorkflowDef } from "./domain-types.ts";
 import { levenshtein, suggestClosest } from "./levenshtein.ts";
-import type { WorkflowDef } from "./types.ts";
 
 interface Span {
   start: number;
@@ -238,7 +238,7 @@ export function walkStrings(
   }
 }
 
-export function validateStepReferences(def: WorkflowDef): ReferenceValidationError[] {
+export function validateStepReferences(def: DomainWorkflowDef): ReferenceValidationError[] {
   const stepIds = new Set(def.steps.map((s) => s.id));
   const allIds = [...stepIds];
   const errors: ReferenceValidationError[] = [];
@@ -430,7 +430,9 @@ export function validateBareIterationIdentifiers(
   return errors;
 }
 
-export function validateUnsupportedPlaceholders(def: WorkflowDef): UnsupportedPlaceholderError[] {
+export function validateUnsupportedPlaceholders(
+  def: DomainWorkflowDef,
+): UnsupportedPlaceholderError[] {
   const errors: UnsupportedPlaceholderError[] = [];
 
   const visit = (step_id: string, field: string, value: unknown): void => {

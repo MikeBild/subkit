@@ -1,6 +1,21 @@
 import { describe, expect, test } from "bun:test";
 import { translate } from "@/lib/i18n";
 import {
+  ageInDays as coreAgeInDays,
+  bannerSubset as coreBannerSubset,
+  countOpenDecisions as coreCountOpenDecisions,
+  decisionKey as coreDecisionKey,
+  filterByKinds as coreFilterByKinds,
+  hasOverdue as coreHasOverdue,
+  openDecisionQueue as coreOpenDecisionQueue,
+  partitionByUrgency as corePartitionByUrgency,
+  queueChips as coreQueueChips,
+  queueDisplayState as coreQueueDisplayState,
+  searchWithoutBucket as coreSearchWithoutBucket,
+  sortDecisions as coreSortDecisions,
+  splitByAge as coreSplitByAge,
+} from "./core/decision-queue";
+import {
   approveBlockedReason,
   badgeCount,
   bannerSubset,
@@ -20,6 +35,39 @@ import {
   suggestionTargets,
 } from "./decisions-model";
 import { item, NOW, PATCH_EVIDENCE } from "./decisions-model-fixtures.ts";
+
+test("decision queue core is directly deterministic and leaves its input untouched", () => {
+  const source = [
+    item("patch", 4, "p"),
+    item("conversation", 0, "c", { expiresAt: new Date(NOW + 1_000).toISOString() }),
+  ];
+  const original = source.map((entry) => entry.id);
+  expect(coreAgeInDays("invalid", NOW)).toBe(0);
+  expect(coreSortDecisions(source).map((entry) => entry.id)).toEqual(["c", "p"]);
+  expect(source.map((entry) => entry.id)).toEqual(original);
+  expect(coreSplitByAge(source, NOW).aged.map((entry) => entry.id)).toEqual(["p"]);
+  expect(corePartitionByUrgency(source, NOW).blocking.map((entry) => entry.id)).toEqual(["c"]);
+  expect(coreHasOverdue(source, NOW)).toBe(true);
+  expect(coreDecisionKey(source[0]!)).toBe("patch:p");
+  const open = coreCountOpenDecisions({ items: source, totals: null, nowMs: NOW });
+  expect(coreBannerSubset(open).shown).toBe(true);
+  expect(coreFilterByKinds(source, ["patch"])).toEqual([source[0]!]);
+  expect(coreQueueDisplayState({ shown: 0, held: 0, failing: 0, total: 1, narrowed: true })).toBe(
+    "filtered-empty",
+  );
+  expect(
+    coreOpenDecisionQueue({ items: source, totals: null, held: 1, failing: 1, nowMs: NOW }).total,
+  ).toBe(3);
+  expect(
+    coreQueueChips({
+      open,
+      readable: { patches: true, skills: true, failing: true },
+      held: 1,
+      failing: { state: "answered", count: 1 },
+    }),
+  ).toHaveLength(3);
+  expect(coreSearchWithoutBucket("?bucket=aged&tab=queue")).toBe("?tab=queue");
+});
 
 describe("urgency", () => {
   test("a stopped conversation outranks an older proposal nothing waits on", () => {

@@ -1,5 +1,5 @@
 import * as prompts from "@clack/prompts";
-import { exitCodeFor, reportCommandError } from "@cli-core/errors";
+import { exitCodeFor } from "@cli-core/errors";
 import { emitGroupedList, emitList, printJson, printTable } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
@@ -13,15 +13,12 @@ import type {
 } from "../engine-client/connectors.ts";
 import type { EngineClient } from "../engine-client.ts";
 import { catalogMetadataArgs, shortDescription } from "../lib/catalog-metadata.ts";
-import {
-  connectorDisplayName,
-  connectorPatchBody,
-  connectorPatchDraft,
-} from "../lib/connector-patch.ts";
 import { pickId } from "../lib/pick.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
 import type { ConnectorIntent, ConnectorSummary, PlanStep } from "../render/types.ts";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
+import { saveConnectorFromFile } from "./connector-save.ts";
+import { readDefinitionFile } from "./definition-file.ts";
 import { CONNECTOR_LIST_COLUMNS } from "./list-columns.ts";
 
 const IMPORT_SOURCES = [
@@ -163,11 +160,6 @@ export function renderProbeOutcome(result: ConnectorProbeResult, jsonMode: boole
   return ok;
 }
 
-async function readDefinitionFile<T>(path: string): Promise<T> {
-  const { readFileSync } = await import("node:fs");
-  return JSON.parse(readFileSync(path, "utf8")) as T;
-}
-
 export function importConnectorBody(args: {
   source: string;
   content: string;
@@ -192,153 +184,6 @@ export function docsIngestBody(url: string, sourceType: string): ConnectorDocsIn
     throw new Error(`--source-type must be one of: ${DOC_SOURCE_TYPES.join(" | ")}`);
   }
   return { source_type: sourceType, url };
-}
-
-type ConnectorSavePlan =
-  | { action: "create"; body: CreateConnectorBody; draft: () => CreateConnectorBody; name: string }
-  | {
-      action: "patch";
-      id: string;
-      body: UpdateConnectorBody;
-      draft: () => CreateConnectorBody;
-      name: string;
-    };
-
-async function connectorSavePlan(
-  client: EngineClient,
-  target: { action: "create" } | { action: "patch"; id: string },
-  path: string,
-): Promise<ConnectorSavePlan> {
-  if (target.action === "create") {
-    const body = await readDefinitionFile<CreateConnectorBody>(path);
-    return { action: "create", body, draft: () => body, name: body.name };
-  }
-  const file = await readDefinitionFile<UpdateConnectorBody>(path);
-  const current = await client.getConnector(target.id);
-  const body = connectorPatchBody(current, file);
-  return {
-    action: "patch",
-    id: target.id,
-    body,
-    draft: () => connectorPatchDraft(current, body),
-    name: body.name ?? connectorDisplayName(current),
-  };
-}
-
-async function saveConnectorFromFile(
-  target: { action: "create" } | { action: "patch"; id: string },
-  args: Record<string, unknown>,
-): Promise<void> {
-  const client = makeClient();
-  const jsonMode = Boolean(args.json);
-  try {
-    const plan = await connectorSavePlan(client, target, String(args.file));
-    const { body, name } = plan;
-    const skip = Boolean(args["skip-checks"]);
-    await renderIntent(
-      {
-        kind: "connector",
-        action: plan.action === "patch" ? "Update" : "Create",
-        ...(name ? { name } : {}),
-        ...(typeof body.template_slug === "string" ? { template_slug: body.template_slug } : {}),
-      },
-      { jsonMode },
-    );
-
-    let probe: ConnectorSummary["probe"];
-    if (!skip) {
-      const verdict = await client.validateConnectorDraft(plan.draft());
-      if (!verdict.ok) {
-        await renderTaskList(
-          [
-            {
-              id: "validate",
-              label: "Validate",
-              status: "failed",
-              detail: verdict.issues.map((i) => `${i.path}: ${i.message}`).join("; "),
-            },
-            { id: "probe", label: "Probe", status: "pending" },
-            { id: "save", label: "Save", status: "pending" },
-          ],
-          { jsonMode },
-        );
-        process.exit(1);
-      }
-
-      if (plan.action === "create" && plan.body.driver === "mcp") {
-        await renderTaskList(
-          [
-            { id: "validate", label: "Validate", status: "succeeded" },
-            {
-              id: "probe",
-              label: "Probe",
-              status: "warning",
-              detail:
-                "skipped — an mcp connector is probed after it is saved: `sk connectors probe <id>`",
-            },
-            { id: "save", label: "Save", status: "pending" },
-          ],
-          { jsonMode },
-        );
-      } else if (plan.action === "create") {
-        const credential = args.credential
-          ? await readDefinitionFile<CredentialBody>(String(args.credential))
-          : undefined;
-        const result = await client.probeConnectorDraft({
-          connector: plan.body,
-          ...(credential ? { credential } : {}),
-        });
-        probe = { ok: result.ok };
-        if (!result.ok) {
-          await renderTaskList(
-            [
-              { id: "validate", label: "Validate", status: "succeeded" },
-              {
-                id: "probe",
-                label: "Probe",
-                status: "failed",
-                detail: result.detail ?? "probe returned not-ok",
-              },
-              { id: "save", label: "Save", status: "pending" },
-            ],
-            { jsonMode },
-          );
-          process.exit(64);
-        }
-      }
-    } else if (!jsonMode) {
-      process.stderr.write(
-        `${pc.yellow("warning:")} --skip-checks active; no validate or probe was run\n`,
-      );
-    }
-
-    const saved =
-      plan.action === "create"
-        ? await client.createConnector(plan.body)
-        : await client.patchConnector(plan.id, plan.body);
-    printJson(saved);
-
-    await renderSummary(
-      {
-        kind: "connector",
-        action: plan.action === "patch" ? "Updated" : "Created",
-        id: saved.id,
-        slug: saved.slug,
-        ...(typeof saved.template_slug === "string" ? { template_slug: saved.template_slug } : {}),
-        ...(probe ? { probe } : {}),
-      },
-      { jsonMode },
-    );
-
-    if (!jsonMode) {
-      const next = saved.auth_type.startsWith("oauth")
-        ? `sk auth --connector-id ${saved.id}`
-        : `sk connectors get ${saved.id}`;
-      process.stderr.write(`\n${pc.dim("Next:")} ${next}\n`);
-    }
-  } catch (err) {
-    reportCommandError(err, { json: jsonMode });
-  }
 }
 
 const createCommand = defineCommand({

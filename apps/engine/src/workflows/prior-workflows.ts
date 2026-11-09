@@ -1,7 +1,8 @@
 import type { Executor } from "../db/client.ts";
 import { type ListWorkflowsOptions, WORKFLOW_LIST_MAX_LIMIT } from "./catalog-view.ts";
-import { listWorkflows, type WorkflowView } from "./service.ts";
-import type { WorkflowDef } from "./types.ts";
+import type { DomainStepDef, DomainWorkflowDef } from "./domain-types.ts";
+import type { WorkflowView } from "./view.ts";
+import { listWorkflows } from "./workflow-queries.ts";
 
 export interface PriorWorkflowRef {
   id: string;
@@ -39,7 +40,7 @@ function tokenisePriorWorkflowText(text: string): string[] {
     .filter((t) => t.length > 0);
 }
 
-function summariseTrigger(trigger: WorkflowDef["trigger"]): string {
+function summariseTrigger(trigger: DomainWorkflowDef["trigger"]): string {
   if (!trigger) return "manual";
   switch (trigger.kind) {
     case "webhook":
@@ -51,7 +52,7 @@ function summariseTrigger(trigger: WorkflowDef["trigger"]): string {
   }
 }
 
-function summariseStepAction(step: Record<string, unknown>): string | undefined {
+function summariseStepAction(step: DomainStepDef): string | undefined {
   if (step.kind === "request") {
     const method = typeof step.method === "string" ? step.method : null;
     const path =
@@ -66,11 +67,13 @@ function summariseStepAction(step: Record<string, unknown>): string | undefined 
   return undefined;
 }
 
-export function buildStepTopology(def: WorkflowDef): PriorWorkflowRef["step_topology"] {
-  return def.steps.map((rawStep) => {
-    const step = rawStep as unknown as Record<string, unknown>;
+export function buildStepTopology(def: DomainWorkflowDef): PriorWorkflowRef["step_topology"] {
+  return def.steps.map((step) => {
     const kind = typeof step.kind === "string" ? step.kind : "unknown";
-    const connector_id = typeof step.connector_id === "string" ? step.connector_id : undefined;
+    const connector_id =
+      "connector_id" in step && typeof step.connector_id === "string"
+        ? step.connector_id
+        : undefined;
     const action = summariseStepAction(step);
     return {
       kind,
@@ -80,7 +83,7 @@ export function buildStepTopology(def: WorkflowDef): PriorWorkflowRef["step_topo
   });
 }
 
-function deriveOutputKeys(def: WorkflowDef): string[] {
+function deriveOutputKeys(def: DomainWorkflowDef): string[] {
   const schema = def.output_schema;
   if (!schema || typeof schema !== "object") return [];
   const properties = (schema as { properties?: unknown }).properties;

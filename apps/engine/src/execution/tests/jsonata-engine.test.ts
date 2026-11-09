@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { SandboxTimeoutError } from "../../sandboxes/index.ts";
 import {
+  JSONataError as ContractJSONataError,
+  compile as compileUncached,
+} from "../core/jsonata-contract.ts";
+import {
   _resetCacheForTests,
   compile,
   evaluate,
@@ -19,6 +23,11 @@ afterEach(() => {
 });
 
 describe("compile cache", () => {
+  test("pure contract compilation is uncached and preserves the public error identity", () => {
+    expect(compileUncached("$.foo")).not.toBe(compileUncached("$.foo"));
+    expect(ContractJSONataError).toBe(JSONataError);
+  });
+
   test("returns the same Expression for the same source", () => {
     const a = compile("$.foo");
     const b = compile("$.foo");

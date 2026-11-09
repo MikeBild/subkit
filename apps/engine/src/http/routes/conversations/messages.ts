@@ -6,15 +6,26 @@ import {
 } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { actorOf } from "../../../audit/index.ts";
-import type { TurnEvent } from "../../../conversations/index.ts";
-import * as svc from "../../../conversations/index.ts";
 import {
-  conversationTurnId,
+  type AppendMessageResult,
+  appendUserMessage,
+  type ConversationTurnOutcome,
+  describeTurnFailure,
   humanChatAnswer,
-  registerConversationAbort,
+  runConversationTurn,
   serializeEvent,
+  type TurnEvent,
+  turnFailureFramePayload,
+} from "../../../conversations/public/authoring.ts";
+import { PendingElicitationBlockedError } from "../../../conversations/public/elicitation.ts";
+import {
+  clearConversationTurnFailure,
+  conversationTurnId,
+  getConversation,
+  recordConversationTurnFailure,
+  registerConversationAbort,
   unregisterConversationAbort,
-} from "../../../conversations/index.ts";
+} from "../../../conversations/public/lifecycle.ts";
 import { analyzeKnowledgeSource, createKnowledgeSource } from "../../../knowledge/index.ts";
 import { logger } from "../../../logging/index.ts";
 import { HttpError } from "../../errors.ts";
@@ -130,10 +141,10 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
       } as const;
       const runtimeContext = buildRuntimeContextFromRequest(c, principal);
       const driveTurn = (
-        appended: svc.AppendMessageResult,
+        appended: AppendMessageResult,
         onEvent?: (ev: TurnEvent) => void,
-      ): Promise<svc.ConversationTurnOutcome> =>
-        svc.runConversationTurn(
+      ): Promise<ConversationTurnOutcome> =>
+        runConversationTurn(
           {
             tenant_id: principal.tenant_id,
             conversation_id: id,
@@ -160,15 +171,15 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
       if (wantsSSE(c.req.header("accept"))) {
         const response = streamSSE(c, async (stream) => {
           try {
-            await svc.clearConversationTurnFailure(db, principal.tenant_id, id).catch(() => {});
-            const appended = await svc.appendUserMessage(appendParams, db);
+            await clearConversationTurnFailure(db, principal.tenant_id, id).catch(() => {});
+            const appended = await appendUserMessage(appendParams, db);
             const outcome = await driveTurn(appended, (ev: TurnEvent) => {
               void stream.writeSSE(serializeEvent(ev));
             });
             await unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
             await stream.writeSSE(outcomeFrame(outcome));
           } catch (error) {
-            if (error instanceof svc.PendingElicitationBlockedError) {
+            if (error instanceof PendingElicitationBlockedError) {
               await stream.writeSSE(
                 errorFrame({
                   code: "pending_elicitation_blocked",
@@ -181,11 +192,14 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
               );
               return;
             }
-            const failure = svc.describeTurnFailure(error);
-            await svc
-              .recordConversationTurnFailure(c.get("db"), principal.tenant_id, id, failure)
-              .catch(() => {});
-            await stream.writeSSE(errorFrame(svc.turnFailureFramePayload(failure)));
+            const failure = describeTurnFailure(error);
+            await recordConversationTurnFailure(
+              c.get("db"),
+              principal.tenant_id,
+              id,
+              failure,
+            ).catch(() => {});
+            await stream.writeSSE(errorFrame(turnFailureFramePayload(failure)));
           } finally {
             await unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
           }
@@ -194,12 +208,12 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
         return response;
       }
 
-      let outcome: svc.ConversationTurnOutcome;
+      let outcome: ConversationTurnOutcome;
       try {
-        const appended = await svc.appendUserMessage(appendParams, db);
+        const appended = await appendUserMessage(appendParams, db);
         outcome = await driveTurn(appended);
       } catch (error) {
-        if (error instanceof svc.PendingElicitationBlockedError) {
+        if (error instanceof PendingElicitationBlockedError) {
           throw new HttpError(409, "pending_elicitation_blocked", error.message, {
             details: {
               conversation_status: "awaiting_input",
@@ -231,7 +245,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
     const memory = formData.get("memory");
     const files = formData.getAll("files");
 
-    const conv = await svc.getConversation(principal.tenant_id, id, db);
+    const conv = await getConversation(principal.tenant_id, id, db);
     if (!conv) return c.json({ error: "conversation not found" }, 404);
     const targetWorkflowId = conv.conversation.target_workflow_id;
 
@@ -297,7 +311,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
           ? `${message}\n\n[Attached ${ingestedSources.length} file(s) as knowledge sources]`
           : message;
 
-      const appended = await svc.appendUserMessage(
+      const appended = await appendUserMessage(
         {
           tenant_id: principal.tenant_id,
           conversation_id: id,
@@ -309,7 +323,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
         },
         db,
       );
-      const outcome = await svc.runConversationTurn(
+      const outcome = await runConversationTurn(
         {
           tenant_id: principal.tenant_id,
           conversation_id: id,
