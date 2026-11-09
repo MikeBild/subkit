@@ -35,6 +35,9 @@ export function fingerprint(text: string): string {
 }
 
 export function splitByBudget(text: string, budget = CHUNK_TARGET_BYTES): string[] {
+  if (!Number.isSafeInteger(budget) || budget <= 0) {
+    throw new RangeError("splitByBudget budget must be a positive safe integer");
+  }
   if (byteLen(text) <= budget) return [text];
   const out: string[] = [];
   const paragraphs = text.split(/\n{2,}/);
@@ -71,7 +74,7 @@ function splitParagraph(p: string, budget: number): string[] {
   for (const s of sentences) {
     if (byteLen(s) > budget) {
       flush();
-      for (let i = 0; i < s.length; i += budget) out.push(s.slice(i, i + budget));
+      for (const piece of splitByUtf8Budget(s, budget)) out.push(piece);
       continue;
     }
     if (byteLen(buf) + byteLen(s) + 1 > budget) flush();
@@ -81,17 +84,41 @@ function splitParagraph(p: string, budget: number): string[] {
   return out;
 }
 
+function splitByUtf8Budget(text: string, budget: number): string[] {
+  const out: string[] = [];
+  let buf = "";
+  let used = 0;
+  for (const codePoint of text) {
+    const bytes = byteLen(codePoint);
+    if (bytes > budget) {
+      throw new RangeError("splitByBudget budget must accommodate every UTF-8 code point");
+    }
+    if (used + bytes > budget) {
+      out.push(buf);
+      buf = codePoint;
+      used = bytes;
+      continue;
+    }
+    buf += codePoint;
+    used += bytes;
+  }
+  if (buf) out.push(buf);
+  return out;
+}
+
 export function byteLen(s: string): number {
   return Buffer.byteLength(s, "utf8");
 }
 
 export function trimToBytes(s: string, cap: number): string {
   if (byteLen(s) <= cap) return s;
-  let approx = Math.min(s.length, cap);
-  while (approx > 0) {
-    const candidate = s.slice(0, approx);
-    if (byteLen(candidate) <= cap) return candidate;
-    approx -= 1;
+  let out = "";
+  let used = 0;
+  for (const codePoint of s) {
+    const bytes = byteLen(codePoint);
+    if (!(used + bytes <= cap)) break;
+    out += codePoint;
+    used += bytes;
   }
-  return "";
+  return out;
 }
