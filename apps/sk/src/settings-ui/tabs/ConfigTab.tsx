@@ -1,7 +1,7 @@
 import { isEngineError } from "@cli-core/errors.ts";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import type { EngineClient } from "../../engine-client.ts";
 import { ConfirmModal } from "../components/ConfirmModal.tsx";
 import { FieldEditor } from "../components/FieldEditor.tsx";
@@ -78,7 +78,7 @@ export const ConfigTab: React.FC<Props> = ({
   const [pendingRestart, setPendingRestart] = useState<PendingRestart | null>(null);
   const [flash, setFlash] = useState<{ kind: "info" | "error" | "ok"; msg: string } | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const ownsEsc =
       searchActive || searchQuery.length > 0 || editing !== null || pendingRestart !== null;
     onInnerEscape?.(ownsEsc);
