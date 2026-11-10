@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { and, eq, inArray } from "drizzle-orm";
 import { apiKeys, auditLog, users } from "../../../db/schema/index.ts";
+import { OPENAPI_INFO } from "../../../http/openapi.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../../http/tests/setup.ts";
 import { createDeterministicHexFactory } from "../../../test-helpers/determinism/ids.ts";
 import { emptyRoleId } from "../../../test-helpers/roles.ts";
@@ -47,7 +48,12 @@ function scrub(value: unknown): string {
 
 function record(name: string, value: unknown): void {
   actual[name] = scrub(value).replace(UUID, uuidName);
-  expect(actual[name]).toBe(golden[name] as string);
+  expect(actual[name]).toBe(
+    (golden[name] as string).replaceAll(
+      JSON.stringify("<engine-version>"),
+      JSON.stringify(OPENAPI_INFO.version),
+    ),
+  );
 }
 
 function recordRows(name: string, rows: readonly unknown[]): void {
