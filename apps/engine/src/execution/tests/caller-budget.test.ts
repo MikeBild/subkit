@@ -310,6 +310,7 @@ describe("settlement when the run ends", () => {
 
   test("an expired lease commits billable units and refunds the rest", async () => {
     const principal = await productUser();
+    const admittedAt = new Date("2026-07-14T10:00:00.000Z");
     await ctx.testDb.db.transaction(async (tx) => {
       await reserveCallerBudget(
         tx,
@@ -319,6 +320,7 @@ describe("settlement when the run ends", () => {
           turn_id: "lease-paid",
           round: 1,
         },
+        admittedAt,
       );
       await reserveCallerBudget(
         tx,
@@ -328,6 +330,7 @@ describe("settlement when the run ends", () => {
           turn_id: "lease-free",
           round: 1,
         },
+        admittedAt,
       );
     });
     await ctx.testDb.db
@@ -340,7 +343,7 @@ describe("settlement when the run ends", () => {
           eq(callerBudgetUnits.unit_key, "lease-paid"),
         ),
       );
-    const later = new Date(getTestNow() + 11 * 60_000);
+    const later = new Date(admittedAt.getTime() + 11 * 60_000);
     expect((await usage(principal, 50, later)).usedToday).toBe(1);
     expect((await unit(principal, "lease-paid"))?.state).toBe("committed");
     expect((await unit(principal, "lease-free"))?.state).toBe("refunded");
