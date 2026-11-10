@@ -44,6 +44,7 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
+      - run: sudo apt-get update && sudo apt-get install -y expect
       - run: bun scripts/fetch-embedding-assets.ts
       - run: bun run build:clipper
       - run: bun run build:cockpit
@@ -116,7 +117,6 @@ jobs:
       - run: bun scripts/fetch-embedding-assets.ts
       - run: bun run build:clipper
       - run: bun run build:cockpit
-      - run: bun run build:sk
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: quality-coordinator
