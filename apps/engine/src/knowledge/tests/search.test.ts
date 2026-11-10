@@ -75,41 +75,46 @@ describe.skipIf(skip)("knowledge/search", () => {
   });
 
   test("equal-rank FTS results keep deterministic order across row updates and limits", async () => {
+    const equalRankCtx = await createKnowledgeTestCtx("search-equal-rank");
     const sourceIds: string[] = [];
-    for (const slug of ["zulu-order-proof", "alpha-order-proof"]) {
-      const source = await createKnowledgeSource(
-        {
-          tenant_id: ctx.tenantId,
-          input: { name: slug, slug, scope: "global" },
-          upload: {
-            buffer: Buffer.from("stabilitytoken"),
-            filename: "stable.txt",
-            mime: "text/plain",
+    try {
+      for (const slug of ["zulu-order-proof", "alpha-order-proof"]) {
+        const source = await createKnowledgeSource(
+          {
+            tenant_id: equalRankCtx.tenantId,
+            input: { name: slug, slug, scope: "global" },
+            upload: {
+              buffer: Buffer.from("stabilitytoken"),
+              filename: "stable.txt",
+              mime: "text/plain",
+            },
+            actor: null,
           },
-          actor: null,
-        },
-        ctx.testDb.db,
+          equalRankCtx.testDb.db,
+        );
+        sourceIds.push(source.id);
+      }
+      const search = (limit: number) =>
+        runKnowledgeFts(
+          equalRankCtx.testDb.db,
+          equalRankCtx.tenantId,
+          sql`plainto_tsquery('english', 'stabilitytoken')`,
+          sql``,
+          limit,
+          [],
+        );
+      const before = await search(2);
+      expect(before.map((hit) => hit.knowledge_source_id)).toEqual([sourceIds[1]!, sourceIds[0]!]);
+      expect(before[0]!.rank).toBe(before[1]!.rank);
+      await equalRankCtx.testDb.db.execute(
+        sql`UPDATE knowledge_chunks SET content = content WHERE knowledge_source_id = ${sourceIds[1]!}`,
       );
-      sourceIds.push(source.id);
+      const after = await search(2);
+      expect(after.map((hit) => hit.id)).toEqual(before.map((hit) => hit.id));
+      expect((await search(1)).map((hit) => hit.id)).toEqual([before[0]!.id]);
+    } finally {
+      await equalRankCtx.cleanup();
     }
-    const search = (limit: number) =>
-      runKnowledgeFts(
-        ctx.testDb.db,
-        ctx.tenantId,
-        sql`plainto_tsquery('english', 'stabilitytoken')`,
-        sql``,
-        limit,
-        [],
-      );
-    const before = await search(2);
-    expect(before.map((hit) => hit.knowledge_source_id)).toEqual([sourceIds[1]!, sourceIds[0]!]);
-    expect(before[0]!.rank).toBe(before[1]!.rank);
-    await ctx.testDb.db.execute(
-      sql`UPDATE knowledge_chunks SET content = content WHERE knowledge_source_id = ${sourceIds[1]!}`,
-    );
-    const after = await search(2);
-    expect(after.map((hit) => hit.id)).toEqual(before.map((hit) => hit.id));
-    expect((await search(1)).map((hit) => hit.id)).toEqual([before[0]!.id]);
   });
 
   test("search returns empty for no matches", async () => {
