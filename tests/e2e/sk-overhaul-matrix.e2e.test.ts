@@ -5,7 +5,7 @@ import {
   createLocalCliOAuthBrowser,
   LOCAL_CLI_OAUTH_BROWSER_SUPPORTED,
 } from "./_helpers/local-cli-oauth-browser.ts";
-import { HAS_SK_BIN, runPtyScenario, SKIP_PTY } from "./_helpers/pty.ts";
+import { HAS_SK_BIN, ptyFailureDiagnostic, runPtyScenario, SKIP_PTY } from "./_helpers/pty.ts";
 import { boot, cli, type E2EEnv, expectSuccess, shutdown } from "./setup.ts";
 
 let env: E2EEnv | null = null;
@@ -192,7 +192,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
       );
-      expect(r.exitCode).toBe(0);
+      expect(r.exitCode, ptyFailureDiagnostic(r)).toBe(0);
     },
     20_000,
   );
@@ -211,7 +211,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
         ],
         { persona: E().personas.member, engineUrl: E().baseUrl },
       );
-      expect(r.exitCode).toBe(0);
+      expect(r.exitCode, ptyFailureDiagnostic(r)).toBe(0);
     },
     20_000,
   );
@@ -227,7 +227,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
         ],
         { persona: E().personas.enduser, engineUrl: E().baseUrl },
       );
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode, ptyFailureDiagnostic(result)).toBe(0);
       const visible = result.visible.replace(/\s+/g, " ");
       expect(visible).toContain("enduser");
       expect(visible).toContain("Resume work, create a connector");
@@ -242,11 +242,12 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
       const r = await runPtyScenario(
         [
           { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
+          { kind: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
       );
-      expect(r.exitCode).toBe(0);
+      expect(r.exitCode, ptyFailureDiagnostic(r)).toBe(0);
     },
     20_000,
   );
@@ -257,11 +258,12 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
       const r = await runPtyScenario(
         [
           { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
+          { kind: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
       );
-      expect(r.exitCode).toBe(0);
+      expect(r.exitCode, ptyFailureDiagnostic(r)).toBe(0);
     },
     20_000,
   );
@@ -272,11 +274,12 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
       const r = await runPtyScenario(
         [
           { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
+          { kind: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
       );
-      expect(r.exitCode).toBe(0);
+      expect(r.exitCode, ptyFailureDiagnostic(r)).toBe(0);
     },
     20_000,
   );
@@ -287,11 +290,12 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
       const r = await runPtyScenario(
         [
           { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
+          { kind: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
       );
-      expect(r.exitCode).toBe(0);
+      expect(r.exitCode, ptyFailureDiagnostic(r)).toBe(0);
     },
     20_000,
   );
@@ -302,11 +306,12 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
       const r = await runPtyScenario(
         [
           { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
+          { kind: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
       );
-      expect(r.exitCode).toBe(0);
+      expect(r.exitCode, ptyFailureDiagnostic(r)).toBe(0);
     },
     20_000,
   );
@@ -317,6 +322,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
       const r = await runPtyScenario(
         [
           { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
+          { kind: "ready" },
           { kind: "send", text: "\x04" },
         ],
         {
@@ -324,7 +330,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
           engineUrl: "http://127.0.0.1:1",
         },
       );
-      expect(r.exitCode).toBe(0);
+      expect(r.exitCode, ptyFailureDiagnostic(r)).toBe(0);
     },
     20_000,
   );
@@ -335,11 +341,12 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
       const r = await runPtyScenario(
         [
           { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
+          { kind: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
       );
-      expect(r.exitCode).toBe(0);
+      expect(r.exitCode, ptyFailureDiagnostic(r)).toBe(0);
     },
     20_000,
   );
@@ -350,11 +357,12 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
       const r = await runPtyScenario(
         [
           { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
+          { kind: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
       );
-      expect(r.exitCode).toBe(0);
+      expect(r.exitCode, ptyFailureDiagnostic(r)).toBe(0);
     },
     20_000,
   );
@@ -365,11 +373,12 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
       const r = await runPtyScenario(
         [
           { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
+          { kind: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
       );
-      expect(r.exitCode).toBe(0);
+      expect(r.exitCode, ptyFailureDiagnostic(r)).toBe(0);
     },
     20_000,
   );
@@ -380,11 +389,12 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
       const r = await runPtyScenario(
         [
           { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
+          { kind: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
       );
-      expect(r.exitCode).toBe(0);
+      expect(r.exitCode, ptyFailureDiagnostic(r)).toBe(0);
     },
     20_000,
   );
@@ -405,7 +415,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
       );
-      expect(r.exitCode).toBe(0);
+      expect(r.exitCode, ptyFailureDiagnostic(r)).toBe(0);
     },
     20_000,
   );

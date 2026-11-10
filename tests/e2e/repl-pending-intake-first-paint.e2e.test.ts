@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createIntakeItem } from "../../apps/engine/src/knowledge/index.ts";
 import { createDeterministicUuidFactory } from "../../apps/engine/src/test-helpers/determinism/ids.ts";
-import { runPtyScenario, SKIP_PTY } from "./_helpers/pty.ts";
+import { ptyFailureDiagnostic, runPtyScenario, SKIP_PTY } from "./_helpers/pty.ts";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
 
 let env: E2EEnv | null = null;
@@ -40,11 +40,12 @@ describe("e2e: sk REPL pending intake first paint", () => {
       const r = await runPtyScenario(
         [
           { kind: "wait", pattern: REVIEW_ROW, label: "intake-review-row" },
+          { kind: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: env.personas.admin, engineUrl: env.baseUrl },
       );
-      expect(r.exitCode).toBe(0);
+      expect(r.exitCode, ptyFailureDiagnostic(r)).toBe(0);
       expect(r.visible).toContain(REVIEW_ROW);
     },
     20_000,

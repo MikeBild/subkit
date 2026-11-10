@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { runPtyScenario, SKIP_PTY } from "./_helpers/pty.ts";
+import { ptyFailureDiagnostic, runPtyScenario, SKIP_PTY } from "./_helpers/pty.ts";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
 
 let env: E2EEnv | null = null;
@@ -21,11 +21,12 @@ describe("e2e: sk cold start", () => {
       const r = await runPtyScenario(
         [
           { kind: "wait", pattern: "Resume work, create a connector", label: "banner" },
+          { kind: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: env.personas.admin, engineUrl: env.baseUrl },
       );
-      expect(r.exitCode).toBe(0);
+      expect(r.exitCode, ptyFailureDiagnostic(r)).toBe(0);
       expect(r.visible.toLowerCase()).toMatch(/__match__|quick|sk/i);
     },
     20_000,
@@ -43,7 +44,7 @@ describe("e2e: sk cold start", () => {
         ],
         { persona: env.personas.admin, engineUrl: env.baseUrl },
       );
-      expect(r.exitCode).toBe(0);
+      expect(r.exitCode, ptyFailureDiagnostic(r)).toBe(0);
     },
     20_000,
   );

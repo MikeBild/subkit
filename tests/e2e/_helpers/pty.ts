@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { scrubString } from "@shared/redaction.ts";
 import type { E2EEnv } from "../setup.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
@@ -17,6 +18,9 @@ const BEL = String.fromCharCode(7);
 const ANSI_ESCAPE_RE = new RegExp(`${ESC}\\[[0-?]*[ -/]*[@-~]`, "g");
 const ANSI_SINGLE_RE = new RegExp(`${ESC}[@-_]`, "g");
 const BELL_RE = new RegExp(BEL, "g");
+const DIAGNOSTIC_LIMIT = 4_000;
+const SENSITIVE_VALUE_RE =
+  /((?:["']?(?:authorization|api[_ -]?key|token|password|secret)["']?\s*[:=]\s*)(?:bearer\s+)?)(?:"[^"]*"|'[^']*'|[^\s,;}]+)/gi;
 
 export interface ExpectWaitStep {
   kind: "wait";
@@ -64,10 +68,10 @@ export function buildExpectScript(
     "match_max 100000",
     "log_user 1",
     `spawn -noecho ${[bin, ...(opts.args ?? [])].map(tclQuote).join(" ")}`,
-    "exec stty rows 80 cols 120 < $spawn_out(slave,name)",
     "set childPid [exp_pid]",
     "set childReaped 0",
     "set scenarioCode [catch {",
+    'if {[catch {exec stty rows 80 cols 120 < $spawn_out(slave,name)} setupError]} {error "PTY setup failed: $setupError"}',
     "proc drain {milliseconds} {",
     "  set deadline [expr {[clock milliseconds] + $milliseconds}]",
     "  while {[clock milliseconds] < $deadline} {",
@@ -159,6 +163,23 @@ export interface RunPtyResult {
   raw: string;
   stderr: string;
   exitCode: number;
+}
+
+function boundedDiagnosticText(value: string): string {
+  const text = scrubString(stripTerminal(value)).replace(SENSITIVE_VALUE_RE, "$1***REDACTED***");
+  return text.length <= DIAGNOSTIC_LIMIT
+    ? text
+    : `…${text.slice(-DIAGNOSTIC_LIMIT)}\n[PTY diagnostic truncated]`;
+}
+
+export function ptyFailureDiagnostic(
+  result: Pick<RunPtyResult, "exitCode" | "stderr" | "visible">,
+): string {
+  return JSON.stringify({
+    exitCode: result.exitCode,
+    stderr: boundedDiagnosticText(result.stderr),
+    visible: boundedDiagnosticText(result.visible),
+  });
 }
 
 export async function runPtyScenario(

@@ -8,6 +8,7 @@ import {
   buildExpectScript,
   EXPECT_BIN,
   type ExpectStep,
+  ptyFailureDiagnostic,
   runPtyScenario,
   SKIP_PTY_WHEN_NO_EXPECT,
 } from "./_helpers/pty.ts";
@@ -123,6 +124,53 @@ for (const scenario of scenarios) {
     30000,
   );
 }
+
+test.skipIf(SKIP_PTY_WHEN_NO_EXPECT)(
+  "fails closed when terminal setup cannot invoke stty and keeps a bounded safe diagnostic",
+  async () => {
+    const after = childFixture("await Bun.sleep(120000)");
+    let afterRunner: ReturnType<typeof spawnExpect> | undefined;
+    const interceptStty = [
+      "rename exec realExec",
+      "proc exec {args} {",
+      '  if {[lindex $args 0] eq "stty"} {',
+      '    puts stderr "__PTY_CHILD_PID__ [exp_pid]"',
+      '    error "forced stty failure"',
+      "  }",
+      "  uplevel 1 [list realExec {*}$args]",
+      "}",
+    ].join("\n");
+    try {
+      const script = buildExpectScript([], { binary: after.binary });
+      afterRunner = spawnExpect(`${interceptStty}\n${script}`, after.directory);
+      const [exitCode, stderr] = await bounded(
+        Promise.all([afterRunner.exited, new Response(afterRunner.stderr).text()]),
+      );
+      expect(exitCode).toBe(1);
+      expect(stderr).toContain("PTY setup failed");
+      const pid = Number(/__PTY_CHILD_PID__ (\d+)/.exec(stderr)?.[1]);
+      expect(Number.isSafeInteger(pid)).toBe(true);
+      const diagnostic = ptyFailureDiagnostic({
+        exitCode,
+        stderr: `${stderr}\nauthorization: Bearer top-secret\n{"token":"quoted-secret","api_key":"also-secret"}`,
+        visible: "x".repeat(5_000),
+      });
+      expect(diagnostic).toContain("PTY setup failed");
+      expect(diagnostic).toContain("***REDACTED***");
+      expect(diagnostic).not.toContain("top-secret");
+      expect(diagnostic).not.toContain("quoted-secret");
+      expect(diagnostic).not.toContain("also-secret");
+      expect(diagnostic).toContain("[PTY diagnostic truncated]");
+      expect(diagnostic.length).toBeLessThan(8_300);
+      expect(() => process.kill(pid, 0)).toThrow();
+    } finally {
+      after.cleanup();
+      if (afterRunner?.exitCode === null) afterRunner.kill("SIGKILL");
+      if (afterRunner) await afterRunner.exited;
+    }
+  },
+  30_000,
+);
 
 function spawnExpect(script: string, cwd: string) {
   if (!EXPECT_BIN) throw new Error("missing expect command");
