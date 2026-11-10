@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
+import type { PoolClient } from "pg";
+import type { Db } from "../db/client.ts";
 import * as schema from "../db/schema/index.ts";
 import {
   auditLog,
@@ -59,6 +61,21 @@ async function state() {
       .from(schedulerSweepCursors)
       .where(eq(schedulerSweepCursors.producer, "catalog"))
   )[0];
+}
+
+async function waitForBlockedBackend(pid: number, blockerPid: number, signal: AbortSignal) {
+  const deadline = Date.now() + 1_000;
+  while (!signal.aborted && Date.now() < deadline) {
+    const result = await fixture.db.execute<{
+      wait_event_type: string | null;
+      blockers: number[];
+    }>(sql`SELECT wait_event_type, pg_blocking_pids(pid) AS blockers
+      FROM pg_stat_activity WHERE pid = ${pid}`);
+    const row = result.rows[0];
+    if (row?.wait_event_type === "Lock" && row.blockers.includes(blockerPid)) return;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  if (!signal.aborted) throw new Error(`backend ${pid} did not block on a lock`);
 }
 
 beforeAll(async () => {
@@ -209,6 +226,87 @@ test("busy ownership and contended cursor row locks return without mutation", as
     await holder;
   }
   expect(await releaseSweepLease(page.lease, fixture.db)).toEqual({ kind: "released" });
+});
+
+test("a busy contender does not make a committed owner lose its lease", async () => {
+  const [tenantId] = await tenantRows(1);
+  if (!tenantId) throw new Error("missing fixture tenant");
+  const page = claimed(await acquireSweepPage("catalog", firstOwner, fixture.db));
+  const candidate = page.candidates[0];
+  if (!candidate) throw new Error("missing fixture candidate");
+  const contenderReady = Promise.withResolvers<number>();
+  const releaseContender = Promise.withResolvers<void>();
+  const contenderDb = new Proxy(fixture.db, {
+    get(target, property, receiver) {
+      if (property !== "transaction") return Reflect.get(target, property, receiver);
+      return async (run: Parameters<Db["transaction"]>[0]) =>
+        target.transaction(async (tx) => {
+          try {
+            const result = await run(tx);
+            const pid = Number(
+              (await tx.execute<{ pid: number }>(sql`SELECT pg_backend_pid() AS pid`)).rows[0]?.pid,
+            );
+            if (!Number.isInteger(pid)) throw new Error("missing contender backend pid");
+            contenderReady.resolve(pid);
+            await releaseContender.promise;
+            return result;
+          } catch (error) {
+            contenderReady.reject(error);
+            throw error;
+          }
+        });
+    },
+  }) as Db;
+  const contender = acquireSweepPage("catalog", secondOwner, contenderDb);
+  let ownerClient: PoolClient | undefined;
+  let rechecked: ReturnType<typeof recheckSweepCandidate> | undefined;
+  let observation: AbortController | undefined;
+  let blocked: Promise<void> | undefined;
+  let checked: Awaited<ReturnType<typeof recheckSweepCandidate>> | undefined;
+  let cleanupFailure: unknown;
+  try {
+    const contenderBackendPid = await Promise.race([
+      contenderReady.promise,
+      contender.then(() => {
+        throw new Error("contender settled before the lock barrier");
+      }),
+    ]);
+    ownerClient = await fixture.pool.connect();
+    const ownerDb = drizzle(ownerClient, { schema });
+    const ownerPid = Number(
+      (await ownerClient.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")).rows[0]?.pid,
+    );
+    if (!Number.isInteger(ownerPid)) throw new Error("missing owner backend pid");
+    rechecked = recheckSweepCandidate(page.lease, candidate, ownerDb);
+    observation = new AbortController();
+    blocked = waitForBlockedBackend(ownerPid, contenderBackendPid, observation.signal);
+    const observed = await Promise.race([
+      blocked.then(() => "blocked" as const),
+      rechecked.then(() => "settled" as const),
+    ]);
+    expect(observed).toBe("blocked");
+  } finally {
+    releaseContender.resolve();
+    observation?.abort();
+    const settled = await Promise.allSettled([
+      contender,
+      ...(blocked ? [blocked] : []),
+      ...(rechecked ? [rechecked] : []),
+    ]);
+    ownerClient?.release();
+    const rejected = settled.find((result) => result.status === "rejected");
+    if (rejected?.status === "rejected") cleanupFailure = rejected.reason;
+    if (rechecked && !cleanupFailure) checked = await rechecked;
+  }
+  if (cleanupFailure) throw cleanupFailure;
+  expect(await contender).toEqual({ kind: "busy" });
+  expect(checked).toEqual({
+    kind: "eligible_metadata",
+    candidate: expect.objectContaining({
+      id: candidate.id,
+      tenant_id: tenantId,
+    }),
+  });
 });
 
 test("renewal invalidates stale same-owner revisions and expiry takeover preserves the epoch range", async () => {

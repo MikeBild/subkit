@@ -100,13 +100,14 @@ async function lockCursor(
   tx: Executor,
   producer: SchedulerSweepProducer,
   mode: "share" | "update",
+  noWait = true,
 ): Promise<Cursor> {
   // tenant-filter:exempt — fixed instance scheduler cursor enum has eight operational rows
   const [row] = await tx
     .select()
     .from(schedulerSweepCursors)
     .where(eq(schedulerSweepCursors.producer, producer))
-    .for(mode, { noWait: true });
+    .for(mode, noWait ? { noWait: true } : undefined);
   if (!row) throw new SweepCursorError("sweep_cursor_missing");
   return cursorSchema.parse(row);
 }
@@ -294,7 +295,7 @@ export async function withLiveSweepLease<T>(
   const lease = leaseSchema.parse(leaseInput);
   try {
     return await boundedTransaction(db, async (tx) => {
-      const row = await lockCursor(tx, lease.producer, "share");
+      const row = await lockCursor(tx, lease.producer, "share", false);
       if (!sameLease(row, lease)) return lost;
       const clock = await databaseTime(tx, row);
       if (!clock.live) return lost;
