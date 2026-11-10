@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { AUDIT_SOURCE_HEADER } from "@shared/audit-source.ts";
 import { runCommand } from "citty";
@@ -211,7 +212,7 @@ describe("knowledge-sources request bodies follow the contract", () => {
       workflow_id: knowledgeSource.workflow_id,
       files: [{ path: "/index.md", content: "# Runbooks\n\nDeploy steps.\n" }],
     } satisfies Schemas["CreateKnowledgeSourceBundleBody"]);
-    expect(stdout).toContain(
+    expect(stripVTControlCharacters(stdout)).toContain(
       "created: Runbooks (runbooks) — 1 files, 1 chunks ingested, 0 skipped",
     );
   });
