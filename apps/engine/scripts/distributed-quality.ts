@@ -14,9 +14,12 @@ import {
   distributedQualityTicketSha256,
   parseDistributedQualityTicket,
 } from "./audit/distributed-quality-ticket.ts";
+import { runtimePureTargetPaths } from "./audit/pure-targets.ts";
 import { createDistributedQualityTicket } from "./prepare-distributed-quality-ticket.ts";
 import {
   collectCoverageShardUnion,
+  coverageBehaviorProofDescriptor,
+  coverageBehaviorProofPath,
   executeCoverageBehaviorGroups,
   executeCoverageWave,
 } from "./run-coverage-shards.ts";
@@ -91,31 +94,48 @@ function restoreCoordinator() {
     throw new Error("Coordinator package is foreign");
   return restored;
 }
-function behaviorProof(ticket: ReturnType<typeof readTicket>["value"], shardId: string): string {
+export function selectDistributedCoverageBehaviorProof(options: {
+  repo: string;
+  manifestPath: string;
+  waveId: string;
+  coverageRunId: string;
+  shardId: string;
+}): string {
   const root = join(
-    repo,
+    options.repo,
     "reports/coverage/shards",
-    ticket.wave_id,
-    ticket.coverage_run_id,
+    options.waveId,
+    options.coverageRunId,
     "behavior",
   );
-  const wave = loadMutationWave(repo, manifestPath()).wave;
-  const wanted = wave.shards.find((s) => s.id === shardId);
+  const prepared = loadMutationWave(options.repo, options.manifestPath);
+  const runtimeScope = runtimePureTargetPaths(prepared.entries);
+  const wanted = prepared.wave.shards.find((s) => s.id === options.shardId);
   if (!wanted) throw new Error("Unknown shard behavior proof");
-  for (const path of allFiles(root).filter((p) => p.endsWith(".json"))) {
-    const proof = JSON.parse(readFileSync(join(repo, path), "utf8")) as {
-      wave_id?: unknown;
-      tests?: unknown;
-    };
-    if (
-      proof.wave_id === ticket.wave_id &&
-      Array.isArray(proof.tests) &&
-      JSON.stringify([...proof.tests].sort()) ===
-        JSON.stringify(wanted.tests.map((test) => test.path).sort())
-    )
-      return join(repo, path);
-  }
-  throw new Error("Shard behavior proof absent or misrouted");
+  const shard = {
+    ...wanted,
+    targets: wanted.targets.filter((target) => runtimeScope.includes(target)),
+  };
+  const usesModuleMock = (test: string) =>
+    readFileSync(join(options.repo, test), "utf8").includes("mock.module(");
+  const descriptor = coverageBehaviorProofDescriptor({ shard, usesModuleMock });
+  const path = coverageBehaviorProofPath({
+    artifactRoot: root,
+    shard,
+    usesModuleMock,
+  });
+  if (!existsSync(path)) throw new Error("Shard behavior proof absent or misrouted");
+  const proof = JSON.parse(readFileSync(path, "utf8")) as {
+    wave_id?: unknown;
+    tests?: unknown;
+  };
+  if (
+    proof.wave_id !== options.waveId ||
+    !Array.isArray(proof.tests) ||
+    JSON.stringify(proof.tests) !== JSON.stringify(descriptor.tests)
+  )
+    throw new Error("Shard behavior proof absent or misrouted");
+  return path;
 }
 function measurements(proofs: Map<string, string>): Map<string, number> {
   const measured = new Map<string, number>();
@@ -193,7 +213,9 @@ export async function prepareDistributedQuality() {
   const durations = measurements(proofs);
   const budgets = Object.fromEntries(
     prepared.wave.shards.map((s) => {
-      const tests = s.tests.map((test) => test.path);
+      const tests = s.tests
+        .filter((test) => test.execution !== "external_runtime")
+        .map((test) => test.path);
       return [
         s.id,
         deriveDistributedBaselineBudget(
@@ -266,7 +288,18 @@ export async function runDistributedCoverage() {
     runId: value.coverage_run_id,
     outputRoot: coverageRoot,
     shardIds: [shard],
-    behaviorReceipts: new Map([[shard, behaviorProof(value, shard)]]),
+    behaviorReceipts: new Map([
+      [
+        shard,
+        selectDistributedCoverageBehaviorProof({
+          repo,
+          manifestPath: manifestPath(),
+          waveId: value.wave_id,
+          coverageRunId: value.coverage_run_id,
+          shardId: shard,
+        }),
+      ],
+    ]),
     distributed: { ticket: value, ticketSha256: sha256, commit, githubRunId },
   });
 }

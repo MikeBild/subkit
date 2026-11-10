@@ -39,6 +39,40 @@ export function relativeCoverageEvidencePath(repo: string, path: string): string
   return value;
 }
 
+type BehaviorProofShard = {
+  id: string;
+  targets: readonly string[];
+  tests: readonly {
+    path: string;
+    kind: string;
+    covers_targets: readonly string[];
+    execution?: "in_process" | "external_runtime";
+  }[];
+  resource_tags: readonly string[];
+};
+
+export function coverageBehaviorProofDescriptor(options: {
+  shard: BehaviorProofShard;
+  usesModuleMock: (test: string) => boolean;
+}) {
+  const tests = planCoverageBehaviorGroups({
+    shards: [options.shard],
+    usesModuleMock: options.usesModuleMock,
+  })[0]!.tests;
+  return {
+    tests,
+    filename: `${hash(`${options.shard.id}\0${tests.join("\0")}`)}.json`,
+  };
+}
+
+export function coverageBehaviorProofPath(options: {
+  artifactRoot: string;
+  shard: BehaviorProofShard;
+  usesModuleMock: (test: string) => boolean;
+}): string {
+  return join(options.artifactRoot, coverageBehaviorProofDescriptor(options).filename);
+}
+
 export async function executeCoverageBehaviorGroups(options: {
   repo: string;
   manifestPath: string;
@@ -75,12 +109,12 @@ export async function executeCoverageBehaviorGroups(options: {
     });
     for (const shardId of group.shards) {
       const shard = shards.find((candidate) => candidate.id === shardId)!;
-      const local = planCoverageBehaviorGroups({
-        shards: [shard],
+      const descriptor = coverageBehaviorProofDescriptor({
+        shard,
         usesModuleMock: (test) =>
           readFileSync(join(options.repo, test), "utf8").includes("mock.module("),
-      })[0]!.tests;
-      const path = join(options.artifactRoot, `${hash(`${shardId}\0${local.join("\0")}`)}.json`);
+      });
+      const path = join(options.artifactRoot, descriptor.filename);
       writeFileSync(
         path,
         json({
@@ -92,7 +126,7 @@ export async function executeCoverageBehaviorGroups(options: {
           config_sha256: wave.config_sha256,
           context_sha256: contextSha256,
           resource_tags: group.resource_tags,
-          tests: local,
+          tests: descriptor.tests,
           executed_tests: group.tests,
           terminal,
         }),
@@ -233,7 +267,7 @@ export async function executeCoverageWave(options: {
       throw new Error("Coverage wave changed during execution");
   };
   const behaviorRoot = join(root, "behavior");
-  mkdirSync(behaviorRoot);
+  mkdirSync(behaviorRoot, { recursive: true });
   const behaviorReceipts = new Map(options.behaviorReceipts);
   if (behaviorReceipts.size === 0)
     for (const [shardId, path] of await executeCoverageBehaviorGroups({
