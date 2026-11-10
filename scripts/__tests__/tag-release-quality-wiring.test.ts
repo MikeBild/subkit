@@ -31,13 +31,32 @@ test("tagging invokes only the strict local shard-bundle release gate", () => {
   expect(tagRelease).toContain("verify:quality:release-shards");
 });
 
-test("quality CI preserves global coverage evidence before the canonical shard proof", () => {
+test("quality CI retains global coverage before the distributed coordinator, shard, and merge proof", () => {
   const coverage = qualityWorkflow.indexOf("bun run check:coverage-floor");
   const evidence = qualityWorkflow.indexOf("name: coverage-floor-evidence");
-  const shards = qualityWorkflow.indexOf("bun run verify:quality:release-shards");
+  const prepare = qualityWorkflow.indexOf("distributed-quality.ts prepare");
+  const coordinatorArtifact = qualityWorkflow.indexOf("name: quality-coordinator");
+  const shard = qualityWorkflow.indexOf("  shard:\n    needs: coordinator");
+  const shardCoverage = qualityWorkflow.indexOf("distributed-quality.ts coverage");
+  const shardMutation = qualityWorkflow.indexOf("distributed-quality.ts mutation");
+  const shardArtifact = qualityWorkflow.indexOf(`name: quality-shard-\${{ matrix.shard }}`);
+  const mergeJob = qualityWorkflow.indexOf(
+    "  coverage-and-mutation:\n    needs: [coordinator, shard]",
+  );
+  const merge = qualityWorkflow.indexOf("distributed-quality.ts merge");
+  const finalArtifact = qualityWorkflow.indexOf("name: quality-shard-evidence");
   expect(coverage).toBeGreaterThan(-1);
   expect(evidence).toBeGreaterThan(coverage);
-  expect(shards).toBeGreaterThan(evidence);
+  expect(prepare).toBeGreaterThan(evidence);
+  expect(coordinatorArtifact).toBeGreaterThan(prepare);
+  expect(shard).toBeGreaterThan(coordinatorArtifact);
+  expect(shardCoverage).toBeGreaterThan(shard);
+  expect(shardMutation).toBeGreaterThan(shardCoverage);
+  expect(shardArtifact).toBeGreaterThan(shardMutation);
+  expect(mergeJob).toBeGreaterThan(shardArtifact);
+  expect(merge).toBeGreaterThan(mergeJob);
+  expect(finalArtifact).toBeGreaterThan(merge);
+  expect(qualityWorkflow).toContain("retention-days: 90");
   expect(qualityWorkflow).toContain("retention-days: 30");
   expect(qualityWorkflow).toContain("path: reports/coverage/");
 });

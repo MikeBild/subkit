@@ -166,4 +166,39 @@ describe("two-step Esc — onInnerEscape contract", () => {
       ui.unmount();
     }
   });
+
+  test("ProfileTab claims Esc before rendering the tenant picker", async () => {
+    const framesAtClaim: string[] = [];
+    let ui: ReturnType<typeof renderInk> | undefined;
+    ui = renderInk(
+      <ProfileTab
+        client={fakeClient({
+          listIdentityTenants: mock(async () => ({
+            items: [
+              {
+                id: "t1",
+                slug: "acme",
+                display_name: "Acme",
+                created_at: "2024-11-14T22:13:20.000Z",
+                updated_at: "2024-11-14T22:13:20.000Z",
+              },
+            ],
+          })),
+        })}
+        onInnerEscape={(active) => {
+          if (active) framesAtClaim.push(ui?.text() ?? "");
+        }}
+      />,
+    );
+    try {
+      await ui.waitFor((text) => text.includes("Start a new session"));
+      await ui.type("t");
+      await ui.waitFor((text) => text.includes("Enter to switch"));
+      const firstClaim = framesAtClaim[0];
+      if (firstClaim === undefined) throw new Error("missing tenant-picker escape claim");
+      expect(firstClaim).not.toContain("Enter to switch");
+    } finally {
+      ui.unmount();
+    }
+  });
 });

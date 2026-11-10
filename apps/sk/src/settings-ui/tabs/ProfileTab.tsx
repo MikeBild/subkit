@@ -184,6 +184,7 @@ export const ProfileTab: React.FC<Props> = ({ client, onAction, onInnerEscape })
       return;
     }
     if (input === "t") {
+      onInnerEscape?.(true);
       setTenantPickerOpen(true);
       void fetchTenants();
       return;
