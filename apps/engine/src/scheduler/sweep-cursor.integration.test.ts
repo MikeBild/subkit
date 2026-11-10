@@ -64,8 +64,8 @@ async function state() {
 }
 
 async function waitForBlockedBackend(pid: number, blockerPid: number, signal: AbortSignal) {
-  const deadline = Date.now() + 1_000;
-  while (!signal.aborted && Date.now() < deadline) {
+  const deadline = AbortSignal.timeout(1_000);
+  while (!signal.aborted && !deadline.aborted) {
     const result = await fixture.db.execute<{
       wait_event_type: string | null;
       blockers: number[];
