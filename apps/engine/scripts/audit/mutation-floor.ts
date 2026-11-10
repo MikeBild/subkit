@@ -38,6 +38,35 @@ export interface MutationEquivalentManifest {
   equivalents: MutationEquivalent[];
 }
 
+export function nativeExactIgnoredMutant(entry: MutationEquivalent) {
+  const { file, source_sha256, location, mutatorName, replacement, original } = entry;
+  const identity = [
+    file,
+    source_sha256,
+    location.start.line,
+    location.start.column,
+    location.end.line,
+    location.end.column,
+    mutatorName,
+    replacement,
+    original,
+    entry.reason,
+    entry.independent_review,
+  ];
+  return {
+    file,
+    source_sha256,
+    location,
+    mutatorName,
+    replacement,
+    original,
+    statusReason:
+      entry.status === "Survived"
+        ? `subkit-reviewed-equivalence:${sha256(JSON.stringify(identity))}`
+        : entry.statusReason,
+  };
+}
+
 interface EquivalentMatch {
   file: string;
   mutant: unknown;
@@ -179,6 +208,7 @@ export function validateMutationEquivalents(input: {
   repo: string;
   expectedScope: readonly string[];
   sourceSha256ForFile: (file: string) => string | null;
+  allowNativeReviewedIgnores?: boolean;
 }): { errors: string[]; matches: EquivalentMatch[] } {
   const errors: string[] = [];
   const matches: EquivalentMatch[] = [];
@@ -233,12 +263,18 @@ export function validateMutationEquivalents(input: {
         location?: unknown;
       } | null;
       return (
-        value?.status === (entry.status ?? "Ignored") &&
+        value !== null &&
+        value !== undefined &&
+        ((value.status === (entry.status ?? "Ignored") &&
+          ((entry.status ?? "Ignored") === "Ignored"
+            ? value.statusReason === entry.statusReason
+            : value.statusReason === undefined || value.statusReason === "")) ||
+          (input.allowNativeReviewedIgnores === true &&
+            entry.status === "Survived" &&
+            value.status === "Ignored" &&
+            value.statusReason === nativeExactIgnoredMutant(entry).statusReason)) &&
         value.mutatorName === entry.mutatorName &&
         value.replacement === entry.replacement &&
-        ((entry.status ?? "Ignored") === "Ignored"
-          ? value.statusReason === entry.statusReason
-          : value.statusReason === undefined || value.statusReason === "") &&
         sameLocation(entry.location, value.location)
       );
     });
@@ -320,6 +356,8 @@ export function validateMutationRunConfig(input: { config: unknown; report: unkn
       errors.push(`${label} mutator must be an object, null, or absent`);
     else if (asObject(mutator) && !emptyExcludedMutations(asObject(mutator)?.excludedMutations))
       errors.push(`${label} mutator.excludedMutations must be absent or []`);
+    if (asObject(mutator) && !emptyExcludedMutations(asObject(mutator)?.exactIgnoredMutants))
+      errors.push(`${label} mutator.exactIgnoredMutants must be absent or []`);
     if (!falseOrAbsent(value.ignoreStatic))
       errors.push(`${label} ignoreStatic must be absent or false`);
     if (asObject(value.thresholds)?.break !== 100)
@@ -368,6 +406,7 @@ export function scoreFiles(
       const status = (mutant as { status?: unknown } | null)?.status;
       if (typeof status !== "string") return { error: `${file} has a mutant without a status` };
       if (status === "Ignored" && equivalentMutants.includes(mutant)) {
+        rawUndetected += 1;
         equivalentExcluded += 1;
         continue;
       }
@@ -410,7 +449,7 @@ export function renderScore(score: FileScore): string {
   const equivalent = score.equivalent_excluded
     ? `, ${score.equivalent_excluded} equivalent excluded`
     : "";
-  return `${score.file}  raw ${score.raw_score.toFixed(2)} % (${score.raw_detected} detected, ${score.raw_undetected} survived); adjusted ${score.score.toFixed(2)} % (${score.detected} detected, ${score.undetected} survived${equivalent})`;
+  return `${score.file}  conservative raw ${score.raw_score.toFixed(2)} % (${score.raw_detected} detected, ${score.raw_undetected} undetected); adjusted ${score.score.toFixed(2)} % (${score.detected} detected, ${score.undetected} undetected${equivalent})`;
 }
 
 export interface MutationReceipt {

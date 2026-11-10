@@ -13,14 +13,22 @@ export function inspectMutationShardScore(input: {
   sourceSha256ForFile: (file: string) => string | null;
 }) {
   const errors: string[] = [];
-  const report = input.report as { error?: unknown; errors?: unknown } | null;
+  const report = input.report as {
+    error?: unknown;
+    errors?: unknown;
+    config?: { mutator?: { exactIgnoredMutants?: unknown } };
+  } | null;
   if (
     !report ||
     report.error !== undefined ||
     (report.errors !== undefined && (!Array.isArray(report.errors) || report.errors.length > 0))
   )
     errors.push("mutation report has nonterminal errors");
-  const equivalents = validateMutationEquivalents(input);
+  const exactIgnores = report?.config?.mutator?.exactIgnoredMutants;
+  const equivalents = validateMutationEquivalents({
+    ...input,
+    allowNativeReviewedIgnores: Array.isArray(exactIgnores) && exactIgnores.length > 0,
+  });
   errors.push(...equivalents.errors);
   const scores = scoreFiles(
     input.report,
@@ -37,10 +45,14 @@ export function inspectMutationShardScore(input: {
     (match) => (match.mutant as { status?: unknown }).status === "Survived",
   ).length;
   const rawUndetected = scores.reduce((sum, score) => sum + score.raw_undetected, 0);
-  const expectedExit = rawUndetected > 0 ? 1 : 0;
+  const nativeIgnored = equivalents.matches.filter(
+    (match) => (match.mutant as { status?: unknown }).status === "Ignored",
+  ).length;
+  const expectedExit = rawUndetected - nativeIgnored > 0 ? 1 : 0;
   if (
     input.exitCode !== expectedExit ||
-    (input.exitCode === 1 && (equivalentSurvivors === 0 || equivalentSurvivors !== rawUndetected))
+    (input.exitCode === 1 &&
+      (equivalentSurvivors === 0 || equivalentSurvivors !== rawUndetected - nativeIgnored))
   )
     errors.push(`nonzero exit or raw score/exit mismatch: ${input.exitCode}`);
   return { errors, scores };

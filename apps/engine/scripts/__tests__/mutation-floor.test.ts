@@ -129,6 +129,15 @@ describe("validateMutationRunConfig", () => {
       "mutation report config coverageAnalysis must equal off",
     ]);
   });
+  test("base config cannot authorize exact ignores outside the reviewed registry", () => {
+    const injected = { ...canonical, mutator: { exactIgnoredMutants: [{ file: "a.ts" }] } };
+    expect(
+      validateMutationRunConfig({ config: injected, report: { config: canonical } }),
+    ).toContain("stryker.config.json mutator.exactIgnoredMutants must be absent or []");
+    expect(
+      validateMutationRunConfig({ config: canonical, report: { config: injected } }),
+    ).toContain("mutation report config mutator.exactIgnoredMutants must be absent or []");
+  });
 });
 
 describe("readReportPath", () => {
@@ -282,8 +291,8 @@ describe("reviewed mutation equivalents", () => {
       {
         file,
         raw_detected: 0,
-        raw_undetected: 0,
-        raw_score: 100,
+        raw_undetected: 1,
+        raw_score: 0,
         detected: 0,
         undetected: 0,
         score: 100,
@@ -441,7 +450,7 @@ describe("renderScore", () => {
         equivalent_excluded: 1,
       }),
     ).toBe(
-      "a.ts  raw 75.00 % (3 detected, 1 survived); adjusted 100.00 % (4 detected, 0 survived, 1 equivalent excluded)",
+      "a.ts  conservative raw 75.00 % (3 detected, 1 undetected); adjusted 100.00 % (4 detected, 0 undetected, 1 equivalent excluded)",
     );
   });
 });

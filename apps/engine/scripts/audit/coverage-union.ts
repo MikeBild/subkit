@@ -3,6 +3,10 @@ import { readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { validateCoverageBehaviorProof } from "./coverage-behavior-proof.ts";
 import { planCoverageShardExecution } from "./coverage-shard-plan.ts";
+import {
+  assertDistributedShardReceipt,
+  type DistributedQualityTicket,
+} from "./distributed-quality-ticket.ts";
 import { coverageRows, parseLcov } from "./lcov.ts";
 import type { MutationWaveManifest } from "./mutation-wave.ts";
 
@@ -17,6 +21,7 @@ export interface CoverageShardReceipt {
   coverage_config_sha256: string;
   test_sha256: string;
   target_digest_sha256: string;
+  lock_sha256?: string;
   native_receipt_sha256?: string;
   native_provenance_sha256?: string;
   native_lcov_sha256?: string;
@@ -25,6 +30,9 @@ export interface CoverageShardReceipt {
   type_only_targets?: readonly string[];
   not_applicable?: "type_only_ast";
   direct_target_evidence: readonly { target: string; path: string; sha256: string; lcov: string }[];
+  distributed_ticket_sha256?: string;
+  coordinator_commit_sha?: string;
+  github_run_id?: string;
 }
 
 export interface CoverageShardNative {
@@ -46,6 +54,12 @@ export interface CoverageUnionInput {
   shards: readonly CoverageShardReceipt[];
   native: readonly CoverageShardNative[];
   repo: string;
+  distributed?: {
+    ticket: DistributedQualityTicket;
+    ticketSha256: string;
+    commit: string;
+    githubRunId: string;
+  };
 }
 
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
@@ -137,6 +151,20 @@ export function validateCoverageShardUnion(input: CoverageUnionInput): string[] 
       ["target_digest_sha256", input.wave.target_digest_sha256],
     ] as const)
       if (receipt[key] !== value) errors.push(`${prefix} ${key} mismatch`);
+    if (input.distributed)
+      try {
+        assertDistributedShardReceipt({
+          ticket: input.distributed.ticket,
+          ticketSha256: input.distributed.ticketSha256,
+          receipt,
+          shardId: shard.id,
+          phase: "coverage",
+          trustedCommit: input.distributed.commit,
+          trustedRunId: input.distributed.githubRunId,
+        });
+      } catch (error) {
+        errors.push(`${prefix} distributed provenance invalid: ${String(error)}`);
+      }
     if (JSON.stringify(receipt.targets) !== JSON.stringify(shard.targets))
       errors.push(`${prefix} targets mismatch`);
     if (

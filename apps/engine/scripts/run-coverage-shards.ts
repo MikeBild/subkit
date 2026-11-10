@@ -16,6 +16,10 @@ import {
   type CoverageShardReceipt,
   validateCoverageShardUnion,
 } from "./audit/coverage-union.ts";
+import {
+  assertDistributedWaveBinding,
+  type DistributedQualityTicket,
+} from "./audit/distributed-quality-ticket.ts";
 import { planMutationBatches } from "./audit/mutation-scheduler.ts";
 import { runtimePureTargetPaths } from "./audit/pure-targets.ts";
 import { loadMutationWave, parseMutationExecutorArgs } from "./run-mutation-shards.ts";
@@ -35,58 +39,48 @@ export function relativeCoverageEvidencePath(repo: string, path: string): string
   return value;
 }
 
-export async function executeCoverageWave(options: {
+export async function executeCoverageBehaviorGroups(options: {
   repo: string;
   manifestPath: string;
-  timeoutMs: number;
-}): Promise<string> {
-  const { repo, manifestPath, timeoutMs } = options;
-  const prepared = loadMutationWave(repo, manifestPath);
+  runId: string;
+  artifactRoot: string;
+}): Promise<Map<string, string>> {
+  const prepared = loadMutationWave(options.repo, options.manifestPath);
   const { wave, manifestText, entries } = prepared;
   const runtimeScope = runtimePureTargetPaths(entries);
   const manifestSha256 = hash(manifestText);
-  const runId = `run-${randomUUID()}`;
-  const root = join(repo, "reports/coverage/shards", wave.wave_id, runId);
-  mkdirSync(root, { recursive: true });
-  writeFileSync(join(root, "wave.json"), manifestText, { flag: "wx" });
-  const assertUnchanged = () => {
-    const current = loadMutationWave(repo, manifestPath);
-    if (hash(current.manifestText) !== manifestSha256)
-      throw new Error("Coverage wave changed during execution");
-  };
-  const behaviorRoot = join(root, "behavior");
-  mkdirSync(behaviorRoot);
-  const behaviorReceipts = new Map<string, string>();
-  const behaviorShards = wave.shards.map((shard) => ({
+  const receipts = new Map<string, string>();
+  mkdirSync(options.artifactRoot, { recursive: true });
+  const shards = wave.shards.map((shard) => ({
     ...shard,
     targets: shard.targets.filter((target) => runtimeScope.includes(target)),
   }));
   for (const group of planCoverageBehaviorGroups({
-    shards: behaviorShards,
-    usesModuleMock: (test) => readFileSync(join(repo, test), "utf8").includes("mock.module("),
+    shards,
+    usesModuleMock: (test) =>
+      readFileSync(join(options.repo, test), "utf8").includes("mock.module("),
   })) {
-    assertUnchanged();
     const database = coverageDatabaseUrl(process.env, group.resource_tags);
     if (database.error) throw new Error(database.error);
     const environment = coverageTestEnvironment(process.env, database.url);
     const contextSha256 = hash(json(coverageExecutionContext(environment, group.resource_tags)));
     const terminal = await executeCoverageBehaviorTests({
-      repo,
-      artifactRoot: behaviorRoot,
-      owner: `coverage-behavior:${wave.wave_id}:${runId}`,
+      repo: options.repo,
+      artifactRoot: options.artifactRoot,
+      owner: `coverage-behavior:${wave.wave_id}:${options.runId}`,
       sourceDigest: wave.source_freeze_sha256,
       contextSha256,
       tests: group.tests,
       env: environment,
     });
-    assertUnchanged();
     for (const shardId of group.shards) {
-      const shard = behaviorShards.find((candidate) => candidate.id === shardId)!;
+      const shard = shards.find((candidate) => candidate.id === shardId)!;
       const local = planCoverageBehaviorGroups({
         shards: [shard],
-        usesModuleMock: (test) => readFileSync(join(repo, test), "utf8").includes("mock.module("),
+        usesModuleMock: (test) =>
+          readFileSync(join(options.repo, test), "utf8").includes("mock.module("),
       })[0]!.tests;
-      const path = join(behaviorRoot, `${hash(`${shardId}\0${local.join("\0")}`)}.json`);
+      const path = join(options.artifactRoot, `${hash(`${shardId}\0${local.join("\0")}`)}.json`);
       writeFileSync(
         path,
         json({
@@ -104,10 +98,161 @@ export async function executeCoverageWave(options: {
         }),
         { flag: "wx" },
       );
-      behaviorReceipts.set(shardId, path);
+      receipts.set(shardId, path);
     }
   }
-  const batches = planMutationBatches(wave.shards, wave.worker_budget);
+  return receipts;
+}
+
+export function collectCoverageShardUnion(options: {
+  repo: string;
+  manifestPath: string;
+  runId: string;
+  shardRoots: ReadonlyMap<string, string>;
+  outputRoot: string;
+  distributed?: {
+    ticket: DistributedQualityTicket;
+    ticketSha256: string;
+    commit: string;
+    githubRunId: string;
+  };
+}): string {
+  const { wave, manifestText, entries } = loadMutationWave(options.repo, options.manifestPath);
+  const runtimeScope = runtimePureTargetPaths(entries);
+  const receipts: CoverageShardReceipt[] = [];
+  const native: CoverageShardNative[] = [];
+  if (options.distributed)
+    for (const shard of wave.shards)
+      assertDistributedWaveBinding({
+        ticket: options.distributed.ticket,
+        manifestText,
+        wave: wave as unknown as Record<string, unknown>,
+        shardId: shard.id,
+        targets: shard.targets,
+      });
+  for (const shard of wave.shards) {
+    const root = options.shardRoots.get(shard.id);
+    if (!root) throw new Error(`Coverage collector missing shard root: ${shard.id}`);
+    const directory = join(root, shard.id);
+    receipts.push(
+      JSON.parse(readFileSync(join(directory, "receipt.json"), "utf8")) as CoverageShardReceipt,
+    );
+    if (shard.targets.some((target) => runtimeScope.includes(target))) {
+      const published = readPublishedCoverage(join(directory, "coverage"));
+      native.push({
+        id: shard.id,
+        evidence_root: join(directory, "coverage"),
+        latest: {
+          path: published.latestPath,
+          sha256: hash(published.latestContents),
+          contents: published.latestContents,
+        },
+        receiptText: readFileSync(published.receiptPath, "utf8"),
+        provenanceText: readFileSync(published.provenancePath, "utf8"),
+        lcovText: readFileSync(published.lcovPath, "utf8"),
+      });
+    }
+  }
+  const errors = validateCoverageShardUnion({
+    wave,
+    runId: options.runId,
+    manifestSha256: hash(manifestText),
+    sourceSha256: wave.source_freeze_sha256,
+    canonicalScope: entries.map((entry) => entry.path),
+    runtimeScope,
+    shards: receipts,
+    native,
+    repo: options.repo,
+    ...(options.distributed ? { distributed: options.distributed } : {}),
+  });
+  if (errors.length) throw new Error(`Coverage union rejected: ${errors.join("; ")}`);
+  mkdirSync(options.outputRoot, { recursive: true });
+  const path = join(options.outputRoot, "union.json");
+  writeFileSync(
+    path,
+    json({
+      version: 1,
+      wave_id: wave.wave_id,
+      run_id: options.runId,
+      manifest_sha256: hash(manifestText),
+      target_count: entries.length,
+      shards: receipts.map((receipt) => ({
+        id: receipt.shard_id,
+        receipt_sha256: hash(json(receipt)),
+      })),
+      coverage: { line: 100, function: 100 },
+      mutation_verification: "pending",
+    }),
+    { flag: "wx" },
+  );
+  return path;
+}
+
+export async function executeCoverageWave(options: {
+  repo: string;
+  manifestPath: string;
+  timeoutMs: number;
+  runId?: string;
+  outputRoot?: string;
+  shardIds?: readonly string[];
+  behaviorReceipts?: ReadonlyMap<string, string>;
+  distributed?: {
+    ticket: DistributedQualityTicket;
+    ticketSha256: string;
+    commit: string;
+    githubRunId: string;
+  };
+}): Promise<string> {
+  const { repo, manifestPath, timeoutMs } = options;
+  const prepared = loadMutationWave(repo, manifestPath);
+  const { wave, manifestText, entries } = prepared;
+  const runtimeScope = runtimePureTargetPaths(entries);
+  const manifestSha256 = hash(manifestText);
+  const runId = options.runId ?? `run-${randomUUID()}`;
+  const root = options.outputRoot ?? join(repo, "reports/coverage/shards", wave.wave_id, runId);
+  if (options.distributed) {
+    if (
+      options.distributed.ticket.coverage_run_id !== runId ||
+      options.distributed.ticket.campaign_timeout_ms !== timeoutMs
+    )
+      throw new Error("Distributed coverage run differs from portable ticket");
+    for (const shard of wave.shards)
+      assertDistributedWaveBinding({
+        ticket: options.distributed.ticket,
+        manifestText,
+        wave: wave as unknown as Record<string, unknown>,
+        shardId: shard.id,
+        targets: shard.targets,
+      });
+  }
+  mkdirSync(root, { recursive: true });
+  writeFileSync(join(root, "wave.json"), manifestText, { flag: "wx" });
+  const assertUnchanged = () => {
+    const current = loadMutationWave(repo, manifestPath);
+    if (hash(current.manifestText) !== manifestSha256)
+      throw new Error("Coverage wave changed during execution");
+  };
+  const behaviorRoot = join(root, "behavior");
+  mkdirSync(behaviorRoot);
+  const behaviorReceipts = new Map(options.behaviorReceipts);
+  if (behaviorReceipts.size === 0)
+    for (const [shardId, path] of await executeCoverageBehaviorGroups({
+      repo,
+      manifestPath,
+      runId,
+      artifactRoot: behaviorRoot,
+    }))
+      behaviorReceipts.set(shardId, path);
+  const selectedIds = new Set(options.shardIds ?? wave.shards.map((shard) => shard.id));
+  if (
+    selectedIds.size === 0 ||
+    [...selectedIds].some((id) => !wave.shards.some((shard) => shard.id === id))
+  )
+    throw new Error("Coverage executor has an unknown or empty shard selection");
+  const batches = planMutationBatches(
+    wave.shards.filter((shard) => selectedIds.has(shard.id)),
+    wave.worker_budget,
+  );
   const receipts: CoverageShardReceipt[] = [];
   const native: CoverageShardNative[] = [];
   try {
@@ -127,6 +272,13 @@ export async function executeCoverageWave(options: {
             { flag: "wx" },
           );
           const runtimeTargets = shard.targets.filter((target) => runtimeScope.includes(target));
+          const distributed = options.distributed
+            ? {
+                distributed_ticket_sha256: options.distributed.ticketSha256,
+                coordinator_commit_sha: options.distributed.commit,
+                github_run_id: options.distributed.githubRunId,
+              }
+            : {};
           if (runtimeTargets.length === 0) {
             const receipt: CoverageShardReceipt = {
               version: 1,
@@ -139,11 +291,13 @@ export async function executeCoverageWave(options: {
               coverage_config_sha256: "",
               test_sha256: wave.test_freeze_sha256,
               target_digest_sha256: wave.target_digest_sha256,
+              ...(options.distributed ? { lock_sha256: wave.lock_sha256 } : {}),
               targets: shard.targets,
               runtime_targets: [],
               type_only_targets: [...shard.targets],
               not_applicable: "type_only_ast",
               direct_target_evidence: [],
+              ...distributed,
             };
             writeFileSync(join(directory, "receipt.json"), json(receipt), { flag: "wx" });
             return { receipt, native: undefined };
@@ -210,6 +364,7 @@ export async function executeCoverageWave(options: {
             base_config_sha256: wave.config_sha256,
             test_sha256: wave.test_freeze_sha256,
             target_digest_sha256: wave.target_digest_sha256,
+            ...(options.distributed ? { lock_sha256: wave.lock_sha256 } : {}),
             native_receipt_sha256: hash(receiptText),
             native_provenance_sha256: hash(provenanceText),
             native_lcov_sha256: hash(lcovText),
@@ -223,6 +378,7 @@ export async function executeCoverageWave(options: {
             runtime_targets: runtimeTargets,
             type_only_targets: shard.targets.filter((target) => !runtimeScope.includes(target)),
             direct_target_evidence,
+            ...distributed,
           };
           writeFileSync(join(directory, "receipt.json"), json(receipt), { flag: "wx" });
           return {
@@ -254,6 +410,7 @@ export async function executeCoverageWave(options: {
         throw new Error(`Coverage wave shard failure: ${failures.join("; ")}`);
     }
     assertUnchanged();
+    if (options.shardIds) return root;
     const errors = validateCoverageShardUnion({
       wave,
       runId,
@@ -264,6 +421,7 @@ export async function executeCoverageWave(options: {
       shards: receipts,
       native,
       repo,
+      ...(options.distributed ? { distributed: options.distributed } : {}),
     });
     if (errors.length > 0) throw new Error(`Coverage union rejected: ${errors.join("; ")}`);
     const unionPath = join(root, "union.json");

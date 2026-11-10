@@ -37,6 +37,7 @@ if ("error" in args) {
 let selected: string[];
 let passthrough: string[];
 let directTests: string[] = [];
+let verificationRepo = REPO;
 if (args.mode === "shard") {
   if (args.passthrough.some((arg) => arg !== "--list")) {
     console.error("shard mode accepts no test narrowing flags or paths");
@@ -52,6 +53,7 @@ if (args.mode === "shard") {
   });
   if (cached) {
     manifest = cached.wave;
+    verificationRepo = resolve(process.env.SUBKIT_MUTATION_ORIGINAL_REPO ?? REPO);
   } else {
     const knownFiles = mutationClosureFiles(REPO);
     const entries = assertCompletePureTargetInventory(knownFiles);
@@ -130,14 +132,16 @@ if (args.mode === "shard") {
   passthrough = args.passthrough;
 }
 const tests = selected.map((p) => `./${p}`);
+const verificationOwner =
+  args.mode === "shard" ? `core-test-runner:${args.shard}` : "core-test-runner";
 
 async function runCoreTest(file: string): Promise<void> {
   let childFailure: unknown;
   let actualChildFailure = false;
   try {
     const run = createVerificationRun({
-      root: verificationRunsRoot(REPO),
-      owner: "core-test-runner",
+      root: verificationRunsRoot(verificationRepo),
+      owner: verificationOwner,
       logPath: "runner.log",
     });
     const logPath = join(run.directory, "runner.log");

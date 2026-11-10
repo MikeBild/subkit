@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -7,6 +8,12 @@ import {
   type CoverageShardReceipt,
   validateCoverageShardUnion,
 } from "./audit/coverage-union.ts";
+import {
+  assertDistributedShardReceipt,
+  canonicalDistributedQualityTicket,
+  distributedQualityTicketSha256,
+  parseDistributedQualityTicket,
+} from "./audit/distributed-quality-ticket.ts";
 import { planMutationBatches } from "./audit/mutation-scheduler.ts";
 import {
   inspectMutationShardScore,
@@ -84,6 +91,28 @@ function validateParentTicketBinding(
   runId: string,
   receipts: readonly Record<string, unknown>[],
 ): void {
+  const distributed = receipts.map((receipt) => receipt.distributed_ticket_sha256);
+  if (distributed.some((value) => value !== undefined)) {
+    if (distributed.some((value) => typeof value !== "string") || new Set(distributed).size !== 1)
+      throw new Error("mutation receipts disagree on portable distributed ticket binding");
+    const portable = join(repo, "reports/quality-inputs/distributed/ticket.json");
+    const ticketText = regular(portable);
+    const ticket = parseDistributedQualityTicket(JSON.parse(ticketText));
+    const digest = distributedQualityTicketSha256(ticket);
+    if (digest !== distributed[0])
+      throw new Error("mutation receipts bind a foreign distributed ticket");
+    for (const receipt of receipts)
+      assertDistributedShardReceipt({
+        ticket,
+        ticketSha256: digest,
+        receipt,
+        shardId: String(receipt.shard_id),
+        phase: "mutation",
+        trustedCommit: ticket.coordinator_commit_sha,
+        trustedRunId: ticket.github_run_id,
+      });
+    return;
+  }
   const bindings = receipts.map((receipt) => ({
     path: receipt.parent_validation_ticket_path,
     sha256: receipt.parent_validation_ticket_sha256,
@@ -139,6 +168,13 @@ export async function verifyQualityShards(options: {
   if (hash(manifestText) !== mutation.manifest_sha256) throw new Error("frozen wave hash mismatch");
   const prepared = loadMutationWave(options.repo, manifestPath);
   const { wave, entries, baseConfig, equivalents } = prepared;
+  const distributedTicketPath = join(
+    options.repo,
+    "reports/quality-inputs/distributed/ticket.json",
+  );
+  const distributedTicket = existsSync(distributedTicketPath)
+    ? parseDistributedQualityTicket(JSON.parse(regular(distributedTicketPath)))
+    : undefined;
   const runtimeScope = runtimePureTargetPaths(entries);
   if (options.requireVersionedPolicy && !wave.quality_policy_sha256)
     throw new Error("Release quality proof requires a versioned policy-bound wave");
@@ -181,6 +217,22 @@ export async function verifyQualityShards(options: {
       exitCode: receipt.exit_code,
     };
   });
+  const mutationUsesDistributedTicket = mutationShards.some(
+    (shard) =>
+      object(shard.receiptText, "mutation receipt").distributed_ticket_sha256 !== undefined,
+  );
+  if (mutationUsesDistributedTicket && !distributedTicket)
+    throw new Error("mutation receipts require the portable distributed ticket");
+  if (mutationUsesDistributedTicket && distributedTicket) {
+    if (regular(distributedTicketPath) !== canonicalDistributedQualityTicket(distributedTicket))
+      throw new Error("distributed ticket serialization is noncanonical");
+    const actualCommit = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: options.repo,
+      encoding: "utf8",
+    }).trim();
+    if (actualCommit !== distributedTicket.coordinator_commit_sha)
+      throw new Error("distributed coordinator commit differs from verification checkout");
+  }
   validateParentTicketBinding(
     options.repo,
     mutationRoot,
@@ -210,6 +262,16 @@ export async function verifyQualityShards(options: {
     repo: options.repo,
     sourceSha256ForFile: (file) =>
       existsSync(join(options.repo, file)) ? hash(readFileSync(join(options.repo, file))) : null,
+    ...(mutationUsesDistributedTicket && distributedTicket
+      ? {
+          distributed: {
+            ticket: distributedTicket,
+            ticketSha256: distributedQualityTicketSha256(distributedTicket),
+            commit: distributedTicket.coordinator_commit_sha,
+            githubRunId: distributedTicket.github_run_id,
+          },
+        }
+      : {}),
   });
   if (mutationErrors.length > 0)
     throw new Error(`mutation union rejected: ${mutationErrors.join("; ")}`);
@@ -286,6 +348,13 @@ export async function verifyQualityShards(options: {
       lcovText: regular(published.lcovPath),
     });
   }
+  const coverageUsesDistributedTicket = coverageReceipts.some(
+    (receipt) => receipt.distributed_ticket_sha256 !== undefined,
+  );
+  if (coverageUsesDistributedTicket !== mutationUsesDistributedTicket)
+    throw new Error("paired unions disagree on distributed ticket provenance");
+  if (coverageUsesDistributedTicket && !distributedTicket)
+    throw new Error("coverage receipts require the portable distributed ticket");
   const coverageErrors = validateCoverageShardUnion({
     wave,
     runId: coverageRunId,
@@ -296,6 +365,16 @@ export async function verifyQualityShards(options: {
     shards: coverageReceipts,
     native,
     repo: options.repo,
+    ...(coverageUsesDistributedTicket && distributedTicket
+      ? {
+          distributed: {
+            ticket: distributedTicket,
+            ticketSha256: distributedQualityTicketSha256(distributedTicket),
+            commit: distributedTicket.coordinator_commit_sha,
+            githubRunId: distributedTicket.github_run_id,
+          },
+        }
+      : {}),
   });
   if (coverageErrors.length > 0)
     throw new Error(`coverage union rejected: ${coverageErrors.join("; ")}`);

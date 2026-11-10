@@ -198,6 +198,18 @@ describe("mutation shard union", () => {
       );
     }
   });
+  test("rejects changed native exact-ignore config even when report hashes are refreshed", () => {
+    const value = input();
+    const report = JSON.parse(value.shards[0]!.reportText);
+    report.config.mutator = { exactIgnoredMutants: [{ file: "foreign.ts" }] };
+    value.shards[0]!.reportText = JSON.stringify(report);
+    const receipt = JSON.parse(value.shards[0]!.receiptText);
+    receipt.report_sha256 = sha(value.shards[0]!.reportText);
+    value.shards[0]!.receiptText = JSON.stringify(receipt);
+    expect(validateMutationShardUnion(value).join("\n")).toContain(
+      "report config exactIgnoredMutants mismatch",
+    );
+  });
   test("rejects weakened config, command mismatch, nonterminal, ignored and zero mutants", () => {
     const mutateConfig = (report: JsonRecord, change: (config: JsonRecord) => void) =>
       change(reportConfig(report));
@@ -335,6 +347,9 @@ describe("mutation shard union", () => {
         manifestPath: "/tmp/wave.json",
         shard,
         workers: 1,
+        exactIgnoredMutants: equivalents.equivalents
+          .filter((entry) => shard.targets.includes(entry.file))
+          .map(({ reason, independent_review, ...entry }) => entry),
       });
       const reportText = JSON.stringify({
         config,
@@ -393,5 +408,36 @@ describe("mutation shard union", () => {
       sourceSha256ForFile: () => sha(source),
     };
     expect(validateMutationShardUnion(value)).toEqual([]);
+    for (const changed of ["configText", "reportText"] as const) {
+      const altered = { ...value, shards: structuredClone(value.shards) };
+      const shard = altered.shards[0]!;
+      const document = JSON.parse(shard[changed]);
+      const configuration = changed === "configText" ? document : document.config;
+      configuration.mutator.exactIgnoredMutants = [];
+      shard[changed] = JSON.stringify(document);
+      const receipt = JSON.parse(shard.receiptText);
+      receipt[changed === "configText" ? "config_sha256" : "report_sha256"] = sha(shard[changed]);
+      shard.receiptText = JSON.stringify(receipt);
+      expect(validateMutationShardUnion(altered).join("\n")).toContain(
+        "exactIgnoredMutants mismatch",
+      );
+    }
+    const partial = {
+      ...value,
+      equivalenceManifest: {
+        ...equivalents,
+        equivalents: [
+          ...equivalents.equivalents,
+          {
+            ...equivalents.equivalents[0]!,
+            mutatorName: "ConditionalExpression",
+            replacement: "false",
+          },
+        ],
+      },
+    };
+    expect(validateMutationShardUnion(partial).join("\n")).toContain(
+      "config exactIgnoredMutants mismatch",
+    );
   });
 });

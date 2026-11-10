@@ -149,6 +149,7 @@
     "onnxruntime-node",
   ],
   "patchedDependencies": {
+    "@stryker-mutator/api@10.1.1": "patches/@stryker-mutator%2Fapi@10.1.1.patch",
     "@jitl/quickjs-singlefile-cjs-release-sync@0.32.0": "patches/@jitl%2Fquickjs-singlefile-cjs-release-sync@0.32.0.patch",
     "jsdom@29.1.1": "patches/jsdom@29.1.1.patch",
     "@stryker-mutator/instrumenter@10.1.1": "patches/@stryker-mutator%2Finstrumenter@10.1.1.patch",

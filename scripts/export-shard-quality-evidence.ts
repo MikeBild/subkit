@@ -78,6 +78,9 @@ export async function exportShardQualityEvidence(options: {
         : [],
     ),
   );
+  const distributedTicket = mutationReceipts.some(
+    (receipt) => typeof (receipt as Record<string, unknown>).distributed_ticket_sha256 === "string",
+  );
   if (parentTicketPaths.size > 1)
     throw new Error("Mutation receipts disagree on parent ticket path");
   for (const path of [
@@ -94,7 +97,8 @@ export async function exportShardQualityEvidence(options: {
       : []),
   ])
     add(path);
-  for (const path of parentTicketPaths) add(join(repo, path));
+  if (distributedTicket) add(join(repo, "reports/quality-inputs/distributed/ticket.json"));
+  else for (const path of parentTicketPaths) add(join(repo, path));
   if (options.externalRuntimeAcceptancePath) {
     const external = JSON.parse(
       new TextDecoder().decode(readBundleFile(repo, options.externalRuntimeAcceptancePath)),

@@ -252,6 +252,7 @@
     "shell-quote": "1.12.0"
   },
   "patchedDependencies": {
+    "@stryker-mutator/api@10.1.1": "patches/@stryker-mutator%2Fapi@10.1.1.patch",
     "css-tree@3.2.1": "patches/css-tree@3.2.1.patch",
     "jsdom@29.1.1": "patches/jsdom@29.1.1.patch",
     "@jitl/quickjs-singlefile-cjs-release-sync@0.32.0": "patches/@jitl%2Fquickjs-singlefile-cjs-release-sync@0.32.0.patch",

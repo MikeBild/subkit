@@ -1,8 +1,18 @@
 import { createHash } from "node:crypto";
-import type { MutationEquivalentManifest } from "./mutation-floor.ts";
+import {
+  assertDistributedShardReceipt,
+  type DistributedQualityTicket,
+} from "./distributed-quality-ticket.ts";
+import { type MutationEquivalentManifest, nativeExactIgnoredMutant } from "./mutation-floor.ts";
 import { buildMutationShardConfig } from "./mutation-shard-config.ts";
 import { inspectMutationShardScore } from "./mutation-shard-score.ts";
 import type { MutationWaveManifest } from "./mutation-wave.ts";
+
+export function dryRunTimeoutMinutesForBaseline(baselineBudgetMs: number): number {
+  if (!Number.isSafeInteger(baselineBudgetMs) || baselineBudgetMs <= 0)
+    throw new Error("Mutation baseline budget must be a positive safe integer");
+  return Math.ceil(baselineBudgetMs / 60_000);
+}
 
 export interface MutationShardReceipt {
   version: 1;
@@ -30,6 +40,11 @@ export interface MutationShardReceipt {
   type_only_targets?: readonly string[];
   not_applicable?: "type_only_ast";
   workers: number;
+  distributed_ticket_sha256?: string;
+  coordinator_commit_sha?: string;
+  github_run_id?: string;
+  baseline_budget_ms?: number;
+  dry_run_timeout_minutes?: number;
 }
 
 export interface MutationShardUnionInput {
@@ -53,6 +68,12 @@ export interface MutationShardUnionInput {
   equivalenceManifest: MutationEquivalentManifest;
   repo: string;
   sourceSha256ForFile: (file: string) => string | null;
+  distributed?: {
+    ticket: DistributedQualityTicket;
+    ticketSha256: string;
+    commit: string;
+    githubRunId: string;
+  };
 }
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -80,7 +101,8 @@ const security = (config: Record<string, unknown>, key: string): unknown => {
       (config.mutator as Record<string, unknown> | undefined)?.excludedMutations ??
       []
     );
-  if (key === "mutator") return undefined;
+  if (key === "exactIgnoredMutants")
+    return (config.mutator as Record<string, unknown> | undefined)?.exactIgnoredMutants ?? [];
   return config[key];
 };
 
@@ -129,9 +151,26 @@ export function validateMutationShardUnion(input: MutationShardUnionInput): stri
     } else if (ticketPath === undefined) {
       ticketPath = receiptTicketPath;
       ticketSha256 = receiptTicketSha256;
-    } else if (ticketPath !== receiptTicketPath || ticketSha256 !== receiptTicketSha256) {
+    } else if (
+      input.distributed === undefined &&
+      (ticketPath !== receiptTicketPath || ticketSha256 !== receiptTicketSha256)
+    ) {
       errors.push(`shard ${shard.id} receipt parent validation ticket binding differs`);
     }
+    if (input.distributed !== undefined)
+      try {
+        assertDistributedShardReceipt({
+          ticket: input.distributed.ticket,
+          ticketSha256: input.distributed.ticketSha256,
+          receipt,
+          shardId: shard.id,
+          phase: "mutation",
+          trustedCommit: input.distributed.commit,
+          trustedRunId: input.distributed.githubRunId,
+        });
+      } catch (error) {
+        errors.push(`shard ${shard.id} distributed provenance invalid: ${String(error)}`);
+      }
     for (const [key, value] of [
       ["version", 1],
       ["wave_id", input.wave.wave_id],
@@ -192,6 +231,7 @@ export function validateMutationShardUnion(input: MutationShardUnionInput): stri
     if (receipt.report_sha256 !== hash(result.reportText))
       errors.push(`shard ${shard.id} report hash mismatch`);
     let generated: Record<string, unknown>;
+    const nativeExactConfig = security(config, "exactIgnoredMutants");
     try {
       generated = buildMutationShardConfig({
         base: input.baseConfig,
@@ -201,6 +241,20 @@ export function validateMutationShardUnion(input: MutationShardUnionInput): stri
         ...(input.wave.quality_policy_sha256 ? { repo: input.repo } : {}),
         shard: { ...shard, targets: runtimeTargets },
         workers: input.workersByShard[shard.id] ?? 0,
+        exactIgnoredMutants:
+          Array.isArray(nativeExactConfig) && nativeExactConfig.length > 0
+            ? input.equivalenceManifest.equivalents
+                .filter((entry) => runtimeTargets.includes(entry.file))
+                .map(nativeExactIgnoredMutant)
+            : [],
+        ...(input.distributed
+          ? {
+              dryRunTimeoutMinutes: dryRunTimeoutMinutesForBaseline(
+                input.distributed.ticket.shards.find((candidate) => candidate.id === shard.id)!
+                  .baseline_budget_ms,
+              ),
+            }
+          : {}),
       });
     } catch (error) {
       errors.push(`shard ${shard.id} cannot generate expected config: ${String(error)}`);
@@ -220,6 +274,8 @@ export function validateMutationShardUnion(input: MutationShardUnionInput): stri
       "cleanTempDir",
       "ignoreStatic",
       "excludedMutations",
+      "dryRunTimeoutMinutes",
+      "exactIgnoredMutants",
     ])
       if (JSON.stringify(security(config, key)) !== JSON.stringify(security(generated, key)))
         errors.push(`shard ${shard.id} config ${key} mismatch`);
@@ -241,6 +297,8 @@ export function validateMutationShardUnion(input: MutationShardUnionInput): stri
         "ignoreStatic",
         "excludedMutations",
         "tempDirName",
+        "dryRunTimeoutMinutes",
+        "exactIgnoredMutants",
       ])
         if (
           JSON.stringify(security(reportConfig, key)) !== JSON.stringify(security(generated, key))
@@ -305,7 +363,7 @@ export function validateMutationShardUnion(input: MutationShardUnionInput): stri
   for (const id of actual.keys())
     if (!input.wave.shards.some((shard) => shard.id === id))
       errors.push(`extra shard result: ${id}`);
-  if (ticketPath !== undefined)
+  if (ticketPath !== undefined && input.distributed === undefined)
     for (const shard of input.shards) {
       const receipt = parse(shard.receiptText, `shard ${shard.id} receipt`, errors);
       if (

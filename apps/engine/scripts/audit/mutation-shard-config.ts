@@ -15,6 +15,8 @@ export function buildMutationShardConfig(input: {
   repo?: string;
   shard: MutationWaveShard;
   workers: number;
+  dryRunTimeoutMinutes?: number;
+  exactIgnoredMutants?: readonly unknown[];
 }): Record<string, unknown> {
   const errors = [
     ...validateMutationThresholds(input.base),
@@ -26,6 +28,11 @@ export function buildMutationShardConfig(input: {
     if (!/^[a-z0-9][a-z0-9-]{0,119}$/.test(id)) throw new Error("Invalid mutation run identity");
   if (!Number.isSafeInteger(input.workers) || input.workers < 1)
     throw new Error("Mutation shard workers must be a positive safe integer");
+  if (
+    input.dryRunTimeoutMinutes !== undefined &&
+    (!Number.isSafeInteger(input.dryRunTimeoutMinutes) || input.dryRunTimeoutMinutes < 1)
+  )
+    throw new Error("Mutation dry-run timeout must be a positive whole number of minutes");
   if (!isAbsolute(input.manifestPath)) throw new Error("Mutation wave manifest must be absolute");
   let manifestArgument = shellArgument(input.manifestPath);
   if (input.repo !== undefined) {
@@ -56,5 +63,18 @@ export function buildMutationShardConfig(input: {
     tempDirName: ".stryker-tmp",
     cleanTempDir: "always",
     concurrency: input.workers,
+    ...(input.exactIgnoredMutants === undefined || input.exactIgnoredMutants.length === 0
+      ? {}
+      : {
+          mutator: {
+            ...(((input.base as Record<string, unknown>).mutator as
+              | Record<string, unknown>
+              | undefined) ?? {}),
+            exactIgnoredMutants: input.exactIgnoredMutants,
+          },
+        }),
+    ...(input.dryRunTimeoutMinutes === undefined
+      ? {}
+      : { dryRunTimeoutMinutes: input.dryRunTimeoutMinutes }),
   };
 }

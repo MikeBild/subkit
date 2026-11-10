@@ -1,0 +1,88 @@
+diff --git a/dist/schema/stryker-core.json b/dist/schema/stryker-core.json
+index 92b2a5e..0af4978 100644
+--- a/dist/schema/stryker-core.json
++++ b/dist/schema/stryker-core.json
+@@ -210,2 +210,28 @@
+                     "default": []
++                },
++                "exactIgnoredMutants": {
++                    "type": "array",
++                    "items": {
++                        "type": "object",
++                        "additionalProperties": false,
++                        "required": ["file", "source_sha256", "location", "mutatorName", "replacement", "original", "statusReason"],
++                        "properties": {
++                            "file": { "type": "string", "minLength": 1 },
++                            "source_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
++                            "location": {
++                                "type": "object",
++                                "additionalProperties": false,
++                                "required": ["start", "end"],
++                                "properties": {
++                                    "start": { "$ref": "#/definitions/exactIgnoredMutantPosition" },
++                                    "end": { "$ref": "#/definitions/exactIgnoredMutantPosition" }
++                                }
++                            },
++                            "mutatorName": { "type": "string", "minLength": 1 },
++                            "replacement": { "type": "string" },
++                            "original": { "type": "string", "minLength": 1 },
++                            "statusReason": { "type": "string", "minLength": 1 }
++                        }
++                    },
++                    "default": []
+                 }
+@@ -213,2 +239,11 @@
+         },
++        "exactIgnoredMutantPosition": {
++            "type": "object",
++            "additionalProperties": false,
++            "required": ["line", "column"],
++            "properties": {
++                "line": { "type": "integer", "minimum": 1 },
++                "column": { "type": "integer", "minimum": 1 }
++            }
++        },
+         "warningOptions": {
+diff --git a/dist/src-generated/stryker-core.d.ts b/dist/src-generated/stryker-core.d.ts
+index efd3e29..bb4db7f 100644
+--- a/dist/src-generated/stryker-core.d.ts
++++ b/dist/src-generated/stryker-core.d.ts
+@@ -247,2 +247,12 @@ export interface MutatorDescriptor {
+     excludedMutations: string[];
++    exactIgnoredMutants?: ExactIgnoredMutant[];
++}
++export interface ExactIgnoredMutant {
++    file: string;
++    source_sha256: string;
++    location: { start: { line: number; column: number }; end: { line: number; column: number } };
++    mutatorName: string;
++    replacement: string;
++    original: string;
++    statusReason: string;
+ }
+@@ -297,2 +307,2 @@ export declare const enum LogLevel {
+ }
+-//# sourceMappingURL=stryker-core.d.ts.map
+\ No newline at end of file
++//# sourceMappingURL=stryker-core.d.ts.map
+diff --git a/src-generated/stryker-core.ts b/src-generated/stryker-core.ts
+index 27d234f..bfc5dc2 100644
+--- a/src-generated/stryker-core.ts
++++ b/src-generated/stryker-core.ts
+@@ -249,2 +249,16 @@ export interface MutatorDescriptor {
+   excludedMutations: string[];
++  /**
++   * Native, source-bound mutation equivalence exceptions. This is intentionally
++   * exact-match only; broad mutator exclusions remain governed by excludedMutations.
++   */
++  exactIgnoredMutants?: ExactIgnoredMutant[];
++}
++export interface ExactIgnoredMutant {
++  file: string;
++  source_sha256: string;
++  location: { start: { line: number; column: number }; end: { line: number; column: number } };
++  mutatorName: string;
++  replacement: string;
++  original: string;
++  statusReason: string;
+ }

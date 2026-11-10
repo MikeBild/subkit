@@ -3,7 +3,15 @@ import { lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { verificationRunsRoot } from "../../../scripts/lib/verification-run-lifecycle.ts";
 import { runWithVerificationLog } from "../../../scripts/run-with-verification-log.ts";
-import { readMutationEquivalentManifest } from "./audit/mutation-floor.ts";
+import {
+  assertDistributedShardReceipt,
+  assertDistributedWaveBinding,
+  type DistributedQualityTicket,
+} from "./audit/distributed-quality-ticket.ts";
+import {
+  nativeExactIgnoredMutant,
+  readMutationEquivalentManifest,
+} from "./audit/mutation-floor.ts";
 import { assertNoMutationInfrastructureSentinel } from "./audit/mutation-infrastructure-sentinel.ts";
 import { mutationClosureFiles, mutationTestInputs } from "./audit/mutation-inputs.ts";
 import { planMutationBatches } from "./audit/mutation-scheduler.ts";
@@ -13,14 +21,10 @@ import {
   summarizeMutationScores,
 } from "./audit/mutation-shard-score.ts";
 import {
-  type MutationShardReceipt,
   type MutationShardUnionInput,
   validateMutationShardUnion,
 } from "./audit/mutation-union.ts";
-import {
-  validateParentMutationValidationTicket,
-  writeMutationValidationTicket,
-} from "./audit/mutation-validation-ticket.ts";
+import { writeMutationValidationTicket } from "./audit/mutation-validation-ticket.ts";
 import {
   readValidatedWaveManifest,
   validateWaveClosure,
@@ -32,7 +36,6 @@ import {
   pureTargetSourceReader,
   runtimePureTargetPaths,
 } from "./audit/pure-targets.ts";
-
 import { assertCanonicalWaveOwners } from "./audit/quality-shard-policy.ts";
 
 const REPO = resolve(import.meta.dir, "../../..");
@@ -41,6 +44,12 @@ const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 const STRYKER_TEMP_PARENT = ".stryker-tmp";
 const STRYKER_TEMP_MARKER = ".subkit-owned-parent";
 const STRYKER_TEMP_MARKER_CONTENT = "subkit persistent stryker temp parent v1\n";
+
+export function dryRunTimeoutMinutesForBaseline(baselineBudgetMs: number): number {
+  if (!Number.isSafeInteger(baselineBudgetMs) || baselineBudgetMs <= 0)
+    throw new Error("Mutation baseline budget must be a positive safe integer");
+  return Math.ceil(baselineBudgetMs / 60_000);
+}
 
 export function ensurePersistentStrykerTempParent(repo: string): void {
   const parent = join(repo, STRYKER_TEMP_PARENT);
@@ -105,262 +114,356 @@ export function loadMutationWave(repo: string, manifestPath: string) {
   return { wave, manifestText, entries, baseConfig, equivalents };
 }
 
-export async function executeMutationWave(options: {
+export interface PreparedMutationShardExecution {
+  repo: string;
+  root: string;
+  runId: string;
+  manifestPath: string;
+  manifestText: string;
+  manifestSha256: string;
+  wave: ReturnType<typeof loadMutationWave>["wave"];
+  entries: ReturnType<typeof loadMutationWave>["entries"];
+  baseConfig: unknown;
+  equivalents: ReturnType<typeof loadMutationWave>["equivalents"];
+  runtimeScope: readonly string[];
+  workersByShard: Readonly<Record<string, number>>;
+  ticket: ReturnType<typeof writeMutationValidationTicket>;
+}
+
+export function prepareMutationShardExecution(options: {
   repo: string;
   manifestPath: string;
-  timeoutMs: number;
-}): Promise<string> {
-  const { repo, manifestPath, timeoutMs } = options;
-  const prepared = loadMutationWave(repo, manifestPath);
-  const { wave, manifestText, entries, baseConfig, equivalents } = prepared;
-  const runtimeScope = runtimePureTargetPaths(entries);
-  const manifestSha256 = hash(manifestText);
-  const runId = `run-${randomUUID()}`;
-  const root = join(repo, "reports/mutation/runs", wave.wave_id, runId);
+  runId: string;
+  root?: string;
+}): PreparedMutationShardExecution {
+  const prepared = loadMutationWave(options.repo, options.manifestPath);
+  const root =
+    options.root ??
+    join(options.repo, "reports/mutation/runs", prepared.wave.wave_id, options.runId);
   mkdirSync(root, { recursive: true });
-  ensurePersistentStrykerTempParent(repo);
-  const executionManifestPath = join(root, "wave.json");
-  writeFileSync(executionManifestPath, manifestText, { flag: "wx" });
-  const ticket = writeMutationValidationTicket({
-    repo,
-    parentRunRoot: root,
-    copiedManifestPath: executionManifestPath,
+  ensurePersistentStrykerTempParent(options.repo);
+  const copiedManifestPath = join(root, "wave.json");
+  const manifestText = prepared.manifestText;
+  if (!lstatSync(copiedManifestPath, { throwIfNoEntry: false }))
+    writeFileSync(copiedManifestPath, manifestText, { flag: "wx" });
+  else if (readFileSync(copiedManifestPath, "utf8") !== manifestText)
+    throw new Error("Immutable mutation wave differs from existing execution root");
+  const ticketPath = join(root, "mutation-validation-ticket.json");
+  const ticket = lstatSync(ticketPath, { throwIfNoEntry: false })
+    ? (() => {
+        throw new Error("Mutation execution root already has a validation ticket");
+      })()
+    : writeMutationValidationTicket({
+        repo: options.repo,
+        parentRunRoot: root,
+        copiedManifestPath,
+        manifestText,
+        wave: prepared.wave,
+        entries: prepared.entries,
+        runtimeInputs: mutationTestInputs(options.repo),
+        closureFiles: mutationClosureFiles(options.repo),
+        runId: options.runId,
+      });
+  const batches = planMutationBatches(prepared.wave.shards, prepared.wave.worker_budget);
+  return {
+    repo: options.repo,
+    root,
+    runId: options.runId,
+    manifestPath: copiedManifestPath,
     manifestText,
-    wave,
-    entries,
-    runtimeInputs: mutationTestInputs(repo),
-    closureFiles: mutationClosureFiles(repo),
-    runId,
+    manifestSha256: hash(manifestText),
+    wave: prepared.wave,
+    entries: prepared.entries,
+    baseConfig: prepared.baseConfig,
+    equivalents: prepared.equivalents,
+    runtimeScope: runtimePureTargetPaths(prepared.entries),
+    workersByShard: Object.fromEntries(batches.flat().map(({ id, workers }) => [id, workers])),
+    ticket,
+  };
+}
+
+export async function executePreparedMutationShard(options: {
+  prepared: PreparedMutationShardExecution;
+  shardId: string;
+  timeoutMs: number;
+  distributed?: {
+    ticket: DistributedQualityTicket;
+    ticketSha256: string;
+    commit: string;
+    githubRunId: string;
+  };
+}): Promise<MutationShardUnionInput["shards"][number]> {
+  const { prepared, shardId } = options;
+  const shard = prepared.wave.shards.find((candidate) => candidate.id === shardId);
+  if (!shard) throw new Error(`Mutation shard is absent from frozen wave: ${shardId}`);
+  if (options.distributed) {
+    assertDistributedWaveBinding({
+      ticket: options.distributed.ticket,
+      manifestText: prepared.manifestText,
+      wave: prepared.wave as unknown as Record<string, unknown>,
+      shardId,
+      targets: shard.targets,
+    });
+  }
+  const directory = join(prepared.root, shardId);
+  mkdirSync(directory, { recursive: false });
+  const startedAt = new Date().toISOString();
+  const runtimeTargets = shard.targets.filter((target) => prepared.runtimeScope.includes(target));
+  const provenance = options.distributed
+    ? {
+        distributed_ticket_sha256: options.distributed.ticketSha256,
+        coordinator_commit_sha: options.distributed.commit,
+        github_run_id: options.distributed.githubRunId,
+        baseline_budget_ms: options.distributed.ticket.shards.find(
+          (candidate) => candidate.id === shardId,
+        )!.baseline_budget_ms,
+        dry_run_timeout_minutes: dryRunTimeoutMinutesForBaseline(
+          options.distributed.ticket.shards.find((candidate) => candidate.id === shardId)!
+            .baseline_budget_ms,
+        ),
+      }
+    : {};
+  const common = {
+    version: 1 as const,
+    parent_validation_ticket_path: relative(prepared.repo, prepared.ticket.path),
+    parent_validation_ticket_sha256: prepared.ticket.sha256,
+    wave_id: prepared.wave.wave_id,
+    run_id: prepared.runId,
+    shard_id: shardId,
+    manifest_sha256: prepared.manifestSha256,
+    base_config_sha256: prepared.wave.config_sha256,
+    source_sha256: prepared.wave.source_freeze_sha256,
+    test_sha256: prepared.wave.test_freeze_sha256,
+    target_digest_sha256: prepared.wave.target_digest_sha256,
+    canonical_target_sha256: prepared.wave.target_digest_sha256,
+    lock_sha256: prepared.wave.lock_sha256,
+    equivalence_manifest_sha256: prepared.wave.equivalence_manifest_sha256,
+    dynamic_import_ledger_sha256: prepared.wave.dynamic_import_ledger_sha256,
+    started_at: startedAt,
+    targets: shard.targets,
+    runtime_targets: runtimeTargets,
+    type_only_targets: shard.targets.filter((target) => !prepared.runtimeScope.includes(target)),
+    workers: prepared.workersByShard[shardId] ?? 0,
+    ...provenance,
+  };
+  if (runtimeTargets.length === 0) {
+    const receipt = {
+      ...common,
+      config_sha256: "",
+      report_sha256: "",
+      finished_at: new Date().toISOString(),
+      exit_code: 0,
+      not_applicable: "type_only_ast" as const,
+    };
+    const receiptText = json(receipt);
+    writeFileSync(join(directory, "receipt.json"), receiptText, { flag: "wx" });
+    return { id: shardId, receiptText, configText: "", reportText: "", exitCode: 0 };
+  }
+  const config = buildMutationShardConfig({
+    base: prepared.baseConfig,
+    waveId: prepared.wave.wave_id,
+    runId: prepared.runId,
+    manifestPath: prepared.manifestPath,
+    ...(prepared.wave.quality_policy_sha256 ? { repo: prepared.repo } : {}),
+    shard: { ...shard, targets: runtimeTargets },
+    workers: common.workers,
+    exactIgnoredMutants: prepared.equivalents.equivalents
+      .filter((entry) => runtimeTargets.includes(entry.file))
+      .map(nativeExactIgnoredMutant),
+    ...(options.distributed
+      ? {
+          dryRunTimeoutMinutes: dryRunTimeoutMinutesForBaseline(
+            options.distributed.ticket.shards.find((candidate) => candidate.id === shardId)!
+              .baseline_budget_ms,
+          ),
+        }
+      : {}),
   });
+  const configText = json(config);
+  const configPath = join(directory, "stryker.json");
+  writeFileSync(configPath, configText, { flag: "wx" });
+  writeFileSync(
+    join(directory, "started.json"),
+    json({
+      started_at: startedAt,
+      manifest_sha256: prepared.manifestSha256,
+      config_sha256: hash(configText),
+    }),
+    { flag: "wx" },
+  );
   const ticketEnv = {
     ...process.env,
-    SUBKIT_MUTATION_ORIGINAL_REPO: repo,
-    SUBKIT_MUTATION_PARENT_TICKET_PATH: ticket.path,
-    SUBKIT_MUTATION_PARENT_TICKET_SHA256: ticket.sha256,
+    SUBKIT_MUTATION_ORIGINAL_REPO: prepared.repo,
+    SUBKIT_MUTATION_PARENT_TICKET_PATH: prepared.ticket.path,
+    SUBKIT_MUTATION_PARENT_TICKET_SHA256: prepared.ticket.sha256,
   };
-  const batches = planMutationBatches(wave.shards, wave.worker_budget);
-  const workersByShard = Object.fromEntries(
-    batches.flat().map((assignment) => [assignment.id, assignment.workers]),
-  );
-  const results: MutationShardUnionInput["shards"][number][] = [];
-  const assertUnchanged = () => {
-    if (hash(readFileSync(executionManifestPath)) !== manifestSha256)
-      throw new Error("Immutable mutation wave changed during execution");
-    if (hash(readFileSync(manifestPath)) !== manifestSha256)
-      throw new Error("Original mutation wave changed during execution");
-    const current = validateParentMutationValidationTicket({
-      repo,
-      manifestPath: executionManifestPath,
+  let exitCode: number;
+  try {
+    exitCode = await runWithVerificationLog({
+      root: verificationRunsRoot(prepared.repo),
+      owner: `mutation:${prepared.wave.wave_id}:${prepared.runId}:${shardId}`,
+      sourceDigest: prepared.wave.source_freeze_sha256,
+      command: "node",
+      args: [
+        join(prepared.repo, "node_modules/@stryker-mutator/core/bin/stryker.js"),
+        "run",
+        configPath,
+        "--force",
+      ],
+      cwd: prepared.repo,
       env: ticketEnv,
+      timeoutMs: options.timeoutMs,
     });
-    if (!current) throw new Error("Parent mutation validation ticket is missing");
-    if (hash(current.manifestText) !== manifestSha256)
-      throw new Error("Mutation wave changed during execution");
-  };
-  for (const batch of batches) {
-    assertUnchanged();
-    const outcomes = await Promise.allSettled(
-      batch.map(async ({ id, workers }) => {
-        const shard = wave.shards.find((item) => item.id === id)!;
-        const runtimeTargets = shard.targets.filter((target) => runtimeScope.includes(target));
-        const directory = join(root, id);
-        mkdirSync(directory);
-        const startedAt = new Date().toISOString();
-        if (runtimeTargets.length === 0) {
-          const receipt: MutationShardReceipt = {
-            version: 1,
-            parent_validation_ticket_path: relative(repo, ticket.path),
-            parent_validation_ticket_sha256: ticket.sha256,
-            wave_id: wave.wave_id,
-            run_id: runId,
-            shard_id: id,
-            manifest_sha256: manifestSha256,
-            config_sha256: "",
-            base_config_sha256: wave.config_sha256,
-            report_sha256: "",
-            source_sha256: wave.source_freeze_sha256,
-            test_sha256: wave.test_freeze_sha256,
-            target_digest_sha256: wave.target_digest_sha256,
-            canonical_target_sha256: wave.target_digest_sha256,
-            lock_sha256: wave.lock_sha256,
-            equivalence_manifest_sha256: wave.equivalence_manifest_sha256,
-            dynamic_import_ledger_sha256: wave.dynamic_import_ledger_sha256,
-            started_at: startedAt,
-            finished_at: new Date().toISOString(),
-            exit_code: 0,
-            targets: shard.targets,
-            runtime_targets: [],
-            type_only_targets: [...shard.targets],
-            not_applicable: "type_only_ast",
-            workers,
-          };
-          const receiptText = json(receipt);
-          writeFileSync(join(directory, "receipt.json"), receiptText, { flag: "wx" });
-          return { id, receiptText, configText: "", reportText: "", exitCode: 0 };
-        }
-        const config = buildMutationShardConfig({
-          base: baseConfig,
-          waveId: wave.wave_id,
-          runId,
-          manifestPath: executionManifestPath,
-          ...(wave.quality_policy_sha256 ? { repo } : {}),
-          shard: { ...shard, targets: runtimeTargets },
-          workers,
-        });
-        const configText = json(config);
-        const configPath = join(directory, "stryker.json");
-        writeFileSync(configPath, configText, { flag: "wx" });
-        writeFileSync(
-          join(directory, "started.json"),
-          json({
-            started_at: startedAt,
-            manifest_sha256: manifestSha256,
-            config_sha256: hash(configText),
-          }),
-          { flag: "wx" },
-        );
-        const exitCode = await runWithVerificationLog({
-          root: verificationRunsRoot(repo),
-          owner: `mutation:${wave.wave_id}:${runId}:${id}`,
-          sourceDigest: wave.source_freeze_sha256,
-          command: "node",
-          args: [
-            join(repo, "node_modules/@stryker-mutator/core/bin/stryker.js"),
-            "run",
-            configPath,
-            "--force",
-          ],
-          cwd: repo,
-          env: ticketEnv,
-          timeoutMs,
-        });
-        assertNoMutationInfrastructureSentinel(ticket.path);
-        assertUnchanged();
-        const reportText = readFileSync(join(directory, "mutation.json"), "utf8");
-        const receipt: MutationShardReceipt = {
-          version: 1,
-          parent_validation_ticket_path: relative(repo, ticket.path),
-          parent_validation_ticket_sha256: ticket.sha256,
-          wave_id: wave.wave_id,
-          run_id: runId,
-          shard_id: id,
-          manifest_sha256: manifestSha256,
-          config_sha256: hash(configText),
-          base_config_sha256: wave.config_sha256,
-          report_sha256: hash(reportText),
-          source_sha256: wave.source_freeze_sha256,
-          test_sha256: wave.test_freeze_sha256,
-          target_digest_sha256: wave.target_digest_sha256,
-          canonical_target_sha256: wave.target_digest_sha256,
-          lock_sha256: wave.lock_sha256,
-          equivalence_manifest_sha256: wave.equivalence_manifest_sha256,
-          dynamic_import_ledger_sha256: wave.dynamic_import_ledger_sha256,
-          started_at: startedAt,
-          finished_at: new Date().toISOString(),
-          exit_code: exitCode,
-          targets: shard.targets,
-          runtime_targets: runtimeTargets,
-          type_only_targets: shard.targets.filter((target) => !runtimeScope.includes(target)),
-          workers,
-        };
-        const receiptText = json(receipt);
-        writeFileSync(join(directory, "receipt.json"), receiptText, { flag: "wx" });
-        return { id, receiptText, configText, reportText, exitCode };
-      }),
+  } catch (error) {
+    writeFileSync(join(directory, "failure.json"), json({ error: String(error) }), { flag: "wx" });
+    throw error;
+  }
+  assertNoMutationInfrastructureSentinel(prepared.ticket.path);
+  let reportText: string;
+  try {
+    reportText = readFileSync(join(directory, "mutation.json"), "utf8");
+  } catch (error) {
+    writeFileSync(
+      join(directory, "failure.json"),
+      json({ exit_code: exitCode, report_error: String(error) }),
+      { flag: "wx" },
     );
-    const failures: string[] = [];
-    for (const outcome of outcomes) {
-      if (outcome.status === "rejected") failures.push(String(outcome.reason));
-      else {
-        results.push(outcome.value);
-        const result = outcome.value;
-        if (result.reportText === "") {
-          if (result.exitCode !== 0) failures.push(`${result.id} exited ${result.exitCode}`);
-        } else {
-          try {
-            const targets = wave.shards
-              .find((shard) => shard.id === result.id)!
-              .targets.filter((target) => runtimeScope.includes(target));
-            const scoring = inspectMutationShardScore({
-              report: JSON.parse(result.reportText),
-              exitCode: result.exitCode,
-              manifest: {
-                ...equivalents,
-                equivalents: equivalents.equivalents.filter((entry) =>
-                  targets.includes(entry.file),
-                ),
-              },
-              repo,
-              expectedScope: targets,
-              sourceSha256ForFile: (file) => hash(readFileSync(join(repo, file))),
-            });
-            failures.push(...scoring.errors.map((error) => `${result.id}: ${error}`));
-          } catch (error) {
-            failures.push(`${result.id}: ${String(error)}`);
-          }
-        }
-      }
-    }
-    if (failures.length > 0) {
-      writeFileSync(join(root, "failed.json"), json({ failures }), { flag: "wx" });
-      throw new Error(`Mutation wave failed; retained evidence at ${root}: ${failures.join("; ")}`);
-    }
+    throw error;
   }
-  assertUnchanged();
-  loadMutationWave(repo, manifestPath);
-  const errors = validateMutationShardUnion({
-    wave,
-    runId,
-    manifestPath: executionManifestPath,
-    baseConfig,
-    canonicalScope: entries.map((entry) => entry.path),
-    runtimeScope,
-    sourceSha256: wave.source_freeze_sha256,
-    testSha256: wave.test_freeze_sha256,
-    workersByShard,
-    shards: results,
-    manifestSha256,
-    equivalenceManifest: equivalents,
-    repo,
-    sourceSha256ForFile: (file) => hash(readFileSync(join(repo, file))),
-  });
-  if (errors.length > 0) {
-    writeFileSync(join(root, "failed.json"), json({ phase: "mutation-union", errors }), {
-      flag: "wx",
+  const receipt = {
+    ...common,
+    config_sha256: hash(configText),
+    report_sha256: hash(reportText),
+    finished_at: new Date().toISOString(),
+    exit_code: exitCode,
+  };
+  const receiptText = json(receipt);
+  writeFileSync(join(directory, "receipt.json"), receiptText, { flag: "wx" });
+  if (options.distributed)
+    assertDistributedShardReceipt({
+      ticket: options.distributed.ticket,
+      ticketSha256: options.distributed.ticketSha256,
+      receipt: receipt as Record<string, unknown>,
+      shardId,
+      phase: "mutation",
+      trustedCommit: options.distributed.commit,
+      trustedRunId: options.distributed.githubRunId,
     });
-    throw new Error(`Mutation union rejected: ${errors.join("; ")}`);
-  }
-  const scores = results.flatMap((result) => {
-    if (result.reportText === "") return [];
-    const targets = wave.shards
+  return { id: shardId, receiptText, configText, reportText, exitCode };
+}
+
+export async function executeMutationShard(options: {
+  repo: string;
+  manifestPath: string;
+  shardId: string;
+  runId: string;
+  campaignTimeoutMs: number;
+  distributed: {
+    ticket: DistributedQualityTicket;
+    ticketSha256: string;
+    commit: string;
+    githubRunId: string;
+  };
+}): Promise<MutationShardUnionInput["shards"][number]> {
+  const prepared = prepareMutationShardExecution({
+    repo: options.repo,
+    manifestPath: options.manifestPath,
+    runId: options.runId,
+  });
+  if (options.distributed.ticket.mutation_run_id !== options.runId)
+    throw new Error("Coordinator mutation run id differs from shard run id");
+  if (options.distributed.ticket.campaign_timeout_ms !== options.campaignTimeoutMs)
+    throw new Error("Coordinator campaign timeout differs from shard deadline");
+  return executePreparedMutationShard({
+    prepared,
+    shardId: options.shardId,
+    timeoutMs: options.campaignTimeoutMs,
+    distributed: options.distributed,
+  });
+}
+
+export function collectMutationShardUnion(options: {
+  prepared: PreparedMutationShardExecution;
+  shards: readonly MutationShardUnionInput["shards"][number][];
+  distributed?: {
+    ticket: DistributedQualityTicket;
+    ticketSha256: string;
+    commit: string;
+    githubRunId: string;
+  };
+}): string[] {
+  const { prepared } = options;
+  if (options.distributed)
+    for (const shard of prepared.wave.shards)
+      assertDistributedWaveBinding({
+        ticket: options.distributed.ticket,
+        manifestText: prepared.manifestText,
+        wave: prepared.wave as unknown as Record<string, unknown>,
+        shardId: shard.id,
+        targets: shard.targets,
+      });
+  return validateMutationShardUnion({
+    wave: prepared.wave,
+    runId: prepared.runId,
+    manifestPath: prepared.manifestPath,
+    baseConfig: prepared.baseConfig,
+    canonicalScope: prepared.entries.map((entry) => entry.path),
+    runtimeScope: prepared.runtimeScope,
+    sourceSha256: prepared.wave.source_freeze_sha256,
+    testSha256: prepared.wave.test_freeze_sha256,
+    workersByShard: prepared.workersByShard,
+    shards: options.shards,
+    manifestSha256: prepared.manifestSha256,
+    equivalenceManifest: prepared.equivalents,
+    repo: prepared.repo,
+    sourceSha256ForFile: (file) => hash(readFileSync(join(prepared.repo, file))),
+    ...(options.distributed ? { distributed: options.distributed } : {}),
+  });
+}
+
+export function publishMutationShardUnion(options: {
+  prepared: PreparedMutationShardExecution;
+  shards: readonly MutationShardUnionInput["shards"][number][];
+  distributed?: {
+    ticket: DistributedQualityTicket;
+    ticketSha256: string;
+    commit: string;
+    githubRunId: string;
+  };
+}): string {
+  const errors = collectMutationShardUnion(options);
+  if (errors.length) throw new Error(`Mutation union rejected: ${errors.join("; ")}`);
+  const { prepared, shards } = options;
+  const scores = shards.flatMap((result) => {
+    if (!result.reportText) return [];
+    const targets = prepared.wave.shards
       .find((shard) => shard.id === result.id)!
-      .targets.filter((target) => runtimeScope.includes(target));
+      .targets.filter((target) => prepared.runtimeScope.includes(target));
     return inspectMutationShardScore({
       report: JSON.parse(result.reportText),
       exitCode: result.exitCode,
       manifest: {
-        ...equivalents,
-        equivalents: equivalents.equivalents.filter((entry) => targets.includes(entry.file)),
+        ...prepared.equivalents,
+        equivalents: prepared.equivalents.equivalents.filter((entry) =>
+          targets.includes(entry.file),
+        ),
       },
-      repo,
+      repo: prepared.repo,
       expectedScope: targets,
-      sourceSha256ForFile: (file) => hash(readFileSync(join(repo, file))),
+      sourceSha256ForFile: (file) => hash(readFileSync(join(prepared.repo, file))),
     }).scores;
   });
   const scoreSummary = summarizeMutationScores(scores);
-  const unionPath = join(root, "union.json");
+  const unionPath = join(prepared.root, "union.json");
   writeFileSync(
     unionPath,
     json({
       version: 1,
-      wave_id: wave.wave_id,
-      run_id: runId,
-      manifest_sha256: manifestSha256,
-      target_count: entries.length,
-      shards: results.map((result) => ({
-        id: result.id,
-        receipt_sha256: hash(result.receiptText),
-      })),
+      wave_id: prepared.wave.wave_id,
+      run_id: prepared.runId,
+      manifest_sha256: prepared.manifestSha256,
+      target_count: prepared.entries.length,
+      shards: shards.map((result) => ({ id: result.id, receipt_sha256: hash(result.receiptText) })),
       mutation_score: scoreSummary.adjusted_score,
       raw_mutation_score: scoreSummary.raw_score,
       adjusted_mutation_score: scoreSummary.adjusted_score,
@@ -370,6 +473,51 @@ export async function executeMutationWave(options: {
     { flag: "wx" },
   );
   return unionPath;
+}
+
+export async function executeMutationWave(options: {
+  repo: string;
+  manifestPath: string;
+  timeoutMs: number;
+}): Promise<string> {
+  const loaded = loadMutationWave(options.repo, options.manifestPath);
+  const runId = `run-${randomUUID()}`;
+  const prepared = prepareMutationShardExecution({
+    repo: options.repo,
+    manifestPath: options.manifestPath,
+    runId,
+  });
+  const results: MutationShardUnionInput["shards"][number][] = [];
+  const batches = planMutationBatches(loaded.wave.shards, loaded.wave.worker_budget);
+  for (const batch of batches) {
+    const outcomes = await Promise.allSettled(
+      batch.map(({ id }) =>
+        executePreparedMutationShard({ prepared, shardId: id, timeoutMs: options.timeoutMs }),
+      ),
+    );
+    const failures = outcomes.flatMap((outcome) =>
+      outcome.status === "rejected" ? [String(outcome.reason)] : [],
+    );
+    results.push(
+      ...outcomes.flatMap((outcome) => (outcome.status === "fulfilled" ? [outcome.value] : [])),
+    );
+    if (failures.length) {
+      writeFileSync(join(prepared.root, "failed.json"), json({ failures }), { flag: "wx" });
+      throw new Error(
+        `Mutation wave failed; retained evidence at ${prepared.root}: ${failures.join("; ")}`,
+      );
+    }
+  }
+  try {
+    return publishMutationShardUnion({ prepared, shards: results });
+  } catch (error) {
+    writeFileSync(
+      join(prepared.root, "failed.json"),
+      json({ phase: "mutation-union", error: String(error) }),
+      { flag: "wx" },
+    );
+    throw error;
+  }
 }
 
 export function parseMutationExecutorArgs(args: readonly string[]): {

@@ -1,6 +1,314 @@
-diff --git a/node_modules/@stryker-mutator/instrumenter/.bun-tag-21950f6f14eb3bce b/.bun-tag-21950f6f14eb3bce
-new file mode 100644
-index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/dist/src/instrumenter.js b/dist/src/instrumenter.js
+index aa5fc92..b0aca6a 100644
+--- a/dist/src/instrumenter.js
++++ b/dist/src/instrumenter.js
+@@ -1,4 +1,5 @@
+ import path from 'path';
++import { isAbsolute, relative, sep } from 'node:path';
+ import { tokens, commonTokens } from '@stryker-mutator/api/plugin';
+ import { createParser } from './parsers/index.js';
+ import { transform, MutantCollector } from './transformers/index.js';
+@@ -25,6 +26,10 @@ export class Instrumenter {
+     }
+     async instrument(files, options) {
+         this.logger.debug('Instrumenting %d source files with mutants', files.length);
++        const instrumentedFiles = new Set(files.map((file) => canonicalFileName(file.name)));
++        for (const exact of options.exactIgnoredMutants ?? [])
++            if (!instrumentedFiles.has(exact.file))
++                throw new Error(`Exact ignored mutant file was not instrumented: ${exact.file}`);
+         const mutantCollector = new MutantCollector();
+         const outFiles = [];
+         let mutantCount = 0;
+@@ -57,6 +62,9 @@ export class Instrumenter {
+         };
+     }
+ }
++function canonicalFileName(file) {
++    return (isAbsolute(file) ? relative(process.cwd(), file) : file.replace(/^\.\//, '')).split(sep).join('/');
++}
+ function toBabelLineNumber(range) {
+     if (typeof range === 'boolean') {
+         return range;
+@@ -74,4 +82,4 @@ function toBabelLineNumber(range) {
+         }));
+     }
+ }
+-//# sourceMappingURL=instrumenter.js.map
+\ No newline at end of file
++//# sourceMappingURL=instrumenter.js.map
+diff --git a/dist/src/mutators/mutator-options.d.ts b/dist/src/mutators/mutator-options.d.ts
+index 44ebde6..ab234fc 100644
+--- a/dist/src/mutators/mutator-options.d.ts
++++ b/dist/src/mutators/mutator-options.d.ts
+@@ -1,5 +1,15 @@
++export interface ExactIgnoredMutant {
++    file: string;
++    source_sha256: string;
++    location: { start: { line: number; column: number }; end: { line: number; column: number } };
++    mutatorName: string;
++    replacement: string;
++    original: string;
++    statusReason: string;
++}
+ export interface MutatorOptions {
+     excludedMutations: string[];
+     noHeader?: boolean;
++    exactIgnoredMutants?: readonly ExactIgnoredMutant[];
+ }
+-//# sourceMappingURL=mutator-options.d.ts.map
+\ No newline at end of file
++//# sourceMappingURL=mutator-options.d.ts.map
+diff --git a/dist/src/transformers/babel-transformer.js b/dist/src/transformers/babel-transformer.js
+index 494e306..693e93c 100644
+--- a/dist/src/transformers/babel-transformer.js
++++ b/dist/src/transformers/babel-transformer.js
+@@ -1,5 +1,7 @@
+ import { File } from '@babel/core';
+ import traverse from '@babel/traverse';
++import { createHash } from 'node:crypto';
++import { isAbsolute, relative, sep } from 'node:path';
+ import { isImportDeclaration, isTypeNode, locationIncluded, locationOverlaps, placeHeaderIfNeeded, } from '../util/syntax-helpers.js';
+ import { allMutantPlacers, throwPlacementError, } from '../mutant-placers/index.js';
+ import { allMutators } from '../mutators/index.js';
+@@ -18,6 +20,18 @@ export const transformBabel = ({ root, originFileName, rawContent, offset }, mut
+     const directiveBookkeeper = new DirectiveBookkeeper(logger, mutators, originFileName);
+     // The ignorer bookkeeper is responsible for keeping track of the ignored node and the reason why it is ignored
+     const ignorerBookkeeper = new IgnorerBookkeeper(options.ignorers);
++    const exactIgnored = options.exactIgnoredMutants ?? [];
++    const sourceSha256 = createHash('sha256').update(rawContent).digest('hex');
++    const exactMatchCounts = new Map();
++    const canonicalFile = canonicalFileName(originFileName);
++    for (const entry of exactIgnored) {
++        if (!isExactEntry(entry)) throw new Error('Invalid exact ignored mutant registry entry');
++        if (entry.file === canonicalFile) {
++            if (entry.source_sha256 !== sourceSha256) throw new Error(`Exact ignored mutant source hash differs: ${entry.file}`);
++            if (sliceSource(rawContent, entry.location) !== entry.original) throw new Error(`Exact ignored mutant original differs: ${entry.file}`);
++            exactMatchCounts.set(entry, 0);
++        }
++    }
+     // Mutant-filter bookkeeping. When no mutator declares a `filter` we bypass
+     // all of this and traversal cost matches the unfiltered case.
+     const mutatorsByName = new Map(mutators.map((m) => [m.name, m]));
+@@ -67,6 +81,8 @@ export const transformBabel = ({ root, originFileName, rawContent, offset }, mut
+         },
+     });
+     placeHeaderIfNeeded(mutantCollector, originFileName, options, root);
++    for (const [entry, count] of exactMatchCounts)
++        if (count !== 1) throw new Error(`Exact ignored mutant must match exactly once: ${entry.file}`);
+     /**
+      * Apply mutator filters on exit. Only mutators that (a) declare a `filter`
+      * and (b) produced a mutant on this exact node are considered. The
+@@ -174,6 +190,16 @@ export const transformBabel = ({ root, originFileName, rawContent, offset }, mut
+     function collectMutants(path) {
+         return [...mutate(path)]
+             .map((mutable) => mutantCollector.collect(originFileName, path.node, mutable, offset))
++            .map((mutant) => {
++            const api = mutant.toApiMutant();
++            const matched = [...exactMatchCounts.keys()].filter((entry) => entry.mutatorName === api.mutatorName && entry.replacement === api.replacement && sameLocation(entry.location, registryLocation(api.location)));
++            if (matched.length > 1) throw new Error(`Exact ignored mutant matches multiple registry entries: ${canonicalFile}`);
++            if (matched.length === 1) {
++                mutant.ignoreReason = matched[0].statusReason;
++                exactMatchCounts.set(matched[0], 1 + exactMatchCounts.get(matched[0]));
++            }
++            return mutant;
++        })
+             .filter((mutant) => !mutant.ignoreReason);
+     }
+     /**
+@@ -201,4 +227,20 @@ export const transformBabel = ({ root, originFileName, rawContent, offset }, mut
+         }
+     }
+ };
+-//# sourceMappingURL=babel-transformer.js.map
+\ No newline at end of file
++function isExactEntry(value) {
++    const p = (position) => Number.isInteger(position?.line) && position.line >= 1 && Number.isInteger(position?.column) && position.column >= 1;
++    return typeof value.file === 'string' && value.file.length > 0 && !value.file.startsWith('/') && !value.file.includes('\\') && !value.file.split('/').some((part) => !part || part === '.' || part === '..') && /^[a-f0-9]{64}$/.test(value.source_sha256) && typeof value.mutatorName === 'string' && typeof value.replacement === 'string' && typeof value.original === 'string' && value.original.length > 0 && typeof value.statusReason === 'string' && value.statusReason.length > 0 && p(value.location?.start) && p(value.location?.end);
++}
++function sameLocation(left, right) { return left.start.line === right.start.line && left.start.column === right.start.column && left.end.line === right.end.line && left.end.column === right.end.column; }
++function registryLocation(location) { return { start: { line: location.start.line + 1, column: location.start.column + 1 }, end: { line: location.end.line + 1, column: location.end.column + 1 } }; }
++function sliceSource(source, location) {
++    const lines = source.split('\n');
++    if (location.start.line > lines.length || location.end.line > lines.length || location.start.line > location.end.line) return null;
++    const at = (line, column) => lines.slice(0, line - 1).reduce((n, text) => n + text.length + 1, 0) + column - 1;
++    const from = at(location.start.line, location.start.column); const to = at(location.end.line, location.end.column);
++    return to >= from && location.start.column <= lines[location.start.line - 1].length + 1 && location.end.column <= lines[location.end.line - 1].length + 1 ? source.slice(from, to) : null;
++}
++function canonicalFileName(file) {
++    return (isAbsolute(file) ? relative(process.cwd(), file) : file.replace(/^\.\//, '')).split(sep).join('/');
++}
++//# sourceMappingURL=babel-transformer.js.map
+diff --git a/src/instrumenter.ts b/src/instrumenter.ts
+index 006cf3c..466bd10 100644
+--- a/src/instrumenter.ts
++++ b/src/instrumenter.ts
+@@ -1,4 +1,5 @@
+ import path from 'path';
++import { isAbsolute, relative, sep } from 'node:path';
+ 
+ import { tokens, commonTokens } from '@stryker-mutator/api/plugin';
+ import { Logger } from '@stryker-mutator/api/logging';
+@@ -42,6 +43,10 @@ export class Instrumenter {
+       'Instrumenting %d source files with mutants',
+       files.length,
+     );
++    const instrumentedFiles = new Set(files.map((file) => canonicalFileName(file.name)));
++    for (const exact of options.exactIgnoredMutants ?? [])
++      if (!instrumentedFiles.has(exact.file))
++        throw new Error(`Exact ignored mutant file was not instrumented: ${exact.file}`);
+     const mutantCollector = new MutantCollector();
+     const outFiles: File[] = [];
+     let mutantCount = 0;
+@@ -83,6 +88,10 @@ export class Instrumenter {
+   }
+ }
+ 
++function canonicalFileName(file: string): string {
++  return (isAbsolute(file) ? relative(process.cwd(), file) : file.replace(/^\.\//, '')).split(sep).join('/');
++}
++
+ function toBabelLineNumber(range: MutateDescription): MutateDescription {
+   if (typeof range === 'boolean') {
+     return range;
+diff --git a/src/mutant.ts b/src/mutant.ts
+index 83f4602..814fb0b 100644
+--- a/src/mutant.ts
++++ b/src/mutant.ts
+@@ -23,7 +23,7 @@ export class Mutant implements Mutable {
+   public readonly replacementCode: string;
+   public readonly replacement: types.Node;
+   public readonly mutatorName: string;
+-  public readonly ignoreReason: string | undefined;
++  public ignoreReason: string | undefined;
+ 
+   constructor(
+     public readonly id: string,
+diff --git a/src/mutators/mutator-options.ts b/src/mutators/mutator-options.ts
+index 5c41bc6..7ffa083 100644
+--- a/src/mutators/mutator-options.ts
++++ b/src/mutators/mutator-options.ts
+@@ -1,4 +1,16 @@
++export interface ExactIgnoredMutant {
++  file: string;
++  source_sha256: string;
++  location: { start: { line: number; column: number }; end: { line: number; column: number } };
++  mutatorName: string;
++  replacement: string;
++  original: string;
++  statusReason: string;
++}
++
+ export interface MutatorOptions {
+   excludedMutations: string[];
+   noHeader?: boolean;
++  /** Native, source-bound equivalence exceptions. Every entry must match exactly once. */
++  exactIgnoredMutants?: readonly ExactIgnoredMutant[];
+ }
+diff --git a/src/transformers/babel-transformer.ts b/src/transformers/babel-transformer.ts
+index 29728e3..fb718b5 100644
+--- a/src/transformers/babel-transformer.ts
++++ b/src/transformers/babel-transformer.ts
+@@ -1,5 +1,7 @@
+ import { File, type NodePath, type types } from '@babel/core';
+ import traverse from '@babel/traverse';
++import { createHash } from 'node:crypto';
++import { isAbsolute, relative, sep } from 'node:path';
+ 
+ import {
+   isImportDeclaration,
+@@ -15,6 +17,7 @@ import {
+   throwPlacementError,
+ } from '../mutant-placers/index.js';
+ import { Mutable, Mutant } from '../mutant.js';
++import type { ExactIgnoredMutant } from '../mutators/mutator-options.js';
+ import { allMutators, type NodeMutator } from '../mutators/index.js';
+ 
+ import { DirectiveBookkeeper } from './directive-bookkeeper.js';
+@@ -60,6 +63,20 @@ export const transformBabel: AstTransformer<ScriptFormat> = (
+ 
+   // The ignorer bookkeeper is responsible for keeping track of the ignored node and the reason why it is ignored
+   const ignorerBookkeeper = new IgnorerBookkeeper(options.ignorers);
++  const exactIgnored = options.exactIgnoredMutants ?? [];
++  const sourceSha256 = createHash('sha256').update(rawContent).digest('hex');
++  const exactMatchCounts = new Map<ExactIgnoredMutant, number>();
++  const canonicalFile = canonicalFileName(originFileName);
++  for (const entry of exactIgnored) {
++    if (!isExactEntry(entry)) throw new Error('Invalid exact ignored mutant registry entry');
++    if (entry.file === canonicalFile) {
++      if (entry.source_sha256 !== sourceSha256)
++        throw new Error(`Exact ignored mutant source hash differs: ${entry.file}`);
++      if (sliceSource(rawContent, entry.location) !== entry.original)
++        throw new Error(`Exact ignored mutant original differs: ${entry.file}`);
++      exactMatchCounts.set(entry, 0);
++    }
++  }
+ 
+   // Mutant-filter bookkeeping. When no mutator declares a `filter` we bypass
+   // all of this and traversal cost matches the unfiltered case.
+@@ -112,6 +129,9 @@ export const transformBabel: AstTransformer<ScriptFormat> = (
+   });
+ 
+   placeHeaderIfNeeded(mutantCollector, originFileName, options, root);
++  for (const [entry, count] of exactMatchCounts)
++    if (count !== 1)
++      throw new Error(`Exact ignored mutant must match exactly once: ${entry.file}`);
+ 
+   /**
+    * Apply mutator filters on exit. Only mutators that (a) declare a `filter`
+@@ -249,6 +269,20 @@ export const transformBabel: AstTransformer<ScriptFormat> = (
+       .map((mutable) =>
+         mutantCollector.collect(originFileName, path.node, mutable, offset),
+       )
++      .map((mutant) => {
++        const api = mutant.toApiMutant();
++        const matched = [...exactMatchCounts.keys()].filter((entry) =>
++          entry.mutatorName === api.mutatorName &&
++          entry.replacement === api.replacement &&
++          sameLocation(entry.location, registryLocation(api.location)),
++        );
++        if (matched.length > 1) throw new Error(`Exact ignored mutant matches multiple registry entries: ${canonicalFile}`);
++        if (matched.length === 1) {
++          mutant.ignoreReason = matched[0]!.statusReason;
++          exactMatchCounts.set(matched[0]!, 1 + exactMatchCounts.get(matched[0]!)!);
++        }
++        return mutant;
++      })
+       .filter((mutant) => !mutant.ignoreReason);
+   }
+ 
+@@ -283,3 +317,32 @@ export const transformBabel: AstTransformer<ScriptFormat> = (
+     }
+   }
+ };
++
++function isExactEntry(value: ExactIgnoredMutant): boolean {
++  const p = (position: { line: number; column: number }) => Number.isInteger(position?.line) && position.line >= 1 && Number.isInteger(position?.column) && position.column >= 1;
++  return typeof value.file === 'string' && value.file.length > 0 && !value.file.startsWith('/') && !value.file.includes('\\') && !value.file.split('/').some((part) => !part || part === '.' || part === '..') &&
++    /^[a-f0-9]{64}$/.test(value.source_sha256) && typeof value.mutatorName === 'string' && typeof value.replacement === 'string' && typeof value.original === 'string' && value.original.length > 0 && typeof value.statusReason === 'string' && value.statusReason.length > 0 &&
++    p(value.location?.start) && p(value.location?.end);
++}
++
++function sameLocation(left: ExactIgnoredMutant['location'], right: { start: { line: number; column: number }; end: { line: number; column: number } }): boolean {
++  return left.start.line === right.start.line && left.start.column === right.start.column && left.end.line === right.end.line && left.end.column === right.end.column;
++}
++
++/** Stryker API locations preserve Babel's zero-based columns; the reviewed
++ * equivalence registry uses one-based columns, as does its source slicer. */
++function registryLocation(location: { start: { line: number; column: number }; end: { line: number; column: number } }) {
++  return { start: { line: location.start.line + 1, column: location.start.column + 1 }, end: { line: location.end.line + 1, column: location.end.column + 1 } };
++}
++
++function sliceSource(source: string, location: ExactIgnoredMutant['location']): string | null {
++  const lines = source.split('\n');
++  if (location.start.line > lines.length || location.end.line > lines.length || location.start.line > location.end.line) return null;
++  const at = (line: number, column: number) => lines.slice(0, line - 1).reduce((n, text) => n + text.length + 1, 0) + column - 1;
++  const from = at(location.start.line, location.start.column); const to = at(location.end.line, location.end.column);
++  return to >= from && location.start.column <= lines[location.start.line - 1]!.length + 1 && location.end.column <= lines[location.end.line - 1]!.length + 1 ? source.slice(from, to) : null;
++}
++
++function canonicalFileName(file: string): string {
++  return (isAbsolute(file) ? relative(process.cwd(), file) : file.replace(/^\.\//, '')).split(sep).join('/');
++}
 diff --git a/dist/src/util/syntax-helpers.js b/dist/src/util/syntax-helpers.js
 index 9318ad6d9b1856c7dc5c4b7f2e6a677a2f8ae6b9..d04401b9d72a407378839bc0c03729e10f43ff79 100644
 --- a/dist/src/util/syntax-helpers.js
