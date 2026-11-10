@@ -15,7 +15,7 @@ export type CoverageBehaviorProof = {
   source_sha256: string;
   test_sha256: string;
   config_sha256: string;
-  context_sha256?: string;
+  context_sha256: string;
   resource_tags: string[];
   tests: string[];
   executed_tests: string[];
