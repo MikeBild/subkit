@@ -69,11 +69,13 @@ test("quality CI retains global coverage before the distributed coordinator, sha
     const embeddings = job.indexOf("bun scripts/fetch-embedding-assets.ts");
     const clipper = job.indexOf("bun run build:clipper");
     const cockpit = job.indexOf("bun run build:cockpit");
+    const sk = job.indexOf("bun run build:sk");
     const executionIndex = job.indexOf(execution);
     expect(install).toBeGreaterThan(-1);
     expect(embeddings).toBeGreaterThan(install);
     expect(clipper).toBeGreaterThan(embeddings);
     expect(cockpit).toBeGreaterThan(clipper);
-    expect(executionIndex).toBeGreaterThan(cockpit);
+    expect(sk).toBeGreaterThan(cockpit);
+    expect(executionIndex).toBeGreaterThan(sk);
   }
 });
