@@ -1,12 +1,19 @@
 #!/usr/bin/env bun
 
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createBoundedOutputLog } from "../../../scripts/lib/bounded-output-log.ts";
+import {
+  createVerificationRun,
+  finalizeVerificationRun,
+  verificationRunsRoot,
+} from "../../../scripts/lib/verification-run-lifecycle.ts";
 import { runIsolatedTestFile } from "../../sk/src/tests/run-isolated-test-file.ts";
 import { parseShardArgs, runShardTests, selectCanonicalCoreTests } from "./audit/core-tests.ts";
 import { createClosureAnalysis } from "./audit/mutation-closure.ts";
+import { writeMutationInfrastructureSentinel } from "./audit/mutation-infrastructure-sentinel.ts";
 import { mutationClosureFiles, mutationTestInputs } from "./audit/mutation-inputs.ts";
 import { validateParentMutationValidationTicket } from "./audit/mutation-validation-ticket.ts";
 import {
@@ -124,6 +131,89 @@ if (args.mode === "shard") {
 }
 const tests = selected.map((p) => `./${p}`);
 
+async function runCoreTest(file: string): Promise<void> {
+  let childFailure: unknown;
+  let actualChildFailure = false;
+  try {
+    const run = createVerificationRun({
+      root: verificationRunsRoot(REPO),
+      owner: "core-test-runner",
+      logPath: "runner.log",
+    });
+    const logPath = join(run.directory, "runner.log");
+    const resultPath = join(run.directory, "result.json");
+    writeFileSync(logPath, "", { mode: 0o600, flag: "wx" });
+    const output = createBoundedOutputLog(logPath);
+    let terminal:
+      | { exitCode: number | null; signal: string | null; timedOut: boolean; error: string | null }
+      | undefined;
+    let outputFailed = false;
+    try {
+      await runIsolatedTestFile(file, {
+        cwd: REPO,
+        env: { SKIP_DOCKER: "1" },
+        onOutput: (chunk) => {
+          try {
+            output.append(chunk);
+          } catch (error) {
+            outputFailed = true;
+            throw error;
+          }
+        },
+        onTerminal: (outcome) => {
+          terminal = outcome;
+        },
+      });
+    } catch (error) {
+      childFailure = error;
+    }
+    if (outputFailed || terminal === undefined || terminal.error !== null)
+      throw new Error(
+        outputFailed
+          ? "core test output sink failed"
+          : `core test runner failed: ${terminal?.error}`,
+      );
+    actualChildFailure = terminal.exitCode !== 0 || terminal.timedOut;
+    if (childFailure !== undefined && !actualChildFailure)
+      throw new Error(`core test runner cleanup failed: ${childFailure}`);
+    const status =
+      childFailure === undefined && terminal.exitCode === 0 && !terminal.timedOut
+        ? "passed"
+        : "failed";
+    const snapshot = output.snapshot();
+    writeFileSync(
+      resultPath,
+      `${JSON.stringify(
+        {
+          status,
+          test: file,
+          terminal,
+          output: {
+            total_bytes: snapshot.totalBytes,
+            persisted_bytes: snapshot.persistedBytes,
+            truncated: snapshot.truncated,
+          },
+          error: childFailure === undefined ? null : String(childFailure),
+        },
+        null,
+        2,
+      )}\n`,
+      { mode: 0o600, flag: "wx" },
+    );
+    finalizeVerificationRun(run, { status, resultPath: "result.json", logPath: "runner.log" });
+    if (childFailure !== undefined) {
+      const tail = snapshot.tail.toString("utf8");
+      if (tail) console.error(tail);
+      throw childFailure;
+    }
+  } catch (error) {
+    if (error === childFailure && actualChildFailure) throw error;
+    const ticketPath = process.env.SUBKIT_MUTATION_PARENT_TICKET_PATH;
+    if (ticketPath) writeMutationInfrastructureSentinel(ticketPath, String(error));
+    throw error;
+  }
+}
+
 if (process.argv.includes("--list")) {
   console.log(tests.join("\n"));
   process.exit(0);
@@ -136,7 +226,7 @@ if (args.mode === "shard") {
   try {
     await runShardTests(
       selected,
-      (file) => runIsolatedTestFile(file, { cwd: REPO }),
+      runCoreTest,
       process.env.SUBKIT_MUTATION_FULL_CLOSURE === "1",
       directTests,
     );

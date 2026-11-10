@@ -87,16 +87,21 @@ export async function runIsolatedTestFile(
     );
     let outputError: unknown;
     if (onOutput) {
+      const failOutput = (error: unknown) => {
+        outputError ??= error;
+        child.stop();
+      };
       const capture = (chunk: Buffer) => {
         try {
           onOutput(chunk);
         } catch (error) {
-          outputError ??= error;
-          child.stop();
+          failOutput(error);
         }
       };
       child.child.stdout?.on("data", capture);
       child.child.stderr?.on("data", capture);
+      child.child.stdout?.on("error", failOutput);
+      child.child.stderr?.on("error", failOutput);
     }
     const outcome = await child.completed;
     onTerminal?.({

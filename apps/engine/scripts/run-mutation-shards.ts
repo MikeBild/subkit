@@ -4,6 +4,7 @@ import { join, relative, resolve } from "node:path";
 import { verificationRunsRoot } from "../../../scripts/lib/verification-run-lifecycle.ts";
 import { runWithVerificationLog } from "../../../scripts/run-with-verification-log.ts";
 import { readMutationEquivalentManifest } from "./audit/mutation-floor.ts";
+import { assertNoMutationInfrastructureSentinel } from "./audit/mutation-infrastructure-sentinel.ts";
 import { mutationClosureFiles, mutationTestInputs } from "./audit/mutation-inputs.ts";
 import { planMutationBatches } from "./audit/mutation-scheduler.ts";
 import { buildMutationShardConfig } from "./audit/mutation-shard-config.ts";
@@ -233,6 +234,7 @@ export async function executeMutationWave(options: {
           env: ticketEnv,
           timeoutMs,
         });
+        assertNoMutationInfrastructureSentinel(ticket.path);
         assertUnchanged();
         const reportText = readFileSync(join(directory, "mutation.json"), "utf8");
         const receipt: MutationShardReceipt = {
