@@ -2,6 +2,12 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import {
+  assertDistributedShardReceipt,
+  canonicalDistributedQualityTicket,
+  distributedQualityTicketSha256,
+  parseDistributedQualityTicket,
+} from "../apps/engine/scripts/audit/distributed-quality-ticket.ts";
 import { validateMutationValidationTicketEvidence } from "../apps/engine/scripts/audit/mutation-ticket-evidence.ts";
 import {
   isCanonicalRepoPath,
@@ -92,6 +98,47 @@ export function validatePortableParentValidationTicket(
       "mutation receipt",
     );
   });
+  const distributed = receipts.map((receipt) => receipt.distributed_ticket_sha256);
+  if (distributed.some((value) => value !== undefined)) {
+    if (distributed.some((value) => typeof value !== "string") || new Set(distributed).size !== 1)
+      throw new Error("bundle mutation receipts disagree on distributed ticket binding");
+    const portablePath = "reports/quality-inputs/distributed/ticket.json";
+    if (!index.files.some((file) => file.path === portablePath))
+      throw new Error("bundle omits distributed quality ticket");
+    const ticketText = new TextDecoder().decode(readBundleFile(repo, portablePath));
+    const ticket = parseDistributedQualityTicket(JSON.parse(ticketText));
+    if (
+      ticket.ticket_path !== portablePath ||
+      ticketText !== canonicalDistributedQualityTicket(ticket)
+    )
+      throw new Error("bundle distributed quality ticket is noncanonical");
+    const digest = distributedQualityTicketSha256(ticket);
+    if (distributed[0] !== digest)
+      throw new Error("bundle mutation receipts bind a foreign distributed ticket");
+    if (ticket.coordinator_commit_sha !== index.commit_sha)
+      throw new Error("bundle distributed ticket belongs to a foreign commit");
+    for (const receipt of receipts) {
+      const parentPath = receipt.parent_validation_ticket_path;
+      const parentSha256 = receipt.parent_validation_ticket_sha256;
+      if (
+        typeof parentPath !== "string" ||
+        !isCanonicalRepoPath(parentPath) ||
+        typeof parentSha256 !== "string" ||
+        !/^[a-f0-9]{64}$/.test(parentSha256)
+      )
+        throw new Error("bundle distributed receipt has a partial local parent ticket binding");
+      assertDistributedShardReceipt({
+        ticket,
+        ticketSha256: digest,
+        receipt,
+        shardId: String(receipt.shard_id),
+        phase: "mutation",
+        trustedCommit: ticket.coordinator_commit_sha,
+        trustedRunId: ticket.github_run_id,
+      });
+    }
+    return;
+  }
   const bindings = receipts.map((receipt) => ({
     path: receipt.parent_validation_ticket_path,
     sha256: receipt.parent_validation_ticket_sha256,

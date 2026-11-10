@@ -81,7 +81,7 @@ export async function exportShardQualityEvidence(options: {
   const distributedTicket = mutationReceipts.some(
     (receipt) => typeof (receipt as Record<string, unknown>).distributed_ticket_sha256 === "string",
   );
-  if (parentTicketPaths.size > 1)
+  if (!distributedTicket && parentTicketPaths.size > 1)
     throw new Error("Mutation receipts disagree on parent ticket path");
   for (const path of [
     acceptance,

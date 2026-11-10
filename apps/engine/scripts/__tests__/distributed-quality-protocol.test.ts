@@ -15,7 +15,11 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { exportShardQualityEvidence } from "../../../../scripts/export-shard-quality-evidence.ts";
-import { verifyShardQualityBundle } from "../../../../scripts/verify-shard-quality-bundle.ts";
+import {
+  parseQualityBundleIndex,
+  validatePortableParentValidationTicket,
+  verifyShardQualityBundle,
+} from "../../../../scripts/verify-shard-quality-bundle.ts";
 import {
   packQualityArtifacts,
   restoreQualityArtifacts,
@@ -149,6 +153,8 @@ test("two independent hosts produce a portable distributed quality bundle", asyn
         const receiptPath = join(directory, "receipt.json");
         const receipt = JSON.parse(readFileSync(receiptPath, "utf8")) as Record<string, unknown>;
         Object.assign(receipt, {
+          parent_validation_ticket_path: `reports/mutation/local-${host === hostA ? "a" : "b"}/ticket.json`,
+          parent_validation_ticket_sha256: hash(`local-ticket:${host}`),
           distributed_ticket_sha256: ticketSha256,
           coordinator_commit_sha: commit,
           github_run_id: ticket.github_run_id,
@@ -324,6 +330,45 @@ test("two independent hosts produce a portable distributed quality bundle", asyn
       join(bundle, "quality-bundle.json"),
       join(checkout, "reports/quality-export/shards/quality-bundle.json"),
     );
+    const bundleIndex = parseQualityBundleIndex(
+      JSON.parse(
+        readFileSync(join(checkout, "reports/quality-export/shards/quality-bundle.json"), "utf8"),
+      ),
+      commit,
+    );
+    expect(() => validatePortableParentValidationTicket(checkout, bundleIndex)).not.toThrow();
+    expect(() =>
+      validatePortableParentValidationTicket(checkout, {
+        ...bundleIndex,
+        files: bundleIndex.files.filter(
+          (file) => file.path !== "reports/quality-inputs/distributed/ticket.json",
+        ),
+      }),
+    ).toThrow("bundle omits distributed quality ticket");
+    const distributedReceiptPath = join(
+      checkout,
+      source.mutationRoot,
+      source.wave.shards[0]!.id,
+      "receipt.json",
+    );
+    const originalDistributedReceipt = readFileSync(distributedReceiptPath, "utf8");
+    const foreignDistributedReceipt = JSON.parse(originalDistributedReceipt) as Record<
+      string,
+      unknown
+    >;
+    foreignDistributedReceipt.distributed_ticket_sha256 = "0".repeat(64);
+    writeFileSync(distributedReceiptPath, json(foreignDistributedReceipt));
+    expect(() => validatePortableParentValidationTicket(checkout, bundleIndex)).toThrow(
+      "disagree on distributed ticket binding",
+    );
+    writeFileSync(distributedReceiptPath, originalDistributedReceipt);
+    const partialLocalReceipt = JSON.parse(originalDistributedReceipt) as Record<string, unknown>;
+    delete partialLocalReceipt.parent_validation_ticket_sha256;
+    writeFileSync(distributedReceiptPath, json(partialLocalReceipt));
+    expect(() => validatePortableParentValidationTicket(checkout, bundleIndex)).toThrow(
+      "partial local parent ticket",
+    );
+    writeFileSync(distributedReceiptPath, originalDistributedReceipt);
     expect(
       await verifyShardQualityBundle(
         checkout,
