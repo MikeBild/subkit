@@ -156,9 +156,9 @@ async function runCoreTest(file: string): Promise<void> {
       await runIsolatedTestFile(file, {
         cwd: REPO,
         env: { SKIP_DOCKER: "1" },
-        onOutput: (chunk) => {
+        onOutput: (chunk, stream) => {
           try {
-            output.append(chunk);
+            output.append(chunk, stream);
           } catch (error) {
             outputFailed = true;
             throw error;

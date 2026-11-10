@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { execFile } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -45,8 +45,8 @@ const log = join(root, "runner.log");
 writeFileSync(log, "", { mode: 0o600, flag: "wx" });
 const sink = createBoundedOutputLog(log, 1024 * 1024, 64 * 1024);
 const child = spawn(${JSON.stringify(node)}, ["-e", ${child}], { stdio: ["ignore", "pipe", "pipe"] });
-child.stdout.on("data", (chunk) => sink.append(chunk));
-child.stderr.on("data", (chunk) => sink.append(chunk));
+child.stdout.on("data", (chunk) => sink.append(chunk, "stdout"));
+child.stderr.on("data", (chunk) => sink.append(chunk, "stderr"));
 const code = await new Promise((resolve, reject) => { child.once("error", reject); child.once("close", (value) => resolve(value ?? 1)); });
 const output = sink.snapshot();
 console.log(JSON.stringify({ code, totalBytes: output.totalBytes, persistedBytes: output.persistedBytes, truncated: output.truncated, tail: output.tail.toString(), logBytes: readFileSync(log).byteLength }));
@@ -87,6 +87,66 @@ test("preserves a failing noisy command with a bounded diagnostic tail through n
   expect(result.truncated).toBe(true);
   expect(String(result.tail)).toContain("failure-tail");
   expect(Buffer.byteLength(String(result.tail))).toBeLessThanOrEqual(64 * 1024);
+});
+
+test("retains stderr diagnostics when stdout floods after the error", () => {
+  const root = mkdtempSync(join(tmpdir(), "subkit-bounded-output-streams-"));
+  try {
+    const log = join(root, "runner.log");
+    writeFileSync(log, "", { mode: 0o600, flag: "wx" });
+    const sink = createBoundedOutputLog(log, 1024, 64);
+    sink.append(Buffer.from("failure-tail"), "stderr");
+    sink.append(Buffer.from("x".repeat(4096)), "stdout");
+    const output = sink.snapshot();
+    expect(output.totalBytes).toBe(4096 + Buffer.byteLength("failure-tail"));
+    expect(output.persistedBytes).toBe(1024);
+    expect(output.truncated).toBe(true);
+    expect(readFileSync(log).byteLength).toBe(1024);
+    expect(output.tail.toString()).toContain("failure-tail");
+    expect(output.tail.toString()).toContain("x");
+    expect(output.tail.byteLength).toBe(64);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("keeps bounded tails from both streams while donating unused stderr space to stdout", () => {
+  const root = mkdtempSync(join(tmpdir(), "subkit-bounded-output-streams-"));
+  try {
+    const log = join(root, "runner.log");
+    writeFileSync(log, "", { mode: 0o600, flag: "wx" });
+    const sink = createBoundedOutputLog(log, 4096, 64);
+    sink.append(Buffer.from(`${"o".repeat(128)}stdout-tail`), "stdout");
+    sink.append(Buffer.from(`${"e".repeat(128)}stderr-tail`), "stderr");
+    const both = sink.snapshot().tail;
+    expect(both.toString()).toContain("stdout-tail");
+    expect(both.toString()).toContain("stderr-tail");
+    expect(both.byteLength).toBeLessThanOrEqual(64);
+
+    const stdoutOnly = createBoundedOutputLog(join(root, "stdout.log"), 4096, 64);
+    stdoutOnly.append(Buffer.from("x".repeat(128)), "stdout");
+    expect(stdoutOnly.snapshot().tail.byteLength).toBe(64);
+
+    const stderrOnly = createBoundedOutputLog(join(root, "stderr.log"), 4096, 64);
+    stderrOnly.append(Buffer.from("e".repeat(128)), "stderr");
+    expect(stderrOnly.snapshot().tail.byteLength).toBe(64);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("uses the one-byte tail for stderr when both streams are present", () => {
+  const root = mkdtempSync(join(tmpdir(), "subkit-bounded-output-streams-"));
+  try {
+    const log = join(root, "runner.log");
+    writeFileSync(log, "", { mode: 0o600, flag: "wx" });
+    const sink = createBoundedOutputLog(log, 16, 1);
+    sink.append(Buffer.from("x"), "stdout");
+    sink.append(Buffer.from("E"), "stderr");
+    expect(sink.snapshot().tail.toString()).toBe("E");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("reports a timed out owned child through the real node exec boundary", async () => {

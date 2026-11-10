@@ -15,7 +15,7 @@ export type IsolatedTestFileOptions = {
     timedOut: boolean;
     error: string | null;
   }) => void;
-  onOutput?: (chunk: Buffer) => void;
+  onOutput?: (chunk: Buffer, stream: "stdout" | "stderr") => void;
 };
 
 const DOCKER_CLI_PLUGIN_DIRS = [
@@ -91,15 +91,15 @@ export async function runIsolatedTestFile(
         outputError ??= error;
         child.stop();
       };
-      const capture = (chunk: Buffer) => {
+      const capture = (stream: "stdout" | "stderr") => (chunk: Buffer) => {
         try {
-          onOutput(chunk);
+          onOutput(chunk, stream);
         } catch (error) {
           failOutput(error);
         }
       };
-      child.child.stdout?.on("data", capture);
-      child.child.stderr?.on("data", capture);
+      child.child.stdout?.on("data", capture("stdout"));
+      child.child.stderr?.on("data", capture("stderr"));
       child.child.stdout?.on("error", failOutput);
       child.child.stderr?.on("error", failOutput);
     }
