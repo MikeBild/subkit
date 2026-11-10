@@ -59,4 +59,21 @@ test("quality CI retains global coverage before the distributed coordinator, sha
   expect(qualityWorkflow).toContain("retention-days: 90");
   expect(qualityWorkflow).toContain("retention-days: 30");
   expect(qualityWorkflow).toContain("path: reports/coverage/");
+  const coordinator = qualityWorkflow.slice(qualityWorkflow.indexOf("  coordinator:"), shard);
+  const shardBlock = qualityWorkflow.slice(shard, mergeJob);
+  for (const [job, execution] of [
+    [coordinator, "bun run check:coverage-floor"],
+    [shardBlock, "distributed-quality.ts coverage"],
+  ]) {
+    const install = job.indexOf("bun install --frozen-lockfile");
+    const embeddings = job.indexOf("bun scripts/fetch-embedding-assets.ts");
+    const clipper = job.indexOf("bun run build:clipper");
+    const cockpit = job.indexOf("bun run build:cockpit");
+    const executionIndex = job.indexOf(execution);
+    expect(install).toBeGreaterThan(-1);
+    expect(embeddings).toBeGreaterThan(install);
+    expect(clipper).toBeGreaterThan(embeddings);
+    expect(cockpit).toBeGreaterThan(clipper);
+    expect(executionIndex).toBeGreaterThan(cockpit);
+  }
 });
