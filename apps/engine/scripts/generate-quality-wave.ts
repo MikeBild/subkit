@@ -11,6 +11,10 @@ import {
   canonicalPureTargetDigest,
 } from "./audit/pure-targets.ts";
 import { parseQualityShardPolicy } from "./audit/quality-shard-policy.ts";
+import {
+  createQualityWaveManifest,
+  QUALITY_SHARD_POLICY_PATH,
+} from "./audit/quality-wave-manifest.ts";
 import { reviewedRuntimeWitnesses } from "./audit/runtime-witnesses.ts";
 
 const repo = resolve(import.meta.dir, "../../..");
@@ -24,7 +28,8 @@ const ledgerPath = required("--dynamic-ledger");
 const waveId = required("--wave-id");
 if (!/^[a-z0-9][a-z0-9-]*$/.test(waveId)) throw new Error("Invalid wave id");
 const out = resolve(repo, required("--out"));
-const raw = readFileSync(join(repo, "apps/engine/.quality-shard-policy.json"), "utf8");
+const policyPath = QUALITY_SHARD_POLICY_PATH;
+const raw = readFileSync(join(repo, policyPath), "utf8");
 const files = mutationClosureFiles(repo);
 const read = (path: string) => {
   try {
@@ -87,27 +92,18 @@ const next = [...grouped.entries()]
       consumers,
     };
   });
-const zero = "0".repeat(64);
-const manifest = {
-  version: 1,
-  status: "candidate_unaccepted",
-  wave_id: waveId,
-  source_freeze_sha256: zero,
-  test_freeze_sha256: zero,
-  target_digest_sha256: canonicalPureTargetDigest(entries),
-  config_sha256: zero,
-  lock_sha256: zero,
-  equivalence_manifest_path: policy.equivalence_manifest_path,
-  equivalence_manifest_sha256: zero,
-  dynamic_import_ledger_path: ledgerPath,
-  dynamic_import_ledger_sha256: zero,
-  non_incremental: true,
-  worker_budget: policy.worker_budget,
-  external_runtime_tests: externalRuntimeTests,
-  target_count: entries.length,
+const manifest = createQualityWaveManifest({
+  repo,
+  waveId,
+  targetDigestSha256: canonicalPureTargetDigest(entries),
+  equivalenceManifestPath: policy.equivalence_manifest_path,
+  ledgerPath,
+  workerBudget: policy.worker_budget,
+  externalRuntimeTests,
+  targetCount: entries.length,
   shards: next,
-  unresolved_consumer_witnesses: unresolved,
-};
+  unresolved,
+});
 if (unresolved.length) throw new Error(`Missing runtime witnesses: ${JSON.stringify(unresolved)}`);
 mkdirSync(resolve(out, ".."), { recursive: true });
 writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`);

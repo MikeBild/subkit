@@ -201,6 +201,9 @@ export async function prepareDistributedQuality() {
     "--out",
     relative(repo, manifestPath()),
   ]);
+  const frozenWave = loadMutationWave(repo, manifestPath()).wave;
+  if (!frozenWave.quality_policy_sha256)
+    throw new Error("Distributed quality requires a policy-bound wave");
   const coverageRunId = `run-coverage-${randomUUID()}`,
     mutationRunId = `run-mutation-${randomUUID()}`,
     behaviorRoot = join(repo, "reports/coverage/shards", waveId, coverageRunId, "behavior");
