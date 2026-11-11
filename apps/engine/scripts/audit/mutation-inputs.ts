@@ -88,6 +88,7 @@ const RUNNER_INPUTS = [
   "apps/engine/scripts/audit/quality-runtime-witness-policy.ts",
   "apps/engine/scripts/record-quality-runtime-witnesses.ts",
   "apps/engine/scripts/generate-quality-wave.ts",
+  "apps/engine/scripts/audit/quality-wave-manifest.ts",
   "apps/engine/scripts/verify-quality-release-shards.ts",
   "apps/engine/scripts/run-external-runtime-acceptance.ts",
   "scripts/export-shard-quality-evidence.ts",

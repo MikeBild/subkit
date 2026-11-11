@@ -42,6 +42,7 @@ describe("mutation runtime provenance inputs", () => {
         "apps/engine/scripts/audit/distributed-quality-artifacts.ts",
         "apps/engine/scripts/audit/distributed-quality-budget.ts",
         "apps/engine/scripts/audit/distributed-quality-ticket.ts",
+        "apps/engine/scripts/audit/quality-wave-manifest.ts",
         "apps/engine/scripts/__tests__/native-exact-ignored-mutants.test.ts",
         "apps/engine/scripts/distributed-quality.ts",
         "apps/engine/scripts/prepare-distributed-quality-ticket.ts",
@@ -139,5 +140,24 @@ describe("mutation runtime provenance inputs", () => {
     const before = digestFiles(root, patchedDependencyInputs(root), digest);
     writeFileSync(patch, "diff --git a/a b/a\n+patched\n");
     expect(digestFiles(root, patchedDependencyInputs(root), digest)).not.toBe(before);
+  });
+
+  test("binds quality wave manifest factory bytes into a freeze digest", () => {
+    const root = fixtureRoot();
+    writeManifest(root, {});
+    const path = "apps/engine/scripts/audit/quality-wave-manifest.ts";
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), "export const manifest = 1;\n");
+    const digest = (parts: readonly (string | Uint8Array)[]) =>
+      createHash("sha256")
+        .update(
+          Buffer.concat(parts.map((part) => (typeof part === "string" ? Buffer.from(part) : part))),
+        )
+        .digest("hex");
+    const selected = mutationTestInputs(root).filter((input) => input === path);
+    expect(selected).toEqual([path]);
+    const before = digestFiles(root, selected, digest);
+    writeFileSync(join(root, path), "export const manifest = 2;\n");
+    expect(digestFiles(root, selected, digest)).not.toBe(before);
   });
 });
