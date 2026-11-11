@@ -4,6 +4,7 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction, SYSTEM_TENANT_ID } from "../../audit/types.ts";
 import type { Config } from "../../config/schema.ts";
 import type { Db } from "../../db/client.ts";
+import { hostedQuotaError } from "../../db/hosted-quota-errors.ts";
 import {
   mcpOauthAccessTokens,
   mcpOauthAuthorizationCodes,
@@ -12,6 +13,7 @@ import {
   mcpOauthRefreshTokens,
   mcpOauthUnknownGrants,
 } from "../../db/schema/index.ts";
+import { retryTransient } from "../../db/transient.ts";
 import { logger } from "../../logging/logger.ts";
 import {
   clientLivenessRefusal,
@@ -113,77 +115,87 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     const expiresAt = new Date(Date.now() + cfg.authorization_code_ttl_seconds * 1000);
     const requestSource = input.requestSource ?? "api";
 
-    await db.transaction(async (tx) => {
-      await assertOAuthTenantActive(input.tenantId, tx);
-      // tenant-filter:exempt — exact global client authority locked before code issuance
-      const [client] = await tx
-        .select({
-          id: mcpOauthClients.id,
-          disabled_at: mcpOauthClients.disabled_at,
-          retired_at: mcpOauthClients.retired_at,
-        })
-        .from(mcpOauthClients)
-        .where(eq(mcpOauthClients.client_id, input.clientId))
-        .for("update");
-      if (!client || (client.disabled_at && !client.retired_at))
-        throw Object.assign(new Error("invalid_client: OAuth client is unavailable"), {
-          oauth_error: "invalid_client",
-        });
-      const reactivated = await tx
-        .update(mcpOauthClients)
-        .set({ disabled_at: null, retired_at: null })
-        .where(
-          and(eq(mcpOauthClients.client_id, input.clientId), isNotNull(mcpOauthClients.retired_at)),
-        )
-        .returning({ id: mcpOauthClients.id });
-      if (reactivated[0]) {
-        await auditAwait(
-          {
+    await retryTransient(
+      () =>
+        db.transaction(async (tx) => {
+          await assertOAuthTenantActive(input.tenantId, tx);
+          // tenant-filter:exempt — exact global client authority locked before code issuance
+          const [client] = await tx
+            .select({
+              id: mcpOauthClients.id,
+              disabled_at: mcpOauthClients.disabled_at,
+              retired_at: mcpOauthClients.retired_at,
+            })
+            .from(mcpOauthClients)
+            .where(eq(mcpOauthClients.client_id, input.clientId))
+            .for("update");
+          if (!client || (client.disabled_at && !client.retired_at))
+            throw Object.assign(new Error("invalid_client: OAuth client is unavailable"), {
+              oauth_error: "invalid_client",
+            });
+          const reactivated = await tx
+            .update(mcpOauthClients)
+            .set({ disabled_at: null, retired_at: null })
+            .where(
+              and(
+                eq(mcpOauthClients.client_id, input.clientId),
+                isNotNull(mcpOauthClients.retired_at),
+              ),
+            )
+            .returning({ id: mcpOauthClients.id });
+          if (reactivated[0]) {
+            await auditAwait(
+              {
+                tenant_id: input.tenantId,
+                actor_type: "user",
+                actor_id: input.userId,
+                action: AuditAction.MCP_OAUTH_CLIENT_REACTIVATED,
+                resource_type: "mcp_oauth_client",
+                resource_id: input.clientId,
+                result: "success",
+                metadata: { request_source: requestSource, client_id: input.clientId },
+              },
+              tx,
+            );
+          }
+
+          await tx.insert(mcpOauthAuthorizationCodes).values({
             tenant_id: input.tenantId,
-            actor_type: "user",
-            actor_id: input.userId,
-            action: AuditAction.MCP_OAUTH_CLIENT_REACTIVATED,
-            resource_type: "mcp_oauth_client",
-            resource_id: input.clientId,
-            result: "success",
-            metadata: { request_source: requestSource, client_id: input.clientId },
-          },
-          tx,
-        );
-      }
-
-      await tx.insert(mcpOauthAuthorizationCodes).values({
-        tenant_id: input.tenantId,
-        client_id: input.clientId,
-        user_id: input.userId,
-        code_sha256: hash,
-        code_challenge: input.codeChallenge,
-        code_challenge_method: "S256",
-        redirect_uri: input.redirectUri,
-        scope: input.scope,
-        resource: input.resource ?? null,
-        state: input.state ?? null,
-        expires_at: expiresAt,
-      });
-
-      await auditAwait(
-        {
-          tenant_id: input.tenantId,
-          actor_type: "user",
-          actor_id: input.userId,
-          action: AuditAction.MCP_OAUTH_CODE_ISSUED,
-          resource_type: "mcp_oauth_code",
-          resource_id: hash.slice(0, 16),
-          result: "success",
-          metadata: {
-            request_source: requestSource,
             client_id: input.clientId,
+            user_id: input.userId,
+            code_sha256: hash,
+            code_challenge: input.codeChallenge,
+            code_challenge_method: "S256",
+            redirect_uri: input.redirectUri,
             scope: input.scope,
-          },
-        },
-        tx,
-      );
-    });
+            resource: input.resource ?? null,
+            state: input.state ?? null,
+            expires_at: expiresAt,
+          });
+
+          await auditAwait(
+            {
+              tenant_id: input.tenantId,
+              actor_type: "user",
+              actor_id: input.userId,
+              action: AuditAction.MCP_OAUTH_CODE_ISSUED,
+              resource_type: "mcp_oauth_code",
+              resource_id: hash.slice(0, 16),
+              result: "success",
+              metadata: {
+                request_source: requestSource,
+                client_id: input.clientId,
+                scope: input.scope,
+              },
+            },
+            tx,
+          );
+        }),
+      {
+        label: "mcp_oauth_code_issuance",
+        shouldRetry: (error) => hostedQuotaError(error)?.code === "40001",
+      },
+    );
 
     return plaintext;
   }
