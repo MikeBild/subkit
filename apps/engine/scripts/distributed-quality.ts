@@ -15,6 +15,7 @@ import {
   parseDistributedQualityTicket,
 } from "./audit/distributed-quality-ticket.ts";
 import { runtimePureTargetPaths } from "./audit/pure-targets.ts";
+import { runHermeticQualityAction } from "./audit/quality-hermetic-launcher.ts";
 import { createDistributedQualityTicket } from "./prepare-distributed-quality-ticket.ts";
 import {
   collectCoverageShardUnion,
@@ -33,6 +34,7 @@ import {
 import { validateDistributedQualityExecutor } from "./validate-distributed-quality-executor.ts";
 
 const repo = resolve(import.meta.dir, "../../..");
+const scriptPath = import.meta.path;
 const coordinator = join(repo, "reports/distributed-quality/coordinator");
 const packageRoot = join(coordinator, "package");
 const input = join(repo, "reports/quality-inputs/distributed");
@@ -415,9 +417,17 @@ export async function mergeDistributedQuality() {
 }
 if (import.meta.main) {
   const action = process.argv[2];
+  if (!action || !["prepare", "coverage", "mutation", "merge"].includes(action))
+    throw new Error("usage: distributed-quality.ts <prepare|coverage|mutation|merge>");
+  if (process.env.SUBKIT_QUALITY_HERMETIC_CI === "1")
+    runHermeticQualityAction({
+      executable: process.execPath,
+      script: scriptPath,
+      action,
+      ambient: process.env,
+    });
   if (action === "prepare") await prepareDistributedQuality();
   else if (action === "coverage") await runDistributedCoverage();
   else if (action === "mutation") await runDistributedMutation();
   else if (action === "merge") await mergeDistributedQuality();
-  else throw new Error("usage: distributed-quality.ts <prepare|coverage|mutation|merge>");
 }

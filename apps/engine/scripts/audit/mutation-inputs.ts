@@ -80,6 +80,7 @@ const RUNNER_INPUTS = [
   "apps/engine/scripts/audit/distributed-quality-artifacts.ts",
   "apps/engine/scripts/audit/distributed-quality-budget.ts",
   "apps/engine/scripts/audit/distributed-quality-ticket.ts",
+  "apps/engine/scripts/audit/quality-hermetic-launcher.ts",
   "apps/engine/scripts/distributed-quality.ts",
   "apps/engine/scripts/prepare-distributed-quality-ticket.ts",
   "apps/engine/scripts/validate-distributed-quality-executor.ts",

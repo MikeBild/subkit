@@ -363,8 +363,8 @@ function verifiedBehaviorReceipt(tests: readonly string[]): string | undefined {
         )?.tests ?? [],
     });
     behaviorEvidence = { sha256, text };
-  } catch {
-    return "behavior receipt is unreadable";
+  } catch (error) {
+    return `behavior receipt validation failed: ${error instanceof Error ? error.message : String(error)}`;
   }
   return "";
 }

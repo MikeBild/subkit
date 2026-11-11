@@ -42,6 +42,7 @@ describe("mutation runtime provenance inputs", () => {
         "apps/engine/scripts/audit/distributed-quality-artifacts.ts",
         "apps/engine/scripts/audit/distributed-quality-budget.ts",
         "apps/engine/scripts/audit/distributed-quality-ticket.ts",
+        "apps/engine/scripts/audit/quality-hermetic-launcher.ts",
         "apps/engine/scripts/audit/quality-wave-manifest.ts",
         "apps/engine/scripts/__tests__/native-exact-ignored-mutants.test.ts",
         "apps/engine/scripts/distributed-quality.ts",

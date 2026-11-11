@@ -36,6 +36,10 @@ jobs:
       SUBKIT_COVERAGE_OWNED_DATABASE_URL: postgres://subkit:subkit-test@127.0.0.1:5432/subkit
       SKIP_DOCKER: "1"
       LLM_PROVIDER: mock
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+      TZ: UTC
+      SUBKIT_QUALITY_HERMETIC_CI: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -104,6 +108,10 @@ jobs:
       SUBKIT_COVERAGE_OWNED_DATABASE_URL: postgres://subkit:subkit-test@127.0.0.1:5432/subkit
       SKIP_DOCKER: "1"
       LLM_PROVIDER: mock
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+      TZ: UTC
+      SUBKIT_QUALITY_HERMETIC_CI: "1"
       SUBKIT_QUALITY_COMMIT: ${{ needs.coordinator.outputs.commit }}
       SUBKIT_QUALITY_SHARD: ${{ matrix.shard }}
     steps:
@@ -167,6 +175,10 @@ jobs:
       SUBKIT_COVERAGE_OWNED_DATABASE_URL: postgres://subkit:subkit-test@127.0.0.1:5432/subkit
       SKIP_DOCKER: "1"
       LLM_PROVIDER: mock
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+      TZ: UTC
+      SUBKIT_QUALITY_HERMETIC_CI: "1"
       SUBKIT_QUALITY_COMMIT: ${{ needs.coordinator.outputs.commit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
