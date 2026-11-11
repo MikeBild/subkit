@@ -348,11 +348,14 @@ describe.skipIf(skip)("knowledge intake", () => {
         },
         ctx.testDb.db,
       );
+      const confirmationOutcome = Promise.allSettled([confirmation]);
       await waitForIntakeLockWaiters(2);
       await blocker.release();
       released = true;
       await expect(patch).resolves.toMatchObject({ version: item.version + 1 });
-      await expect(confirmation).rejects.toBeInstanceOf(IntakeProposalConflictError);
+      expect(await confirmationOutcome).toEqual([
+        { status: "rejected", reason: expect.any(IntakeProposalConflictError) },
+      ]);
     } catch (error) {
       if (!released) await blocker.rollback();
       throw error;
