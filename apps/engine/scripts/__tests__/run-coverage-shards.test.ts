@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { mutationTestInputs } from "../audit/mutation-inputs.ts";
 import { digestWaveFiles } from "../audit/mutation-wave.ts";
-import { selectDistributedCoverageBehaviorProof } from "../distributed-quality.ts";
+import {
+  measureDistributedBehaviorDurations,
+  selectDistributedCoverageBehaviorProof,
+} from "../distributed-quality.ts";
 import {
   collectCoverageShardUnion,
   coverageBehaviorProofDescriptor,
@@ -19,6 +22,72 @@ test("coverage distributed coordinator, shard executor, and collector APIs are e
   expect(executeCoverageBehaviorGroups).toBeInstanceOf(Function);
   expect(executeCoverageWave).toBeInstanceOf(Function);
   expect(collectCoverageShardUnion).toBeInstanceOf(Function);
+});
+
+test("behavior duration measurements remain scoped to each shard proof", () => {
+  const root = mkdtempSync(join(tmpdir(), "distributed-quality-duration-"));
+  const manifest = (name: string, startedAt: string, finishedAt: string) => {
+    writeFileSync(join(root, name), JSON.stringify({ startedAt, finishedAt }));
+    return name;
+  };
+  const proof = (name: string, terminal: Array<{ test: string; manifest_path: string }>) => {
+    const path = join(root, name);
+    writeFileSync(path, JSON.stringify({ terminal }));
+    return path;
+  };
+  try {
+    const first = manifest("first.json", "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.010Z");
+    const second = manifest("second.json", "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.025Z");
+    expect(
+      measureDistributedBehaviorDurations({
+        repo: root,
+        proofs: new Map([
+          ["first", proof("first-proof.json", [{ test: "shared.test.ts", manifest_path: first }])],
+          [
+            "second",
+            proof("second-proof.json", [{ test: "shared.test.ts", manifest_path: second }]),
+          ],
+        ]),
+      }),
+    ).toEqual(
+      new Map([
+        ["first", new Map([["shared.test.ts", 10]])],
+        ["second", new Map([["shared.test.ts", 25]])],
+      ]),
+    );
+    expect(() =>
+      measureDistributedBehaviorDurations({
+        repo: root,
+        proofs: new Map([
+          [
+            "first",
+            proof("inconsistent-proof.json", [
+              { test: "shared.test.ts", manifest_path: first },
+              { test: "shared.test.ts", manifest_path: second },
+            ]),
+          ],
+        ]),
+      }),
+    ).toThrow("Behavior test duration disagrees");
+    const invalid = manifest(
+      "invalid.json",
+      "2026-01-01T00:00:00.025Z",
+      "2026-01-01T00:00:00.000Z",
+    );
+    expect(() =>
+      measureDistributedBehaviorDurations({
+        repo: root,
+        proofs: new Map([
+          [
+            "invalid",
+            proof("invalid-proof.json", [{ test: "invalid.test.ts", manifest_path: invalid }]),
+          ],
+        ]),
+      }),
+    ).toThrow("Behavior terminal manifest has invalid duration");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("coverage shard evidence paths are confined to the repository", () => {

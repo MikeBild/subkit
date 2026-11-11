@@ -137,24 +137,29 @@ export function selectDistributedCoverageBehaviorProof(options: {
     throw new Error("Shard behavior proof absent or misrouted");
   return path;
 }
-function measurements(proofs: Map<string, string>): Map<string, number> {
-  const measured = new Map<string, number>();
-  for (const proofPath of proofs.values()) {
+export function measureDistributedBehaviorDurations(input: {
+  repo: string;
+  proofs: ReadonlyMap<string, string>;
+}): Map<string, Map<string, number>> {
+  const measured = new Map<string, Map<string, number>>();
+  for (const [shardId, proofPath] of input.proofs) {
+    const shardMeasurements = new Map<string, number>();
     const proof = JSON.parse(readFileSync(proofPath, "utf8")) as {
       terminal: Array<{ test: string; manifest_path: string }>;
     };
     for (const item of proof.terminal) {
-      const manifest = JSON.parse(readFileSync(join(repo, item.manifest_path), "utf8")) as {
+      const manifest = JSON.parse(readFileSync(join(input.repo, item.manifest_path), "utf8")) as {
         startedAt?: string;
         finishedAt?: string;
       };
       const ms = Date.parse(manifest.finishedAt ?? "") - Date.parse(manifest.startedAt ?? "");
       if (!Number.isSafeInteger(ms) || ms < 0)
         throw new Error("Behavior terminal manifest has invalid duration");
-      if (measured.has(item.test) && measured.get(item.test) !== ms)
+      if (shardMeasurements.has(item.test) && shardMeasurements.get(item.test) !== ms)
         throw new Error("Behavior test duration disagrees");
-      measured.set(item.test, ms);
+      shardMeasurements.set(item.test, ms);
     }
+    measured.set(shardId, shardMeasurements);
   }
   return measured;
 }
@@ -210,7 +215,7 @@ export async function prepareDistributedQuality() {
     manifestPath: manifestPath(),
     runId: mutationRunId,
   });
-  const durations = measurements(proofs);
+  const durations = measureDistributedBehaviorDurations({ repo, proofs });
   const budgets = Object.fromEntries(
     prepared.wave.shards.map((s) => {
       const tests = s.tests
@@ -221,7 +226,9 @@ export async function prepareDistributedQuality() {
         deriveDistributedBaselineBudget(
           tests,
           tests.flatMap((test) =>
-            durations.has(test) ? [{ test, durationMs: durations.get(test)! }] : [],
+            durations.get(s.id)?.has(test)
+              ? [{ test, durationMs: durations.get(s.id)!.get(test)! }]
+              : [],
           ),
         ).baseline_budget_ms,
       ];
