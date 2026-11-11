@@ -1,5 +1,7 @@
 import { writeAudit } from "../db/audit.ts";
-import type { Executor } from "../db/client.ts";
+import type { Db, Executor } from "../db/client.ts";
+import { hostedQuotaError } from "../db/hosted-quota-errors.ts";
+import { retryTransient } from "../db/transient.ts";
 import { getContext } from "../logging/context.ts";
 import { logger } from "../logging/logger.ts";
 import { scrubAuditEntry } from "./scrub.ts";
@@ -143,5 +145,18 @@ export async function auditAwait(
   const filled = buildEntry(entry);
   logEntry(filled);
   await writeAudit(filled, executor);
+  return filled;
+}
+
+export async function auditAwaitStandalone(
+  entry: Partial<AuditEntry>,
+  db: Db,
+): Promise<AuditEntry> {
+  const filled = buildEntry(entry);
+  await retryTransient(() => writeAudit(filled, db), {
+    label: "standalone_audit_hosted_quota",
+    shouldRetry: (error) => hostedQuotaError(error)?.code === "40001",
+  });
+  logEntry(filled);
   return filled;
 }

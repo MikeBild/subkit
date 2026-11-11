@@ -8,6 +8,7 @@ import {
 import {
   AuditAction,
   auditAwait,
+  auditAwaitStandalone,
   bucketSize,
   FileBatchCreatedMetadataSchema,
   FileCreatedMetadataSchema,
@@ -140,7 +141,7 @@ export async function createInlineFile(
   const existing = await sameContentFile(db, tenant_id, sha256);
   if (existing) {
     const canonical = await reuseCanonical(db, tenant_id, existing);
-    await auditAwait(
+    await auditAwaitStandalone(
       {
         ...auditedBy(actor),
         action: AuditAction.FILE_CREATED,
