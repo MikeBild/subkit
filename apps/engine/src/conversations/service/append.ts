@@ -4,7 +4,9 @@ import { resolveActor } from "../../audit/recorders/types.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
+import { hostedQuotaError } from "../../db/hosted-quota-errors.ts";
 import { conversations } from "../../db/schema/index.ts";
+import { retryTransient } from "../../db/transient.ts";
 import { log } from "../../logging/logger.ts";
 import { findSecretSpans, scrubString } from "../../logging/scrub-secrets.ts";
 import { resolveAttachmentSlugsInText } from "../attachments.ts";
@@ -144,10 +146,19 @@ export async function appendUserMessage(
   }
 
   const references = p.references && p.references.length > 0 ? p.references : null;
-  const messageId = await appendMessage(exec, p.tenant_id, p.conversation_id, "user", {
-    text: persistedText,
-    ...(references ? { references } : {}),
-  });
+  const messageId = await retryTransient(
+    () =>
+      exec.transaction((tx) =>
+        appendMessage(tx, p.tenant_id, p.conversation_id, "user", {
+          text: persistedText,
+          ...(references ? { references } : {}),
+        }),
+      ),
+    {
+      label: "conversation_message_hosted_quota",
+      shouldRetry: (error) => hostedQuotaError(error)?.code === "40001",
+    },
+  );
 
   return {
     conversation: conv.conversation,

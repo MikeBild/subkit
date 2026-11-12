@@ -141,10 +141,12 @@ export async function _drainAuditWritesForTests(executor?: Executor): Promise<vo
 export async function auditAwait(
   entry: Partial<AuditEntry>,
   executor?: Executor,
+  options: { afterCommit?: (record: () => void) => void } = {},
 ): Promise<AuditEntry> {
   const filled = buildEntry(entry);
-  logEntry(filled);
+  if (!options.afterCommit) logEntry(filled);
   await writeAudit(filled, executor);
+  options.afterCommit?.(() => logEntry(filled));
   return filled;
 }
 

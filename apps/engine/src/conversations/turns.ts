@@ -140,6 +140,7 @@ async function changed(
   conversationId: string,
   id: string,
   state: string,
+  afterCommit?: (record: () => void) => void,
 ) {
   await auditAwait(
     {
@@ -153,15 +154,19 @@ async function changed(
       metadata: { turn_id: id, state },
     },
     db,
+    afterCommit ? { afterCommit } : {},
   );
-  logger.info({
-    module: "conversation",
-    action: "turn.changed",
-    tenant_id: tenantId,
-    conversation_id: conversationId,
-    turn_id: id,
-    state,
-  });
+  const record = () =>
+    logger.info({
+      module: "conversation",
+      action: "turn.changed",
+      tenant_id: tenantId,
+      conversation_id: conversationId,
+      turn_id: id,
+      state,
+    });
+  if (afterCommit) afterCommit(record);
+  else record();
 }
 
 export async function reserveConversationTurn(
@@ -170,22 +175,39 @@ export async function reserveConversationTurn(
   conversationId: string,
 ): Promise<string> {
   await reconcileInterruptedConversationTurn(db, tenantId, conversationId);
-  return db.transaction(async (tx) => {
-    const [conversation] = await tx
-      .select({ id: conversations.id })
-      .from(conversations)
-      .where(and(eq(conversations.tenant_id, tenantId), eq(conversations.id, conversationId)))
-      .limit(1);
-    if (!conversation) throw new ConversationNotFoundError(conversationId);
-    const [row] = await tx
-      .insert(conversationTurns)
-      .values({ tenant_id: tenantId, conversation_id: conversationId, state: "queued" })
-      .onConflictDoNothing()
-      .returning({ id: conversationTurns.id });
-    if (!row) throw new ConversationTurnInProgressError();
-    await changed(tx, tenantId, conversationId, row.id, "queued");
-    return row.id;
-  });
+  const reserved = await retryTransient(
+    () => {
+      const records: Array<() => void> = [];
+      return db.transaction(async (tx) => {
+        const [conversation] = await tx
+          .select({ id: conversations.id })
+          .from(conversations)
+          .where(and(eq(conversations.tenant_id, tenantId), eq(conversations.id, conversationId)))
+          .limit(1);
+        if (!conversation) throw new ConversationNotFoundError(conversationId);
+        const [row] = await tx
+          .insert(conversationTurns)
+          .values({ tenant_id: tenantId, conversation_id: conversationId, state: "queued" })
+          .onConflictDoNothing()
+          .returning({ id: conversationTurns.id });
+        if (!row) throw new ConversationTurnInProgressError();
+        await changed(tx, tenantId, conversationId, row.id, "queued", (record) =>
+          records.push(record),
+        );
+        return { id: row.id, records };
+      });
+    },
+    {
+      label: "conversation_turn_reserve",
+      shouldRetry: (error) => hostedQuotaError(error)?.code === "40001",
+    },
+  );
+  for (const record of reserved.records) {
+    try {
+      record();
+    } catch {}
+  }
+  return reserved.id;
 }
 
 export async function assertConversationAvailable(
