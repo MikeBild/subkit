@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import { McpClientAdmissionError } from "../auth/oauth/client-registration.ts";
 import { createMcpOAuthProvider } from "../auth/oauth/server-provider.ts";
@@ -12,9 +12,11 @@ import {
 import { createHttpTestServer, type HttpTestServer } from "../http/tests/setup.ts";
 import { FROZEN_NOW } from "../test-helpers/determinism/clock.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
+import { pinAdmissionClock } from "../test-helpers/pinned-admission-clock.ts";
 import { provisionSelfServiceTenant } from "./self-service.ts";
 
 let ctx: HttpTestServer;
+let admissionClock: ReturnType<typeof pinAdmissionClock> | undefined;
 let sequence = 0;
 const redirect = "https://client.example.test/callback";
 beforeAll(async () => {
@@ -28,7 +30,9 @@ beforeEach(async () => {
   await setConfigKey("auth.hosted.enabled", false);
   await ctx.db.delete(httpRateLimitBuckets);
   await ctx.db.delete(mcpOauthClients);
+  admissionClock = pinAdmissionClock(new Date("2040-04-02T12:34:56.000Z"));
 });
+afterEach(() => admissionClock?.restore());
 function claims() {
   sequence++;
   return {
@@ -109,6 +113,12 @@ test("MCP rate admission survives factory recreation and per-peer denial does no
   await expect(client("peer-a")).rejects.toBeInstanceOf(McpClientAdmissionError);
   expect((await client("peer-b")).client_id).toBeString();
   await expect(client("peer-c")).rejects.toBeInstanceOf(McpClientAdmissionError);
+  expect(admissionClock?.calls.map((call) => call.timestamp.toISOString())).toEqual([
+    "2040-04-02T12:34:56.000Z",
+    "2040-04-02T12:34:56.000Z",
+    "2040-04-02T12:34:56.000Z",
+    "2040-04-02T12:34:56.000Z",
+  ]);
   expect(await ctx.db.select().from(mcpOauthClients)).toHaveLength(2);
 });
 test("parallel direct MCP registration enforces retained stock, including disabled and retired clients", async () => {

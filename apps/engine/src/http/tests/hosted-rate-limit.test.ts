@@ -1,12 +1,19 @@
-import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { setConfigKey } from "../../config/loader.ts";
 import { apiKeys, httpRateLimitBuckets } from "../../db/schema/index.ts";
 import { provisionSelfServiceTenant } from "../../identity/index.ts";
 import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
+import {
+  minuteBucketStart,
+  type PinnedAdmissionClock,
+  pinAdmissionClock,
+} from "../../test-helpers/pinned-admission-clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let fixture: HttpTestServer;
+let admissionClock: PinnedAdmissionClock;
+const pinnedTimestamp = new Date("2040-04-02T12:34:56.000Z");
 beforeAll(async () => {
   fixture = await createHttpTestServer("hosted-request-limits");
   await configureHostedPolicyForTests(fixture.db, fixture.testDb.url);
@@ -28,6 +35,7 @@ beforeAll(async () => {
     .values({ ...key, tenant_id: own.tenant.id, user_id: own.membership.user_id });
 });
 beforeEach(async () => {
+  admissionClock = pinAdmissionClock(pinnedTimestamp);
   await fixture.db.delete(httpRateLimitBuckets);
   await setConfigKey("auth.hosted.enabled", false);
   await setConfigKey("server.hosted_rate_limit.tenant_per_month", 10000);
@@ -35,6 +43,9 @@ beforeEach(async () => {
   await setConfigKey("server.hosted_rate_limit.principal_per_minute", 10);
   await setConfigKey("server.hosted_rate_limit.tenant_per_minute", 10);
   await setConfigKey("server.hosted_rate_limit.global_per_minute", 10);
+});
+afterEach(() => {
+  admissionClock.restore();
 });
 afterAll(async () => {
   await fixture?.cleanup();
@@ -58,12 +69,32 @@ test("unauthorized attempts consume ingress capacity before authentication and i
   expect(denied.status).toBe(429);
   expect(Number(denied.headers.get("retry-after"))).toBeGreaterThan(0);
   expect(Number(denied.headers.get("retry-after"))).toBeLessThanOrEqual(60);
+  expect(admissionClock.calls).toHaveLength(2);
+  expect(admissionClock.calls.every(({ executor }) => executor === fixture.db)).toBe(true);
+  expect(
+    admissionClock.calls.every(
+      ({ timestamp }) => timestamp.getTime() === pinnedTimestamp.getTime(),
+    ),
+  ).toBe(true);
 });
 
 test("existing hosted API keys remain tenant-limited with service flags disabled", async () => {
   await setConfigKey("server.hosted_rate_limit.tenant_per_minute", 1);
   expect((await request()).status).toBe(200);
   expect((await request()).status).toBe(429);
+  const buckets = await fixture.db.select().from(httpRateLimitBuckets);
+  expect(buckets).toHaveLength(4);
+  expect(
+    buckets.filter(
+      ({ window_started_at }) =>
+        window_started_at.getTime() === minuteBucketStart(pinnedTimestamp).getTime(),
+    ),
+  ).toHaveLength(3);
+  expect(
+    buckets.some(
+      ({ window_started_at }) => window_started_at.toISOString() === "2040-04-01T00:00:00.000Z",
+    ),
+  ).toBe(true);
 });
 
 test("missing hosted request policy fails closed for an existing hosted tenant", async () => {
@@ -100,6 +131,10 @@ test("monthly exhaustion has a distinct refusal while account membership checks 
   expect(denied.status).toBe(429);
   expect(await denied.json()).toMatchObject({ code: "request_quota_exhausted" });
   expect(Number(denied.headers.get("retry-after"))).toBeGreaterThan(0);
+  const monthly = (await fixture.db.select().from(httpRateLimitBuckets)).find(
+    ({ window_started_at }) => window_started_at.toISOString() === "2040-04-01T00:00:00.000Z",
+  );
+  expect(monthly?.hits).toBe(1);
   const membership = await fetch(`${fixture.baseUrl}/v1/identity/memberships`, {
     headers: { authorization: `Bearer ${fixture.apiKey}` },
   });
