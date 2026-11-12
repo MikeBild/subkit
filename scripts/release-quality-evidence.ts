@@ -22,7 +22,7 @@ import {
 } from "./verify-shard-quality-bundle.ts";
 
 type FileEntry = { path: string; sha256: string };
-interface ReleaseEvidenceIndex {
+interface ReleaseEvidenceIndexV1 {
   version: 1;
   commit_sha: string;
   github_run_id: string;
@@ -32,6 +32,20 @@ interface ReleaseEvidenceIndex {
   archive: { path: string; sha256: string };
   payload: FileEntry[];
 }
+
+interface ReleaseEvidenceIndexV2 {
+  version: 2;
+  commit_sha: string;
+  quality_github_run_id: string;
+  release_github_run_id: string;
+  coverage_run_id: string;
+  coverage_receipt_sha256: string;
+  shard_bundle_sha256: string;
+  archive: { path: string; sha256: string };
+  payload: FileEntry[];
+}
+
+type ReleaseEvidenceIndex = ReleaseEvidenceIndexV1 | ReleaseEvidenceIndexV2;
 
 const hash = (bytes: Uint8Array | string): string =>
   createHash("sha256").update(bytes).digest("hex");
@@ -115,12 +129,18 @@ function extractArchive(archive: string): string {
 }
 
 function parseIndex(path: string, commit: string): ReleaseEvidenceIndex {
-  const value = JSON.parse(readFileSync(path, "utf8")) as ReleaseEvidenceIndex;
+  const value = JSON.parse(readFileSync(path, "utf8")) as Partial<ReleaseEvidenceIndex>;
+  const hasValidRunId = (runId: unknown): runId is string =>
+    typeof runId === "string" && /^\d+$/.test(runId);
+  const validIdentity =
+    (value.version === 1 && hasValidRunId(value.github_run_id)) ||
+    (value.version === 2 &&
+      hasValidRunId(value.quality_github_run_id) &&
+      hasValidRunId(value.release_github_run_id));
   if (
-    value.version !== 1 ||
+    (value.version !== 1 && value.version !== 2) ||
     value.commit_sha !== commit ||
-    typeof value.github_run_id !== "string" ||
-    !/^\d+$/.test(value.github_run_id) ||
+    !validIdentity ||
     !/^[a-z0-9-]{10,200}$/.test(value.coverage_run_id) ||
     !/^[a-f0-9]{64}$/.test(value.coverage_receipt_sha256) ||
     !/^[a-f0-9]{64}$/.test(value.shard_bundle_sha256) ||
@@ -143,19 +163,21 @@ function parseIndex(path: string, commit: string): ReleaseEvidenceIndex {
   }
   for (const required of ["coverage/latest.json", "shards/quality-bundle.json"])
     if (!seen.has(required)) throw new Error(`release quality evidence omits ${required}`);
-  return value;
+  return value as ReleaseEvidenceIndex;
 }
 
 export async function packageReleaseQualityEvidence(options: {
   repo: string;
   commit: string;
-  runId: string;
+  qualityRunId: string;
+  releaseRunId: string;
   coverageDir: string;
   shardIndex: string;
   assetsDir: string;
 }): Promise<{ archive: string; index: string }> {
   requireCommit(options.commit);
-  requireRunId(options.runId);
+  requireRunId(options.qualityRunId);
+  requireRunId(options.releaseRunId);
   const repo = resolve(options.repo);
   const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
   if (head !== options.commit) throw new Error("release checkout does not match commit");
@@ -171,7 +193,7 @@ export async function packageReleaseQualityEvidence(options: {
   const shardIndex = resolve(repo, options.shardIndex);
   const relativeShardIndex = relative(repo, shardIndex);
   safePath(relativeShardIndex);
-  await verifyShardQualityBundle(repo, options.commit, relativeShardIndex);
+  await verifyShardQualityBundle(repo, options.commit, relativeShardIndex, options.qualityRunId);
   const staging = mkdtempSync(join(dirname(assets), ".release-quality-evidence-"));
   let archiveLinked = false;
   let indexLinked = false;
@@ -202,9 +224,10 @@ export async function packageReleaseQualityEvidence(options: {
     const archive = join(staging, "quality-evidence.tar.gz");
     writeTar(archive, payload);
     const index: ReleaseEvidenceIndex = {
-      version: 1,
+      version: 2,
       commit_sha: options.commit,
-      github_run_id: options.runId,
+      quality_github_run_id: options.qualityRunId,
+      release_github_run_id: options.releaseRunId,
       coverage_run_id: selectedCoverage.runId,
       coverage_receipt_sha256: hash(readFileSync(selectedCoverage.receiptPath)),
       shard_bundle_sha256: hash(shardBundleBytes),
@@ -294,19 +317,21 @@ if (import.meta.main) {
     if (values.size !== 2) throw new Error("verify accepts only --commit and --assets-dir");
     console.log(JSON.stringify(verifyReleaseQualityEvidence({ commit, assetsDir })));
   } else {
-    const runId = values.get("--run-id"),
+    const qualityRunId = values.get("--quality-run-id"),
+      releaseRunId = values.get("--release-run-id"),
       coverageDir = values.get("--coverage-dir"),
       shardIndex = values.get("--shard-index");
-    if (!runId || !coverageDir || !shardIndex || values.size !== 5)
+    if (!qualityRunId || !releaseRunId || !coverageDir || !shardIndex || values.size !== 6)
       throw new Error(
-        "package requires --commit --run-id --coverage-dir --shard-index --assets-dir",
+        "package requires --commit --quality-run-id --release-run-id --coverage-dir --shard-index --assets-dir",
       );
     console.log(
       JSON.stringify(
         await packageReleaseQualityEvidence({
           repo: resolve(import.meta.dir, ".."),
           commit,
-          runId,
+          qualityRunId,
+          releaseRunId,
           coverageDir,
           shardIndex,
           assetsDir,

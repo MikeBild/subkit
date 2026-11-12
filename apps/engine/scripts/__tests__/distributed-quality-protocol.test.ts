@@ -338,6 +338,9 @@ test("two independent hosts produce a portable distributed quality bundle", asyn
     );
     expect(() => validatePortableParentValidationTicket(checkout, bundleIndex)).not.toThrow();
     expect(() =>
+      validatePortableParentValidationTicket(checkout, bundleIndex, "foreign-run"),
+    ).toThrow("foreign quality producer");
+    expect(() =>
       validatePortableParentValidationTicket(checkout, {
         ...bundleIndex,
         files: bundleIndex.files.filter(

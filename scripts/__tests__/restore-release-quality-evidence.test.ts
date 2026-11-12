@@ -144,7 +144,8 @@ test("restores the verified closure at repo-relative paths and downstream verifi
   await packageReleaseQualityEvidence({
     repo: checkout,
     commit,
-    runId: "43185845545",
+    qualityRunId: "43185845545",
+    releaseRunId: "43185845546",
     coverageDir: "reports/coverage",
     shardIndex: index,
     assetsDir: assets,

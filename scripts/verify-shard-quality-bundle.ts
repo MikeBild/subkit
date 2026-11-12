@@ -69,6 +69,7 @@ const record = (value: unknown, label: string): Record<string, unknown> => {
 export function validatePortableParentValidationTicket(
   repo: string,
   index: QualityBundleIndex,
+  trustedProducerRunId?: string,
 ): void {
   const union = record(
     JSON.parse(new TextDecoder().decode(readBundleFile(repo, index.mutation_union_path))),
@@ -117,6 +118,8 @@ export function validatePortableParentValidationTicket(
       throw new Error("bundle mutation receipts bind a foreign distributed ticket");
     if (ticket.coordinator_commit_sha !== index.commit_sha)
       throw new Error("bundle distributed ticket belongs to a foreign commit");
+    if (trustedProducerRunId !== undefined && ticket.github_run_id !== trustedProducerRunId)
+      throw new Error("bundle distributed ticket belongs to a foreign quality producer");
     for (const receipt of receipts) {
       const parentPath = receipt.parent_validation_ticket_path;
       const parentSha256 = receipt.parent_validation_ticket_sha256;
@@ -134,7 +137,7 @@ export function validatePortableParentValidationTicket(
         shardId: String(receipt.shard_id),
         phase: "mutation",
         trustedCommit: ticket.coordinator_commit_sha,
-        trustedRunId: ticket.github_run_id,
+        trustedRunId: trustedProducerRunId ?? ticket.github_run_id,
       });
     }
     return;
@@ -176,6 +179,7 @@ export async function verifyShardQualityBundle(
   repo: string,
   expectedCommit: string,
   indexPath = DEFAULT_QUALITY_BUNDLE_INDEX,
+  trustedProducerRunId?: string,
 ): Promise<string> {
   const bundleIndexPath = qualityBundleIndexPath(indexPath);
   const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
@@ -193,7 +197,7 @@ export async function verifyShardQualityBundle(
     const actual = createHash("sha256").update(readBundleFile(repo, file.path)).digest("hex");
     if (actual !== file.sha256) throw new Error(`Quality bundle file changed: ${file.path}`);
   }
-  validatePortableParentValidationTicket(repo, index);
+  validatePortableParentValidationTicket(repo, index, trustedProducerRunId);
   const acceptance = JSON.parse(
     new TextDecoder().decode(readBundleFile(repo, index.acceptance_path)),
   ) as { external_runtime_acceptance?: { path?: unknown } };
@@ -217,21 +221,23 @@ if (import.meta.main) {
   const args = process.argv.slice(2);
   const commitIndex = args.indexOf("--commit");
   const indexIndex = args.indexOf("--index");
+  const trustedProducerIndex = args.indexOf("--trusted-producer-run-id");
   const valid =
     commitIndex !== -1 &&
     typeof args[commitIndex + 1] === "string" &&
-    (indexIndex === -1
-      ? args.length === 2
-      : args.length === 4 && typeof args[indexIndex + 1] === "string");
+    (indexIndex === -1 || typeof args[indexIndex + 1] === "string") &&
+    (trustedProducerIndex === -1 || typeof args[trustedProducerIndex + 1] === "string") &&
+    args.length === 2 + (indexIndex === -1 ? 0 : 2) + (trustedProducerIndex === -1 ? 0 : 2);
   if (!valid)
     throw new Error(
-      "usage: verify-shard-quality-bundle.ts --commit <sha> [--index <repo-relative-path>]",
+      "usage: verify-shard-quality-bundle.ts --commit <sha> [--index <repo-relative-path>] [--trusted-producer-run-id <id>]",
     );
   console.log(
     await verifyShardQualityBundle(
       resolve(import.meta.dir, ".."),
       args[commitIndex + 1]!,
       indexIndex === -1 ? undefined : args[indexIndex + 1],
+      trustedProducerIndex === -1 ? undefined : args[trustedProducerIndex + 1],
     ),
   );
 }

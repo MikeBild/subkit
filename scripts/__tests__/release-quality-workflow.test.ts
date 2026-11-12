@@ -11,13 +11,12 @@ const position = (needle: string): number => {
   return index;
 };
 
-test("release carries the exact same-run quality evidence into signed draft assets", () => {
-  const qualityDownload = position(
-    'gh run download "$GITHUB_RUN_ID" --name quality-shard-evidence',
-  );
-  const coverageDownload = position(
-    'gh run download "$GITHUB_RUN_ID" --name coverage-floor-evidence',
-  );
+test("release reuses one exact-commit quality producer and carries its verified evidence into signed draft assets", () => {
+  expect(workflow).not.toContain("uses: ./.github/workflows/quality.yml");
+  expect(workflow).not.toContain("needs: quality");
+  const select = position("Select completed exact-commit quality producer");
+  const qualityDownload = position("actions/artifacts/$QUALITY_SHARD_ARTIFACT_ID/zip");
+  const coverageDownload = position("actions/artifacts/$COVERAGE_ARTIFACT_ID/zip");
   const canonicalBundle = position('test -f "$quality_download/quality-bundle.json"');
   const canonicalCoverage = position('test -f "$coverage_download/latest.json"');
   const restoreClosure = position(
@@ -32,6 +31,7 @@ test("release carries the exact same-run quality evidence into signed draft asse
   const checksums = position("quality-evidence.tar.gz quality-evidence.json > SHA256SUMS");
   const draftAssets = position("assets/quality-evidence.tar.gz assets/quality-evidence.json");
 
+  expect(qualityDownload).toBeGreaterThan(select);
   expect(coverageDownload).toBeGreaterThan(qualityDownload);
   expect(canonicalBundle).toBeGreaterThan(coverageDownload);
   expect(canonicalCoverage).toBeGreaterThan(canonicalBundle);
@@ -42,9 +42,23 @@ test("release carries the exact same-run quality evidence into signed draft asse
   expect(stagedEvidence).toBeGreaterThan(releaseNotes);
   expect(checksums).toBeGreaterThan(stagedEvidence);
   expect(draftAssets).toBeGreaterThan(checksums);
+  expect(workflow).toContain('select-release-quality-run.ts select --commit "$RELEASE_COMMIT"');
+  expect(workflow).toContain('select-release-quality-run.ts verify --commit "$RELEASE_COMMIT"');
+  expect(workflow).toContain('select-release-quality-run.ts artifacts --commit "$RELEASE_COMMIT"');
   expect(workflow).toContain(
-    ' --commit "$RELEASE_COMMIT" --run-id "$GITHUB_RUN_ID" --coverage-dir reports/coverage --shard-index reports/quality-export/shards/quality-bundle.json --assets-dir "$quality_assets"',
+    "actions/workflows/quality.yml/runs?event=push&head_sha=$RELEASE_COMMIT",
   );
+  expect(workflow).toContain("QUALITY_RUN_ATTEMPT=$(jq -er");
+  expect(workflow).toContain("quality-run-before-download.json");
+  expect(workflow).toContain("quality-artifacts-before-download.json");
+  expect(workflow).toContain('sha256sum "$RUNNER_TEMP/quality-shard-evidence.zip"');
+  expect(workflow).toContain('sha256sum "$RUNNER_TEMP/coverage-floor-evidence.zip"');
+  expect(workflow).toContain("unsafe quality artifact archive member");
+  expect(workflow).toContain("unsafe coverage artifact archive member");
+  expect(workflow).toContain(
+    ' --quality-run-id "$QUALITY_RUN_ID" --release-run-id "$GITHUB_RUN_ID"',
+  );
+  expect(workflow).toContain('--trusted-producer-run-id "$QUALITY_RUN_ID"');
   expect(workflow).not.toContain('cp -a "$quality_download/." reports/quality-export/shards/');
   expect(workflow.slice(stagedEvidence, checksums)).toContain('test ! -e "assets/$asset"');
   expect(workflow.slice(stagedEvidence, checksums)).toContain(

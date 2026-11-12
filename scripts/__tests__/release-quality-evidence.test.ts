@@ -122,16 +122,31 @@ test("packages a verified shard closure plus only the selected global coverage r
   await packageReleaseQualityEvidence({
     repo: source.root,
     commit,
-    runId: "43185845545",
+    qualityRunId: "43185845545",
+    releaseRunId: "43185845546",
     coverageDir: coverage,
     shardIndex: index,
     assetsDir: assets,
   });
   const verified = verifyReleaseQualityEvidence({ commit, assetsDir: assets });
-  expect(verified.github_run_id).toBe("43185845545");
+  expect(verified.quality_github_run_id).toBe("43185845545");
+  expect(verified.release_github_run_id).toBe("43185845546");
   expect(verified.payload.some((file) => file.path === "coverage/latest.json")).toBe(true);
   expect(verified.payload.some((file) => file.path === "shards/quality-bundle.json")).toBe(true);
   expect(readFileSync(join(assets, "existing-binary"), "utf8")).toBe("preserved");
+  const v2 = JSON.parse(readFileSync(join(assets, "quality-evidence.json"), "utf8")) as Record<
+    string,
+    unknown
+  >;
+  const { quality_github_run_id, release_github_run_id, ...legacy } = v2;
+  writeFileSync(
+    join(assets, "quality-evidence.json"),
+    `${JSON.stringify({ ...legacy, version: 1, github_run_id: quality_github_run_id })}\n`,
+  );
+  expect(verifyReleaseQualityEvidence({ commit, assetsDir: assets }).version).toBe(1);
+  expect(
+    JSON.parse(readFileSync(join(assets, "quality-evidence.json"), "utf8")),
+  ).not.toHaveProperty("release_github_run_id");
   writeFileSync(join(assets, "quality-evidence.tar.gz"), "tampered");
   expect(() => verifyReleaseQualityEvidence({ commit, assetsDir: assets })).toThrow(
     "archive changed",
@@ -147,9 +162,10 @@ test("rejects foreign commits and unsafe archive payload names", () => {
   writeFileSync(
     join(assets, "quality-evidence.json"),
     JSON.stringify({
-      version: 1,
+      version: 2,
       commit_sha: "a".repeat(40),
-      github_run_id: "1",
+      quality_github_run_id: "1",
+      release_github_run_id: "2",
       coverage_run_id: "coverage-run",
       coverage_receipt_sha256: "c".repeat(64),
       shard_bundle_sha256: "d".repeat(64),
@@ -182,9 +198,10 @@ test("rejects link members before extraction", () => {
   writeFileSync(
     join(assets, "quality-evidence.json"),
     JSON.stringify({
-      version: 1,
+      version: 2,
       commit_sha: "a".repeat(40),
-      github_run_id: "1",
+      quality_github_run_id: "1",
+      release_github_run_id: "2",
       coverage_run_id: "coverage-run",
       coverage_receipt_sha256: "c".repeat(64),
       shard_bundle_sha256: "d".repeat(64),

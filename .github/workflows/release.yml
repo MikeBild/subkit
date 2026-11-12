@@ -20,12 +20,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  quality:
-    uses: ./.github/workflows/quality.yml
-    with:
-      ref: ${{ inputs.tag || github.ref }}
   release:
-    needs: quality
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -51,6 +46,27 @@ jobs:
         with:
           bun-version: 1.4.0
 
+      - name: Select completed exact-commit quality producer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          candidates="$RUNNER_TEMP/quality-runs.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/quality.yml/runs?event=push&head_sha=$RELEASE_COMMIT&per_page=100" > "$candidates"
+          selected=$(bun run scripts/select-release-quality-run.ts select --commit "$RELEASE_COMMIT" --repository "$GITHUB_REPOSITORY" --input "$candidates")
+          QUALITY_RUN_ID=$(jq -er '.id | tostring' <<<"$selected")
+          QUALITY_RUN_ATTEMPT=$(jq -er '.run_attempt | tostring' <<<"$selected")
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QUALITY_RUN_ID" > "$RUNNER_TEMP/quality-run.json"
+          bun run scripts/select-release-quality-run.ts verify --commit "$RELEASE_COMMIT" --repository "$GITHUB_REPOSITORY" --run-id "$QUALITY_RUN_ID" --run-attempt "$QUALITY_RUN_ATTEMPT" --input "$RUNNER_TEMP/quality-run.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QUALITY_RUN_ID/artifacts?per_page=100" > "$RUNNER_TEMP/quality-artifacts.json"
+          artifacts=$(bun run scripts/select-release-quality-run.ts artifacts --commit "$RELEASE_COMMIT" --repository "$GITHUB_REPOSITORY" --run-id "$QUALITY_RUN_ID" --input "$RUNNER_TEMP/quality-artifacts.json")
+          echo "QUALITY_RUN_ID=$QUALITY_RUN_ID" >> "$GITHUB_ENV"
+          echo "QUALITY_RUN_ATTEMPT=$QUALITY_RUN_ATTEMPT" >> "$GITHUB_ENV"
+          echo "QUALITY_SHARD_ARTIFACT_ID=$(jq -er '.qualityShardEvidenceId | tostring' <<<"$artifacts")" >> "$GITHUB_ENV"
+          echo "QUALITY_SHARD_ARTIFACT_DIGEST=$(jq -er '.qualityShardEvidenceDigest' <<<"$artifacts")" >> "$GITHUB_ENV"
+          echo "COVERAGE_ARTIFACT_ID=$(jq -er '.coverageFloorEvidenceId | tostring' <<<"$artifacts")" >> "$GITHUB_ENV"
+          echo "COVERAGE_ARTIFACT_DIGEST=$(jq -er '.coverageFloorEvidenceDigest' <<<"$artifacts")" >> "$GITHUB_ENV"
+
       - name: Revalidate exact-commit shard quality evidence
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -58,17 +74,57 @@ jobs:
           set -euo pipefail
           bun install --frozen-lockfile
           bun run build:clipper
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QUALITY_RUN_ID" > "$RUNNER_TEMP/quality-run-before-download.json"
+          bun run scripts/select-release-quality-run.ts verify --commit "$RELEASE_COMMIT" --repository "$GITHUB_REPOSITORY" --run-id "$QUALITY_RUN_ID" --run-attempt "$QUALITY_RUN_ATTEMPT" --input "$RUNNER_TEMP/quality-run-before-download.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QUALITY_RUN_ID/artifacts?per_page=100" > "$RUNNER_TEMP/quality-artifacts-before-download.json"
+          current=$(bun run scripts/select-release-quality-run.ts artifacts --commit "$RELEASE_COMMIT" --repository "$GITHUB_REPOSITORY" --run-id "$QUALITY_RUN_ID" --input "$RUNNER_TEMP/quality-artifacts-before-download.json")
+          [ "$(jq -er '.qualityShardEvidenceId | tostring' <<<"$current")" = "$QUALITY_SHARD_ARTIFACT_ID" ]
+          [ "$(jq -er '.qualityShardEvidenceDigest' <<<"$current")" = "$QUALITY_SHARD_ARTIFACT_DIGEST" ]
+          [ "$(jq -er '.coverageFloorEvidenceId | tostring' <<<"$current")" = "$COVERAGE_ARTIFACT_ID" ]
+          [ "$(jq -er '.coverageFloorEvidenceDigest' <<<"$current")" = "$COVERAGE_ARTIFACT_DIGEST" ]
           quality_download="$RUNNER_TEMP/quality-shard-evidence"
           coverage_download="$RUNNER_TEMP/coverage-floor-evidence"
           rm -rf "$quality_download" "$coverage_download"
-          gh run download "$GITHUB_RUN_ID" --name quality-shard-evidence --dir "$quality_download"
-          gh run download "$GITHUB_RUN_ID" --name coverage-floor-evidence --dir "$coverage_download"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$QUALITY_SHARD_ARTIFACT_ID/zip" > "$RUNNER_TEMP/quality-shard-evidence.zip"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$COVERAGE_ARTIFACT_ID/zip" > "$RUNNER_TEMP/coverage-floor-evidence.zip"
+          [ "$(sha256sum "$RUNNER_TEMP/quality-shard-evidence.zip" | awk '{print $1}')" = "${QUALITY_SHARD_ARTIFACT_DIGEST#sha256:}" ]
+          [ "$(sha256sum "$RUNNER_TEMP/coverage-floor-evidence.zip" | awk '{print $1}')" = "${COVERAGE_ARTIFACT_DIGEST#sha256:}" ]
+          python3 - "$RUNNER_TEMP/quality-shard-evidence.zip" "$quality_download" <<'PY'
+          import pathlib
+          import stat
+          import sys
+          import zipfile
+
+          archive, destination = map(pathlib.Path, sys.argv[1:])
+          with zipfile.ZipFile(archive) as source:
+              for member in source.infolist():
+                  path = pathlib.PurePosixPath(member.filename)
+                  mode = member.external_attr >> 16
+                  if path.is_absolute() or ".." in path.parts or (mode and not (stat.S_ISREG(mode) or stat.S_ISDIR(mode))):
+                      raise SystemExit("unsafe quality artifact archive member")
+              source.extractall(destination)
+          PY
+          python3 - "$RUNNER_TEMP/coverage-floor-evidence.zip" "$coverage_download" <<'PY'
+          import pathlib
+          import stat
+          import sys
+          import zipfile
+
+          archive, destination = map(pathlib.Path, sys.argv[1:])
+          with zipfile.ZipFile(archive) as source:
+              for member in source.infolist():
+                  path = pathlib.PurePosixPath(member.filename)
+                  mode = member.external_attr >> 16
+                  if path.is_absolute() or ".." in path.parts or (mode and not (stat.S_ISREG(mode) or stat.S_ISDIR(mode))):
+                      raise SystemExit("unsafe coverage artifact archive member")
+              source.extractall(destination)
+          PY
           test -f "$quality_download/quality-bundle.json"
           test -f "$coverage_download/latest.json"
           bun run scripts/restore-release-quality-evidence.ts --commit "$RELEASE_COMMIT" --source "$quality_download"
           mkdir -p reports/coverage
           cp -a "$coverage_download/." reports/coverage/
-          bun run scripts/verify-shard-quality-bundle.ts --commit "$RELEASE_COMMIT" --index reports/quality-export/shards/quality-bundle.json
+          bun run scripts/verify-shard-quality-bundle.ts --commit "$RELEASE_COMMIT" --index reports/quality-export/shards/quality-bundle.json --trusted-producer-run-id "$QUALITY_RUN_ID"
 
       - name: Require mandatory local release gate
         env:
@@ -83,7 +139,7 @@ jobs:
           set -euo pipefail
           quality_assets="$RUNNER_TEMP/quality-evidence-assets"
           rm -rf "$quality_assets"
-          bun run scripts/release-quality-evidence.ts package --commit "$RELEASE_COMMIT" --run-id "$GITHUB_RUN_ID" --coverage-dir reports/coverage --shard-index reports/quality-export/shards/quality-bundle.json --assets-dir "$quality_assets"
+          bun run scripts/release-quality-evidence.ts package --commit "$RELEASE_COMMIT" --quality-run-id "$QUALITY_RUN_ID" --release-run-id "$GITHUB_RUN_ID" --coverage-dir reports/coverage --shard-index reports/quality-export/shards/quality-bundle.json --assets-dir "$quality_assets"
           test -s "$quality_assets/quality-evidence.tar.gz"
           test -s "$quality_assets/quality-evidence.json"
           echo "QUALITY_ASSETS_DIR=$quality_assets" >> "$GITHUB_ENV"
