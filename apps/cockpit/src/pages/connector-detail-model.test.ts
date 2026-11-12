@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { DEFAULT_REDACTED } from "@shared/redaction.ts";
 import { absolute, connectorHref } from "@/app/links";
 import { CATALOGS, type TranslationKey, translate } from "@/lib/i18n";
 import { auditActionsFromUrl, auditFilterFromUrl, auditResultFromUrl } from "@/pages/audit-model";
@@ -210,11 +211,7 @@ describe("a connector address with a kept secret", () => {
   });
 
   test("the marker is the engine's own", () => {
-    const shared = readFileSync(
-      resolve(import.meta.dir, "../../../../packages/shared/src/redaction.ts"),
-      "utf8",
-    );
-    expect(shared).toContain(`export const DEFAULT_REDACTED = "${SECRET_MASK}";`);
+    expect(DEFAULT_REDACTED).toBe(SECRET_MASK);
   });
 
   test("the note says stored credentials are never shown again, in both languages", () => {

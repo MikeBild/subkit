@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import {
+  REPORT_DELIVERY_DISCREPANCIES,
+  REPORT_MESSAGE_REFUSALS,
+} from "../../../engine/src/workflows/core/report-refusal.ts";
 import { diagnosisCauseKey } from "./gate-diagnosis";
 import { CATALOGS, type TranslationKey } from "./i18n";
 import { REFUSAL_REASON_KEYS, refusalReasonKey, refusalReasonLabel } from "./refusal-reason";
@@ -7,20 +11,8 @@ import { REFUSAL_REASON_KEYS, refusalReasonKey, refusalReasonLabel } from "./ref
 const engine = (path: string) =>
   readFileSync(new URL(`../../../engine/src/${path}`, import.meta.url).pathname, "utf8");
 
-function constArray(source: string, name: string): string[] {
-  const body = new RegExp(`export const ${name} = \\[([\\s\\S]*?)\\] as const;`).exec(source)?.[1];
-  if (!body) throw new Error(`${name} not found in the engine source`);
-  const entries = [...body.matchAll(/"([a-z0-9_]+)"/g)].map((match) => String(match[1]));
-  if (entries.length === 0) throw new Error(`${name} parsed empty`);
-  return entries;
-}
-
 const REPORT_SOURCE = engine("workflows/report-delivery-boundary.ts");
-const REPORT_REASONS_SOURCE = engine("workflows/core/report-refusal.ts");
-const ENGINE_REASONS = [
-  ...constArray(REPORT_REASONS_SOURCE, "REPORT_MESSAGE_REFUSALS"),
-  ...constArray(REPORT_REASONS_SOURCE, "REPORT_DELIVERY_DISCREPANCIES"),
-];
+const ENGINE_REASONS: string[] = [...REPORT_MESSAGE_REFUSALS, ...REPORT_DELIVERY_DISCREPANCIES];
 
 function engineRequestRefusals(): string[] {
   const source = engine("workflows/request-boundary.ts");
