@@ -65,10 +65,10 @@ jobs:
           gh run download "$GITHUB_RUN_ID" --name coverage-floor-evidence --dir "$coverage_download"
           test -f "$quality_download/quality-bundle.json"
           test -f "$coverage_download/latest.json"
-          mkdir -p reports/quality-export/shards reports/coverage
-          cp -a "$quality_download/." reports/quality-export/shards/
+          bun run scripts/restore-release-quality-evidence.ts --commit "$RELEASE_COMMIT" --source "$quality_download"
+          mkdir -p reports/coverage
           cp -a "$coverage_download/." reports/coverage/
-          bun run scripts/verify-shard-quality-bundle.ts --commit "$RELEASE_COMMIT"
+          bun run scripts/verify-shard-quality-bundle.ts --commit "$RELEASE_COMMIT" --index reports/quality-export/shards/quality-bundle.json
 
       - name: Require mandatory local release gate
         env:

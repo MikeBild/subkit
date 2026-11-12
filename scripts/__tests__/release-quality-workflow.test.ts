@@ -20,6 +20,12 @@ test("release carries the exact same-run quality evidence into signed draft asse
   );
   const canonicalBundle = position('test -f "$quality_download/quality-bundle.json"');
   const canonicalCoverage = position('test -f "$coverage_download/latest.json"');
+  const restoreClosure = position(
+    'scripts/restore-release-quality-evidence.ts --commit "$RELEASE_COMMIT" --source "$quality_download"',
+  );
+  const verifyClosure = position(
+    'scripts/verify-shard-quality-bundle.ts --commit "$RELEASE_COMMIT" --index reports/quality-export/shards/quality-bundle.json',
+  );
   const packageEvidence = position("scripts/release-quality-evidence.ts package");
   const releaseNotes = position("- name: Generate release notes");
   const stagedEvidence = position("- name: Stage verified quality evidence in release assets");
@@ -29,7 +35,9 @@ test("release carries the exact same-run quality evidence into signed draft asse
   expect(coverageDownload).toBeGreaterThan(qualityDownload);
   expect(canonicalBundle).toBeGreaterThan(coverageDownload);
   expect(canonicalCoverage).toBeGreaterThan(canonicalBundle);
-  expect(packageEvidence).toBeGreaterThan(canonicalCoverage);
+  expect(restoreClosure).toBeGreaterThan(canonicalCoverage);
+  expect(verifyClosure).toBeGreaterThan(restoreClosure);
+  expect(packageEvidence).toBeGreaterThan(verifyClosure);
   expect(releaseNotes).toBeGreaterThan(packageEvidence);
   expect(stagedEvidence).toBeGreaterThan(releaseNotes);
   expect(checksums).toBeGreaterThan(stagedEvidence);
@@ -37,6 +45,7 @@ test("release carries the exact same-run quality evidence into signed draft asse
   expect(workflow).toContain(
     ' --commit "$RELEASE_COMMIT" --run-id "$GITHUB_RUN_ID" --coverage-dir reports/coverage --shard-index reports/quality-export/shards/quality-bundle.json --assets-dir "$quality_assets"',
   );
+  expect(workflow).not.toContain('cp -a "$quality_download/." reports/quality-export/shards/');
   expect(workflow.slice(stagedEvidence, checksums)).toContain('test ! -e "assets/$asset"');
   expect(workflow.slice(stagedEvidence, checksums)).toContain(
     'cp "$QUALITY_ASSETS_DIR/$asset" "assets/$asset"',
