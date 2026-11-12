@@ -42,19 +42,26 @@ describe("macOS sk signing in the release chain", () => {
 
   test("checksums cover the extracted signed binaries before the Ed25519 signature", () => {
     const extract = stepIndex((step) => step.name === "Extract release binaries from the image");
-    const sign = stepIndex((step) => step.name === "Sign SHA256SUMS");
-    const run = steps[extract]?.run ?? "";
-    expect(run.indexOf("/usr/local/share/subkit/binaries/.")).toBeGreaterThanOrEqual(0);
-    expect(run.indexOf("sha256sum")).toBeGreaterThan(
-      run.indexOf("/usr/local/share/subkit/binaries/."),
+    const stageEvidence = stepIndex(
+      (step) => step.name === "Stage verified quality evidence in release assets",
     );
-    expect(run).toMatch(/sha256sum[^\n]*sk_\*/);
-    expect(sign).toBeGreaterThan(extract);
-    const verifyMacos = run.indexOf(
+    const checksums = stepIndex((step) => step.name === "Write release checksums");
+    const sign = stepIndex((step) => step.name === "Sign SHA256SUMS");
+    const extractRun = steps[extract]?.run ?? "";
+    const stageRun = steps[stageEvidence]?.run ?? "";
+    const checksumsRun = steps[checksums]?.run ?? "";
+    expect(extractRun.indexOf("/usr/local/share/subkit/binaries/.")).toBeGreaterThanOrEqual(0);
+    expect(stageEvidence).toBeGreaterThan(extract);
+    expect(checksums).toBeGreaterThan(stageEvidence);
+    expect(sign).toBeGreaterThan(checksums);
+    expect(stageRun).toContain('test ! -e "assets/$asset"');
+    expect(stageRun).toContain('cp "$QUALITY_ASSETS_DIR/$asset" "assets/$asset"');
+    expect(checksumsRun).toMatch(/sha256sum[^\n]*sk_\*/);
+    expect(checksumsRun).toContain("quality-evidence.tar.gz quality-evidence.json");
+    const verifyMacos = extractRun.indexOf(
       "bun scripts/verify-macos-binaries.ts assets/sk_darwin_arm64 assets/sk_darwin_x64",
     );
-    expect(verifyMacos).toBeGreaterThan(run.indexOf("/usr/local/share/subkit/binaries/."));
-    expect(verifyMacos).toBeLessThan(run.indexOf("sha256sum"));
+    expect(verifyMacos).toBeGreaterThan(extractRun.indexOf("/usr/local/share/subkit/binaries/."));
     for (const step of steps.slice(extract + 1)) {
       expect(step.run ?? "").not.toMatch(
         /(codesign|rcodesign)\b|>\s*assets\/sk_|cp [^\n]*assets\/sk_/,
