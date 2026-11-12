@@ -168,6 +168,23 @@ describe("conversation.run-turn worker — failure path", () => {
     });
     await waitForTerminal(mcp_task_id);
 
+    await waitFor(
+      async () => {
+        const [audit] = await queue.testDb.db
+          .select({ id: auditLog.id })
+          .from(auditLog)
+          .where(
+            and(
+              eq(auditLog.tenant_id, tenantId),
+              eq(auditLog.action, "conversation.turn_failed"),
+              eq(auditLog.resource_id, created.conversation.id),
+            ),
+          );
+        return Boolean(audit);
+      },
+      { tries: 80, sleepMs: 25, label: "persisted-caller conversation.turn_failed audit row" },
+    );
+
     const [audit] = await queue.testDb.db
       .select()
       .from(auditLog)
@@ -263,6 +280,23 @@ describe("conversation.run-turn worker — failure path", () => {
       kind: "start",
     });
     await waitForTerminal(mcp_task_id);
+
+    await waitFor(
+      async () => {
+        const [audit] = await queue.testDb.db
+          .select({ id: auditLog.id })
+          .from(auditLog)
+          .where(
+            and(
+              eq(auditLog.tenant_id, tenantId),
+              eq(auditLog.action, "conversation.turn_failed"),
+              eq(auditLog.resource_id, created.conversation.id),
+            ),
+          );
+        return Boolean(audit);
+      },
+      { tries: 80, sleepMs: 25, label: "legacy-caller conversation.turn_failed audit row" },
+    );
     const [audit] = await queue.testDb.db
       .select()
       .from(auditLog)

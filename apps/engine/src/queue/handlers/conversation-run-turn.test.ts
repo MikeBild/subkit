@@ -57,6 +57,23 @@ describe("conversation.run-turn worker", () => {
     });
     await waitForTerminal(mcp_task_id);
 
+    await waitFor(
+      async () => {
+        const rows = await queue.testDb.db
+          .select({ action: auditLog.action })
+          .from(auditLog)
+          .where(
+            and(
+              eq(auditLog.tenant_id, tenantId),
+              inArray(auditLog.action, ["policy.denied", "conversation.turn_failed"]),
+              eq(auditLog.resource_id, conversation_id),
+            ),
+          );
+        return new Set(rows.map((row) => row.action)).size === 2;
+      },
+      { tries: 80, sleepMs: 25, label: "missing-principal denial audit rows" },
+    );
+
     const denials = await queue.testDb.db
       .select({
         action: auditLog.action,
@@ -105,6 +122,23 @@ describe("conversation.run-turn worker", () => {
       kind: "start",
     });
     await waitForTerminal(mcp_task_id);
+
+    await waitFor(
+      async () => {
+        const rows = await queue.testDb.db
+          .select({ action: auditLog.action })
+          .from(auditLog)
+          .where(
+            and(
+              eq(auditLog.tenant_id, tenantId),
+              inArray(auditLog.action, ["policy.denied", "conversation.turn_failed"]),
+              eq(auditLog.resource_id, conversation_id),
+            ),
+          );
+        return new Set(rows.map((row) => row.action)).size === 2;
+      },
+      { tries: 80, sleepMs: 25, label: "cross-tenant denial audit rows" },
+    );
 
     const denials = await queue.testDb.db
       .select({
