@@ -1,7 +1,9 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { auditLog, connectors } from "../../db/schema/index.ts";
+import { auditLog, connectors, connectorTemplates } from "../../db/schema/index.ts";
+import { tenantWorkSnapshot } from "../../execution/tenant-work.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
+import * as discoveryService from "../discovery/service.ts";
 import {
   ConnectorTemplateSchema,
   loadBuiltinTemplates,
@@ -229,46 +231,106 @@ describe("connector templates", () => {
   });
 
   test("POST /v1/connectors/from-template/stripe creates a connector + audit", async () => {
-    const res = await fetch(`${srv.baseUrl}/v1/connectors/from-template/stripe`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${srv.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ ingest_now: false }),
-    });
-    expect(res.status).toBe(201);
-    const body = (await res.json()) as {
-      id: string;
-      slug: string;
-      base_url: string;
-      auth_type: string;
-      template_slug: string | null;
-      template_source: "builtin" | "tenant" | null;
-    };
-    expect(body.slug).toBe("stripe");
-    expect(body.base_url).toBe("https://api.stripe.com/v1");
-    expect(body.auth_type).toBe("bearer");
-    expect(body.template_slug).toBe("stripe");
-    expect(body.template_source).toBe("builtin");
+    const discovery = spyOn(discoveryService, "runDiscoveryCached").mockRejectedValue(
+      new Error("test discovery must not start when ingest_now is false"),
+    );
+    try {
+      const res = await fetch(`${srv.baseUrl}/v1/connectors/from-template/stripe`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${srv.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ingest_now: false }),
+      });
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as {
+        id: string;
+        slug: string;
+        base_url: string;
+        auth_type: string;
+        template_slug: string | null;
+        template_source: "builtin" | "tenant" | null;
+      };
+      expect(body.slug).toBe("stripe");
+      expect(body.base_url).toBe("https://api.stripe.com/v1");
+      expect(body.auth_type).toBe("bearer");
+      expect(body.template_slug).toBe("stripe");
+      expect(body.template_source).toBe("builtin");
 
-    const cnRows = await srv.db
-      .select()
-      .from(connectors)
-      .where(and(eq(connectors.tenant_id, srv.tenantId), eq(connectors.id, body.id)))
-      .limit(1);
-    expect(cnRows[0]?.slug).toBe("stripe");
+      const cnRows = await srv.db
+        .select()
+        .from(connectors)
+        .where(and(eq(connectors.tenant_id, srv.tenantId), eq(connectors.id, body.id)))
+        .limit(1);
+      expect(cnRows[0]?.slug).toBe("stripe");
 
-    const auditRows = await srv.db
-      .select()
-      .from(auditLog)
-      .where(and(eq(auditLog.tenant_id, srv.tenantId), eq(auditLog.resource_id, body.id)));
-    const provenance = auditRows.find((r) => {
-      const meta = (r.metadata as { template_slug?: string }) ?? {};
-      return meta.template_slug === "stripe";
-    });
-    expect(provenance).toBeTruthy();
+      const auditRows = await srv.db
+        .select()
+        .from(auditLog)
+        .where(and(eq(auditLog.tenant_id, srv.tenantId), eq(auditLog.resource_id, body.id)));
+      const provenance = auditRows.find((r) => {
+        const meta = (r.metadata as { template_slug?: string }) ?? {};
+        return meta.template_slug === "stripe";
+      });
+      expect(provenance).toBeTruthy();
+      expect(discovery).not.toHaveBeenCalled();
+      expect(tenantWorkSnapshot(srv.tenantId).in_flight).toBe(0);
+    } finally {
+      discovery.mockRestore();
+    }
   });
+
+  for (const { slug, body, label } of [
+    {
+      slug: "automatic-discovery-default",
+      body: {},
+      label: "uses the default ingestion decision",
+    },
+    {
+      slug: "automatic-discovery-explicit",
+      body: { ingest_now: true },
+      label: "honors ingest_now:true",
+    },
+  ]) {
+    test(`from-template keeps automatic discovery when it ${label}`, async () => {
+      await srv.db.insert(connectorTemplates).values({
+        tenant_id: srv.tenantId,
+        slug,
+        name: "Automatic Discovery",
+        driver: "http",
+        base_url: "https://automatic-discovery.test",
+        auth_type: "none",
+        ingestion_source: "openapi",
+        ingestion_url: "https://automatic-discovery.test/openapi.json",
+        inline_schema: {
+          format: "openapi",
+          content: JSON.stringify({
+            openapi: "3.0.0",
+            info: { title: "Automatic Discovery", version: "1" },
+            paths: {},
+          }),
+        },
+      });
+      const discovery = spyOn(discoveryService, "runDiscoveryCached").mockRejectedValue(
+        new Error("controlled background discovery"),
+      );
+      try {
+        const res = await fetch(`${srv.baseUrl}/v1/connectors/from-template/${slug}`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${srv.apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        });
+        expect(res.status).toBe(201);
+        expect(discovery).toHaveBeenCalledTimes(1);
+      } finally {
+        discovery.mockRestore();
+      }
+    });
+  }
 
   test("from-template with ingest_now on unsupported template returns typed error", async () => {
     const res = await fetch(`${srv.baseUrl}/v1/connectors/from-template/notion`, {

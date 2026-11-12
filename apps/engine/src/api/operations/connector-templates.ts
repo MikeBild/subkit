@@ -372,7 +372,8 @@ export const createConnectorFromTemplateOperation = defineOperation<
         scope.db,
       );
     }
-    if (template.ingestion_url) seedDiscovery(scope, principal, template.slug, created.id);
+    if (shouldIngest && template.ingestion_url)
+      seedDiscovery(scope, principal, template.slug, created.id);
     const skill = template.default_skill
       ? ((templateSkillsJson as Record<string, unknown>)[template.default_skill] as
           | TemplateSkill
