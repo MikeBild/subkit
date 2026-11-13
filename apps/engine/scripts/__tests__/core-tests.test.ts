@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+  formatShardTestObservation,
   orderShardTests,
   parseShardArgs,
+  parseShardTestHistory,
   runShardTests,
   selectCanonicalCoreTests,
   selectCoreTests,
@@ -90,6 +92,47 @@ test("full closure preserves the same complete set after a prioritized failure",
     ),
   ).rejects.toThrow("fail");
   expect(seen).toEqual(["direct.test.ts", "a.test.ts", "z.test.ts"]);
+});
+
+test("runs earlier mutant killers first, weighted by how fast they decide", () => {
+  const paths = ["a.test.ts", "direct.test.ts", "slow-killer.test.ts", "fast-killer.test.ts"];
+  const history = parseShardTestHistory(
+    [
+      formatShardTestObservation({ test: "slow-killer.test.ts", durationMs: 12_000, failed: true }),
+      formatShardTestObservation({ test: "slow-killer.test.ts", durationMs: 12_000, failed: true }),
+      formatShardTestObservation({ test: "fast-killer.test.ts", durationMs: 400, failed: true }),
+      formatShardTestObservation({ test: "fast-killer.test.ts", durationMs: 400, failed: false }),
+      formatShardTestObservation({ test: "a.test.ts", durationMs: 50, failed: false }),
+    ].join(""),
+  );
+  const ordered = orderShardTests(paths, ["direct.test.ts"], history);
+  expect(ordered).toEqual([
+    "fast-killer.test.ts",
+    "slow-killer.test.ts",
+    "direct.test.ts",
+    "a.test.ts",
+  ]);
+  expect([...ordered].sort()).toEqual([...paths].sort());
+});
+
+test("order hints never narrow or extend the reviewed test set", async () => {
+  const paths = ["b.test.ts", "a.test.ts"];
+  const history = parseShardTestHistory(
+    [
+      "not json",
+      "{}",
+      JSON.stringify({ t: "outside.test.ts", ms: 10, f: 1 }),
+      JSON.stringify({ t: "b.test.ts", ms: -1, f: 1 }),
+      JSON.stringify({ t: "b.test.ts", ms: 10, f: 2 }),
+      JSON.stringify({ t: "b.test.ts", ms: 10, f: 1 }),
+      "",
+    ].join("\n"),
+  );
+  expect(history.get("b.test.ts")).toEqual({ kills: 1, runs: 1, totalMs: 10 });
+  expect(orderShardTests(paths, [], history)).toEqual(["b.test.ts", "a.test.ts"]);
+  const seen: string[] = [];
+  await runShardTests(paths, async (path) => void seen.push(path), false, [], history);
+  expect(seen).toEqual(["b.test.ts", "a.test.ts"]);
 });
 
 describe("parseShardArgs", () => {

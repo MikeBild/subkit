@@ -65,14 +65,67 @@ export function parseShardArgs(
   return { mode: "shard", manifest, shard, passthrough };
 }
 
+export interface ShardTestHistoryEntry {
+  kills: number;
+  runs: number;
+  totalMs: number;
+}
+
+export type ShardTestHistory = ReadonlyMap<string, ShardTestHistoryEntry>;
+
+const MIN_HISTORY_DURATION_MS = 200;
+
+export function formatShardTestObservation(observation: {
+  test: string;
+  durationMs: number;
+  failed: boolean;
+}): string {
+  return `${JSON.stringify({
+    t: observation.test,
+    ms: Math.max(0, Math.round(observation.durationMs)),
+    f: observation.failed ? 1 : 0,
+  })}\n`;
+}
+
+export function parseShardTestHistory(text: string): Map<string, ShardTestHistoryEntry> {
+  const history = new Map<string, ShardTestHistoryEntry>();
+  for (const line of text.split("\n")) {
+    if (line === "") continue;
+    let value: unknown;
+    try {
+      value = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!value || typeof value !== "object") continue;
+    const { t, ms, f } = value as { t?: unknown; ms?: unknown; f?: unknown };
+    if (typeof t !== "string" || !Number.isSafeInteger(ms) || (ms as number) < 0) continue;
+    if (f !== 0 && f !== 1) continue;
+    const entry = history.get(t) ?? { kills: 0, runs: 0, totalMs: 0 };
+    entry.kills += f;
+    entry.runs += 1;
+    entry.totalMs += ms as number;
+    history.set(t, entry);
+  }
+  return history;
+}
+
+function killRate(entry: ShardTestHistoryEntry | undefined): number {
+  if (!entry || entry.kills === 0) return 0;
+  return entry.kills / Math.max(entry.totalMs / entry.runs, MIN_HISTORY_DURATION_MS);
+}
+
 export function orderShardTests(
   paths: readonly string[],
   directTests: readonly string[] = [],
+  history: ShardTestHistory = new Map(),
 ): string[] {
   const direct = new Set(directTests);
   return [...new Set(paths)].sort(
     (left, right) =>
-      Number(direct.has(right)) - Number(direct.has(left)) || left.localeCompare(right),
+      killRate(history.get(right)) - killRate(history.get(left)) ||
+      Number(direct.has(right)) - Number(direct.has(left)) ||
+      left.localeCompare(right),
   );
 }
 
@@ -81,9 +134,10 @@ export async function runShardTests(
   run: (path: string) => Promise<void>,
   fullClosure: boolean,
   directTests: readonly string[] = [],
+  history: ShardTestHistory = new Map(),
 ): Promise<void> {
   let first: Error | undefined;
-  for (const path of orderShardTests(paths, directTests)) {
+  for (const path of orderShardTests(paths, directTests, history)) {
     try {
       await run(path);
     } catch (error) {

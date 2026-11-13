@@ -1,7 +1,9 @@
 #!/usr/bin/env bun
 
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createBoundedOutputLog } from "../../../scripts/lib/bounded-output-log.ts";
@@ -11,7 +13,14 @@ import {
   verificationRunsRoot,
 } from "../../../scripts/lib/verification-run-lifecycle.ts";
 import { runIsolatedTestFile } from "../../sk/src/tests/run-isolated-test-file.ts";
-import { parseShardArgs, runShardTests, selectCanonicalCoreTests } from "./audit/core-tests.ts";
+import {
+  formatShardTestObservation,
+  parseShardArgs,
+  parseShardTestHistory,
+  runShardTests,
+  type ShardTestHistory,
+  selectCanonicalCoreTests,
+} from "./audit/core-tests.ts";
 import { createClosureAnalysis } from "./audit/mutation-closure.ts";
 import { writeMutationInfrastructureSentinel } from "./audit/mutation-infrastructure-sentinel.ts";
 import { mutationClosureFiles, mutationTestInputs } from "./audit/mutation-inputs.ts";
@@ -37,6 +46,34 @@ function recordMutationInfrastructureFailure(error: unknown): void {
     writeMutationInfrastructureSentinel(ticketPath, String(error));
   } catch (sentinelError) {
     if ((sentinelError as NodeJS.ErrnoException).code !== "EEXIST") throw sentinelError;
+  }
+}
+
+function advisoryShardTestOrderPath(shard: string): string | undefined {
+  const ticketPath = process.env.SUBKIT_MUTATION_PARENT_TICKET_PATH;
+  if (!ticketPath) return undefined;
+  const key = createHash("sha256").update(`${ticketPath}\0${shard}`).digest("hex").slice(0, 32);
+  return join(tmpdir(), `subkit-mutation-test-order-${key}.jsonl`);
+}
+
+function readShardTestHistory(path: string | undefined): ShardTestHistory {
+  if (!path) return new Map();
+  try {
+    return parseShardTestHistory(readFileSync(path, "utf8"));
+  } catch {
+    return new Map();
+  }
+}
+
+function recordShardTestObservation(
+  path: string | undefined,
+  observation: { test: string; durationMs: number; failed: boolean },
+): void {
+  if (!path) return;
+  try {
+    appendFileSync(path, formatShardTestObservation(observation), { mode: 0o600 });
+  } catch {
+    return;
   }
 }
 
@@ -264,11 +301,28 @@ if (tests.length === 0) {
 }
 if (args.mode === "shard") {
   try {
+    const historyPath = advisoryShardTestOrderPath(args.shard);
     await runShardTests(
       selected,
-      runCoreTest,
+      async (path) => {
+        const startedAt = performance.now();
+        let failed = false;
+        try {
+          await runCoreTest(path);
+        } catch (error) {
+          failed = true;
+          throw error;
+        } finally {
+          recordShardTestObservation(historyPath, {
+            test: path,
+            durationMs: performance.now() - startedAt,
+            failed,
+          });
+        }
+      },
       process.env.SUBKIT_MUTATION_FULL_CLOSURE === "1",
       directTests,
+      readShardTestHistory(historyPath),
     );
   } catch (error) {
     console.error((error as Error).message);
