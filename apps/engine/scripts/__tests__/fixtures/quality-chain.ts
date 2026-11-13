@@ -1,9 +1,15 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { chmodSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { gitVisibleSourceDigest } from "../../../../../scripts/lib/source-digest.ts";
 import { externalRuntimeDockerTests } from "../../audit/external-runtime-tests.ts";
 import { mutationTestInputs } from "../../audit/mutation-inputs.ts";
+import {
+  createMutationRuntimeSnapshot,
+  MUTATION_RUNTIME_ARTIFACTS,
+  mutationRuntimeArtifactDigest,
+  sealMutationRuntimeSnapshot,
+} from "../../audit/mutation-runtime-snapshot.ts";
 import { buildMutationShardConfig } from "../../audit/mutation-shard-config.ts";
 import { digestWaveFiles } from "../../audit/mutation-wave.ts";
 import { assertCompletePureTargetInventory } from "../../audit/pure-targets.ts";
@@ -18,6 +24,11 @@ export function qualityChainFixture(
 ) {
   const f = frozenWaveFixture();
   const { wave, put, root } = f;
+  for (const [index, path] of MUTATION_RUNTIME_ARTIFACTS.entries()) {
+    put(path, path === "dist/sk" ? "#!/bin/sh\nexit 0\n" : `runtime-fixture-${index}\n`);
+    if (path === "dist/sk") chmodSync(join(root, path), 0o755);
+  }
+  wave.runtime_artifact_digest_sha256 = mutationRuntimeArtifactDigest(root);
   if (behaviorEvidence) wave.shards[0]!.tests[0]!.kind = "reverse_import";
   const allTargets = f.targets;
   const equivalentTarget = allTargets[0]!;
@@ -96,6 +107,26 @@ export function qualityChainFixture(
   const coverageRoot = "reports/coverage/shards/preflight-fixture/run-coverage";
   put(`${mutationRoot}/wave.json`, manifestText);
   put(`${coverageRoot}/wave.json`, manifestText);
+  const runtimeSnapshot = createMutationRuntimeSnapshot({
+    repo: root,
+    parentRunRoot: join(root, mutationRoot),
+    waveId: wave.wave_id,
+    runId: "run-mutation",
+    sourceFreezeSha256: wave.source_freeze_sha256,
+    manifestSha256: manifestHash,
+    artifactDigestSha256: wave.runtime_artifact_digest_sha256!,
+  });
+  const runtimeSnapshotSeal = sealMutationRuntimeSnapshot({
+    path: runtimeSnapshot.path,
+    sha256: runtimeSnapshot.sha256,
+    expected: {
+      wave_id: wave.wave_id,
+      run_id: "run-mutation",
+      source_freeze_sha256: wave.source_freeze_sha256,
+      manifest_sha256: manifestHash,
+      artifact_digest_sha256: wave.runtime_artifact_digest_sha256!,
+    },
+  });
   let nativeRoot = "";
   for (const shard of wave.shards) {
     const targets = shard.targets;
@@ -159,6 +190,8 @@ export function qualityChainFixture(
         lock_sha256: wave.lock_sha256,
         equivalence_manifest_sha256: wave.equivalence_manifest_sha256,
         dynamic_import_ledger_sha256: wave.dynamic_import_ledger_sha256,
+        runtime_artifact_digest_sha256: wave.runtime_artifact_digest_sha256,
+        runtime_snapshot_sha256: runtimeSnapshot.sha256,
         workers: 2,
         exit_code: equivalentSurvivor && targets.includes(equivalentTarget) ? 1 : 0,
         started_at: "2026-01-01T00:00:00Z",
@@ -339,6 +372,8 @@ export function qualityChainFixture(
     mutationRoot,
     coverageRoot,
     nativeRoot,
+    runtimeSnapshot,
+    runtimeSnapshotSeal,
     createExternalRuntimeAcceptance,
     options: {
       repo: root,

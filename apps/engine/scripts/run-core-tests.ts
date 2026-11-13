@@ -15,6 +15,7 @@ import { parseShardArgs, runShardTests, selectCanonicalCoreTests } from "./audit
 import { createClosureAnalysis } from "./audit/mutation-closure.ts";
 import { writeMutationInfrastructureSentinel } from "./audit/mutation-infrastructure-sentinel.ts";
 import { mutationClosureFiles, mutationTestInputs } from "./audit/mutation-inputs.ts";
+import { provisionMutationRuntimeSnapshot } from "./audit/mutation-runtime-snapshot.ts";
 import { validateParentMutationValidationTicket } from "./audit/mutation-validation-ticket.ts";
 import {
   readValidatedWaveManifest,
@@ -28,6 +29,16 @@ import {
 } from "./audit/pure-targets.ts";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+
+function recordMutationInfrastructureFailure(error: unknown): void {
+  const ticketPath = process.env.SUBKIT_MUTATION_PARENT_TICKET_PATH;
+  if (!ticketPath) return;
+  try {
+    writeMutationInfrastructureSentinel(ticketPath, String(error));
+  } catch (sentinelError) {
+    if ((sentinelError as NodeJS.ErrnoException).code !== "EEXIST") throw sentinelError;
+  }
+}
 
 const args = parseShardArgs(process.argv.slice(2));
 if ("error" in args) {
@@ -44,13 +55,38 @@ if (args.mode === "shard") {
     process.exit(1);
   }
   let manifest: ReturnType<typeof readValidatedWaveManifest>;
-  const cached = validateParentMutationValidationTicket({
-    repo: process.env.SUBKIT_MUTATION_ORIGINAL_REPO ?? REPO,
-    sandboxRepo: REPO,
-    manifestPath: isAbsolute(args.manifest) ? args.manifest : join(REPO, args.manifest),
-    shardId: args.shard,
-    env: process.env,
-  });
+  let cached: ReturnType<typeof validateParentMutationValidationTicket>;
+  try {
+    cached = validateParentMutationValidationTicket({
+      repo: process.env.SUBKIT_MUTATION_ORIGINAL_REPO ?? REPO,
+      sandboxRepo: REPO,
+      manifestPath: isAbsolute(args.manifest) ? args.manifest : join(REPO, args.manifest),
+      shardId: args.shard,
+      env: process.env,
+    });
+    if (cached && !cached.wave.runtime_artifact_digest_sha256)
+      throw new Error("parent mutation validation ticket wave lacks runtime artifact digest");
+    if (cached?.wave.runtime_artifact_digest_sha256 && !process.argv.includes("--list"))
+      provisionMutationRuntimeSnapshot({
+        sandboxRepo: REPO,
+        snapshotPath: join(
+          resolve(process.env.SUBKIT_MUTATION_ORIGINAL_REPO ?? REPO),
+          cached.ticket.runtime_snapshot_path,
+        ),
+        snapshotSha256: cached.ticket.runtime_snapshot_sha256,
+        sealSha256: cached.ticket.runtime_snapshot_seal_sha256,
+        expected: {
+          wave_id: cached.wave.wave_id,
+          run_id: cached.ticket.run_id,
+          source_freeze_sha256: cached.wave.source_freeze_sha256,
+          manifest_sha256: cached.ticket.manifest_sha256,
+          artifact_digest_sha256: cached.wave.runtime_artifact_digest_sha256,
+        },
+      });
+  } catch (error) {
+    if (!process.argv.includes("--list")) recordMutationInfrastructureFailure(error);
+    throw error;
+  }
   if (cached) {
     manifest = cached.wave;
     verificationRepo = resolve(process.env.SUBKIT_MUTATION_ORIGINAL_REPO ?? REPO);

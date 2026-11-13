@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
+import { MUTATION_RUNTIME_ARTIFACTS } from "./mutation-runtime-snapshot.ts";
 import { isCanonicalRepoPath } from "./mutation-wave.ts";
 
-export interface DistributedQualityTicket {
-  version: 1;
+interface DistributedQualityTicketBase {
   coordinator_commit_sha: string;
   github_run_id: string;
   coverage_run_id: string;
@@ -23,6 +23,24 @@ export interface DistributedQualityTicket {
   campaign_timeout_ms: number;
 }
 
+export interface DistributedQualityTicketV1 extends DistributedQualityTicketBase {
+  version: 1;
+}
+
+export interface DistributedQualityRuntimeSnapshot {
+  path: string;
+  sha256: string;
+  artifact_digest_sha256: string;
+  artifacts: Array<{ path: string; sha256: string; bytes: number; executable: boolean }>;
+}
+
+export interface DistributedQualityTicketV2 extends DistributedQualityTicketBase {
+  version: 2;
+  runtime_snapshot: DistributedQualityRuntimeSnapshot;
+}
+
+export type DistributedQualityTicket = DistributedQualityTicketV1 | DistributedQualityTicketV2;
+
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
 const isSha = (value: unknown, length = 64) =>
   typeof value === "string" && new RegExp(`^[a-f0-9]{${length}}$`).test(value);
@@ -40,7 +58,7 @@ export function parseDistributedQualityTicket(value: unknown): DistributedQualit
     throw new Error("Malformed distributed quality ticket");
   const ticket = value as DistributedQualityTicket;
   if (
-    ticket.version !== 1 ||
+    (ticket.version !== 1 && ticket.version !== 2) ||
     !isSha(ticket.coordinator_commit_sha, 40) ||
     typeof ticket.github_run_id !== "string" ||
     !/^\d+$/.test(ticket.github_run_id) ||
@@ -81,7 +99,62 @@ export function parseDistributedQualityTicket(value: unknown): DistributedQualit
       throw new Error("Malformed or duplicate distributed quality shard");
     ids.add(shard.id);
   }
+  if (ticket.version === 2) {
+    const snapshot = (ticket as DistributedQualityTicketV2).runtime_snapshot;
+    if (
+      !snapshot ||
+      !isCanonicalTicketPath(snapshot.path) ||
+      !isSha(snapshot.sha256) ||
+      !isSha(snapshot.artifact_digest_sha256) ||
+      !Array.isArray(snapshot.artifacts) ||
+      snapshot.artifacts.length !== MUTATION_RUNTIME_ARTIFACTS.length
+    )
+      throw new Error("Malformed distributed runtime snapshot binding");
+    const paths = new Set<string>();
+    for (const artifact of snapshot.artifacts) {
+      if (
+        !artifact ||
+        !isCanonicalRepoPath(artifact.path) ||
+        !isSha(artifact.sha256) ||
+        !Number.isSafeInteger(artifact.bytes) ||
+        artifact.bytes < 1 ||
+        typeof artifact.executable !== "boolean" ||
+        paths.has(artifact.path)
+      )
+        throw new Error("Malformed or duplicate distributed runtime snapshot artifact");
+      paths.add(artifact.path);
+    }
+    if (
+      JSON.stringify(snapshot.artifacts.map((artifact) => artifact.path)) !==
+        JSON.stringify(MUTATION_RUNTIME_ARTIFACTS) ||
+      snapshot.artifacts.some((artifact) => artifact.executable !== (artifact.path === "dist/sk"))
+    )
+      throw new Error(
+        "Distributed runtime snapshot inventory differs from trusted runtime closure",
+      );
+  }
   return ticket;
+}
+
+export function assertDistributedRuntimeSnapshotArtifacts(
+  ticket: DistributedQualityTicket,
+  artifacts: readonly { path: string; sha256: string; bytes: number; executable: boolean }[],
+): void {
+  const row = (artifact: (typeof artifacts)[number]) =>
+    [artifact.path, artifact.sha256, artifact.bytes, artifact.executable].join("\0");
+  if (
+    distributedRuntimeSnapshot(ticket).artifacts.map(row).join("\n") !==
+    artifacts.map(row).join("\n")
+  )
+    throw new Error("Distributed runtime snapshot artifacts differ from snapshot manifest");
+}
+
+export function distributedRuntimeSnapshot(
+  ticket: DistributedQualityTicket,
+): DistributedQualityRuntimeSnapshot {
+  if (ticket.version !== 2)
+    throw new Error("Distributed executor requires a V2 runtime snapshot ticket");
+  return ticket.runtime_snapshot;
 }
 
 const isCanonicalTicketPath = (path: unknown): path is string =>
@@ -130,6 +203,18 @@ export function assertDistributedShardReceipt(options: {
       receipt.dry_run_timeout_minutes !== minutes
     )
       throw new Error("Receipt mutation dry-run budget differs from distributed ticket");
+    if (ticket.version === 2) {
+      const snapshot = distributedRuntimeSnapshot(ticket);
+      if (
+        receipt.runtime_snapshot_sha256 !== snapshot.sha256 ||
+        receipt.runtime_artifact_digest_sha256 !== snapshot.artifact_digest_sha256
+      )
+        throw new Error("Receipt runtime snapshot differs from distributed ticket");
+    } else if (
+      receipt.runtime_snapshot_sha256 !== undefined ||
+      receipt.runtime_artifact_digest_sha256 !== undefined
+    )
+      throw new Error("Receipt binds a runtime snapshot that a V1 distributed ticket cannot carry");
   }
 }
 

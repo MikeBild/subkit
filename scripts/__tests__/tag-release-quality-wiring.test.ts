@@ -61,10 +61,9 @@ test("quality CI retains global coverage before the distributed coordinator, sha
   expect(qualityWorkflow).toContain("path: reports/coverage/");
   const coordinator = qualityWorkflow.slice(qualityWorkflow.indexOf("  coordinator:"), shard);
   const shardBlock = qualityWorkflow.slice(shard, mergeJob);
-  for (const [job, execution] of [
-    [coordinator, "bun run check:coverage-floor"],
-    [shardBlock, "distributed-quality.ts coverage"],
-  ]) {
+  {
+    const job = coordinator;
+    const execution = "bun run check:coverage-floor";
     const install = job.indexOf("bun install --frozen-lockfile");
     const terminalTools = job.indexOf("sudo apt-get install -y expect");
     const sk = job.indexOf("bun run build:sk");
@@ -79,5 +78,21 @@ test("quality CI retains global coverage before the distributed coordinator, sha
     expect(cockpit).toBeGreaterThan(clipper);
     expect(sk).toBeGreaterThan(cockpit);
     expect(executionIndex).toBeGreaterThan(sk);
+  }
+  {
+    const job = shardBlock;
+    const install = job.indexOf("bun install --frozen-lockfile");
+    const terminalTools = job.indexOf("sudo apt-get install -y expect");
+    const cockpit = job.indexOf("bun run build:cockpit");
+    const coordinatorDownload = job.indexOf("name: quality-coordinator");
+    const executionIndex = job.indexOf("distributed-quality.ts coverage");
+    expect(install).toBeGreaterThan(-1);
+    expect(terminalTools).toBeGreaterThan(install);
+    expect(cockpit).toBeGreaterThan(terminalTools);
+    expect(coordinatorDownload).toBeGreaterThan(cockpit);
+    expect(executionIndex).toBeGreaterThan(coordinatorDownload);
+    expect(job).not.toContain("bun scripts/fetch-embedding-assets.ts");
+    expect(job).not.toContain("bun run build:clipper");
+    expect(job).not.toContain("bun run build:sk");
   }
 });

@@ -10,10 +10,13 @@ import {
 import { deriveDistributedBaselineBudget } from "./audit/distributed-quality-budget.ts";
 import {
   assertCompleteDistributedShardSet,
+  assertDistributedRuntimeSnapshotArtifacts,
   canonicalDistributedQualityTicket,
   distributedQualityTicketSha256,
+  distributedRuntimeSnapshot,
   parseDistributedQualityTicket,
 } from "./audit/distributed-quality-ticket.ts";
+import { rehydrateMutationRuntimeSnapshot } from "./audit/mutation-runtime-snapshot.ts";
 import { runtimePureTargetPaths } from "./audit/pure-targets.ts";
 import { runHermeticQualityAction } from "./audit/quality-hermetic-launcher.ts";
 import { createDistributedQualityTicket } from "./prepare-distributed-quality-ticket.ts";
@@ -57,16 +60,51 @@ const out = (k: string, v: string) => {
     writeFileSync(process.env.GITHUB_OUTPUT, `${k}=${v}\n`, { flag: "a" });
 };
 
-function allFiles(root: string): string[] {
+function allFiles(root: string, base = repo): string[] {
   const walk = (dir: string): string[] =>
     readdirSync(dir, { withFileTypes: true }).flatMap((x) => {
       const path = join(dir, x.name);
       if (x.isSymbolicLink()) throw new Error("Distributed package symlink is forbidden");
       if (x.isDirectory()) return walk(path);
-      if (x.isFile()) return [relative(repo, path)];
+      if (x.isFile()) return [relative(base, path)];
       throw new Error("Distributed package contains nonregular file");
     });
   return walk(root).sort();
+}
+
+export function distributedShardPackageFiles(options: {
+  repo: string;
+  waveId: string;
+  coverageRunId: string;
+  mutationRunId: string;
+}): string[] {
+  const mutationRoot = join(
+    options.repo,
+    "reports/mutation/runs",
+    options.waveId,
+    options.mutationRunId,
+  );
+  const ticket = relative(options.repo, join(mutationRoot, "mutation-validation-ticket.json"));
+  const snapshots = `${relative(options.repo, join(mutationRoot, "runtime-snapshots"))}/`;
+  return [
+    join(options.repo, "reports/coverage/shards", options.waveId, options.coverageRunId),
+    mutationRoot,
+  ]
+    .flatMap((root) => (existsSync(root) ? allFiles(root, options.repo) : []))
+    .filter((path) => path !== ticket && !path.startsWith(snapshots));
+}
+
+export function portableRuntimeSnapshotFiles(options: {
+  repo: string;
+  snapshotPath: string;
+  artifacts: readonly { path: string }[];
+}): string[] {
+  return [
+    relative(options.repo, join(options.snapshotPath, "runtime-snapshot.json")),
+    ...options.artifacts.map((artifact) =>
+      relative(options.repo, join(options.snapshotPath, artifact.path)),
+    ),
+  ].sort();
 }
 function readTicket() {
   const text = readFileSync(ticketPath(), "utf8"),
@@ -94,6 +132,19 @@ function restoreCoordinator() {
     restored.value.github_run_id !== identity.githubRunId
   )
     throw new Error("Coordinator package is foreign");
+  const snapshot = distributedRuntimeSnapshot(restored.value);
+  const rehydrated = rehydrateMutationRuntimeSnapshot({
+    path: join(repo, snapshot.path),
+    sha256: snapshot.sha256,
+    expected: {
+      wave_id: restored.value.wave_id,
+      run_id: restored.value.mutation_run_id,
+      source_freeze_sha256: restored.value.source_sha256,
+      manifest_sha256: restored.value.manifest_sha256,
+      artifact_digest_sha256: snapshot.artifact_digest_sha256,
+    },
+  });
+  assertDistributedRuntimeSnapshotArtifacts(restored.value, rehydrated.artifacts);
   return restored;
 }
 export function selectDistributedCoverageBehaviorProof(options: {
@@ -248,6 +299,7 @@ export async function prepareDistributedQuality() {
     coverageRunId,
     mutationRunId,
     ticketPath: relative(repo, ticketPath()),
+    runtimeSnapshot: prepared.runtimeSnapshot,
   });
   writeFileSync(ticketPath(), canonicalDistributedQualityTicket(value), { flag: "wx" });
   const runtimeFiles =
@@ -271,10 +323,22 @@ export async function prepareDistributedQuality() {
         relative(repo, join(dir, "runner.log")),
       ];
     }) ?? [];
+  const runtimeSnapshotFiles = portableRuntimeSnapshotFiles({
+    repo,
+    snapshotPath: prepared.runtimeSnapshot.path,
+    artifacts: prepared.runtimeSnapshot.snapshot.artifacts,
+  });
   packQualityArtifacts({
     repo,
     destination: packageRoot,
-    files: [...new Set([...allFiles(input), ...allFiles(behaviorRoot), ...runtimeFiles])].sort(),
+    files: [
+      ...new Set([
+        ...allFiles(input),
+        ...allFiles(behaviorRoot),
+        ...runtimeSnapshotFiles,
+        ...runtimeFiles,
+      ]),
+    ].sort(),
     identity: { commit, githubRunId, ticketSha256: distributedQualityTicketSha256(value) },
   });
   out("commit", commit);
@@ -337,12 +401,12 @@ export async function runDistributedMutation() {
       distributed: { ticket: value, ticketSha256: sha256, commit, githubRunId },
     });
   } finally {
-    const files = [
-      join(repo, "reports/coverage/shards", value.wave_id, value.coverage_run_id),
-      join(repo, "reports/mutation/runs", value.wave_id, value.mutation_run_id),
-    ]
-      .flatMap((r) => (existsSync(r) ? allFiles(r) : []))
-      .filter((path) => !path.endsWith("/mutation-validation-ticket.json"));
+    const files = distributedShardPackageFiles({
+      repo,
+      waveId: value.wave_id,
+      coverageRunId: value.coverage_run_id,
+      mutationRunId: value.mutation_run_id,
+    });
     packQualityArtifacts({
       repo,
       destination: join(repo, "reports/distributed-quality/shard/package"),

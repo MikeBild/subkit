@@ -185,6 +185,7 @@ export function validateMutationShardUnion(input: MutationShardUnionInput): stri
       ["lock_sha256", input.wave.lock_sha256],
       ["equivalence_manifest_sha256", input.wave.equivalence_manifest_sha256],
       ["dynamic_import_ledger_sha256", input.wave.dynamic_import_ledger_sha256],
+      ["runtime_artifact_digest_sha256", input.wave.runtime_artifact_digest_sha256],
     ] as const)
       if (receipt[key] !== value) errors.push(`shard ${shard.id} receipt ${key} mismatch`);
     if (JSON.stringify(receipt.targets) !== JSON.stringify(shard.targets))

@@ -26,10 +26,11 @@ import {
 } from "../audit/distributed-quality-artifacts.ts";
 import {
   canonicalDistributedQualityTicket,
-  type DistributedQualityTicket,
+  type DistributedQualityTicketV2,
   distributedQualityTicketSha256,
 } from "../audit/distributed-quality-ticket.ts";
 import { buildMutationShardConfig } from "../audit/mutation-shard-config.ts";
+import { distributedShardPackageFiles } from "../distributed-quality.ts";
 import { collectCoverageShardUnion } from "../run-coverage-shards.ts";
 import {
   collectMutationShardUnion,
@@ -91,8 +92,8 @@ test("two independent hosts produce a portable distributed quality bundle", asyn
   try {
     const commit = initGit(source.root);
     const manifestText = readFileSync(join(source.root, source.mutationRoot, "wave.json"), "utf8");
-    const ticket: DistributedQualityTicket = {
-      version: 1,
+    const ticket: DistributedQualityTicketV2 = {
+      version: 2,
       coordinator_commit_sha: commit,
       github_run_id: "101",
       coverage_run_id: "run-coverage",
@@ -109,6 +110,12 @@ test("two independent hosts produce a portable distributed quality bundle", asyn
       quality_policy_sha256: source.wave.quality_policy_sha256!,
       dynamic_import_ledger_sha256: source.wave.dynamic_import_ledger_sha256,
       equivalence_manifest_sha256: source.wave.equivalence_manifest_sha256,
+      runtime_snapshot: {
+        path: relative(source.root, source.runtimeSnapshot.path),
+        sha256: source.runtimeSnapshot.sha256,
+        artifact_digest_sha256: source.runtimeSnapshot.snapshot.artifact_digest_sha256,
+        artifacts: source.runtimeSnapshot.snapshot.artifacts.map((artifact) => ({ ...artifact })),
+      },
       campaign_timeout_ms: 600_000,
       shards: source.wave.shards.map((shard) => ({
         id: shard.id,
@@ -118,6 +125,18 @@ test("two independent hosts produce a portable distributed quality bundle", asyn
     };
     const ticketText = canonicalDistributedQualityTicket(ticket);
     const ticketSha256 = distributedQualityTicketSha256(ticket);
+    const coordinatorPackage = join(temporary, "coordinator-package");
+    packQualityArtifacts({
+      repo: source.root,
+      destination: coordinatorPackage,
+      files: [
+        relative(source.root, join(source.runtimeSnapshot.path, "runtime-snapshot.json")),
+        ...source.runtimeSnapshot.snapshot.artifacts.map((artifact) =>
+          relative(source.root, join(source.runtimeSnapshot.path, artifact.path)),
+        ),
+      ].sort(),
+      identity: { commit, githubRunId: ticket.github_run_id, ticketSha256 },
+    });
     for (const host of [hostA, hostB]) copyTree(source.root, host);
     for (const host of [hostA, hostB]) {
       const mutationWave = join(host, source.mutationRoot, "wave.json");
@@ -161,6 +180,8 @@ test("two independent hosts produce a portable distributed quality bundle", asyn
           run_id: ticket.mutation_run_id,
           baseline_budget_ms: 60_000,
           dry_run_timeout_minutes: 1,
+          runtime_snapshot_sha256: ticket.runtime_snapshot.sha256,
+          runtime_artifact_digest_sha256: ticket.runtime_snapshot.artifact_digest_sha256,
           config_sha256: hash(configText),
           report_sha256: hash(reportText),
         });
@@ -181,17 +202,45 @@ test("two independent hosts produce a portable distributed quality bundle", asyn
       ledgerPath,
       readFileSync(join(source.root, source.wave.dynamic_import_ledger_path), "utf8"),
     );
+    restoreQualityArtifacts({
+      repo: collector,
+      source: coordinatorPackage,
+      expectedIdentity: { commit, githubRunId: ticket.github_run_id, ticketSha256 },
+    });
+    expect(
+      existsSync(join(collector, ticket.runtime_snapshot.path, "runtime-snapshot.seal.json")),
+    ).toBe(false);
     const packageRoot = join(temporary, "packages");
     for (const [index, shard] of source.wave.shards.entries()) {
       const host = index % 2 === 0 ? hostA : hostB;
-      const relativePaths = [
-        ...files(join(host, source.coverageRoot, shard.id)).map((path) =>
-          join(source.coverageRoot, shard.id, path),
-        ),
-        ...files(join(host, source.mutationRoot, shard.id)).map((path) =>
-          join(source.mutationRoot, shard.id, path),
-        ),
-      ];
+      const produced = distributedShardPackageFiles({
+        repo: host,
+        waveId: source.wave.wave_id,
+        coverageRunId: ticket.coverage_run_id,
+        mutationRunId: ticket.mutation_run_id,
+      });
+      expect(
+        existsSync(join(host, ticket.runtime_snapshot.path, "runtime-snapshot.seal.json")),
+      ).toBe(true);
+      expect(produced.filter((path) => path.includes("/runtime-snapshots/"))).toEqual([]);
+      expect(produced.filter((path) => path.endsWith("/mutation-validation-ticket.json"))).toEqual(
+        [],
+      );
+      const relativePaths = produced.filter(
+        (path) =>
+          path.startsWith(`${join(source.coverageRoot, shard.id)}/`) ||
+          path.startsWith(`${join(source.mutationRoot, shard.id)}/`),
+      );
+      expect(relativePaths).toEqual(
+        [
+          ...files(join(host, source.coverageRoot, shard.id)).map((path) =>
+            join(source.coverageRoot, shard.id, path),
+          ),
+          ...files(join(host, source.mutationRoot, shard.id)).map((path) =>
+            join(source.mutationRoot, shard.id, path),
+          ),
+        ].sort(),
+      );
       packQualityArtifacts({
         repo: host,
         destination: join(packageRoot, shard.id),
@@ -225,6 +274,9 @@ test("two independent hosts produce a portable distributed quality bundle", asyn
       runId: ticket.mutation_run_id,
       root: mutationRoot,
     });
+    expect(
+      existsSync(join(collector, ticket.runtime_snapshot.path, "runtime-snapshot.seal.json")),
+    ).toBe(true);
     const mutationShards = source.wave.shards.map((shard) => {
       const directory = join(mutationRoot, shard.id);
       const receiptText = readFileSync(join(directory, "receipt.json"), "utf8");

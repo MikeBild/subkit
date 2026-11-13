@@ -5,6 +5,7 @@ import {
   assertDistributedWaveBinding,
   canonicalDistributedQualityTicket,
   distributedQualityTicketSha256,
+  distributedRuntimeSnapshot,
   parseDistributedQualityTicket,
 } from "./audit/distributed-quality-ticket.ts";
 import { loadMutationWave } from "./run-mutation-shards.ts";
@@ -49,6 +50,9 @@ export function validateDistributedQualityExecutor(options: {
   )
     throw new Error("Executor checkout differs from trusted commit");
   const prepared = loadMutationWave(repo, options.manifestPath);
+  const runtimeSnapshot = distributedRuntimeSnapshot(ticket);
+  if (prepared.wave.runtime_artifact_digest_sha256 !== runtimeSnapshot.artifact_digest_sha256)
+    throw new Error("Executor runtime snapshot differs from frozen wave");
   const shard = prepared.wave.shards.find((candidate) => candidate.id === options.shardId);
   if (!shard) throw new Error("Executor shard is absent from frozen wave");
   assertDistributedWaveBinding({

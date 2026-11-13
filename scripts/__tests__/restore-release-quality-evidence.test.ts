@@ -58,6 +58,7 @@ function bindParentTicket(source: ReturnType<typeof qualityChainFixture>): void 
     runId: "run-mutation",
     runtimeInputs: mutationTestInputs(source.root),
     closureFiles: mutationClosureFiles(source.root),
+    runtimeSnapshot: { ...source.runtimeSnapshot, sealSha256: source.runtimeSnapshotSeal },
   });
   for (const shard of source.wave.shards) {
     const path = join(source.root, source.mutationRoot, shard.id, "receipt.json");

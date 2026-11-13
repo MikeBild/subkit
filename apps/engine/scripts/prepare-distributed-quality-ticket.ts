@@ -7,6 +7,10 @@ import {
   type DistributedQualityTicket,
   parseDistributedQualityTicket,
 } from "./audit/distributed-quality-ticket.ts";
+import {
+  type MutationRuntimeSnapshot,
+  validateMutationRuntimeSnapshot,
+} from "./audit/mutation-runtime-snapshot.ts";
 import { loadMutationWave } from "./run-mutation-shards.ts";
 
 const repo = resolve(import.meta.dir, "../../..");
@@ -27,6 +31,7 @@ export function createDistributedQualityTicket(options: {
   coverageRunId: string;
   mutationRunId: string;
   ticketPath: string;
+  runtimeSnapshot: { path: string; sha256: string; snapshot: MutationRuntimeSnapshot };
 }): DistributedQualityTicket {
   if (!/^[a-f0-9]{40}$/.test(options.commit)) throw new Error("Invalid coordinator commit");
   if (!Number.isSafeInteger(options.campaignTimeoutMs) || options.campaignTimeoutMs <= 0)
@@ -47,8 +52,19 @@ export function createDistributedQualityTicket(options: {
   const { wave, manifestText } = prepared;
   if (!wave.quality_policy_sha256)
     throw new Error("Distributed quality requires a policy-bound wave");
+  const runtime_snapshot_path = relative(repo, resolve(options.runtimeSnapshot.path));
+  if (!parseDistributedQualityTicketPath(runtime_snapshot_path))
+    throw new Error("Distributed runtime snapshot path must be canonical");
+  if (
+    options.runtimeSnapshot.snapshot.wave_id !== wave.wave_id ||
+    options.runtimeSnapshot.snapshot.run_id !== options.mutationRunId ||
+    options.runtimeSnapshot.snapshot.source_freeze_sha256 !== wave.source_freeze_sha256 ||
+    options.runtimeSnapshot.snapshot.manifest_sha256 !== hash(manifestText) ||
+    options.runtimeSnapshot.snapshot.artifact_digest_sha256 !== wave.runtime_artifact_digest_sha256
+  )
+    throw new Error("Distributed runtime snapshot differs from frozen wave");
   return {
-    version: 1,
+    version: 2,
     coordinator_commit_sha: options.commit,
     github_run_id: options.githubRunId,
     coverage_run_id: options.coverageRunId,
@@ -65,6 +81,12 @@ export function createDistributedQualityTicket(options: {
     quality_policy_sha256: wave.quality_policy_sha256,
     dynamic_import_ledger_sha256: wave.dynamic_import_ledger_sha256,
     equivalence_manifest_sha256: wave.equivalence_manifest_sha256,
+    runtime_snapshot: {
+      path: runtime_snapshot_path,
+      sha256: options.runtimeSnapshot.sha256,
+      artifact_digest_sha256: options.runtimeSnapshot.snapshot.artifact_digest_sha256,
+      artifacts: options.runtimeSnapshot.snapshot.artifacts.map((artifact) => ({ ...artifact })),
+    },
     campaign_timeout_ms: options.campaignTimeoutMs,
     shards: wave.shards.map((shard) => {
       const baseline_budget_ms = options.baselineBudgets[shard.id];
@@ -104,6 +126,21 @@ if (import.meta.main) {
     }).trim()
   )
     throw new Error("Coordinator requires no untracked source inputs");
+  const prepared = loadMutationWave(repo, manifest);
+  if (!prepared.wave.runtime_artifact_digest_sha256)
+    throw new Error("Frozen mutation wave lacks runtime artifact digest");
+  const runtimeSnapshotPath = resolve(repo, value("--runtime-snapshot"));
+  const runtimeSnapshot = validateMutationRuntimeSnapshot({
+    path: runtimeSnapshotPath,
+    sha256: value("--runtime-snapshot-sha256"),
+    expected: {
+      wave_id: prepared.wave.wave_id,
+      run_id: value("--mutation-run-id"),
+      source_freeze_sha256: prepared.wave.source_freeze_sha256,
+      manifest_sha256: hash(prepared.manifestText),
+      artifact_digest_sha256: prepared.wave.runtime_artifact_digest_sha256,
+    },
+  });
   const ticket = createDistributedQualityTicket({
     manifestPath: manifest,
     commit,
@@ -111,8 +148,13 @@ if (import.meta.main) {
     baselineBudgets,
     campaignTimeoutMs: Number(value("--campaign-timeout-ms")),
     coverageRunId: value("--coverage-run-id"),
-    mutationRunId: value("--mutation-run-id"),
+    mutationRunId: runtimeSnapshot.run_id,
     ticketPath,
+    runtimeSnapshot: {
+      path: runtimeSnapshotPath,
+      sha256: value("--runtime-snapshot-sha256"),
+      snapshot: runtimeSnapshot,
+    },
   });
   parseDistributedQualityTicket(ticket);
   mkdirSync(resolve(out, ".."), { recursive: true });

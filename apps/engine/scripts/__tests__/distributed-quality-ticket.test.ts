@@ -1,11 +1,13 @@
 import { expect, test } from "bun:test";
 import {
   assertCompleteDistributedShardSet,
+  assertDistributedRuntimeSnapshotArtifacts,
   assertDistributedShardReceipt,
   type DistributedQualityTicket,
   distributedQualityTicketSha256,
   parseDistributedQualityTicket,
 } from "../audit/distributed-quality-ticket.ts";
+import { MUTATION_RUNTIME_ARTIFACTS } from "../audit/mutation-runtime-snapshot.ts";
 
 const ticket: DistributedQualityTicket = {
   version: 1,
@@ -122,4 +124,54 @@ test("accepts the complete canonical ticket and correctly bound mutation receipt
       trustedRunId: "12",
     }),
   ).toThrow("budget");
+});
+
+test("V1 receipts cannot carry runtime snapshot bindings", () => {
+  for (const extra of [
+    { runtime_snapshot_sha256: "6".repeat(64) },
+    { runtime_artifact_digest_sha256: "7".repeat(64) },
+  ])
+    expect(() =>
+      assertDistributedShardReceipt({
+        ticket,
+        ticketSha256: distributedQualityTicketSha256(ticket),
+        receipt: { ...receipt(), ...extra },
+        shardId: "alpha",
+        phase: "mutation",
+        trustedCommit: "a".repeat(40),
+        trustedRunId: "12",
+      }),
+    ).toThrow("V1 distributed ticket cannot carry");
+});
+
+test("V2 ticket artifacts must equal the restored snapshot manifest", () => {
+  const artifacts = MUTATION_RUNTIME_ARTIFACTS.map((path, index) => ({
+    path,
+    sha256: String(index % 10).repeat(64),
+    bytes: index + 1,
+    executable: path === "dist/sk",
+  }));
+  const v2 = parseDistributedQualityTicket({
+    ...ticket,
+    version: 2,
+    runtime_snapshot: {
+      path: "reports/mutation/runs/wave-12/run-mutation-12/runtime-snapshots/snapshot",
+      sha256: "8".repeat(64),
+      artifact_digest_sha256: "9".repeat(64),
+      artifacts,
+    },
+  });
+  expect(() => assertDistributedRuntimeSnapshotArtifacts(v2, artifacts)).not.toThrow();
+  expect(() =>
+    assertDistributedRuntimeSnapshotArtifacts(
+      v2,
+      artifacts.map((artifact, index) =>
+        index === 0 ? { ...artifact, sha256: "a".repeat(64) } : artifact,
+      ),
+    ),
+  ).toThrow("differ from snapshot manifest");
+  expect(() => assertDistributedRuntimeSnapshotArtifacts(v2, artifacts.slice(1))).toThrow(
+    "differ from snapshot manifest",
+  );
+  expect(() => assertDistributedRuntimeSnapshotArtifacts(ticket, artifacts)).toThrow("V2");
 });

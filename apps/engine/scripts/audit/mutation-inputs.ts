@@ -134,6 +134,7 @@ const RUNNER_INPUTS = [
   "apps/engine/scripts/audit/files.ts",
   "apps/engine/scripts/audit/mutation-floor.ts",
   "apps/engine/scripts/audit/mutation-inputs.ts",
+  "apps/engine/scripts/audit/mutation-runtime-snapshot.ts",
   "apps/engine/scripts/audit/mutation-scope.ts",
   "apps/engine/scripts/audit/mutation-wave.ts",
   "apps/engine/scripts/audit/mutation-closure.ts",

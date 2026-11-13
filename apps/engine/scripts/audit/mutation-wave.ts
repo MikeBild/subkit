@@ -51,6 +51,7 @@ export interface MutationWaveManifest {
   lock_sha256: string;
   equivalence_manifest_sha256: string;
   dynamic_import_ledger_sha256: string;
+  runtime_artifact_digest_sha256?: string;
   dynamic_import_ledger_path: string;
   equivalence_manifest_path: string;
   non_incremental: true;
@@ -158,6 +159,11 @@ export function validateMutationWaveManifest(input: {
     if (!SHA256.test(manifest[key] ?? "")) errors.push(`wave manifest ${key} must be sha256`);
   if (manifest.quality_policy_sha256 !== undefined && !SHA256.test(manifest.quality_policy_sha256))
     errors.push("wave manifest quality_policy_sha256 must be sha256");
+  if (
+    manifest.runtime_artifact_digest_sha256 !== undefined &&
+    !SHA256.test(manifest.runtime_artifact_digest_sha256)
+  )
+    errors.push("wave manifest runtime_artifact_digest_sha256 must be sha256");
   for (const key of ["dynamic_import_ledger_path", "equivalence_manifest_path"] as const)
     if (!isCanonicalRepoPath(manifest[key]))
       errors.push(`wave manifest ${key} must be canonical path`);

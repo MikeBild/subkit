@@ -71,6 +71,7 @@ export function validateMutationValidationTicketEvidence(input: {
     ticket.lock_sha256 !== input.wave.lock_sha256 ||
     ticket.equivalence_manifest_sha256 !== input.wave.equivalence_manifest_sha256 ||
     ticket.dynamic_import_ledger_sha256 !== input.wave.dynamic_import_ledger_sha256 ||
+    ticket.runtime_artifact_digest_sha256 !== input.wave.runtime_artifact_digest_sha256 ||
     ticket.quality_policy_sha256 !== input.wave.quality_policy_sha256 ||
     ticket.target_digest_sha256 !== input.wave.target_digest_sha256
   )

@@ -5,6 +5,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mutationClosureFiles, mutationTestInputs } from "./audit/mutation-inputs.ts";
+import { mutationRuntimeArtifactDigest } from "./audit/mutation-runtime-snapshot.ts";
 import {
   type MutationWaveManifest,
   validateMutationWaveManifest,
@@ -57,6 +58,7 @@ const frozen: MutationWaveManifest = {
   equivalence_manifest_sha256: digest([manifest.equivalence_manifest_path]),
   dynamic_import_ledger_sha256: digest([ledger]),
   dynamic_import_ledger_path: ledger,
+  runtime_artifact_digest_sha256: mutationRuntimeArtifactDigest(REPO),
 };
 const errors = validateMutationWaveManifest({
   manifest: frozen,

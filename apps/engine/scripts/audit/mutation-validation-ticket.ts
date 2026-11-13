@@ -6,6 +6,8 @@ import {
   mutationTestInputs,
   patchedDependencyInputs,
 } from "./mutation-inputs.ts";
+import type { MutationRuntimeSnapshot } from "./mutation-runtime-snapshot.ts";
+import { assertMutationRuntimeSnapshotFast } from "./mutation-runtime-snapshot.ts";
 import { digestCanonical, digestWaveFiles, type MutationWaveManifest } from "./mutation-wave.ts";
 import type { PureTargetEntry } from "./pure-targets.ts";
 import { reviewedRuntimeWitnesses } from "./runtime-witnesses.ts";
@@ -43,6 +45,10 @@ export interface MutationValidationTicket {
   target_inventory: readonly PureTargetEntry[];
   runtime_input_paths_sha256: string;
   runtime_input_source_sha256: string;
+  runtime_snapshot_path: string;
+  runtime_snapshot_sha256: string;
+  runtime_snapshot_seal_sha256: string;
+  runtime_artifact_digest_sha256: string;
   closure_paths_sha256: string;
   closure_source_sha256: string;
   closure_sha256: string;
@@ -66,6 +72,12 @@ export interface MutationValidationTicketInput {
   runId: string;
   runtimeInputs: readonly string[];
   closureFiles: readonly string[];
+  runtimeSnapshot: {
+    path: string;
+    sha256: string;
+    sealSha256: string;
+    snapshot: MutationRuntimeSnapshot;
+  };
 }
 
 const sha = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
@@ -232,6 +244,16 @@ export function createMutationValidationTicket(
     throw new Error(
       "parent mutation validation ticket input inventory differs from fresh preflight",
     );
+  if (
+    input.wave.runtime_artifact_digest_sha256 === undefined ||
+    input.runtimeSnapshot.snapshot.artifact_digest_sha256 !==
+      input.wave.runtime_artifact_digest_sha256 ||
+    input.runtimeSnapshot.snapshot.source_freeze_sha256 !== input.wave.source_freeze_sha256 ||
+    input.runtimeSnapshot.snapshot.manifest_sha256 !== sha(input.manifestText) ||
+    input.runtimeSnapshot.snapshot.wave_id !== input.wave.wave_id ||
+    input.runtimeSnapshot.snapshot.run_id !== input.runId
+  )
+    throw new Error("parent mutation validation ticket runtime snapshot differs from frozen wave");
   validateRuntimeWitnessLedger({
     repo,
     files: closureFiles,
@@ -276,6 +298,10 @@ export function createMutationValidationTicket(
     target_inventory: input.entries,
     runtime_input_paths_sha256: listHash(runtimeInputs),
     runtime_input_source_sha256: digestWaveFiles(repo, runtimeInputs),
+    runtime_snapshot_path: relative(repo, input.runtimeSnapshot.path),
+    runtime_snapshot_sha256: input.runtimeSnapshot.sha256,
+    runtime_snapshot_seal_sha256: input.runtimeSnapshot.sealSha256,
+    runtime_artifact_digest_sha256: input.runtimeSnapshot.snapshot.artifact_digest_sha256,
     closure_paths_sha256: listHash(closureFiles),
     closure_source_sha256: digestWaveFiles(repo, closureFiles),
     closure_sha256: digestCanonical(literalShards),
@@ -372,6 +398,14 @@ function assertTicketShape(ticket: MutationValidationTicket, ticketPath: string)
     digestCanonical(ticket.target_inventory) !== ticket.target_inventory_sha256
   )
     throw new Error("parent mutation validation ticket has non-canonical inputs");
+  if (
+    !canonicalRepoPath(ticket.runtime_snapshot_path) ||
+    !ticket.runtime_snapshot_path.startsWith("reports/mutation/runs/") ||
+    !SHA256.test(ticket.runtime_snapshot_sha256) ||
+    !SHA256.test(ticket.runtime_snapshot_seal_sha256) ||
+    !SHA256.test(ticket.runtime_artifact_digest_sha256)
+  )
+    throw new Error("parent mutation validation ticket has invalid runtime snapshot");
 }
 
 function equal(actual: string, expected: string, label: string): void {
@@ -417,6 +451,7 @@ export function validateParentMutationValidationTicket(input: {
     wave.lock_sha256 !== ticket.lock_sha256 ||
     wave.equivalence_manifest_sha256 !== ticket.equivalence_manifest_sha256 ||
     wave.dynamic_import_ledger_sha256 !== ticket.dynamic_import_ledger_sha256 ||
+    wave.runtime_artifact_digest_sha256 !== ticket.runtime_artifact_digest_sha256 ||
     wave.quality_policy_sha256 !== ticket.quality_policy_sha256 ||
     wave.target_digest_sha256 !== ticket.target_digest_sha256 ||
     digestCanonical(ticket.target_inventory.map((entry) => entry.path).sort()) !==
@@ -428,6 +463,23 @@ export function validateParentMutationValidationTicket(input: {
     digestCanonical(shards(wave)) !== ticket.closure_sha256
   )
     throw new Error("parent mutation validation ticket wave binding differs");
+  if (
+    wave.runtime_artifact_digest_sha256 === undefined ||
+    wave.runtime_artifact_digest_sha256 !== ticket.runtime_artifact_digest_sha256 ||
+    !ticket.runtime_snapshot_path.startsWith("reports/mutation/runs/")
+  )
+    throw new Error("parent mutation validation ticket runtime snapshot binding differs");
+  assertMutationRuntimeSnapshotFast({
+    path: join(original, ticket.runtime_snapshot_path),
+    sha256: ticket.runtime_snapshot_sha256,
+    expected: {
+      wave_id: wave.wave_id,
+      run_id: ticket.run_id,
+      source_freeze_sha256: wave.source_freeze_sha256,
+      manifest_sha256: ticket.manifest_sha256,
+      artifact_digest_sha256: ticket.runtime_artifact_digest_sha256,
+    },
+  });
   if (input.shardId !== undefined) {
     const shard = shards(wave).find((candidate) => candidate.id === input.shardId);
     const expected = ticket.shards.find((candidate) => candidate.id === input.shardId);

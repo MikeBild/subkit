@@ -1,13 +1,14 @@
 import { afterEach, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+import { mutationInfrastructureSentinelPath } from "../audit/mutation-infrastructure-sentinel.ts";
 import { mutationClosureFiles, mutationTestInputs } from "../audit/mutation-inputs.ts";
 import { validateMutationValidationTicketEvidence } from "../audit/mutation-ticket-evidence.ts";
 import { writeMutationValidationTicket } from "../audit/mutation-validation-ticket.ts";
 import { digestCanonical, digestWaveFiles } from "../audit/mutation-wave.ts";
 import { loadMutationWave } from "../run-mutation-shards.ts";
-import { frozenWaveFixture } from "./fixtures/frozen-wave.ts";
+import { frozenWaveFixture, frozenWaveRuntimeSnapshot } from "./fixtures/frozen-wave.ts";
 
 const owned: string[] = [];
 afterEach(() => {
@@ -23,6 +24,13 @@ function context() {
   mkdirSync(parentRunRoot, { recursive: true });
   const copiedManifestPath = join(parentRunRoot, "wave.json");
   writeFileSync(copiedManifestPath, prepared.manifestText);
+  const runtimeSnapshot = frozenWaveRuntimeSnapshot({
+    root: f.root,
+    parentRunRoot,
+    wave: prepared.wave,
+    manifestText: prepared.manifestText,
+    runId,
+  });
   const ticket = writeMutationValidationTicket({
     repo: f.root,
     parentRunRoot,
@@ -32,6 +40,7 @@ function context() {
     entries: prepared.entries,
     runtimeInputs: mutationTestInputs(f.root),
     closureFiles: mutationClosureFiles(f.root),
+    runtimeSnapshot,
     runId,
   });
   const env = {
@@ -40,7 +49,7 @@ function context() {
     SUBKIT_MUTATION_PARENT_TICKET_PATH: ticket.path,
     SUBKIT_MUTATION_PARENT_TICKET_SHA256: ticket.sha256,
   };
-  const list = () =>
+  const child = (...flags: string[]) =>
     Bun.spawnSync(
       [
         "bun",
@@ -49,11 +58,12 @@ function context() {
         copiedManifestPath,
         "--shard",
         "fixture",
-        "--list",
+        ...flags,
       ],
       { env, stdout: "pipe", stderr: "pipe" },
     );
-  return { ...f, env, list, ticket };
+  const list = () => child("--list");
+  return { ...f, env, list, execute: () => child(), ticket, runtimeSnapshot };
 }
 
 test("the actual command child lists exactly the full parent-validated test set", () => {
@@ -79,6 +89,19 @@ test("the actual command child refuses a forged inherited ticket hash", () => {
   expect(result.exitCode).not.toBe(0);
   expect(result.stderr.toString()).toContain("sha256 differs");
   expect(result.stdout.toString()).toBe("");
+});
+
+test("the executing command child records a broken runtime snapshot as infrastructure failure", () => {
+  const f = context();
+  const sentinel = mutationInfrastructureSentinelPath(f.ticket.path);
+  rmSync(join(f.runtimeSnapshot.path, "runtime-snapshot.seal.json"));
+  expect(f.list().exitCode).toBe(0);
+  expect(existsSync(sentinel)).toBe(false);
+  const executed = f.execute();
+  expect(executed.exitCode).not.toBe(0);
+  expect(executed.stdout.toString()).toBe("");
+  expect(existsSync(sentinel)).toBe(true);
+  expect(f.execute().exitCode).not.toBe(0);
 });
 
 test("portable evidence rejects a self-consistent shortened closure inventory", () => {

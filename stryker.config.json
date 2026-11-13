@@ -75,6 +75,7 @@
     "/reports",
     "/coverage",
     "/assets/cockpit",
+    "/assets/clipper",
     "/apps/clipper",
     "/apps/engine/assets/embeddings",
     "/apps/engine/eval/out",

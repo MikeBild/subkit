@@ -14,6 +14,11 @@ import {
 } from "./audit/mutation-floor.ts";
 import { assertNoMutationInfrastructureSentinel } from "./audit/mutation-infrastructure-sentinel.ts";
 import { mutationClosureFiles, mutationTestInputs } from "./audit/mutation-inputs.ts";
+import {
+  createMutationRuntimeSnapshot,
+  sealMutationRuntimeSnapshot,
+  validateMutationRuntimeSnapshot,
+} from "./audit/mutation-runtime-snapshot.ts";
 import { planMutationBatches } from "./audit/mutation-scheduler.ts";
 import { buildMutationShardConfig } from "./audit/mutation-shard-config.ts";
 import {
@@ -24,7 +29,10 @@ import {
   type MutationShardUnionInput,
   validateMutationShardUnion,
 } from "./audit/mutation-union.ts";
-import { writeMutationValidationTicket } from "./audit/mutation-validation-ticket.ts";
+import {
+  createMutationValidationTicket,
+  writeMutationValidationTicket,
+} from "./audit/mutation-validation-ticket.ts";
 import {
   readValidatedWaveManifest,
   validateWaveClosure,
@@ -127,6 +135,7 @@ export interface PreparedMutationShardExecution {
   equivalents: ReturnType<typeof loadMutationWave>["equivalents"];
   runtimeScope: readonly string[];
   workersByShard: Readonly<Record<string, number>>;
+  runtimeSnapshot: ReturnType<typeof createMutationRuntimeSnapshot> & { sealSha256: string };
   ticket: ReturnType<typeof writeMutationValidationTicket>;
 }
 
@@ -149,21 +158,64 @@ export function prepareMutationShardExecution(options: {
   else if (readFileSync(copiedManifestPath, "utf8") !== manifestText)
     throw new Error("Immutable mutation wave differs from existing execution root");
   const ticketPath = join(root, "mutation-validation-ticket.json");
-  const ticket = lstatSync(ticketPath, { throwIfNoEntry: false })
+  if (!prepared.wave.runtime_artifact_digest_sha256)
+    throw new Error("Frozen mutation wave lacks runtime artifact digest");
+  const createdRuntimeSnapshot = createMutationRuntimeSnapshot({
+    repo: options.repo,
+    parentRunRoot: root,
+    waveId: prepared.wave.wave_id,
+    runId: options.runId,
+    sourceFreezeSha256: prepared.wave.source_freeze_sha256,
+    manifestSha256: hash(manifestText),
+    artifactDigestSha256: prepared.wave.runtime_artifact_digest_sha256,
+  });
+  if (
+    createdRuntimeSnapshot.snapshot.artifact_digest_sha256 !==
+    prepared.wave.runtime_artifact_digest_sha256
+  )
+    throw new Error("Frozen mutation wave runtime artifact digest differs from snapshot");
+  const runtimeSnapshot = {
+    ...createdRuntimeSnapshot,
+    sealSha256: sealMutationRuntimeSnapshot({
+      path: createdRuntimeSnapshot.path,
+      sha256: createdRuntimeSnapshot.sha256,
+      expected: {
+        wave_id: prepared.wave.wave_id,
+        run_id: options.runId,
+        source_freeze_sha256: prepared.wave.source_freeze_sha256,
+        manifest_sha256: hash(manifestText),
+        artifact_digest_sha256: prepared.wave.runtime_artifact_digest_sha256,
+      },
+    }),
+  };
+  const ticketInput = {
+    repo: options.repo,
+    parentRunRoot: root,
+    copiedManifestPath,
+    manifestText,
+    wave: prepared.wave,
+    entries: prepared.entries,
+    runtimeInputs: mutationTestInputs(options.repo),
+    closureFiles: mutationClosureFiles(options.repo),
+    runtimeSnapshot,
+    runId: options.runId,
+  };
+  const existingTicket = lstatSync(ticketPath, { throwIfNoEntry: false });
+  const ticket = existingTicket
     ? (() => {
-        throw new Error("Mutation execution root already has a validation ticket");
+        if (!existingTicket.isFile() || existingTicket.isSymbolicLink())
+          throw new Error("Mutation execution root validation ticket is invalid");
+        const expected = `${JSON.stringify(createMutationValidationTicket(ticketInput), null, 2)}\n`;
+        const text = readFileSync(ticketPath, "utf8");
+        if (text !== expected) throw new Error("Mutation execution root validation ticket differs");
+        return {
+          path: ticketPath,
+          sha256: hash(text),
+          text,
+          ticket: JSON.parse(text) as ReturnType<typeof createMutationValidationTicket>,
+        };
       })()
-    : writeMutationValidationTicket({
-        repo: options.repo,
-        parentRunRoot: root,
-        copiedManifestPath,
-        manifestText,
-        wave: prepared.wave,
-        entries: prepared.entries,
-        runtimeInputs: mutationTestInputs(options.repo),
-        closureFiles: mutationClosureFiles(options.repo),
-        runId: options.runId,
-      });
+    : writeMutationValidationTicket(ticketInput);
   const batches = planMutationBatches(prepared.wave.shards, prepared.wave.worker_budget);
   return {
     repo: options.repo,
@@ -178,6 +230,7 @@ export function prepareMutationShardExecution(options: {
     equivalents: prepared.equivalents,
     runtimeScope: runtimePureTargetPaths(prepared.entries),
     workersByShard: Object.fromEntries(batches.flat().map(({ id, workers }) => [id, workers])),
+    runtimeSnapshot,
     ticket,
   };
 }
@@ -239,6 +292,8 @@ export async function executePreparedMutationShard(options: {
     lock_sha256: prepared.wave.lock_sha256,
     equivalence_manifest_sha256: prepared.wave.equivalence_manifest_sha256,
     dynamic_import_ledger_sha256: prepared.wave.dynamic_import_ledger_sha256,
+    runtime_artifact_digest_sha256: prepared.runtimeSnapshot.snapshot.artifact_digest_sha256,
+    runtime_snapshot_sha256: prepared.runtimeSnapshot.sha256,
     started_at: startedAt,
     targets: shard.targets,
     runtime_targets: runtimeTargets,
@@ -319,6 +374,7 @@ export async function executePreparedMutationShard(options: {
     throw error;
   }
   assertNoMutationInfrastructureSentinel(prepared.ticket.path);
+  assertRuntimeSnapshotUnchanged(prepared);
   let reportText: string;
   try {
     reportText = readFileSync(join(directory, "mutation.json"), "utf8");
@@ -350,6 +406,33 @@ export async function executePreparedMutationShard(options: {
       trustedRunId: options.distributed.githubRunId,
     });
   return { id: shardId, receiptText, configText, reportText, exitCode };
+}
+
+function assertRuntimeSnapshotUnchanged(prepared: {
+  wave: { wave_id: string; source_freeze_sha256: string };
+  runId: string;
+  manifestSha256: string;
+  runtimeSnapshot: {
+    path: string;
+    sha256: string;
+    sealSha256: string;
+    snapshot: { artifact_digest_sha256: string };
+  };
+}): void {
+  const input = {
+    path: prepared.runtimeSnapshot.path,
+    sha256: prepared.runtimeSnapshot.sha256,
+    expected: {
+      wave_id: prepared.wave.wave_id,
+      run_id: prepared.runId,
+      source_freeze_sha256: prepared.wave.source_freeze_sha256,
+      manifest_sha256: prepared.manifestSha256,
+      artifact_digest_sha256: prepared.runtimeSnapshot.snapshot.artifact_digest_sha256,
+    },
+  };
+  validateMutationRuntimeSnapshot(input);
+  if (sealMutationRuntimeSnapshot(input) !== prepared.runtimeSnapshot.sealSha256)
+    throw new Error("Runtime snapshot seal changed during the mutation campaign");
 }
 
 export async function executeMutationShard(options: {

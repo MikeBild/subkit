@@ -45,6 +45,7 @@ function bindParentTicket(source: ReturnType<typeof qualityChainFixture>): void 
     runId: "run-mutation",
     runtimeInputs: mutationTestInputs(source.root),
     closureFiles: mutationClosureFiles(source.root),
+    runtimeSnapshot: { ...source.runtimeSnapshot, sealSha256: source.runtimeSnapshotSeal },
   });
   for (const shard of source.wave.shards) {
     const path = join(source.root, source.mutationRoot, shard.id, "receipt.json");
@@ -91,7 +92,10 @@ test("packages a verified shard closure plus only the selected global coverage r
   const source = qualityChainFixture(true, true, false, true);
   roots.push(source.root);
   bindParentTicket(source);
-  writeFileSync(join(source.root, ".gitignore"), "reports/\n.artifacts/\nassets/\n");
+  writeFileSync(
+    join(source.root, ".gitignore"),
+    "reports/\n.artifacts/\nassets/\nrelease-assets/\n",
+  );
   git(source.root, ["init", "--quiet"]);
   git(source.root, ["add", "."]);
   git(source.root, [
@@ -116,7 +120,7 @@ test("packages a verified shard closure plus only the selected global coverage r
   mkdirSync(join(source.root, "reports/quality-export/shards"), { recursive: true });
   cpSync(bundle, join(source.root, index));
   const coverage = await publishCoverage(source.root);
-  const assets = join(source.root, "assets");
+  const assets = join(source.root, "release-assets");
   mkdirSync(assets);
   writeFileSync(join(assets, "existing-binary"), "preserved");
   await packageReleaseQualityEvidence({
@@ -156,7 +160,7 @@ test("packages a verified shard closure plus only the selected global coverage r
 test("rejects foreign commits and unsafe archive payload names", () => {
   const root = qualityChainFixture().root;
   roots.push(root);
-  const assets = join(root, "assets");
+  const assets = join(root, "release-assets");
   mkdirSync(assets);
   writeFileSync(join(assets, "quality-evidence.tar.gz"), "not-a-tar");
   writeFileSync(
@@ -184,7 +188,7 @@ test("rejects foreign commits and unsafe archive payload names", () => {
 test("rejects link members before extraction", () => {
   const root = qualityChainFixture().root;
   roots.push(root);
-  const assets = join(root, "assets");
+  const assets = join(root, "release-assets");
   const payload = join(root, "malicious-payload");
   const outside = join(root, "outside");
   mkdirSync(join(payload, "coverage"), { recursive: true });

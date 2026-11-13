@@ -1,8 +1,22 @@
 import { afterEach, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { mutationClosureFiles, mutationTestInputs } from "../audit/mutation-inputs.ts";
+import {
+  createMutationRuntimeSnapshot,
+  MUTATION_RUNTIME_ARTIFACTS,
+  mutationRuntimeArtifactDigest,
+  sealMutationRuntimeSnapshot,
+} from "../audit/mutation-runtime-snapshot.ts";
 import { validateMutationValidationTicketEvidence } from "../audit/mutation-ticket-evidence.ts";
 import {
   createMutationValidationTicket,
@@ -33,6 +47,8 @@ function fixture(options: { patch?: boolean; qualityPolicy?: boolean; witness?: 
       : '{"patchedDependencies":{}}\n',
   );
   if (options.patch) put("patches/fixture.patch", "fixture patch\n");
+  for (const path of MUTATION_RUNTIME_ARTIFACTS) put(path, `fixture:${path}\n`);
+  chmodSync(join(root, "dist/sk"), 0o755);
   for (const path of mutationTestInputs(root)) if (path !== "package.json") put(path, "\n");
   const source = "export const target = true;\n";
   const testSource = 'import { target } from "./target.ts"; void target;\n';
@@ -67,6 +83,7 @@ function fixture(options: { patch?: boolean; qualityPolicy?: boolean; witness?: 
   } else put(ledgerPath, "{}\n");
   if (options.qualityPolicy) put("apps/engine/.quality-shard-policy.json", "{}\n");
   const runtimeInputs = mutationTestInputs(root);
+  const runtimeArtifactDigest = mutationRuntimeArtifactDigest(root);
   const tests = ["apps/engine/src/target.test.ts"];
   const entry: PureTargetEntry = {
     path: "apps/engine/src/target.ts",
@@ -83,6 +100,7 @@ function fixture(options: { patch?: boolean; qualityPolicy?: boolean; witness?: 
     version: 1,
     wave_id: "ticket-fixture",
     source_freeze_sha256: digestWaveFiles(root, runtimeInputs),
+    runtime_artifact_digest_sha256: runtimeArtifactDigest,
     test_freeze_sha256: digestWaveFiles(root, tests),
     target_digest_sha256: sha,
     config_sha256: digestWaveFiles(root, ["stryker.config.json"]),
@@ -115,6 +133,26 @@ function fixture(options: { patch?: boolean; qualityPolicy?: boolean; witness?: 
   const manifestPath = join(run, "wave.json");
   const manifestText = `${JSON.stringify(wave)}\n`;
   writeFileSync(manifestPath, manifestText);
+  const runtimeSnapshot = createMutationRuntimeSnapshot({
+    repo: root,
+    parentRunRoot: run,
+    waveId: wave.wave_id,
+    runId: "run-fixture",
+    sourceFreezeSha256: wave.source_freeze_sha256,
+    manifestSha256: createHash("sha256").update(manifestText).digest("hex"),
+    artifactDigestSha256: runtimeArtifactDigest,
+  });
+  const sealSha256 = sealMutationRuntimeSnapshot({
+    path: runtimeSnapshot.path,
+    sha256: runtimeSnapshot.sha256,
+    expected: {
+      wave_id: wave.wave_id,
+      run_id: "run-fixture",
+      source_freeze_sha256: wave.source_freeze_sha256,
+      manifest_sha256: createHash("sha256").update(manifestText).digest("hex"),
+      artifact_digest_sha256: runtimeArtifactDigest,
+    },
+  });
   const ticket = writeMutationValidationTicket({
     repo: root,
     parentRunRoot: run,
@@ -124,6 +162,7 @@ function fixture(options: { patch?: boolean; qualityPolicy?: boolean; witness?: 
     entries: [entry],
     runtimeInputs,
     closureFiles: mutationClosureFiles(root),
+    runtimeSnapshot: { ...runtimeSnapshot, sealSha256 },
     runId: "run-fixture",
   });
   const sandbox = join(root, "sandbox");
@@ -133,7 +172,19 @@ function fixture(options: { patch?: boolean; qualityPolicy?: boolean; witness?: 
     SUBKIT_MUTATION_PARENT_TICKET_SHA256: ticket.sha256,
     SUBKIT_MUTATION_ORIGINAL_REPO: root,
   };
-  return { root, put, wave, manifestPath, manifestText, run, entry, ticket, sandbox, env };
+  return {
+    root,
+    put,
+    wave,
+    manifestPath,
+    manifestText,
+    run,
+    entry,
+    ticket,
+    runtimeSnapshot: { ...runtimeSnapshot, sealSha256 },
+    sandbox,
+    env,
+  };
 }
 
 test("valid parent ticket binds original bytes without reconstructing the AST closure", () => {
@@ -255,6 +306,7 @@ test("ticket issuance rejects bytes changed after parent validation and before t
       entries: [f.entry],
       runtimeInputs: mutationTestInputs(f.root),
       closureFiles: mutationClosureFiles(f.root),
+      runtimeSnapshot: f.runtimeSnapshot,
       runId: "run-fixture",
     }),
   ).toThrow("issuance freeze differs");
