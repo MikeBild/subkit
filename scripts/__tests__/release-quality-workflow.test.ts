@@ -11,33 +11,23 @@ const position = (needle: string): number => {
   return index;
 };
 
-test("release reuses one exact-commit quality producer and carries its verified evidence into signed draft assets", () => {
+test("release reuses one exact-commit quality producer and carries its verified coverage into signed draft assets", () => {
   expect(workflow).not.toContain("uses: ./.github/workflows/quality.yml");
   expect(workflow).not.toContain("needs: quality");
   const select = position("Select completed exact-commit quality producer");
-  const qualityDownload = position("actions/artifacts/$QUALITY_SHARD_ARTIFACT_ID/zip");
   const coverageDownload = position("actions/artifacts/$COVERAGE_ARTIFACT_ID/zip");
-  const canonicalBundle = position('test -f "$quality_download/quality-bundle.json"');
   const canonicalCoverage = position('test -f "$coverage_download/latest.json"');
-  const restoreClosure = position(
-    'scripts/restore-release-quality-evidence.ts --commit "$RELEASE_COMMIT" --source "$quality_download"',
-  );
-  const verifyClosure = position(
-    'scripts/verify-shard-quality-bundle.ts --commit "$RELEASE_COMMIT" --index reports/quality-export/shards/quality-bundle.json',
-  );
+  const localGate = position("- name: Require mandatory local release gate");
   const packageEvidence = position("scripts/release-quality-evidence.ts package");
   const releaseNotes = position("- name: Generate release notes");
   const stagedEvidence = position("- name: Stage verified quality evidence in release assets");
   const checksums = position("quality-evidence.tar.gz quality-evidence.json > SHA256SUMS");
   const draftAssets = position("assets/quality-evidence.tar.gz assets/quality-evidence.json");
 
-  expect(qualityDownload).toBeGreaterThan(select);
-  expect(coverageDownload).toBeGreaterThan(qualityDownload);
-  expect(canonicalBundle).toBeGreaterThan(coverageDownload);
-  expect(canonicalCoverage).toBeGreaterThan(canonicalBundle);
-  expect(restoreClosure).toBeGreaterThan(canonicalCoverage);
-  expect(verifyClosure).toBeGreaterThan(restoreClosure);
-  expect(packageEvidence).toBeGreaterThan(verifyClosure);
+  expect(coverageDownload).toBeGreaterThan(select);
+  expect(canonicalCoverage).toBeGreaterThan(coverageDownload);
+  expect(localGate).toBeGreaterThan(canonicalCoverage);
+  expect(packageEvidence).toBeGreaterThan(localGate);
   expect(releaseNotes).toBeGreaterThan(packageEvidence);
   expect(stagedEvidence).toBeGreaterThan(releaseNotes);
   expect(checksums).toBeGreaterThan(stagedEvidence);
@@ -51,15 +41,16 @@ test("release reuses one exact-commit quality producer and carries its verified 
   expect(workflow).toContain("QUALITY_RUN_ATTEMPT=$(jq -er");
   expect(workflow).toContain("quality-run-before-download.json");
   expect(workflow).toContain("quality-artifacts-before-download.json");
-  expect(workflow).toContain('sha256sum "$RUNNER_TEMP/quality-shard-evidence.zip"');
   expect(workflow).toContain('sha256sum "$RUNNER_TEMP/coverage-floor-evidence.zip"');
-  expect(workflow).toContain("unsafe quality artifact archive member");
   expect(workflow).toContain("unsafe coverage artifact archive member");
   expect(workflow).toContain(
     ' --quality-run-id "$QUALITY_RUN_ID" --release-run-id "$GITHUB_RUN_ID"',
   );
-  expect(workflow).toContain('--trusted-producer-run-id "$QUALITY_RUN_ID"');
-  expect(workflow).not.toContain('cp -a "$quality_download/." reports/quality-export/shards/');
+  expect(workflow).toContain(
+    'scripts/release-gate-provenance.ts "$RUNNER_TEMP/release-gate.json" "$TAG" "$RELEASE_COMMIT"',
+  );
+  expect(workflow).not.toContain("quality-shard-evidence");
+  expect(workflow).not.toContain("--shard-index");
   expect(workflow.slice(stagedEvidence, checksums)).toContain('test ! -e "assets/$asset"');
   expect(workflow.slice(stagedEvidence, checksums)).toContain(
     'cp "$QUALITY_ASSETS_DIR/$asset" "assets/$asset"',

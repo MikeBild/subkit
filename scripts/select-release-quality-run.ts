@@ -102,8 +102,6 @@ export function selectReleaseQualityArtifacts(options: {
   runId: string;
   artifacts: unknown;
 }): Readonly<{
-  qualityShardEvidenceId: number;
-  qualityShardEvidenceDigest: string;
   coverageFloorEvidenceId: number;
   coverageFloorEvidenceDigest: string;
 }> {
@@ -145,11 +143,8 @@ export function selectReleaseQualityArtifacts(options: {
       throw new Error(`expected exactly one unexpired ${name} artifact, found 0`);
     return { id: artifact.id, digest: artifact.digest };
   };
-  const quality = pick("quality-shard-evidence"),
-    coverage = pick("coverage-floor-evidence");
+  const coverage = pick("coverage-floor-evidence");
   return {
-    qualityShardEvidenceId: quality.id,
-    qualityShardEvidenceDigest: quality.digest,
     coverageFloorEvidenceId: coverage.id,
     coverageFloorEvidenceDigest: coverage.digest,
   };

@@ -70,9 +70,9 @@ test("fails closed for missing or ambiguous producer candidates and stale rerun 
   );
 });
 
-test("requires one unexpired artifact of each name from the selected producer run", () => {
+test("requires exactly one unexpired coverage artifact from the selected producer run", () => {
   const artifact = (name: string, overrides: Record<string, unknown> = {}) => ({
-    id: name === "quality-shard-evidence" ? 71 : 72,
+    id: name === "coverage-floor-evidence" ? 72 : 71,
     name,
     expired: false,
     digest: `sha256:${"c".repeat(64)}`,
@@ -84,40 +84,22 @@ test("requires one unexpired artifact of each name from the selected producer ru
       commit,
       runId: "42",
       artifacts: {
-        artifacts: [artifact("quality-shard-evidence"), artifact("coverage-floor-evidence")],
+        artifacts: [artifact("quality-failure-coverage"), artifact("coverage-floor-evidence")],
         total_count: 2,
       },
     }),
   ).toEqual({
-    qualityShardEvidenceId: 71,
-    qualityShardEvidenceDigest: `sha256:${"c".repeat(64)}`,
     coverageFloorEvidenceId: 72,
     coverageFloorEvidenceDigest: `sha256:${"c".repeat(64)}`,
   });
   for (const artifacts of [
-    [artifact("quality-shard-evidence")],
-    [
-      artifact("quality-shard-evidence"),
-      artifact("quality-shard-evidence", { id: 73 }),
-      artifact("coverage-floor-evidence"),
-    ],
-    [artifact("quality-shard-evidence", { expired: true }), artifact("coverage-floor-evidence")],
-    [
-      artifact("quality-shard-evidence", { workflow_run: { id: 43, head_sha: commit } }),
-      artifact("coverage-floor-evidence"),
-    ],
-    [
-      artifact("quality-shard-evidence", { workflow_run: { id: 42, head_sha: "b".repeat(40) } }),
-      artifact("coverage-floor-evidence"),
-    ],
-    [
-      artifact("quality-shard-evidence", { workflow_run: null }),
-      artifact("coverage-floor-evidence"),
-    ],
-    [
-      artifact("quality-shard-evidence", { digest: "invalid" }),
-      artifact("coverage-floor-evidence"),
-    ],
+    [artifact("quality-failure-coverage")],
+    [artifact("coverage-floor-evidence"), artifact("coverage-floor-evidence", { id: 73 })],
+    [artifact("coverage-floor-evidence", { expired: true })],
+    [artifact("coverage-floor-evidence", { workflow_run: { id: 43, head_sha: commit } })],
+    [artifact("coverage-floor-evidence", { workflow_run: { id: 42, head_sha: "b".repeat(40) } })],
+    [artifact("coverage-floor-evidence", { workflow_run: null })],
+    [artifact("coverage-floor-evidence", { digest: "invalid" })],
   ])
     expect(() =>
       selectReleaseQualityArtifacts({
@@ -135,8 +117,8 @@ test("requires one unexpired artifact of each name from the selected producer ru
       commit,
       runId: "42",
       artifacts: {
-        artifacts: [artifact("quality-shard-evidence"), artifact("coverage-floor-evidence")],
-        total_count: 3,
+        artifacts: [artifact("coverage-floor-evidence")],
+        total_count: 2,
       },
     }),
   ).toThrow("incomplete or malformed");

@@ -15,84 +15,47 @@ test("developer and release gates keep their distinct quality contracts", () => 
   expect(scripts.scripts["verify:gate"]).toBe(
     "bun run verify:gate:static && bun run verify:quality",
   );
-  expect(scripts.scripts["verify:gate:release"]).toContain(
-    "scripts/verify-shard-quality-bundle.ts",
+  expect(scripts.scripts["verify:gate:release"]).toBe(
+    "bun run verify:gate:static && bun run check:coverage-floor && bun run test:docker",
   );
-  expect(scripts.scripts["verify:gate:release"]).toContain(
-    "reports/quality-export/shards/quality-bundle.json",
-  );
+  expect(scripts.scripts["verify:gate:release"]).not.toContain("quality-bundle");
   expect(scripts.scripts["verify:gate:release"]).toContain("bun run check:coverage-floor");
   expect(scripts.scripts["verify:gate:release"]).not.toContain("verify:quality");
 });
 
-test("tagging invokes only the strict local shard-bundle release gate", () => {
+test("tagging invokes only the local release gate and mutation stays a separate command", () => {
   expect(tagRelease).toContain('execFileSync("bun", ["run", "verify:gate:release"]');
   expect(tagRelease).not.toContain('execFileSync("bun", ["run", "verify:gate"],');
-  expect(tagRelease).toContain("verify:quality:release-shards");
+  expect(tagRelease).not.toContain("verify:quality:release-shards");
+  expect(scripts.scripts["verify:quality:release-shards"]).toBe(
+    "bun run apps/engine/scripts/verify-quality-release-shards.ts",
+  );
 });
 
-test("quality CI retains global coverage before the distributed coordinator, shard, and merge proof", () => {
-  const coverage = qualityWorkflow.indexOf("bun run check:coverage-floor");
-  const evidence = qualityWorkflow.indexOf("name: coverage-floor-evidence");
-  const prepare = qualityWorkflow.indexOf("distributed-quality.ts prepare");
-  const coordinatorArtifact = qualityWorkflow.indexOf("name: quality-coordinator");
-  const shard = qualityWorkflow.indexOf("  shard:\n    needs: coordinator");
-  const shardCoverage = qualityWorkflow.indexOf("distributed-quality.ts coverage");
-  const shardMutation = qualityWorkflow.indexOf("distributed-quality.ts mutation");
-  const shardArtifact = qualityWorkflow.indexOf(`name: quality-shard-\${{ matrix.shard }}`);
-  const mergeJob = qualityWorkflow.indexOf(
-    "  coverage-and-mutation:\n    needs: [coordinator, shard]",
-  );
-  const merge = qualityWorkflow.indexOf("distributed-quality.ts merge");
-  const finalArtifact = qualityWorkflow.indexOf("name: quality-shard-evidence");
-  expect(coverage).toBeGreaterThan(-1);
+test("quality CI runs the suite with global coverage once and keeps mutation out of the push path", () => {
+  const job = qualityWorkflow.slice(qualityWorkflow.indexOf("  coverage:\n"));
+  const install = job.indexOf("bun install --frozen-lockfile");
+  const terminalTools = job.indexOf("sudo apt-get install -y expect");
+  const embeddings = job.indexOf("bun scripts/fetch-embedding-assets.ts");
+  const clipper = job.indexOf("bun run build:clipper");
+  const cockpit = job.indexOf("bun run build:cockpit");
+  const sk = job.indexOf("bun run build:sk");
+  const coverage = job.indexOf("bun run check:coverage-floor");
+  const evidence = job.indexOf("name: coverage-floor-evidence");
+  expect(install).toBeGreaterThan(-1);
+  expect(terminalTools).toBeGreaterThan(install);
+  expect(embeddings).toBeGreaterThan(terminalTools);
+  expect(clipper).toBeGreaterThan(embeddings);
+  expect(cockpit).toBeGreaterThan(clipper);
+  expect(sk).toBeGreaterThan(cockpit);
+  expect(coverage).toBeGreaterThan(sk);
   expect(evidence).toBeGreaterThan(coverage);
-  expect(prepare).toBeGreaterThan(evidence);
-  expect(coordinatorArtifact).toBeGreaterThan(prepare);
-  expect(shard).toBeGreaterThan(coordinatorArtifact);
-  expect(shardCoverage).toBeGreaterThan(shard);
-  expect(shardMutation).toBeGreaterThan(shardCoverage);
-  expect(shardArtifact).toBeGreaterThan(shardMutation);
-  expect(mergeJob).toBeGreaterThan(shardArtifact);
-  expect(merge).toBeGreaterThan(mergeJob);
-  expect(finalArtifact).toBeGreaterThan(merge);
   expect(qualityWorkflow).toContain("retention-days: 90");
   expect(qualityWorkflow).toContain("retention-days: 30");
   expect(qualityWorkflow).toContain("path: reports/coverage/");
-  const coordinator = qualityWorkflow.slice(qualityWorkflow.indexOf("  coordinator:"), shard);
-  const shardBlock = qualityWorkflow.slice(shard, mergeJob);
-  {
-    const job = coordinator;
-    const execution = "bun run check:coverage-floor";
-    const install = job.indexOf("bun install --frozen-lockfile");
-    const terminalTools = job.indexOf("sudo apt-get install -y expect");
-    const sk = job.indexOf("bun run build:sk");
-    const embeddings = job.indexOf("bun scripts/fetch-embedding-assets.ts");
-    const clipper = job.indexOf("bun run build:clipper");
-    const cockpit = job.indexOf("bun run build:cockpit");
-    const executionIndex = job.indexOf(execution);
-    expect(install).toBeGreaterThan(-1);
-    expect(terminalTools).toBeGreaterThan(install);
-    expect(embeddings).toBeGreaterThan(terminalTools);
-    expect(clipper).toBeGreaterThan(embeddings);
-    expect(cockpit).toBeGreaterThan(clipper);
-    expect(sk).toBeGreaterThan(cockpit);
-    expect(executionIndex).toBeGreaterThan(sk);
-  }
-  {
-    const job = shardBlock;
-    const install = job.indexOf("bun install --frozen-lockfile");
-    const terminalTools = job.indexOf("sudo apt-get install -y expect");
-    const cockpit = job.indexOf("bun run build:cockpit");
-    const coordinatorDownload = job.indexOf("name: quality-coordinator");
-    const executionIndex = job.indexOf("distributed-quality.ts coverage");
-    expect(install).toBeGreaterThan(-1);
-    expect(terminalTools).toBeGreaterThan(install);
-    expect(cockpit).toBeGreaterThan(terminalTools);
-    expect(coordinatorDownload).toBeGreaterThan(cockpit);
-    expect(executionIndex).toBeGreaterThan(coordinatorDownload);
-    expect(job).not.toContain("bun scripts/fetch-embedding-assets.ts");
-    expect(job).not.toContain("bun run build:clipper");
-    expect(job).not.toContain("bun run build:sk");
-  }
+  const jobs = qualityWorkflow.slice(qualityWorkflow.indexOf("\njobs:\n"));
+  expect(jobs.match(/^ {2}[a-z-]+:$/gm)).toEqual(["  coverage:"]);
+  expect(qualityWorkflow).not.toContain("matrix");
+  expect(qualityWorkflow).not.toContain("distributed-quality.ts");
+  expect(qualityWorkflow).not.toContain("stryker");
 });

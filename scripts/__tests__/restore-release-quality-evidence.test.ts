@@ -148,7 +148,6 @@ test("restores the verified closure at repo-relative paths and downstream verifi
     qualityRunId: "43185845545",
     releaseRunId: "43185845546",
     coverageDir: "reports/coverage",
-    shardIndex: index,
     assetsDir: assets,
   });
   expect(verifyReleaseQualityEvidence({ commit, assetsDir: assets }).coverage_run_id).toBeTruthy();

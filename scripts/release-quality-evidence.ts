@@ -16,36 +16,18 @@ import { dirname, join, relative, resolve } from "node:path";
 import { readPublishedCoverage } from "../apps/engine/scripts/audit/coverage-publication.ts";
 import { isCanonicalRepoPath } from "../apps/engine/scripts/audit/mutation-wave.ts";
 import { exportCoverageEvidence } from "./export-quality-evidence.ts";
-import {
-  parseQualityBundleIndex,
-  verifyShardQualityBundle,
-} from "./verify-shard-quality-bundle.ts";
 
 type FileEntry = { path: string; sha256: string };
-interface ReleaseEvidenceIndexV1 {
-  version: 1;
-  commit_sha: string;
-  github_run_id: string;
-  coverage_run_id: string;
-  coverage_receipt_sha256: string;
-  shard_bundle_sha256: string;
-  archive: { path: string; sha256: string };
-  payload: FileEntry[];
-}
-
-interface ReleaseEvidenceIndexV2 {
-  version: 2;
+interface ReleaseEvidenceIndex {
+  version: 3;
   commit_sha: string;
   quality_github_run_id: string;
   release_github_run_id: string;
   coverage_run_id: string;
   coverage_receipt_sha256: string;
-  shard_bundle_sha256: string;
   archive: { path: string; sha256: string };
   payload: FileEntry[];
 }
-
-type ReleaseEvidenceIndex = ReleaseEvidenceIndexV1 | ReleaseEvidenceIndexV2;
 
 const hash = (bytes: Uint8Array | string): string =>
   createHash("sha256").update(bytes).digest("hex");
@@ -132,18 +114,13 @@ function parseIndex(path: string, commit: string): ReleaseEvidenceIndex {
   const value = JSON.parse(readFileSync(path, "utf8")) as Partial<ReleaseEvidenceIndex>;
   const hasValidRunId = (runId: unknown): runId is string =>
     typeof runId === "string" && /^\d+$/.test(runId);
-  const validIdentity =
-    (value.version === 1 && hasValidRunId(value.github_run_id)) ||
-    (value.version === 2 &&
-      hasValidRunId(value.quality_github_run_id) &&
-      hasValidRunId(value.release_github_run_id));
   if (
-    (value.version !== 1 && value.version !== 2) ||
+    value.version !== 3 ||
     value.commit_sha !== commit ||
-    !validIdentity ||
-    !/^[a-z0-9-]{10,200}$/.test(value.coverage_run_id) ||
-    !/^[a-f0-9]{64}$/.test(value.coverage_receipt_sha256) ||
-    !/^[a-f0-9]{64}$/.test(value.shard_bundle_sha256) ||
+    !hasValidRunId(value.quality_github_run_id) ||
+    !hasValidRunId(value.release_github_run_id) ||
+    !/^[a-z0-9-]{10,200}$/.test(value.coverage_run_id ?? "") ||
+    !/^[a-f0-9]{64}$/.test(value.coverage_receipt_sha256 ?? "") ||
     !value.archive ||
     value.archive.path !== "quality-evidence.tar.gz" ||
     !/^[a-f0-9]{64}$/.test(value.archive.sha256) ||
@@ -155,14 +132,15 @@ function parseIndex(path: string, commit: string): ReleaseEvidenceIndex {
     if (
       !file ||
       !isCanonicalRepoPath(file.path) ||
+      !file.path.startsWith("coverage/") ||
       seen.has(file.path) ||
       !/^[a-f0-9]{64}$/.test(file.sha256)
     )
       throw new Error("release quality evidence payload is malformed");
     seen.add(file.path);
   }
-  for (const required of ["coverage/latest.json", "shards/quality-bundle.json"])
-    if (!seen.has(required)) throw new Error(`release quality evidence omits ${required}`);
+  if (!seen.has("coverage/latest.json"))
+    throw new Error("release quality evidence omits coverage/latest.json");
   return value as ReleaseEvidenceIndex;
 }
 
@@ -172,7 +150,6 @@ export async function packageReleaseQualityEvidence(options: {
   qualityRunId: string;
   releaseRunId: string;
   coverageDir: string;
-  shardIndex: string;
   assetsDir: string;
 }): Promise<{ archive: string; index: string }> {
   requireCommit(options.commit);
@@ -190,10 +167,6 @@ export async function packageReleaseQualityEvidence(options: {
   for (const name of ["quality-evidence.tar.gz", "quality-evidence.json"])
     if (existsSync(join(assets, name)))
       throw new Error(`release quality evidence already exists: ${name}`);
-  const shardIndex = resolve(repo, options.shardIndex);
-  const relativeShardIndex = relative(repo, shardIndex);
-  safePath(relativeShardIndex);
-  await verifyShardQualityBundle(repo, options.commit, relativeShardIndex, options.qualityRunId);
   const staging = mkdtempSync(join(dirname(assets), ".release-quality-evidence-"));
   let archiveLinked = false;
   let indexLinked = false;
@@ -203,34 +176,16 @@ export async function packageReleaseQualityEvidence(options: {
     const coverageSource = resolve(repo, options.coverageDir);
     const selectedCoverage = readPublishedCoverage(coverageSource);
     exportCoverageEvidence(coverageSource, join(payload, "coverage"));
-    const bundle = parseQualityBundleIndex(
-      JSON.parse(readFileSync(shardIndex, "utf8")),
-      options.commit,
-    );
-    const shardBundleBytes = readRegular(repo, relativeShardIndex);
-    const shardRoot = join(payload, "shards");
-    mkdirSync(shardRoot);
-    writeFileSync(join(shardRoot, "quality-bundle.json"), shardBundleBytes, {
-      flag: "wx",
-    });
-    for (const file of bundle.files) {
-      const source = readRegular(repo, file.path);
-      if (hash(source) !== file.sha256) throw new Error(`shard evidence changed: ${file.path}`);
-      const destination = join(shardRoot, file.path);
-      mkdirSync(dirname(destination), { recursive: true });
-      writeFileSync(destination, source, { flag: "wx" });
-    }
     const payloadFiles = collectFiles(payload);
     const archive = join(staging, "quality-evidence.tar.gz");
     writeTar(archive, payload);
     const index: ReleaseEvidenceIndex = {
-      version: 2,
+      version: 3,
       commit_sha: options.commit,
       quality_github_run_id: options.qualityRunId,
       release_github_run_id: options.releaseRunId,
       coverage_run_id: selectedCoverage.runId,
       coverage_receipt_sha256: hash(readFileSync(selectedCoverage.receiptPath)),
-      shard_bundle_sha256: hash(shardBundleBytes),
       archive: { path: "quality-evidence.tar.gz", sha256: hash(readFileSync(archive)) },
       payload: payloadFiles,
     };
@@ -280,10 +235,6 @@ export function verifyReleaseQualityEvidence(options: {
       hash(readFileSync(coverage.receiptPath)) !== index.coverage_receipt_sha256
     )
       throw new Error("release quality evidence coverage binding changed");
-    const shardIndex = readRegular(extracted, "shards/quality-bundle.json");
-    if (hash(shardIndex) !== index.shard_bundle_sha256)
-      throw new Error("release quality evidence shard bundle binding changed");
-    parseQualityBundleIndex(JSON.parse(new TextDecoder().decode(shardIndex)), options.commit);
     return index;
   } finally {
     rmSync(extracted, { recursive: true, force: true });
@@ -319,11 +270,10 @@ if (import.meta.main) {
   } else {
     const qualityRunId = values.get("--quality-run-id"),
       releaseRunId = values.get("--release-run-id"),
-      coverageDir = values.get("--coverage-dir"),
-      shardIndex = values.get("--shard-index");
-    if (!qualityRunId || !releaseRunId || !coverageDir || !shardIndex || values.size !== 6)
+      coverageDir = values.get("--coverage-dir");
+    if (!qualityRunId || !releaseRunId || !coverageDir || values.size !== 5)
       throw new Error(
-        "package requires --commit --quality-run-id --release-run-id --coverage-dir --shard-index --assets-dir",
+        "package requires --commit --quality-run-id --release-run-id --coverage-dir --assets-dir",
       );
     console.log(
       JSON.stringify(
@@ -333,7 +283,6 @@ if (import.meta.main) {
           qualityRunId,
           releaseRunId,
           coverageDir,
-          shardIndex,
           assetsDir,
         }),
       ),
