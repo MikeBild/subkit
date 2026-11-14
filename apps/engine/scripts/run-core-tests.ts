@@ -20,6 +20,7 @@ import {
   runShardTests,
   type ShardTestHistory,
   selectCanonicalCoreTests,
+  shardTestImportDistance,
 } from "./audit/core-tests.ts";
 import { createClosureAnalysis } from "./audit/mutation-closure.ts";
 import { writeMutationInfrastructureSentinel } from "./audit/mutation-infrastructure-sentinel.ts";
@@ -85,6 +86,7 @@ if ("error" in args) {
 let selected: string[];
 let passthrough: string[];
 let directTests: string[] = [];
+const testDistances = new Map<string, number>();
 let verificationRepo = REPO;
 if (args.mode === "shard") {
   if (args.passthrough.some((arg) => arg !== "--list")) {
@@ -180,6 +182,10 @@ if (args.mode === "shard") {
   directTests = shard.tests
     .filter((test) => test.execution !== "external_runtime" && test.kind === "direct")
     .map((test) => test.path);
+  for (const test of shard.tests) {
+    const distance = shardTestImportDistance(test.rationale);
+    if (distance !== undefined) testDistances.set(test.path, distance);
+  }
   passthrough = args.passthrough;
 } else {
   const files = mutationClosureFiles(REPO);
@@ -323,6 +329,7 @@ if (args.mode === "shard") {
       process.env.SUBKIT_MUTATION_FULL_CLOSURE === "1",
       directTests,
       readShardTestHistory(historyPath),
+      testDistances,
     );
   } catch (error) {
     console.error((error as Error).message);

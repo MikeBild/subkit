@@ -7,6 +7,7 @@ import {
   runShardTests,
   selectCanonicalCoreTests,
   selectCoreTests,
+  shardTestImportDistance,
 } from "../audit/core-tests.ts";
 
 describe("selectCoreTests", () => {
@@ -133,6 +134,38 @@ test("order hints never narrow or extend the reviewed test set", async () => {
   const seen: string[] = [];
   await runShardTests(paths, async (path) => void seen.push(path), false, [], history);
   expect(seen).toEqual(["b.test.ts", "a.test.ts"]);
+});
+
+test("without kill history the nearest importers of a target run before distant ones", async () => {
+  expect(shardTestImportDistance("imports apps/engine/src/a.ts (depth 2)")).toBe(2);
+  expect(shardTestImportDistance("imports apps/engine/src/a.ts (depth 12)")).toBe(12);
+  expect(shardTestImportDistance("reads apps/engine/src/a.ts as text")).toBeUndefined();
+  expect(shardTestImportDistance("imports (depth 2) apps/engine/src/a.ts")).toBeUndefined();
+  const paths = ["a-far.test.ts", "b-unknown.test.ts", "direct.test.ts", "z-near.test.ts"];
+  const distances = new Map([
+    ["a-far.test.ts", 7],
+    ["z-near.test.ts", 2],
+    ["outside.test.ts", 1],
+  ]);
+  const ordered = orderShardTests(paths, ["direct.test.ts"], new Map(), distances);
+  expect(ordered).toEqual([
+    "direct.test.ts",
+    "z-near.test.ts",
+    "a-far.test.ts",
+    "b-unknown.test.ts",
+  ]);
+  const history = parseShardTestHistory(
+    formatShardTestObservation({ test: "a-far.test.ts", durationMs: 300, failed: true }),
+  );
+  expect(orderShardTests(paths, ["direct.test.ts"], history, distances)).toEqual([
+    "a-far.test.ts",
+    "direct.test.ts",
+    "z-near.test.ts",
+    "b-unknown.test.ts",
+  ]);
+  const seen: string[] = [];
+  await runShardTests(paths, async (path) => void seen.push(path), false, [], new Map(), distances);
+  expect(seen).toEqual(["z-near.test.ts", "a-far.test.ts", "b-unknown.test.ts", "direct.test.ts"]);
 });
 
 describe("parseShardArgs", () => {

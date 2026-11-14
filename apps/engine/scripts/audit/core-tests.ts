@@ -115,16 +115,30 @@ function killRate(entry: ShardTestHistoryEntry | undefined): number {
   return entry.kills / Math.max(entry.totalMs / entry.runs, MIN_HISTORY_DURATION_MS);
 }
 
+export type ShardTestDistances = ReadonlyMap<string, number>;
+
+const UNKNOWN_IMPORT_DISTANCE = Number.MAX_SAFE_INTEGER;
+
+export function shardTestImportDistance(rationale: string): number | undefined {
+  const match = /\(depth (\d+)\)$/.exec(rationale);
+  if (!match) return undefined;
+  const distance = Number(match[1]);
+  return Number.isSafeInteger(distance) ? distance : undefined;
+}
+
 export function orderShardTests(
   paths: readonly string[],
   directTests: readonly string[] = [],
   history: ShardTestHistory = new Map(),
+  distances: ShardTestDistances = new Map(),
 ): string[] {
   const direct = new Set(directTests);
+  const distance = (path: string) => distances.get(path) ?? UNKNOWN_IMPORT_DISTANCE;
   return [...new Set(paths)].sort(
     (left, right) =>
       killRate(history.get(right)) - killRate(history.get(left)) ||
       Number(direct.has(right)) - Number(direct.has(left)) ||
+      distance(left) - distance(right) ||
       left.localeCompare(right),
   );
 }
@@ -135,9 +149,10 @@ export async function runShardTests(
   fullClosure: boolean,
   directTests: readonly string[] = [],
   history: ShardTestHistory = new Map(),
+  distances: ShardTestDistances = new Map(),
 ): Promise<void> {
   let first: Error | undefined;
-  for (const path of orderShardTests(paths, directTests, history)) {
+  for (const path of orderShardTests(paths, directTests, history, distances)) {
     try {
       await run(path);
     } catch (error) {
