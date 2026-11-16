@@ -76,7 +76,10 @@ export function reviewedClosurePlanFromAnalysis(
         path,
         kind,
         covers_targets: [...new Set(covered)].sort(),
-        rationale: selected.reasons.get(path) ?? "reverse import closure",
+        rationale: nearestRationale(
+          previous?.rationale,
+          selected.reasons.get(path) ?? "reverse import closure",
+        ),
       });
     }
   }
@@ -128,6 +131,16 @@ export function reviewedClosurePlanFromAnalysis(
       return { path, witnesses: [...witnesses].sort() };
     }),
   };
+}
+
+function rationaleDistance(rationale: string): number {
+  const match = /\(depth (\d+)\)$/.exec(rationale);
+  return match ? Number(match[1]) : 0;
+}
+
+function nearestRationale(previous: string | undefined, next: string): string {
+  if (previous === undefined) return next;
+  return rationaleDistance(next) < rationaleDistance(previous) ? next : previous;
 }
 
 export function directTestPaths(analysis: ClosureAnalysis, target: string): string[] {

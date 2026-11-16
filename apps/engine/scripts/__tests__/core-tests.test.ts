@@ -7,6 +7,7 @@ import {
   runShardTests,
   selectCanonicalCoreTests,
   selectCoreTests,
+  selectShardMutationTests,
   shardTestImportDistance,
 } from "../audit/core-tests.ts";
 
@@ -190,4 +191,23 @@ test("canonical core selection follows direct test imports across every admitted
   ]);
   expect(selectCanonicalCoreTests([direct, indirect], [target], reverse)).toEqual([direct]);
   expect(selectCanonicalCoreTests([direct, indirect], [], reverse)).toEqual([]);
+});
+
+test("a mutation test radius keeps direct, contract and near importers and drops distant ones", () => {
+  const tests = [
+    { path: "direct.test.ts", kind: "direct", rationale: "imports core.ts (depth 1)" },
+    { path: "contract.test.ts", kind: "consumer_contract", rationale: "runtime witness" },
+    { path: "text.test.ts", kind: "reverse_import", rationale: "reads core.ts as text" },
+    { path: "near.test.ts", kind: "reverse_import", rationale: "imports core.ts (depth 2)" },
+    { path: "far.test.ts", kind: "reverse_import", rationale: "imports core.ts (depth 3)" },
+  ];
+  expect(selectShardMutationTests(tests, 2).map((entry) => entry.path)).toEqual([
+    "direct.test.ts",
+    "contract.test.ts",
+    "text.test.ts",
+    "near.test.ts",
+  ]);
+  expect(selectShardMutationTests(tests, undefined)).toEqual(tests);
+  for (const radius of [0, -1, 1.5, Number.NaN])
+    expect(() => selectShardMutationTests(tests, radius)).toThrow("positive safe integer");
 });

@@ -16,6 +16,12 @@ describe("versioned quality resource policy", () => {
   test("admits explicit resource ownership without changing the policy", () => {
     expect(parseQualityShardPolicy(policy, ["workflows"])).toBe(policy);
   });
+  test("admits an optional positive mutation test radius and rejects unsafe ones", () => {
+    const narrowed = { ...policy, mutation_test_radius: 2 };
+    expect(parseQualityShardPolicy(narrowed, ["workflows"]).mutation_test_radius).toBe(2);
+    for (const mutation_test_radius of [0, -1, 1.5, Number.NaN, "2", null])
+      expect(() => parseQualityShardPolicy({ ...policy, mutation_test_radius }, [])).toThrow();
+  });
   test("new canonical owners require explicit resource classification", () => {
     expect(() => parseQualityShardPolicy(policy, ["workflows", "identity"])).toThrow(
       "Missing reviewed resource policy: identity",

@@ -5,6 +5,7 @@
     "command": "bun run apps/engine/scripts/run-core-tests.ts"
   },
   "coverageAnalysis": "off",
+  "dryRunTimeoutMinutes": 30,
   "mutate": [
     "apps/engine/src/**/core.ts",
     "apps/engine/src/**/core/**/*.ts",

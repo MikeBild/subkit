@@ -126,6 +126,19 @@ export function shardTestImportDistance(rationale: string): number | undefined {
   return Number.isSafeInteger(distance) ? distance : undefined;
 }
 
+export function selectShardMutationTests<
+  T extends { path: string; kind: string; rationale: string },
+>(tests: readonly T[], radius: number | undefined): T[] {
+  if (radius === undefined) return [...tests];
+  if (!Number.isSafeInteger(radius) || radius < 1)
+    throw new Error("Mutation test radius must be a positive safe integer");
+  return tests.filter((test) => {
+    if (test.kind !== "reverse_import") return true;
+    const distance = shardTestImportDistance(test.rationale);
+    return distance === undefined || distance <= radius;
+  });
+}
+
 export function orderShardTests(
   paths: readonly string[],
   directTests: readonly string[] = [],

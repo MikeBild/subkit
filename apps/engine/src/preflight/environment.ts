@@ -2,7 +2,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Config } from "../config/schema.ts";
 import { decryptSecret } from "../crypto/aes-gcm.ts";
 import type { Db } from "../db/client.ts";
-import { listEmbeddedMigrations } from "../db/migrate.ts";
+import { listEmbeddedMigrations, SQUASHED_CHAIN_HEAD_TAG } from "../db/migrate.ts";
 import {
   runtimeConfigRevisions,
   runtimeConfigState,
@@ -100,11 +100,11 @@ export function isUndefinedTable(error: unknown): boolean {
 }
 
 export async function schemaAheadTags(db: Db): Promise<string[]> {
-  let rows: Array<{ hash: string; tag: string | null }>;
+  let rows: Array<{ id: number; hash: string; tag: string | null }>;
   try {
     const result = (await db.execute(
-      sql`SELECT hash, tag FROM "subkit"."__drizzle_migrations" ORDER BY id`,
-    )) as unknown as { rows?: Array<{ hash: string; tag: string | null }> };
+      sql`SELECT id, hash, tag FROM "subkit"."__drizzle_migrations" ORDER BY id`,
+    )) as unknown as { rows?: Array<{ id: number; hash: string; tag: string | null }> };
     rows = result.rows ?? [];
   } catch (error) {
     if (isUndefinedTable(error)) return [];
@@ -113,8 +113,14 @@ export async function schemaAheadTags(db: Db): Promise<string[]> {
   const embedded = listEmbeddedMigrations();
   const byTag = new Map(embedded.map((m) => [m.tag, m.hash]));
   const byHash = new Map(embedded.map((m) => [m.hash, m.tag]));
+  const chainHeadId = rows.find((r) => r.tag === SQUASHED_CHAIN_HEAD_TAG)?.id;
+  const isSquashedHistory = (r: { id: number; tag: string | null }): boolean =>
+    chainHeadId !== undefined &&
+    Number(r.id) <= Number(chainHeadId) &&
+    r.tag !== null &&
+    !byTag.has(r.tag);
   return rows
-    .filter((r) => r.tag !== null)
+    .filter((r) => r.tag !== null && !isSquashedHistory(r))
     .filter((r) => byTag.get(r.tag!) !== r.hash || byHash.get(r.hash) !== r.tag)
     .map((r) => r.tag!);
 }

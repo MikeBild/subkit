@@ -177,4 +177,31 @@ describe("reviewed mutation closure", () => {
       }).map((entry) => entry.path),
     ).toEqual(["apps/engine/src/x/consumer.test.ts", "apps/engine/src/x/core.test.ts"]);
   });
+  test("records the nearest import distance when several targets reach the same test", () => {
+    const source: Record<string, string> = {
+      "src/a.ts": "export const a = 1;",
+      "src/b.ts": "export const b = 1;",
+      "src/mid.ts": 'export { a } from "./a.ts";',
+      "src/far.ts": 'export { a } from "./mid.ts";',
+      "src/shared.test.ts": 'import { a } from "./far.ts"; import { b } from "./b.ts";',
+    };
+    for (const targets of [
+      ["src/a.ts", "src/b.ts"],
+      ["src/b.ts", "src/a.ts"],
+    ]) {
+      const closure = reviewedClosurePlan({
+        targets,
+        files: Object.keys(source),
+        readText: (path) => source[path] ?? null,
+        tsconfig: "{}",
+        cockpitTsconfig: "{}",
+        declared: [],
+      });
+      const rationale = closure.tests.find(
+        (entry) => entry.path === "src/shared.test.ts",
+      )?.rationale;
+      expect(rationale).toContain("src/b.ts");
+      expect(rationale).not.toContain("depth 3");
+    }
+  });
 });

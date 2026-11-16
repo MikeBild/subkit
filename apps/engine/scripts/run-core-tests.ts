@@ -20,6 +20,7 @@ import {
   runShardTests,
   type ShardTestHistory,
   selectCanonicalCoreTests,
+  selectShardMutationTests,
   shardTestImportDistance,
 } from "./audit/core-tests.ts";
 import { createClosureAnalysis } from "./audit/mutation-closure.ts";
@@ -28,6 +29,7 @@ import { mutationClosureFiles, mutationTestInputs } from "./audit/mutation-input
 import { provisionMutationRuntimeSnapshot } from "./audit/mutation-runtime-snapshot.ts";
 import { validateParentMutationValidationTicket } from "./audit/mutation-validation-ticket.ts";
 import {
+  digestWaveFiles,
   readValidatedWaveManifest,
   validateWaveClosure,
   validateWaveFreeze,
@@ -37,6 +39,8 @@ import {
   canonicalPureTargetDigest,
   runtimePureTargetPaths,
 } from "./audit/pure-targets.ts";
+import { parseQualityShardPolicy } from "./audit/quality-shard-policy.ts";
+import { QUALITY_SHARD_POLICY_PATH } from "./audit/quality-wave-manifest.ts";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -176,13 +180,28 @@ if (args.mode === "shard") {
     console.error(`shard not found: ${args.shard}`);
     process.exit(1);
   }
-  selected = shard.tests
-    .filter((test) => test.execution !== "external_runtime")
-    .map((test) => test.path);
-  directTests = shard.tests
-    .filter((test) => test.execution !== "external_runtime" && test.kind === "direct")
-    .map((test) => test.path);
-  for (const test of shard.tests) {
+  const policyRepo = resolve(process.env.SUBKIT_MUTATION_ORIGINAL_REPO ?? REPO);
+  if (
+    manifest.quality_policy_sha256 !== undefined &&
+    digestWaveFiles(policyRepo, [QUALITY_SHARD_POLICY_PATH]) !== manifest.quality_policy_sha256
+  ) {
+    console.error("quality shard policy differs from the frozen wave");
+    process.exit(1);
+  }
+  const radius =
+    manifest.quality_policy_sha256 === undefined
+      ? undefined
+      : parseQualityShardPolicy(
+          JSON.parse(readFileSync(join(policyRepo, QUALITY_SHARD_POLICY_PATH), "utf8")),
+          manifest.shards.map((entry) => entry.id),
+        ).mutation_test_radius;
+  const shardTests = selectShardMutationTests(
+    shard.tests.filter((test) => test.execution !== "external_runtime"),
+    radius,
+  );
+  selected = shardTests.map((test) => test.path);
+  directTests = shardTests.filter((test) => test.kind === "direct").map((test) => test.path);
+  for (const test of shardTests) {
     const distance = shardTestImportDistance(test.rationale);
     if (distance !== undefined) testDistances.set(test.path, distance);
   }

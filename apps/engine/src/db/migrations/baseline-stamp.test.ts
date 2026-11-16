@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
+import { schemaAheadTags } from "../../preflight/environment.ts";
 import { detectDrift, runMigrations, SQUASHED_CHAIN_HEAD_TAG } from "../migrate.ts";
 import { createTestDb, type TestDb } from "../tests/setup.ts";
 import { EMBEDDED_MIGRATIONS, type EmbeddedMigration } from "./embedded.ts";
@@ -68,6 +69,20 @@ describe("baseline over the squashed migration chain", () => {
     await replaceHistory(squashedTags.slice(0, 141), 0);
     await expect(runMigrations(ctx.db)).rejects.toThrow(SQUASHED_CHAIN_HEAD_TAG);
     expect(await baselineRows()).toBe(0);
+  });
+
+  test("the boot preflight accepts the pre-squash chain before and after the baseline stamp and still refuses newer tags", async () => {
+    await replaceHistory(squashedTags.slice(0, 141), 0);
+    expect(await schemaAheadTags(ctx.db)).toEqual(squashedTags.slice(0, 141));
+    await replaceHistory(squashedTags, 51);
+    expect(await schemaAheadTags(ctx.db)).toEqual([]);
+    await runMigrations(ctx.db);
+    expect(await baselineRows()).toBe(1);
+    expect(await schemaAheadTags(ctx.db)).toEqual([]);
+    await ctx.db.execute(
+      sql`INSERT INTO "subkit"."__drizzle_migrations" (hash, created_at, tag) VALUES (md5('future'), 0, '9998_from_a_newer_release')`,
+    );
+    expect(await schemaAheadTags(ctx.db)).toEqual(["9998_from_a_newer_release"]);
   });
 
   test("a database at the chain head is stamped without DDL and applies only the post-squash migrations", async () => {

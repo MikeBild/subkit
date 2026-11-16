@@ -1,6 +1,7 @@
 export interface QualityShardPolicy {
   version: 1;
   worker_budget: number;
+  mutation_test_radius?: number;
   equivalence_manifest_path: string;
   shards: readonly { id: string; resource_tags: readonly string[] }[];
 }
@@ -48,6 +49,8 @@ export function parseQualityShardPolicy(
     policy.version !== 1 ||
     !Number.isSafeInteger(policy.worker_budget) ||
     policy.worker_budget < 1 ||
+    (policy.mutation_test_radius !== undefined &&
+      (!Number.isSafeInteger(policy.mutation_test_radius) || policy.mutation_test_radius < 1)) ||
     policy.equivalence_manifest_path !== "apps/engine/.mutation-equivalents.json" ||
     !Array.isArray(policy.shards)
   )
