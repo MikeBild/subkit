@@ -18,7 +18,7 @@ The path is always the same: **collect → review in chat → confirm → knowle
 ### What you need
 
 - **Google Chrome.** Microsoft Edge and other Chromium browsers are untested. Firefox is not supported, because the extension uses a Chrome background service worker.
-- **An engine address** that uses HTTPS. Plain HTTP works only with `localhost`, `127.0.0.1` or `[::1]`. In SubKit Cloud it is `https://subkit-cloud.mikebild.info`, without `/cockpit`.
+- **An engine address** that uses HTTPS. Plain HTTP works only with `localhost`, `127.0.0.1` or `[::1]`. In SubKit Cloud it is `https://subkit-cloud.mikebild.dev`, without `/cockpit`.
 - **An account with `intake:read` and `intake:write`.** If it lacks them, ask an administrator.
 - **To install with the CLI:** the `sk` CLI, signed in to your engine. See "Use the sk CLI on your machine". Without the CLI, use the ZIP file.
 
@@ -50,7 +50,7 @@ The command has three options:
 
 Your engine also offers the extension as a ZIP file. It contains no engine address; you enter it yourself when you connect.
 
-1. Download `<engine address>/install/clipper.zip`, for example `https://subkit-cloud.mikebild.info/install/clipper.zip`.
+1. Download `<engine address>/install/clipper.zip`, for example `https://subkit-cloud.mikebild.dev/install/clipper.zip`.
 2. Unpack the file into a folder you keep. Chrome loads the extension from that folder.
 3. In Chrome, open `chrome://extensions`, turn on **Developer mode** and select **Load unpacked** with the unpacked folder.
 

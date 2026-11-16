@@ -12,7 +12,7 @@ This chapter is for anyone who works in the Cockpit every day and does not want 
 
 ### What you need
 
-- Access to a workspace in SubKit Cloud at https://subkit-cloud.mikebild.info or on a self-hosted engine.
+- Access to a workspace in SubKit Cloud at https://subkit-cloud.mikebild.dev or on a self-hosted engine.
 - An account you sign in with through **Sign in with work account**. An installed app cannot sign in again with an API key.
 - A browser that supports web app installation.
 - For branding: the `settings:write` and `identity:write` permissions in the workspace.

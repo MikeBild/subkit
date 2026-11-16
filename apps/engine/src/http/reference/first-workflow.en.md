@@ -14,7 +14,7 @@ It works the same in SubKit Cloud and on a self-hosted engine.
 ### What you need
 
 - A SubKit account in a workspace.
-  - Cloud: `https://subkit-cloud.mikebild.info`
+  - Cloud: `https://subkit-cloud.mikebild.dev`
   - Self-hosted: `https://<your-engine>/cockpit`
 - Permission to create and run workflows. Ask your administrator if a button is missing.
 - An AI provider. Cloud provides one. A self-hosted engine uses the provider you chose in `sk init`.

@@ -17,7 +17,7 @@ SubKit Cloud und eine selbst betriebene Engine verhalten sich dabei gleich.
 ### Was du brauchst
 
 - Die Adresse deiner Engine.
-  - Cloud: `https://subkit-cloud.mikebild.info` (ohne `/cockpit`)
+  - Cloud: `https://subkit-cloud.mikebild.dev` (ohne `/cockpit`)
   - Selbst betrieben: `https://<deine-engine>`
 - Einen API-Schlüssel mit den Scopes `workflow:read`, `workflow:run` und `execution:read`. Ein Scope ist ein einzelnes Recht, das der Schlüssel mitbringt. Leg den Schlüssel mit der sk-CLI an, wie unten gezeigt, oder im Cockpit unter **API-Zugang**. Für die CLI meldest du dich an wie in „Die sk-CLI auf deinem Rechner verwenden“ beschrieben.
 - Einen Workflow, der aktiv und freigegeben ist. Siehe „Dein erster Workflow“.

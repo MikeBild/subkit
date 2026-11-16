@@ -21,7 +21,7 @@ SubKit ist für Claude Code, Codex, Cursor und andere KI-Clients ein MCP-Server:
   https://<deine-engine>/mcp
   ```
 
-  In SubKit Cloud ist das `https://subkit-cloud.mikebild.info/mcp`, immer ohne `/cockpit`.
+  In SubKit Cloud ist das `https://subkit-cloud.mikebild.dev/mcp`, immer ohne `/cockpit`.
   Deine eigene Engine braucht HTTPS. Reines HTTP geht nur auf `localhost`.
 - Ein Konto, dessen Rolle MCP-Zugriff erlaubt. Ohne dieses Recht endet die Anmeldung mit `access_denied`.
 - Einen KI-Client, der entfernte MCP-Server über HTTP unterstützt. Kann er nur lokale Server starten, siehe „Mit API-Schlüssel verbinden“.

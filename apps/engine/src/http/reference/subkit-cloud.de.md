@@ -16,7 +16,7 @@ Du meldest dich im Browser an und arbeitest im Cockpit deines Arbeitsbereichs.
 ### Was du brauchst
 
 - Eine Einladung von einer Administratorin oder einem Administrator des Arbeitsbereichs. Eine öffentliche Registrierung gibt es nicht.
-- Die Adresse `https://subkit-cloud.mikebild.info`. Die Adresse führt dich direkt ins Cockpit.
+- Die Adresse `https://subkit-cloud.mikebild.dev`. Die Adresse führt dich direkt ins Cockpit.
 
 ### Zugang erhalten
 
@@ -31,7 +31,7 @@ Nutze dieselbe E-Mail-Adresse, an die die Einladung ging. Mit einer anderen Adre
 
 ### Anmelden
 
-1. Öffne `https://subkit-cloud.mikebild.info`.
+1. Öffne `https://subkit-cloud.mikebild.dev`.
 2. Wähle **Mit Firmenkonto anmelden**.
 3. Melde dich bei Upraft Auth mit deiner E-Mail-Adresse und deinem Passwort an.
 
@@ -86,13 +86,13 @@ Die `sk`-CLI meldet dich wie das Cockpit über den Browser an.
 1. Installiere die CLI:
 
    ```bash
-   curl -fsSL https://subkit-cloud.mikebild.info/install | bash
+   curl -fsSL https://subkit-cloud.mikebild.dev/install | bash
    ```
 
 2. Melde dich an. Nutze die Adresse ohne `/cockpit`:
 
    ```bash
-   sk login --engine-url https://subkit-cloud.mikebild.info
+   sk login --engine-url https://subkit-cloud.mikebild.dev
    ```
 
 3. Wähle im geöffneten Browser **Mit Firmenkonto anmelden**.
@@ -104,7 +104,7 @@ Alles Weitere steht im Kapitel „Die sk-CLI auf deinem Rechner verwenden“.
 
 KI-Clients wie ChatGPT, Claude oder Cursor können sich über MCP mit SubKit Cloud verbinden.
 
-1. Füge in deinem Client einen entfernten MCP-Server mit der Adresse `https://subkit-cloud.mikebild.info/mcp` hinzu.
+1. Füge in deinem Client einen entfernten MCP-Server mit der Adresse `https://subkit-cloud.mikebild.dev/mcp` hinzu.
 2. Wähle in der Browser-Anmeldung, die sich öffnet, **Mit Firmenkonto anmelden**.
 3. Wähle auf **Zugriff erlauben** den Button **Erlauben**.
 
@@ -114,7 +114,7 @@ Einen API-Schlüssel musst du nicht kopieren. Mehr dazu im Kapitel „KI-Clients
 
 Der Web Clipper sammelt Webseiten im **Eingang**.
 Richte ihn ein, wie im Kapitel „Webseiten mit dem Web Clipper sammeln“ beschrieben.
-In SubKit Cloud ist die Engine-Adresse `https://subkit-cloud.mikebild.info`.
+In SubKit Cloud ist die Engine-Adresse `https://subkit-cloud.mikebild.dev`.
 
 ### Was anders ist als beim Selbstbetrieb
 
@@ -156,4 +156,4 @@ Erreichst du eines, zeigt SubKit eine Meldung. Die meisten dieser Meldungen ersc
 | Du hast dein Passwort vergessen | Upraft Auth schickt dir eine E-Mail, mit der du es zurücksetzt. |
 | Du willst ein anderes Konto nutzen | Folge „Konto wechseln“. |
 | Du wirst unerwartet abgemeldet | Deine Sitzung ist nach 8 Stunden Inaktivität oder 24 Stunden abgelaufen. Melde dich erneut an. |
-| `sk login` oder der MCP-Client kann sich nicht verbinden | Nutze `https://subkit-cloud.mikebild.info` und `https://subkit-cloud.mikebild.info/mcp`, ohne `/cockpit`. |
+| `sk login` oder der MCP-Client kann sich nicht verbinden | Nutze `https://subkit-cloud.mikebild.dev` und `https://subkit-cloud.mikebild.dev/mcp`, ohne `/cockpit`. |

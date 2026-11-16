@@ -12,7 +12,7 @@ Dieses Kapitel ist für alle, die täglich im Cockpit arbeiten und es nicht jede
 
 ### Was du brauchst
 
-- Zugang zu einem Arbeitsbereich in SubKit Cloud unter https://subkit-cloud.mikebild.info oder auf einer selbst betriebenen Engine.
+- Zugang zu einem Arbeitsbereich in SubKit Cloud unter https://subkit-cloud.mikebild.dev oder auf einer selbst betriebenen Engine.
 - Ein Konto, mit dem du dich über **Mit Firmenkonto anmelden** anmeldest. Mit einem API-Schlüssel kann sich eine installierte App nicht neu anmelden.
 - Einen Browser, der die Installation von Web-Apps unterstützt.
 - Für das Branding: die Rechte `settings:write` und `identity:write` im Arbeitsbereich.

@@ -16,7 +16,7 @@ You sign in from the browser and work in the Cockpit of your workspace.
 ### What you need
 
 - An invitation from a workspace administrator. There is no public sign-up.
-- The address `https://subkit-cloud.mikebild.info`. It takes you straight to the Cockpit.
+- The address `https://subkit-cloud.mikebild.dev`. It takes you straight to the Cockpit.
 
 ### Get access
 
@@ -31,7 +31,7 @@ Use the email address the invitation was sent to. A different address does not w
 
 ### Sign in
 
-1. Open `https://subkit-cloud.mikebild.info`.
+1. Open `https://subkit-cloud.mikebild.dev`.
 2. Select **Sign in with work account**.
 3. Sign in at Upraft Auth with your email address and password.
 
@@ -86,13 +86,13 @@ The `sk` CLI signs in through the browser, like the Cockpit.
 1. Install the CLI:
 
    ```bash
-   curl -fsSL https://subkit-cloud.mikebild.info/install | bash
+   curl -fsSL https://subkit-cloud.mikebild.dev/install | bash
    ```
 
 2. Sign in. Use the address without `/cockpit`:
 
    ```bash
-   sk login --engine-url https://subkit-cloud.mikebild.info
+   sk login --engine-url https://subkit-cloud.mikebild.dev
    ```
 
 3. In the browser that opens, select **Sign in with work account**.
@@ -104,7 +104,7 @@ For everything else, see "Use the sk CLI on your machine".
 
 AI clients such as ChatGPT, Claude or Cursor can connect to SubKit Cloud over MCP.
 
-1. In your client, add a remote MCP server with the address `https://subkit-cloud.mikebild.info/mcp`.
+1. In your client, add a remote MCP server with the address `https://subkit-cloud.mikebild.dev/mcp`.
 2. In the browser sign-in that opens, select **Sign in with work account**.
 3. On **Allow access**, select **Allow**.
 
@@ -114,7 +114,7 @@ You do not need to copy an API key. For more, see "Connect AI clients via MCP".
 
 The Web Clipper collects web pages into the **Inbox**.
 Set it up as described in "Collect web pages with the Web Clipper".
-For SubKit Cloud, the engine address is `https://subkit-cloud.mikebild.info`.
+For SubKit Cloud, the engine address is `https://subkit-cloud.mikebild.dev`.
 
 ### What is different from self-hosting
 
@@ -156,4 +156,4 @@ When you reach one, SubKit shows a message. Most of these messages appear in Eng
 | You forgot your password | Upraft Auth sends you an email to reset it. |
 | You want to use a different account | Follow "Switch accounts". |
 | You are signed out unexpectedly | Your session ended after 8 hours of inactivity or 24 hours. Sign in again. |
-| `sk login` or the MCP client cannot connect | Use `https://subkit-cloud.mikebild.info` and `https://subkit-cloud.mikebild.info/mcp`, without `/cockpit`. |
+| `sk login` or the MCP client cannot connect | Use `https://subkit-cloud.mikebild.dev` and `https://subkit-cloud.mikebild.dev/mcp`, without `/cockpit`. |

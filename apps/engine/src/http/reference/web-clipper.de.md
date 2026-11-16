@@ -18,7 +18,7 @@ Der Weg ist immer gleich: **sammeln → im Chat prüfen → bestätigen → Wiss
 ### Was du brauchst
 
 - **Google Chrome.** Microsoft Edge und andere Chromium-Browser sind nicht getestet. Firefox wird nicht unterstützt, weil die Erweiterung einen Hintergrund-Service-Worker von Chrome nutzt.
-- **Eine Engine-Adresse** mit HTTPS. Reines HTTP geht nur mit `localhost`, `127.0.0.1` oder `[::1]`. In SubKit Cloud ist es `https://subkit-cloud.mikebild.info`, ohne `/cockpit`.
+- **Eine Engine-Adresse** mit HTTPS. Reines HTTP geht nur mit `localhost`, `127.0.0.1` oder `[::1]`. In SubKit Cloud ist es `https://subkit-cloud.mikebild.dev`, ohne `/cockpit`.
 - **Ein Konto mit `intake:read` und `intake:write`.** Fehlen sie, bitte eine Administratorin oder einen Administrator darum.
 - **Für die Installation per CLI:** die `sk`-CLI, angemeldet an deiner Engine. Siehe „Die sk-CLI auf deinem Rechner verwenden“. Ohne CLI nimmst du die ZIP-Datei.
 
@@ -50,7 +50,7 @@ Der Befehl kennt drei Optionen:
 
 Deine Engine bietet die Erweiterung auch als ZIP-Datei an. Darin steht keine Engine-Adresse; die trägst du beim Verbinden selbst ein.
 
-1. Lade `<Engine-Adresse>/install/clipper.zip` herunter, zum Beispiel `https://subkit-cloud.mikebild.info/install/clipper.zip`.
+1. Lade `<Engine-Adresse>/install/clipper.zip` herunter, zum Beispiel `https://subkit-cloud.mikebild.dev/install/clipper.zip`.
 2. Entpacke die Datei in einen Ordner, den du behältst. Chrome lädt die Erweiterung aus diesem Ordner.
 3. Öffne in Chrome `chrome://extensions`, schalte den **Entwicklermodus** ein und wähle **Entpackte Erweiterung laden** mit dem entpackten Ordner.
 

@@ -47,7 +47,7 @@ You sign in from the browser and work in the Cockpit of your workspace.
 ### What you need
 
 - An invitation from a workspace administrator. There is no public sign-up.
-- The address `https://subkit-cloud.mikebild.info`. It takes you straight to the Cockpit.
+- The address `https://subkit-cloud.mikebild.dev`. It takes you straight to the Cockpit.
 
 ### Get access
 
@@ -62,7 +62,7 @@ Use the email address the invitation was sent to. A different address does not w
 
 ### Sign in
 
-1. Open `https://subkit-cloud.mikebild.info`.
+1. Open `https://subkit-cloud.mikebild.dev`.
 2. Select **Sign in with work account**.
 3. Sign in at Upraft Auth with your email address and password.
 
@@ -117,13 +117,13 @@ The `sk` CLI signs in through the browser, like the Cockpit.
 1. Install the CLI:
 
    ```bash
-   curl -fsSL https://subkit-cloud.mikebild.info/install | bash
+   curl -fsSL https://subkit-cloud.mikebild.dev/install | bash
    ```
 
 2. Sign in. Use the address without `/cockpit`:
 
    ```bash
-   sk login --engine-url https://subkit-cloud.mikebild.info
+   sk login --engine-url https://subkit-cloud.mikebild.dev
    ```
 
 3. In the browser that opens, select **Sign in with work account**.
@@ -135,7 +135,7 @@ For everything else, see "Use the sk CLI on your machine".
 
 AI clients such as ChatGPT, Claude or Cursor can connect to SubKit Cloud over MCP.
 
-1. In your client, add a remote MCP server with the address `https://subkit-cloud.mikebild.info/mcp`.
+1. In your client, add a remote MCP server with the address `https://subkit-cloud.mikebild.dev/mcp`.
 2. In the browser sign-in that opens, select **Sign in with work account**.
 3. On **Allow access**, select **Allow**.
 
@@ -145,7 +145,7 @@ You do not need to copy an API key. For more, see "Connect AI clients via MCP".
 
 The Web Clipper collects web pages into the **Inbox**.
 Set it up as described in "Collect web pages with the Web Clipper".
-For SubKit Cloud, the engine address is `https://subkit-cloud.mikebild.info`.
+For SubKit Cloud, the engine address is `https://subkit-cloud.mikebild.dev`.
 
 ### What is different from self-hosting
 
@@ -187,7 +187,7 @@ When you reach one, SubKit shows a message. Most of these messages appear in Eng
 | You forgot your password | Upraft Auth sends you an email to reset it. |
 | You want to use a different account | Follow "Switch accounts". |
 | You are signed out unexpectedly | Your session ended after 8 hours of inactivity or 24 hours. Sign in again. |
-| `sk login` or the MCP client cannot connect | Use `https://subkit-cloud.mikebild.info` and `https://subkit-cloud.mikebild.info/mcp`, without `/cockpit`. |
+| `sk login` or the MCP client cannot connect | Use `https://subkit-cloud.mikebild.dev` and `https://subkit-cloud.mikebild.dev/mcp`, without `/cockpit`. |
 ## Run the engine
 
 Afterwards SubKit runs on your own server: the engine with the Cockpit, a PostgreSQL database and an object store, started with Docker Compose.
@@ -361,7 +361,7 @@ It works the same in SubKit Cloud and on a self-hosted engine.
 ### What you need
 
 - A SubKit account in a workspace.
-  - Cloud: `https://subkit-cloud.mikebild.info`
+  - Cloud: `https://subkit-cloud.mikebild.dev`
   - Self-hosted: `https://<your-engine>/cockpit`
 - Permission to create and run workflows. Ask your administrator if a button is missing.
 - An AI provider. Cloud provides one. A self-hosted engine uses the provider you chose in `sk init`.
@@ -641,7 +641,7 @@ For Claude Code, Codex, Cursor and other AI clients, SubKit is an MCP server: ev
   https://<your-engine>/mcp
   ```
 
-  On SubKit Cloud it is `https://subkit-cloud.mikebild.info/mcp`, always without `/cockpit`.
+  On SubKit Cloud it is `https://subkit-cloud.mikebild.dev/mcp`, always without `/cockpit`.
   Your own engine needs HTTPS. Plain HTTP works only on `localhost`.
 - An account whose role allows MCP access. Without it, the sign-in ends with `access_denied`.
 - An AI client that supports remote MCP servers over HTTP. If it can only start local servers, see "Connect with an API key".
@@ -803,8 +803,8 @@ Collected material always follows one path: **collect → review with your agent
 
 ### What you need
 
-- The sk CLI, signed in to your engine. In the cloud, use `sk login --engine-url https://subkit-cloud.mikebild.info` and **Sign in with work account**. The briefing uses this signed-in profile.
-- The MCP address of your engine, `https://<your-engine>/mcp`. On SubKit Cloud it is `https://subkit-cloud.mikebild.info/mcp`.
+- The sk CLI, signed in to your engine. In the cloud, use `sk login --engine-url https://subkit-cloud.mikebild.dev` and **Sign in with work account**. The briefing uses this signed-in profile.
+- The MCP address of your engine, `https://<your-engine>/mcp`. On SubKit Cloud it is `https://subkit-cloud.mikebild.dev/mcp`.
 - Claude Code, Codex or Hermes.
 - A repository where the briefings should appear.
 
@@ -951,7 +951,7 @@ The path is always the same: **collect → review in chat → confirm → knowle
 ### What you need
 
 - **Google Chrome.** Microsoft Edge and other Chromium browsers are untested. Firefox is not supported, because the extension uses a Chrome background service worker.
-- **An engine address** that uses HTTPS. Plain HTTP works only with `localhost`, `127.0.0.1` or `[::1]`. In SubKit Cloud it is `https://subkit-cloud.mikebild.info`, without `/cockpit`.
+- **An engine address** that uses HTTPS. Plain HTTP works only with `localhost`, `127.0.0.1` or `[::1]`. In SubKit Cloud it is `https://subkit-cloud.mikebild.dev`, without `/cockpit`.
 - **An account with `intake:read` and `intake:write`.** If it lacks them, ask an administrator.
 - **To install with the CLI:** the `sk` CLI, signed in to your engine. See "Use the sk CLI on your machine". Without the CLI, use the ZIP file.
 
@@ -983,7 +983,7 @@ The command has three options:
 
 Your engine also offers the extension as a ZIP file. It contains no engine address; you enter it yourself when you connect.
 
-1. Download `<engine address>/install/clipper.zip`, for example `https://subkit-cloud.mikebild.info/install/clipper.zip`.
+1. Download `<engine address>/install/clipper.zip`, for example `https://subkit-cloud.mikebild.dev/install/clipper.zip`.
 2. Unpack the file into a folder you keep. Chrome loads the extension from that folder.
 3. In Chrome, open `chrome://extensions`, turn on **Developer mode** and select **Load unpacked** with the unpacked folder.
 
@@ -1210,7 +1210,7 @@ SubKit Cloud and a self-hosted engine behave the same here.
 ### What you need
 
 - Your engine address.
-  - Cloud: `https://subkit-cloud.mikebild.info` (without `/cockpit`)
+  - Cloud: `https://subkit-cloud.mikebild.dev` (without `/cockpit`)
   - Self-hosted: `https://<your-engine>`
 - An API key with the scopes `workflow:read`, `workflow:run` and `execution:read`. A scope is a single permission the key carries. Create the key with the sk CLI, as shown below, or in the Cockpit under **API access**. For the CLI, sign in as described in "Use the sk CLI on your machine".
 - A workflow that is active and approved. See "Your first workflow".
@@ -1477,7 +1477,7 @@ Hosts and IDs in the examples are placeholders (`example.test`, `<...>`).
 
 ### What you need
 
-- The `sk` CLI, signed in to your engine. In SubKit Cloud the engine address is `https://subkit-cloud.mikebild.info`, without `/cockpit`.
+- The `sk` CLI, signed in to your engine. In SubKit Cloud the engine address is `https://subkit-cloud.mikebild.dev`, without `/cockpit`.
 - A real access token of a test account of the app.
 - Access to the services the workflows call, such as your AI model's API.
 
@@ -1890,7 +1890,7 @@ This chapter is for anyone who works in the Cockpit every day and does not want 
 
 ### What you need
 
-- Access to a workspace in SubKit Cloud at https://subkit-cloud.mikebild.info or on a self-hosted engine.
+- Access to a workspace in SubKit Cloud at https://subkit-cloud.mikebild.dev or on a self-hosted engine.
 - An account you sign in with through **Sign in with work account**. An installed app cannot sign in again with an API key.
 - A browser that supports web app installation.
 - For branding: the `settings:write` and `identity:write` permissions in the workspace.
@@ -2814,8 +2814,8 @@ Collected material always follows one path: **collect → review with your agent
 
 ### What you need
 
-- The sk CLI, signed in to your engine. In the cloud, use `sk login --engine-url https://subkit-cloud.mikebild.info` and **Sign in with work account**. The briefing uses this signed-in profile.
-- The MCP address of your engine, `https://<your-engine>/mcp`. On SubKit Cloud it is `https://subkit-cloud.mikebild.info/mcp`.
+- The sk CLI, signed in to your engine. In the cloud, use `sk login --engine-url https://subkit-cloud.mikebild.dev` and **Sign in with work account**. The briefing uses this signed-in profile.
+- The MCP address of your engine, `https://<your-engine>/mcp`. On SubKit Cloud it is `https://subkit-cloud.mikebild.dev/mcp`.
 - Claude Code, Codex or Hermes.
 - A repository where the briefings should appear.
 

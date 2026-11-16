@@ -14,7 +14,7 @@ Das funktioniert in SubKit Cloud und auf einer selbst betriebenen Engine gleich.
 ### Was du brauchst
 
 - Ein SubKit-Konto in einem Arbeitsbereich.
-  - Cloud: `https://subkit-cloud.mikebild.info`
+  - Cloud: `https://subkit-cloud.mikebild.dev`
   - Selbst betrieben: `https://<deine-engine>/cockpit`
 - Das Recht, Workflows anzulegen und zu starten. Fehlt ein Button, bitte eine Administratorin oder einen Administrator darum.
 - Einen KI-Anbieter. Die Cloud stellt ihn bereit. Eine selbst betriebene Engine nutzt den Anbieter, den du bei `sk init` gewählt hast.

@@ -64,7 +64,7 @@ const BUILD = /^\d+\.\d+\.\d+$/;
 
 const PUBLIC_PRODUCT_HOSTS = [
   "subkit.mikebild.dev",
-  "subkit-cloud.mikebild.info",
+  "subkit-cloud.mikebild.dev",
   "learn.chatgpt.com",
 ];
 

@@ -21,7 +21,7 @@ Hosts und IDs in den Beispielen sind Platzhalter (`example.test`, `<...>`).
 
 ### Was du brauchst
 
-- Die `sk`-CLI, angemeldet an deiner Engine. In SubKit Cloud ist die Engine-Adresse `https://subkit-cloud.mikebild.info`, ohne `/cockpit`.
+- Die `sk`-CLI, angemeldet an deiner Engine. In SubKit Cloud ist die Engine-Adresse `https://subkit-cloud.mikebild.dev`, ohne `/cockpit`.
 - Ein echtes Access-Token eines Testkontos der App.
 - Zugang zu den Diensten, die die Workflows aufrufen, etwa zur API deines KI-Modells.
 

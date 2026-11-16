@@ -17,7 +17,7 @@ SubKit Cloud and a self-hosted engine behave the same here.
 ### What you need
 
 - Your engine address.
-  - Cloud: `https://subkit-cloud.mikebild.info` (without `/cockpit`)
+  - Cloud: `https://subkit-cloud.mikebild.dev` (without `/cockpit`)
   - Self-hosted: `https://<your-engine>`
 - An API key with the scopes `workflow:read`, `workflow:run` and `execution:read`. A scope is a single permission the key carries. Create the key with the sk CLI, as shown below, or in the Cockpit under **API access**. For the CLI, sign in as described in "Use the sk CLI on your machine".
 - A workflow that is active and approved. See "Your first workflow".

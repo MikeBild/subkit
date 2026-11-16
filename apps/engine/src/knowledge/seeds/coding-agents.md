@@ -25,8 +25,8 @@ Collected material always follows one path: **collect → review with your agent
 
 ### What you need
 
-- The sk CLI, signed in to your engine. In the cloud, use `sk login --engine-url https://subkit-cloud.mikebild.info` and **Sign in with work account**. The briefing uses this signed-in profile.
-- The MCP address of your engine, `https://<your-engine>/mcp`. On SubKit Cloud it is `https://subkit-cloud.mikebild.info/mcp`.
+- The sk CLI, signed in to your engine. In the cloud, use `sk login --engine-url https://subkit-cloud.mikebild.dev` and **Sign in with work account**. The briefing uses this signed-in profile.
+- The MCP address of your engine, `https://<your-engine>/mcp`. On SubKit Cloud it is `https://subkit-cloud.mikebild.dev/mcp`.
 - Claude Code, Codex or Hermes.
 - A repository where the briefings should appear.
 

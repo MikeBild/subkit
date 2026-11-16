@@ -22,8 +22,8 @@ Gesammeltes Material folgt immer einem Weg: **sammeln → mit dem Agenten prüfe
 
 ### Was du brauchst
 
-- Die sk-CLI, angemeldet an deiner Engine. In der Cloud nutzt du dafür `sk login --engine-url https://subkit-cloud.mikebild.info` und **Mit Firmenkonto anmelden**. Das Briefing nutzt dieses angemeldete Profil.
-- Die MCP-Adresse deiner Engine, `https://<deine-engine>/mcp`. In SubKit Cloud ist das `https://subkit-cloud.mikebild.info/mcp`.
+- Die sk-CLI, angemeldet an deiner Engine. In der Cloud nutzt du dafür `sk login --engine-url https://subkit-cloud.mikebild.dev` und **Mit Firmenkonto anmelden**. Das Briefing nutzt dieses angemeldete Profil.
+- Die MCP-Adresse deiner Engine, `https://<deine-engine>/mcp`. In SubKit Cloud ist das `https://subkit-cloud.mikebild.dev/mcp`.
 - Claude Code, Codex oder Hermes.
 - Ein Repository, in dem die Briefings erscheinen sollen.
 
