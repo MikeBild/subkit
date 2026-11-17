@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 const root = join(import.meta.dir, "../..");
 const self = "scripts/__tests__/no-prod-references.test.ts";
-const publicProductDomain = "subkit.mikebild.dev";
+const publicProductDomains = new Set(["subkit.mikebild.dev", "subkit-cloud.mikebild.dev"]);
 const operatorDomain =
   /(?<![a-z0-9.-])(?:[a-z0-9-]+\.)*mikebild\.(?:dev|com)(?:\.[a-z0-9-]+)*(?![a-z0-9.-])/gi;
 
@@ -13,7 +13,7 @@ function installationSpecificDomainLines(hits: string): string {
     .split("\n")
     .filter((line) =>
       (line.match(operatorDomain) ?? []).some(
-        (domain) => domain.toLowerCase() !== publicProductDomain,
+        (domain) => !publicProductDomains.has(domain.toLowerCase()),
       ),
     )
     .join("\n");
@@ -49,15 +49,22 @@ function outside(values: string[], allowed: Set<string>): string[] {
 }
 
 describe("no installation-specific references", () => {
-  test("allows only the exact public product domain", () => {
+  test("allows only the exact public product domains", () => {
     const allowed = "public: https://subkit.mikebild.dev/kontakt";
+    const cloud = "cloud: https://subkit-cloud.mikebild.dev/install";
+    const cloudSuffix = "cloud suffix: https://subkit-cloud.mikebild.dev.evil";
+    const cloudPrefix = "cloud prefix: https://ops.subkit-cloud.mikebild.dev";
     const root = "root: https://mikebild.dev";
     const privateSubdomain = "private: https://ops.mikebild.dev";
     const suffix = "suffix: https://subkit.mikebild.dev.evil";
     const mixed = "mixed: https://subkit.mikebild.dev/kontakt https://ops.mikebild.com";
     expect(
-      installationSpecificDomainLines([allowed, root, privateSubdomain, suffix, mixed].join("\n")),
-    ).toBe([root, privateSubdomain, suffix, mixed].join("\n"));
+      installationSpecificDomainLines(
+        [allowed, cloud, root, privateSubdomain, suffix, mixed, cloudSuffix, cloudPrefix].join(
+          "\n",
+        ),
+      ),
+    ).toBe([root, privateSubdomain, suffix, mixed, cloudSuffix, cloudPrefix].join("\n"));
   });
 
   test("the operator's domains appear in no tracked file", () => {
