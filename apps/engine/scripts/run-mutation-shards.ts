@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
-import { lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import { verificationRunsRoot } from "../../../scripts/lib/verification-run-lifecycle.ts";
 import { runWithVerificationLog } from "../../../scripts/run-with-verification-log.ts";
+import { countDeadlineKills } from "./audit/core-tests.ts";
 import {
   assertDistributedShardReceipt,
   assertDistributedWaveBinding,
@@ -392,6 +393,7 @@ export async function executePreparedMutationShard(options: {
     report_sha256: hash(reportText),
     finished_at: new Date().toISOString(),
     exit_code: exitCode,
+    deadline_kills: deadlineKills(prepared.ticket.path, shardId),
   };
   const receiptText = json(receipt);
   writeFileSync(join(directory, "receipt.json"), receiptText, { flag: "wx" });
@@ -406,6 +408,11 @@ export async function executePreparedMutationShard(options: {
       trustedRunId: options.distributed.githubRunId,
     });
   return { id: shardId, receiptText, configText, reportText, exitCode };
+}
+
+function deadlineKills(ticketPath: string, shardId: string): number {
+  const path = join(dirname(ticketPath), "deadline-kills", `${shardId}.jsonl`);
+  return existsSync(path) ? countDeadlineKills(readFileSync(path, "utf8")) : 0;
 }
 
 function assertRuntimeSnapshotUnchanged(prepared: {

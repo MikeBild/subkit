@@ -2,7 +2,7 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,14 +14,21 @@ import {
 } from "../../../scripts/lib/verification-run-lifecycle.ts";
 import { runIsolatedTestFile } from "../../sk/src/tests/run-isolated-test-file.ts";
 import {
+  ACTIVE_MUTANT_ENV,
+  activeMutantTarget,
+  formatDeadlineKill,
   formatShardTestObservation,
+  type MutantTestDeadlinePolicy,
+  mutantTestDeadlineMs,
   parseShardArgs,
   parseShardTestHistory,
+  parseTestBaselines,
   runShardTests,
   type ShardTestHistory,
   selectCanonicalCoreTests,
   selectShardMutationTests,
   shardTestImportDistance,
+  type TestBaselines,
 } from "./audit/core-tests.ts";
 import { createClosureAnalysis } from "./audit/mutation-closure.ts";
 import { writeMutationInfrastructureSentinel } from "./audit/mutation-infrastructure-sentinel.ts";
@@ -54,11 +61,32 @@ function recordMutationInfrastructureFailure(error: unknown): void {
   }
 }
 
-function advisoryShardTestOrderPath(shard: string): string | undefined {
+function advisoryShardTestOrderPath(shard: string, target?: string): string | undefined {
   const ticketPath = process.env.SUBKIT_MUTATION_PARENT_TICKET_PATH;
   if (!ticketPath) return undefined;
-  const key = createHash("sha256").update(`${ticketPath}\0${shard}`).digest("hex").slice(0, 32);
+  const scope = target === undefined ? shard : `${shard}\0${target}`;
+  const key = createHash("sha256").update(`${ticketPath}\0${scope}`).digest("hex").slice(0, 32);
   return join(tmpdir(), `subkit-mutation-test-order-${key}.jsonl`);
+}
+
+function mutationRunFile(directory: string, shard: string): string | undefined {
+  const ticketPath = process.env.SUBKIT_MUTATION_PARENT_TICKET_PATH;
+  if (!ticketPath) return undefined;
+  return join(dirname(ticketPath), directory, `${shard}.jsonl`);
+}
+
+function readTestBaselines(path: string | undefined): TestBaselines {
+  if (!path) return new Map();
+  try {
+    return parseTestBaselines(readFileSync(path, "utf8"));
+  } catch {
+    return new Map();
+  }
+}
+
+function appendRunFile(path: string, line: string): void {
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  appendFileSync(path, line, { mode: 0o600 });
 }
 
 function readShardTestHistory(path: string | undefined): ShardTestHistory {
@@ -90,8 +118,10 @@ if ("error" in args) {
 let selected: string[];
 let passthrough: string[];
 let directTests: string[] = [];
+let mutatedTarget: string | undefined;
 const testDistances = new Map<string, number>();
 let verificationRepo = REPO;
+let mutantDeadlinePolicy: MutantTestDeadlinePolicy | undefined;
 if (args.mode === "shard") {
   if (args.passthrough.some((arg) => arg !== "--list")) {
     console.error("shard mode accepts no test narrowing flags or paths");
@@ -106,6 +136,7 @@ if (args.mode === "shard") {
       manifestPath: isAbsolute(args.manifest) ? args.manifest : join(REPO, args.manifest),
       shardId: args.shard,
       env: process.env,
+      reuseFileStamp: true,
     });
     if (cached && !cached.wave.runtime_artifact_digest_sha256)
       throw new Error("parent mutation validation ticket wave lacks runtime artifact digest");
@@ -188,19 +219,38 @@ if (args.mode === "shard") {
     console.error("quality shard policy differs from the frozen wave");
     process.exit(1);
   }
-  const radius =
+  const policy =
     manifest.quality_policy_sha256 === undefined
       ? undefined
       : parseQualityShardPolicy(
           JSON.parse(readFileSync(join(policyRepo, QUALITY_SHARD_POLICY_PATH), "utf8")),
           manifest.shards.map((entry) => entry.id),
-        ).mutation_test_radius;
+        );
+  const radius = policy?.mutation_test_radius;
+  mutantDeadlinePolicy = policy?.mutant_test_deadline;
   const shardTests = selectShardMutationTests(
     shard.tests.filter((test) => test.execution !== "external_runtime"),
     radius,
   );
   selected = shardTests.map((test) => test.path);
-  directTests = shardTests.filter((test) => test.kind === "direct").map((test) => test.path);
+  mutatedTarget = activeMutantTarget(
+    shard.targets,
+    (path) => {
+      try {
+        return readFileSync(join(REPO, path), "utf8");
+      } catch {
+        return null;
+      }
+    },
+    process.env[ACTIVE_MUTANT_ENV],
+  );
+  directTests = shardTests
+    .filter(
+      (test) =>
+        test.kind === "direct" &&
+        (mutatedTarget === undefined || test.covers_targets.includes(mutatedTarget)),
+    )
+    .map((test) => test.path);
   for (const test of shardTests) {
     const distance = shardTestImportDistance(test.rationale);
     if (distance !== undefined) testDistances.set(test.path, distance);
@@ -233,15 +283,22 @@ const tests = selected.map((p) => `./${p}`);
 const verificationOwner =
   args.mode === "shard" ? `core-test-runner:${args.shard}` : "core-test-runner";
 
-async function runCoreTest(file: string): Promise<void> {
+const activeMutant = process.env[ACTIVE_MUTANT_ENV];
+
+async function runCoreTest(
+  file: string,
+  mutantDeadline?: { deadlineMs: number; baselineMs: number; ledgerPath: string },
+): Promise<void> {
   let childFailure: unknown;
   let actualChildFailure = false;
+  let runDirectory: string | undefined;
   try {
     const run = createVerificationRun({
       root: verificationRunsRoot(verificationRepo),
       owner: verificationOwner,
       logPath: "runner.log",
     });
+    runDirectory = run.directory;
     const logPath = join(run.directory, "runner.log");
     const resultPath = join(run.directory, "result.json");
     writeFileSync(logPath, "", { mode: 0o600, flag: "wx" });
@@ -253,6 +310,7 @@ async function runCoreTest(file: string): Promise<void> {
     try {
       await runIsolatedTestFile(file, {
         cwd: REPO,
+        ...(mutantDeadline === undefined ? {} : { deadlineMs: mutantDeadline.deadlineMs }),
         env: { SKIP_DOCKER: "1" },
         onOutput: (chunk, stream) => {
           try {
@@ -276,6 +334,16 @@ async function runCoreTest(file: string): Promise<void> {
           : `core test runner failed: ${terminal?.error}`,
       );
     actualChildFailure = terminal.exitCode !== 0 || terminal.timedOut;
+    if (terminal.timedOut && mutantDeadline !== undefined && activeMutant !== undefined)
+      appendRunFile(
+        mutantDeadline.ledgerPath,
+        formatDeadlineKill({
+          mutant: activeMutant,
+          test: file,
+          deadlineMs: mutantDeadline.deadlineMs,
+          baselineMs: mutantDeadline.baselineMs,
+        }),
+      );
     if (childFailure !== undefined && !actualChildFailure)
       throw new Error(`core test runner cleanup failed: ${childFailure}`);
     const status =
@@ -313,6 +381,9 @@ async function runCoreTest(file: string): Promise<void> {
     const ticketPath = process.env.SUBKIT_MUTATION_PARENT_TICKET_PATH;
     if (ticketPath) writeMutationInfrastructureSentinel(ticketPath, String(error));
     throw error;
+  } finally {
+    if (activeMutant !== undefined && runDirectory !== undefined)
+      rmSync(runDirectory, { recursive: true, force: true });
   }
 }
 
@@ -327,28 +398,44 @@ if (tests.length === 0) {
 if (args.mode === "shard") {
   try {
     const historyPath = advisoryShardTestOrderPath(args.shard);
+    const targetHistoryPath =
+      mutatedTarget === undefined
+        ? undefined
+        : advisoryShardTestOrderPath(args.shard, mutatedTarget);
+    const shardHistory = readShardTestHistory(historyPath);
+    const baselinePath = mutationRunFile("test-baselines", args.shard);
+    const ledgerPath = mutationRunFile("deadline-kills", args.shard);
+    const baselines = activeMutant === undefined ? new Map() : readTestBaselines(baselinePath);
     await runShardTests(
       selected,
       async (path) => {
         const startedAt = performance.now();
         let failed = false;
         try {
-          await runCoreTest(path);
+          const baselineMs = baselines.get(path);
+          const deadlineMs = mutantTestDeadlineMs(baselineMs, mutantDeadlinePolicy);
+          await runCoreTest(
+            path,
+            deadlineMs === undefined || baselineMs === undefined || ledgerPath === undefined
+              ? undefined
+              : { deadlineMs, baselineMs, ledgerPath },
+          );
         } catch (error) {
           failed = true;
           throw error;
         } finally {
-          recordShardTestObservation(historyPath, {
-            test: path,
-            durationMs: performance.now() - startedAt,
-            failed,
-          });
+          const observation = { test: path, durationMs: performance.now() - startedAt, failed };
+          if (activeMutant === undefined && !failed && baselinePath !== undefined)
+            appendRunFile(baselinePath, formatShardTestObservation(observation));
+          recordShardTestObservation(historyPath, observation);
+          recordShardTestObservation(targetHistoryPath, observation);
         }
       },
       process.env.SUBKIT_MUTATION_FULL_CLOSURE === "1",
       directTests,
-      readShardTestHistory(historyPath),
+      shardHistory,
       testDistances,
+      readShardTestHistory(targetHistoryPath),
     );
   } catch (error) {
     console.error((error as Error).message);

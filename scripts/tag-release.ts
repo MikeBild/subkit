@@ -95,6 +95,17 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
+console.log("release:tag: checking the mutation evidence (bun run check:mutation:release)\n");
+try {
+  execFileSync("bun", ["run", "check:mutation:release"], { cwd: REPO, stdio: "inherit" });
+} catch {
+  console.error(
+    `release:tag: refusing to tag ${tag} — no passing mutation evidence for this commit. ` +
+      "Run `bun run test:mutation:release` first.",
+  );
+  process.exit(1);
+}
+
 console.log("release:tag: running the live LLM gate (bun run verify:llm-live)\n");
 try {
   execFileSync("bun", ["run", "verify:llm-live", "--", ...process.argv.slice(2)], {

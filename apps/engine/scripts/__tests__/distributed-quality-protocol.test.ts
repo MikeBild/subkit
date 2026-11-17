@@ -213,6 +213,19 @@ test("two independent hosts produce a portable distributed quality bundle", asyn
     const packageRoot = join(temporary, "packages");
     for (const [index, shard] of source.wave.shards.entries()) {
       const host = index % 2 === 0 ? hostA : hostB;
+      const stampDirectory = join(
+        host,
+        "reports/mutation/runs",
+        source.wave.wave_id,
+        ticket.mutation_run_id,
+        "validation-stamps",
+      );
+      mkdirSync(stampDirectory, { recursive: true });
+      writeFileSync(join(stampDirectory, `${"a".repeat(64)}.json`), "{}\n");
+      for (const name of ["test-baselines", "deadline-kills"]) {
+        mkdirSync(join(dirname(stampDirectory), name), { recursive: true });
+        writeFileSync(join(dirname(stampDirectory), name, `${shard.id}.jsonl`), "");
+      }
       const produced = distributedShardPackageFiles({
         repo: host,
         waveId: source.wave.wave_id,
@@ -223,6 +236,9 @@ test("two independent hosts produce a portable distributed quality bundle", asyn
         existsSync(join(host, ticket.runtime_snapshot.path, "runtime-snapshot.seal.json")),
       ).toBe(true);
       expect(produced.filter((path) => path.includes("/runtime-snapshots/"))).toEqual([]);
+      expect(produced.filter((path) => path.includes("/validation-stamps/"))).toEqual([]);
+      expect(produced.filter((path) => path.includes("/test-baselines/"))).toEqual([]);
+      expect(produced.filter((path) => path.includes("/deadline-kills/"))).toEqual([]);
       expect(produced.filter((path) => path.endsWith("/mutation-validation-ticket.json"))).toEqual(
         [],
       );

@@ -2,6 +2,7 @@ export interface QualityShardPolicy {
   version: 1;
   worker_budget: number;
   mutation_test_radius?: number;
+  mutant_test_deadline?: { factor: number; floor_ms: number };
   equivalence_manifest_path: string;
   shards: readonly { id: string; resource_tags: readonly string[] }[];
 }
@@ -39,6 +40,19 @@ export function assertWaveMatchesQualityPolicy(
   }
 }
 
+function validMutantTestDeadline(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const { factor, floor_ms, ...rest } = value as Record<string, unknown>;
+  return (
+    Object.keys(rest).length === 0 &&
+    Number.isSafeInteger(factor) &&
+    (factor as number) >= 10 &&
+    Number.isSafeInteger(floor_ms) &&
+    (floor_ms as number) >= 10_000
+  );
+}
+
 export function parseQualityShardPolicy(
   value: unknown,
   requiredOwners: readonly string[],
@@ -51,6 +65,7 @@ export function parseQualityShardPolicy(
     policy.worker_budget < 1 ||
     (policy.mutation_test_radius !== undefined &&
       (!Number.isSafeInteger(policy.mutation_test_radius) || policy.mutation_test_radius < 1)) ||
+    !validMutantTestDeadline(policy.mutant_test_deadline) ||
     policy.equivalence_manifest_path !== "apps/engine/.mutation-equivalents.json" ||
     !Array.isArray(policy.shards)
   )

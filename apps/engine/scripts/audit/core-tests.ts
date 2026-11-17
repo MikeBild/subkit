@@ -75,6 +75,66 @@ export type ShardTestHistory = ReadonlyMap<string, ShardTestHistoryEntry>;
 
 const MIN_HISTORY_DURATION_MS = 200;
 
+export interface MutantTestDeadlinePolicy {
+  factor: number;
+  floor_ms: number;
+}
+
+export type TestBaselines = ReadonlyMap<string, number>;
+
+export function parseTestBaselines(text: string): Map<string, number> {
+  const baselines = new Map<string, number>();
+  for (const line of text.split("\n")) {
+    if (line === "") continue;
+    let value: unknown;
+    try {
+      value = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!value || typeof value !== "object") continue;
+    const { t, ms, f } = value as { t?: unknown; ms?: unknown; f?: unknown };
+    if (typeof t !== "string" || !Number.isSafeInteger(ms) || (ms as number) < 0 || f !== 0)
+      continue;
+    baselines.set(t, Math.max(baselines.get(t) ?? 0, ms as number));
+  }
+  return baselines;
+}
+
+export function mutantTestDeadlineMs(
+  baselineMs: number | undefined,
+  policy: MutantTestDeadlinePolicy | undefined,
+): number | undefined {
+  if (baselineMs === undefined || policy === undefined) return undefined;
+  return Math.max(policy.floor_ms, baselineMs * policy.factor);
+}
+
+export function formatDeadlineKill(kill: {
+  mutant: string;
+  test: string;
+  deadlineMs: number;
+  baselineMs: number;
+}): string {
+  return `${JSON.stringify({
+    mutant: kill.mutant,
+    test: kill.test,
+    deadline_ms: kill.deadlineMs,
+    baseline_ms: kill.baselineMs,
+  })}\n`;
+}
+
+export function countDeadlineKills(text: string): number {
+  const mutants = new Set<string>();
+  for (const line of text.split("\n")) {
+    if (line === "") continue;
+    const value = JSON.parse(line) as { mutant?: unknown };
+    if (typeof value.mutant !== "string" || !/^\d+$/.test(value.mutant))
+      throw new Error("deadline kill ledger entry is malformed");
+    mutants.add(value.mutant);
+  }
+  return mutants.size;
+}
+
 export function formatShardTestObservation(observation: {
   test: string;
   durationMs: number;
@@ -139,16 +199,31 @@ export function selectShardMutationTests<
   });
 }
 
+export const ACTIVE_MUTANT_ENV = "__STRYKER_ACTIVE_MUTANT__";
+
+export function activeMutantTarget(
+  targets: readonly string[],
+  readText: (path: string) => string | null,
+  mutantId: string | undefined,
+): string | undefined {
+  if (mutantId === undefined || !/^\d+$/.test(mutantId)) return undefined;
+  const marker = new RegExp(`stryMutAct_[0-9a-z]+\\("${mutantId}"\\)`);
+  const owners = targets.filter((target) => marker.test(readText(target) ?? ""));
+  return owners.length === 1 ? owners[0] : undefined;
+}
+
 export function orderShardTests(
   paths: readonly string[],
   directTests: readonly string[] = [],
   history: ShardTestHistory = new Map(),
   distances: ShardTestDistances = new Map(),
+  targetHistory: ShardTestHistory = new Map(),
 ): string[] {
   const direct = new Set(directTests);
   const distance = (path: string) => distances.get(path) ?? UNKNOWN_IMPORT_DISTANCE;
   return [...new Set(paths)].sort(
     (left, right) =>
+      killRate(targetHistory.get(right)) - killRate(targetHistory.get(left)) ||
       killRate(history.get(right)) - killRate(history.get(left)) ||
       Number(direct.has(right)) - Number(direct.has(left)) ||
       distance(left) - distance(right) ||
@@ -163,9 +238,10 @@ export async function runShardTests(
   directTests: readonly string[] = [],
   history: ShardTestHistory = new Map(),
   distances: ShardTestDistances = new Map(),
+  targetHistory: ShardTestHistory = new Map(),
 ): Promise<void> {
   let first: Error | undefined;
-  for (const path of orderShardTests(paths, directTests, history, distances)) {
+  for (const path of orderShardTests(paths, directTests, history, distances, targetHistory)) {
     try {
       await run(path);
     } catch (error) {

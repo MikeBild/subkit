@@ -85,13 +85,18 @@ export function distributedShardPackageFiles(options: {
     options.mutationRunId,
   );
   const ticket = relative(options.repo, join(mutationRoot, "mutation-validation-ticket.json"));
-  const snapshots = `${relative(options.repo, join(mutationRoot, "runtime-snapshots"))}/`;
+  const hostLocal = [
+    "runtime-snapshots",
+    "validation-stamps",
+    "test-baselines",
+    "deadline-kills",
+  ].map((name) => `${relative(options.repo, join(mutationRoot, name))}/`);
   return [
     join(options.repo, "reports/coverage/shards", options.waveId, options.coverageRunId),
     mutationRoot,
   ]
     .flatMap((root) => (existsSync(root) ? allFiles(root, options.repo) : []))
-    .filter((path) => path !== ticket && !path.startsWith(snapshots));
+    .filter((path) => path !== ticket && !hostLocal.some((prefix) => path.startsWith(prefix)));
 }
 
 export function portableRuntimeSnapshotFiles(options: {

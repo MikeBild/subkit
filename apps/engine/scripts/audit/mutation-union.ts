@@ -346,6 +346,19 @@ export function validateMutationShardUnion(input: MutationShardUnionInput): stri
       if (!seen.has(target)) errors.push(`shard ${shard.id} report misses target: ${target}`);
     if (receipt.exit_code !== result.exitCode)
       errors.push(`shard ${shard.id} receipt terminal metadata invalid`);
+    if (receipt.deadline_kills !== undefined) {
+      const killed = Object.values(files)
+        .flatMap(
+          (item) => (item as { mutants?: Array<{ status?: unknown }> } | null)?.mutants ?? [],
+        )
+        .filter((mutant) => mutant?.status === "Killed").length;
+      if (
+        !Number.isSafeInteger(receipt.deadline_kills) ||
+        (receipt.deadline_kills as number) < 0 ||
+        (receipt.deadline_kills as number) > killed
+      )
+        errors.push(`shard ${shard.id} receipt deadline kills invalid`);
+    }
     const scoring = inspectMutationShardScore({
       report,
       exitCode: result.exitCode,

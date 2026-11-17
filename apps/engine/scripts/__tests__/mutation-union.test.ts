@@ -113,6 +113,23 @@ const reportConfig = (report: JsonRecord): JsonRecord => report.config as JsonRe
 describe("mutation shard union", () => {
   test("accepts an exact full union", () =>
     expect(validateMutationShardUnion(input())).toEqual([]));
+  test("bounds reported deadline kills by the killed mutants of the shard", () => {
+    for (const [deadline_kills, valid] of [
+      [0, true],
+      [1, true],
+      [2, false],
+      [-1, false],
+      [0.5, false],
+      ["1", false],
+    ] as const) {
+      const value = input();
+      const receipt = JSON.parse(value.shards[0]!.receiptText);
+      value.shards[0]!.receiptText = JSON.stringify({ ...receipt, deadline_kills });
+      expect(validateMutationShardUnion(value)).toEqual(
+        valid ? [] : ["shard core receipt deadline kills invalid"],
+      );
+    }
+  });
   test("keeps a type-only target in the receipt while excluding it from mutation evidence", () => {
     const value = input();
     const typeOnly = "apps/engine/src/self-healing/core/patch-proposal.ts";

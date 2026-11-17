@@ -16,15 +16,27 @@ test("developer and release gates keep their distinct quality contracts", () => 
     "bun run verify:gate:static && bun run verify:quality",
   );
   expect(scripts.scripts["verify:gate:release"]).toBe(
-    "bun run verify:gate:static && bun run check:coverage-floor && bun run test:docker",
+    "bun run check:mutation:release && bun run verify:gate:static && bun run check:coverage-floor && bun run test:docker",
+  );
+  expect(scripts.scripts["check:mutation:release"]).toBe(
+    "bun run scripts/release-mutation-evidence.ts check",
+  );
+  expect(scripts.scripts["test:mutation:release"]).toEndWith(
+    "bun run scripts/release-mutation-evidence.ts run",
   );
   expect(scripts.scripts["verify:gate:release"]).not.toContain("quality-bundle");
   expect(scripts.scripts["verify:gate:release"]).toContain("bun run check:coverage-floor");
   expect(scripts.scripts["verify:gate:release"]).not.toContain("verify:quality");
 });
 
-test("tagging invokes only the local release gate and mutation stays a separate command", () => {
-  expect(tagRelease).toContain('execFileSync("bun", ["run", "verify:gate:release"]');
+test("tagging checks the mutation evidence before the paid check and never runs mutation itself", () => {
+  const evidence = tagRelease.indexOf('execFileSync("bun", ["run", "check:mutation:release"]');
+  const paid = tagRelease.indexOf('execFileSync("bun", ["run", "verify:llm-live"');
+  const gate = tagRelease.indexOf('execFileSync("bun", ["run", "verify:gate:release"]');
+  expect(evidence).toBeGreaterThan(-1);
+  expect(paid).toBeGreaterThan(evidence);
+  expect(gate).toBeGreaterThan(paid);
+  expect(tagRelease).not.toContain('test:mutation:release"]');
   expect(tagRelease).not.toContain('execFileSync("bun", ["run", "verify:gate"],');
   expect(tagRelease).not.toContain("verify:quality:release-shards");
   expect(scripts.scripts["verify:quality:release-shards"]).toBe(

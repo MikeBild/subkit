@@ -2,6 +2,7 @@
   "version": 1,
   "worker_budget": 2,
   "mutation_test_radius": 2,
+  "mutant_test_deadline": { "factor": 20, "floor_ms": 30000 },
   "equivalence_manifest_path": "apps/engine/.mutation-equivalents.json",
   "shards": [
     {

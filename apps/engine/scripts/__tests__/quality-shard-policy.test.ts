@@ -22,6 +22,27 @@ describe("versioned quality resource policy", () => {
     for (const mutation_test_radius of [0, -1, 1.5, Number.NaN, "2", null])
       expect(() => parseQualityShardPolicy({ ...policy, mutation_test_radius }, [])).toThrow();
   });
+  test("admits a reviewed mutant test deadline and rejects loose or malformed ones", () => {
+    const mutant_test_deadline = { factor: 20, floor_ms: 30_000 };
+    expect(
+      parseQualityShardPolicy({ ...policy, mutant_test_deadline }, ["workflows"])
+        .mutant_test_deadline,
+    ).toEqual(mutant_test_deadline);
+    for (const value of [
+      null,
+      [],
+      20,
+      { factor: 20 },
+      { floor_ms: 30_000 },
+      { factor: 9, floor_ms: 30_000 },
+      { factor: 20, floor_ms: 9_999 },
+      { factor: 20.5, floor_ms: 30_000 },
+      { factor: 20, floor_ms: 30_000, extra: 1 },
+    ])
+      expect(() =>
+        parseQualityShardPolicy({ ...policy, mutant_test_deadline: value }, []),
+      ).toThrow();
+  });
   test("new canonical owners require explicit resource classification", () => {
     expect(() => parseQualityShardPolicy(policy, ["workflows", "identity"])).toThrow(
       "Missing reviewed resource policy: identity",

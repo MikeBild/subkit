@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
-import { lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import {
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import {
   mutationClosureFiles,
@@ -17,6 +24,7 @@ const SHA256 = /^[a-f0-9]{64}$/;
 const PATH_ENV = "SUBKIT_MUTATION_PARENT_TICKET_PATH";
 const SHA_ENV = "SUBKIT_MUTATION_PARENT_TICKET_SHA256";
 const ORIGINAL_REPO_ENV = "SUBKIT_MUTATION_ORIGINAL_REPO";
+const FILE_STAMP_DIRECTORY = "validation-stamps";
 
 type PathDigest = { path: string; sha256: string };
 type TicketShard = Pick<
@@ -136,6 +144,51 @@ function assertBoundFiles(repo: string, paths: readonly string[], label: string)
     if (fromRoot === "" || fromRoot === ".." || fromRoot.startsWith(`..${sep}`))
       throw new Error(`${label} escapes original repository`);
   }
+}
+
+function boundFileState(repo: string, paths: readonly string[]): string {
+  const root = realpathSync(repo);
+  const hash = createHash("sha256");
+  for (const path of sorted(paths)) {
+    if (!canonicalRepoPath(path)) throw new Error("bound file has non-canonical repository path");
+    const stat = lstatSync(join(root, path), { bigint: true });
+    if (!stat.isFile() || stat.isSymbolicLink())
+      throw new Error("bound file must be a regular non-symlink file");
+    hash.update(
+      `${path}\0${stat.dev}\0${stat.ino}\0${stat.mode}\0${stat.size}\0${stat.mtimeNs}\0${stat.ctimeNs}\0`,
+    );
+  }
+  return hash.digest("hex");
+}
+
+function fileStampPath(ticketPath: string, ticketSha256: string): string {
+  return join(dirname(ticketPath), FILE_STAMP_DIRECTORY, `${ticketSha256}.json`);
+}
+
+function fileStampMatches(path: string, ticketSha256: string, state: string): boolean {
+  try {
+    const stat = lstatSync(path);
+    if (!stat.isFile() || stat.isSymbolicLink()) return false;
+    const stamp = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+    return (
+      stamp.version === 1 &&
+      stamp.ticket_sha256 === ticketSha256 &&
+      stamp.file_state_sha256 === state
+    );
+  } catch {
+    return false;
+  }
+}
+
+function writeFileStamp(path: string, ticketSha256: string, state: string): void {
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const pending = `${path}.${process.pid}.pending`;
+  writeFileSync(
+    pending,
+    `${JSON.stringify({ version: 1, ticket_sha256: ticketSha256, file_state_sha256: state })}\n`,
+    { mode: 0o600, flag: "wx" },
+  );
+  renameSync(pending, path);
 }
 
 function safeRepoRead(repo: string, path: string): string | null {
@@ -418,11 +471,13 @@ export function validateParentMutationValidationTicket(input: {
   shardId?: string;
   sandboxRepo?: string;
   env?: NodeJS.ProcessEnv;
+  reuseFileStamp?: boolean;
 }): {
   ticket: MutationValidationTicket;
   wave: MutationWaveManifest;
   manifestText: string;
   ticketSha256: string;
+  reusedFileStamp: boolean;
 } | null {
   const parent = inherited(input.env ?? process.env);
   if (!parent) return null;
@@ -488,29 +543,39 @@ export function validateParentMutationValidationTicket(input: {
   }
   const runtimeInputs = mutationTestInputs(original);
   const closureFiles = mutationClosureFiles(original);
-  assertBoundFiles(original, runtimeInputs, "runtime input");
-  assertBoundFiles(original, closureFiles, "closure input");
-  assertBoundFiles(original, ticket.test_paths, "test input");
   if (!sameList(runtimeInputs, ticket.runtime_inputs))
     throw new Error("parent mutation validation ticket runtime input inventory differs");
   if (!sameList(closureFiles, ticket.closure_files))
     throw new Error("parent mutation validation ticket closure input inventory differs");
+  const stampPath = fileStampPath(loaded.path, parent.sha256);
+  const fileState = input.reuseFileStamp
+    ? boundFileState(original, [...runtimeInputs, ...closureFiles, ...ticket.test_paths])
+    : undefined;
+  const reusedFileStamp =
+    fileState !== undefined && fileStampMatches(stampPath, parent.sha256, fileState);
+  if (!reusedFileStamp) {
+    assertBoundFiles(original, runtimeInputs, "runtime input");
+    assertBoundFiles(original, closureFiles, "closure input");
+    assertBoundFiles(original, ticket.test_paths, "test input");
+  }
   validateRuntimeWitnessLedger({
     repo: original,
     files: closureFiles,
     ledgerPath: wave.dynamic_import_ledger_path,
   });
   equal(listHash(runtimeInputs), ticket.runtime_input_paths_sha256, "runtime input paths");
-  equal(
-    digestWaveFiles(original, runtimeInputs),
-    ticket.runtime_input_source_sha256,
-    "runtime source bytes",
-  );
-  equal(
-    digestWaveFiles(original, closureFiles),
-    ticket.closure_source_sha256,
-    "closure source bytes",
-  );
+  if (!reusedFileStamp) {
+    equal(
+      digestWaveFiles(original, runtimeInputs),
+      ticket.runtime_input_source_sha256,
+      "runtime source bytes",
+    );
+    equal(
+      digestWaveFiles(original, closureFiles),
+      ticket.closure_source_sha256,
+      "closure source bytes",
+    );
+  }
   const patch = patchInputs(original);
   if (JSON.stringify(patch) !== JSON.stringify(ticket.patch_inputs))
     throw new Error("parent mutation validation ticket patch input inventory differs");
@@ -519,7 +584,8 @@ export function validateParentMutationValidationTicket(input: {
   equal(listHash(tests), ticket.test_paths_sha256, "test path inventory");
   if (JSON.stringify(tests) !== JSON.stringify(ticket.test_paths))
     throw new Error("parent mutation validation ticket test paths differ");
-  equal(digestWaveFiles(original, tests), ticket.test_freeze_sha256, "test bytes");
+  if (!reusedFileStamp)
+    equal(digestWaveFiles(original, tests), ticket.test_freeze_sha256, "test bytes");
   equal(digestWaveFiles(original, ["stryker.config.json"]), ticket.config_sha256, "config bytes");
   equal(digestWaveFiles(original, ["bun.lock"]), ticket.lock_sha256, "lock bytes");
   equal(
@@ -538,5 +604,7 @@ export function validateParentMutationValidationTicket(input: {
       wave.quality_policy_sha256,
       "quality policy bytes",
     );
-  return { ticket, wave, manifestText, ticketSha256: parent.sha256 };
+  if (fileState !== undefined && !reusedFileStamp)
+    writeFileStamp(stampPath, parent.sha256, fileState);
+  return { ticket, wave, manifestText, ticketSha256: parent.sha256, reusedFileStamp };
 }

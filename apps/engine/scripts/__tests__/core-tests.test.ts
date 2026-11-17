@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import {
+  activeMutantTarget,
+  countDeadlineKills,
+  formatDeadlineKill,
   formatShardTestObservation,
+  mutantTestDeadlineMs,
   orderShardTests,
   parseShardArgs,
   parseShardTestHistory,
+  parseTestBaselines,
   runShardTests,
   selectCanonicalCoreTests,
   selectCoreTests,
@@ -210,4 +215,75 @@ test("a mutation test radius keeps direct, contract and near importers and drops
   expect(selectShardMutationTests(tests, undefined)).toEqual(tests);
   for (const radius of [0, -1, 1.5, Number.NaN])
     expect(() => selectShardMutationTests(tests, radius)).toThrow("positive safe integer");
+});
+
+test("the active mutant resolves to the single target that carries its switch", () => {
+  const sources: Record<string, string> = {
+    "a.ts": 'x = stryMutAct_9fa48("12") ? 1 : 2; y = stryMutAct_9fa48("120") ? 1 : 2;',
+    "b.ts": 'z = stryMutAct_9fa48("13") ? 1 : 2;',
+    "c.ts": 'w = stryMutAct_9fa48("13") ? 1 : 2;',
+  };
+  const read = (path: string) => sources[path] ?? null;
+  const targets = ["a.ts", "b.ts", "missing.ts"];
+  expect(activeMutantTarget(targets, read, "12")).toBe("a.ts");
+  expect(activeMutantTarget(targets, read, "120")).toBe("a.ts");
+  expect(activeMutantTarget(targets, read, "13")).toBe("b.ts");
+  expect(activeMutantTarget(targets, read, "1")).toBeUndefined();
+  expect(activeMutantTarget(targets, read, undefined)).toBeUndefined();
+  expect(activeMutantTarget(targets, read, '12")|x')).toBeUndefined();
+  expect(activeMutantTarget(["b.ts", "c.ts"], read, "13")).toBeUndefined();
+});
+
+test("kills recorded for the mutated target outrank shard-wide kills without dropping any test", () => {
+  const observe = (test: string, durationMs: number, failed: boolean) =>
+    formatShardTestObservation({ test, durationMs, failed });
+  const shard = parseShardTestHistory(
+    observe("shard-killer.test.ts", 40, true) + observe("target-killer.test.ts", 40, false),
+  );
+  const target = parseShardTestHistory(observe("target-killer.test.ts", 400, true));
+  const paths = ["a.test.ts", "shard-killer.test.ts", "target-killer.test.ts"];
+  expect(orderShardTests(paths, [], shard, new Map(), target)).toEqual([
+    "target-killer.test.ts",
+    "shard-killer.test.ts",
+    "a.test.ts",
+  ]);
+  expect(orderShardTests(paths, [], shard)).toEqual([
+    "shard-killer.test.ts",
+    "a.test.ts",
+    "target-killer.test.ts",
+  ]);
+});
+
+test("a mutant deadline needs a passing baseline and a reviewed policy", () => {
+  const baselines = parseTestBaselines(
+    [
+      formatShardTestObservation({ test: "fast.test.ts", durationMs: 40, failed: false }),
+      formatShardTestObservation({ test: "fast.test.ts", durationMs: 150_000, failed: true }),
+      formatShardTestObservation({ test: "slow.test.ts", durationMs: 4_000, failed: false }),
+      formatShardTestObservation({ test: "slow.test.ts", durationMs: 9_000, failed: false }),
+      formatShardTestObservation({ test: "only-failed.test.ts", durationMs: 10, failed: true }),
+      "not json\n",
+    ].join(""),
+  );
+  const policy = { factor: 20, floor_ms: 30_000 };
+  expect([...baselines]).toEqual([
+    ["fast.test.ts", 40],
+    ["slow.test.ts", 9_000],
+  ]);
+  expect(mutantTestDeadlineMs(baselines.get("fast.test.ts"), policy)).toBe(30_000);
+  expect(mutantTestDeadlineMs(baselines.get("slow.test.ts"), policy)).toBe(180_000);
+  expect(mutantTestDeadlineMs(baselines.get("only-failed.test.ts"), policy)).toBeUndefined();
+  expect(mutantTestDeadlineMs(baselines.get("fast.test.ts"), undefined)).toBeUndefined();
+});
+
+test("deadline kills count each mutant once and reject malformed ledgers", () => {
+  const kill = { test: "a.test.ts", deadlineMs: 30_000, baselineMs: 40 };
+  const ledger = [
+    formatDeadlineKill({ ...kill, mutant: "7" }),
+    formatDeadlineKill({ ...kill, mutant: "7", test: "b.test.ts" }),
+    formatDeadlineKill({ ...kill, mutant: "12" }),
+  ].join("");
+  expect(countDeadlineKills("")).toBe(0);
+  expect(countDeadlineKills(ledger)).toBe(2);
+  expect(() => countDeadlineKills(`${ledger}{"mutant":7}\n`)).toThrow("malformed");
 });

@@ -6,7 +6,9 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
@@ -441,4 +443,66 @@ test("linked runtime-witness manifest and result bytes are revalidated after tic
       }),
     ).toThrow("runtime witness differs");
   }
+});
+
+test("a repeated child validation reuses the file stamp only while every bound file is untouched", () => {
+  const f = fixture();
+  const validate = () =>
+    validateParentMutationValidationTicket({
+      repo: f.root,
+      manifestPath: f.manifestPath,
+      shardId: "engine",
+      sandboxRepo: f.sandbox,
+      env: f.env,
+      reuseFileStamp: true,
+    });
+  expect(validate()?.reusedFileStamp).toBe(false);
+  expect(validate()?.reusedFileStamp).toBe(true);
+  expect(
+    validateParentMutationValidationTicket({
+      repo: f.root,
+      manifestPath: f.manifestPath,
+      env: f.env,
+    })?.reusedFileStamp,
+  ).toBe(false);
+  for (const changed of ["apps/engine/src/target.ts", "apps/engine/src/target.test.ts"]) {
+    const g = fixture();
+    const again = () =>
+      validateParentMutationValidationTicket({
+        repo: g.root,
+        manifestPath: g.manifestPath,
+        env: g.env,
+        reuseFileStamp: true,
+      });
+    expect(again()?.reusedFileStamp).toBe(false);
+    expect(again()?.reusedFileStamp).toBe(true);
+    const before = statSync(join(g.root, changed));
+    const original = readFileSync(join(g.root, changed), "utf8");
+    writeFileSync(join(g.root, changed), original.replace("target", "tarbet"));
+    utimesSync(join(g.root, changed), before.atime, before.mtime);
+    expect(statSync(join(g.root, changed)).size).toBe(before.size);
+    expect(again).toThrow("bytes differs");
+  }
+});
+
+test("a file stamp for another ticket or with a forged state forces the full byte validation", () => {
+  const f = fixture();
+  const validate = () =>
+    validateParentMutationValidationTicket({
+      repo: f.root,
+      manifestPath: f.manifestPath,
+      env: f.env,
+      reuseFileStamp: true,
+    });
+  expect(validate()?.reusedFileStamp).toBe(false);
+  const stamp = join(f.run, "validation-stamps", `${f.ticket.sha256}.json`);
+  const recorded = JSON.parse(readFileSync(stamp, "utf8"));
+  writeFileSync(stamp, `${JSON.stringify({ ...recorded, ticket_sha256: sha })}\n`);
+  expect(validate()?.reusedFileStamp).toBe(false);
+  expect(validate()?.reusedFileStamp).toBe(true);
+  writeFileSync(stamp, `${JSON.stringify({ ...recorded, file_state_sha256: sha })}\n`);
+  expect(validate()?.reusedFileStamp).toBe(false);
+  writeFileSync(stamp, "not json\n");
+  expect(validate()?.reusedFileStamp).toBe(false);
+  expect(JSON.parse(readFileSync(stamp, "utf8"))).toEqual(recorded);
 });
