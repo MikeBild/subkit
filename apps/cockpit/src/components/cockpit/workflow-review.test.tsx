@@ -51,11 +51,13 @@ const receipt = (digest = "digest-a", status: "pending" | "completed" = "pending
 });
 
 type FetchCall = { path: string; init: RequestInit };
+type PendingTimer = { run: () => void; delay: number };
 
 async function mounted(respond: (call: FetchCall) => Promise<Response> | Response): Promise<{
   dom: JSDOM;
   root: Root;
   calls: FetchCall[];
+  timers: Map<number, PendingTimer>;
   flush: () => Promise<void>;
   remount: (conversationId?: string, elicitationId?: string) => Promise<void>;
   hide: () => Promise<void>;
@@ -78,6 +80,16 @@ async function mounted(respond: (call: FetchCall) => Promise<Response> | Respons
       dispatchEvent: () => false,
     }) as MediaQueryList;
   const calls: FetchCall[] = [];
+  const timers = new Map<number, PendingTimer>();
+  let timerId = 0;
+  dom.window.setTimeout = ((run: () => void, delay = 0) => {
+    timerId += 1;
+    timers.set(timerId, { run, delay });
+    return timerId;
+  }) as typeof dom.window.setTimeout;
+  dom.window.clearTimeout = ((id: number) => {
+    timers.delete(id);
+  }) as typeof dom.window.clearTimeout;
   const globals: Record<string, unknown> = {
     window: dom.window,
     document: dom.window.document,
@@ -176,6 +188,7 @@ async function mounted(respond: (call: FetchCall) => Promise<Response> | Respons
     dom,
     root,
     calls,
+    timers,
     flush,
     remount,
     hide,
@@ -318,6 +331,32 @@ isolated(
     }
   },
 );
+
+isolated("a far expiry waits in bounded timer steps and stays ready", async () => {
+  const view = await mounted((call) => {
+    if (call.path.endsWith("/tool-policies"))
+      return json({ policies: {}, eligible_no_confirm_tools: ["save_workflow_draft"] });
+    if (reviewPath(call)) return json(receipt());
+    throw new Error(`unexpected ${call.path}`);
+  });
+  const state = () =>
+    view.dom.window.document
+      .querySelector('[data-testid="workflow-review"]')
+      ?.getAttribute("data-state");
+  try {
+    for (let step = 0; step < 3; step++) {
+      expect(state()).toBe("ready");
+      expect([...view.timers.values()].map((timer) => timer.delay)).toEqual([2_147_483_647]);
+      const [id, timer] = [...view.timers.entries()][0]!;
+      view.timers.delete(id);
+      await act(async () => timer.run());
+      await view.flush();
+    }
+    expect(state()).toBe("ready");
+  } finally {
+    await view.close();
+  }
+});
 
 isolated("save-only finalization retains the reviewed digest and marks save_only", async () => {
   const view = await mounted((call) => {

@@ -19,6 +19,7 @@ import {
 type Receipt = components["schemas"]["WorkflowReviewReceipt"];
 type Actions = Receipt["actions"];
 const saveActions: Actions = { activate: false, grant: null, schedule: null };
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 export function WorkflowReview({
   conversationId,
@@ -129,8 +130,16 @@ export function WorkflowReview({
   }, [checkResult, open, conversationId, prepare, storageKey, t]);
   useEffect(() => {
     if (state !== "ready" || !receipt) return;
-    const delay = Math.max(0, Date.parse(receipt.expires_at) - Date.now());
-    const timer = window.setTimeout(() => setState("expired"), delay);
+    const expiresAt = Date.parse(receipt.expires_at);
+    let timer: number;
+    const arm = () => {
+      const delay = Math.min(Math.max(0, expiresAt - Date.now()), MAX_TIMER_DELAY_MS);
+      timer = window.setTimeout(
+        () => (expiresAt <= Date.now() ? setState("expired") : arm()),
+        delay,
+      );
+    };
+    arm();
     return () => window.clearTimeout(timer);
   }, [receipt, state]);
   const refreshConversation = async () => {
