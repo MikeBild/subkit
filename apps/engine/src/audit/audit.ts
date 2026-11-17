@@ -114,7 +114,10 @@ export function audit(entry: Partial<AuditEntry>, executor?: Executor): AuditEnt
   const filled = buildEntry(entry);
   logEntry(filled);
 
-  const persist = writeAudit(filled, executor).catch((err) => {
+  const persist = retryTransient(() => writeAudit(filled, executor), {
+    label: "detached_audit_hosted_quota",
+    shouldRetry: (error) => hostedQuotaError(error)?.code === "40001",
+  }).catch((err) => {
     logger.error({
       module: "audit",
       action: "audit.persist_failed",

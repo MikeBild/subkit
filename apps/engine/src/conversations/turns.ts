@@ -275,7 +275,21 @@ export async function finishConversationTurn(
       ),
     )
     .returning({ id: conversationTurns.id });
-  if (rows.length) await changed(db, tenantId, conversationId, id, state);
+  if (!rows.length) return;
+  const records = await retryTransient(
+    () => {
+      const pending: Array<() => void> = [];
+      return db.transaction(async (tx) => {
+        await changed(tx, tenantId, conversationId, id, state, (record) => pending.push(record));
+        return pending;
+      });
+    },
+    {
+      label: "conversation_turn_finish_hosted_quota",
+      shouldRetry: (error) => hostedQuotaError(error)?.code === "40001",
+    },
+  );
+  for (const record of records) record();
 }
 
 export async function bindConversationTurn(
@@ -524,6 +538,16 @@ export async function releaseConversationTurn(
         ctrl.signal.aborted ? "cancelled" : failures.has(ctrl) ? "failed" : state,
         owner.attempt,
       );
+  } catch (error) {
+    logger.error({
+      module: "conversation",
+      action: "turn.release_failed",
+      msg: "conversation turn release was not fully recorded",
+      tenant_id: tenantId,
+      conversation_id: conversationId,
+      turn_id: owner?.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
   } finally {
     owners.delete(ctrl);
     clearInterval(timers.get(ctrl));

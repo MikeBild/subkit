@@ -4,7 +4,9 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConnector } from "../../connectors/service.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Db } from "../../db/client.ts";
+import { hostedQuotaError } from "../../db/hosted-quota-errors.ts";
 import { conversations } from "../../db/schema/index.ts";
+import { retryTransient } from "../../db/transient.ts";
 import { getIntakeItem } from "../../knowledge/intake.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { detectConfiguredProvider } from "../../llm/runtime/model-init.ts";
@@ -168,30 +170,80 @@ export async function createConversation(
         : []),
     ]),
   ];
-  const [row] = await exec
-    .insert(conversations)
-    .values({
-      tenant_id: p.tenant_id,
-      target_connector_id: p.connector_id ?? null,
-      target_workflow_id: targetWorkflowId,
-      status: "active",
-      draft: initialDraft,
-      playbook_mode: p.playbook_mode ?? "auto",
-      owner_id: p.actor_id ?? null,
-      origin_client: p.origin_client ?? null,
-      surface: p.surface ?? null,
-      title_locked: typeof p.title === "string" && p.title.trim().length > 0,
-      loaded_skills: seedSlugs.map((slug) => ({ slug, last_turn: 0 })),
-      ...(p.model ? { model: p.model } : {}),
-      ...(p.title ? { title: p.title } : {}),
-      ...(memory ? { memory } : {}),
-    })
-    .returning();
-  assertInsertRow(row, "conversations");
   const auditActor = p.principal
     ? { actor_type: p.principal.kind, actor_id: p.principal.id }
     : { actor_type: "unknown" as const, actor_id: null };
-
+  const created = await retryTransient(
+    () => {
+      const records: Array<() => void> = [];
+      const afterCommit = (record: () => void) => records.push(record);
+      return exec.transaction(async (tx) => {
+        const [inserted] = await tx
+          .insert(conversations)
+          .values({
+            tenant_id: p.tenant_id,
+            target_connector_id: p.connector_id ?? null,
+            target_workflow_id: targetWorkflowId,
+            status: "active",
+            draft: initialDraft,
+            playbook_mode: p.playbook_mode ?? "auto",
+            owner_id: p.actor_id ?? null,
+            origin_client: p.origin_client ?? null,
+            surface: p.surface ?? null,
+            title_locked: typeof p.title === "string" && p.title.trim().length > 0,
+            loaded_skills: seedSlugs.map((slug) => ({ slug, last_turn: 0 })),
+            ...(p.model ? { model: p.model } : {}),
+            ...(p.title ? { title: p.title } : {}),
+            ...(memory ? { memory } : {}),
+          })
+          .returning();
+        assertInsertRow(inserted, "conversations");
+        await auditAwait(
+          {
+            tenant_id: p.tenant_id,
+            ...auditActor,
+            action: AuditAction.CONVERSATION_CREATED,
+            resource_type: "conversation",
+            resource_id: inserted.id,
+            result: "success",
+            metadata: {
+              connector_id: p.connector_id ?? null,
+              workflow_id: targetWorkflowId,
+              execution_id: focus?.execution_id ?? null,
+              owner_id: p.actor_id ?? null,
+              model: p.model ?? null,
+              title: p.title ?? null,
+              memory_included: Boolean(memory),
+              playground,
+            },
+          },
+          tx,
+          { afterCommit },
+        );
+        if (memory) {
+          await auditAwait(
+            {
+              tenant_id: p.tenant_id,
+              ...auditActor,
+              action: AuditAction.CONVERSATION_MEMORY_INJECTED,
+              resource_type: "conversation",
+              resource_id: inserted.id,
+              result: "success",
+              metadata: { bytes: memory.length },
+            },
+            tx,
+            { afterCommit },
+          );
+        }
+        return { row: inserted, records };
+      });
+    },
+    {
+      label: "conversation_create_hosted_quota",
+      shouldRetry: (error) => hostedQuotaError(error)?.code === "40001",
+    },
+  );
+  const row = created.row;
   log.conversation.created({
     conversation_id: row.id,
     tenant_id: p.tenant_id,
@@ -201,42 +253,7 @@ export async function createConversation(
     has_initial_message: Boolean(p.initial_message),
     memory_included: Boolean(memory),
   });
-
-  await auditAwait(
-    {
-      tenant_id: p.tenant_id,
-      ...auditActor,
-      action: AuditAction.CONVERSATION_CREATED,
-      resource_type: "conversation",
-      resource_id: row.id,
-      result: "success",
-      metadata: {
-        connector_id: p.connector_id ?? null,
-        workflow_id: targetWorkflowId,
-        execution_id: focus?.execution_id ?? null,
-        owner_id: p.actor_id ?? null,
-        model: p.model ?? null,
-        title: p.title ?? null,
-        memory_included: Boolean(memory),
-        playground,
-      },
-    },
-    exec,
-  );
-  if (memory) {
-    await auditAwait(
-      {
-        tenant_id: p.tenant_id,
-        ...auditActor,
-        action: AuditAction.CONVERSATION_MEMORY_INJECTED,
-        resource_type: "conversation",
-        resource_id: row.id,
-        result: "success",
-        metadata: { bytes: memory.length },
-      },
-      exec,
-    );
-  }
+  for (const record of created.records) record();
 
   if (p.initial_message && detectConfiguredProvider({ tenantId: p.tenant_id }) === "mock") {
     const msg = p.initial_message;
@@ -273,10 +290,20 @@ export async function createConversation(
     });
     initialMessage = rewrite.text;
     const persistedReferences = references.length > 0 ? references : null;
-    initialMessageId = await appendMessage(exec, p.tenant_id, row.id, "user", {
-      text: initialMessage,
-      ...(persistedReferences ? { references: persistedReferences } : {}),
-    });
+    const initialText = initialMessage;
+    initialMessageId = await retryTransient(
+      () =>
+        exec.transaction((tx) =>
+          appendMessage(tx, p.tenant_id, row.id, "user", {
+            text: initialText,
+            ...(persistedReferences ? { references: persistedReferences } : {}),
+          }),
+        ),
+      {
+        label: "conversation_message_hosted_quota",
+        shouldRetry: (error) => hostedQuotaError(error)?.code === "40001",
+      },
+    );
     if (row.title === null) {
       row.title = deriveConversationTitle({ text: initialMessage });
     }
