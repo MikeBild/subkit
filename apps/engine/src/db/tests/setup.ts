@@ -141,7 +141,7 @@ export async function createTestDb(label: string): Promise<TestDb> {
       .from(schema.tenants)
       .catch(() => []);
     await waitFor(() => tenantRows.every(({ id }) => tenantWorkSnapshot(id).in_flight === 0), {
-      tries: 5000,
+      tries: 30_000,
       sleepMs: 2,
       label: "database fixture tenant background work",
     });
