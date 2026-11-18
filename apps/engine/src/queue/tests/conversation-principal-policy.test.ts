@@ -3,9 +3,14 @@ import { and, eq, sql } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { createElicitation } from "../../conversations/elicitations.ts";
+import {
+  finishConversationTurn,
+  reserveConversationTurn,
+} from "../../conversations/public/lifecycle.ts";
 import * as svc from "../../conversations/service.ts";
 import {
   apiKeys,
+  mcpTasks,
   roles,
   sessions,
   systemAccounts,
@@ -17,6 +22,7 @@ import { sha256Hex } from "../../identity/api-key.ts";
 import { getMcpTask, insertMcpTask } from "../../mcp/tasks/store.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { requestApproval } from "../../tools/approval.ts";
 import { enqueueApprovalElicitationResume } from "../approval-resume.ts";
 import { registerConversationRunTurnHandler } from "../handlers/conversation-run-turn.ts";
@@ -294,3 +300,75 @@ for (const invalidation of ["none", "revoked", "missing", "wrong_kind"] as const
     }
   });
 }
+
+test("portal approval that arrives while the asking turn still runs is queued once it ends", async () => {
+  const f = await fixture();
+  const approvalId = nextUuid();
+  await requestApproval({
+    db: ctx.testDb.db,
+    principal: f.principal,
+    approval_id: approvalId,
+    tool: "workflow_save",
+    surface: "chat",
+    via: "chat",
+    reason: "held_writes",
+    execution_mode: "dev",
+    args: {},
+  });
+  await ctx.testDb.db
+    .update(toolApprovals)
+    .set({ granted_at: sql`clock_timestamp()` })
+    .where(and(eq(toolApprovals.tenant_id, ctx.tenantId), eq(toolApprovals.id, approvalId)));
+  const elicitation = await createElicitation(
+    {
+      tenant_id: ctx.tenantId,
+      conversation_id: f.data.conversation_id,
+      tool_call_id: null,
+      tool_name: "ask_user_text",
+      summary: "approved action",
+      input: {},
+      actor_id: f.user.id,
+    },
+    ctx.testDb.db,
+  );
+  const asking = await reserveConversationTurn(ctx.testDb.db, ctx.tenantId, f.data.conversation_id);
+  let sent = 0;
+  const boss = {
+    send: async (_queue: string, _data: ConversationRunTurnJob, options: { id: string }) => {
+      sent += 1;
+      return options.id;
+    },
+  } as unknown as PgBoss;
+  const queued = enqueueApprovalElicitationResume(
+    {
+      tenant_id: ctx.tenantId,
+      conversation_id: f.data.conversation_id,
+      elicitation_id: elicitation.id,
+      approval_id: approvalId,
+      approver_user_id: f.user.id,
+      decision: "approve",
+    },
+    ctx.testDb.db,
+    boss,
+  );
+  await waitFor(
+    async () => {
+      const [task] = await ctx.testDb.db
+        .select({ job_id: mcpTasks.job_id })
+        .from(mcpTasks)
+        .where(
+          and(
+            eq(mcpTasks.tenant_id, ctx.tenantId),
+            eq(mcpTasks.conversation_id, f.data.conversation_id),
+            eq(mcpTasks.kind, "respond_elicitation"),
+          ),
+        );
+      return task?.job_id ?? null;
+    },
+    { label: "continuation prepared while the asking turn runs" },
+  );
+  expect(sent).toBe(0);
+  await finishConversationTurn(ctx.testDb.db, ctx.tenantId, f.data.conversation_id, asking);
+  expect(await queued).toBe(true);
+  expect(sent).toBe(1);
+});

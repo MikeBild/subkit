@@ -3,12 +3,29 @@ import { and, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { type Actor, actorOf } from "../audit/actor.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
+import { ConversationTurnInProgressError } from "../conversations/types.ts";
 import type { Db } from "../db/client.ts";
 import { executions, toolApprovals } from "../db/schema/index.ts";
 import { rehydrateExecutionPrincipal } from "../execution/authorization-context.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import { insertMcpTask, setMcpTaskFailure, setMcpTaskJobId } from "../mcp/tasks/store.ts";
 import { enqueueConversationRunTurn } from "./handlers/conversation-run-turn.ts";
+
+const TURN_RELEASE_WAIT_MS = 5_000;
+const TURN_RELEASE_POLL_MS = 50;
+
+async function afterCurrentTurn<T>(enqueue: () => Promise<T>): Promise<T> {
+  const deadline = Date.now() + TURN_RELEASE_WAIT_MS;
+  for (;;) {
+    try {
+      return await enqueue();
+    } catch (error) {
+      if (!(error instanceof ConversationTurnInProgressError) || Date.now() >= deadline)
+        throw error;
+      await new Promise((resolve) => setTimeout(resolve, TURN_RELEASE_POLL_MS));
+    }
+  }
+}
 
 async function approvalOwnerPrincipal(
   tenant_id: string,
@@ -120,22 +137,24 @@ export async function enqueueApprovalElicitationResume(
   try {
     const attempt_id = randomUUID();
     await setMcpTaskJobId(p.tenant_id, task_id, attempt_id, db);
-    const job_id = await enqueueConversationRunTurn(
-      boss,
-      db,
-      {
-        tenant_id: p.tenant_id,
-        conversation_id: p.conversation_id,
-        mcp_task_id: task_id,
-        actor_id,
-        ...(runAs ? { principal: runAs } : {}),
-        kind: "respond_elicitation",
-        elicitation_id: p.elicitation_id,
-        answer_channel: "portal",
-        approver_user_id: p.approver_user_id,
-        ...(p.decision === "decline" ? { reason: "user_declined" } : {}),
-      },
-      { id: attempt_id },
+    const job_id = await afterCurrentTurn(() =>
+      enqueueConversationRunTurn(
+        boss,
+        db,
+        {
+          tenant_id: p.tenant_id,
+          conversation_id: p.conversation_id,
+          mcp_task_id: task_id,
+          actor_id,
+          ...(runAs ? { principal: runAs } : {}),
+          kind: "respond_elicitation",
+          elicitation_id: p.elicitation_id,
+          answer_channel: "portal",
+          approver_user_id: p.approver_user_id,
+          ...(p.decision === "decline" ? { reason: "user_declined" } : {}),
+        },
+        { id: attempt_id },
+      ),
     );
     if (!job_id) {
       await setMcpTaskFailure(p.tenant_id, task_id, "enqueue_failed", db);
