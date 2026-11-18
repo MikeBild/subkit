@@ -15,7 +15,9 @@ import { hasConversationAbort } from "./abort.ts";
 import {
   acquireConversationTurn,
   ConversationTurnInProgressError,
+  cancelConversationTurns,
   conversationTurnId,
+  parkConversationTurn,
   releaseConversationTurn,
   reserveConversationTurn,
 } from "./turns.ts";
@@ -78,6 +80,9 @@ function sqlState(error: unknown) {
   return null;
 }
 function observeAcquireRetries() {
+  return observeRetries("conversation_turn_acquire");
+}
+function observeRetries(label: string) {
   let attempts = 0;
   let resolveFirst!: () => void;
   const first = new Promise<void>((resolve) => {
@@ -87,7 +92,7 @@ function observeAcquireRetries() {
     if (
       entry.module === "db" &&
       entry.action === "retry_transient" &&
-      entry.fields.label === "conversation_turn_acquire"
+      entry.fields.label === label
     ) {
       attempts += 1;
       if (attempts === 1) resolveFirst();
@@ -254,4 +259,74 @@ test("a stale attempt fence wins over a released contention retry", async () => 
     .where(and(eq(conversationTurns.tenant_id, tenantId), eq(conversationTurns.id, turnId)));
   expect(row?.state).toBe("queued");
   expect(row?.attempt_id).toBe(currentAttempt);
+});
+
+async function turnAudits(conversationId: string, turnId: string, state: string) {
+  return ctx.db
+    .select()
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.tenant_id, tenantId),
+        eq(auditLog.resource_id, conversationId),
+        eq(auditLog.action, "conversation.turn_changed"),
+        sql`${auditLog.metadata}->>'turn_id' = ${turnId}`,
+        sql`${auditLog.metadata}->>'state' = ${state}`,
+      ),
+    );
+}
+async function turnState(turnId: string) {
+  const [row] = await ctx.db
+    .select({ state: conversationTurns.state })
+    .from(conversationTurns)
+    .where(and(eq(conversationTurns.tenant_id, tenantId), eq(conversationTurns.id, turnId)));
+  return row?.state;
+}
+
+test("parking a turn waits out hosted contention and records one parked audit", async () => {
+  const conversationId = await conversation();
+  const attemptId = "00000000-0000-4000-8000-000000000016";
+  const turnId = await queuedTurn(conversationId, attemptId);
+  const ctrl = await acquireConversationTurn(tenantId, conversationId, ctx.db, {
+    turn_id: turnId,
+    attempt_id: attemptId,
+  });
+  const client = await quotaLock();
+  const retries = observeRetries("conversation_turn_park_hosted_quota");
+  let locked = true;
+  const parking = parkConversationTurn(tenantId, conversationId, ctrl);
+  try {
+    await retries.first;
+    await unlock(client);
+    locked = false;
+    await parking;
+    expect(await turnState(turnId)).toBe("parked");
+    expect(await turnAudits(conversationId, turnId, "parked")).toHaveLength(1);
+  } finally {
+    retries.unsubscribe();
+    if (locked) await unlock(client);
+    await parking.catch(() => {});
+    await cancelConversationTurns(ctx.db, tenantId, conversationId);
+  }
+});
+
+test("cancelling a queued turn waits out hosted contention and records one cancelled audit", async () => {
+  const conversationId = await conversation();
+  const turnId = await queuedTurn(conversationId, "00000000-0000-4000-8000-000000000017");
+  const client = await quotaLock();
+  const retries = observeRetries("conversation_turn_cancel_hosted_quota");
+  let locked = true;
+  const cancelling = cancelConversationTurns(ctx.db, tenantId, conversationId);
+  try {
+    await retries.first;
+    await unlock(client);
+    locked = false;
+    await cancelling;
+    expect(await turnState(turnId)).toBe("cancelled");
+    expect(await turnAudits(conversationId, turnId, "cancelled")).toHaveLength(1);
+  } finally {
+    retries.unsubscribe();
+    if (locked) await unlock(client);
+    await cancelling.catch(() => {});
+  }
 });

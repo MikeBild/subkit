@@ -169,6 +169,39 @@ async function changed(
   else record();
 }
 
+async function withQuotaRetry<T>(
+  db: Executor,
+  label: string,
+  write: (tx: Executor, record: (entry: () => void) => void) => Promise<T>,
+): Promise<T> {
+  const { result, pending } = await retryTransient(
+    () => {
+      const pending: Array<() => void> = [];
+      return db.transaction(async (tx) => ({
+        result: await write(tx, (entry) => pending.push(entry)),
+        pending,
+      }));
+    },
+    { label, shouldRetry: (error) => hostedQuotaError(error)?.code === "40001" },
+  );
+  for (const entry of pending) entry();
+  return result;
+}
+
+async function recordChanges(
+  db: Executor,
+  label: string,
+  tenantId: string,
+  conversationId: string,
+  changes: Array<{ id: string; state: string }>,
+): Promise<void> {
+  if (!changes.length) return;
+  await withQuotaRetry(db, label, async (tx, record) => {
+    for (const change of changes)
+      await changed(tx, tenantId, conversationId, change.id, change.state, record);
+  });
+}
+
 export async function reserveConversationTurn(
   db: Db,
   tenantId: string,
@@ -275,21 +308,13 @@ export async function finishConversationTurn(
       ),
     )
     .returning({ id: conversationTurns.id });
-  if (!rows.length) return;
-  const records = await retryTransient(
-    () => {
-      const pending: Array<() => void> = [];
-      return db.transaction(async (tx) => {
-        await changed(tx, tenantId, conversationId, id, state, (record) => pending.push(record));
-        return pending;
-      });
-    },
-    {
-      label: "conversation_turn_finish_hosted_quota",
-      shouldRetry: (error) => hostedQuotaError(error)?.code === "40001",
-    },
+  await recordChanges(
+    db,
+    "conversation_turn_finish_hosted_quota",
+    tenantId,
+    conversationId,
+    rows.map((row) => ({ id: row.id, state })),
   );
-  for (const record of records) record();
 }
 
 export async function bindConversationTurn(
@@ -435,11 +460,6 @@ export async function cancelConversationTurns(
       ),
     )
     .returning({ id: conversationTurns.id, task_id: conversationTurns.task_id });
-  for (const row of cancelled) {
-    await changed(db, tenantId, conversationId, row.id, "cancelled");
-    if (row.task_id)
-      await setMcpTaskFailureIfNotTerminal(tenantId, row.task_id, "conversation_cancelled", db);
-  }
   const running = await db
     .update(conversationTurns)
     .set({ cancel_requested: true, updated_at: new Date() })
@@ -451,8 +471,14 @@ export async function cancelConversationTurns(
       ),
     )
     .returning({ id: conversationTurns.id });
-  for (const row of running)
-    await changed(db, tenantId, conversationId, row.id, "cancellation_requested");
+  await recordChanges(db, "conversation_turn_cancel_hosted_quota", tenantId, conversationId, [
+    ...cancelled.map((row) => ({ id: row.id, state: "cancelled" })),
+    ...running.map((row) => ({ id: row.id, state: "cancellation_requested" })),
+  ]);
+  for (const row of cancelled) {
+    if (row.task_id)
+      await setMcpTaskFailureIfNotTerminal(tenantId, row.task_id, "conversation_cancelled", db);
+  }
 }
 
 export async function stopConversationTaskTurn(
@@ -464,7 +490,7 @@ export async function stopConversationTaskTurn(
   attempt: string,
   state: "completed" | "failed" | "cancelled" = "failed",
 ): Promise<void> {
-  await db.transaction(async (tx) => {
+  await withQuotaRetry(db, "conversation_turn_stop_hosted_quota", async (tx, record) => {
     const scope = and(
       eq(conversationTurns.tenant_id, tenantId),
       eq(conversationTurns.conversation_id, conversationId),
@@ -477,7 +503,7 @@ export async function stopConversationTaskTurn(
       .set({ state, updated_at: new Date() })
       .where(and(scope, inArray(conversationTurns.state, ["queued", "parked"])))
       .returning({ id: conversationTurns.id });
-    for (const row of stopped) await changed(tx, tenantId, conversationId, row.id, state);
+    for (const row of stopped) await changed(tx, tenantId, conversationId, row.id, state, record);
     if (state === "completed") return;
     const running = await tx
       .update(conversationTurns)
@@ -485,7 +511,7 @@ export async function stopConversationTaskTurn(
       .where(and(scope, eq(conversationTurns.state, "running")))
       .returning({ id: conversationTurns.id });
     for (const row of running)
-      await changed(tx, tenantId, conversationId, row.id, "cancellation_requested");
+      await changed(tx, tenantId, conversationId, row.id, "cancellation_requested", record);
   });
   await reconcileInterruptedConversationTurn(db, tenantId, conversationId);
 }
@@ -518,7 +544,9 @@ export async function parkConversationTurn(
   leases.delete(ctrl);
   if (proof) await releaseLease(proof, owner.id);
   unregisterConversationAbort(tenantId, conversationId, ctrl);
-  await changed(owner.db, tenantId, conversationId, owner.id, "parked");
+  await recordChanges(owner.db, "conversation_turn_park_hosted_quota", tenantId, conversationId, [
+    { id: owner.id, state: "parked" },
+  ]);
 }
 
 export async function releaseConversationTurn(
