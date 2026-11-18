@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
+import { _drainAuditWritesForTests } from "../../audit/audit.ts";
 import { apiKeys, auditLog, deliveries, systemAccounts, workflows } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
@@ -183,6 +184,7 @@ test("authenticated webhook and subscription routes persist typed actor pairs", 
     ).status,
   ).toBe(200);
 
+  await _drainAuditWritesForTests();
   const rows = await server.db
     .select({
       actor_type: auditLog.actor_type,
