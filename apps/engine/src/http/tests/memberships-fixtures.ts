@@ -19,6 +19,8 @@ export let mock: MockOidcHandle;
 
 export const providerId = "hosted-browser";
 
+export const seededWorkspaces: string[] = [];
+
 export function provider() {
   return createOidcProvider({
     db: ctx.db,
@@ -112,7 +114,14 @@ export function setupBrowserMemberships(): void {
   uuid = createDeterministicUuidFactory(811);
   beforeAll(async () => {
     _resetConfigForTests();
-    ctx = await createHttpTestServer("browser-memberships");
+    seededWorkspaces.length = 0;
+    ctx = await createHttpTestServer("browser-memberships", {
+      appOptions: {
+        seedWorkspace: async (tenant_id) => {
+          seededWorkspaces.push(tenant_id);
+        },
+      },
+    });
     await configureHostedPolicyForTests(ctx.db, ctx.testDb.url);
     mock = await startMockOidc();
     await setConfigKey("server.public_base_url", ctx.baseUrl);

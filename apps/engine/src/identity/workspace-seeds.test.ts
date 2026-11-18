@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { knowledgeSources, notificationRules, skills } from "../db/schema/index.ts";
+import { tenantWorkInFlight } from "../execution/tenant-work.ts";
 import { createHttpTestServer, type HttpTestServer } from "../http/tests/setup.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
+import { waitFor } from "../test-helpers/determinism/wait.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
 import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
 import { provisionSelfServiceTenant } from "./self-service.ts";
@@ -15,8 +17,13 @@ beforeAll(async () => {
   await configureHostedPolicyForTests(ctx.db, ctx.testDb.url);
 });
 afterAll(async () => {
+  await waitFor(() => tenantWorkInFlight() === 0, {
+    tries: 60_000,
+    sleepMs: 2,
+    label: "embedding of the seeded knowledge",
+  });
   if (ctx) await ctx.cleanup();
-});
+}, 150_000);
 
 const claims = (subject: string) => ({
   issuer_url: "https://identity.example.test",

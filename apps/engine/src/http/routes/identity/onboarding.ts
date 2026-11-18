@@ -5,6 +5,7 @@ import {
   completeOnboarding,
   PendingRegistrationSchema,
   readOnboarding,
+  type SeedWorkspace,
   workspaceUnavailableRefusal,
 } from "../../../api/operations/identity-onboarding.ts";
 import { LLM_ACCESS_REFUSAL_CODES } from "../../../api/operations/workspace-ai-access.ts";
@@ -80,7 +81,10 @@ const completeRoute = createRoute({
   },
 });
 
-export function registerOnboardingRoutes(app: OpenAPIHono<AppEnv>): void {
+export function registerOnboardingRoutes(
+  app: OpenAPIHono<AppEnv>,
+  seedWorkspace: SeedWorkspace,
+): void {
   app.openapi(readRoute, async (c) => {
     c.header("cache-control", "no-store");
     const pending = await readOnboarding(c.req.raw, c.get("db"));
@@ -91,7 +95,7 @@ export function registerOnboardingRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(completeRoute, async (c) => {
     c.header("cache-control", "no-store");
     const db = c.get("db");
-    const completed = await completeOnboarding(c.req.raw, c.req.valid("json"), db);
+    const completed = await completeOnboarding(c.req.raw, c.req.valid("json"), db, seedWorkspace);
     if (!completed.ok)
       return c.json({ code: completed.code, message: completed.message }, completed.status);
     const session = await issueBrowserSession({

@@ -11,6 +11,7 @@ import { ChatAdapterRegistry } from "../chat/registry.ts";
 import { getConfig } from "../config/loader.ts";
 import type { Config } from "../config/schema.ts";
 import { type Db, getDb } from "../db/client.ts";
+import { applyWorkspaceContentSeeds } from "../identity/workspace-seeds.ts";
 import { logger } from "../logging/logger.ts";
 import { registerMcpHttpRoutes } from "../mcp/transports/streamable-http.ts";
 import { errorRing } from "../observability/error-ring.ts";
@@ -147,6 +148,7 @@ export interface CreateAppOptions {
   chatEnqueue?: (job: ChatEventJob) => Promise<void>;
   agentSessionEnqueue?: (job: AgentSessionAnalyzeJob) => Promise<void>;
   rateLimit?: { max?: number; windowMs?: number };
+  seedWorkspace?: (tenant_id: string, db: Db) => Promise<void>;
 }
 
 function lazyDb(): Db {
@@ -335,7 +337,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerTenantRoutes(app);
   registerMembershipRoutes(app);
   registerOwnedTenantRoutes(app);
-  registerOnboardingRoutes(app);
+  registerOnboardingRoutes(app, opts.seedWorkspace ?? applyWorkspaceContentSeeds);
   registerUserRoutes(app);
   registerWorkspaceRoutes(app);
   registerProviderIdentityRoutes(app);

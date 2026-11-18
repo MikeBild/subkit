@@ -176,6 +176,7 @@ export async function createHttpTestServer(
     db: testDb.db,
     registry,
     rateLimit: { max: 10_000, windowMs: 60_000 },
+    seedWorkspace: async () => {},
     ...(opts?.appOptions ?? {}),
   });
 

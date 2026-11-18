@@ -11,7 +11,6 @@ import {
 } from "../../identity/registration.ts";
 import { completeHostedRegistration } from "../../identity/self-service.ts";
 import { SelfServiceIdentityError } from "../../identity/tenant-status.ts";
-import { applyWorkspaceContentSeeds } from "../../identity/workspace-seeds.ts";
 import { workspaceAiAccess } from "../../llm/runtime/workspace-access.ts";
 import { logger } from "../../logging/logger.ts";
 import { RuntimeConfigPendingError } from "../../runtime-config/contracts.ts";
@@ -124,10 +123,13 @@ const SETUP_UNAVAILABLE: OnboardingRefusal = {
   message: "New workspaces are temporarily unavailable. Try again later.",
 };
 
+export type SeedWorkspace = (tenant_id: string, db: Db) => Promise<void>;
+
 export async function completeOnboarding(
   request: Request,
   body: z.infer<typeof CompleteRegistrationBody>,
   db: Db,
+  seedWorkspace: SeedWorkspace,
 ) {
   if (!isIanaTimeZone(body.timezone)) {
     return {
@@ -170,7 +172,7 @@ export async function completeOnboarding(
       { registration_enabled: registrationEnabled },
       db,
     );
-    if (completed.created) await applyWorkspaceContentSeeds(completed.tenant.id, db);
+    if (completed.created) await seedWorkspace(completed.tenant.id, db);
     if (!settled) {
       try {
         await storeCheckedLlmAccess(db, {

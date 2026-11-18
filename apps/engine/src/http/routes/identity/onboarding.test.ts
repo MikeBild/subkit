@@ -32,6 +32,7 @@ import {
   mock,
   providerId,
   responseCookie,
+  seededWorkspaces,
   setupBrowserMemberships,
 } from "../../tests/memberships-fixtures.ts";
 
@@ -166,18 +167,7 @@ describe("hosted registration is completed on the welcome page", () => {
       status: "active",
       auth_identity_id: identity.id,
     });
-    const seededSkills = await ctx.db
-      .select({ id: skills.id })
-      .from(skills)
-      .where(and(eq(skills.tenant_id, tenant.id), isNotNull(skills.seed_source)));
-    expect(seededSkills.length).toBeGreaterThan(0);
-    const seededKnowledge = await ctx.db
-      .select({ id: knowledgeSources.id })
-      .from(knowledgeSources)
-      .where(
-        and(eq(knowledgeSources.tenant_id, tenant.id), eq(knowledgeSources.source_type, "seed")),
-      );
-    expect(seededKnowledge.length).toBeGreaterThan(0);
+    expect(seededWorkspaces.filter((id) => id === tenant.id)).toHaveLength(1);
     const inboxRules = () =>
       ctx.db
         .select()
@@ -205,12 +195,7 @@ describe("hosted registration is completed on the welcome page", () => {
     expect((await ownedTenants(identity.id))[0]?.display_name).toBe("Analytical Engines");
     expect(await ctx.db.select().from(users).where(eq(users.tenant_id, tenant.id))).toHaveLength(1);
     expect(await inboxRules()).toHaveLength(1);
-    expect(
-      await ctx.db
-        .select({ id: skills.id })
-        .from(skills)
-        .where(and(eq(skills.tenant_id, tenant.id), isNotNull(skills.seed_source))),
-    ).toHaveLength(seededSkills.length);
+    expect(seededWorkspaces.filter((id) => id === tenant.id)).toHaveLength(1);
     expect(
       (await fetch(`${ctx.baseUrl}/v1/identity/onboarding`, { headers: { cookie } })).status,
     ).toBe(401);
