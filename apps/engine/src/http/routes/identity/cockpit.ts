@@ -1,5 +1,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
+import { AiAccessSchema } from "../../../api/operations/workspace-ai-access.ts";
 import {
   browserSessionForPrincipal,
   cockpitInstallationIdFromPath,
@@ -11,8 +12,10 @@ import { buildOAuthRedirectUri } from "../../../credentials/index.ts";
 import {
   findCockpitIdentity,
   listRecentOwnedConversations,
+  readStartSteps,
   readTenantBranding,
 } from "../../../identity/index.ts";
+import { workspaceAiAccess } from "../../../llm/index.ts";
 import { ALL_PERMISSION_NAMES, can, isOperatorPrincipal } from "../../../rbac/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { type AppEnv, OPENAPI_INFO } from "../../openapi.ts";
@@ -34,13 +37,17 @@ const CockpitBootstrapResponse = z
       id: z.string(),
       kind: z.literal("user"),
       email: z.string().nullable(),
+      display_name: z.string().nullable(),
       role_name: z.string().nullable(),
+      is_owner: z.boolean().describe("True when this verified sign-in identity owns the workspace"),
       provider: z.literal("browser_session"),
     }),
     tenant: z.object({
       id: z.string().uuid(),
       slug: z.string(),
       display_name: z.string(),
+      timezone: z.string().describe("IANA time zone of the workspace"),
+      origin: z.enum(["self_hosted", "self_service"]),
       engine_operator: z
         .boolean()
         .describe(
@@ -51,6 +58,19 @@ const CockpitBootstrapResponse = z
       expires_at: z.string().datetime(),
       absolute_expires_at: z.string().datetime().nullable(),
     }),
+    start_steps: z
+      .object({
+        hidden: z.boolean().describe("The signed-in person dismissed the first steps"),
+        connector: z.boolean(),
+        workflow: z.boolean(),
+        run: z.boolean(),
+        people: z.boolean(),
+        client: z.boolean(),
+      })
+      .describe(
+        "First steps of a workspace; each flag is true once at least one exists: a connector, a workflow, a run, a second person, a connected client or personal API key",
+      ),
+    ai_access: AiAccessSchema,
     identity_memberships: z
       .boolean()
       .describe("Verified browser identity supports workspace membership selection"),
@@ -219,6 +239,7 @@ export function registerCockpitIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
       ? await listRecentOwnedConversations(db, principal.tenant_id, principal.id)
       : [];
     const branding = await readTenantBranding({ tenant_id: principal.tenant_id }, db);
+    const startSteps = await readStartSteps(principal.tenant_id, db);
 
     return c.json(
       {
@@ -226,19 +247,31 @@ export function registerCockpitIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
           id: principal.id,
           kind: "user" as const,
           email: identityRow.email,
+          display_name: identityRow.display_name,
           role_name: identityRow.role_name,
+          is_owner:
+            sessionRow.auth_identity_id !== null &&
+            sessionRow.auth_identity_id === identityRow.auth_identity_id &&
+            sessionRow.auth_identity_id === identityRow.tenant_owner_identity_id,
           provider: "browser_session" as const,
         },
         tenant: {
           id: identityRow.tenant_id,
           slug: identityRow.tenant_slug,
           display_name: identityRow.tenant_display_name,
+          timezone: identityRow.tenant_timezone,
+          origin: identityRow.tenant_origin,
           engine_operator: await isOperatorPrincipal(db, principal),
         },
         session: {
           expires_at: sessionRow.expires_at.toISOString(),
           absolute_expires_at: sessionRow.absolute_expires_at?.toISOString() ?? null,
         },
+        start_steps: { hidden: identityRow.start_steps_hidden_at !== null, ...startSteps },
+        ai_access: workspaceAiAccess({
+          id: identityRow.tenant_id,
+          origin: identityRow.tenant_origin,
+        }),
         identity_memberships: sessionRow.auth_identity_id !== null && !payload.installation_id,
         permissions,
         csrf_token: await signBrowserCsrf(payload),

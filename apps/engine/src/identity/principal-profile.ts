@@ -12,14 +12,21 @@ export interface TenantSummary {
   id: string;
   slug: string;
   display_name: string;
+  origin: "self_hosted" | "self_service";
 }
 
 interface CockpitIdentity {
   email: string;
+  display_name: string | null;
   role_name: string | null;
+  auth_identity_id: string | null;
+  start_steps_hidden_at: Date | null;
   tenant_id: string;
   tenant_slug: string;
   tenant_display_name: string;
+  tenant_timezone: string;
+  tenant_origin: "self_hosted" | "self_service";
+  tenant_owner_identity_id: string | null;
 }
 
 interface RecentConversation {
@@ -90,7 +97,12 @@ export async function findSystemAccountRoleName(
 
 export async function findTenantSummary(db: Db, tenant_id: string): Promise<TenantSummary | null> {
   const [row] = await db
-    .select({ id: tenants.id, slug: tenants.slug, display_name: tenants.display_name })
+    .select({
+      id: tenants.id,
+      slug: tenants.slug,
+      display_name: tenants.display_name,
+      origin: tenants.origin,
+    })
     .from(tenants)
     .where(eq(tenants.id, tenant_id))
     .limit(1);
@@ -105,10 +117,16 @@ export async function findCockpitIdentity(
   const [row] = await db
     .select({
       email: users.email,
+      display_name: users.display_name,
       role_name: roles.name,
+      auth_identity_id: users.auth_identity_id,
+      start_steps_hidden_at: users.start_steps_hidden_at,
       tenant_id: tenants.id,
       tenant_slug: tenants.slug,
       tenant_display_name: tenants.display_name,
+      tenant_timezone: tenants.timezone,
+      tenant_origin: tenants.origin,
+      tenant_owner_identity_id: tenants.owner_identity_id,
     })
     .from(users)
     .innerJoin(tenants, eq(tenants.id, users.tenant_id))

@@ -16,6 +16,7 @@ export const ATTENTION_SOURCES = [
   "skills",
   "intake",
   "budget",
+  "ai_access",
   "risk",
 ] as const;
 export type AttentionSource = (typeof ATTENTION_SOURCES)[number];
@@ -54,6 +55,7 @@ export const ATTENTION_REASONS = [
   "skills_proposed",
   "intake_collected",
   "budget_critical",
+  "ai_access_missing",
   "risk_critical",
 ] as const;
 export type AttentionReason = (typeof ATTENTION_REASONS)[number];
@@ -64,6 +66,7 @@ export const ATTENTION_SUBJECT_KINDS = [
   "connector",
   "connection",
   "secret",
+  "settings",
 ] as const;
 
 export interface AttentionAction {

@@ -62,6 +62,29 @@ export function modelTenantContext(tenantId?: string): string | undefined {
   return tenantId ?? context;
 }
 
+type HostedLlmPolicy = Config["llm"]["hosted"];
+
+export function hostedOperatorModelPolicy(
+  hosted: HostedLlmPolicy | undefined,
+  provider: string,
+  modelId: string,
+):
+  | { ok: true; hosted: HostedLlmPolicy; policy: HostedLlmPolicy["models"][number] }
+  | { ok: false; reason: string } {
+  if (
+    !hosted ||
+    BigInt(hosted.tenant_monthly_microunits) <= 0n ||
+    BigInt(hosted.global_monthly_microunits) <= 0n
+  ) {
+    return { ok: false, reason: "operator money budgets are missing or disabled" };
+  }
+  const matches = hosted.models.filter((entry) => entry.model === `${provider}:${modelId}`);
+  const [policy] = matches;
+  if (!policy || matches.length !== 1 || !hostedModelAllowed(policy))
+    return { ok: false, reason: "model has no unique verified billing policy" };
+  return { ok: true, hosted, policy };
+}
+
 async function hostedPolicy(
   boundTenant: string | undefined,
   provider: string,
@@ -91,18 +114,9 @@ async function hostedPolicy(
   const tenant = await deps.tenant(tenantId);
   if (!tenant) return unsupportedHostedBilling("tenant does not exist");
   if (tenant.origin !== "self_service") return undefined;
-  if (
-    !hosted ||
-    BigInt(hosted.tenant_monthly_microunits) <= 0n ||
-    BigInt(hosted.global_monthly_microunits) <= 0n
-  ) {
-    return unsupportedHostedBilling("operator money budgets are missing or disabled");
-  }
-  const matches = hosted.models.filter((entry) => entry.model === `${provider}:${modelId}`);
-  const [policy] = matches;
-  if (!policy || matches.length !== 1 || !hostedModelAllowed(policy))
-    return unsupportedHostedBilling("model has no unique verified billing policy");
-  return { tenantId, hosted, policy };
+  const admitted = hostedOperatorModelPolicy(hosted, provider, modelId);
+  if (!admitted.ok) return unsupportedHostedBilling(admitted.reason);
+  return { tenantId, hosted: admitted.hosted, policy: admitted.policy };
 }
 
 export function hostedBudgetMiddleware(

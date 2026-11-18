@@ -17,10 +17,10 @@ import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { tenantWorkSnapshot } from "../execution/tenant-work.ts";
 import { createOpenApiApp } from "../http/openapi.ts";
 import { registerHostedWorkRoutes } from "../http/routes/hosted-work.ts";
-import { provisionSelfServiceTenant } from "../identity/self-service.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { waitFor } from "../test-helpers/determinism/wait.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
+import { provisionTestWorkspace } from "../test-helpers/workspace-registration.ts";
 import { createBoss, disposeBoss } from "./boss.ts";
 import {
   enqueueHostedWork,
@@ -68,17 +68,7 @@ afterAll(async () => {
 });
 async function fixture() {
   sequence += 1;
-  return (
-    await provisionSelfServiceTenant(
-      {
-        issuer_url: "https://identity.example.test",
-        subject: `work-${sequence}`,
-        email: `work-${sequence}@example.test`,
-        email_verified: true,
-      },
-      tdb.db,
-    )
-  ).tenant.id;
+  return (await provisionTestWorkspace(`work-${sequence}`, tdb.db)).tenant.id;
 }
 function barrier() {
   let release: () => void = () => {};

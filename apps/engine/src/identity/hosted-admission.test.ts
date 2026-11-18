@@ -13,6 +13,7 @@ import { createHttpTestServer, type HttpTestServer } from "../http/tests/setup.t
 import { FROZEN_NOW } from "../test-helpers/determinism/clock.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
 import { pinAdmissionClock } from "../test-helpers/pinned-admission-clock.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
 import { provisionSelfServiceTenant } from "./self-service.ts";
 
 let ctx: HttpTestServer;
@@ -56,7 +57,9 @@ test("parallel verified identities admit exactly the configured tenant creation 
   await setConfigKey("auth.hosted.admission.tenant_creations_per_minute", 1);
   const identities = [claims(), claims()];
   const results = await Promise.allSettled(
-    identities.map((identity) => provisionSelfServiceTenant(identity, ctx.db)),
+    identities.map((identity) =>
+      provisionSelfServiceTenant(identity, TEST_WORKSPACE_REGISTRATION, ctx.db),
+    ),
   );
   expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
   expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
@@ -75,15 +78,19 @@ test("idempotent callbacks consume one creation admission and still replay with 
   const identity = claims();
   await setConfigKey("auth.hosted.admission.tenant_creations_per_minute", 1);
   const results = await Promise.all(
-    Array.from({ length: 6 }, () => provisionSelfServiceTenant(identity, ctx.db)),
+    Array.from({ length: 6 }, () =>
+      provisionSelfServiceTenant(identity, TEST_WORKSPACE_REGISTRATION, ctx.db),
+    ),
   );
   expect(results.filter((result) => result.created)).toHaveLength(1);
   expect(new Set(results.map((result) => result.tenant.id)).size).toBe(1);
   await setConfigKey("auth.hosted.admission.tenant_creations_per_minute", 0);
-  expect((await provisionSelfServiceTenant(identity, ctx.db)).created).toBe(false);
-  await expect(provisionSelfServiceTenant(claims(), ctx.db)).rejects.toThrow(
-    "registration_policy_unavailable",
-  );
+  expect(
+    (await provisionSelfServiceTenant(identity, TEST_WORKSPACE_REGISTRATION, ctx.db)).created,
+  ).toBe(false);
+  await expect(
+    provisionSelfServiceTenant(claims(), TEST_WORKSPACE_REGISTRATION, ctx.db),
+  ).rejects.toThrow("registration_policy_unavailable");
   expect((await ctx.db.select().from(httpRateLimitBuckets))[0]?.hits).toBe(1);
 });
 test("operator tenant stock includes deleted ownership tombstones and serializes competing creates", async () => {
@@ -93,7 +100,9 @@ test("operator tenant stock includes deleted ownership tombstones and serializes
     .where(eq(tenants.origin, "self_service"));
   await setConfigKey("auth.hosted.admission.retained_tenants", (stock?.count ?? 0) + 1);
   const outcomes = await Promise.allSettled(
-    [claims(), claims()].map((identity) => provisionSelfServiceTenant(identity, ctx.db)),
+    [claims(), claims()].map((identity) =>
+      provisionSelfServiceTenant(identity, TEST_WORKSPACE_REGISTRATION, ctx.db),
+    ),
   );
   const accepted = outcomes.find((result) => result.status === "fulfilled");
   expect(outcomes.filter((result) => result.status === "fulfilled")).toHaveLength(1);
@@ -102,9 +111,9 @@ test("operator tenant stock includes deleted ownership tombstones and serializes
     .update(tenants)
     .set({ deleted_at: new Date(FROZEN_NOW) })
     .where(eq(tenants.id, accepted.value.tenant.id));
-  await expect(provisionSelfServiceTenant(claims(), ctx.db)).rejects.toThrow(
-    "registration_policy_unavailable",
-  );
+  await expect(
+    provisionSelfServiceTenant(claims(), TEST_WORKSPACE_REGISTRATION, ctx.db),
+  ).rejects.toThrow("registration_policy_unavailable");
 });
 test("MCP rate admission survives factory recreation and per-peer denial does not burn the global allowance", async () => {
   await setConfigKey("auth.hosted.admission.mcp_clients_per_peer_per_minute", 1);

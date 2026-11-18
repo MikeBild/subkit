@@ -1,5 +1,6 @@
 import {
   Bell,
+  Building2,
   Cable,
   ChevronLeft,
   ChevronRight,
@@ -7,6 +8,7 @@ import {
   Server,
   ShieldCheck,
   Sparkles,
+  UserRound,
   Wallet,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -24,6 +26,8 @@ import type { AreaStatus, SettingAreaId } from "@/pages/settings-areas";
 import { ExpertLink } from "@/pages/settings-guided";
 
 const AREA_ICON: Readonly<Record<SettingAreaId, LucideIcon>> = {
+  profile: UserRound,
+  workspace: Building2,
   ai: Sparkles,
   costs: Wallet,
   access: ShieldCheck,
@@ -33,6 +37,8 @@ const AREA_ICON: Readonly<Record<SettingAreaId, LucideIcon>> = {
 };
 
 const AREA_TITLE: Readonly<Record<SettingAreaId, TranslationKey>> = {
+  profile: "settings.area.profile.title",
+  workspace: "settings.area.workspace.title",
   ai: "settings.area.ai.title",
   costs: "settings.area.costs.title",
   access: "settings.area.access.title",
@@ -42,6 +48,8 @@ const AREA_TITLE: Readonly<Record<SettingAreaId, TranslationKey>> = {
 };
 
 const AREA_PURPOSE: Readonly<Record<SettingAreaId, TranslationKey>> = {
+  profile: "settings.area.profile.purpose",
+  workspace: "settings.area.workspace.purpose",
   ai: "settings.area.ai.purpose",
   costs: "settings.area.costs.purpose",
   access: "settings.area.access.purpose",
@@ -55,7 +63,12 @@ const STATUS_BADGE: Readonly<Record<AreaStatus, { state: string; label: Translat
   waiting: { state: "warn", label: "settings.status.waiting" },
   restart: { state: "warn", label: "settings.status.restart" },
   limit: { state: "error", label: "settings.status.limit" },
+  nameMissing: { state: "neutral", label: "settings.status.nameMissing" },
 };
+
+export function settingAreaPurpose(area: SettingAreaId): TranslationKey {
+  return AREA_PURPOSE[area];
+}
 
 export interface AreaCard {
   id: SettingAreaId;
@@ -88,9 +101,11 @@ function AreaStatusBadge({ status }: { status: AreaStatus | null }) {
 
 export function SettingsOverview({
   cards,
+  expert,
   onNavigate,
 }: {
   cards: readonly AreaCard[];
+  expert: boolean;
   onNavigate(href: string): void;
 }) {
   const { t } = useI18n();
@@ -141,34 +156,39 @@ export function SettingsOverview({
           );
         })}
       </ul>
-      <div className="mt-4 grid gap-0.5 border-t pt-6">
-        <ExpertLink
-          href={settingsHref(null, { all: true })}
-          label={t("settings.level.expert")}
-          onNavigate={onNavigate}
-          testId="settings-expert-link"
-        />
-        <p className="text-sm text-muted-foreground">{t("settings.level.expertLine")}</p>
-      </div>
+      {expert ? (
+        <div className="mt-4 grid gap-0.5 border-t pt-6">
+          <ExpertLink
+            href={settingsHref(null, { all: true })}
+            label={t("settings.level.expert")}
+            onNavigate={onNavigate}
+            testId="settings-expert-link"
+          />
+          <p className="text-sm text-muted-foreground">{t("settings.level.expertLine")}</p>
+        </div>
+      ) : null}
     </div>
   );
 }
 
 export function SettingsAreaFrame({
   area,
+  areas,
+  expert,
   drafted,
   attention,
   onNavigate,
   children,
 }: {
   area: SettingAreaId;
+  areas: readonly SettingAreaId[];
+  expert: boolean;
   drafted: ReadonlySet<SettingAreaId>;
   attention: ReadonlySet<SettingAreaId>;
   onNavigate(href: string): void;
   children: ReactNode;
 }) {
   const { t } = useI18n();
-  const areas = Object.keys(AREA_TITLE) as SettingAreaId[];
   const back = settingsHref();
   return (
     <div className="@container/settings" data-testid="settings-area-frame">
@@ -220,15 +240,17 @@ export function SettingsAreaFrame({
               );
             })}
           </ul>
-          <div className="mt-4 border-t px-2 pt-4">
-            <ExpertLink
-              href={settingsHref(null, { all: true })}
-              label={t("settings.level.expert")}
-              onNavigate={onNavigate}
-              className="text-sm"
-              testId="settings-area-nav-expert"
-            />
-          </div>
+          {expert ? (
+            <div className="mt-4 border-t px-2 pt-4">
+              <ExpertLink
+                href={settingsHref(null, { all: true })}
+                label={t("settings.level.expert")}
+                onNavigate={onNavigate}
+                className="text-sm"
+                testId="settings-area-nav-expert"
+              />
+            </div>
+          ) : null}
         </nav>
         <div className={cn("grid content-start gap-4", READING_MEASURE)}>
           <a

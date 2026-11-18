@@ -11,14 +11,8 @@ import { seedTenantBootstrap, type TenantBootstrapPayload } from "../db/seed.ts"
 import { type LlmAccessProbe, probeLlmAccess } from "../llm/runtime/access-probe.ts";
 import { logger } from "../logging/logger.ts";
 import type { SeededRoleIds } from "../rbac/seed.ts";
-import { settingSecretName } from "../runtime-config/secret-reference.ts";
-import {
-  activateRuntimeRevision,
-  createSecretVersion,
-  getRuntimeConfigState,
-  RuntimeConfigNotFoundError,
-  saveRuntimeConfigPatch,
-} from "../runtime-config/service.ts";
+import { RuntimeConfigNotFoundError } from "../runtime-config/contracts.ts";
+import { persistLlmAccess } from "../runtime-config/llm-access.ts";
 import { now } from "../utils/clock.ts";
 
 export const BOOTSTRAP_COMPLETED_KEY = "bootstrap.completed";
@@ -358,51 +352,27 @@ async function consumeClaimed(
   }
   const completedResult = { ...result, api_key: result.api_key };
 
+  const llmAccess = {
+    provider: payload.llm_provider,
+    api_key: payload.llm_api_key,
+    ...(payload.llm_model ? { model: payload.llm_model } : {}),
+  };
+  const actor = {
+    tenant_id: result.tenant_id,
+    actor_type: "user" as const,
+    actor_id: result.user_id,
+  };
   try {
-    const state = await getRuntimeConfigState(db);
-    const secret = await createSecretVersion(db, {
-      name: `tenants.${result.tenant_id}.settings.llm.api_key`,
-      value: payload.llm_api_key,
-      created_by: result.user_id,
-    });
-    const saved = await saveRuntimeConfigPatch(db, {
-      expected_revision: state.saved_revision,
-      changes: {
-        "llm.provider": payload.llm_provider,
-        "llm.api_key": secret.reference,
-        ...(payload.llm_model ? { "llm.model": payload.llm_model } : {}),
-      },
-      scope: "tenant",
+    await persistLlmAccess(db, {
       tenant_id: result.tenant_id,
-      created_by: result.user_id,
-    });
-    const activated = await activateRuntimeRevision(db, saved.saved_revision, {
-      tenant_id: result.tenant_id,
-      actor_type: "user",
-      actor_id: result.user_id,
+      change: llmAccess,
+      actor,
       source: "bootstrap",
     });
-    if (activated.activation_status !== "active") {
-      throw new Error(`bootstrap config activation failed: ${activated.activation_status}`);
-    }
-    await auditAwait(
-      {
-        tenant_id: result.tenant_id,
-        actor_type: "user",
-        actor_id: result.user_id,
-        action: AuditAction.SECRET_VERSION_CREATED,
-        resource_type: "runtime_secret",
-        resource_id: secret.reference,
-        metadata: {
-          name: secret.name,
-          version: secret.version,
-          source: "bootstrap",
-        },
-      },
-      db,
-    );
     try {
-      await persistGlobalLlmDefault(db, payload, result.tenant_id, result.user_id);
+      if (payload.llm_provider !== "mock" && getConfig().llm.provider === "mock") {
+        await persistLlmAccess(db, { change: llmAccess, actor, source: "bootstrap" });
+      }
     } catch (globalError) {
       logger.warn({
         module: "onboarding.bootstrap",
@@ -448,52 +418,6 @@ async function consumeClaimed(
   }
 
   return finishBootstrap(db, completedResult, payload, opts);
-}
-
-async function persistGlobalLlmDefault(
-  db: Db,
-  payload: BootstrapSetupPayload,
-  tenantId: string,
-  userId: string,
-): Promise<void> {
-  if (payload.llm_provider === "mock" || getConfig().llm.provider !== "mock") return;
-  const state = await getRuntimeConfigState(db);
-  const secret = await createSecretVersion(db, {
-    name: settingSecretName(undefined, ["llm", "api_key"]),
-    value: payload.llm_api_key,
-    created_by: userId,
-  });
-  const saved = await saveRuntimeConfigPatch(db, {
-    expected_revision: state.saved_revision,
-    changes: {
-      "llm.provider": payload.llm_provider,
-      "llm.api_key": secret.reference,
-      ...(payload.llm_model ? { "llm.model": payload.llm_model } : {}),
-    },
-    scope: "global",
-    created_by: userId,
-  });
-  const activated = await activateRuntimeRevision(db, saved.saved_revision, {
-    tenant_id: tenantId,
-    actor_type: "user",
-    actor_id: userId,
-    source: "bootstrap",
-  });
-  if (activated.activation_status !== "active") {
-    throw new Error(`bootstrap global llm activation failed: ${activated.activation_status}`);
-  }
-  await auditAwait(
-    {
-      tenant_id: tenantId,
-      actor_type: "user",
-      actor_id: userId,
-      action: AuditAction.SECRET_VERSION_CREATED,
-      resource_type: "runtime_secret",
-      resource_id: secret.reference,
-      metadata: { name: secret.name, version: secret.version, source: "bootstrap" },
-    },
-    db,
-  );
 }
 
 async function finishBootstrap(

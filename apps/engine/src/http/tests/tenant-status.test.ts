@@ -8,6 +8,7 @@ import { resolveStdioPrincipal } from "../../mcp/auth.ts";
 import { withActiveTenantJobContext } from "../../queue/job-context.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../../test-helpers/workspace-registration.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let fixture: HttpTestServer;
@@ -51,6 +52,7 @@ async function ownedBrowserFixture(label: string) {
       email: `${label}@example.test`,
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     fixture.db,
   );
   const issued = await issueBrowserSession({

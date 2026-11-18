@@ -12,6 +12,7 @@ import { provisionSelfServiceTenant } from "../identity/self-service.ts";
 import { logger } from "../logging/logger.ts";
 import { logRing } from "../observability/log-ring.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
 import { ConversationTurnInProgressError } from "./errors.ts";
 import { reserveConversationTurn } from "./turns.ts";
 
@@ -27,6 +28,7 @@ beforeAll(async () => {
       email: "reserve-quota-contention@example.test",
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     ctx.db,
   );
   tenantId = owned.tenant.id;

@@ -1,9 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import {
+  DEFAULT_CLI_INBOX_EVENT_PATTERN,
+  seedDefaultCliNotificationRule,
+} from "../../notifications/default-cli-rule.ts";
 import { matchGlob } from "../../notifications/matcher.ts";
 import { EVENT_CATALOG, type EventCatalogEntry } from "../../webhooks/events/catalog.ts";
 import { notificationRules, tenants } from "../schema/index.ts";
-import { DEFAULT_CLI_INBOX_EVENT_PATTERN, seedDefaultCliNotificationRule } from "../seed.ts";
 import { createTestDb, type TestDb } from "./setup.ts";
 
 let ctx: TestDb;

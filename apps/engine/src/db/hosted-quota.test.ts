@@ -9,6 +9,7 @@ import { errorFields } from "../logging/logger.ts";
 import { logRing } from "../observability/log-ring.ts";
 import { waitFor } from "../test-helpers/determinism/wait.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
 import { createDbFromUrl } from "./client.ts";
 import { hostedQuotaError } from "./hosted-quota-errors.ts";
 import { EMBEDDED_MIGRATIONS } from "./migrations/embedded.ts";
@@ -34,6 +35,7 @@ async function owned(subject: string) {
       email: `${subject}@example.test`,
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     ctx.db,
   );
 }

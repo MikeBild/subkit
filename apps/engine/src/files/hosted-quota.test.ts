@@ -10,6 +10,7 @@ import { provisionSelfServiceTenant } from "../identity/self-service.ts";
 import { MemoryObjectStore, setObjectStoreForTesting } from "../storage/object-store.ts";
 import { FROZEN_NOW } from "../test-helpers/determinism/clock.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
 import { HostedFileQuotaError } from "./hosted-quota.ts";
 import { persistInlineUpload } from "./persist-inline-upload.ts";
 import { removeStoredFile } from "./remove-stored-file.ts";
@@ -48,6 +49,7 @@ async function fixture() {
         email: `files-${sequence}@example.test`,
         email_verified: true,
       },
+      TEST_WORKSPACE_REGISTRATION,
       tdb.db,
     )
   ).tenant.id;

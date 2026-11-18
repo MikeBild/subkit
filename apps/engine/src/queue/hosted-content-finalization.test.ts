@@ -19,6 +19,7 @@ import { provisionSelfServiceTenant } from "../identity/self-service.ts";
 import { setMcpTaskFailureIfNotTerminal } from "../mcp/tasks/store.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
 import { now } from "../utils/clock.ts";
 import { finalizeHostedContentQuota } from "./hosted-content-finalization.ts";
 
@@ -40,6 +41,7 @@ beforeAll(async () => {
       email: "quota-control@example.test",
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     connection.db,
   );
   tenantId = owned.tenant.id;
@@ -198,6 +200,7 @@ test("a concurrent tenant quota lock rejects an ordinary MCP task settlement as 
       email: `quota-lock-${nextId()}@example.test`,
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     connection.db,
   );
   const isolatedTenantId = isolated.tenant.id;

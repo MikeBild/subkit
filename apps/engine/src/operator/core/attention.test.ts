@@ -26,6 +26,7 @@ test("attention schema publishes its stable sources, reasons, and subject kinds"
     "skills",
     "intake",
     "budget",
+    "ai_access",
     "risk",
   ]);
   expect(ATTENTION_REASONS).toEqual([
@@ -50,6 +51,7 @@ test("attention schema publishes its stable sources, reasons, and subject kinds"
     "skills_proposed",
     "intake_collected",
     "budget_critical",
+    "ai_access_missing",
     "risk_critical",
   ]);
   expect(ATTENTION_SUBJECT_KINDS).toEqual([
@@ -58,6 +60,7 @@ test("attention schema publishes its stable sources, reasons, and subject kinds"
     "connector",
     "connection",
     "secret",
+    "settings",
   ]);
 });
 

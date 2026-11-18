@@ -147,6 +147,46 @@ export function enforcesModelFamily(provider: string, tenantId?: string): boolea
   return !readEnv(PROVIDER_BASE_URL_SETTING[provider], tenantId);
 }
 
+const PROVIDER_KEY_SETTING: Record<CatalogModelProvider, string> = {
+  anthropic: "ANTHROPIC_API_KEY",
+  openai: "OPENAI_API_KEY",
+  gemini: "GEMINI_API_KEY",
+};
+
+export type ModelKeyOwner = "workspace" | "operator";
+
+function workspaceLlmOverlay(tenantId: string) {
+  try {
+    return getConfig().tenants[tenantId]?.llm;
+  } catch {
+    return undefined;
+  }
+}
+
+export function workspaceOwnsProviderKey(tenantId: string, provider: string): boolean {
+  if (!isCatalogModelProvider(provider)) return false;
+  if (readEnv(PROVIDER_BASE_URL_SETTING[provider], tenantId)) return false;
+  const effective = readEnv(PROVIDER_KEY_SETTING[provider], tenantId);
+  const overlay = workspaceLlmOverlay(tenantId);
+  if (!effective || !overlay) return false;
+  return (
+    overlay.providers?.[provider]?.api_key === effective ||
+    (overlay.provider === provider && overlay.api_key === effective)
+  );
+}
+
+export function modelKeyOwner(
+  provider: ProviderKind,
+  tenantId: string | undefined,
+  apiKeyOverride?: string,
+): ModelKeyOwner {
+  if (!isCatalogModelProvider(provider)) return "operator";
+  if (apiKeyOverride) {
+    return readEnv(PROVIDER_BASE_URL_SETTING[provider], tenantId) ? "operator" : "workspace";
+  }
+  return tenantId && workspaceOwnsProviderKey(tenantId, provider) ? "workspace" : "operator";
+}
+
 export function providerDefaultModel(
   provider: ProviderState,
   role: DefaultModelRole = "primary",
@@ -252,8 +292,8 @@ const PROVIDER_REQUIREMENTS: Record<DirectProviderKind, ReadonlyArray<string>> =
   vertex: ["GOOGLE_VERTEX_PROJECT", "GOOGLE_VERTEX_LOCATION"],
 };
 
-export function validateProviderSetup(): ProviderSetupReport {
-  const detected = detectConfiguredProvider();
+export function validateProviderSetup(tenantId?: string): ProviderSetupReport {
+  const detected = detectConfiguredProvider(tenantId ? { tenantId } : undefined);
   if (detected === "unconfigured") {
     return {
       detected,
@@ -265,8 +305,8 @@ export function validateProviderSetup(): ProviderSetupReport {
   if (detected === "mock" || detected === "gateway") {
     if (detected === "gateway") {
       const missing: string[] = [];
-      if (!readEnv("AI_GATEWAY_API_KEY")) missing.push("AI_GATEWAY_API_KEY");
-      if (!readEnv("AI_GATEWAY_MODEL")) missing.push("AI_GATEWAY_MODEL");
+      if (!readEnv("AI_GATEWAY_API_KEY", tenantId)) missing.push("AI_GATEWAY_API_KEY");
+      if (!readEnv("AI_GATEWAY_MODEL", tenantId)) missing.push("AI_GATEWAY_MODEL");
       if (missing.length > 0) {
         return {
           detected,
@@ -279,9 +319,9 @@ export function validateProviderSetup(): ProviderSetupReport {
     return { detected, ok: true, message: `provider=${detected} ready`, missing: [] };
   }
   const required = PROVIDER_REQUIREMENTS[detected];
-  const missing = required.filter((name) => !readEnv(name));
+  const missing = required.filter((name) => !readEnv(name, tenantId));
   if (detected === "azure" && missing.length === 0) {
-    if (!readEnv("AZURE_RESOURCE_NAME") && !readEnv("AZURE_BASE_URL")) {
+    if (!readEnv("AZURE_RESOURCE_NAME", tenantId) && !readEnv("AZURE_BASE_URL", tenantId)) {
       return {
         detected,
         ok: false,
@@ -629,6 +669,9 @@ export async function initializeModel(options?: ModelInitOptions): Promise<Resol
   const tenantId = modelTenantContext(options?.tenantId);
   const resolved = await resolveModel({ ...options, ...(tenantId ? { tenantId } : {}) });
   if (resolved.provider === "mock") return resolved;
+  if (modelKeyOwner(resolved.provider, tenantId, options?.apiKeyOverride) === "workspace") {
+    return resolved;
+  }
   return {
     ...resolved,
     model: await wrapHostedBudgetModel(

@@ -5,6 +5,7 @@ import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { provisionSelfServiceTenant } from "../../identity/index.ts";
 import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../../test-helpers/workspace-registration.ts";
 import { WEBHOOK_MAX_ATTEMPTS, WebhookNotificationAdapter } from "../channels/webhook.ts";
 
 let tdb: TestDb;
@@ -27,6 +28,7 @@ beforeAll(async () => {
         email: "owner@example.test",
         email_verified: true,
       },
+      TEST_WORKSPACE_REGISTRATION,
       tdb.db,
     )
   ).tenant.id;

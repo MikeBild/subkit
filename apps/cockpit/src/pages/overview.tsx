@@ -24,7 +24,7 @@ import {
   workflowHref,
 } from "@/app/links";
 import { visibleNavigation } from "@/app/navigation";
-import { useSession } from "@/app/session";
+import { useSession, useSessionUpdate } from "@/app/session";
 import { hideAttentionEntry, restoreAttentionEntry, useAttention } from "@/app/use-attention";
 import { useReviewDecisions } from "@/app/use-decisions";
 import { AutomationGrant } from "@/components/cockpit/automation-grant";
@@ -41,6 +41,7 @@ import {
   RowsSkeleton,
   Section,
   SegmentedControl,
+  StartChecklist,
   StatusBadge,
   SummaryLine,
 } from "@/components/cockpit/patterns";
@@ -84,6 +85,7 @@ import {
   sinceLabel,
   sourceLabel,
 } from "./overview-model";
+import { startSteps } from "./overview-start-steps";
 import { isExecutionRecord, latestFailedRun, runName } from "./runs-model";
 
 type ExecutionListItem = components["schemas"]["ExecutionListItem"];
@@ -305,6 +307,39 @@ function NeedsYou({
         )}
       />
     </div>
+  );
+}
+
+function StartSteps() {
+  const { t } = useI18n();
+  const session = useSession();
+  const update = useSessionUpdate();
+  const hide = useMutation({
+    mutationFn: () => apiCall("patch", "/v1/identity/me", { body: { start_steps_hidden: true } }),
+    onMutate: () =>
+      update.patch((current) => ({
+        ...current,
+        start_steps: { ...current.start_steps, hidden: true },
+      })),
+    onError: () => {
+      update.patch((current) => ({
+        ...current,
+        start_steps: { ...current.start_steps, hidden: false },
+      }));
+      toast.error(t("common.actionFailed"));
+    },
+  });
+  return (
+    <StartChecklist
+      steps={startSteps(session).map((step) => ({
+        title: t(step.title),
+        line: t(step.line),
+        href: step.href,
+        done: step.done,
+      }))}
+      hidden={session.start_steps.hidden}
+      onHide={() => hide.mutate()}
+    />
   );
 }
 
@@ -544,6 +579,7 @@ export function OverviewPage() {
             testId="attention-unread"
           />
         ) : null}
+        <StartSteps />
         <div data-action-scope="list">
           <Section label={t("overview.needsYou")} testId="attention-section">
             {view?.kind === "nothing_readable" ? (

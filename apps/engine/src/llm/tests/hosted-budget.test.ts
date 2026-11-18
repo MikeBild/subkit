@@ -6,6 +6,7 @@ import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { provisionSelfServiceTenant } from "../../identity/self-service.ts";
 import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../../test-helpers/workspace-registration.ts";
 import { recordUsage } from "../accounting/budget.ts";
 import { reserveHostedBudget, settleHostedBudget } from "../accounting/hosted-budget.ts";
 
@@ -23,6 +24,7 @@ beforeAll(async () => {
       email: "first@example.test",
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     fixture.db,
   );
   const second = await provisionSelfServiceTenant(
@@ -32,6 +34,7 @@ beforeAll(async () => {
       email: "second@example.test",
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     fixture.db,
   );
   firstTenant = first.tenant.id;

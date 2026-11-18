@@ -22,6 +22,7 @@ import {
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../../test-helpers/workspace-registration.ts";
 import { createMcpOAuthProvider, type McpOAuthProvider } from "./server-provider.ts";
 import { CODE_VERIFIER, REDIRECT_URI, serverProviderFixtures } from "./server-provider-fixtures.ts";
 import { sha256Hex } from "./tokens.ts";
@@ -58,6 +59,7 @@ beforeAll(async () => {
       email: "mcp-oauth-atomicity@example.test",
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     db,
   );
   tenantId = fixture.tenant.id;

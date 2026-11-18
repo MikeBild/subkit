@@ -125,6 +125,7 @@ describe("reading tenant and cockpit identity", () => {
       id: tenant.id,
       slug: "profile-home",
       display_name: "Profile Home",
+      origin: "self_hosted",
     });
     expect(await findTenantSummary(tdb.db, MISSING)).toBeNull();
   });
@@ -132,10 +133,16 @@ describe("reading tenant and cockpit identity", () => {
   test("the cockpit identity joins user, role and tenant", async () => {
     expect(await findCockpitIdentity(tdb.db, tenant.id, userId)).toEqual({
       email: "profile-user@example.test",
+      display_name: null,
       role_name: "member",
+      auth_identity_id: null,
+      start_steps_hidden_at: null,
       tenant_id: tenant.id,
       tenant_slug: "profile-home",
       tenant_display_name: "Profile Home",
+      tenant_timezone: "UTC",
+      tenant_origin: "self_hosted",
+      tenant_owner_identity_id: null,
     });
   });
 

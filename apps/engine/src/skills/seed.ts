@@ -251,6 +251,19 @@ function applyChangedSkillSeeds(
   });
 }
 
+export async function applySkillSeedsWithRetry(
+  seeds: SeededSkill[],
+  tenant_id: string,
+  db: Db = getDb(),
+): Promise<ApplyOutcome> {
+  return retryTransient(() => applySkillSeeds(seeds, tenant_id, db), {
+    tries: 8,
+    startMs: 100,
+    maxMs: 2000,
+    label: "skills_seed",
+  });
+}
+
 export async function applySkillSeedsForAllTenants(
   seeds: SeededSkill[],
   db: Db = getDb(),
@@ -262,13 +275,7 @@ export async function applySkillSeedsForAllTenants(
   const outcomes: ApplyOutcome[] = [];
   for (const t of allTenants) {
     try {
-      const r = await retryTransient(() => applySkillSeeds(seeds, t.id, db), {
-        tries: 8,
-        startMs: 100,
-        maxMs: 2000,
-        label: "skills_seed",
-      });
-      outcomes.push(r);
+      outcomes.push(await applySkillSeedsWithRetry(seeds, t.id, db));
     } catch (error) {
       if (!(error instanceof SelfServiceIdentityError) || error.code !== "tenant_unavailable")
         throw error;

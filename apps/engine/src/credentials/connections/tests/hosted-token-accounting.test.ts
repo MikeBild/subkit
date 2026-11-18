@@ -17,6 +17,7 @@ import { createSecretVersion, readSecretVersion } from "../../../runtime-config/
 import { eraseTenantRuntimeArtifacts } from "../../../runtime-config/tenant-erasure.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import { configureHostedPolicyForTests } from "../../../test-helpers/hosted-policy.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../../../test-helpers/workspace-registration.ts";
 import { completeConnection, secretNames } from "../service.ts";
 
 let fixture: TestDb;
@@ -33,6 +34,7 @@ test("connection token histories charge all retained ciphertext and erase exact 
       email: "token@example.test",
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     fixture.db,
   );
   const tenantId = owned.tenant.id;
@@ -122,6 +124,7 @@ async function owned(subject: string) {
       email: `${subject}@example.test`,
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     fixture.db,
   );
 }

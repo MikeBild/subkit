@@ -48,7 +48,6 @@ const TONES: Partial<Record<string, BadgeTone>> = {
   expiring: "warn",
   awaiting_input: "warn",
   proposed: "warn",
-  invited: "warn",
   warn: "warn",
 };
 

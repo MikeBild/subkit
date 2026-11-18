@@ -17,6 +17,8 @@ const FILE_TO_SLUG: Record<string, string> = {
   "memberships.ts": "identity-memberships",
   "owned-tenant.ts": "identity-owned-tenant",
   "cli-session.ts": "identity-cli-session",
+  "onboarding.ts": "identity-onboarding",
+  "workspace.ts": "identity-workspace",
 };
 
 const TOP_LEVEL_FILE_TO_SLUG: Record<string, string> = {
@@ -104,10 +106,12 @@ describe("self-introspection carve-out is a contract, not just a comment", () =>
       "identity-cli-session",
       "identity-login",
       "identity-memberships",
+      "identity-onboarding",
       "identity-owned-tenant",
       "identity-permissions",
       "identity-providers",
       "identity-sessions",
+      "identity-workspace",
       "sk-bootstrap",
       "whoami",
     ]);

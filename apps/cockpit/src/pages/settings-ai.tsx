@@ -16,6 +16,7 @@ import {
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
+import { PROVIDER_KEY_PAGES, PROVIDER_MARK } from "@/pages/ai-providers";
 import { providerKeyPath } from "@/pages/settings-areas";
 import { type ModelCatalogEntry, modelsFor, recommendedModel } from "@/pages/settings-catalog";
 import {
@@ -48,22 +49,6 @@ const PROVIDER_ORDER = [
   "ai_gateway",
   "mock",
 ] as const;
-
-const PROVIDER_MARK: Readonly<Record<string, string>> = {
-  openai: "AI",
-  anthropic: "AN",
-  gemini: "GE",
-  azure: "AZ",
-  bedrock: "BR",
-  vertex: "VX",
-  ai_gateway: "GW",
-};
-
-const PROVIDER_KEY_PAGES: Readonly<Record<string, string>> = {
-  openai: "https://platform.openai.com/api-keys",
-  anthropic: "https://console.anthropic.com/settings/keys",
-  gemini: "https://aistudio.google.com/apikey",
-};
 
 const IT_PROVIDERS = new Set(["azure", "bedrock", "vertex", "ai_gateway"]);
 

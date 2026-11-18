@@ -25,6 +25,7 @@ describe("cockpit navigation contract", () => {
     expect(visibleAccountNavigation(permissions).map((item) => item.path)).toEqual([
       "/usage",
       "/audit",
+      "/settings",
     ]);
     expect(navigationItem("/")?.labelKey).toBe("nav.overview");
   });
@@ -35,6 +36,7 @@ describe("cockpit navigation contract", () => {
       "nav.overview",
       "nav.chat",
       "nav.workflows",
+      "nav.settings",
     ]);
   });
 
@@ -85,16 +87,18 @@ describe("cockpit navigation contract", () => {
     expect(navigationItem("/knowledge/abc")?.labelKey).toBe("nav.knowledgeSources");
     expect(navigationItem("/skills/abc")?.labelKey).toBe("nav.skills");
     expect(navigationItem("/files")?.labelKey).toBe("nav.files");
-    expect(paths(["skill:read"])).toEqual(["/", "/skills"]);
-    expect(paths(["file:read"])).toEqual(["/files"]);
-    expect(paths(["intake:read"])).toEqual(["/", "/intake"]);
+    expect(paths(["skill:read"])).toEqual(["/", "/skills", "/settings"]);
+    expect(paths(["file:read"])).toEqual(["/files", "/settings"]);
+    expect(paths(["intake:read"])).toEqual(["/", "/intake", "/settings"]);
     const icons = NAVIGATION.flatMap((group) => group.items).map((item) => item.icon);
     expect(new Set(icons).size).toBe(icons.length);
   });
 
-  test("Einstellungen shows for the settings or the notifications alone", () => {
+  test("Einstellungen shows for every signed-in person, because everybody has a profile", () => {
+    expect(paths([])).toEqual(["/settings"]);
     expect(paths(["settings:read"])).toContain("/settings");
-    expect(paths(["notification:read"])).toContain("/settings");
+    expect(paths(["workflow:run"])).toContain("/settings");
+    expect(visibleAccountNavigation([]).map((item) => item.path)).toEqual(["/settings"]);
   });
 
   test("keeps the API contract next to each route", () => {
@@ -125,7 +129,7 @@ describe("cockpit navigation contract", () => {
 
   test("uses the same read permissions as the engine routes", () => {
     expect(navigationItem("/usage")?.permission).toBe("stats:read");
-    expect(navigationItem("/settings")?.permission).toBe("settings:read");
+    expect(navigationItem("/settings")?.permission).toBeNull();
   });
 });
 

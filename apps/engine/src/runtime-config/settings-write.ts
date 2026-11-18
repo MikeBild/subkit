@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { actorType } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -12,6 +13,7 @@ import {
 } from "../config/loader.ts";
 import { type ConfigLeaf, findLeafByPath } from "../config/walk.ts";
 import type { Db } from "../db/client.ts";
+import { tenants } from "../db/schema/index.ts";
 import { logger } from "../logging/index.ts";
 import {
   RuntimeConfigConflictError,
@@ -110,9 +112,22 @@ function sourceMetadata(request: SettingWriteRequest): Record<string, unknown> {
   return { source: "settings_leaf_write", request_source: request.requestSource };
 }
 
+async function assertLeafWritableForWorkspace(db: Db, tenantId: string): Promise<void> {
+  const [workspace] = await db
+    .select({ origin: tenants.origin })
+    .from(tenants)
+    .where(eq(tenants.id, tenantId))
+    .limit(1);
+  if (workspace?.origin === "self_service")
+    throw new RuntimeConfigValidationError(
+      "Self-service workspace settings use the engine operator's global policy; a workspace changes its own AI provider, model and key with PATCH /v1/identity/workspace/ai-access",
+    );
+}
+
 async function writeThroughRevisions(target: WriteTarget): Promise<WriteResult> {
   const { request, leaf, tenant, restricted } = target;
   const { db, principal } = request;
+  if (tenant) await assertLeafWritableForWorkspace(db, tenant);
   const leafPath = leaf.path.join(".");
   const auditTenant = tenant ?? principal.tenant_id;
   const auditActorType = actorType(principal);

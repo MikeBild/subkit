@@ -4,6 +4,7 @@ import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Transaction } from "../db/client.ts";
 import { tenants } from "../db/schema/index.ts";
 import { RuntimeConfigValidationError } from "./contracts.ts";
+import { hostedWorkspaceSecretAllowed } from "./hosted-workspace-allowlist.ts";
 
 export async function assertTenantRuntimeSecretAllowed(
   db: Transaction,
@@ -34,8 +35,12 @@ export async function assertTenantRuntimeSecretAllowed(
     throw new RuntimeConfigValidationError(
       "Tenant runtime secrets require a known active workspace",
     );
-  if (tenantOverlay && tenant.origin === "self_service")
+  if (
+    tenantOverlay &&
+    tenant.origin === "self_service" &&
+    !hostedWorkspaceSecretAllowed(name, tenantId)
+  )
     throw new RuntimeConfigValidationError(
-      "Self-service workspace settings use the engine operator's global policy; tenant runtime secrets are not allowed",
+      "Self-service workspace settings use the engine operator's global policy; the only tenant runtime secret allowed is the workspace's own model provider key",
     );
 }

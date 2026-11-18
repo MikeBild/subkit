@@ -307,7 +307,7 @@ const SIGN_IN_ERRORS: Record<AuthLocale, Record<SignInError, string>> = {
     account_not_assigned:
       "This company account is not assigned to SubKit. Contact an administrator.",
     registration_closed:
-      "New SubKit workspaces are currently unavailable. Contact an administrator.",
+      "This SubKit is currently available by invitation only. You need an invitation link from a workspace administrator.",
     grant_denied: "Your account is not authorized for SubKit. Contact the operator.",
     authorize_invalid:
       "This authorization request is invalid. Return to the application and start the sign-in again.",
@@ -324,7 +324,7 @@ const SIGN_IN_ERRORS: Record<AuthLocale, Record<SignInError, string>> = {
     account_not_assigned:
       "Dieses Firmenkonto ist SubKit nicht zugeordnet. Frag eine Person mit der Rolle Administrator.",
     registration_closed:
-      "Neue SubKit-Arbeitsbereiche sind derzeit nicht verfügbar. Frag eine Person mit der Rolle Administrator.",
+      "Dieses SubKit ist derzeit nur auf Einladung verfügbar. Du brauchst einen Einladungslink von einer Person, die einen Arbeitsbereich verwaltet.",
     grant_denied:
       "Dein Konto ist für SubKit nicht freigegeben. Frag eine Person mit der Rolle Administrator.",
     authorize_invalid:
@@ -347,8 +347,8 @@ export function renderErrorPage(error: SignInError, retryHref: string, look: Pag
         : "Account not assigned"
       : error === "registration_closed"
         ? look.locale === "de"
-          ? "Registrierung geschlossen"
-          : "Registration closed"
+          ? "Nur auf Einladung"
+          : "By invitation only"
         : copy.signInFailed;
   const action =
     error === "installation_login_requires_oidc"
@@ -368,6 +368,7 @@ interface LoginProviderChoice {
   id: string;
   protocol: "api_key" | "oidc";
   href: string;
+  label?: string;
 }
 
 export function renderProviderChoice(providers: LoginProviderChoice[], look: PageLook): string {
@@ -378,13 +379,18 @@ export function renderProviderChoice(providers: LoginProviderChoice[], look: Pag
     )
     .map((provider) => {
       const apiKey = provider.protocol === "api_key";
-      const label = de
-        ? apiKey
+      const providerLabel = provider.label?.trim();
+      const label = apiKey
+        ? de
           ? "Mit API-Schlüssel anmelden"
-          : "Mit Firmenkonto anmelden"
-        : apiKey
-          ? "Sign in with API key"
-          : "Sign in with work account";
+          : "Sign in with API key"
+        : providerLabel
+          ? de
+            ? `Mit ${providerLabel} anmelden`
+            : `Sign in with ${providerLabel}`
+          : de
+            ? "Mit Firmenkonto anmelden"
+            : "Sign in with work account";
       const kind = apiKey ? "api-key" : "sso";
       return linkButton(
         provider.href,

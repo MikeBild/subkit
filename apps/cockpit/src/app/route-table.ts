@@ -13,7 +13,13 @@ export type PageRoute = (typeof PAGE_ROUTES)[number];
 
 export const RECOVERY_ROUTE = "/recovery";
 
-export const STANDALONE_ROUTES = [RECOVERY_ROUTE] as const;
+export const WELCOME_ROUTE = "/welcome";
+
+export const INVITE_ROUTE = "/invite";
+
+export const STANDALONE_ROUTES = [RECOVERY_ROUTE, WELCOME_ROUTE, INVITE_ROUTE] as const;
+
+export type StandaloneRoute = (typeof STANDALONE_ROUTES)[number];
 
 export const REDIRECT_ROUTES = ["/access"] as const;
 

@@ -6,6 +6,7 @@ import { decryptSecretBytesWithKey, encryptSecretBytesWithKey } from "../crypto/
 import { provisionSelfServiceTenant } from "../identity/self-service.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
 import { hostedTenantUsage, runtimeConfigState, runtimeSecretVersions } from "./schema/index.ts";
 import { createTestDb, type TestDb } from "./tests/setup.ts";
 import { VAULT_STOCK_TABLES } from "./vault-stock-sql.ts";
@@ -227,6 +228,7 @@ export function useVaultMaintenanceDb(): void {
         email: "vault@example.test",
         email_verified: true,
       },
+      TEST_WORKSPACE_REGISTRATION,
       fixture.db,
     );
     tenantId = owned.tenant.id;

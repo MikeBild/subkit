@@ -40,6 +40,29 @@ Your session ends after 8 hours of inactivity, or after 24 hours at the latest.
 
 To build your first workflow, follow "Your first workflow".
 
+### Your AI access
+
+SubKit works with the AI service you choose. The provider bills you directly for what you use.
+
+When you create a workspace, you choose the provider and enter your API key:
+
+1. Select **Anthropic**, **OpenAI** or **Google**.
+2. Enter the API key from your account with that provider.
+3. Select the button that creates the workspace.
+
+SubKit checks the key once with the provider and stores it encrypted. It is never shown again.
+If the provider refuses the key, nothing is created. Check the key and submit the form again.
+
+People you invite never enter a key. They work with the key of the workspace.
+
+To change the provider, the model or the key later:
+
+1. In the Cockpit, open **Settings** > **AI assistant**.
+2. Choose the provider and model, or enter a new key.
+3. Select **Save**. SubKit checks the new key first. If the provider refuses it, the stored key stays active.
+
+Only the owner or an administrator of the workspace can change the AI access.
+
 ### Switch accounts
 
 Signing out in the Cockpit also signs you out at Upraft Auth.
@@ -121,9 +144,10 @@ For SubKit Cloud, the engine address is `https://subkit-cloud.mikebild.dev`.
 SubKit Cloud runs the same engine as a self-hosted installation.
 Some settings are managed by the operator instead of by you.
 
-- **Models, budgets and limits.** The operator chooses them.
-  You cannot add your own AI key or change these settings for your workspace.
-- **Text models only.** Images, audio and other non-text input to the model are not supported.
+- **Your own AI access.** Every workspace brings its own AI provider and API key. See "Your AI access".
+  The key is the only setting you change for your workspace; the operator sets all limits.
+- **Text models only without your own key.** A workspace that has no API key of its own uses the operator's allowance.
+  There, images, audio and other non-text input to the model are not supported.
 - **No native web search.** The model's built-in web search is not available.
 - **Public addresses only.** Connectors reach only services on the public internet.
   Addresses in a private network, such as `localhost` or an internal company server, are blocked.
@@ -146,7 +170,7 @@ When you reach one, SubKit shows a message. Most of these messages appear in Eng
 | "The monthly request allowance is exhausted." | The month's request allowance is used up. Wait for the next month or contact the operator. |
 | "The workspace storage allowance for files and saved content is exhausted. Retained content remains charged until physical cleanup succeeds." | Storage is full. Delete files and saved content you no longer need, or contact the operator. |
 | "The workspace resource limit is exhausted. Ask the engine operator to review retained resources." | Too many resources. Delete workflows or connectors you no longer need, or contact the operator. |
-| "This installation's monthly AI budget is used up." (in the chat) | Wait for the next month or contact the operator. |
+| "This installation's monthly AI budget is used up." (in the chat) | Your workspace has no API key of its own and the operator's allowance is used up. Enter your own key under **Settings** > **AI assistant**. |
 
 ### If something does not work
 

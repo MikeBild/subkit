@@ -22,7 +22,7 @@ const de = (key: Parameters<typeof translate>[1], values?: Record<string, string
 const ENGINE_SRC = resolve(import.meta.dir, "../../../engine/src");
 const SEEDED_EVENT_PATTERN =
   /DEFAULT_CLI_INBOX_EVENT_PATTERN =\s*"([^"]+)"/.exec(
-    readFileSync(resolve(ENGINE_SRC, "db/seed.ts"), "utf8"),
+    readFileSync(resolve(ENGINE_SRC, "notifications/default-cli-rule.ts"), "utf8"),
   )?.[1] ?? "";
 const CATALOG_SOURCE = readFileSync(resolve(ENGINE_SRC, "webhooks/events/catalog.ts"), "utf8");
 const ENGINE_EVENT_TYPES = [

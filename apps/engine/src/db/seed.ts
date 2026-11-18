@@ -5,6 +5,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { lockActiveTenant } from "../identity/index.ts";
 import { logger } from "../logging/logger.ts";
+import { seedDefaultCliNotificationRule } from "../notifications/default-cli-rule.ts";
 import { claimOperatorTenantIfUnassigned } from "../rbac/operator.ts";
 import {
   backfillSystemAccountRoleIds,
@@ -12,15 +13,8 @@ import {
   seedBuiltinRolesAndPermissions,
 } from "../rbac/seed.ts";
 import { lockCatalogVocabulary } from "./catalog-vocabulary.ts";
-import type { Db, Executor } from "./client.ts";
-import {
-  apiKeys,
-  notificationRules,
-  skills,
-  systemAccounts,
-  tenants,
-  users,
-} from "./schema/index.ts";
+import type { Db } from "./client.ts";
+import { apiKeys, skills, systemAccounts, tenants, users } from "./schema/index.ts";
 
 const DEFAULT_TENANT_SLUG = "default";
 const BOOTSTRAP_SYS_ACCOUNT_NAME = "bootstrap-admin";
@@ -49,39 +43,6 @@ async function seedEssentials(db: Db): Promise<SeededRoleIds> {
   const rbacIds = await seedBuiltinRolesAndPermissions(db);
   await backfillSystemAccountRoleIds(db, rbacIds);
   return rbacIds;
-}
-
-export const DEFAULT_CLI_INBOX_EVENT_PATTERN =
-  "execution.failed,connector.oauth.callback_failed,connector.auth_failed,connector.health_changed,patch.proposed";
-
-export async function seedDefaultCliNotificationRule(
-  tx: Executor,
-  tenant_id: string,
-): Promise<void> {
-  const existing = await tx
-    .select({ id: notificationRules.id })
-    .from(notificationRules)
-    .where(
-      and(
-        eq(notificationRules.tenant_id, tenant_id),
-        eq(notificationRules.target_workspace_id, "_cli"),
-        eq(notificationRules.target_channel_id, "_inbox"),
-      ),
-    )
-    .limit(1);
-  if (existing.length > 0) return;
-
-  await tx.insert(notificationRules).values({
-    tenant_id,
-    name: "sk CLI inbox (default)",
-    event_pattern: DEFAULT_CLI_INBOX_EVENT_PATTERN,
-    workflow_pattern: "*",
-    severity: "info",
-    request_source_filter: null,
-    target_workspace_id: "_cli",
-    target_channel_id: "_inbox",
-    active: true,
-  });
 }
 
 export interface TenantBootstrapPayload {

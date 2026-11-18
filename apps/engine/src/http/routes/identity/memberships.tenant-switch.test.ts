@@ -5,6 +5,7 @@ import { sessions, users } from "../../../db/schema/index.ts";
 import { browserMembershipIdentity, provisionSelfServiceTenant } from "../../../identity/index.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../../../test-helpers/workspace-registration.ts";
 import {
   ctx,
   login,
@@ -25,6 +26,7 @@ describe("hosted browser identity and memberships", () => {
         email: "destination@example.test",
         email_verified: true,
       },
+      TEST_WORKSPACE_REGISTRATION,
       ctx.db,
     );
     const [source] = await ctx.db
@@ -110,6 +112,7 @@ describe("hosted browser identity and memberships", () => {
         email: "sliding-destination@example.test",
         email_verified: true,
       },
+      TEST_WORKSPACE_REGISTRATION,
       ctx.db,
     );
     const sessionWhere = (payload: typeof owner.payload) =>

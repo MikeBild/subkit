@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, type Bootstrap } from "@/api/client";
 import {
@@ -11,14 +11,22 @@ import {
 } from "@/api/tenant-branding";
 import { useSession } from "@/app/session";
 import { useDirtyGuard } from "@/app/version-notice";
-import { Button, ConfirmDialog, DataState, SaveBar } from "@/components/cockpit/patterns";
+import { Button, ConfirmDialog, DataState } from "@/components/cockpit/patterns";
 import { Alert, AlertDescription } from "@/components/cockpit/patterns/controls";
-import { SectionHeading } from "@/components/cockpit/patterns/section";
 import { brandingDraft, readBrandingAppIcon, readBrandingLogo } from "@/lib/branding";
 import { useI18n } from "@/lib/i18n-context";
 import { BrandingForm } from "./branding-form";
 
-export function BrandingSettings() {
+export interface BrandingDraftHandle {
+  save(): Promise<void>;
+  discard(): void;
+}
+
+export function BrandingSettings({
+  onDraft,
+}: {
+  onDraft(handle: BrandingDraftHandle | null): void;
+}) {
   const session = useSession();
   const { t } = useI18n();
   const client = useQueryClient();
@@ -40,7 +48,6 @@ export function BrandingSettings() {
     setDraft(null);
     setFailure(null);
     setResetOpen(false);
-    toast.success(t("branding.saved"));
   }
   const mutation = useMutation({
     mutationFn: async (reset: boolean) => {
@@ -48,7 +55,10 @@ export function BrandingSettings() {
       const value = draft ?? brandingDraft(query.data);
       return reset ? resetTenantBranding(value.revision) : saveTenantBranding(value);
     },
-    onSuccess: apply,
+    onSuccess: (value, reset) => {
+      apply(value);
+      if (reset) toast.success(t("branding.saved"));
+    },
     onError: (error) => {
       setResetOpen(false);
       setFailure(
@@ -60,6 +70,22 @@ export function BrandingSettings() {
       );
     },
   });
+  const dirty = draft !== null;
+  const { mutateAsync } = mutation;
+  useEffect(() => {
+    onDraft(
+      dirty
+        ? {
+            save: () => mutateAsync(false).then(() => undefined),
+            discard: () => {
+              setDraft(null);
+              setFailure(null);
+            },
+          }
+        : null,
+    );
+  }, [dirty, mutateAsync, onDraft]);
+  useEffect(() => () => onDraft(null), [onDraft]);
   if (query.isPending) return <DataState state="loading" testId="branding-loading" />;
   if (!query.data)
     return (
@@ -107,21 +133,8 @@ export function BrandingSettings() {
     }
   }
   return (
-    <section
-      data-testid="branding-settings"
-      data-branding-editor
-      className="min-w-0 pb-20"
-      aria-labelledby="branding-title"
-    >
-      <div className="mb-5">
-        <SectionHeading id="branding-title" className="text-lg font-semibold tracking-tight">
-          {t("branding.title")}
-        </SectionHeading>
-        <p className="mt-1 text-sm text-muted-foreground">{t("branding.intro")}</p>
-      </div>
-      {!canWrite ? (
-        <p className="mb-4 text-sm text-muted-foreground">{t("branding.readOnly")}</p>
-      ) : null}
+    <div data-testid="branding-settings" data-branding-editor className="grid min-w-0 gap-4">
+      {!canWrite ? <p className="text-sm text-muted-foreground">{t("branding.readOnly")}</p> : null}
       <BrandingForm
         draft={value}
         saved={saved}
@@ -131,7 +144,7 @@ export function BrandingSettings() {
         onIconUpload={(file) => void uploadIcon(file)}
       />
       {failure ? (
-        <Alert variant="destructive" className="mt-4" data-testid="branding-error">
+        <Alert variant="destructive" data-testid="branding-error">
           <AlertDescription>
             {t(
               failure === "image"
@@ -160,36 +173,16 @@ export function BrandingSettings() {
           </AlertDescription>
         </Alert>
       ) : null}
-      {canWrite ? (
-        <SaveBar
-          count={draft ? 1 : 0}
-          line={draft ? t("branding.unsaved") : t("branding.previewHint")}
-          description={draft ? t("branding.localDraft") : undefined}
-          testId="branding-save-bar"
-          discard={{
-            onClick: () => {
-              setDraft(null);
-              setFailure(null);
-            },
-            disabled: !draft || reading,
-          }}
-          secondary={
-            <Button
-              variant="outline"
-              disabled={disabled || (!saved.configured && !draft)}
-              onClick={() => setResetOpen(true)}
-              data-testid="branding-reset"
-            >
-              {t("branding.reset")}
-            </Button>
-          }
-          save={{
-            label: t("branding.save"),
-            onClick: () => mutation.mutate(false),
-            pending: mutation.isPending,
-            disabled: !draft || reading || failure === "conflict",
-          }}
-        />
+      {canWrite && (saved.configured || draft) ? (
+        <Button
+          variant="outline"
+          className="justify-self-start"
+          disabled={disabled}
+          onClick={() => setResetOpen(true)}
+          data-testid="branding-reset"
+        >
+          {t("branding.reset")}
+        </Button>
       ) : null}
       <ConfirmDialog
         open={resetOpen}
@@ -206,6 +199,6 @@ export function BrandingSettings() {
             .catch(() => undefined)
         }
       />
-    </section>
+    </div>
   );
 }

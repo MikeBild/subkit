@@ -6,6 +6,7 @@ import { identityRecoverySessions, tenants } from "../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../http/tests/setup.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
 import {
   consumeIdentityRecovery,
   identityRecoveryFromRequest,
@@ -29,7 +30,7 @@ async function recovery(subject: string) {
     email: `${subject}@example.test`,
     email_verified: true as const,
   };
-  const owned = await provisionSelfServiceTenant(claims, ctx.db);
+  const owned = await provisionSelfServiceTenant(claims, TEST_WORKSPACE_REGISTRATION, ctx.db);
   await ctx.db
     .update(tenants)
     .set({

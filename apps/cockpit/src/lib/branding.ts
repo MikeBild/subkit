@@ -18,7 +18,7 @@ export const BRANDING_SWATCHES = {
 export function brandingDraft(value: TenantBranding): TenantBrandingUpdate {
   return {
     revision: value.revision,
-    display_name: value.display_name,
+    display_name: null,
     subtitle: value.subtitle,
     palette: value.palette,
     logos: { light: { operation: "keep" }, dark: { operation: "keep" } },

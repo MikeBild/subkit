@@ -144,19 +144,21 @@ const recoveryProvidersRoute = createRoute({
   },
 });
 
+export function hostedIdentityProviders() {
+  const config = getConfig();
+  if (!config.auth.hosted.enabled) return [];
+  return config.auth.providers.flatMap((provider) =>
+    provider.protocol === "oidc" &&
+    provider.signup_policy === "self_service" &&
+    !provider.product_id
+      ? [provider]
+      : [],
+  );
+}
+
 export function registerMembershipRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(recoveryProvidersRoute, (c) => {
-    const config = getConfig();
-    const items = config.auth.hosted.enabled
-      ? config.auth.providers
-          .filter(
-            (provider) =>
-              provider.protocol === "oidc" &&
-              provider.signup_policy === "self_service" &&
-              !provider.product_id,
-          )
-          .map((provider) => ({ id: provider.id, label: provider.label }))
-      : [];
+    const items = hostedIdentityProviders().map(({ id, label }) => ({ id, label }));
     c.header("cache-control", "no-store");
     return c.json({ items }, 200);
   });
@@ -171,17 +173,10 @@ export function registerMembershipRoutes(app: OpenAPIHono<AppEnv>): void {
       origin !== new URL(getConfig().server.public_base_url).origin
     )
       throw new ForbiddenError("recovery_login_origin_rejected");
-    const config = getConfig();
-    const provider = config.auth.providers.find(
+    const provider = hostedIdentityProviders().find(
       (entry) => entry.id === c.req.valid("json").provider_id,
     );
-    if (
-      !config.auth.hosted.enabled ||
-      provider?.protocol !== "oidc" ||
-      provider.signup_policy !== "self_service" ||
-      provider.product_id
-    )
-      throw new ForbiddenError("hosted_provider_required");
+    if (!provider) throw new ForbiddenError("hosted_provider_required");
     const adapter = createOidcProvider({ db: c.get("db"), providerId: provider.id });
     const start = new URL("/v1/identity/login/start", c.req.url);
     start.searchParams.set("redirect_to", "/v1/identity/recovery");

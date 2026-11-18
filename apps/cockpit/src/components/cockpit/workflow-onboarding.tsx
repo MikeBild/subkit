@@ -1,52 +1,12 @@
 import { Sparkles } from "lucide-react";
 import { useState } from "react";
 import { absolute, chatNewHref } from "@/app/links";
-import { useConnectorRecords } from "@/components/cockpit/connector-names";
 import { CreateChoiceDialog } from "@/components/cockpit/create-choice";
 import { SolutionGallery, useSolutionTemplates } from "@/components/cockpit/create-from-template";
-import {
-  ActionButton,
-  Input,
-  OnboardingFrame,
-  Section,
-  StartChecklist,
-  type StartStep,
-} from "@/components/cockpit/patterns";
+import { ActionButton, Input, OnboardingFrame, Section } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 
 const GALLERY_SIZE = 6;
-
-export function workflowStartSteps(
-  t: ReturnType<typeof useI18n>["t"],
-  facts: { connectors: number; workflows: number },
-): StartStep[] {
-  return [
-    {
-      title: t("workflowOnboarding.step.connect"),
-      line: t("workflowOnboarding.step.connectLine"),
-      href: "/connectors",
-      done: facts.connectors > 0,
-    },
-    {
-      title: t("workflowOnboarding.step.template"),
-      line: t("workflowOnboarding.step.templateLine"),
-      href: "/workflows",
-      done: facts.workflows > 0,
-    },
-    {
-      title: t("workflowOnboarding.step.trial"),
-      line: t("workflowOnboarding.step.trialLine"),
-      href: "/workflows",
-      done: false,
-    },
-    {
-      title: t("workflowOnboarding.step.approve"),
-      line: t("workflowOnboarding.step.approveLine"),
-      href: "/workflows",
-      done: false,
-    },
-  ];
-}
 
 function AskBox() {
   const { t } = useI18n();
@@ -86,7 +46,6 @@ function AskBox() {
 export function WorkflowOnboarding({ canWrite, canChat }: { canWrite: boolean; canChat: boolean }) {
   const { t } = useI18n();
   const templates = useSolutionTemplates(true);
-  const connectors = useConnectorRecords();
   const [picked, setPicked] = useState<string | null>(null);
   return (
     <OnboardingFrame lead={t("workflowOnboarding.lead")} testId="workflow-onboarding">
@@ -101,10 +60,6 @@ export function WorkflowOnboarding({ canWrite, canChat }: { canWrite: boolean; c
           limit={GALLERY_SIZE}
         />
       </Section>
-      <StartChecklist
-        steps={workflowStartSteps(t, { connectors: connectors.length, workflows: 0 })}
-        testId="workflow-start-checklist"
-      />
       {canWrite ? (
         <CreateChoiceDialog
           open={picked !== null}

@@ -4,7 +4,14 @@ import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import type { PrincipalKind } from "../auth/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Executor } from "../db/client.ts";
-import { apiKeys, sessions, tenants, userInvites, users } from "../db/schema/index.ts";
+import {
+  apiKeys,
+  sessions,
+  tenants,
+  userIdentities,
+  userInvites,
+  users,
+} from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { builtinRoleId } from "../rbac/roles.ts";
 import { authorizeRequestedScopes, type ScopeIssuer } from "../rbac/scope-issuance.ts";
@@ -105,6 +112,68 @@ interface DeactivateUserInput {
   actor_kind?: PrincipalKind | "system";
 }
 
+async function neverJoined(tx: Executor, user: typeof users.$inferSelect): Promise<boolean> {
+  if (user.status !== "invited" || user.auth_identity_id !== null) return false;
+  const [key] = await tx
+    .select({ id: apiKeys.id })
+    .from(apiKeys)
+    .where(and(eq(apiKeys.tenant_id, user.tenant_id), eq(apiKeys.user_id, user.id)))
+    .limit(1);
+  const [session] = await tx
+    .select({ id: sessions.id })
+    .from(sessions)
+    .where(and(eq(sessions.tenant_id, user.tenant_id), eq(sessions.user_id, user.id)))
+    .limit(1);
+  const [identity] = await tx
+    .select({ id: userIdentities.id })
+    .from(userIdentities)
+    .where(and(eq(userIdentities.tenant_id, user.tenant_id), eq(userIdentities.user_id, user.id)))
+    .limit(1);
+  return !key && !session && !identity;
+}
+
+async function removeInvitedUser(
+  tx: Executor,
+  input: DeactivateUserInput,
+  user: typeof users.$inferSelect,
+) {
+  const removedInvites = await tx
+    .delete(userInvites)
+    .where(and(eq(userInvites.tenant_id, user.tenant_id), eq(userInvites.user_id, user.id)))
+    .returning();
+  for (const invite of removedInvites) {
+    if (invite.revoked_at) continue;
+    await auditAwait(
+      {
+        tenant_id: user.tenant_id,
+        ...auditActor(input.actor_kind, input.actor_id),
+        action: AuditAction.INVITE_REVOKED,
+        resource_type: "user_invite",
+        resource_id: invite.id,
+        result: "success",
+        reason: "invitation_withdrawn",
+        metadata: { invite_id: invite.id, user_id: invite.user_id, prefix: invite.prefix },
+      },
+      tx,
+    );
+  }
+  await tx.delete(users).where(and(eq(users.tenant_id, user.tenant_id), eq(users.id, user.id)));
+  await auditAwait(
+    {
+      tenant_id: user.tenant_id,
+      ...auditActor(input.actor_kind, input.actor_id),
+      action: AuditAction.USER_DELETED,
+      resource_type: "user",
+      resource_id: user.id,
+      result: "success",
+      reason: "invitation_withdrawn",
+      metadata: { email: user.email, removed: true, revoked_invites: removedInvites.length },
+    },
+    tx,
+  );
+  return user;
+}
+
 export async function deactivateUser(input: DeactivateUserInput, db: Executor) {
   return db.transaction(async (tx) => {
     const nowTs = new Date(now());
@@ -113,6 +182,20 @@ export async function deactivateUser(input: DeactivateUserInput, db: Executor) {
       user_id: input.user_id,
       nextEffectiveRole: null,
     });
+    const [current] = await tx
+      .select()
+      .from(users)
+      .where(
+        and(
+          eq(users.tenant_id, input.tenant_id),
+          eq(users.id, input.user_id),
+          isNull(users.deleted_at),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!current) return null;
+    if (await neverJoined(tx, current)) return removeInvitedUser(tx, input, current);
     const [row] = await tx
       .update(users)
       .set({ deleted_at: nowTs, status: "disabled", updated_at: nowTs })
@@ -321,6 +404,45 @@ export async function createInvite(
   return db.transaction(async (tx) => {
     const token = generateInviteToken();
     const expiresAt = new Date(now() + ttlMs);
+    const [invitee] = await tx
+      .select({ status: users.status })
+      .from(users)
+      .where(and(eq(users.tenant_id, input.tenant_id), eq(users.id, input.user_id)))
+      .for("update")
+      .limit(1);
+    if (invitee?.status === "invited") {
+      const replaced = await tx
+        .update(userInvites)
+        .set({ revoked_at: new Date(now()), updated_at: new Date(now()) })
+        .where(
+          and(
+            eq(userInvites.tenant_id, input.tenant_id),
+            eq(userInvites.user_id, input.user_id),
+            isNull(userInvites.redeemed_at),
+            isNull(userInvites.revoked_at),
+          ),
+        )
+        .returning();
+      for (const previous of replaced) {
+        await auditAwait(
+          {
+            tenant_id: input.tenant_id,
+            ...auditActor(input.actor_kind, input.actor_id),
+            action: AuditAction.INVITE_REVOKED,
+            resource_type: "user_invite",
+            resource_id: previous.id,
+            result: "success",
+            reason: "invite_reissued",
+            metadata: {
+              invite_id: previous.id,
+              user_id: previous.user_id,
+              prefix: previous.prefix,
+            },
+          },
+          tx,
+        );
+      }
+    }
     const [row] = await tx
       .insert(userInvites)
       .values({
@@ -368,6 +490,28 @@ export async function createInvite(
       actor_id: input.actor_id,
     });
     return { view: toInviteView(row), plaintext: token.plaintext };
+  });
+}
+
+export async function createInvitedUser(
+  input: Omit<CreateUserInput, "status"> & { issuer: ScopeIssuer; ttl_minutes?: number },
+  db: Executor,
+) {
+  return db.transaction(async (tx) => {
+    const { issuer, ttl_minutes, ...user } = input;
+    const row = await createUser({ ...user, status: "invited" }, tx);
+    const invite = await createInvite(
+      {
+        issuer,
+        tenant_id: input.tenant_id,
+        user_id: row.id,
+        ...(ttl_minutes !== undefined ? { ttl_minutes } : {}),
+        actor_id: input.actor_id,
+        ...(input.actor_kind ? { actor_kind: input.actor_kind } : {}),
+      },
+      tx,
+    );
+    return { user: row, invite };
   });
 }
 

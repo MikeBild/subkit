@@ -4,9 +4,10 @@ import { RotateCw } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { apiCall } from "@/api/call";
+import { ApiError } from "@/api/client";
 import { absolute, settingsHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
-import { useSession } from "@/app/session";
+import { useSession, useSessionUpdate } from "@/app/session";
 import { useDirtyGuard } from "@/app/version-notice";
 import {
   Button,
@@ -23,9 +24,10 @@ import {
   SelectValue,
 } from "@/components/cockpit/patterns";
 import { PreparedChanges } from "@/components/cockpit/prepared-changes";
-import { WorkspaceDeletion } from "@/components/cockpit/workspace-deletion";
-import { ForbiddenState, LoadFailed, queryView } from "@/components/failure-state";
+import { LoadFailed, queryView } from "@/components/failure-state";
 import { useI18n } from "@/lib/i18n-context";
+import { useTheme } from "@/lib/theme";
+import type { BrandingDraftHandle } from "@/pages/branding";
 import { NotificationSettings, useNotificationActions } from "@/pages/notification-settings";
 import { canReadOperations } from "@/pages/operations-bar";
 import { AiArea, providerName } from "@/pages/settings-ai";
@@ -33,15 +35,21 @@ import { AreaList } from "@/pages/settings-area-list";
 import {
   areaSentences,
   areaStatus,
+  ENGINE_AREA_IDS,
+  type EngineAreaId,
+  engineSettingsAccess,
+  isPersonalArea,
+  openSettingsLevel,
   pageScope,
   type ScopedArea,
-  SETTING_AREA_IDS,
   type SettingAreaId,
   type SettingsLevel,
   scopedAreaOf,
   settingAreaOf,
   settingsGuidedErrors,
   settingsLevelFromUrl,
+  visibleSettingAreas,
+  workspaceAiEditable,
 } from "@/pages/settings-areas";
 import {
   catalogModelName,
@@ -72,8 +80,23 @@ import {
   settingsSaveReason,
   settingsViewFromUrl,
 } from "@/pages/settings-model";
-import { type AreaCard, SettingsAreaFrame, SettingsOverview } from "@/pages/settings-overview";
+import {
+  type AreaCard,
+  SettingsAreaFrame,
+  SettingsOverview,
+  settingAreaPurpose,
+} from "@/pages/settings-overview";
 import { PackagesSettings } from "@/pages/settings-packages";
+import {
+  type PersonalDrafts,
+  PersonalSaveError,
+  personalChanges,
+  personalRefusal,
+  profileCard,
+  workspaceAiCard,
+  workspaceCard,
+} from "@/pages/settings-personal";
+import { ProfileArea } from "@/pages/settings-profile";
 import {
   RESTART_STATUS_QUERY_KEY,
   SettingsRestartDialog,
@@ -91,35 +114,15 @@ import {
   SettingsSummary,
 } from "@/pages/settings-rows";
 import { applySettingsPatch, settingsReadQuery, settleSettings } from "@/pages/settings-save";
+import { WorkspaceArea } from "@/pages/settings-workspace";
+import { WorkspaceAiArea } from "@/pages/settings-workspace-ai";
 import { type BudgetSummary, budgetSummary } from "@/pages/usage-model";
-import { BrandingSettings } from "./branding";
 
 export * from "@/pages/settings-rows";
 
 const SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 
 const SETTINGS_QUERY_KEY = ["admin", "settings"] as const;
-
-export function SettingsPage() {
-  const { t } = useI18n();
-  const session = useSession();
-  if (session.permissions.includes("settings:read")) return <SettingsWorkspace />;
-  return (
-    <Page
-      kind="settings"
-      scroll="page"
-      testId="admin-settings"
-      header={<PageHeader title={t("resource.settings.title")} />}
-    >
-      {session.permissions.includes("notification:read") ? (
-        <NotificationsOnly />
-      ) : (
-        <ForbiddenState />
-      )}
-      {session.identity_memberships ? <WorkspaceDeletion /> : null}
-    </Page>
-  );
-}
 
 function NotificationsBlock() {
   const [createRule, setCreateRule] = useState(false);
@@ -147,8 +150,16 @@ function NotificationsBlock() {
   );
 }
 
-function NotificationsOnly() {
-  return <NotificationsBlock />;
+function NotificationRules() {
+  const { t } = useI18n();
+  return (
+    <section className="grid gap-3" data-testid="settings-notification-rules">
+      <SectionHeading className="text-base font-semibold">
+        {t("settings.question.notifications.rules")}
+      </SectionHeading>
+      <NotificationsBlock />
+    </section>
+  );
 }
 
 function stringItem(items: readonly SettingItem[], path: string): string {
@@ -165,15 +176,31 @@ function nextMonthStart(locale: string): string {
   }).format(first);
 }
 
-function SettingsWorkspace() {
-  const { t, locale } = useI18n();
+export function SettingsPage() {
+  const { t, locale, preference } = useI18n();
+  const { theme } = useTheme();
   const session = useSession();
+  const sessionUpdate = useSessionUpdate();
   const client = useQueryClient();
   const router = useRouter();
   const searchStr = useRouterState({ select: (state) => state.location.searchStr });
-  const level = useMemo<SettingsLevel>(() => settingsLevelFromUrl(searchStr), [searchStr]);
-  const canWrite = session.permissions.includes("settings:write:global");
-  const canReadEngine = session.permissions.includes("settings:read:global");
+  const { permissions } = session;
+  const isOwner = session.principal.is_owner;
+  const origin = session.tenant.origin;
+  const access = useMemo(() => ({ permissions, isOwner, origin }), [permissions, isOwner, origin]);
+  const engine = engineSettingsAccess(access);
+  const engineShown = engine !== "none";
+  const workspaceAi = workspaceAiEditable(access);
+  const areas = useMemo(() => visibleSettingAreas(access), [access]);
+  const level = useMemo<SettingsLevel>(
+    () => openSettingsLevel(settingsLevelFromUrl(searchStr), access),
+    [searchStr, access],
+  );
+  const canWrite = engine === "write";
+  const canReadEngine = engineShown && permissions.includes("settings:read:global");
+  const [personal, setPersonal] = useState<PersonalDrafts>({});
+  const [branding, setBranding] = useState<BrandingDraftHandle | null>(null);
+  const personalChange = useMemo(() => personalChanges(session, personal), [session, personal]);
   const tenantId = session.tenant.id;
   const scopeAvailable = canWrite && canReadEngine && tenantId !== SYSTEM_TENANT_ID;
   const [areaScopes, setAreaScopes] = useState<Partial<Record<ScopedArea, SettingDraftScope>>>({});
@@ -189,6 +216,7 @@ function SettingsWorkspace() {
   const query = useQuery({
     queryKey: SETTINGS_QUERY_KEY,
     queryFn: () => apiCall("get", "/v1/settings", {}),
+    enabled: engineShown,
     ...live,
   });
   const tenantQuery = useQuery({
@@ -197,7 +225,7 @@ function SettingsWorkspace() {
     enabled: tenantReadable,
     ...live,
   });
-  const statusAllowed = canReadOperations(session.permissions);
+  const statusAllowed = engineShown && canReadOperations(session.permissions);
   const status = useQuery({
     queryKey: ["usage-status"],
     enabled: statusAllowed,
@@ -221,6 +249,7 @@ function SettingsWorkspace() {
       apiCall("get", "/v1/settings/catalog/models", {
         query: catalogTenant ? { tenant: catalogTenant } : {},
       }),
+    enabled: engineShown,
   });
   const draftState = useSettingsDrafts(globalItems);
   const { pending } = draftState;
@@ -240,9 +269,11 @@ function SettingsWorkspace() {
         ...settingsGuidedErrors(tenantItems ?? globalItems, pending.tenant).map(
           (path) => `tenant:${path}`,
         ),
+        ...personalChange.invalid.map((field) => `personal:${field}`),
       ]).size,
-    [changed, globalItems, tenantItems, pending],
+    [changed, globalItems, tenantItems, pending, personalChange],
   );
+  const draftCount = changed.length + personalChange.count + (branding ? 1 : 0);
   const attention = settingsAttention(query.data);
   const restartItems = savingNow.filter((entry) => entry.item.meta.requiresRestart);
   const saveOffer = restartOfferAfterSave(
@@ -252,10 +283,54 @@ function SettingsWorkspace() {
   const publicBaseUrl =
     draftState.drafts.global["server.public_base_url"] ??
     (stringItem(globalItems, "server.public_base_url") || (globalThis.location?.origin ?? ""));
-  useDirtyGuard(changed.length > 0);
+  useDirtyGuard(changed.length > 0 || personalChange.count > 0);
+
+  async function savePersonal(): Promise<void> {
+    try {
+      if (personalChange.ai) {
+        const aiAccess = await apiCall("patch", "/v1/identity/workspace/ai-access", {
+          body: personalChange.ai,
+        });
+        sessionUpdate.patch((current) => ({ ...current, ai_access: aiAccess }));
+        setPersonal(({ aiProvider: _provider, aiKey: _key, aiModel: _model, ...rest }) => rest);
+        await client.invalidateQueries({ queryKey: ["attention"] });
+      }
+      if (personalChange.profile) {
+        const profile = await apiCall("patch", "/v1/identity/me", { body: personalChange.profile });
+        sessionUpdate.patch((current) => ({
+          ...current,
+          principal: { ...current.principal, display_name: profile.display_name },
+        }));
+        setPersonal(({ name: _saved, ...rest }) => rest);
+      }
+      if (personalChange.workspace) {
+        const workspace = await apiCall("patch", "/v1/identity/workspace", {
+          body: personalChange.workspace,
+        });
+        sessionUpdate.patch((current) => ({
+          ...current,
+          tenant: {
+            ...current.tenant,
+            display_name: workspace.display_name,
+            timezone: workspace.timezone,
+          },
+        }));
+        setPersonal(({ workspaceName: _name, timezone: _zone, ...rest }) => rest);
+        await Promise.all([
+          sessionUpdate.refresh(),
+          client.invalidateQueries({ queryKey: ["identity-memberships"] }),
+        ]);
+      }
+    } catch (error) {
+      throw new PersonalSaveError(error instanceof ApiError ? personalRefusal(error) : null);
+    }
+    if (branding) await branding.save().catch(() => Promise.reject(new PersonalSaveError(null)));
+  }
 
   const save = useMutation({
     mutationFn: async () => {
+      await savePersonal();
+      if (savingNow.length === 0) return null;
       if (!query.data) throw new Error("settings are not loaded");
       const patchTenant = scopeAvailable ? tenantId : null;
       const references: Record<SettingDraftScope, Record<string, string>> = {
@@ -289,12 +364,14 @@ function SettingsWorkspace() {
       return savingScope;
     },
     onSuccess: async (saved) => {
-      await Promise.all([
-        client.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY }),
-        client.invalidateQueries({ queryKey: RESTART_STATUS_QUERY_KEY }),
-        client.invalidateQueries({ queryKey: ["usage-status"] }),
-      ]);
-      draftState.clear(saved);
+      if (saved) {
+        await Promise.all([
+          client.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY }),
+          client.invalidateQueries({ queryKey: RESTART_STATUS_QUERY_KEY }),
+          client.invalidateQueries({ queryKey: ["usage-status"] }),
+        ]);
+        draftState.clear(saved);
+      }
       setConflict(false);
       setFailed(null);
       setRestartOpen(false);
@@ -303,6 +380,12 @@ function SettingsWorkspace() {
     },
     onError: (error) => {
       setRestartOpen(false);
+      if (error instanceof PersonalSaveError) {
+        const reason = error.reason ? t(error.reason) : null;
+        setFailed({ reason });
+        toast.error(reason ?? t("settings.saveFailedKeep"));
+        return;
+      }
       void client.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY });
       if (settingsSaveFailure(error) === "conflict") setConflict(true);
       else {
@@ -315,6 +398,11 @@ function SettingsWorkspace() {
 
   function navigate(href: string) {
     router.history.push(absolute(href));
+  }
+
+  function editPersonal(change: PersonalDrafts) {
+    setFailed(null);
+    setPersonal((current) => ({ ...current, ...change }));
   }
 
   function setDraft(path: string, text: string, requested: SettingDraftScope) {
@@ -355,7 +443,86 @@ function SettingsWorkspace() {
     pendingRestart,
     budgetConsumedShare: usage?.consumedShare ?? null,
   };
-  const view = queryView(query, () => false);
+  const view = engineShown ? queryView(query, () => false) : "ready";
+  const engineReady = engineShown && view === "ready";
+  const personalArea = level.kind === "area" && isPersonalArea(level.area) ? level.area : null;
+  const profile = profileCard(session, { preference, theme }, t);
+  const workspace = workspaceCard(session);
+  const workspaceAiState = workspaceAiCard(session, t);
+  const cards: AreaCard[] = [
+    {
+      id: "profile" as const,
+      sentence: t(profile.sentence.key, profile.sentence.values),
+      status: profile.status,
+    },
+    { id: "workspace" as const, sentence: t(workspace.key, workspace.values), status: null },
+    ...(workspaceAi
+      ? [
+          {
+            id: "ai" as const,
+            sentence: t(workspaceAiState.sentence.key, workspaceAiState.sentence.values),
+            status: workspaceAiState.status,
+          },
+        ]
+      : []),
+    ...(engineReady
+      ? overviewCards({
+          facts,
+          catalog: catalog.data,
+          usage,
+          canWrite,
+          locale,
+          t,
+          restartAction:
+            restartNow.offer === "restart" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setRestartNowOpen(true)}
+                data-testid="settings-overview-restart"
+              >
+                <RotateCw data-icon="inline-start" />
+                {t("settings.restartNow.button")}
+              </Button>
+            ) : null,
+        })
+      : engineShown
+        ? []
+        : [
+            {
+              id: "notifications" as const,
+              sentence: t(settingAreaPurpose("notifications")),
+              status: null,
+            },
+          ]),
+  ].filter((card) => areas.includes(card.id));
+  const drafted = new Set<SettingAreaId>([
+    ...changed.map((entry) => settingAreaOf(entry.item.path)),
+    ...personalChange.areas,
+    ...(branding ? (["workspace"] as const) : []),
+  ]);
+  const marked = new Set<SettingAreaId>([
+    ...(profile.status ? (["profile"] as const) : []),
+    ...(workspaceAi && workspaceAiState.status ? (["ai"] as const) : []),
+    ...(engineReady
+      ? ENGINE_AREA_IDS.filter((area) => {
+          const state = areaStatus(area, facts);
+          return state === "waiting" || state === "restart" || state === "limit";
+        })
+      : []),
+  ]);
+  const frame = (area: SettingAreaId, children: ReactNode) => (
+    <SettingsAreaFrame
+      area={area}
+      areas={areas}
+      expert={engineShown}
+      drafted={drafted}
+      attention={marked}
+      onNavigate={navigate}
+    >
+      {children}
+    </SettingsAreaFrame>
+  );
   const all = level.kind === "all";
   const header = all ? (
     <PageHeader
@@ -364,14 +531,66 @@ function SettingsWorkspace() {
       purpose={`${t("settings.all.purpose")} ${t("settings.all.hint")}`}
     />
   ) : (
-    <PageHeader title={t("resource.settings.title")} purpose={t("settings.purpose")} />
+    <PageHeader
+      title={t("resource.settings.title")}
+      purpose={engineShown ? t("settings.purpose") : undefined}
+    />
   );
 
   return (
     <Page kind="settings" scroll="page" testId="admin-settings" header={header}>
       <div className="grid gap-4 pb-20" data-testid="settings-system">
         {canReadEngine && level.kind !== "area" ? <PreparedChanges canDecide={canWrite} /> : null}
-        {view === "loading" ? (
+        {personalArea === "profile" ? (
+          frame(
+            "profile",
+            <ProfileArea
+              name={personal.name ?? session.principal.display_name ?? ""}
+              nameInvalid={personalChange.invalid.includes("name")}
+              onName={(name) => editPersonal({ name })}
+              disabled={save.isPending}
+              navigate={navigate}
+            />,
+          )
+        ) : personalArea === "workspace" ? (
+          frame(
+            "workspace",
+            <WorkspaceArea
+              name={personal.workspaceName ?? session.tenant.display_name}
+              nameInvalid={personalChange.invalid.includes("workspaceName")}
+              onName={(workspaceName) => editPersonal({ workspaceName })}
+              timezone={personal.timezone ?? session.tenant.timezone}
+              onTimezone={(timezone) => editPersonal({ timezone })}
+              disabled={save.isPending}
+              onBrandingDraft={setBranding}
+            />,
+          )
+        ) : workspaceAi && level.kind === "area" && level.area === "ai" ? (
+          frame(
+            "ai",
+            <WorkspaceAiArea
+              drafts={personal}
+              keyInvalid={personalChange.invalid.includes("aiKey")}
+              disabled={save.isPending}
+              onChange={editPersonal}
+            />,
+          )
+        ) : level.kind === "overview" ? (
+          <>
+            <SettingsOverview cards={cards} expert={engineReady} onNavigate={navigate} />
+            {view === "loading" ? (
+              <DataState state="loading" testId="settings-loading" />
+            ) : view === "error" ? (
+              <LoadFailed
+                title={t("resource.loadFailed", { resource: t("resource.settings.title") })}
+                onRetry={() => void query.refetch()}
+                testId="settings-load-failed"
+              />
+            ) : null}
+          </>
+        ) : !engineShown ? (
+          frame("notifications", <NotificationRules />)
+        ) : view === "loading" ? (
           <DataState state="loading" testId="settings-loading" />
         ) : view === "error" ? (
           <LoadFailed
@@ -398,55 +617,22 @@ function SettingsWorkspace() {
             onDrop={(path) => draftState.dropDraft(path, "global")}
           />
         ) : (
-          <>
-            <SettingsReadOnlyNotice canWrite={canWrite} ask />
-            {level.kind === "overview" ? (
-              <SettingsOverview
-                cards={overviewCards({
-                  facts,
-                  catalog: catalog.data,
-                  usage,
-                  canWrite,
-                  locale,
-                  t,
-                  restartAction:
-                    restartNow.offer === "restart" ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setRestartNowOpen(true)}
-                        data-testid="settings-overview-restart"
-                      >
-                        <RotateCw data-icon="inline-start" />
-                        {t("settings.restartNow.button")}
-                      </Button>
-                    ) : null,
-                })}
-                onNavigate={navigate}
+          frame(
+            level.area,
+            <>
+              <SettingsReadOnlyNotice canWrite={canWrite} ask />
+              <GuidedArea
+                key={`${level.area}-${formKey}`}
+                area={level.area as EngineAreaId}
+                ctx={ctx}
               />
-            ) : (
-              <SettingsAreaFrame
-                area={level.area}
-                drafted={new Set(changed.map((entry) => settingAreaOf(entry.item.path)))}
-                attention={
-                  new Set(
-                    SETTING_AREA_IDS.filter((area) => {
-                      const state = areaStatus(area, facts);
-                      return state === "waiting" || state === "restart" || state === "limit";
-                    }),
-                  )
-                }
-                onNavigate={navigate}
-              >
-                <GuidedArea key={`${level.area}-${formKey}`} area={level.area} ctx={ctx} />
-              </SettingsAreaFrame>
-            )}
-          </>
+            </>,
+          )
         )}
       </div>
-      {canWrite && (changed.length > 0 || conflict) ? (
+      {draftCount > 0 || (canWrite && conflict) ? (
         <SettingsSaveBar
-          count={changed.length}
+          count={draftCount}
           conflict={conflict}
           failed={failed !== null}
           reason={failed?.reason}
@@ -456,6 +642,8 @@ function SettingsWorkspace() {
           firstOf={mixed ? savingNow.length : undefined}
           onDiscard={() => {
             draftState.clear();
+            setPersonal({});
+            branding?.discard();
             setFormKey((key) => key + 1);
             setConflict(false);
             setFailed(null);
@@ -481,7 +669,6 @@ function SettingsWorkspace() {
           pendingFields={attention?.restart ?? restartNow.status?.pending_restart_fields ?? []}
         />
       ) : null}
-      {session.identity_memberships ? <WorkspaceDeletion /> : null}
     </Page>
   );
 }
@@ -509,7 +696,7 @@ export function overviewCards({
 }): AreaCard[] {
   const number = new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US");
   const tokens = (count: number) => t("settings.costs.tokens", { count: number.format(count) });
-  return SETTING_AREA_IDS.map((id) => {
+  return ENGINE_AREA_IDS.map((id) => {
     const sentences = areaSentences(id, {
       ...facts,
       canWrite,
@@ -531,7 +718,7 @@ export function overviewCards({
   });
 }
 
-function GuidedArea({ area, ctx }: { area: SettingAreaId; ctx: GuidedContext }) {
+function GuidedArea({ area, ctx }: { area: EngineAreaId; ctx: GuidedContext }) {
   const { t } = useI18n();
   const session = useSession();
   if (area === "ai") return <AiArea ctx={ctx} />;
@@ -541,16 +728,7 @@ function GuidedArea({ area, ctx }: { area: SettingAreaId; ctx: GuidedContext }) 
       <AreaList
         area="notifications"
         ctx={ctx}
-        after={
-          session.permissions.includes("notification:read") ? (
-            <section className="grid gap-3" data-testid="settings-notification-rules">
-              <SectionHeading className="text-base font-semibold">
-                {t("settings.question.notifications.rules")}
-              </SectionHeading>
-              <NotificationsBlock />
-            </section>
-          ) : null
-        }
+        after={session.permissions.includes("notification:read") ? <NotificationRules /> : null}
       />
     );
   if (area === "operations")
@@ -561,22 +739,7 @@ function GuidedArea({ area, ctx }: { area: SettingAreaId; ctx: GuidedContext }) 
         before={
           <p className="text-sm text-muted-foreground">{t("settings.question.operations.hint")}</p>
         }
-        after={
-          <>
-            <section className="grid gap-3" data-testid="settings-branding">
-              <div className="grid gap-1">
-                <SectionHeading className="text-base font-semibold">
-                  {t("settings.question.operations.branding")}
-                </SectionHeading>
-                <p className="text-sm text-muted-foreground">
-                  {t("settings.question.operations.brandingLine")}
-                </p>
-              </div>
-              <BrandingSettings />
-            </section>
-            <PackagesSettings />
-          </>
-        }
+        after={<PackagesSettings />}
       />
     );
   return <AreaList area={area} ctx={ctx} />;
@@ -614,15 +777,10 @@ function AllSettings({
   const [leafMissing, setLeafMissing] = useState(false);
   const focused = useRef(false);
   const listMode = filter === "changed";
-  const nav = useMemo(() => {
-    const groups = settingNavigation([
-      ...new Set(allItems.map((item) => settingSectionOf(item.path))),
-    ]);
-    const interfaceGroup = groups.find((group) => group.id === "sk");
-    if (interfaceGroup) interfaceGroup.sections.unshift("branding");
-    else groups.push({ id: "sk", label: "settings.group.sk", sections: ["branding"] });
-    return groups;
-  }, [allItems]);
+  const nav = useMemo(
+    () => settingNavigation([...new Set(allItems.map((item) => settingSectionOf(item.path)))]),
+    [allItems],
+  );
   const orderedSections = useMemo(() => nav.flatMap((group) => group.sections), [nav]);
   const hits = useMemo(
     () => (listMode ? allItems.filter((item) => settingIsChanged(item)) : []),
@@ -714,20 +872,18 @@ function AllSettings({
 
   return (
     <div className="flex flex-col gap-4" data-testid="settings-all">
-      {selectedSection !== "branding" ? (
-        <SettingsSummary
-          total={allItems.length}
-          changed={changedCount}
-          filter={filter}
-          onFilter={(next) => {
-            setLeaf(null);
-            setHighlighted(null);
-            setFilter(next);
-          }}
-        />
-      ) : null}
+      <SettingsSummary
+        total={allItems.length}
+        changed={changedCount}
+        filter={filter}
+        onFilter={(next) => {
+          setLeaf(null);
+          setHighlighted(null);
+          setFilter(next);
+        }}
+      />
       <div className="@container/settings grid gap-5" data-testid="settings-list">
-        {selectedSection !== "branding" ? <SettingsReadOnlyNotice canWrite={canWrite} /> : null}
+        <SettingsReadOnlyNotice canWrite={canWrite} />
         <SettingsAttentionLine
           attention={attention}
           onOpenLeaf={openLeaf}
@@ -818,8 +974,6 @@ function AllSettings({
                     })}
                 </div>
               )
-            ) : selectedSection === "branding" ? (
-              <BrandingSettings />
             ) : (
               <SettingsSection
                 section={selectedSection}

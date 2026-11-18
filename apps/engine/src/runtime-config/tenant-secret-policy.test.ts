@@ -11,6 +11,8 @@ import { provisionSelfServiceTenant } from "../identity/self-service.ts";
 import { runWithTestEnv } from "../test-helpers/determinism/env.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
+import { HOSTED_WORKSPACE_ALLOWLIST } from "./hosted-workspace-allowlist.ts";
 import { createSecretVersion, RuntimeConfigValidationError } from "./service.ts";
 
 let ctx: HttpTestServer;
@@ -27,6 +29,7 @@ beforeAll(async () => {
         email: "secret-policy@example.test",
         email_verified: true,
       },
+      TEST_WORKSPACE_REGISTRATION,
       ctx.db,
     )
   ).tenant.id;
@@ -46,18 +49,61 @@ async function snapshot() {
   return { usage, counts: counts.rows[0] };
 }
 
-test("hosted and unknown tenant secret writes fail before retaining ciphertext or revisions", async () => {
+test("hosted neighbours, foreign secrets and unknown tenants fail before retaining ciphertext or revisions", async () => {
   const before = await snapshot();
-  for (const target of [tenantId, ids(), "not-a-uuid"]) {
+  for (const name of [
+    `tenants.${tenantId}.settings.llm.providers.anthropic.api_key`,
+    `tenants.${tenantId}.settings.platform.slack.signing_secret`,
+    `tenants.${tenantId}.settings.llm.api_key.backup`,
+    `tenants.${ids()}.settings.llm.api_key`,
+    "tenants.not-a-uuid.settings.llm.api_key",
+  ]) {
     await expect(
       createSecretVersion(ctx.db, {
-        name: `tenants.${target}.settings.llm.api_key`,
+        name,
         value: "private-runtime-canary",
         created_by: ctx.userId,
       }),
-    ).rejects.toBeInstanceOf(RuntimeConfigValidationError);
+    ).rejects.toThrow();
   }
   expect(await snapshot()).toEqual(before);
+});
+
+test("a hosted workspace may hold exactly its own model provider key", async () => {
+  expect(HOSTED_WORKSPACE_ALLOWLIST).toEqual({
+    settings: ["llm.provider", "llm.model", "llm.api_key"],
+    secrets: ["llm.api_key"],
+  });
+  const own = await createSecretVersion(ctx.db, {
+    name: `tenants.${tenantId}.settings.llm.api_key`,
+    value: "workspace-own-key",
+    created_by: ctx.userId,
+  });
+  expect(own.reference).toBe(`secret://tenants.${tenantId}.settings.llm.api_key/${own.version}`);
+  // tenant-filter:exempt — the fixture reads the one secret version it just created by its exact name.
+  const [stored] = await ctx.db
+    .select({ tenant_id: runtimeSecretVersions.tenant_id })
+    .from(runtimeSecretVersions)
+    .where(eq(runtimeSecretVersions.name, own.name));
+  expect(stored?.tenant_id).toBe(tenantId);
+});
+
+test("the database guard admits only the model provider key for a hosted workspace", async () => {
+  const insert = (name: string) =>
+    ctx.db.execute(
+      sql`INSERT INTO subkit.runtime_secret_versions(name,version,ciphertext,iv,auth_tag) VALUES(${name},99,'\\x00','\\x00','\\x00')`,
+    );
+  for (const name of [
+    `tenants.${tenantId}.settings.llm.providers.openai.api_key`,
+    `tenants.${tenantId}.settings.platform.slack.signing_secret`,
+  ]) {
+    const refusal = await insert(name).then(
+      () => null,
+      (error: { cause?: { message?: string } }) => error.cause?.message ?? null,
+    );
+    expect(refusal).toBe("hosted_runtime_secret_overlay_forbidden");
+  }
+  await insert(`tenants.${tenantId}.settings.llm.api_key`);
 });
 
 test("production settings route cannot create orphan hosted secrets even at full quota", async () => {

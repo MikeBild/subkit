@@ -215,7 +215,7 @@ export function registerRawMcpAuthOpenApi(app: OpenAPIHono<AppEnv>): void {
     "post",
     "/v1/identity/logout",
     "logoutIdentitySession",
-    "Revoke the browser operator session",
+    "Revoke the browser operator session and discard a pending workspace registration",
     {
       200: {
         description:

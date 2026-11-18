@@ -51,20 +51,6 @@ export function BrandingForm({
         </FieldLegend>
         <FieldGroup className="gap-4 p-4">
           <Field className="gap-1.5">
-            <FieldLabel htmlFor="branding-name">{t("branding.name")}</FieldLabel>
-            <Input
-              id="branding-name"
-              className="h-9 rounded-lg px-3"
-              style={{ backgroundColor: "var(--background)" }}
-              value={draft.display_name ?? ""}
-              maxLength={80}
-              disabled={disabled}
-              onChange={(event) => onChange({ display_name: event.target.value || null })}
-              data-testid="branding-name"
-            />
-            <FieldDescription className="text-xs">{t("branding.nameHint")}</FieldDescription>
-          </Field>
-          <Field className="gap-1.5">
             <FieldLabel htmlFor="branding-subtitle" className="gap-1">
               {t("branding.subtitle")}{" "}
               <span className="font-normal text-muted-foreground">({t("input.optional")})</span>
@@ -221,7 +207,6 @@ function BrandingPreview({ draft, saved }: { draft: TenantBrandingUpdate; saved:
   const { t } = useI18n();
   const session = useSession();
   const configured =
-    draft.display_name !== null ||
     draft.subtitle !== null ||
     draft.palette !== null ||
     brandingDraftLogo(draft, saved, "light") !== null ||
@@ -278,9 +263,7 @@ function BrandingPreview({ draft, saved }: { draft: TenantBrandingUpdate; saved:
                     )}
                   >
                     <b className="truncate">
-                      {configured
-                        ? draft.display_name || session.tenant.display_name
-                        : t("app.name")}
+                      {configured ? session.tenant.display_name : t("app.name")}
                     </b>
                     <span className="truncate text-muted-foreground">
                       {configured ? draft.subtitle : session.tenant.display_name}

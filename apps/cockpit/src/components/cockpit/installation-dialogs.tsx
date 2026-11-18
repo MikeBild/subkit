@@ -36,7 +36,7 @@ interface NotificationDialogInput {
   handledByApp: boolean;
 }
 
-interface NotificationDialogState {
+export interface NotificationDialogState {
   bell: boolean;
   checked: boolean;
   disabled: boolean;
@@ -164,13 +164,7 @@ export function InstallationDialog({
   );
 }
 
-function InstallationNotificationsDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange(open: boolean): void;
-}) {
+export function useDeviceNotifications(active: boolean) {
   const { t } = useI18n();
   const {
     available,
@@ -184,10 +178,10 @@ function InstallationNotificationsDialog({
   const [pending, setPending] = useState(false);
   const [permission, setPermission] = useState(notificationPermission);
   useEffect(() => {
-    if (!open) return;
+    if (!active) return;
     setPermission(notificationPermission());
     void refreshPushSubscription().catch(() => toast.error(t("common.actionFailed")));
-  }, [open, refreshPushSubscription, t]);
+  }, [active, refreshPushSubscription, t]);
   const state = notificationDialogState({
     installed: available,
     supported: capabilities.push,
@@ -208,32 +202,38 @@ function InstallationNotificationsDialog({
       setPending(false);
     }
   };
+  return { state, toggle };
+}
+
+export function DeviceNotificationSwitch({
+  state,
+  onToggle,
+  label,
+  hint,
+}: {
+  state: NotificationDialogState;
+  onToggle(checked: boolean): void;
+  label: string;
+  hint: string;
+}) {
+  const { t } = useI18n();
   return (
-    <FormDialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title={t("installation.notifications")}
-      cancelLabel={t("common.close")}
-      testId="installation-notifications-dialog"
-    >
+    <>
       <div className="flex items-center justify-between gap-4 py-1">
         <div className="min-w-0">
-          <p className="text-sm font-medium">{t("installation.notificationsEnable")}</p>
+          <p className="text-sm font-medium">{label}</p>
           {state.note === "denied" ? null : (
             <p className="text-xs text-muted-foreground">
-              {t(
-                state.note === "handledByApp"
-                  ? "installation.notificationsHandledByApp"
-                  : "installation.notificationsHint",
-              )}
+              {state.note === "handledByApp" ? t("installation.notificationsHandledByApp") : hint}
             </p>
           )}
         </div>
         <Switch
           checked={state.checked}
           disabled={state.disabled}
-          onCheckedChange={(checked) => void toggle(checked)}
-          aria-label={t("installation.notificationsEnable")}
+          onCheckedChange={onToggle}
+          aria-label={label}
+          data-testid="device-notifications-switch"
         />
       </div>
       {state.note === "denied" ? (
@@ -242,6 +242,33 @@ function InstallationNotificationsDialog({
           {t("installation.notificationsDenied")}
         </p>
       ) : null}
+    </>
+  );
+}
+
+function InstallationNotificationsDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange(open: boolean): void;
+}) {
+  const { t } = useI18n();
+  const { state, toggle } = useDeviceNotifications(open);
+  return (
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t("installation.notifications")}
+      cancelLabel={t("common.close")}
+      testId="installation-notifications-dialog"
+    >
+      <DeviceNotificationSwitch
+        state={state}
+        onToggle={(checked) => void toggle(checked)}
+        label={t("installation.notificationsEnable")}
+        hint={t("installation.notificationsHint")}
+      />
     </FormDialog>
   );
 }

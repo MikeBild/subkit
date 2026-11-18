@@ -2,7 +2,8 @@ import { useSyncExternalStore } from "react";
 import { sharePreference, THEME_COOKIE } from "./preference-cookie";
 import { createThemeStore, type Theme } from "./theme-store";
 
-const media = window.matchMedia("(prefers-color-scheme: dark)");
+const media =
+  typeof window === "undefined" ? null : window.matchMedia("(prefers-color-scheme: dark)");
 const store = createThemeStore({
   read: (key) => {
     try {
@@ -21,10 +22,13 @@ const store = createThemeStore({
       window.localStorage.removeItem(key);
     } catch {}
   },
-  prefersDark: () => media.matches,
-  apply: (resolved) => document.documentElement.classList.toggle("dark", resolved === "dark"),
+  prefersDark: () => media?.matches ?? false,
+  apply: (resolved) => {
+    if (typeof document !== "undefined")
+      document.documentElement.classList.toggle("dark", resolved === "dark");
+  },
   share: (theme) => sharePreference(THEME_COOKIE, theme),
-  watchSystem: (listener) => media.addEventListener("change", listener),
+  watchSystem: (listener) => media?.addEventListener("change", listener),
 });
 
 export function useTheme() {

@@ -14,6 +14,7 @@ const acceptingProbe = async () => ({ ok: true as const, model: "probe-model" })
 const refusingProbe = async () => ({
   ok: false as const,
   model: "probe-model",
+  code: "key_rejected" as const,
   reason: "anthropic rejected the API key (HTTP 401)",
 });
 

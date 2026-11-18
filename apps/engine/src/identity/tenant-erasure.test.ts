@@ -20,6 +20,7 @@ import { createHttpTestServer, type HttpTestServer } from "../http/tests/setup.t
 import { runTenantErasureSweep } from "../scheduler/tenant-erasure-runner.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
 import { provisionSelfServiceTenant } from "./self-service.ts";
 import { eraseExpiredTenant } from "./tenant-erasure.ts";
 import { queue, tenantErasureFixtures } from "./tenant-erasure-fixtures.ts";
@@ -260,6 +261,7 @@ test("expired owned tenant erases online content and objects while retaining own
         email: "erase-owner@example.test",
         email_verified: true,
       },
+      TEST_WORKSPACE_REGISTRATION,
       ctx.db,
     ),
   ).rejects.toThrow();

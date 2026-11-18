@@ -105,6 +105,7 @@ export const users = pgTable(
     display_name: text("display_name"),
     role_id: uuid("role_id").notNull(),
     status: userStatusEnum("status").default("active").notNull(),
+    start_steps_hidden_at: timestamp("start_steps_hidden_at", { withTimezone: true }),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },

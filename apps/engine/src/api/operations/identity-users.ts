@@ -11,6 +11,7 @@ import {
 } from "../../identity/provider-identities.ts";
 import {
   createInvite,
+  createInvitedUser,
   createUser,
   DuplicateUserError,
   deactivateUser,
@@ -123,8 +124,28 @@ const CreateUserBody = z
     email: z.string().email().min(3).max(254),
     display_name: z.string().trim().min(1).max(120).nullable().optional(),
     role: z.enum(["admin", "member", "enduser"]).optional(),
+    invite: z
+      .object({
+        ttl_minutes: z
+          .number()
+          .int()
+          .positive()
+          .max(90 * 24 * 60)
+          .optional(),
+      })
+      .strict()
+      .optional()
+      .describe(
+        "Create the person as invited and issue their single-use invitation in the same step. Omitted: the person is active at once.",
+      ),
   })
   .openapi("CreateUserBody");
+
+const UserCreatedSchema = UserSchema.extend({
+  invite: UserInviteIssuedSchema.optional().describe(
+    "The invitation issued with this person, present only when the request asked for one. Its plaintext_token is shown once.",
+  ),
+}).openapi("UserCreated");
 
 const UpdateUserBody = z
   .union([
@@ -355,7 +376,13 @@ interface UserResult {
   readonly roleName: string | null;
 }
 
-export const createUserOperation = defineOperation<CreateUserInput, UserResult>({
+type InviteIssued = Awaited<ReturnType<typeof createInvite>>;
+
+interface UserCreatedResult extends UserResult {
+  readonly invite?: InviteIssued;
+}
+
+export const createUserOperation = defineOperation<CreateUserInput, UserCreatedResult>({
   id: "identity.user.create",
   summary: "Create a user in the caller's tenant",
   permission: "identity:write",
@@ -365,18 +392,29 @@ export const createUserOperation = defineOperation<CreateUserInput, UserResult>(
     const principal = scope.principal;
     if (!principal) return reject.unauthorized();
     enforce(principal, policy.adminOnly(principal), { resource_type: "user" }, scope.db);
+    const person = {
+      tenant_id: scope.tenant_id,
+      email: body.email,
+      ...(body.display_name !== undefined ? { display_name: body.display_name } : {}),
+      ...(body.role ? { role: body.role } : {}),
+      actor_kind: principal.kind,
+      actor_id: principal.id,
+    };
     try {
-      const user = await createUser(
-        {
-          tenant_id: scope.tenant_id,
-          email: body.email,
-          ...(body.display_name !== undefined ? { display_name: body.display_name } : {}),
-          ...(body.role ? { role: body.role } : {}),
-          actor_kind: principal.kind,
-          actor_id: principal.id,
-        },
-        scope.db,
-      );
+      if (body.invite) {
+        const created = await createInvitedUser(
+          {
+            ...person,
+            issuer: { kind: "principal", principal },
+            ...(body.invite.ttl_minutes !== undefined
+              ? { ttl_minutes: body.invite.ttl_minutes }
+              : {}),
+          },
+          scope.db,
+        );
+        return { user: created.user, roleName: body.role ?? "member", invite: created.invite };
+      }
+      const user = await createUser(person, scope.db);
       return { user, roleName: body.role ?? "member" };
     } catch (err) {
       if (err instanceof DuplicateUserError) return reject.conflict(err.message);
@@ -388,11 +426,16 @@ export const createUserOperation = defineOperation<CreateUserInput, UserResult>(
     path: "/v1/identity/users",
     tags: TAGS,
     body: CreateUserBody,
-    response: UserSchema,
+    response: UserCreatedSchema,
     success: { status: 201, description: "Created" },
     errors: { 401: UNAUTHORIZED, 403: FORBIDDEN, 409: "Duplicate email" },
     toInput: ({ json }) => json as CreateUserInput,
-    toBody: ({ user, roleName }) => serializeUser(user, roleName),
+    toBody: ({ user, roleName, invite }) => ({
+      ...serializeUser(user, roleName),
+      ...(invite
+        ? { invite: { ...serializeInvite(invite.view), plaintext_token: invite.plaintext } }
+        : {}),
+    }),
   },
 });
 
@@ -454,7 +497,8 @@ export const updateUserOperation = defineOperation<UpdateUserInput, UserResult>(
 
 export const deactivateUserOperation = defineOperation<IdInput, true>({
   id: "identity.user.deactivate",
-  summary: "Deactivate a user (soft delete + revoke their API keys)",
+  summary:
+    "Deactivate a user (soft delete + revoke their API keys); a person who was invited and never joined is removed together with the invitation, so the address can be invited again",
   permission: "identity:write",
   resource: { type: "user", param: "id" },
   effect: "write",
@@ -646,7 +690,6 @@ const InviteListQuery = z.object({
 
 type CreateInviteInput = IdInput & { readonly body: z.infer<typeof CreateInviteBody> };
 type InviteListInput = z.infer<typeof InviteListQuery>;
-type InviteIssued = Awaited<ReturnType<typeof createInvite>>;
 type InviteRow = InviteIssued["view"];
 
 export const createInviteOperation = defineOperation<CreateInviteInput, InviteIssued>({

@@ -53,6 +53,17 @@ export function parseCookies(header: string | null): Record<string, string> {
   return out;
 }
 
+const ACCOUNT_CHOICE_COOKIE = "subkit_login_account_choice";
+
+export function accountChoiceCookie(requested: boolean): string {
+  const secure = process.env.NODE_ENV !== "development" ? "; Secure" : "";
+  return `${ACCOUNT_CHOICE_COOKIE}=${requested ? "1" : ""}; Path=/v1/identity/login; HttpOnly; SameSite=Lax; Max-Age=${requested ? 600 : 0}${secure}`;
+}
+
+export function accountChoiceRequested(req: Request): boolean {
+  return parseCookies(req.headers.get("cookie"))[ACCOUNT_CHOICE_COOKIE] === "1";
+}
+
 export async function signSessionCookie(
   secret: Uint8Array,
   payload: { session_id: string; user_id: string; tenant_id: string; login_provider?: string },

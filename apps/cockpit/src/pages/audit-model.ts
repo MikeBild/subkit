@@ -175,7 +175,7 @@ const RESOURCE_KEYS: Record<string, TranslationKey> = {
   resource_grant: "access.grants",
   group: "access.groups",
   system_account: "audit.actor.systemAccount",
-  user_invite: "people.invite",
+  user_invite: "people.invite.resource",
   workflow_run: "nav.runs",
   runtime_secret: "audit.resource.runtimeSecret",
   chat_workspace: "audit.resource.chatWorkspace",

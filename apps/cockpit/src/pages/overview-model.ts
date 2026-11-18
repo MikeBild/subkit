@@ -114,6 +114,7 @@ const REASON_KEYS = {
   skills_proposed: "overview.reason.skills_proposed",
   intake_collected: "overview.reason.intake_collected",
   budget_critical: "overview.reason.budget_critical",
+  ai_access_missing: "overview.reason.ai_access_missing",
   risk_critical: "overview.reason.risk_critical",
 } as const satisfies Record<AttentionItem["reason"], TranslationKey>;
 
@@ -123,6 +124,7 @@ const SUBJECT_KEYS = {
   connector: "overview.subject.connector",
   connection: "overview.subject.connection",
   secret: "overview.subject.secret",
+  settings: "overview.subject.settings",
 } as const satisfies Record<NonNullable<AttentionItem["subject"]>["kind"], TranslationKey>;
 
 const HEARTBEAT_KEYS: Record<string, TranslationKey> = {
@@ -149,6 +151,8 @@ interface AttentionSentence {
 }
 
 export const SUBJECT_NAME_MAX = 60;
+
+const AI_ACCESS_UNAVAILABLE = "no_access";
 
 function subjectName(item: AttentionItem): string | null {
   const name = item.subject?.name?.trim();
@@ -244,6 +248,14 @@ export function attentionSentence(
     }
     case "version_needs_repair":
       return { lead: repairSentence(item, subject, t), machine: null, since };
+    case "ai_access_missing":
+      return {
+        lead: t(
+          item.kind === AI_ACCESS_UNAVAILABLE ? "overview.reason.ai_access_missingNone" : reasonKey,
+        ),
+        machine: null,
+        since,
+      };
     case "failing": {
       const cause = item.cause_class ? causeClassKey(item.cause_class) : undefined;
       let lead = t(
@@ -384,6 +396,7 @@ export function actionLabelKey(action: AttentionAction, item: AttentionItem): Tr
       if (item.reason === "approval_expiring") return "overview.action.extend";
       if (item.reason === "secret_prepared") return "overview.action.openSettings";
       if (item.reason === "budget_critical") return "overview.action.openUsage";
+      if (item.reason === "ai_access_missing") return "overview.action.setUp";
       if (item.kind.startsWith("llm_provider_")) return "overview.action.openSettings";
       if (item.subject?.kind === "connector") return "overview.action.openConnector";
       return "overview.action.openOperations";
@@ -417,6 +430,7 @@ const SOURCE_KEYS = {
   skills: "overview.source.skills",
   intake: "overview.source.intake",
   budget: "overview.source.budget",
+  ai_access: "overview.source.ai_access",
   risk: "overview.source.risk",
 } as const satisfies Record<AttentionSource, TranslationKey>;
 
@@ -519,6 +533,7 @@ const SHORT_REASON_KEYS = {
   secret_unreadable: "overview.short.secret_unreadable",
   secret_prepared: "overview.short.secret_prepared",
   budget_critical: "overview.short.budget_critical",
+  ai_access_missing: "overview.short.ai_access_missing",
   risk_critical: "overview.short.risk_critical",
 } as const satisfies Partial<Record<AttentionItem["reason"], TranslationKey>>;
 
@@ -552,6 +567,7 @@ const STATE_OF_REASON: Record<AttentionItem["reason"], { state: string; label: T
   skills_proposed: { state: "proposed", label: "overview.state.decide" },
   intake_collected: { state: "pending", label: "overview.state.decide" },
   budget_critical: { state: "critical", label: "overview.state.budget" },
+  ai_access_missing: { state: "pending", label: "settings.status.waiting" },
   risk_critical: { state: "critical", label: "overview.state.risk" },
 };
 
@@ -564,7 +580,7 @@ interface AttentionRow {
 
 export function attentionRow(item: AttentionItem, t: Translate): AttentionRow {
   const name =
-    subjectName(item) ||
+    (item.reason === "ai_access_missing" ? t("overview.object.aiAccess") : subjectName(item)) ||
     (item.reason === "skills_proposed"
       ? t("overview.object.skills")
       : item.reason === "intake_collected"
@@ -594,7 +610,9 @@ export function attentionRow(item: AttentionItem, t: Translate): AttentionRow {
       : (COUNTED_SHORT_REASON_KEYS as Record<string, PluralKey>)[item.reason];
   const key = counted
     ? pluralKey(counted, count)
-    : (SHORT_REASON_KEYS as Record<string, TranslationKey>)[item.reason];
+    : item.reason === "ai_access_missing" && item.kind === AI_ACCESS_UNAVAILABLE
+      ? "overview.short.ai_access_missingNone"
+      : (SHORT_REASON_KEYS as Record<string, TranslationKey>)[item.reason];
   const short = key
     ? t(key, { count, step: item.repair?.step_id ?? "" })
     : t("overview.short.other");

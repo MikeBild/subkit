@@ -300,6 +300,7 @@ describe("POST /v1/setup — a key the provider refuses", () => {
   const refusing = async () => ({
     ok: false as const,
     model: "probe-model",
+    code: "key_rejected" as const,
     reason: "anthropic rejected the API key (HTTP 401)",
   });
 

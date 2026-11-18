@@ -23,6 +23,7 @@ describe("probeVerdict — what a failed probe call means for the key", () => {
       expect(verdict).toEqual({
         ok: false,
         model: "claude-haiku-4-5",
+        code: "key_rejected",
         reason: `anthropic rejected the API key (HTTP ${status})`,
       });
       expect(JSON.stringify(verdict)).not.toContain("sk-ant-secret");
@@ -38,32 +39,40 @@ describe("probeVerdict — what a failed probe call means for the key", () => {
       {
         ok: false,
         model: "m",
+        code: "key_rejected",
         reason: "anthropic accepted the API key but has no quota or credit left",
       },
     );
     expect(probeVerdict(apiError(404), "openai", "gpt-x")).toEqual({
       ok: false,
       model: "gpt-x",
+      code: "model_unavailable",
       reason: "openai does not offer the model gpt-x to this key",
     });
-    expect(probeVerdict(apiError(400), "gemini", "m").ok).toBe(false);
+    expect(probeVerdict(apiError(400), "gemini", "m")).toMatchObject({
+      ok: false,
+      code: "key_rejected",
+    });
   });
 
   test("an outage or no answer is not blamed on the key", () => {
     expect(probeVerdict(apiError(503), "anthropic", "m")).toEqual({
       ok: false,
       model: "m",
+      code: "unreachable",
       reason: "anthropic is not available right now (HTTP 503)",
     });
     const timeout = Object.assign(new Error("The operation timed out."), { name: "TimeoutError" });
     expect(probeVerdict(timeout, "anthropic", "m", 20_000)).toEqual({
       ok: false,
       model: "m",
+      code: "unreachable",
       reason: "anthropic did not answer within 20 seconds",
     });
     expect(probeVerdict(new Error("fetch failed"), "anthropic", "m")).toEqual({
       ok: false,
       model: "m",
+      code: "unreachable",
       reason: "anthropic could not be reached",
     });
   });
@@ -164,6 +173,7 @@ describe("probeModel — which model the first-start check uses", () => {
     expect(azure).toEqual({
       ok: false,
       model: null,
+      code: "misconfigured",
       reason:
         "azure needs a model before the first start; pass it with sk init --llm-model <deployment name>",
     });
@@ -180,6 +190,7 @@ describe("probeModel — which model the first-start check uses", () => {
     expect(result).toEqual({
       ok: false,
       model: "anthropic.claude",
+      code: "misconfigured",
       reason:
         "bedrock needs AWS_REGION in the engine environment before the first start; set it and run sk init again",
     });

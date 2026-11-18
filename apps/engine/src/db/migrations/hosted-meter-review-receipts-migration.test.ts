@@ -4,6 +4,7 @@ import { provisionSelfServiceTenant } from "../../identity/self-service.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
 import { seedConversation } from "../../test-helpers/seed.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../../test-helpers/workspace-registration.ts";
 import { runMigrations, SQUASHED_CHAIN_HEAD_TAG } from "../migrate.ts";
 import { hostedTenantUsage, workflowReviewReceipts } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "../tests/setup.ts";
@@ -44,6 +45,7 @@ async function selfServiceConversation(subject: string) {
       email: `${subject}@example.test`,
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     ctx.db,
   );
   const conversation = await seedConversation(ctx.db, { id: nextUuid(), tenant_id: tenant.id });

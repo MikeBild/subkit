@@ -4068,6 +4068,140 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/identity/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the pending registration of a verified identity that has no workspace yet
+         * @description Requires the HttpOnly registration cookie set by the sign-in callback. It carries no workspace authority.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Verified identity awaiting its first workspace */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PendingRegistration"];
+                    };
+                };
+                /** @description registration_pending_required — no pending registration in this browser */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Create the first workspace of a verified identity and sign it in
+         * @description Requires the registration cookie and X-Subkit-Onboarding-CSRF from GET /v1/identity/onboarding. The provider key is checked with one live call before anything is created; a refused key or an unreachable provider creates nothing. A repeated submit by the same identity lands in the workspace it already owns, creates nothing and leaves its stored key untouched.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    /** @description csrf_token from GET /v1/identity/onboarding; a missing or stale token is refused with 403. */
+                    "x-subkit-onboarding-csrf": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CompleteRegistrationBody"];
+                };
+            };
+            responses: {
+                /** @description Workspace ready; the browser session cookie is set */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            redirect_to: string;
+                        };
+                    };
+                };
+                /** @description registration_pending_required — no pending registration in this browser */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description registration_csrf_rejected, registration_closed, tenant_unavailable, membership_unavailable or identity_migration_required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description invalid_timezone — not an IANA time zone; llm_key_rejected — the provider refused the key; llm_model_unavailable — the provider refused the chosen model; llm_provider_unavailable — this provider cannot be used with an own key on this engine. Nothing is created. */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description registration_rate_limited, or llm_probe_rate_limited — too many key checks for this sign-in; sign in again */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description llm_provider_unreachable — the provider did not answer; nothing is created */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description registration_policy_unavailable, or llm_access_not_stored — the workspace exists but its key was not saved; the same submit stores it */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/identity/users": {
         parameters: {
             query?: never;
@@ -4142,7 +4276,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["User"];
+                        "application/json": components["schemas"]["UserCreated"];
                     };
                 };
                 /** @description Unauthorized */
@@ -4239,7 +4373,7 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        /** Deactivate a user (soft delete + revoke their API keys) */
+        /** Deactivate a user (soft delete + revoke their API keys); a person who was invited and never joined is removed together with the invitation, so the address can be invited again */
         delete: {
             parameters: {
                 query?: never;
@@ -4352,6 +4486,243 @@ export interface paths {
                 };
                 /** @description last_admin — the change would leave the workspace without an administrator */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/v1/identity/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update the signed-in person's own profile in the current workspace */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["UpdateOwnProfileBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OwnProfile"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description browser_session_required — only a signed-in Cockpit session edits its own profile */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/v1/identity/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Rename the current workspace or change its time zone */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["UpdateWorkspaceBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Workspace"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description workspace_admin_required — neither the workspace owner nor a holder of identity:write */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description invalid_timezone — not an IANA time zone */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/v1/identity/workspace/ai-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set the AI provider, model and key this workspace calls models with */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["WorkspaceAiAccessBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AiAccess"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description workspace_admin_required — neither the workspace owner nor a holder of identity:write */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description self_hosted_workspace — only a self-service workspace sets its AI access here, a self-hosted one uses the engine settings; operator_change_pending — the engine operator has saved engine-wide settings that are not active yet; revision_conflict — other settings were saved at the same moment, try again */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description llm_key_required — a different provider needs its own key; llm_key_rejected — the provider refused the key; llm_model_unavailable — the provider refused the chosen model; llm_provider_unavailable — this provider cannot be used with an own key on this engine. Nothing is saved and the stored key stays active. */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description llm_provider_unreachable — the provider did not answer; nothing is saved */
+                502: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -4753,6 +5124,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/identity/invites/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Show what an invitation link leads to before anyone signs in
+         * @description Unauthenticated. The invite token in the body is the proof; nothing is redeemed. The invited address is returned masked.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["RedeemInviteBody"];
+                };
+            };
+            responses: {
+                /** @description Invitation details for the token holder */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["InvitePreview"];
+                    };
+                };
+                /** @description invite_invalid, invite_expired, invite_revoked, invite_already_redeemed, invite_unavailable or invite_credential_only */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Rate limit exceeded for this client IP */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/identity/invites/login": {
         parameters: {
             query?: never;
@@ -4764,7 +5196,7 @@ export interface paths {
         put?: never;
         /**
          * Start a verified hosted identity login for a membership invitation
-         * @description The invite secret stays in the request body. OIDC state stores only its validated invitation id; no session is issued until the verified identity matches the invited address.
+         * @description The invite secret stays in the request body. OIDC state stores only its validated invitation id; no session is issued until the verified identity matches the invited address. A browser submits this as an HTML form and is sent back to /cockpit/invite?error=<code> when the invitation or provider is unavailable; a JSON caller receives the 403 body.
          */
         post: {
             parameters: {
@@ -4775,14 +5207,12 @@ export interface paths {
             };
             requestBody?: {
                 content: {
-                    "application/json": {
-                        token: string;
-                        provider_id: string;
-                    };
+                    "application/json": components["schemas"]["InviteLoginBody"];
+                    "application/x-www-form-urlencoded": components["schemas"]["InviteLoginBody"];
                 };
             };
             responses: {
-                /** @description Redirect to the configured OIDC provider */
+                /** @description Redirect to the configured OIDC provider, or for a form submission that cannot proceed back to /cockpit/invite?error=<code> */
                 302: {
                     headers: {
                         Location?: string;
@@ -6329,7 +6759,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke the browser operator session */
+        /** Revoke the browser operator session and discard a pending workspace registration */
         post: operations["logoutIdentitySession"];
         delete?: never;
         options?: never;
@@ -18958,7 +19388,7 @@ export interface paths {
         };
         /**
          * What needs the caller's attention now
-         * @description One list of everything a person has to act on — own waiting conversations, held schedules and webhooks, failing scheduled workflows with their open fixes, connectors and connections needing sign-in, prepared secret versions, skill proposals, a critical budget or risk signal — filtered per item by the caller's permissions.
+         * @description One list of everything a person has to act on — own waiting conversations, held schedules and webhooks, failing scheduled workflows with their open fixes, connectors and connections needing sign-in, prepared secret versions, skill proposals, a workspace without its own AI key, a critical budget or risk signal — filtered per item by the caller's permissions.
          */
         get: {
             parameters: {
@@ -23294,6 +23724,30 @@ export interface components {
             created_at: string;
             updated_at: string;
         };
+        PendingRegistration: {
+            email: string;
+            suggested_display_name: string | null;
+            suggested_workspace_name: string | null;
+            /** @description Send back as X-Subkit-Onboarding-CSRF when completing the registration */
+            csrf_token: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        CompleteRegistrationBody: {
+            display_name: string;
+            workspace_name: string;
+            /** @description IANA time zone, e.g. Europe/Berlin */
+            timezone: string;
+            /**
+             * @description Provider whose whole access is one API key. `mock` is accepted only by a test or development engine.
+             * @enum {string}
+             */
+            llm_provider: "anthropic" | "openai" | "gemini" | "mock";
+            /** @description Provider key of the new workspace. It is checked with one live call, stored encrypted and never returned. */
+            llm_api_key: string;
+            /** @description Model identifier; missing uses the provider's default */
+            llm_model?: string;
+        };
         UserDetail: components["schemas"]["User"] & {
             /** @description Group memberships, or null when the caller cannot read RBAC membership. */
             groups: {
@@ -23327,33 +23781,10 @@ export interface components {
             items: components["schemas"]["UserDetail"][];
             next_cursor?: string | null;
         };
-        CreateUserBody: {
-            /** Format: email */
-            email: string;
-            display_name?: string | null;
-            /** @enum {string} */
-            role?: "admin" | "member" | "enduser";
+        UserCreated: components["schemas"]["User"] & {
+            invite?: components["schemas"]["UserInviteIssued"];
         };
-        UpdateUserBody: {
-            /** @enum {string} */
-            role: "admin" | "member" | "enduser";
-            display_name?: string | null;
-        } | {
-            /** @enum {string} */
-            role?: "admin" | "member" | "enduser";
-            display_name: string | null;
-        };
-        ProviderIdentityBinding: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            user_id: string;
-            provider_id: string;
-            issuer_url: string;
-            product_id: string | null;
-            subject: string;
-            replayed: boolean;
-        };
+        /** @description The invitation issued with this person, present only when the request asked for one. Its plaintext_token is shown once. */
         UserInviteIssued: components["schemas"]["UserInvite"] & {
             /** @description Only returned once at issue time. Hand to the invited user; the engine never shows it again. */
             plaintext_token: string;
@@ -23376,6 +23807,82 @@ export interface components {
             created_by: string | null;
             created_at: string;
         };
+        CreateUserBody: {
+            /** Format: email */
+            email: string;
+            display_name?: string | null;
+            /** @enum {string} */
+            role?: "admin" | "member" | "enduser";
+            /** @description Create the person as invited and issue their single-use invitation in the same step. Omitted: the person is active at once. */
+            invite?: {
+                ttl_minutes?: number;
+            };
+        };
+        UpdateUserBody: {
+            /** @enum {string} */
+            role: "admin" | "member" | "enduser";
+            display_name?: string | null;
+        } | {
+            /** @enum {string} */
+            role?: "admin" | "member" | "enduser";
+            display_name: string | null;
+        };
+        OwnProfile: {
+            /** Format: uuid */
+            id: string;
+            email: string;
+            display_name: string | null;
+            start_steps_hidden: boolean;
+        };
+        UpdateOwnProfileBody: {
+            display_name?: string;
+            start_steps_hidden?: boolean;
+        };
+        Workspace: {
+            /** Format: uuid */
+            id: string;
+            display_name: string;
+            timezone: string;
+            /** @enum {string} */
+            origin: "self_hosted" | "self_service";
+        };
+        UpdateWorkspaceBody: {
+            display_name?: string;
+            /** @description IANA time zone, e.g. Europe/Berlin */
+            timezone?: string;
+        };
+        AiAccess: {
+            /** @description This workspace can make model calls right now, with its own key or by the operator's policy */
+            configured: boolean;
+            /** @description Provider the workspace calls; null when none is set */
+            provider: string | null;
+            /** @description Model the workspace chose itself; null means the provider's default */
+            model: string | null;
+            /** @description The workspace holds its own provider key */
+            own_key: boolean;
+        };
+        WorkspaceAiAccessBody: {
+            /**
+             * @description Provider whose whole access is one API key. `mock` is accepted only by a test or development engine.
+             * @enum {string}
+             */
+            llm_provider: "anthropic" | "openai" | "gemini" | "mock";
+            /** @description New provider key. Leave it out to keep the stored key; a different provider always needs its own key. */
+            llm_api_key?: string;
+            /** @description Model identifier; null or missing uses the provider's default */
+            llm_model?: string | null;
+        };
+        ProviderIdentityBinding: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            user_id: string;
+            provider_id: string;
+            issuer_url: string;
+            product_id: string | null;
+            subject: string;
+            replayed: boolean;
+        };
         CreateInviteBody: {
             /** @description Permission names from GET /v1/rbac/permissions, '*', or mcp:read, mcp:authoring, mcp:admin. Each must be held by the issuing credential; '*' only from a credential without scope limits. Omitted: the issuer's own ceiling. */
             scopes?: string[];
@@ -23386,8 +23893,24 @@ export interface components {
         UserInviteListResponse: {
             items: components["schemas"]["UserInvite"][];
         };
+        InvitePreview: {
+            workspace_name: string;
+            invited_by_name: string | null;
+            /** @description Masked invited address, e.g. m•••@example.com */
+            email_hint: string;
+            /** Format: date-time */
+            expires_at: string;
+            providers: {
+                id: string;
+                label: string;
+            }[];
+        };
         RedeemInviteBody: {
             token: string;
+        };
+        InviteLoginBody: {
+            token: string;
+            provider_id: string;
         };
         InviteRedeemed: {
             /** Format: uuid */
@@ -23547,7 +24070,10 @@ export interface components {
                 /** @enum {string} */
                 kind: "user";
                 email: string | null;
+                display_name: string | null;
                 role_name: string | null;
+                /** @description True when this verified sign-in identity owns the workspace */
+                is_owner: boolean;
                 /** @enum {string} */
                 provider: "browser_session";
             };
@@ -23556,6 +24082,10 @@ export interface components {
                 id: string;
                 slug: string;
                 display_name: string;
+                /** @description IANA time zone of the workspace */
+                timezone: string;
+                /** @enum {string} */
+                origin: "self_hosted" | "self_service";
                 /** @description True when this workspace is the engine operator and may change the whole engine */
                 engine_operator: boolean;
             };
@@ -23565,6 +24095,17 @@ export interface components {
                 /** Format: date-time */
                 absolute_expires_at: string | null;
             };
+            /** @description First steps of a workspace; each flag is true once at least one exists: a connector, a workflow, a run, a second person, a connected client or personal API key */
+            start_steps: {
+                /** @description The signed-in person dismissed the first steps */
+                hidden: boolean;
+                connector: boolean;
+                workflow: boolean;
+                run: boolean;
+                people: boolean;
+                client: boolean;
+            };
+            ai_access: components["schemas"]["AiAccess"];
             /** @description Verified browser identity supports workspace membership selection */
             identity_memberships: boolean;
             permissions: string[];
@@ -30307,6 +30848,8 @@ export interface components {
                 /** @enum {string} */
                 budget: "answered" | "failed" | "not_permitted";
                 /** @enum {string} */
+                ai_access: "answered" | "failed" | "not_permitted";
+                /** @enum {string} */
                 risk: "answered" | "failed" | "not_permitted";
             };
             status: {
@@ -30326,12 +30869,12 @@ export interface components {
             kind: string;
             subject: {
                 /** @enum {string} */
-                kind: "workflow" | "conversation" | "connector" | "connection" | "secret";
+                kind: "workflow" | "conversation" | "connector" | "connection" | "secret" | "settings";
                 id: string;
                 name: string | null;
             } | null;
             /** @enum {string} */
-            reason: "awaiting_answer" | "execution_authority_required" | "execution_authority_unavailable" | "version_awaiting_approval" | "version_needs_repair" | "approval_expiring" | "scheduler_stale" | "failing" | "patch_proposed" | "needs_reauth" | "needs_update" | "degraded" | "unhealthy" | "refresh_refused" | "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | "secret_prepared" | "skills_proposed" | "intake_collected" | "budget_critical" | "risk_critical";
+            reason: "awaiting_answer" | "execution_authority_required" | "execution_authority_unavailable" | "version_awaiting_approval" | "version_needs_repair" | "approval_expiring" | "scheduler_stale" | "failing" | "patch_proposed" | "needs_reauth" | "needs_update" | "degraded" | "unhealthy" | "refresh_refused" | "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | "secret_prepared" | "skills_proposed" | "intake_collected" | "budget_critical" | "ai_access_missing" | "risk_critical";
             /** @description What starts the workflow. Null unless it is held or the item is about its approval. */
             trigger: {
                 /** @enum {string} */

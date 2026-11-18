@@ -362,7 +362,7 @@ describe("revokeInvite — INVITE_REVOKED audit row (H2)", () => {
 });
 
 describe("deactivateUser — severs pending invite (H3)", () => {
-  test("deactivateUser stamps revoked_at on a pending invite, writes an INVITE_REVOKED audit row, and blocks subsequent redemption with invite_revoked", async () => {
+  test("deactivateUser removes a never-joined person with the pending invite, writes an INVITE_REVOKED audit row, and blocks subsequent redemption", async () => {
     const user = await seedInvitedUser("inv-deact-pending@test.local");
     const { view: inviteView, plaintext } = await createInvite(
       { issuer: { kind: "system" }, tenant_id: tenantId, user_id: user.id, actor_id: null },
@@ -386,7 +386,8 @@ describe("deactivateUser — severs pending invite (H3)", () => {
       .select()
       .from(userInvites)
       .where(eq(userInvites.id, inviteView.id));
-    expect(after?.revoked_at).not.toBeNull();
+    expect(after).toBeUndefined();
+    expect(await testDb.db.select().from(users).where(eq(users.id, user.id))).toHaveLength(0);
 
     const auditRows = await testDb.db
       .select()
@@ -401,7 +402,7 @@ describe("deactivateUser — severs pending invite (H3)", () => {
     const outcome = await redeemInvite({ token: plaintext }, testDb.db);
     expect(outcome.ok).toBe(false);
     if (outcome.ok) throw new Error("expected failure");
-    expect(outcome.code).toBe("invite_revoked");
+    expect(outcome.code).toBe("invite_invalid");
 
     const minted = await testDb.db.select().from(apiKeys).where(eq(apiKeys.user_id, user.id));
     expect(minted.length).toBe(0);

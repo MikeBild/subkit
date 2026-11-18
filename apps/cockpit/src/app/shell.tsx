@@ -158,11 +158,8 @@ export function AppShell() {
   });
   const groups = visiblePrimaryNavigation(session.permissions);
   const active = navigationItem(pathname);
-  const brandName = installationId()
-    ? session.tenant.display_name
-    : session.branding?.configured
-      ? session.branding.display_name || session.tenant.display_name
-      : t("app.name");
+  const brandName =
+    installationId() || session.branding?.configured ? session.tenant.display_name : t("app.name");
 
   return (
     <LiveEventsProvider>
@@ -379,7 +376,11 @@ function AccountMenu() {
   const { isMobile, setOpenMobile } = useSidebar();
   const [signingOut, setSigningOut] = useState(false);
   const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
-  const identity = session.principal.email || session.principal.role_name || t("common.member");
+  const identity =
+    session.principal.display_name?.trim() ||
+    session.principal.email ||
+    session.principal.role_name ||
+    t("common.member");
   const role = localizedRole(session.principal.role_name || "member", t);
   const accountNavigation = visibleAccountNavigation(session.permissions);
   const pathname = useRouterState({
@@ -388,6 +389,11 @@ function AccountMenu() {
   const current = pathname;
   const active = navigationItem(current);
   const docsActive = current === "/docs" || current.startsWith("/docs/");
+  const profileActive = useRouterState({
+    select: (state) =>
+      state.location.pathname === "/settings" &&
+      new URLSearchParams(state.location.searchStr).get("area") === "profile",
+  });
 
   async function signOut(): Promise<void> {
     setSigningOut(true);
@@ -496,28 +502,32 @@ function AccountMenu() {
             {t("releaseNotes.menu")}
           </DropdownMenuItem>
 
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger data-testid="account-profile-menu">
+          <DropdownMenuItem
+            asChild
+            className={profileActive ? "bg-accent text-accent-foreground" : undefined}
+            data-testid="account-profile-menu"
+          >
+            <Link
+              to="/settings"
+              search={{ area: "profile" }}
+              data-testid="account-link-profile"
+              aria-current={profileActive ? "page" : undefined}
+              onClick={() => {
+                if (isMobile) setOpenMobile(false);
+              }}
+            >
               <UserRound data-icon="inline-start" />
-              {t("account.profile")}
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="w-72" data-testid="account-profile-content">
-              <DropdownMenuLabel>
-                <span className="block truncate text-sm font-medium text-foreground">
-                  {identity}
+              <span className="grid min-w-0">
+                <span>{t("account.profile")}</span>
+                <span
+                  className="truncate text-xs font-normal text-muted-foreground"
+                  data-testid="account-profile-summary"
+                >
+                  {identity} · {role}
                 </span>
-                <span className="mt-1 block truncate font-normal">
-                  {t("account.role")}: {role}
-                </span>
-                <span className="block truncate font-normal">
-                  {t("account.tenant")}: {session.tenant.display_name}
-                </span>
-                <span className="block truncate font-normal">
-                  {t("account.engineVersion", { version: session.version })}
-                </span>
-              </DropdownMenuLabel>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
+              </span>
+            </Link>
+          </DropdownMenuItem>
 
           <DropdownMenuSub>
             <DropdownMenuSubTrigger data-testid="account-language-menu">

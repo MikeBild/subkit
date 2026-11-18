@@ -31,6 +31,7 @@ import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.
 import { waitFor } from "../test-helpers/determinism/wait.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
 import { seedTenant } from "../test-helpers/seed.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
 import { now } from "../utils/clock.ts";
 import { createBoss, disposeBoss } from "./boss.ts";
 import {
@@ -134,6 +135,7 @@ test("accepted execution and conversation tasks terminate safely when shared con
       email: "quota-workers@example.test",
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     db,
   );
   const tenantId = owned.tenant.id;

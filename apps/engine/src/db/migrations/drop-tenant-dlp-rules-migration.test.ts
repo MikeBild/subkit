@@ -3,6 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { provisionSelfServiceTenant } from "../../identity/self-service.ts";
 import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../../test-helpers/workspace-registration.ts";
 import { hostedTenantUsage } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "../tests/setup.ts";
 import { EMBEDDED_MIGRATIONS, type EmbeddedMigration } from "./embedded.ts";
@@ -57,6 +58,7 @@ async function selfServiceTenant(subject: string): Promise<string> {
       email: `${subject}@example.test`,
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     ctx.db,
   );
   return tenant.id;

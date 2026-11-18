@@ -9,6 +9,7 @@ import {
   type PinnedAdmissionClock,
   pinAdmissionClock,
 } from "../../test-helpers/pinned-admission-clock.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../../test-helpers/workspace-registration.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let fixture: HttpTestServer;
@@ -24,6 +25,7 @@ beforeAll(async () => {
       email: "rate-owner@example.test",
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     fixture.db,
   );
   const tenantKey = and(eq(apiKeys.tenant_id, fixture.tenantId), eq(apiKeys.id, fixture.apiKeyId));

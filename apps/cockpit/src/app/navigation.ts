@@ -19,7 +19,7 @@ import type { TranslationKey } from "@/lib/i18n";
 export interface NavigationItem {
   labelKey: TranslationKey;
   path: string;
-  permission: string;
+  permission: string | null;
   anyPermissions?: readonly string[];
   icon: LucideIcon;
   api: readonly string[];
@@ -160,8 +160,7 @@ export const NAVIGATION: readonly NavigationGroup[] = [
       {
         labelKey: "nav.settings",
         path: "/settings",
-        permission: "settings:read",
-        anyPermissions: ["settings:read", "notification:read"],
+        permission: null,
         icon: Settings,
         api: [
           "GET /v1/settings",
@@ -181,7 +180,7 @@ export function visibleNavigation(permissions: readonly string[]): NavigationGro
     items: group.items.filter((item) =>
       item.anyPermissions
         ? item.anyPermissions.some((permission) => allowed.has(permission))
-        : allowed.has(item.permission),
+        : item.permission === null || allowed.has(item.permission),
     ),
   })).filter((group) => group.items.length > 0);
 }

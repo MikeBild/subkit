@@ -7,6 +7,7 @@ import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
 import { seedConversation } from "../../test-helpers/seed.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../../test-helpers/workspace-registration.ts";
 import { readDatabaseNow } from "../../workflows/database-clock.ts";
 import { purgeSpentReviewReceipts } from "../workflow-review.ts";
 
@@ -33,6 +34,7 @@ async function tenantWithConversation(subject: string) {
       email: `${subject}@example.test`,
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     ctx.db,
   );
   const conversation = await seedConversation(ctx.db, { id: nextUuid(), tenant_id: tenant.id });

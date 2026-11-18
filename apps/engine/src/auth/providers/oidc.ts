@@ -8,18 +8,16 @@ import { getConfig, isConfigLoaded } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { oidcLoginStates, sessions, tenants } from "../../db/schema/index.ts";
 import {
-  authHtmlResponse,
-  renderErrorPage,
-  resolvePageLook,
-  type SignInError,
-} from "../../http/routes/oauth/ui.ts";
-import {
   acceptVerifiedMembershipInvite,
   assertTenantActive,
+  clearPendingRegistrationCookie,
   endCockpitPushForSessions,
   IdentityRecoveryError,
+  INVITE_PAGE_PATH,
   issueIdentityRecovery,
+  issuePendingRegistration,
   MembershipInviteError,
+  REGISTRATION_REDIRECT_MAX,
   resolveHostedIdentity,
   SelfServiceIdentityError,
 } from "../../identity/index.ts";
@@ -34,7 +32,6 @@ import {
   resolveProviderIdentity,
   SignupDisabledError,
 } from "../identity-link.ts";
-import { createMcpOAuthProvider } from "../oauth/server-provider.ts";
 import type { AuthProvider } from "../types.ts";
 import { loadOidcConfiguration } from "./oidc-discovery.ts";
 import {
@@ -43,6 +40,16 @@ import {
   findCockpitInstallationIdentity,
 } from "./oidc-installation.ts";
 import {
+  browserError,
+  isSafeRedirect,
+  LOGIN_START_PATH,
+  redirectDenialToClient,
+  tenantMismatchResponse,
+  wantsJson,
+} from "./oidc-responses.ts";
+import {
+  accountChoiceCookie,
+  accountChoiceRequested,
   buildCookieHeader,
   clearCookieHeader,
   deriveSessionSecret,
@@ -57,7 +64,6 @@ import {
 
 const DEFAULT_TENANT_SLUG = "default";
 const LOGIN_STATE_TTL_MS = 10 * 60 * 1000;
-const LOGIN_START_PATH = "/v1/identity/login/start";
 const RECOVERY_LOGIN_COOKIE = "subkit_recovery_login";
 
 export interface OidcProviderOptions {
@@ -76,83 +82,6 @@ export interface OidcProviderOptions {
   signupPolicy?: "existing_tenant" | "invite_only" | "self_service";
   membershipInviteId?: string;
   installationId?: string;
-}
-
-function httpError(status: number, code: string, message: string): Response {
-  return new Response(JSON.stringify({ code, message }), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-function wantsJson(req: Request): boolean {
-  return (req.headers.get("accept") ?? "").includes("application/json");
-}
-
-function browserError(
-  req: Request,
-  status: number,
-  code: string,
-  message: string,
-  pageError: SignInError,
-  retryHref: string,
-): Response {
-  if (wantsJson(req)) return httpError(status, code, message);
-  return authHtmlResponse(
-    renderErrorPage(pageError, retryHref, resolvePageLook(req.headers)),
-    status,
-  );
-}
-
-function tenantMismatchResponse(req: Request): Response {
-  return browserError(
-    req,
-    400,
-    "tenant_mismatch",
-    "tenant does not match configured sign-in target",
-    "tenant_unavailable",
-    LOGIN_START_PATH,
-  );
-}
-
-async function redirectDenialToClient(
-  exec: Db,
-  redirectTo: string | null,
-): Promise<Response | null> {
-  if (!redirectTo) return null;
-  try {
-    const authorizeUrl = new URL(redirectTo);
-    if (!authorizeUrl.pathname.endsWith("/v1/oauth/authorize")) return null;
-    const clientId = authorizeUrl.searchParams.get("client_id");
-    const clientRedirect = authorizeUrl.searchParams.get("redirect_uri");
-    if (!clientId || !clientRedirect) return null;
-    const client = await createMcpOAuthProvider({ db: exec, config: getConfig() }).getClient(
-      clientId,
-    );
-    if (!client?.redirect_uris.includes(clientRedirect)) return null;
-    const target = new URL(clientRedirect);
-    target.searchParams.set("error", "access_denied");
-    const clientState = authorizeUrl.searchParams.get("state");
-    if (clientState) target.searchParams.set("state", clientState);
-    return new Response(null, {
-      status: 302,
-      headers: { location: target.toString(), "cache-control": "no-store" },
-    });
-  } catch {
-    return null;
-  }
-}
-
-function isSafeRedirect(url: string, baseUrl: string): boolean {
-  if (!url) return false;
-  if (url.startsWith("/") && !url.startsWith("//")) return true;
-  try {
-    const target = new URL(url);
-    const base = new URL(baseUrl);
-    return target.origin === base.origin;
-  } catch {
-    return false;
-  }
 }
 
 async function resolveTenantId(db: Db, slug: string | null): Promise<string | null> {
@@ -250,6 +179,17 @@ export function createOidcProvider(opts: OidcProviderOptions): AuthProvider {
       )
         return tenantMismatchResponse(req);
       const redirectTo = url.searchParams.get("redirect_to");
+      if (hostedSignup && redirectTo && redirectTo.length > REGISTRATION_REDIRECT_MAX) {
+        return browserError(
+          req,
+          400,
+          "redirect_too_long",
+          "the sign-in destination is too long to carry through a registration",
+          "state_expired",
+          LOGIN_START_PATH,
+        );
+      }
+      const chooseAccount = accountChoiceRequested(req);
       const exec = db;
       let installation = null;
       if (opts.installationId) {
@@ -329,7 +269,9 @@ export function createOidcProvider(opts: OidcProviderOptions): AuthProvider {
         code_challenge_method: "S256",
         ...(hostedSignup && redirectTo === "/v1/identity/recovery"
           ? { prompt: "login", max_age: "0" }
-          : {}),
+          : chooseAccount
+            ? { prompt: "select_account" }
+            : {}),
       });
 
       if (hostedSignup && redirectTo === "/v1/identity/recovery") {
@@ -339,6 +281,16 @@ export function createOidcProvider(opts: OidcProviderOptions): AuthProvider {
           headers: {
             location: authUrl.toString(),
             "set-cookie": `${RECOVERY_LOGIN_COOKIE}=${encodeURIComponent(state)}; Path=/v1/identity/login/callback; HttpOnly; SameSite=Lax; Max-Age=600${secure}`,
+            "cache-control": "no-store",
+          },
+        });
+      }
+      if (chooseAccount) {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location: authUrl.toString(),
+            "set-cookie": accountChoiceCookie(false),
             "cache-control": "no-store",
           },
         });
@@ -644,25 +596,39 @@ export function createOidcProvider(opts: OidcProviderOptions): AuthProvider {
             email: rawEmail,
             email_verified: true as const,
           };
-          const provisioned = pending.membership_invite_id
+          const redirectTo =
+            pending.redirect_to && isSafeRedirect(pending.redirect_to, redirectUri)
+              ? pending.redirect_to
+              : null;
+          const resolved = pending.membership_invite_id
             ? await acceptVerifiedMembershipInvite(verified, pending.membership_invite_id, exec)
             : await resolveHostedIdentity(
                 verified,
                 { registration_enabled: getConfig().auth.hosted.registration_enabled },
                 exec,
               );
-          return issueBrowserSession({
+          if (resolved.kind === "registration") {
+            return await issuePendingRegistration(
+              {
+                identity_id: resolved.identity.id,
+                login_provider: adapterId,
+                redirect_to: redirectTo,
+                suggested_display_name: (claims as { name?: unknown } | undefined)?.name,
+              },
+              exec,
+            );
+          }
+          const session = await issueBrowserSession({
             db: exec,
-            tenantId: provisioned.tenant.id,
-            userId: provisioned.membership.user_id,
-            authIdentityId: provisioned.identity.id,
-            redirectTo:
-              pending.redirect_to && isSafeRedirect(pending.redirect_to, redirectUri)
-                ? pending.redirect_to
-                : "/cockpit",
+            tenantId: resolved.tenant.id,
+            userId: resolved.membership.user_id,
+            authIdentityId: resolved.identity.id,
+            redirectTo: redirectTo ?? "/cockpit",
             via: "oidc_auth_code",
             metadata: { provider_id: adapterId },
           });
+          session.headers.append("set-cookie", clearPendingRegistrationCookie());
+          return session;
         } catch (error) {
           if (
             error instanceof SelfServiceIdentityError &&
@@ -674,6 +640,25 @@ export function createOidcProvider(opts: OidcProviderOptions): AuthProvider {
               headers: {
                 location: `/cockpit/recovery?provider=${encodeURIComponent(adapterId)}`,
                 "set-cookie": clearCookieHeader(),
+                "cache-control": "no-store",
+              },
+            });
+          }
+          if (
+            pending.membership_invite_id &&
+            !wantsJson(req) &&
+            (error instanceof MembershipInviteError || error instanceof SelfServiceIdentityError)
+          ) {
+            return new Response(null, {
+              status: 302,
+              headers: {
+                location: `${INVITE_PAGE_PATH}?error=${
+                  error.code === "invite_identity_mismatch"
+                    ? "identity_mismatch"
+                    : error.code === "invite_credential_only"
+                      ? error.code
+                      : "invite_unavailable"
+                }`,
                 "cache-control": "no-store",
               },
             });

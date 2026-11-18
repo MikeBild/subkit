@@ -5,11 +5,13 @@ import {
   ALL_ROUTE_PATHS,
   CATALOG_RESOURCES,
   INTAKE_ROUTES,
+  INVITE_ROUTE,
   movedTarget,
   PAGE_ROUTES,
   RECOVERY_ROUTE,
   REDIRECT_ROUTES,
   STANDALONE_ROUTES,
+  WELCOME_ROUTE,
 } from "@/app/route-table";
 import { peopleSectionFromUrl } from "./links";
 
@@ -44,13 +46,25 @@ describe("cockpit route table", () => {
     }
   });
 
-  test("includes the standalone recovery entry without requiring an authenticated router", () => {
+  test("recovery, welcome and invitation stand alone, outside the authenticated router", () => {
     const source = readFileSync(new URL("../main.tsx", import.meta.url), "utf8");
-    expect(STANDALONE_ROUTES).toContain(RECOVERY_ROUTE);
-    expect(ALL_ROUTE_PATHS).toContain(RECOVERY_ROUTE);
-    expect(PAGE_ROUTES as readonly string[]).not.toContain(RECOVERY_ROUTE);
-    expect(source).toContain("window.location.pathname === absolute(RECOVERY_ROUTE)");
-    expect(source).toContain("<IdentityRecoveryPage />");
+    const router = readFileSync(new URL("./router.tsx", import.meta.url), "utf8");
+    expect([...STANDALONE_ROUTES]).toEqual([RECOVERY_ROUTE, WELCOME_ROUTE, INVITE_ROUTE]);
+    expect(source).toContain(
+      "STANDALONE_ROUTES.find((route) => window.location.pathname === absolute(route))",
+    );
+    for (const [route, page] of [
+      ["RECOVERY_ROUTE", "IdentityRecoveryPage"],
+      ["WELCOME_ROUTE", "WelcomePage"],
+      ["INVITE_ROUTE", "InvitePage"],
+    ]) {
+      expect(source).toContain(`[${route}]: ${page},`);
+      expect(router).not.toContain(page);
+    }
+    for (const route of STANDALONE_ROUTES) {
+      expect(ALL_ROUTE_PATHS).toContain(route);
+      expect(PAGE_ROUTES as readonly string[]).not.toContain(route);
+    }
   });
 
   test("keeps every navigation target on a route that exists", () => {

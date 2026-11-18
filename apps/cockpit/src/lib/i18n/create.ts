@@ -1,6 +1,6 @@
 export const createEn = {
   "create.connector.description": "Description",
-  "onboarding.checklist.title": "How to start",
+  "onboarding.checklist.title": "First steps",
   "onboarding.checklist.progress": "{done} of {total} done",
   "onboarding.checklist.hide": "Hide",
   "create.back": "Back",
@@ -134,7 +134,7 @@ export const createEn = {
 
 export const createDe: Record<keyof typeof createEn, string> = {
   "create.connector.description": "Beschreibung",
-  "onboarding.checklist.title": "So startest du",
+  "onboarding.checklist.title": "Erste Schritte",
   "onboarding.checklist.progress": "{done} von {total} erledigt",
   "onboarding.checklist.hide": "Ausblenden",
   "create.back": "Zurück",

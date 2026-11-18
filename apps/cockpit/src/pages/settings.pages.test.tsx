@@ -266,7 +266,7 @@ describe("the guided settings pages", () => {
     const html = render(
       <>
         <SettingsReadOnlyNotice canWrite={false} ask />
-        <SettingsOverview cards={cards} onNavigate={() => {}} />
+        <SettingsOverview cards={cards} expert onNavigate={() => {}} />
       </>,
     );
     expect(html).toContain(
@@ -424,6 +424,8 @@ describe("the guided settings pages", () => {
     const html = render(
       <SettingsAreaFrame
         area="costs"
+        areas={["profile", "workspace", "costs", "notifications"]}
+        expert
         drafted={new Set()}
         attention={new Set()}
         onNavigate={() => {}}
@@ -451,6 +453,7 @@ describe("the guided settings pages", () => {
           t: de,
           restartAction: null,
         })}
+        expert
         onNavigate={() => {}}
       />,
     );

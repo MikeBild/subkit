@@ -139,6 +139,16 @@ export async function applyKnowledgeSeeds(
   });
 }
 
+export async function applyKnowledgeSeedsWithRetry(
+  seeds: SeededKnowledge[],
+  tenant_id: string,
+  db: Db = getDb(),
+): Promise<ApplyOutcome> {
+  return retryTransient(() => applyKnowledgeSeeds(seeds, tenant_id, db), {
+    label: "knowledge_seed",
+  });
+}
+
 export async function applyKnowledgeSeedsForAllTenants(
   seeds: SeededKnowledge[],
   db: Db = getDb(),
@@ -150,10 +160,7 @@ export async function applyKnowledgeSeedsForAllTenants(
   const outcomes: ApplyOutcome[] = [];
   for (const t of allTenants) {
     try {
-      const r = await retryTransient(() => applyKnowledgeSeeds(seeds, t.id, db), {
-        label: "knowledge_seed",
-      });
-      outcomes.push(r);
+      outcomes.push(await applyKnowledgeSeedsWithRetry(seeds, t.id, db));
     } catch (error) {
       if (!(error instanceof SelfServiceIdentityError) || error.code !== "tenant_unavailable")
         throw error;

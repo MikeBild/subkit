@@ -2,6 +2,7 @@ import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { z } from "zod";
 import {
+  accountChoiceCookie,
   browserSessionFromRequest,
   clearBrowserSessionCookieForRequest,
   createApiKeyProvider,
@@ -16,6 +17,10 @@ import {
 import { getConfig } from "../../../config/loader.ts";
 import { isBrowserLoginProvider } from "../../../config/schema.ts";
 import type { Db } from "../../../db/client.ts";
+import {
+  abandonPendingRegistration,
+  clearPendingRegistrationCookie,
+} from "../../../identity/index.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { parseFormBody } from "../oauth/shared.ts";
 import {
@@ -121,6 +126,7 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
       const choices = providers().map((provider) => ({
         id: provider.id,
         protocol: provider.protocol,
+        label: provider.label,
         href: `${base}/v1/identity/login/start?provider=${encodeURIComponent(provider.id)}&login_state=${encodeURIComponent(state)}`,
       }));
       if (choices.length > 0)
@@ -168,7 +174,11 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
     const target = new URL(c.req.url);
     target.searchParams.set("redirect_to", redirectTo);
     const handler = oidcProvider(selected, c.get("db"), installationId);
-    return handler.startLogin?.(new Request(target)) ?? c.json({ code: "not_supported" }, 500);
+    const cookie = c.req.header("cookie");
+    return (
+      handler.startLogin?.(new Request(target, cookie ? { headers: { cookie } } : {})) ??
+      c.json({ code: "not_supported" }, 500)
+    );
   });
 
   app.post("/v1/identity/login/start", async (c) => {
@@ -222,13 +232,14 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
   app.post("/v1/identity/logout", async (c) => {
     const payload = await browserSessionFromRequest(c.req.raw);
     await revokeBrowserSession(c.get("db"), payload, "user_logout");
-    const headers = {
-      "set-cookie": clearBrowserSessionCookieForRequest(c.req.raw),
-      "cache-control": "no-store",
-    };
+    const abandoned = await abandonPendingRegistration(c.req.raw, c.get("db"));
+    const headers = new Headers({ "cache-control": "no-store" });
+    headers.append("set-cookie", clearBrowserSessionCookieForRequest(c.req.raw));
+    headers.append("set-cookie", clearPendingRegistrationCookie());
+    const signedInWith = payload ? payload.login_provider : abandoned?.login_provider;
     const loginProvider = payload?.installation_id
       ? undefined
-      : oidcProviders().find((provider) => provider.id === payload?.login_provider);
+      : oidcProviders().find((provider) => provider.id === signedInWith);
     const endSessionUrl = loginProvider
       ? await oidcEndSessionUrl({
           issuerUrl: loginProvider.issuer_url,
@@ -236,11 +247,11 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
           postLogoutRedirectUri: `${getConfig().server.public_base_url}${DEFAULT_LOGIN_REDIRECT}`,
         })
       : null;
-    if (!endSessionUrl) return new Response(null, { status: 204, headers });
-    return Response.json(
-      { end_session_url: endSessionUrl },
-      { status: 200, headers: { ...headers, "content-type": "application/json" } },
-    );
+    if (!endSessionUrl) {
+      if (loginProvider || abandoned) headers.append("set-cookie", accountChoiceCookie(true));
+      return new Response(null, { status: 204, headers });
+    }
+    return Response.json({ end_session_url: endSessionUrl }, { status: 200, headers });
   });
 }
 

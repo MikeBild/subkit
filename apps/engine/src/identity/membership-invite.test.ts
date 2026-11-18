@@ -1,17 +1,34 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   browserSessionCookie,
   signBrowserCsrf,
   signBrowserSession,
 } from "../auth/browser-session.ts";
 import { getConfig, setConfigKey } from "../config/loader.ts";
-import { sessions, tenants, userIdentities, userInvites, users } from "../db/schema/index.ts";
+import {
+  auditLog,
+  sessions,
+  tenants,
+  userIdentities,
+  userInvites,
+  users,
+} from "../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../http/tests/setup.ts";
 import { builtinRoleId } from "../rbac/roles.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
+import { waitFor } from "../test-helpers/determinism/wait.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
-import { createInvite, createUser, provisionSelfServiceTenant } from "./index.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
+import {
+  acceptVerifiedMembershipInvite,
+  createInvite,
+  createInvitedUser,
+  createUser,
+  deactivateUser,
+  previewMembershipInvite,
+  provisionSelfServiceTenant,
+} from "./index.ts";
 
 let ctx: HttpTestServer;
 const issuer = "https://identity.example.test";
@@ -28,6 +45,7 @@ afterAll(async () => {
 async function actor(subject: string) {
   const provisioned = await provisionSelfServiceTenant(
     { issuer_url: issuer, subject, email: `${subject}@example.test`, email_verified: true },
+    TEST_WORKSPACE_REGISTRATION,
     ctx.db,
   );
   const [session] = await ctx.db
@@ -65,6 +83,7 @@ async function invite(subject: string, scopes = ["*"]) {
       email: `owner-${subject}@example.test`,
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     ctx.db,
   );
   const user = await createUser(
@@ -162,6 +181,151 @@ test("invite audience, CSRF, scopes and suspended destinations fail closed", asy
       ),
     );
   expect(unchanged?.redeemed_at).toBeNull();
+});
+
+function verified(subject: string) {
+  return {
+    issuer_url: issuer,
+    subject,
+    email: `${subject}@example.test`,
+    email_verified: true as const,
+  };
+}
+
+function person(fixture: Awaited<ReturnType<typeof invite>>) {
+  return and(eq(users.id, fixture.user.id), eq(users.tenant_id, fixture.destination.tenant.id));
+}
+
+test("an invitation for a person who is active but never signed in is open and can be accepted", async () => {
+  const authenticated = await actor("earlier-claim");
+  const claimable = await invite("earlier-claim");
+  await ctx.db.update(users).set({ status: "active" }).where(person(claimable));
+  expect(await previewMembershipInvite(claimable.invitation.plaintext, ctx.db)).toMatchObject({
+    ok: true,
+  });
+  const claimed = await claim(authenticated.headers, claimable.invitation.plaintext);
+  expect(claimed.status).toBe(200);
+  expect(await claimed.json()).toMatchObject({ claimed: true });
+  const [member] = await ctx.db.select().from(users).where(person(claimable));
+  expect(member?.auth_identity_id).toBe(authenticated.provisioned.identity.id);
+
+  const signedIn = await invite("earlier-oidc");
+  await ctx.db.update(users).set({ status: "active" }).where(person(signedIn));
+  const stranger = acceptVerifiedMembershipInvite(
+    verified("earlier-stranger"),
+    signedIn.invitation.view.id,
+    ctx.db,
+  );
+  await expect(stranger).rejects.toMatchObject({ code: "invite_identity_mismatch" });
+  const accepted = await acceptVerifiedMembershipInvite(
+    verified("earlier-oidc"),
+    signedIn.invitation.view.id,
+    ctx.db,
+  );
+  expect(accepted.membership.user_id).toBe(signedIn.user.id);
+
+  const disabled = await invite("earlier-disabled");
+  await ctx.db.update(users).set({ status: "disabled" }).where(person(disabled));
+  expect(await previewMembershipInvite(disabled.invitation.plaintext, ctx.db)).toEqual({
+    ok: false,
+    code: "invite_unavailable",
+  });
+  const refused = acceptVerifiedMembershipInvite(
+    verified("earlier-disabled"),
+    disabled.invitation.view.id,
+    ctx.db,
+  );
+  await expect(refused).rejects.toMatchObject({ code: "invite_identity_mismatch" });
+});
+
+test("withdrawing an invitation nobody accepted removes the person, so the address can be invited again", async () => {
+  const fixture = await invite("withdrawn-person");
+  const tenantId = fixture.destination.tenant.id;
+  const withdrawn = await deactivateUser(
+    { tenant_id: tenantId, user_id: fixture.user.id, actor_id: null, actor_kind: "system" },
+    ctx.db,
+  );
+  expect(withdrawn?.id).toBe(fixture.user.id);
+  expect(await ctx.db.select().from(users).where(person(fixture))).toHaveLength(0);
+  expect(
+    await ctx.db
+      .select()
+      .from(userInvites)
+      .where(and(eq(userInvites.tenant_id, tenantId), eq(userInvites.user_id, fixture.user.id))),
+  ).toHaveLength(0);
+  expect(await previewMembershipInvite(fixture.invitation.plaintext, ctx.db)).toEqual({
+    ok: false,
+    code: "invite_invalid",
+  });
+  const audited = await ctx.db
+    .select({ action: auditLog.action, reason: auditLog.reason })
+    .from(auditLog)
+    .where(and(eq(auditLog.tenant_id, tenantId), eq(auditLog.reason, "invitation_withdrawn")));
+  expect(audited.map((row) => row.action).sort()).toEqual(["user.deleted", "user_invite.revoked"]);
+
+  const again = await createInvitedUser(
+    {
+      issuer: { kind: "system" },
+      tenant_id: tenantId,
+      email: "withdrawn-person@example.test",
+      role: "member",
+      actor_id: null,
+      actor_kind: "system",
+    },
+    ctx.db,
+  );
+  expect(again.user.status).toBe("invited");
+  expect(again.user.id).not.toBe(fixture.user.id);
+
+  const authenticated = await actor("joined-person");
+  const joined = await invite("joined-person");
+  expect((await claim(authenticated.headers, joined.invitation.plaintext)).status).toBe(200);
+  await deactivateUser(
+    {
+      tenant_id: joined.destination.tenant.id,
+      user_id: joined.user.id,
+      actor_id: null,
+      actor_kind: "system",
+    },
+    ctx.db,
+  );
+  const [kept] = await ctx.db.select().from(users).where(person(joined));
+  expect(kept?.status).toBe("disabled");
+  expect(kept?.deleted_at).not.toBeNull();
+});
+
+test("accepting an invitation waits for the person's row without holding the invitation", async () => {
+  const fixture = await invite("lock-order");
+  const holder = await ctx.testDb.pool.connect();
+  try {
+    await holder.query("BEGIN");
+    await holder.query("SELECT id FROM subkit.users WHERE id = $1 FOR UPDATE", [fixture.user.id]);
+    const accepting = acceptVerifiedMembershipInvite(
+      verified("lock-order"),
+      fixture.invitation.view.id,
+      ctx.db,
+    );
+    accepting.catch(() => {});
+    await waitFor(
+      async () => {
+        const waiting = await ctx.db.execute<{ waiting: number }>(
+          sql`SELECT count(*)::int AS waiting FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`,
+        );
+        return (waiting.rows[0]?.waiting ?? 0) > 0;
+      },
+      { tries: 200, sleepMs: 25, label: "accept waits for the person's row" },
+    );
+    await holder.query("SELECT id FROM subkit.user_invites WHERE id = $1 FOR UPDATE NOWAIT", [
+      fixture.invitation.view.id,
+    ]);
+    await holder.query("COMMIT");
+    expect((await accepting).membership.user_id).toBe(fixture.user.id);
+  } catch (error) {
+    await holder.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    holder.release();
+  }
 });
 
 test("operator identity migration requires an exact reviewed report and never merges email", async () => {

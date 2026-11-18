@@ -23,6 +23,7 @@ import { reserveHostedObject } from "../storage/hosted-objects.ts";
 import { MemoryObjectStore } from "../storage/object-store.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
 import { provisionSelfServiceTenant } from "./self-service.ts";
 import { eraseExpiredTenant } from "./tenant-erasure.ts";
 import { queue, tenantErasureFixtures } from "./tenant-erasure-fixtures.ts";
@@ -56,6 +57,7 @@ test("shared global identity and foreign runtime overlay survive exact tenant er
         email: "erase-shared@example.test",
         email_verified: true,
       },
+      TEST_WORKSPACE_REGISTRATION,
       ctx.db,
     );
     const objects = new MemoryObjectStore();
@@ -297,6 +299,7 @@ test("an unknown remote object upload blocks erasure even after local producers 
       email: "unknown-upload@example.test",
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     ctx.db,
   );
   const key = `offload/${owned.tenant.id}/${nextUuid()}.json`;
@@ -330,6 +333,7 @@ test("zero growth policy still erases a short tenant name and retains zero charg
         email: "zero-growth@example.test",
         email_verified: true,
       },
+      TEST_WORKSPACE_REGISTRATION,
       isolated.db,
     );
     await isolated.db

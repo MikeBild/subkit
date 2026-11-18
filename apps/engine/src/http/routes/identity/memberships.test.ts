@@ -2,9 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { browserSessionFromRequest, signBrowserSession } from "../../../auth/browser-session.ts";
 import { setConfigKey } from "../../../config/loader.ts";
-import { sessions, tenants, users } from "../../../db/schema/index.ts";
+import { authIdentities, sessions, tenants, users } from "../../../db/schema/index.ts";
 import { createInvite, createUser, provisionSelfServiceTenant } from "../../../identity/index.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../../../test-helpers/workspace-registration.ts";
 import {
   beginLogin,
   ctx,
@@ -12,13 +13,14 @@ import {
   mock,
   provider,
   providerId,
+  responseCookie,
   setupBrowserMemberships,
 } from "../../tests/memberships-fixtures.ts";
 
 setupBrowserMemberships();
 
 describe("hosted browser identity and memberships", () => {
-  test("hosted callback resolves a new own tenant without a tenant hint or global signup flag", async () => {
+  test("a returning owner signs in to the workspace created at onboarding without a tenant hint", async () => {
     const first = await login("hosted-owner");
     const second = await login("hosted-owner");
     expect(first.payload.tenant_id).toBe(second.payload.tenant_id);
@@ -56,8 +58,19 @@ describe("hosted browser identity and memberships", () => {
       expect(browserResponse?.status).toBe(403);
       expect(browserResponse?.headers.get("content-type")).toContain("text/html");
       const html = await browserResponse?.text();
-      expect(html).toContain("Registrierung geschlossen");
-      expect(html).toContain("SubKit-Arbeitsbereiche");
+      expect(html).toContain("Nur auf Einladung");
+      expect(html).toContain("Einladungslink");
+      expect(
+        browserResponse?.headers
+          .getSetCookie()
+          .some((value) => value.startsWith("subkit_identity_registration=")),
+      ).toBe(false);
+      expect(
+        await ctx.db
+          .select()
+          .from(authIdentities)
+          .where(eq(authIdentities.subject, "new-when-closed-browser")),
+      ).toHaveLength(0);
       expect(html).toContain('data-testid="auth-retry"');
       expect(html).not.toContain('"code":"registration_closed"');
     } finally {
@@ -73,6 +86,7 @@ describe("hosted browser identity and memberships", () => {
         email: "invite-destination@example.test",
         email_verified: true,
       },
+      TEST_WORKSPACE_REGISTRATION,
       ctx.db,
     );
     const user = await createUser(
@@ -119,7 +133,8 @@ describe("hosted browser identity and memberships", () => {
       await fetch(location, { redirect: "manual" });
       const finish = await provider().finishLogin?.(new Request(issued.callbackUrl));
       expect(finish?.status).toBe(302);
-      const cookie = finish?.headers.get("set-cookie");
+      expect(finish?.headers.get("location")).toBe("/cockpit/invite?joined=1");
+      const cookie = finish ? responseCookie(finish, "subkit_session") : null;
       if (!cookie) throw new Error("invited session missing");
       const payload = await browserSessionFromRequest(
         new Request(ctx.baseUrl, { headers: { cookie } }),

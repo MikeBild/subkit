@@ -6,6 +6,7 @@ import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { provisionSelfServiceTenant } from "../../identity/self-service.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../../test-helpers/workspace-registration.ts";
 import { renameCategory } from "../catalog-view.ts";
 import { catalogViewFixtures } from "./catalog-view-fixtures.ts";
 
@@ -336,6 +337,7 @@ describe("catalog vocabulary lock scope on hosted tenants", () => {
         email: "lock-scope-hosted@example.test",
         email_verified: true,
       },
+      TEST_WORKSPACE_REGISTRATION,
       ctx.db,
     );
     hosted_tenant_id = hosted.tenant.id;

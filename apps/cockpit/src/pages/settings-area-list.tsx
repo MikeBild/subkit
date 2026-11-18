@@ -3,7 +3,7 @@ import { absolute, apiAccessHref, peopleHref, settingsHref } from "@/app/links";
 import { StatusBadge } from "@/components/cockpit/patterns";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { connectedChatPlatforms, ownObjectStore, type SettingAreaId } from "@/pages/settings-areas";
+import { connectedChatPlatforms, type EngineAreaId, ownObjectStore } from "@/pages/settings-areas";
 import {
   ExpertLink,
   type GuidedContext,
@@ -20,7 +20,7 @@ interface AreaQuestion {
   testId: string;
 }
 
-const AREA_QUESTIONS: Readonly<Partial<Record<SettingAreaId, readonly AreaQuestion[]>>> = {
+const AREA_QUESTIONS: Readonly<Partial<Record<EngineAreaId, readonly AreaQuestion[]>>> = {
   access: [
     {
       title: "settings.question.access.signIn",
@@ -116,7 +116,7 @@ const AREA_QUESTIONS: Readonly<Partial<Record<SettingAreaId, readonly AreaQuesti
   ],
 };
 
-const AREA_EXPERT_SECTION: Readonly<Record<SettingAreaId, string>> = {
+const AREA_EXPERT_SECTION: Readonly<Record<EngineAreaId, string>> = {
   ai: "llm",
   costs: "tokens",
   access: "auth",
@@ -125,7 +125,7 @@ const AREA_EXPERT_SECTION: Readonly<Record<SettingAreaId, string>> = {
   operations: "server",
 };
 
-function areaExpertHref(area: SettingAreaId): string {
+function areaExpertHref(area: EngineAreaId): string {
   return settingsHref(null, { section: AREA_EXPERT_SECTION[area] });
 }
 
@@ -208,7 +208,7 @@ export function AreaList({
   before,
   after,
 }: {
-  area: SettingAreaId;
+  area: EngineAreaId;
   ctx: GuidedContext;
   before?: ReactNode;
   after?: ReactNode;

@@ -15,8 +15,6 @@ export type Envelope<T> = { items: T[] };
 
 export type Translate = ReturnType<typeof useI18n>["t"];
 
-export const INVITE_TTL_HOURS = 24;
-
 export type UserItem = components["schemas"]["UserDetail"];
 
 export type RoleItem = components["schemas"]["RbacRoleDetail"];

@@ -1,9 +1,6 @@
 export const brandingEn = {
   "branding.title": "Workspace branding",
-  "branding.intro": "Customize your workspace name, logos and a reviewed palette.",
   "branding.wordmark": "Wordmark",
-  "branding.name": "Organization name",
-  "branding.nameHint": "Up to 80 characters. Leave blank to use the workspace name.",
   "branding.subtitle": "Subtitle",
   "branding.subtitleHint": "Up to 160 characters, shared across all languages.",
   "branding.lightLogo": "Logo for light mode",
@@ -25,9 +22,6 @@ export const brandingEn = {
   "branding.preview": "Inline shell preview",
   "branding.previewHint": "Only this local preview changes until you save.",
   "branding.mobile": "View on a phone",
-  "branding.unsaved": "Unsaved branding changes",
-  "branding.localDraft": "The preview shows the current local draft.",
-  "branding.save": "Save changes",
   "branding.reset": "Reset branding",
   "branding.resetConsequence":
     "Removes this workspace's brand texts, palettes and logos. SubKit defaults return for all members.",
@@ -41,11 +35,7 @@ export const brandingEn = {
 
 export const brandingDe: Record<keyof typeof brandingEn, string> = {
   "branding.title": "Arbeitsbereich-Branding",
-  "branding.intro":
-    "Passe den Namen deines Arbeitsbereichs, die Logos und eine freigegebene Farbpalette an. Die operative Navigation und Statusfarben bleiben unverändert.",
   "branding.wordmark": "Wortmarke",
-  "branding.name": "Organisationsname",
-  "branding.nameHint": "Maximal 80 Zeichen. Wird als Name deines Arbeitsbereichs angezeigt.",
   "branding.subtitle": "Untertitel",
   "branding.subtitleHint": "Maximal 160 Zeichen. Kurze ergänzende Bezeichnung unter dem Namen.",
   "branding.lightLogo": "Logo für helle Darstellung",
@@ -68,9 +58,6 @@ export const brandingDe: Record<keyof typeof brandingEn, string> = {
   "branding.preview": "Vorschau der Oberfläche",
   "branding.previewHint": "Bis zum Speichern ändert sich nur diese lokale Vorschau.",
   "branding.mobile": "Ansicht auf dem Handy",
-  "branding.unsaved": "Ungespeicherte Branding-Änderungen",
-  "branding.localDraft": "Die Vorschau zeigt den aktuellen lokalen Entwurf.",
-  "branding.save": "Änderungen speichern",
   "branding.reset": "Branding zurücksetzen",
   "branding.resetConsequence":
     "Entfernt Markentexte, Farbpalette und Logos dieses Arbeitsbereichs. Alle Mitglieder sehen wieder die SubKit-Standardeinstellungen.",

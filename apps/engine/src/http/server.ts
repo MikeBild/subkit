@@ -82,6 +82,7 @@ import { registerCockpitIdentityRoutes } from "./routes/identity/cockpit.ts";
 import { registerInviteRoutes } from "./routes/identity/invites.ts";
 import { registerLoginRoutes } from "./routes/identity/login.ts";
 import { registerMembershipRoutes } from "./routes/identity/memberships.ts";
+import { registerOnboardingRoutes } from "./routes/identity/onboarding.ts";
 import { registerOwnedTenantRoutes } from "./routes/identity/owned-tenant.ts";
 import { registerEffectivePermissionsRoute } from "./routes/identity/permissions.ts";
 import { registerPortalTokenRoutes } from "./routes/identity/portal-tokens.ts";
@@ -93,6 +94,7 @@ import { registerSystemAccountRoutes } from "./routes/identity/system-accounts.t
 import { registerTenantRoutes } from "./routes/identity/tenants.ts";
 import { registerUserRoutes } from "./routes/identity/users.ts";
 import { registerWhoamiRoute } from "./routes/identity/whoami.ts";
+import { registerWorkspaceRoutes } from "./routes/identity/workspace.ts";
 import { registerInstallRoute } from "./routes/install.ts";
 import { registerInstallBinaryRoute } from "./routes/install-binary.ts";
 import { registerInstallClipperRoute } from "./routes/install-clipper.ts";
@@ -333,7 +335,9 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerTenantRoutes(app);
   registerMembershipRoutes(app);
   registerOwnedTenantRoutes(app);
+  registerOnboardingRoutes(app);
   registerUserRoutes(app);
+  registerWorkspaceRoutes(app);
   registerProviderIdentityRoutes(app);
   registerInviteRoutes(app);
   registerSystemAccountRoutes(app);

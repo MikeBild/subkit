@@ -4,6 +4,7 @@ import type { Config } from "../config/schema.ts";
 import type { Executor } from "../db/client.ts";
 import { tenants } from "../db/schema/index.ts";
 import { RuntimeConfigValidationError } from "./contracts.ts";
+import { hostedWorkspaceOverlayViolations } from "./hosted-workspace-allowlist.ts";
 
 export async function assertNoHostedTenantOverlays(db: Executor, config: Config): Promise<void> {
   const tenantIds = Object.keys(config.tenants).filter((id) => z.uuid().safeParse(id).success);
@@ -12,9 +13,13 @@ export async function assertNoHostedTenantOverlays(db: Executor, config: Config)
     .select({ id: tenants.id, origin: tenants.origin })
     .from(tenants)
     .where(inArray(tenants.id, tenantIds));
-  if (scopedTenants.some((tenant) => tenant.origin === "self_service")) {
-    throw new RuntimeConfigValidationError(
-      "Self-service workspace settings are managed by the engine operator's global policy; tenant runtime configuration overlays are not allowed",
-    );
+  for (const tenant of scopedTenants) {
+    if (tenant.origin !== "self_service") continue;
+    const [violation] = hostedWorkspaceOverlayViolations(config.tenants[tenant.id]);
+    if (violation) {
+      throw new RuntimeConfigValidationError(
+        `Self-service workspace settings are managed by the engine operator's global policy; a workspace may only hold its own model provider and model together with its own key (${violation})`,
+      );
+    }
   }
 }

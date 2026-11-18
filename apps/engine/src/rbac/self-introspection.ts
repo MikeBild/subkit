@@ -9,5 +9,7 @@ export const SELF_INTROSPECTION_ROUTES = Object.freeze([
   "identity-owned-tenant",
   "identity-cli-session",
   "identity-providers",
+  "identity-onboarding",
+  "identity-workspace",
   "health",
 ] as const);

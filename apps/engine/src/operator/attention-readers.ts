@@ -22,6 +22,7 @@ import { readOpenPatchDecisions } from "../self-healing/open-decisions.ts";
 import { LEARNING_PATTERN_KINDS } from "../skill-candidates/types.ts";
 import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts";
 import { diagnoseWorkflow, type GateDiagnosis } from "../workflows/gate-diagnosis.ts";
+import { readAiAccess } from "./ai-access-attention.ts";
 import { type ApprovalFact, readApprovalFacts } from "./approval-readers.ts";
 import type {
   AttentionAction,
@@ -846,11 +847,10 @@ async function readNextRun(db: Db, tenantId: string, now: Date): Promise<string 
   );
 }
 
+type WorkflowSource = "conversations" | "schedules" | "freshness" | "failures" | "patches";
+
 export type AttentionReaderOverrides = Partial<
-  Record<
-    "connectors" | "connections" | "secret_approvals" | "skills" | "intake" | "budget" | "risk",
-    TenantReader
-  >
+  Record<Exclude<AttentionSource, WorkflowSource>, TenantReader>
 >;
 
 const TENANT_READERS: Required<AttentionReaderOverrides> = {
@@ -860,6 +860,7 @@ const TENANT_READERS: Required<AttentionReaderOverrides> = {
   skills: readSkills,
   intake: readIntake,
   budget: readBudget,
+  ai_access: readAiAccess,
   risk: readRisk,
 };
 

@@ -4,13 +4,11 @@ import {
   type CockpitColumn,
   CollapsibleSection,
   ContextHelp,
-  CopyField,
   DataState,
   DataTable,
   Field,
   FieldDescription,
   FieldLabel,
-  FormDialog,
   type InfiniteRows,
   Section,
   Select,
@@ -90,6 +88,7 @@ export function AdminTable<T extends RowData>({
   data,
   onOpen,
   rowLabel,
+  rowActions,
   toolbar,
   grouping,
   groupingTabs,
@@ -102,6 +101,7 @@ export function AdminTable<T extends RowData>({
   data: T[];
   onOpen(row: T): void;
   rowLabel(row: T): string;
+  rowActions?: (row: T, index: number) => ReactNode;
   toolbar?: ReactNode;
   grouping?: { getKey(row: T): string };
   groupingTabs?: ReactNode;
@@ -118,6 +118,7 @@ export function AdminTable<T extends RowData>({
       data={data}
       onOpen={onOpen}
       rowLabel={rowLabel}
+      rowActions={rowActions}
       toolbar={toolbar}
       grouping={grouping}
       groupingTabs={groupingTabs}
@@ -192,36 +193,6 @@ export function ChoiceField({
       </Select>
       {description ? <FieldDescription>{description}</FieldDescription> : null}
     </Field>
-  );
-}
-
-export function SecretDialog({
-  secret,
-  onClose,
-  title,
-}: {
-  secret: string | null;
-  onClose: () => void;
-  title: string;
-}) {
-  const { t } = useI18n();
-  return (
-    <FormDialog
-      open={Boolean(secret)}
-      onOpenChange={(open) => !open && onClose()}
-      title={title}
-      submit={{ label: t("common.done") }}
-      onSubmit={onClose}
-      testId="secret-dialog"
-    >
-      <CopyField
-        labelled
-        value={secret ?? ""}
-        label={t("people.inviteCode")}
-        testId="secret-value"
-      />
-      <p className="text-sm text-muted-foreground">{t("secret.once")}</p>
-    </FormDialog>
   );
 }
 

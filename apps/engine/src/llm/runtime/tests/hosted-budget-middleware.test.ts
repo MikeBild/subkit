@@ -8,6 +8,7 @@ import { createTestDb } from "../../../db/tests/setup.ts";
 import { provisionSelfServiceTenant } from "../../../identity/self-service.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { configureHostedPolicyForTests } from "../../../test-helpers/hosted-policy.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../../../test-helpers/workspace-registration.ts";
 import { hostedReportedAmount, hostedReservationAmount } from "../hosted-billing-policy.ts";
 import {
   type HostedBillingDependencies,
@@ -385,6 +386,7 @@ test("an explicit database owns hosted model reservation and settlement", async 
         email: "billing@example.test",
         email_verified: true,
       },
+      TEST_WORKSPACE_REGISTRATION,
       database.db,
     );
     const mock = new MockLanguageModelV4({ doGenerate: result });

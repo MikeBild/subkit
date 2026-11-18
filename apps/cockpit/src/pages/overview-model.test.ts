@@ -15,6 +15,67 @@ import { daysAgo, de, item, NOW, W } from "./overview-model-fixtures.ts";
 const en = (key: TranslationKey, values?: Record<string, string | number>) =>
   translate("en", key, values);
 
+describe("a hosted workspace without its own AI key", () => {
+  const action = {
+    verb: "open" as const,
+    href: "/cockpit/settings?area=ai",
+    primary: true,
+    permission: "identity:write",
+  };
+  const missing = (kind: string) =>
+    item({
+      id: "ai-access",
+      class: kind === "no_access" ? "stopped" : "decide",
+      severity: kind === "no_access" ? "critical" : "notice",
+      kind,
+      subject: { kind: "settings", id: W, name: "AI access" },
+      reason: "ai_access_missing",
+      since: null,
+      detail: "engine wording",
+      actions: [action],
+    });
+
+  test("reads as the entry to set up the AI access, on the operator's allowance", () => {
+    const entry = missing("operator_allowance");
+    const row = attentionRow(entry, de);
+    expect(row.name).toBe("KI-Zugang einrichten");
+    expect(row.reason).toBe(
+      "Ohne eigenen API-Schlüssel nutzt dieser Arbeitsbereich das Kontingent des Betreibers.",
+    );
+    expect(row.machine).toBeNull();
+    expect(de(row.badge.label)).toBe("Wartet auf dich");
+    expect(sentenceText(attentionSentence(entry, de, NOW))).toBe(
+      "Ohne eigenen API-Schlüssel nutzt dieser Arbeitsbereich das Kontingent des Betreibers.",
+    );
+    expect(attentionRow(entry, en)).toMatchObject({
+      name: "Set up AI access",
+      reason: "Without its own API key, this workspace uses the operator’s allowance.",
+    });
+  });
+
+  test("says that nothing can work when the operator offers no allowance", () => {
+    const entry = missing("no_access");
+    expect(attentionRow(entry, de).reason).toBe(
+      "Ohne API-Schlüssel können Chat und Workflows nicht arbeiten.",
+    );
+    expect(sentenceText(attentionSentence(entry, de, NOW))).toBe(
+      "Ohne API-Schlüssel können Chat und Workflows nicht arbeiten.",
+    );
+    expect(attentionRow(entry, en).reason).toBe(
+      "Without an API key, chat and workflows can’t work.",
+    );
+  });
+
+  test("offers the single action Einrichten that opens the AI settings", () => {
+    const entry = missing("operator_allowance");
+    expect(entry.actions).toHaveLength(1);
+    expect(de(actionLabelKey(action, entry))).toBe("Einrichten");
+    expect(en(actionLabelKey(action, entry))).toBe("Set up");
+    expect(routerPath(action.href)).toBe("/settings?area=ai");
+    expect(attentionRow(entry, de).name).not.toContain("AI access");
+  });
+});
+
 describe("the sentence", () => {
   test("a conversation named by its whole first request is shortened only on screen", () => {
     const request =

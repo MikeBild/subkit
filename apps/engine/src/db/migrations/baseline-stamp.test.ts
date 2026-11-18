@@ -61,6 +61,8 @@ describe("baseline over the squashed migration chain", () => {
       "0001_hosted_meter_workflow_review_receipts",
       "0002_drop_tenant_dlp_rules",
       "0003_reserved_role_names",
+      "0004_user_start_steps_hidden",
+      "0005_hosted_workspace_model_key",
     ]);
     expect(baseline.idx).toBe(0);
   });

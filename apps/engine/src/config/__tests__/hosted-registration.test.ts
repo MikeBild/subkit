@@ -1,4 +1,9 @@
 import { expect, test } from "bun:test";
+import { hostedOperatorModelPolicy } from "../../llm/runtime/hosted-budget-middleware.ts";
+import {
+  hostedModelAllowed,
+  hostedRegistrationPolicyError,
+} from "../hosted-registration-policy.ts";
 import { ConfigSchema } from "../schema.ts";
 import { findLeafByPath } from "../walk.ts";
 
@@ -66,17 +71,32 @@ test("closed registration preserves hosted member login without a billing allowl
   ).toBe(true);
 });
 
-test("open registration requires a complete operator-owned paid-model policy", () => {
+test("open registration needs no operator-paid model service", () => {
   expect(ConfigSchema.safeParse(configuration()).success).toBe(true);
+  const { llm: _llm, ...withoutHostedModels } = configuration();
+  const parsed = ConfigSchema.safeParse(withoutHostedModels);
+  expect(parsed.success).toBe(true);
+  if (!parsed.success) return;
+  expect(parsed.data.llm.hosted).toEqual({
+    enabled: false,
+    tenant_monthly_microunits: "0",
+    global_monthly_microunits: "0",
+    models: [],
+  });
+  expect(hostedRegistrationPolicyError(parsed.data)).toBeNull();
 });
 
-for (const field of ["tenant_monthly_microunits", "global_monthly_microunits"] as const) {
-  test(`open registration rejects a zero ${field}`, () => {
+test("open registration accepts zero budgets, a disabled model service and an empty model list", () => {
+  for (const field of ["tenant_monthly_microunits", "global_monthly_microunits"] as const) {
     const config = configuration();
     config.llm.hosted[field] = "0";
-    expect(ConfigSchema.safeParse(config).success).toBe(false);
-  });
-}
+    expect(ConfigSchema.safeParse(config).success).toBe(true);
+  }
+  const disabled = configuration();
+  disabled.llm.hosted.enabled = false;
+  disabled.llm.hosted.models = [];
+  expect(ConfigSchema.safeParse(disabled).success).toBe(true);
+});
 
 test("malformed money returns validation errors without throwing during refinement", () => {
   const config = configuration();
@@ -84,67 +104,43 @@ test("malformed money returns validation errors without throwing during refineme
   expect(ConfigSchema.safeParse(config).success).toBe(false);
 });
 
-test("registration cannot enable without hosted authentication and model service", () => {
+test("registration cannot enable without hosted authentication", () => {
   const config = configuration();
-  config.llm.hosted.enabled = false;
-  expect(ConfigSchema.safeParse(config).success).toBe(false);
-  config.llm.hosted.enabled = true;
   config.auth.hosted.enabled = false;
   expect(ConfigSchema.safeParse(config).success).toBe(false);
 });
 
-test("registration rejects empty or duplicate model allowlists", () => {
+test("a disabled or duplicate model never admits an operator-paid call", () => {
   const config = configuration();
-  config.llm.hosted.models = [];
-  expect(ConfigSchema.safeParse(config).success).toBe(false);
-  const valid = configuration();
-  const model = valid.llm.hosted.models[0];
+  const model = config.llm.hosted.models[0];
   if (!model) throw new Error("model fixture missing");
-  valid.llm.hosted.models.push({ ...model });
-  expect(ConfigSchema.safeParse(valid).success).toBe(false);
-});
-
-test("a disabled model is kept but does not count as an allowed model", async () => {
-  const { hostedModelAllowed, hostedRegistrationPolicyError } = await import(
-    "../hosted-registration-policy.ts"
-  );
-  const only = configuration();
-  const model = only.llm.hosted.models[0];
-  if (!model) throw new Error("model fixture missing");
-  only.llm.hosted.models = [{ ...model, disabled: true } as typeof model];
-  const parsed = ConfigSchema.safeParse(only);
-  expect(parsed.success).toBe(false);
-  const mixed = configuration();
-  mixed.llm.hosted.models.push({
-    ...model,
-    model: "openai:paused-model",
-    disabled: true,
-  } as typeof model);
-  const accepted = ConfigSchema.safeParse(mixed);
-  expect(accepted.success).toBe(true);
-  if (!accepted.success) return;
-  expect(accepted.data.llm.hosted.models.map((entry) => entry.disabled)).toEqual([undefined, true]);
-  expect(hostedRegistrationPolicyError(accepted.data)).toBeNull();
-  expect(accepted.data.llm.hosted.models.map(hostedModelAllowed)).toEqual([true, false]);
+  config.llm.hosted.models = [
+    { ...model, disabled: true } as typeof model,
+    { ...model, model: "openai:twice" },
+    { ...model, model: "openai:twice" },
+    { ...model, model: "openai:priced" },
+  ];
+  const parsed = ConfigSchema.safeParse(config);
+  expect(parsed.success).toBe(true);
+  if (!parsed.success) return;
+  const hosted = parsed.data.llm.hosted;
+  expect(hosted.models.map(hostedModelAllowed)).toEqual([false, true, true, true]);
   expect(hostedModelAllowed({})).toBe(true);
   expect(hostedModelAllowed({ disabled: false })).toBe(true);
+  expect(hostedOperatorModelPolicy(hosted, "anthropic", "billing-model").ok).toBe(false);
+  expect(hostedOperatorModelPolicy(hosted, "openai", "twice").ok).toBe(false);
+  expect(hostedOperatorModelPolicy(hosted, "openai", "unlisted").ok).toBe(false);
+  expect(hostedOperatorModelPolicy(hosted, "openai", "priced").ok).toBe(true);
+  expect(
+    hostedOperatorModelPolicy({ ...hosted, tenant_monthly_microunits: "0" }, "openai", "priced").ok,
+  ).toBe(false);
+  expect(hostedOperatorModelPolicy(undefined, "openai", "priced").ok).toBe(false);
 });
 
-test("a duplicate stays forbidden even when one copy is disabled", () => {
+test("invalid provider caps and malformed prices stay refused", () => {
   const config = configuration();
   const model = config.llm.hosted.models[0];
   if (!model) throw new Error("model fixture missing");
-  config.llm.hosted.models.push({ ...model, disabled: true } as typeof model);
-  expect(ConfigSchema.safeParse(config).success).toBe(false);
-});
-
-test("registration rejects unpriced models and invalid provider caps", () => {
-  const config = configuration();
-  const model = config.llm.hosted.models[0];
-  if (!model) throw new Error("model fixture missing");
-  model.input_usd_per_million_tokens = "0";
-  expect(ConfigSchema.safeParse(config).success).toBe(false);
-  model.input_usd_per_million_tokens = "3";
   model.max_output_tokens = 2000;
   expect(ConfigSchema.safeParse(config).success).toBe(false);
   model.max_output_tokens = 100;

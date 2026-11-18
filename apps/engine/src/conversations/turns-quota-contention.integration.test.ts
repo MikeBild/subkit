@@ -10,6 +10,7 @@ import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { provisionSelfServiceTenant } from "../identity/self-service.ts";
 import { logRing } from "../observability/log-ring.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
 import { hasConversationAbort } from "./abort.ts";
 import {
   acquireConversationTurn,
@@ -32,6 +33,7 @@ beforeAll(async () => {
       email: "conversation-turn-quota-contention@example.test",
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     ctx.db,
   );
   tenantId = owned.tenant.id;

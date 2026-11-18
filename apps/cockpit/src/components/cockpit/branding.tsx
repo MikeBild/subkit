@@ -26,8 +26,7 @@ export function BrandingAppearance() {
     if (value?.configured) {
       root.dataset.brandPalette = value.palette ?? "standard";
     }
-    if (installed) document.title = session.tenant.display_name;
-    else if (value?.configured) document.title = value.display_name || session.tenant.display_name;
+    if (installed || value?.configured) document.title = session.tenant.display_name;
     return () => {
       delete root.dataset.brandPalette;
       document.title = title;
@@ -56,11 +55,7 @@ export function BrandingWordmark() {
       </span>
       <span className="grid min-w-0 flex-1 text-left text-sm leading-tight">
         <span data-testid="cockpit-wordmark-name" className="truncate font-semibold">
-          {installationId()
-            ? session.tenant.display_name
-            : value?.configured
-              ? value.display_name || session.tenant.display_name
-              : t("app.name")}
+          {installationId() || value?.configured ? session.tenant.display_name : t("app.name")}
         </span>
         <span className="truncate text-xs text-muted-foreground">
           {value?.configured ? value.subtitle : session.tenant.display_name}

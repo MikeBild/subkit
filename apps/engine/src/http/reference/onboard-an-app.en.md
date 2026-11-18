@@ -237,7 +237,7 @@ Good to know:
 | Interface | Call | Result |
 | --- | --- | --- |
 | HTTP | `DELETE /v1/apps/{id}/users/{user_id}` | `{ "user_id", "app_id", "erased": true }`, or 404 for an unknown, foreign or already erased user. |
-| HTTP | `DELETE /v1/identity/users/{id}` | Only deactivates a user. |
+| HTTP | `DELETE /v1/identity/users/{id}` | Only deactivates a user. An invitation that was never accepted is removed together with its user. |
 | MCP (admin mode) | `list_apps`, `get_app` | Read-only. Erasing is not available. |
 
 ### Inspect an app

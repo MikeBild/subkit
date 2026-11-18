@@ -5,6 +5,7 @@ import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
 import { seedConversation } from "../../test-helpers/seed.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../../test-helpers/workspace-registration.ts";
 import { hostedQuotaError } from "../hosted-quota-errors.ts";
 import { conversations, hostedTenantUsage, workflowReviewReceipts } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "./setup.ts";
@@ -43,6 +44,7 @@ async function selfServiceTenant(subject: string) {
       email: `${subject}@example.test`,
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     ctx.db,
   );
   return tenant.id;

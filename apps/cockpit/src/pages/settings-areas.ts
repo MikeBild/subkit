@@ -7,7 +7,10 @@ import {
   settingsViewFromUrl,
 } from "@/pages/settings-model";
 
-export const SETTING_AREA_IDS = [
+export const PERSONAL_AREA_IDS = ["profile", "workspace"] as const;
+export type PersonalAreaId = (typeof PERSONAL_AREA_IDS)[number];
+
+export const ENGINE_AREA_IDS = [
   "ai",
   "costs",
   "access",
@@ -15,9 +18,16 @@ export const SETTING_AREA_IDS = [
   "notifications",
   "operations",
 ] as const;
+export type EngineAreaId = (typeof ENGINE_AREA_IDS)[number];
+
+export const SETTING_AREA_IDS = [...PERSONAL_AREA_IDS, ...ENGINE_AREA_IDS] as const;
 export type SettingAreaId = (typeof SETTING_AREA_IDS)[number];
 
-export const SETTING_AREAS: readonly { id: SettingAreaId; sections: readonly string[] }[] = [
+export function isPersonalArea(area: SettingAreaId): area is PersonalAreaId {
+  return (PERSONAL_AREA_IDS as readonly string[]).includes(area);
+}
+
+export const SETTING_AREAS: readonly { id: EngineAreaId; sections: readonly string[] }[] = [
   { id: "ai", sections: ["llm"] },
   { id: "costs", sections: ["tokens"] },
   { id: "access", sections: ["auth", "products", "mcp", "egress", "spec"] },
@@ -36,7 +46,6 @@ export const SETTING_AREAS: readonly { id: SettingAreaId; sections: readonly str
       "sandbox",
       "repl",
       "ui",
-      "branding",
     ],
   },
 ];
@@ -47,11 +56,11 @@ function isSettingArea(value: string | null | undefined): value is SettingAreaId
   return SETTING_AREA_IDS.includes(value as SettingAreaId);
 }
 
-function settingAreaOfSection(section: string): SettingAreaId {
+function settingAreaOfSection(section: string): EngineAreaId {
   return SETTING_AREAS.find((area) => area.sections.includes(section))?.id ?? "operations";
 }
 
-export function settingAreaOf(path: string): SettingAreaId {
+export function settingAreaOf(path: string): EngineAreaId {
   if (path.startsWith(HOSTED_LLM_PREFIX)) return "costs";
   return settingAreaOfSection(settingSectionOf(path));
 }
@@ -75,6 +84,52 @@ export function settingsLevelFromUrl(search: string): SettingsLevel {
   if (isSettingArea(area)) return { kind: "area", area };
   if (params.get("tab") === "notifications") return { kind: "area", area: "notifications" };
   return { kind: "overview" };
+}
+
+export interface SettingsAccess {
+  permissions: readonly string[];
+  isOwner: boolean;
+  origin: "self_hosted" | "self_service";
+}
+
+export type EngineSettingsAccess = "write" | "read" | "none";
+
+export function engineSettingsAccess(access: SettingsAccess): EngineSettingsAccess {
+  if (access.permissions.includes("settings:write:global")) return "write";
+  return access.origin === "self_hosted" && access.permissions.includes("settings:read")
+    ? "read"
+    : "none";
+}
+
+function administersWorkspace(access: SettingsAccess): boolean {
+  return access.isOwner || access.permissions.includes("identity:write");
+}
+
+export function workspaceAiEditable(access: SettingsAccess): boolean {
+  return (
+    access.origin === "self_service" &&
+    engineSettingsAccess(access) === "none" &&
+    administersWorkspace(access)
+  );
+}
+
+export function visibleSettingAreas(access: SettingsAccess): SettingAreaId[] {
+  const engine = engineSettingsAccess(access) !== "none";
+  return SETTING_AREA_IDS.filter((area) => {
+    if (area === "profile") return true;
+    if (area === "workspace") return administersWorkspace(access);
+    if (area === "ai") return engine || workspaceAiEditable(access);
+    if (area === "notifications") return engine || access.permissions.includes("notification:read");
+    return engine;
+  });
+}
+
+export function openSettingsLevel(level: SettingsLevel, access: SettingsAccess): SettingsLevel {
+  if (level.kind === "all")
+    return engineSettingsAccess(access) === "none" ? { kind: "overview" } : level;
+  if (level.kind === "area" && !visibleSettingAreas(access).includes(level.area))
+    return { kind: "overview" };
+  return level;
 }
 
 export const SCOPED_AREAS = ["ai", "costs"] as const;
@@ -106,7 +161,7 @@ export function pageScope(
   return chosen[area] ?? (workspaceHasOwnValue(area, tenantItems) ? "tenant" : "global");
 }
 
-export type AreaStatus = "configured" | "waiting" | "restart" | "limit";
+export type AreaStatus = "configured" | "waiting" | "restart" | "limit" | "nameMissing";
 
 interface AreaFacts {
   items: readonly SettingItem[];
@@ -139,11 +194,11 @@ function providerKeyState(
   return generalKey && settingSecretStored(generalKey) ? "stored" : "missing";
 }
 
-function areaRestartFields(area: SettingAreaId, pending: readonly string[]): string[] {
+function areaRestartFields(area: EngineAreaId, pending: readonly string[]): string[] {
   return pending.filter((path) => settingAreaOf(path) === area);
 }
 
-export function areaStatus(area: SettingAreaId, facts: AreaFacts): AreaStatus | null {
+export function areaStatus(area: EngineAreaId, facts: AreaFacts): AreaStatus | null {
   const restart =
     area === "operations" ? facts.pendingRestart : areaRestartFields(area, facts.pendingRestart);
   if (restart.length > 0) return "restart";
@@ -205,7 +260,7 @@ export function authMethodNames(items: readonly SettingItem[], apiKeyName: strin
   return [...new Set(names)];
 }
 
-export function areaSentences(area: SettingAreaId, facts: AreaSentenceFacts): AreaSentence[] {
+export function areaSentences(area: EngineAreaId, facts: AreaSentenceFacts): AreaSentence[] {
   const { items } = facts;
   if (area === "ai") {
     const provider = stringValue(items, "llm.provider");

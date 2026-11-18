@@ -20,6 +20,7 @@ import {
   type MemoryOffloadStorage,
   useMemoryOffloadStorage,
 } from "../../test-helpers/offload-storage.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../../test-helpers/workspace-registration.ts";
 import { createKnowledgeSource, ingestKnowledgeSource } from "../service.ts";
 
 const uuid = createDeterministicUuidFactory(0x51a907);
@@ -213,6 +214,7 @@ test("hosted snapshot history remains charged and full shared quota refuses anot
       email: "snapshot-quota@example.test",
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     ctx.db,
   );
   const tenantId = owned.tenant.id;

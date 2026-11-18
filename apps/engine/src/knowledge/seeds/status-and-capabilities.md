@@ -105,9 +105,9 @@ How to read: `all_clear=true` means nothing needs a person now — no attention 
 The one list every surface reads: the cockpit's start page, the MCP connect instructions ("Needs attention: …"), the MCP tool `get_attention` and the digest's headline. Authenticated; each item is checked against the caller's permissions on its subject, so a person holding a grant on one workflow sees that workflow's item. Read-only.
 
 Response (`schema_version: "attention.v1"`):
-- `sources` — for each of `conversations`, `schedules`, `freshness`, `failures`, `patches`, `connectors`, `connections`, `secret_approvals`, `skills`, `budget`, `risk`: `answered`, `failed` or `not_permitted`. A failed or unreadable source is never reported as empty.
+- `sources` — for each of `conversations`, `schedules`, `freshness`, `failures`, `patches`, `connectors`, `connections`, `secret_approvals`, `skills`, `intake`, `budget`, `ai_access`, `risk`: `answered`, `failed` or `not_permitted`. A failed or unreadable source is never reported as empty.
 - `status` — `{ health_state, next_run_at }`, only for a caller with `stats:read`.
-- `items[]` — ordered stopped → failing → decide, then nearest deadline, then oldest. Each: `id` (stable: `workflow:<id>`, `conversation:<id>`, `connector:<id>`, `connection:<id>`, `secret-approval:<name>@<version>`, `skills`, `budget`, `freshness:<source>`, `risk:<kind>`), `class`, `severity`, `kind`, `subject` (`{kind, id, name}` or null), `reason` (a machine code), `cause_class`, `counts` (`failures`, `patches`, `skills`), `since`, `deadline`, `detail` (the engine's own wording, or null), `actions[]` (`verb`, `href`, `primary`, `permission`).
+- `items[]` — ordered stopped → failing → decide, then nearest deadline, then oldest. Each: `id` (stable: `workflow:<id>`, `conversation:<id>`, `connector:<id>`, `connection:<id>`, `secret-approval:<name>@<version>`, `skills`, `budget`, `ai-access`, `freshness:<source>`, `risk:<kind>`), `class`, `severity`, `kind`, `subject` (`{kind, id, name}` or null), `reason` (a machine code), `cause_class`, `counts` (`failures`, `patches`, `skills`), `since`, `deadline`, `detail` (the engine's own wording, or null), `actions[]` (`verb`, `href`, `primary`, `permission`).
 
 Waiting conversations are the caller's own only. A workflow that is held, failing and has open fixes is one item carrying all three.
 

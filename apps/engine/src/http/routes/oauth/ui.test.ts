@@ -324,6 +324,25 @@ describe("sign-in pages", () => {
     expect(english).toContain("You are signed out. Choose how to sign in to SubKit.");
   });
 
+  test("a configured provider label names the sign-in button in both languages", () => {
+    const labelled = [{ id: "sso", protocol: "oidc" as const, href: "/sso", label: "Acme ID" }];
+    expect(renderProviderChoice(labelled, DE)).toContain(">Mit Acme ID anmelden</a>");
+    expect(renderProviderChoice(labelled, EN)).toContain(">Sign in with Acme ID</a>");
+    expect(renderProviderChoice(labelled, EN)).not.toContain("work account");
+  });
+
+  test("closed registration explains that an invitation link is needed", () => {
+    const german = renderErrorPage("registration_closed", "/v1/identity/login/start", DE);
+    expect(german).toContain("Nur auf Einladung");
+    expect(german).toContain(
+      "Du brauchst einen Einladungslink von einer Person, die einen Arbeitsbereich verwaltet.",
+    );
+    const english = renderErrorPage("registration_closed", "/v1/identity/login/start", EN);
+    expect(english).toContain("By invitation only");
+    expect(english).toContain("You need an invitation link from a workspace administrator.");
+    expect(english).not.toMatch(/https?:\/\//);
+  });
+
   test("a failed sign-in offers one retry in the reader's language", () => {
     const html = renderErrorPage("state_expired", "/v1/identity/login/start", DE);
     expect(html).toContain("Anmeldung fehlgeschlagen");

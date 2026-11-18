@@ -1,6 +1,6 @@
 import { useRouter } from "@tanstack/react-router";
 import { Check } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 import { absolute } from "@/app/links";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n-context";
@@ -33,34 +33,19 @@ export interface StartStep {
   done: boolean;
 }
 
-const HIDDEN_KEY = "sk.start-checklist.hidden";
-
-function readHidden(): boolean {
-  try {
-    return typeof window !== "undefined" && window.localStorage.getItem(HIDDEN_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function storeHidden(): void {
-  try {
-    window.localStorage.setItem(HIDDEN_KEY, "1");
-  } catch {
-    return;
-  }
-}
-
 export function StartChecklist({
   steps,
+  hidden,
+  onHide,
   testId = "start-checklist",
 }: {
   steps: readonly StartStep[];
+  hidden: boolean;
+  onHide(): void;
   testId?: string;
 }) {
   const { t } = useI18n();
   const router = useRouter();
-  const [hidden, setHidden] = useState(readHidden);
   const done = steps.filter((step) => step.done).length;
   if (hidden || steps.length === 0 || done === steps.length) return null;
   const next = steps.findIndex((step) => !step.done);
@@ -80,10 +65,7 @@ export function StartChecklist({
           type="button"
           variant="ghost"
           size="sm"
-          onClick={() => {
-            storeHidden();
-            setHidden(true);
-          }}
+          onClick={onHide}
           data-testid={`${testId}-hide`}
         >
           {t("onboarding.checklist.hide")}
@@ -95,7 +77,7 @@ export function StartChecklist({
           style={{ width: `${(done / steps.length) * 100}%` }}
         />
       </div>
-      <ol className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <ol className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5" data-slot="start-steps">
         {steps.map((step, index) => {
           const href = absolute(step.href);
           return (
@@ -112,7 +94,7 @@ export function StartChecklist({
                 data-done={step.done || undefined}
                 data-testid={`${testId}-step-${index}`}
                 className={cn(
-                  "flex h-full gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "flex h-full gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring xl:flex-col xl:gap-2",
                   index === next && "border-foreground/30",
                 )}
               >

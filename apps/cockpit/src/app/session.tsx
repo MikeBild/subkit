@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import {
   ApiError,
   type Bootstrap,
@@ -27,6 +27,23 @@ export function useSession(): Bootstrap {
   const session = useContext(SessionContext);
   if (!session) throw new Error("useSession requires SessionGate");
   return session;
+}
+
+export function useSessionUpdate() {
+  const client = useQueryClient();
+  return useMemo(
+    () => ({
+      patch(change: (session: Bootstrap) => Bootstrap): void {
+        client.setQueryData<Bootstrap>(BOOTSTRAP_KEY, (current) =>
+          current ? change(current) : current,
+        );
+      },
+      refresh(): Promise<void> {
+        return client.invalidateQueries({ queryKey: BOOTSTRAP_KEY });
+      },
+    }),
+    [client],
+  );
 }
 
 export function SessionGate({ children }: { children: ReactNode }) {

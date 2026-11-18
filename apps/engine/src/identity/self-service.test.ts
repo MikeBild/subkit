@@ -12,11 +12,14 @@ import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { builtinRoleId } from "../rbac/roles.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
 import {
   assertTenantActive,
+  completeHostedRegistration,
   getMembershipForIdentity,
   listMembershipsForIdentity,
   provisionSelfServiceTenant,
+  resolveHostedIdentity,
 } from "./self-service.ts";
 
 let testDb: TestDb;
@@ -39,7 +42,9 @@ afterAll(async () => {
 describe("self-service identity provisioning", () => {
   test("parallel callbacks provision one tenant and owner without operator rights", async () => {
     const outcomes = await Promise.all(
-      Array.from({ length: 8 }, () => provisionSelfServiceTenant(claims("concurrent"), testDb.db)),
+      Array.from({ length: 8 }, () =>
+        provisionSelfServiceTenant(claims("concurrent"), TEST_WORKSPACE_REGISTRATION, testDb.db),
+      ),
     );
     expect(new Set(outcomes.map((outcome) => outcome.tenant.id)).size).toBe(1);
     expect(outcomes.filter((outcome) => outcome.created)).toHaveLength(1);
@@ -68,14 +73,17 @@ describe("self-service identity provisioning", () => {
   test("same email across subjects or issuers does not merge identities or tenants", async () => {
     const first = await provisionSelfServiceTenant(
       claims("same-email", "same@example.test"),
+      TEST_WORKSPACE_REGISTRATION,
       testDb.db,
     );
     const second = await provisionSelfServiceTenant(
       claims("other-subject", "same@example.test"),
+      TEST_WORKSPACE_REGISTRATION,
       testDb.db,
     );
     const third = await provisionSelfServiceTenant(
       { ...claims("same-email", "same@example.test"), issuer_url: "https://other.example.test" },
+      TEST_WORKSPACE_REGISTRATION,
       testDb.db,
     );
     expect(new Set([first.identity.id, second.identity.id, third.identity.id]).size).toBe(3);
@@ -91,6 +99,7 @@ describe("self-service identity provisioning", () => {
         { ...claims("unverified"), email_verified: false } as unknown as Parameters<
           typeof provisionSelfServiceTenant
         >[0],
+        TEST_WORKSPACE_REGISTRATION,
         testDb.db,
       ),
     ).rejects.toThrow();
@@ -122,9 +131,9 @@ describe("self-service identity provisioning", () => {
       subject: "legacy-binding",
       email: user.email,
     });
-    await expect(provisionSelfServiceTenant(claims("legacy-binding"), testDb.db)).rejects.toThrow(
-      "identity_migration_required",
-    );
+    await expect(
+      provisionSelfServiceTenant(claims("legacy-binding"), TEST_WORKSPACE_REGISTRATION, testDb.db),
+    ).rejects.toThrow("identity_migration_required");
     const [unchanged] = await testDb.db
       .select()
       .from(users)
@@ -162,14 +171,26 @@ describe("self-service identity provisioning", () => {
       product_id: "product",
       email: user.email,
     });
-    const outcome = await provisionSelfServiceTenant(claims("product-binding"), testDb.db);
+    const outcome = await provisionSelfServiceTenant(
+      claims("product-binding"),
+      TEST_WORKSPACE_REGISTRATION,
+      testDb.db,
+    );
     expect(outcome.tenant.id).not.toBe(tenant.id);
     expect(await getMembershipForIdentity(outcome.identity.id, tenant.id, testDb.db)).toBeNull();
   });
 
   test("membership lookup excludes inactive users and inactive tenants", async () => {
-    const own = await provisionSelfServiceTenant(claims("membership"), testDb.db);
-    const other = await provisionSelfServiceTenant(claims("inviting-owner"), testDb.db);
+    const own = await provisionSelfServiceTenant(
+      claims("membership"),
+      TEST_WORKSPACE_REGISTRATION,
+      testDb.db,
+    );
+    const other = await provisionSelfServiceTenant(
+      claims("inviting-owner"),
+      TEST_WORKSPACE_REGISTRATION,
+      testDb.db,
+    );
     const [member] = await testDb.db
       .insert(users)
       .values({
@@ -197,9 +218,9 @@ describe("self-service identity provisioning", () => {
     await expect(assertTenantActive(own.tenant.id, testDb.db)).rejects.toThrow(
       "tenant_unavailable",
     );
-    await expect(provisionSelfServiceTenant(claims("membership"), testDb.db)).rejects.toThrow(
-      "tenant_unavailable",
-    );
+    await expect(
+      provisionSelfServiceTenant(claims("membership"), TEST_WORKSPACE_REGISTRATION, testDb.db),
+    ).rejects.toThrow("tenant_unavailable");
     expect(
       await testDb.db.select().from(tenants).where(eq(tenants.owner_identity_id, own.identity.id)),
     ).toHaveLength(1);
@@ -207,7 +228,11 @@ describe("self-service identity provisioning", () => {
 
   test("deleted or pending tenants cannot be replaced by retrying signup", async () => {
     for (const state of ["pending_deletion", "deleted"] as const) {
-      const outcome = await provisionSelfServiceTenant(claims(state), testDb.db);
+      const outcome = await provisionSelfServiceTenant(
+        claims(state),
+        TEST_WORKSPACE_REGISTRATION,
+        testDb.db,
+      );
       await testDb.db
         .update(tenants)
         .set(
@@ -220,9 +245,9 @@ describe("self-service identity provisioning", () => {
               },
         )
         .where(eq(tenants.id, outcome.tenant.id));
-      await expect(provisionSelfServiceTenant(claims(state), testDb.db)).rejects.toThrow(
-        "tenant_unavailable",
-      );
+      await expect(
+        provisionSelfServiceTenant(claims(state), TEST_WORKSPACE_REGISTRATION, testDb.db),
+      ).rejects.toThrow("tenant_unavailable");
       expect(
         await testDb.db
           .select()
@@ -230,6 +255,117 @@ describe("self-service identity provisioning", () => {
           .where(eq(tenants.owner_identity_id, outcome.identity.id)),
       ).toHaveLength(1);
     }
+  });
+
+  test("a created workspace carries the registered name, time zone and owner name", async () => {
+    const outcome = await provisionSelfServiceTenant(
+      claims("registered-values"),
+      { display_name: " Ada ", workspace_name: " Engines ", timezone: "Europe/Berlin" },
+      testDb.db,
+    );
+    expect(outcome.tenant).toMatchObject({ display_name: "Engines", timezone: "Europe/Berlin" });
+    const [owner] = await testDb.db
+      .select()
+      .from(users)
+      .where(eq(users.tenant_id, outcome.tenant.id));
+    expect(owner?.display_name).toBe("Ada");
+    await expect(
+      provisionSelfServiceTenant(
+        claims("bad-zone"),
+        { ...TEST_WORKSPACE_REGISTRATION, timezone: "Mars/Olympus" },
+        testDb.db,
+      ),
+    ).rejects.toThrow();
+    expect(
+      await testDb.db.select().from(authIdentities).where(eq(authIdentities.subject, "bad-zone")),
+    ).toHaveLength(0);
+  });
+
+  test("resolving an unknown identity records it for registration without creating a workspace", async () => {
+    await expect(
+      resolveHostedIdentity(claims("resolve-closed"), { registration_enabled: false }, testDb.db),
+    ).rejects.toThrow("registration_closed");
+    expect(
+      await testDb.db
+        .select()
+        .from(authIdentities)
+        .where(eq(authIdentities.subject, "resolve-closed")),
+    ).toHaveLength(0);
+
+    const pending = await resolveHostedIdentity(
+      claims("resolve-open"),
+      { registration_enabled: true },
+      testDb.db,
+    );
+    expect(pending.kind).toBe("registration");
+    expect(
+      await testDb.db
+        .select()
+        .from(tenants)
+        .where(eq(tenants.owner_identity_id, pending.identity.id)),
+    ).toHaveLength(0);
+    const again = await resolveHostedIdentity(
+      claims("resolve-open", "renamed@example.test"),
+      { registration_enabled: true },
+      testDb.db,
+    );
+    expect(again.kind).toBe("registration");
+    expect(again.identity).toMatchObject({
+      id: pending.identity.id,
+      email: "renamed@example.test",
+    });
+    await expect(
+      resolveHostedIdentity(
+        claims("resolve-open", "renamed@example.test"),
+        { registration_enabled: false },
+        testDb.db,
+      ),
+    ).rejects.toThrow("registration_closed");
+
+    await expect(
+      completeHostedRegistration(
+        pending.identity.id,
+        TEST_WORKSPACE_REGISTRATION,
+        { registration_enabled: false },
+        testDb.db,
+      ),
+    ).rejects.toThrow("registration_closed");
+    const first = await completeHostedRegistration(
+      pending.identity.id,
+      TEST_WORKSPACE_REGISTRATION,
+      { registration_enabled: true },
+      testDb.db,
+    );
+    const second = await completeHostedRegistration(
+      pending.identity.id,
+      { ...TEST_WORKSPACE_REGISTRATION, workspace_name: "Another" },
+      { registration_enabled: false },
+      testDb.db,
+    );
+    expect(first.created).toBe(true);
+    expect(second.created).toBe(false);
+    expect(second.tenant).toMatchObject({ id: first.tenant.id, display_name: "Test workspace" });
+    const member = await resolveHostedIdentity(
+      claims("resolve-open", "renamed@example.test"),
+      { registration_enabled: false },
+      testDb.db,
+    );
+    expect(member.kind).toBe("member");
+  });
+
+  test("an owner whose workspace is unavailable is sent to recovery, never to a second registration", async () => {
+    const outcome = await provisionSelfServiceTenant(
+      claims("resolve-suspended"),
+      TEST_WORKSPACE_REGISTRATION,
+      testDb.db,
+    );
+    await testDb.db
+      .update(tenants)
+      .set({ status: "suspended" })
+      .where(eq(tenants.id, outcome.tenant.id));
+    await expect(
+      resolveHostedIdentity(claims("resolve-suspended"), { registration_enabled: true }, testDb.db),
+    ).rejects.toThrow("tenant_unavailable");
   });
 
   test("existing tenant defaults stay self-hosted and active", async () => {
@@ -245,7 +381,11 @@ describe("self-service identity provisioning", () => {
   });
 
   test("schema rejects a self-service operator and duplicate own tenant", async () => {
-    const outcome = await provisionSelfServiceTenant(claims("constraints"), testDb.db);
+    const outcome = await provisionSelfServiceTenant(
+      claims("constraints"),
+      TEST_WORKSPACE_REGISTRATION,
+      testDb.db,
+    );
     await expect(
       testDb.db
         .update(tenants)

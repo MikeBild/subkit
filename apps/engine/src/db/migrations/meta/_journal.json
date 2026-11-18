@@ -29,6 +29,20 @@
       "when": 1794037466959,
       "tag": "0003_reserved_role_names",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794936881110,
+      "tag": "0004_user_start_steps_hidden",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794940660029,
+      "tag": "0005_hosted_workspace_model_key",
+      "breakpoints": true
     }
   ]
 }

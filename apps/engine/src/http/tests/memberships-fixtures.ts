@@ -8,6 +8,7 @@ import {
 import { setConfigKey } from "../../config/loader.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../../test-helpers/workspace-registration.ts";
 import { _resetConfigForTests, createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 export let uuid = createDeterministicUuidFactory(811);
@@ -26,7 +27,11 @@ export function provider() {
   });
 }
 
-export async function beginLogin(subject: string, verified = true) {
+export async function beginLogin(
+  subject: string,
+  verified = true,
+  extraClaims: Record<string, unknown> = {},
+) {
   const adapter = provider();
   const start = await adapter.startLogin?.(
     new Request(`${ctx.baseUrl}/login?tenant=arbitrary-tenant&redirect_to=/cockpit`),
@@ -39,19 +44,62 @@ export async function beginLogin(subject: string, verified = true) {
   const state = authUrl.searchParams.get("state");
   if (!state) throw new Error("state missing");
   const issued = mock.issueFor(
-    { sub: subject, email: `${subject}@example.test`, email_verified: verified },
+    { sub: subject, email: `${subject}@example.test`, email_verified: verified, ...extraClaims },
     { state, redirect_uri: `${ctx.baseUrl}/v1/identity/login/callback` },
   );
   await fetch(location, { redirect: "manual" });
   return { adapter, callback: issued.callbackUrl };
 }
 
+export function responseCookie(response: Response, name: string): string | null {
+  return (
+    response.headers
+      .getSetCookie()
+      .find((value) => value.startsWith(`${name}=`) && !value.startsWith(`${name}=;`))
+      ?.split(";")[0] ?? null
+  );
+}
+
+export async function completeOnboarding(
+  registrationCookie: string,
+  registration: {
+    display_name: string;
+    workspace_name: string;
+    timezone: string;
+  } = TEST_WORKSPACE_REGISTRATION,
+) {
+  const pending = await fetch(`${ctx.baseUrl}/v1/identity/onboarding`, {
+    headers: { cookie: registrationCookie },
+  });
+  expect(pending.status).toBe(200);
+  const state = (await pending.json()) as { csrf_token: string };
+  return fetch(`${ctx.baseUrl}/v1/identity/onboarding`, {
+    method: "POST",
+    headers: {
+      cookie: registrationCookie,
+      "content-type": "application/json",
+      "x-subkit-onboarding-csrf": state.csrf_token,
+    },
+    body: JSON.stringify({
+      ...registration,
+      llm_provider: "mock",
+      llm_api_key: "test-provider-key",
+    }),
+  });
+}
+
 export async function login(subject: string) {
   const pending = await beginLogin(subject);
-  const response = await pending.adapter.finishLogin?.(new Request(pending.callback));
+  let response = await pending.adapter.finishLogin?.(new Request(pending.callback));
   if (!response) throw new Error("callback missing");
   expect(response.status).toBe(302);
-  const cookie = response.headers.get("set-cookie")?.split(";")[0];
+  if (response.headers.get("location") === "/cockpit/welcome") {
+    const registrationCookie = responseCookie(response, "subkit_identity_registration");
+    if (!registrationCookie) throw new Error("registration cookie missing");
+    response = await completeOnboarding(registrationCookie);
+    expect(response.status).toBe(200);
+  }
+  const cookie = responseCookie(response, "subkit_session");
   if (!cookie) throw new Error("session cookie missing");
   const payload = await browserSessionFromRequest(
     new Request(ctx.baseUrl, { headers: { cookie } }),

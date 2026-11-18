@@ -11,7 +11,7 @@ import {
   notificationDeliveries,
   notificationRules,
 } from "../../db/schema/notifications.ts";
-import { seedDefaultCliNotificationRule } from "../../db/seed.ts";
+import { seedDefaultCliNotificationRule } from "../../notifications/default-cli-rule.ts";
 import type { AdapterResolver } from "../../notifications/service.ts";
 import { fanoutEventRow, makeRegistryAdapterResolver } from "../../webhooks/outbound/fanout.ts";
 import {

@@ -247,15 +247,34 @@ describe("onboarding", () => {
       { title: "Probelauf starten", line: "c", href: "/workflows", done: false },
       { title: "Freigeben", line: "d", href: "/workflows", done: false },
     ];
-    const html = await renderInRouter(<StartChecklist steps={steps} />);
-    expect(html).toContain("So startest du");
+    const html = await renderInRouter(
+      <StartChecklist steps={steps} hidden={false} onHide={() => {}} />,
+    );
+    expect(html).toContain("Erste Schritte");
     expect(html).toContain("1 von 4 erledigt");
+    expect(html).toContain('class="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5"');
     expect(count(html, /aria-current="step"/g)).toBe(1);
     expect(html).toContain("Ausblenden");
     const finished = await renderInRouter(
-      <StartChecklist steps={steps.map((step) => ({ ...step, done: true }))} />,
+      <StartChecklist
+        steps={steps.map((step) => ({ ...step, done: true }))}
+        hidden={false}
+        onHide={() => {}}
+      />,
     );
-    expect(finished).not.toContain("So startest du");
+    expect(finished).not.toContain("Erste Schritte");
+  });
+
+  test("the checklist keeps no state of its own: hidden and without steps it renders nothing", async () => {
+    const steps = [{ title: "Dienst verbinden", line: "a", href: "/connectors", done: false }];
+    expect(await renderInRouter(<StartChecklist steps={steps} hidden onHide={() => {}} />)).toBe(
+      "",
+    );
+    expect(
+      await renderInRouter(<StartChecklist steps={[]} hidden={false} onHide={() => {}} />),
+    ).toBe("");
+    const source = await Bun.file(new URL("./onboarding.tsx", import.meta.url)).text();
+    expect(source).not.toMatch(/localStorage|useState/);
   });
 });
 

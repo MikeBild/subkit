@@ -11,6 +11,7 @@ import {
 } from "../identity/cockpit-installations.ts";
 import { provisionSelfServiceTenant } from "../identity/self-service.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
 import { hostedControlReceiptId } from "./hosted-control-receipt.ts";
 
 let ctx: HttpTestServer;
@@ -97,6 +98,7 @@ test("a full hosted allowance still permits only bound installation revocation r
       email: "hosted-revocation-quota-neighbor@example.test",
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     ctx.db,
   );
   expect(neighbor.tenant.id).not.toBe(ctx.tenantId);

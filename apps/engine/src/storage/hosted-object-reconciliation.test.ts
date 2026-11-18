@@ -24,6 +24,7 @@ import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { waitFor } from "../test-helpers/determinism/wait.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
 import { reconcileHostedObjectAfterReviewedRemoteStop } from "./hosted-object-reconciliation.ts";
 import { reserveHostedObject } from "./hosted-objects.ts";
 import { MemoryObjectStore, setObjectStoreForTesting } from "./object-store.ts";
@@ -69,6 +70,7 @@ async function fixture(due = true) {
       email: `${subject}@example.test`,
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     ctx.db,
   );
   const key = `offload/${owned.tenant.id}/${uuid()}.json`;

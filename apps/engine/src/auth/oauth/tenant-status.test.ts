@@ -17,6 +17,7 @@ import {
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../../test-helpers/workspace-registration.ts";
 import { issueBrowserSession } from "../browser-session.ts";
 import { consumeCliLoginToken } from "./cli-session.ts";
 import { CLI_LOGIN_SCOPE } from "./resources.ts";
@@ -44,6 +45,7 @@ beforeAll(async () => {
       email: "owner@example.test",
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     ctx.db,
   );
   tenantId = fixture.tenant.id;

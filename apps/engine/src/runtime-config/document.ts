@@ -93,3 +93,18 @@ export function revisionChangesOnlyTenant(
     configDigest(withoutTenantOverlay(candidate, tenantId))
   );
 }
+
+function tenantOverlayIds(document: Record<string, unknown>): string[] {
+  const overlays = document.tenants;
+  return overlays && typeof overlays === "object" && !Array.isArray(overlays)
+    ? Object.keys(overlays)
+    : [];
+}
+
+export function revisionChangesOneTenantOnly(
+  active: Record<string, unknown>,
+  candidate: Record<string, unknown>,
+): boolean {
+  const ids = new Set([...tenantOverlayIds(active), ...tenantOverlayIds(candidate)]);
+  return [...ids].some((id) => revisionChangesOnlyTenant(active, candidate, id));
+}

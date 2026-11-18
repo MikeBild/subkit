@@ -8,6 +8,7 @@ import { reserveHostedObject, retainHostedObject } from "../storage/hosted-objec
 import { MemoryObjectStore } from "../storage/object-store.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
 import { provisionSelfServiceTenant } from "./self-service.ts";
 
 export function queue(activeTenant?: string): TenantErasureQueue & { canceled: number } {
@@ -55,6 +56,7 @@ export function tenantErasureFixtures(state: { readonly ctx: HttpTestServer }) {
         email: `${name}@example.test`,
         email_verified: true,
       },
+      TEST_WORKSPACE_REGISTRATION,
       scope.db,
     );
     const objects = new MemoryObjectStore();

@@ -13,6 +13,7 @@ import { diagnosisDe, diagnosisEn } from "./i18n/diagnosis";
 import { intakeDe, intakeEn } from "./i18n/intake";
 import { knowledgeDe, knowledgeEn } from "./i18n/knowledge";
 import { notificationsDe, notificationsEn } from "./i18n/notifications";
+import { onboardingDe, onboardingEn } from "./i18n/onboarding";
 import { operationsDe, operationsEn } from "./i18n/operations";
 import { overviewDe, overviewEn } from "./i18n/overview";
 import { resourceDe, resourceEn } from "./i18n/resource";
@@ -22,6 +23,7 @@ import { settingsAiDe, settingsAiEn } from "./i18n/settings-ai";
 import { settingsHelpDe, settingsHelpEn } from "./i18n/settings-help";
 import { settingsLeafDe, settingsLeafEn } from "./i18n/settings-leaf";
 import { settingsPackagesDe, settingsPackagesEn } from "./i18n/settings-packages";
+import { settingsPersonalDe, settingsPersonalEn } from "./i18n/settings-personal";
 import { shellDe, shellEn } from "./i18n/shell";
 import { skillsDe, skillsEn } from "./i18n/skills";
 import { toolDe, toolEn } from "./i18n/tool";
@@ -53,6 +55,7 @@ const EN = {
   ...intakeEn,
   ...knowledgeEn,
   ...notificationsEn,
+  ...onboardingEn,
   ...operationsEn,
   ...overviewEn,
   ...resourceEn,
@@ -62,6 +65,7 @@ const EN = {
   ...settingsHelpEn,
   ...settingsLeafEn,
   ...settingsPackagesEn,
+  ...settingsPersonalEn,
   ...shellEn,
   ...skillsEn,
   ...toolEn,
@@ -88,6 +92,7 @@ const DE: Record<TranslationKey, string> = {
   ...intakeDe,
   ...knowledgeDe,
   ...notificationsDe,
+  ...onboardingDe,
   ...operationsDe,
   ...overviewDe,
   ...resourceDe,
@@ -97,6 +102,7 @@ const DE: Record<TranslationKey, string> = {
   ...settingsHelpDe,
   ...settingsLeafDe,
   ...settingsPackagesDe,
+  ...settingsPersonalDe,
   ...shellDe,
   ...skillsDe,
   ...toolDe,
@@ -166,6 +172,12 @@ export function formatDateTime(locale: Locale, value: string | Date | null | und
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
+}
+
+export function formatDate(locale: Locale, value: string | Date): string {
+  const date = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(date.valueOf())) return "—";
+  return new Intl.DateTimeFormat(LOCALE_TAGS[locale], { dateStyle: "medium" }).format(date);
 }
 
 export function formatShortRelativeTime(

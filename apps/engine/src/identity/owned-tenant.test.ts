@@ -11,6 +11,7 @@ import {
 } from "../test-helpers/determinism/clock.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
 import { seedTenant } from "../test-helpers/seed.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
 import type { BrowserMembershipContext } from "./browser-memberships.ts";
 import { readOwnedTenant } from "./owned-tenant.ts";
 import { provisionSelfServiceTenant } from "./self-service.ts";
@@ -64,6 +65,7 @@ async function ownerFixture(label: string) {
       email: `${label}@example.test`,
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     tdb.db,
   );
   const browser = await openSession(

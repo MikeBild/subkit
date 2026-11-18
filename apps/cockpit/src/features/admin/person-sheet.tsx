@@ -37,7 +37,6 @@ import {
 import { personApps, personEmailText, personNameText } from "@/pages/apps-model";
 import {
   builtinRoleDescription,
-  INVITE_TTL_HOURS,
   personEmailFact,
   type RoleItem,
   refusalToast,
@@ -46,7 +45,7 @@ import {
   useRoleDetail,
   withCurrentRole,
 } from "./data";
-import { PermissionGroups, RoleChangeConsequence, SecretDialog } from "./parts";
+import { PermissionGroups, RoleChangeConsequence } from "./parts";
 
 export function PersonSheet({
   user,
@@ -57,7 +56,7 @@ export function PersonSheet({
   roles: readonly RoleItem[] | undefined;
   onClose(): void;
 }) {
-  const { t, tn, dateTime } = useI18n();
+  const { t, tn } = useI18n();
   const session = useSession();
   const client = useQueryClient();
   const canWrite = session.permissions.includes("identity:write");
@@ -65,12 +64,11 @@ export function PersonSheet({
   const canAssignCustom = session.permissions.includes("rbac:write");
   const [picked, setPicked] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState(user?.display_name ?? "");
-  const [confirm, setConfirm] = useState<"deactivate" | "invite" | "revokeGrants" | null>(null);
+  const [confirm, setConfirm] = useState<"deactivate" | "revokeGrants" | null>(null);
   const grants = useGrants(canReadGrants && user !== null);
   const ownGrants = (grants.data?.items ?? []).filter(
     (grant) => user && grant.subject_type === "user" && grant.subject_id === user.id,
   );
-  const [invite, setInvite] = useState<{ token: string; expiresAt: string } | null>(null);
   useEffect(() => setDisplayName(user?.display_name ?? ""), [user?.id, user?.display_name]);
   const shownRoleName = user ? (picked ?? user.role) : null;
   const role = shownRoleName ? (roles?.find((item) => item.name === shownRoleName) ?? null) : null;
@@ -141,18 +139,6 @@ export function PersonSheet({
     },
     onError: (error) => refusalToast(error, t),
   });
-  const issueInvite = useMutation({
-    mutationFn: (id: string) =>
-      apiCall("post", "/v1/identity/users/{id}/invites", {
-        path: { id },
-        body: { ttl_minutes: INVITE_TTL_HOURS * 60 },
-      }),
-    onSuccess: (result) => {
-      setConfirm(null);
-      setInvite({ token: result.plaintext_token, expiresAt: result.expires_at });
-    },
-    onError: (error) => refusalToast(error, t),
-  });
 
   const changed = user && picked && picked !== user.role ? picked : null;
   const label = user?.role ? roleName(user.role, roles, t) : null;
@@ -166,20 +152,15 @@ export function PersonSheet({
     canWrite && user && !self
       ? [
           ...(user.status === "invited"
-            ? [
+            ? []
+            : [
                 {
-                  label: t("people.invite"),
-                  onSelect: () => setConfirm("invite"),
-                  testId: "people-invite",
+                  label: t("people.deactivate"),
+                  onSelect: () => setConfirm("deactivate"),
+                  destructive: true,
+                  testId: "people-deactivate",
                 },
-              ]
-            : []),
-          {
-            label: t("people.deactivate"),
-            onSelect: () => setConfirm("deactivate"),
-            destructive: true,
-            testId: "people-deactivate",
-          },
+              ]),
           ...(canAssignCustom && ownGrants.length > 0
             ? [
                 {
@@ -382,27 +363,6 @@ export function PersonSheet({
           await revokeGrants.mutateAsync(ownGrants.map((grant) => grant.id)).catch(() => {});
         }}
         testId="people-revoke-grants-confirm"
-      />
-      <ConfirmDialog
-        open={confirm === "invite"}
-        onOpenChange={(open) => !open && setConfirm(null)}
-        object={t("people.inviteObject", { email: shownEmail })}
-        verb={t("people.inviteVerb")}
-        consequence={t("people.inviteConsequence", { hours: String(INVITE_TTL_HOURS) })}
-        pending={issueInvite.isPending}
-        onConfirm={async () => {
-          if (user) await issueInvite.mutateAsync(user.id).catch(() => {});
-        }}
-        testId="people-invite-confirm"
-      />
-      <SecretDialog
-        secret={invite?.token ?? null}
-        onClose={() => setInvite(null)}
-        title={
-          invite
-            ? t("people.inviteReadyUntil", { time: dateTime(invite.expiresAt) })
-            : t("people.inviteReady")
-        }
       />
     </>
   );

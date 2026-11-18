@@ -12,6 +12,9 @@ const IDENTITY_PATHS = new Set([
   "/v1/identity/recovery/providers",
   "/v1/identity/recovery/login",
   "/v1/identity/owned-tenant/restore",
+  "/v1/identity/onboarding",
+  "/v1/identity/invites/preview",
+  "/v1/identity/invites/login",
 ]);
 
 export function browserTenantMiddleware(): MiddlewareHandler<AppEnv> {

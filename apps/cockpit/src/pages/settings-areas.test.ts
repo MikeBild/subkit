@@ -24,9 +24,9 @@ function item(path: string, value: unknown, sensitive = false): SettingItem {
 }
 
 describe("settings areas", () => {
-  test("every engine section and branding belongs to exactly one area", () => {
+  test("every engine section belongs to exactly one area", () => {
     expect(PATHS.length).toBeGreaterThan(100);
-    const sections = new Set([...PATHS.map(settingSectionOf), "branding"]);
+    const sections = new Set(PATHS.map(settingSectionOf));
     for (const section of sections) {
       const owners = SETTING_AREAS.filter((area) => area.sections.includes(section));
       expect(
@@ -40,7 +40,6 @@ describe("settings areas", () => {
     expect(settingAreaOf("llm.hosted.tenant_monthly_microunits")).toBe("costs");
     expect(settingAreaOf("llm.model")).toBe("ai");
     expect(settingAreaOf("tokens.prices")).toBe("costs");
-    expect(settingAreaOf("branding")).toBe("operations");
   });
 
   test("deep links open the full list; areas and the overview have their own address", () => {
@@ -49,6 +48,8 @@ describe("settings areas", () => {
     expect(settingsLevelFromUrl("?filter=changed").kind).toBe("all");
     expect(settingsLevelFromUrl("?view=all").kind).toBe("all");
     expect(settingsLevelFromUrl("?area=costs")).toEqual({ kind: "area", area: "costs" });
+    expect(settingsLevelFromUrl("?area=profile")).toEqual({ kind: "area", area: "profile" });
+    expect(settingsLevelFromUrl("?area=workspace")).toEqual({ kind: "area", area: "workspace" });
     expect(settingsLevelFromUrl("?tab=notifications")).toEqual({
       kind: "area",
       area: "notifications",
@@ -219,5 +220,128 @@ describe("the AI overview sentence", () => {
         values: { provider: "OpenAI", model: "GPT-4.1 mini" },
       },
     ]);
+  });
+});
+
+describe("who sees which area", () => {
+  const ENGINE = ["ai", "costs", "access", "connections", "notifications", "operations"] as const;
+  const see = async (
+    permissions: string[],
+    origin: "self_hosted" | "self_service",
+    isOwner = false,
+  ) => {
+    const { visibleSettingAreas } = await import("@/pages/settings-areas");
+    return visibleSettingAreas({ permissions, origin, isOwner });
+  };
+
+  test("everybody has a profile, and nothing else without a right", async () => {
+    expect(await see([], "self_service")).toEqual(["profile"]);
+    expect(await see([], "self_hosted")).toEqual(["profile"]);
+  });
+
+  test("the workspace belongs to its owner and to those who manage people", async () => {
+    expect(await see([], "self_hosted", true)).toEqual(["profile", "workspace"]);
+    expect(await see(["identity:write"], "self_hosted")).toEqual(["profile", "workspace"]);
+    expect(await see(["identity:read"], "self_service")).toEqual(["profile"]);
+  });
+
+  test("a hosted workspace's AI access belongs to its owner and its administrators", async () => {
+    expect(await see([], "self_service", true)).toEqual(["profile", "workspace", "ai"]);
+    expect(await see(["identity:write"], "self_service")).toEqual(["profile", "workspace", "ai"]);
+    const { workspaceAiEditable } = await import("@/pages/settings-areas");
+    expect(workspaceAiEditable({ permissions: [], origin: "self_hosted", isOwner: true })).toBe(
+      false,
+    );
+    expect(
+      workspaceAiEditable({
+        permissions: ["settings:write:global"],
+        origin: "self_service",
+        isOwner: true,
+      }),
+    ).toBe(false);
+  });
+
+  test("a hosted owner sees profile, workspace, AI access and notifications, and no engine area", async () => {
+    const owner = ["settings:read", "settings:write", "notification:read", "identity:write"];
+    expect(await see(owner, "self_service", true)).toEqual([
+      "profile",
+      "workspace",
+      "ai",
+      "notifications",
+    ]);
+  });
+
+  test("a hosted member sees the profile only, whatever settings right the role carries", async () => {
+    const member = ["settings:read", "settings:write", "workflow:read", "conversation:read"];
+    expect(await see(member, "self_service")).toEqual(["profile"]);
+  });
+
+  test("whoever can change the engine sees its areas, in either kind of workspace", async () => {
+    for (const origin of ["self_hosted", "self_service"] as const)
+      expect(await see(["settings:read", "settings:write:global"], origin)).toEqual([
+        "profile",
+        ...ENGINE,
+      ]);
+  });
+
+  test("a self-hosted reader keeps the engine areas to look at", async () => {
+    expect(await see(["settings:read"], "self_hosted")).toEqual(["profile", ...ENGINE]);
+    const { engineSettingsAccess } = await import("@/pages/settings-areas");
+    expect(
+      engineSettingsAccess({
+        permissions: ["settings:read"],
+        origin: "self_hosted",
+        isOwner: false,
+      }),
+    ).toBe("read");
+    expect(
+      engineSettingsAccess({
+        permissions: ["settings:read"],
+        origin: "self_service",
+        isOwner: true,
+      }),
+    ).toBe("none");
+  });
+
+  test("notifications alone show for whoever reads rules and channels", async () => {
+    expect(await see(["notification:read"], "self_service")).toEqual(["profile", "notifications"]);
+  });
+
+  test("a deep link to a hidden area or to the full list falls back to the overview", async () => {
+    const { openSettingsLevel } = await import("@/pages/settings-areas");
+    const hosted = {
+      permissions: ["settings:read"],
+      origin: "self_service",
+      isOwner: true,
+    } as const;
+    expect(openSettingsLevel({ kind: "area", area: "operations" }, hosted)).toEqual({
+      kind: "overview",
+    });
+    expect(openSettingsLevel(settingsLevelFromUrl("?leaf=llm.model"), hosted)).toEqual({
+      kind: "overview",
+    });
+    expect(openSettingsLevel({ kind: "area", area: "workspace" }, hosted)).toEqual({
+      kind: "area",
+      area: "workspace",
+    });
+    expect(openSettingsLevel({ kind: "area", area: "ai" }, hosted)).toEqual({
+      kind: "area",
+      area: "ai",
+    });
+    const member = { permissions: [], origin: "self_service", isOwner: false } as const;
+    expect(openSettingsLevel({ kind: "area", area: "workspace" }, member)).toEqual({
+      kind: "overview",
+    });
+    expect(openSettingsLevel({ kind: "area", area: "ai" }, member)).toEqual({ kind: "overview" });
+    const operator = {
+      permissions: ["settings:read", "settings:write:global"],
+      origin: "self_hosted",
+      isOwner: false,
+    } as const;
+    expect(openSettingsLevel({ kind: "area", area: "operations" }, operator)).toEqual({
+      kind: "area",
+      area: "operations",
+    });
+    expect(openSettingsLevel(settingsLevelFromUrl("?view=all"), operator).kind).toBe("all");
   });
 });

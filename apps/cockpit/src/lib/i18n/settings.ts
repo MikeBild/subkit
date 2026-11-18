@@ -243,8 +243,6 @@ export const settingsEn = {
   "settings.question.operations.queueLine": "How many tasks run at the same time.",
   "settings.question.operations.sandbox": "Safe code area (sandbox)",
   "settings.question.operations.sandboxLine": "How own code in workflows runs shielded.",
-  "settings.question.operations.branding": "Appearance",
-  "settings.question.operations.brandingLine": "Name and logo of this workspace.",
   "settings.saveFailedKeep":
     "Saving did not work. Your changes are still here. Try again in a moment.",
   "settings.saveRejected": "Not saved: {reason} Your changes are still here.",
@@ -558,8 +556,6 @@ export const settingsDe: Record<keyof typeof settingsEn, string> = {
   "settings.question.operations.queueLine": "Wie viele Aufgaben gleichzeitig laufen.",
   "settings.question.operations.sandbox": "Sicherer Code-Bereich (Sandbox)",
   "settings.question.operations.sandboxLine": "Wie eigener Code in Workflows abgeschirmt läuft.",
-  "settings.question.operations.branding": "Erscheinungsbild",
-  "settings.question.operations.brandingLine": "Name und Logo dieses Arbeitsbereichs.",
   "settings.saveFailedKeep":
     "Speichern hat nicht geklappt. Deine Änderungen sind noch da. Versuch es gleich noch einmal.",
   "settings.saveRejected": "Nicht gespeichert: {reason} Deine Änderungen sind noch da.",

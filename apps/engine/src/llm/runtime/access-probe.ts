@@ -12,9 +12,15 @@ import {
 
 type LlmAccessProvider = "mock" | DirectProviderKind;
 
+export type LlmAccessFailure =
+  | "key_rejected"
+  | "model_unavailable"
+  | "unreachable"
+  | "misconfigured";
+
 export type LlmAccessResult =
   | { ok: true; model: string | null }
-  | { ok: false; model: string | null; reason: string };
+  | { ok: false; model: string | null; code: LlmAccessFailure; reason: string };
 
 export interface LlmAccessRequest {
   provider: LlmAccessProvider;
@@ -72,23 +78,35 @@ export function probeVerdict(
 ): LlmAccessResult {
   const status = statusOf(err);
   const kind = classifyProviderError(err);
-  const fail = (reason: string): LlmAccessResult => ({ ok: false, model, reason });
+  const fail = (code: LlmAccessFailure, reason: string): LlmAccessResult => ({
+    ok: false,
+    model,
+    code,
+    reason,
+  });
   if (kind === "rate_limit") return { ok: true, model };
   if (status === 401 || status === 403) {
-    return fail(`${provider} rejected the API key (HTTP ${status})`);
+    return fail("key_rejected", `${provider} rejected the API key (HTTP ${status})`);
   }
   if (kind === "quota_exhausted") {
-    return fail(`${provider} accepted the API key but has no quota or credit left`);
+    return fail("key_rejected", `${provider} accepted the API key but has no quota or credit left`);
   }
-  if (status === 404) return fail(`${provider} does not offer the model ${model} to this key`);
+  if (status === 404) {
+    return fail("model_unavailable", `${provider} does not offer the model ${model} to this key`);
+  }
   if (status !== null && status >= 400 && status < 500) {
-    return fail(`${provider} refused the probe request (HTTP ${status})`);
+    return fail("key_rejected", `${provider} refused the probe request (HTTP ${status})`);
   }
   if (kind === "timeout" || (err instanceof Error && err.name === "TimeoutError")) {
-    return fail(`${provider} did not answer within ${Math.round(timeoutMs / 1000)} seconds`);
+    return fail(
+      "unreachable",
+      `${provider} did not answer within ${Math.round(timeoutMs / 1000)} seconds`,
+    );
   }
-  if (status !== null) return fail(`${provider} is not available right now (HTTP ${status})`);
-  return fail(`${provider} could not be reached`);
+  if (status !== null) {
+    return fail("unreachable", `${provider} is not available right now (HTTP ${status})`);
+  }
+  return fail("unreachable", `${provider} could not be reached`);
 }
 
 export async function probeLlmAccess(
@@ -102,6 +120,7 @@ export async function probeLlmAccess(
     return {
       ok: false,
       model: null,
+      code: "misconfigured",
       reason: `${provider} needs a model before the first start; pass it with sk init --llm-model <${provider === "azure" ? "deployment name" : "model id"}>`,
     };
   }
@@ -116,7 +135,12 @@ export async function probeLlmAccess(
     });
   } catch (err) {
     if (err instanceof ProviderMisconfiguredError) {
-      return { ok: false, model, reason: missingSetting(provider, err.setting) };
+      return {
+        ok: false,
+        model,
+        code: "misconfigured",
+        reason: missingSetting(provider, err.setting),
+      };
     }
     throw err;
   }

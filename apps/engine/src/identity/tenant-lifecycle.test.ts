@@ -24,6 +24,7 @@ import {
   restoreClock,
 } from "../test-helpers/determinism/clock.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
+import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
 import type { BrowserMembershipContext } from "./browser-memberships.ts";
 import { browserMembershipIdentity } from "./browser-memberships.ts";
 import { assertTenantActive, provisionSelfServiceTenant } from "./self-service.ts";
@@ -56,6 +57,7 @@ async function fixture(label: string) {
       email: `${label}@example.test`,
       email_verified: true,
     },
+    TEST_WORKSPACE_REGISTRATION,
     tdb.db,
   );
   const expires = new Date(clock.now() + grace + 1000);

@@ -237,7 +237,7 @@ Gut zu wissen:
 | Schnittstelle | Aufruf | Ergebnis |
 | --- | --- | --- |
 | HTTP | `DELETE /v1/apps/{id}/users/{user_id}` | `{ "user_id", "app_id", "erased": true }`, oder 404 bei einem unbekannten, fremden oder bereits gelöschten Benutzer. |
-| HTTP | `DELETE /v1/identity/users/{id}` | Deaktiviert einen Benutzer nur. |
+| HTTP | `DELETE /v1/identity/users/{id}` | Deaktiviert einen Benutzer nur. Eine noch nicht angenommene Einladung wird dagegen samt Benutzer entfernt. |
 | MCP (Admin-Modus) | `list_apps`, `get_app` | Nur lesend. Löschen ist nicht möglich. |
 
 ### App prüfen

@@ -55,6 +55,7 @@ const SOURCE_GATES: Record<AttentionSource, SourceGate> = {
   skills: { permission: "skill:read" },
   intake: { permission: "intake:read" },
   budget: { permission: "stats:read" },
+  ai_access: { permission: "identity:write" },
   risk: { permission: "stats:read" },
 };
 const CACHE_MS = 10_000;

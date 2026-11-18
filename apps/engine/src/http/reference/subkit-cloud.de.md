@@ -40,6 +40,29 @@ Deine Sitzung endet nach 8 Stunden Inaktivität, spätestens nach 24 Stunden.
 
 Deinen ersten Workflow baust du mit dem Kapitel „Dein erster Workflow“.
 
+### Dein KI-Zugang
+
+SubKit arbeitet mit dem KI-Dienst deiner Wahl. Die Nutzung rechnet der Anbieter direkt mit dir ab.
+
+Wenn du einen Arbeitsbereich anlegst, wählst du den Anbieter und gibst deinen API-Schlüssel ein:
+
+1. Wähle **Anthropic**, **OpenAI** oder **Google**.
+2. Gib den API-Schlüssel aus deinem Konto bei diesem Anbieter ein.
+3. Wähle die Schaltfläche, die den Arbeitsbereich anlegt.
+
+SubKit prüft den Schlüssel einmal beim Anbieter und speichert ihn verschlüsselt. Er wird nie wieder angezeigt.
+Lehnt der Anbieter den Schlüssel ab, wird nichts angelegt. Prüfe den Schlüssel und sende das Formular noch einmal ab.
+
+Personen, die du einlädst, geben nie einen Schlüssel ein. Sie arbeiten mit dem Schlüssel des Arbeitsbereichs.
+
+So änderst du später Anbieter, Modell oder Schlüssel:
+
+1. Öffne im Cockpit **Einstellungen** > **KI-Assistent**.
+2. Wähle Anbieter und Modell oder gib einen neuen Schlüssel ein.
+3. Wähle **Speichern**. SubKit prüft den neuen Schlüssel zuerst. Lehnt der Anbieter ihn ab, bleibt der hinterlegte Schlüssel aktiv.
+
+Den KI-Zugang ändern nur die Person, der der Arbeitsbereich gehört, und Personen, die ihn verwalten.
+
 ### Konto wechseln
 
 Beim Abmelden im Cockpit meldet SubKit dich auch bei Upraft Auth ab.
@@ -121,9 +144,10 @@ In SubKit Cloud ist die Engine-Adresse `https://subkit-cloud.mikebild.dev`.
 SubKit Cloud nutzt dieselbe Engine wie eine selbst betriebene Installation.
 Einige Einstellungen verwaltet aber der Betreiber, nicht du.
 
-- **Modelle, Budgets und Limits.** Der Betreiber legt sie fest.
-  Du kannst keinen eigenen KI-Schlüssel hinterlegen und diese Einstellungen für deinen Arbeitsbereich nicht ändern.
-- **Nur Textmodelle.** Bilder, Audio und andere Eingaben, die kein Text sind, werden nicht unterstützt.
+- **Eigener KI-Zugang.** Jeder Arbeitsbereich bringt seinen eigenen KI-Anbieter und API-Schlüssel mit. Siehe „Dein KI-Zugang“.
+  Der Schlüssel ist die einzige Einstellung, die du für deinen Arbeitsbereich änderst; alle Limits legt der Betreiber fest.
+- **Ohne eigenen Schlüssel nur Textmodelle.** Ein Arbeitsbereich ohne eigenen API-Schlüssel nutzt das Kontingent des Betreibers.
+  Dort werden Bilder, Audio und andere Eingaben, die kein Text sind, nicht unterstützt.
 - **Keine eingebaute Websuche.** Die Websuche des Modells steht nicht zur Verfügung.
 - **Nur öffentliche Adressen.** Konnektoren erreichen nur Dienste im öffentlichen Internet.
   Adressen in einem privaten Netz, etwa `localhost` oder ein interner Firmenserver, sind gesperrt.
@@ -146,7 +170,7 @@ Erreichst du eines, zeigt SubKit eine Meldung. Die meisten dieser Meldungen ersc
 | "The monthly request allowance is exhausted." | Das Anfragekontingent des Monats ist aufgebraucht. Warte auf den nächsten Monat oder wende dich an den Betreiber. |
 | "The workspace storage allowance for files and saved content is exhausted. Retained content remains charged until physical cleanup succeeds." | Der Speicher ist voll. Lösche Dateien und gespeicherte Inhalte, die du nicht mehr brauchst, oder wende dich an den Betreiber. |
 | "The workspace resource limit is exhausted. Ask the engine operator to review retained resources." | Zu viele Ressourcen. Lösche Workflows oder Konnektoren, die du nicht mehr brauchst, oder wende dich an den Betreiber. |
-| "Das monatliche KI-Budget dieser Installation ist aufgebraucht." (im Chat) | Warte auf den nächsten Monat oder wende dich an den Betreiber. |
+| "Das monatliche KI-Budget dieser Installation ist aufgebraucht." (im Chat) | Dein Arbeitsbereich hat keinen eigenen API-Schlüssel, und das Kontingent des Betreibers ist aufgebraucht. Hinterlege deinen eigenen Schlüssel unter **Einstellungen** > **KI-Assistent**. |
 
 ### Wenn etwas nicht klappt
 

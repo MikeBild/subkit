@@ -14,6 +14,8 @@ import {
   type VerifiedSelfServiceIdentity,
 } from "./self-service.ts";
 
+export const INVITE_PAGE_PATH = "/cockpit/invite";
+
 export class MembershipInviteError extends Error {
   constructor(
     readonly code:
@@ -27,6 +29,25 @@ export class MembershipInviteError extends Error {
   }
 }
 
+async function lockUserThenInvite(
+  tx: Executor,
+  found: { id: string; tenant_id: string; user_id: string },
+) {
+  const [user] = await tx
+    .select()
+    .from(users)
+    .where(and(eq(users.id, found.user_id), eq(users.tenant_id, found.tenant_id)))
+    .for("update")
+    .limit(1);
+  const [invite] = await tx
+    .select()
+    .from(userInvites)
+    .where(and(eq(userInvites.id, found.id), eq(userInvites.tenant_id, found.tenant_id)))
+    .for("update")
+    .limit(1);
+  return { user, invite };
+}
+
 export async function claimMembershipInvite(
   input: BrowserMembershipContext & { token: string },
   db: Executor,
@@ -37,15 +58,16 @@ export async function claimMembershipInvite(
   return db.transaction(async (tx) => {
     const proof = await browserMembershipIdentity(input, tx);
     // tenant-filter:exempt — a secret invite token discovers its destination before membership exists.
-    const [invite] = await tx
+    const [found] = await tx
       .select()
       .from(userInvites)
       .where(and(eq(userInvites.prefix, parsed.prefix), eq(userInvites.token_sha256, parsed.hash)))
-      .for("update")
       .limit(1);
-    if (!invite || !constantTimeHexEquals(invite.token_sha256, parsed.hash)) {
+    if (!found || !constantTimeHexEquals(found.token_sha256, parsed.hash)) {
       throw new MembershipInviteError("invite_invalid");
     }
+    const { user, invite } = await lockUserThenInvite(tx, found);
+    if (!invite) throw new MembershipInviteError("invite_invalid");
     await assertTenantActive(invite.tenant_id, tx);
     if (invite.revoked_at || invite.expires_at.getTime() <= now()) {
       throw new MembershipInviteError("invite_unavailable");
@@ -57,12 +79,6 @@ export async function claimMembershipInvite(
     ) {
       throw new MembershipInviteError("invite_credential_only");
     }
-    const [user] = await tx
-      .select()
-      .from(users)
-      .where(and(eq(users.id, invite.user_id), eq(users.tenant_id, invite.tenant_id)))
-      .for("update")
-      .limit(1);
     // tenant-filter:exempt — verified browser session provenance establishes the global identity.
     const [identity] = await tx
       .select({ email: authIdentities.email })
@@ -73,7 +89,7 @@ export async function claimMembershipInvite(
       !user ||
       !identity ||
       user.deleted_at ||
-      (user.status !== "invited" && user.auth_identity_id !== proof.identity_id) ||
+      user.status === "disabled" ||
       user.email.trim().toLowerCase() !== identity.email.trim().toLowerCase() ||
       (user.auth_identity_id !== null && user.auth_identity_id !== proof.identity_id)
     ) {
@@ -159,12 +175,13 @@ export async function acceptVerifiedMembershipInvite(
       sql`SELECT pg_advisory_xact_lock(hashtextextended(${JSON.stringify([input.issuer_url, input.subject])}, 0))`,
     );
     // tenant-filter:exempt — the server-held OIDC state carries an invitation id validated from its secret token at login start.
-    const [invite] = await tx
+    const [found] = await tx
       .select()
       .from(userInvites)
       .where(eq(userInvites.id, inviteId))
-      .for("update")
       .limit(1);
+    if (!found) throw new MembershipInviteError("invite_unavailable");
+    const { user, invite } = await lockUserThenInvite(tx, found);
     if (!invite || invite.revoked_at || invite.expires_at.getTime() <= now())
       throw new MembershipInviteError("invite_unavailable");
     await assertTenantActive(invite.tenant_id, tx);
@@ -174,12 +191,6 @@ export async function acceptVerifiedMembershipInvite(
       invite.allowed_workflows !== null
     )
       throw new MembershipInviteError("invite_credential_only");
-    const [user] = await tx
-      .select()
-      .from(users)
-      .where(and(eq(users.id, invite.user_id), eq(users.tenant_id, invite.tenant_id)))
-      .for("update")
-      .limit(1);
     if (
       !user ||
       user.deleted_at ||
@@ -200,7 +211,6 @@ export async function acceptVerifiedMembershipInvite(
       .limit(1);
     if (
       (user.auth_identity_id !== null && user.auth_identity_id !== existing?.id) ||
-      (user.status !== "invited" && user.auth_identity_id !== existing?.id) ||
       (invite.redeemed_at && user.auth_identity_id !== existing?.id)
     )
       throw new MembershipInviteError("invite_identity_mismatch");
@@ -266,6 +276,86 @@ export async function acceptVerifiedMembershipInvite(
       .where(eq(tenants.id, invite.tenant_id))
       .limit(1);
     if (!membership || !tenant) throw new MembershipInviteError("invite_unavailable");
-    return { identity, tenant, membership };
+    return { kind: "member" as const, identity, tenant, membership };
   });
+}
+
+type InvitePreviewError =
+  | "invite_invalid"
+  | "invite_revoked"
+  | "invite_already_redeemed"
+  | "invite_expired"
+  | "invite_unavailable"
+  | "invite_credential_only";
+
+type InvitePreview =
+  | {
+      ok: true;
+      workspace_name: string;
+      invited_by_name: string | null;
+      email_hint: string;
+      expires_at: Date;
+    }
+  | { ok: false; code: InvitePreviewError };
+
+export function maskInviteEmail(email: string): string {
+  const at = email.lastIndexOf("@");
+  if (at <= 0) return "•••";
+  return `${email.slice(0, 1)}•••${email.slice(at)}`;
+}
+
+export async function previewMembershipInvite(token: string, db: Executor): Promise<InvitePreview> {
+  const parsed = parseInviteToken(token);
+  if (!parsed) return { ok: false, code: "invite_invalid" };
+  // tenant-filter:exempt — a secret invite token discovers its destination before any identity is authenticated.
+  const [invite] = await db
+    .select()
+    .from(userInvites)
+    .where(and(eq(userInvites.prefix, parsed.prefix), eq(userInvites.token_sha256, parsed.hash)))
+    .limit(1);
+  if (!invite || !constantTimeHexEquals(invite.token_sha256, parsed.hash))
+    return { ok: false, code: "invite_invalid" };
+  if (invite.revoked_at) return { ok: false, code: "invite_revoked" };
+  if (invite.redeemed_at) return { ok: false, code: "invite_already_redeemed" };
+  if (invite.expires_at.getTime() <= now()) return { ok: false, code: "invite_expired" };
+  if (
+    !invite.scopes.includes("*") ||
+    invite.allowed_connectors !== null ||
+    invite.allowed_workflows !== null
+  )
+    return { ok: false, code: "invite_credential_only" };
+  const [destination] = await db
+    .select({
+      workspace_name: tenants.display_name,
+      status: tenants.status,
+      deleted_at: tenants.deleted_at,
+      email: users.email,
+      user_deleted_at: users.deleted_at,
+      user_status: users.status,
+    })
+    .from(users)
+    .innerJoin(tenants, eq(tenants.id, users.tenant_id))
+    .where(and(eq(users.id, invite.user_id), eq(users.tenant_id, invite.tenant_id)))
+    .limit(1);
+  if (
+    destination?.status !== "active" ||
+    destination.deleted_at !== null ||
+    destination.user_deleted_at !== null ||
+    destination.user_status === "disabled"
+  )
+    return { ok: false, code: "invite_unavailable" };
+  const [inviter] = invite.created_by
+    ? await db
+        .select({ display_name: users.display_name })
+        .from(users)
+        .where(and(eq(users.id, invite.created_by), eq(users.tenant_id, invite.tenant_id)))
+        .limit(1)
+    : [];
+  return {
+    ok: true,
+    workspace_name: destination.workspace_name,
+    invited_by_name: inviter?.display_name ?? null,
+    email_hint: maskInviteEmail(destination.email),
+    expires_at: invite.expires_at,
+  };
 }

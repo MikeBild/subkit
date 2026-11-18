@@ -42,6 +42,7 @@ export function FormDialog({
   titleTestId,
   cancelTestId,
   cancelLabel,
+  cancel = true,
   size = "default",
   hint,
   cancelHint,
@@ -69,6 +70,7 @@ export function FormDialog({
   titleTestId?: string;
   cancelTestId?: string;
   cancelLabel?: string;
+  cancel?: boolean;
   size?: DialogSize;
   hint?: string;
   cancelHint?: string;
@@ -169,16 +171,18 @@ export function FormDialog({
                 {shownHint ?? hint}
               </p>
             ) : null}
-            <Button
-              type="button"
-              variant="ghost"
-              disabled={pending}
-              onClick={() => onOpenChange(false)}
-              data-testid={cancelTestId ?? `${testId}-cancel`}
-              {...(cancelHint ? { title: cancelHint, "data-hint": cancelHint } : {})}
-            >
-              {cancelLabel ?? t("common.cancel")}
-            </Button>
+            {cancel ? (
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={pending}
+                onClick={() => onOpenChange(false)}
+                data-testid={cancelTestId ?? `${testId}-cancel`}
+                {...(cancelHint ? { title: cancelHint, "data-hint": cancelHint } : {})}
+              >
+                {cancelLabel ?? t("common.cancel")}
+              </Button>
+            ) : null}
             {actions}
             {submit ? (
               <Button
