@@ -40,14 +40,14 @@ export async function settleSettings(
   return null;
 }
 
-export async function saveWorkspaceSetting(
+export async function saveSetting(
   path: string,
-  tenantId: string,
+  tenantId: string | null,
   value: unknown,
 ): Promise<void> {
   await apiCall("put", "/v1/settings/{path}", {
     path: { path },
-    query: { tenant: tenantId },
+    query: tenantId ? { tenant: tenantId } : {},
     body: { value },
   });
 }

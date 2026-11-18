@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { APICallError } from "ai";
 import { DrizzleQueryError } from "drizzle-orm";
 import { HostedResourceCountError, HostedStorageQuotaError } from "../db/hosted-quota-errors.ts";
-import { LlmProviderError, LlmQuotaExhausted } from "../llm/errors.ts";
+import { LlmAccessMissing, LlmProviderError, LlmQuotaExhausted } from "../llm/errors.ts";
 import { toLlmProviderError } from "../llm/provider-errors.ts";
 import {
   describeTurnFailure,
@@ -204,6 +204,17 @@ describe("providerFailureNotice", () => {
     expect(
       providerFailureNotice(new LlmProviderError("other", "connect ECONNREFUSED"), "en"),
     ).toContain("AI provider did not answer");
+  });
+
+  test("a workspace without AI access is told where to enter its provider and key", () => {
+    const missing = new LlmAccessMissing();
+    expect(describeTurnFailure(missing, now)).toEqual({
+      code: "ai_access_missing",
+      message: missing.message,
+      at: "2026-09-29T15:00:00.000Z",
+    });
+    expect(providerFailureNotice(missing, "de")).toContain("Einstellungen → KI-Assistent");
+    expect(providerFailureNotice(missing, "en")).toContain("Settings → AI assistant");
   });
 
   test("quota, rate limits, timeouts and internal failures stay silent", () => {

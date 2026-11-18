@@ -146,9 +146,10 @@ Einige Einstellungen verwaltet aber der Betreiber, nicht du.
 
 - **Eigener KI-Zugang.** Jeder Arbeitsbereich bringt seinen eigenen KI-Anbieter und API-Schlüssel mit. Siehe „Dein KI-Zugang“.
   Der Schlüssel ist die einzige Einstellung, die du für deinen Arbeitsbereich änderst; alle Limits legt der Betreiber fest.
-- **Ohne eigenen Schlüssel nur Textmodelle.** Ein Arbeitsbereich ohne eigenen API-Schlüssel nutzt das Kontingent des Betreibers.
-  Dort werden Bilder, Audio und andere Eingaben, die kein Text sind, nicht unterstützt.
-- **Keine eingebaute Websuche.** Die Websuche des Modells steht nicht zur Verfügung.
+- **Keine KI ohne eigenen Schlüssel.** Ein Arbeitsbereich ohne eigenen API-Schlüssel kann weder den Chat nutzen noch KI-Schritte ausführen.
+  Der KI-Zugang des Betreibers wird für deinen Arbeitsbereich nie verwendet.
+- **Die eingebaute Websuche läuft über deinen Schlüssel.** Mit einem Anthropic-Modell kann der Assistent die eingebaute Websuche des Modells nutzen.
+  Anthropic rechnet jede Suche mit dir ab. Der Betreiber kann das für alle Arbeitsbereiche abschalten.
 - **Nur öffentliche Adressen.** Konnektoren erreichen nur Dienste im öffentlichen Internet.
   Adressen in einem privaten Netz, etwa `localhost` oder ein interner Firmenserver, sind gesperrt.
 - **Slack und Google Chat sind gesperrt.** Chat-Arbeitsbereiche auf diesen Plattformen bleiben gesperrt,
@@ -170,7 +171,7 @@ Erreichst du eines, zeigt SubKit eine Meldung. Die meisten dieser Meldungen ersc
 | "The monthly request allowance is exhausted." | Das Anfragekontingent des Monats ist aufgebraucht. Warte auf den nächsten Monat oder wende dich an den Betreiber. |
 | "The workspace storage allowance for files and saved content is exhausted. Retained content remains charged until physical cleanup succeeds." | Der Speicher ist voll. Lösche Dateien und gespeicherte Inhalte, die du nicht mehr brauchst, oder wende dich an den Betreiber. |
 | "The workspace resource limit is exhausted. Ask the engine operator to review retained resources." | Zu viele Ressourcen. Lösche Workflows oder Konnektoren, die du nicht mehr brauchst, oder wende dich an den Betreiber. |
-| "Das monatliche KI-Budget dieser Installation ist aufgebraucht." (im Chat) | Dein Arbeitsbereich hat keinen eigenen API-Schlüssel, und das Kontingent des Betreibers ist aufgebraucht. Hinterlege deinen eigenen Schlüssel unter **Einstellungen** > **KI-Assistent**. |
+| "Für diesen Arbeitsbereich ist noch kein KI-Zugang eingerichtet. Trag unter Einstellungen → KI-Assistent deinen Anbieter und deinen API-Schlüssel ein." (im Chat) | Dein Arbeitsbereich hat keinen eigenen API-Schlüssel. Hinterlege Anbieter und Schlüssel unter **Einstellungen** > **KI-Assistent**. |
 
 ### Wenn etwas nicht klappt
 

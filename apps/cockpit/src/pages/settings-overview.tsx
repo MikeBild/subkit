@@ -9,10 +9,9 @@ import {
   ShieldCheck,
   Sparkles,
   UserRound,
-  Wallet,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { absolute, settingsHref } from "@/app/links";
+import { absolute, settingsHref, usageHref } from "@/app/links";
 import {
   IconTile,
   READING_MEASURE,
@@ -29,7 +28,6 @@ const AREA_ICON: Readonly<Record<SettingAreaId, LucideIcon>> = {
   profile: UserRound,
   workspace: Building2,
   ai: Sparkles,
-  costs: Wallet,
   access: ShieldCheck,
   connections: Cable,
   notifications: Bell,
@@ -40,7 +38,6 @@ const AREA_TITLE: Readonly<Record<SettingAreaId, TranslationKey>> = {
   profile: "settings.area.profile.title",
   workspace: "settings.area.workspace.title",
   ai: "settings.area.ai.title",
-  costs: "settings.area.costs.title",
   access: "settings.area.access.title",
   connections: "settings.area.connections.title",
   notifications: "settings.area.notifications.title",
@@ -51,7 +48,6 @@ const AREA_PURPOSE: Readonly<Record<SettingAreaId, TranslationKey>> = {
   profile: "settings.area.profile.purpose",
   workspace: "settings.area.workspace.purpose",
   ai: "settings.area.ai.purpose",
-  costs: "settings.area.costs.purpose",
   access: "settings.area.access.purpose",
   connections: "settings.area.connections.purpose",
   notifications: "settings.area.notifications.purpose",
@@ -62,7 +58,6 @@ const STATUS_BADGE: Readonly<Record<AreaStatus, { state: string; label: Translat
   configured: { state: "ok", label: "settings.status.configured" },
   waiting: { state: "warn", label: "settings.status.waiting" },
   restart: { state: "warn", label: "settings.status.restart" },
-  limit: { state: "error", label: "settings.status.limit" },
   nameMissing: { state: "neutral", label: "settings.status.nameMissing" },
 };
 
@@ -99,13 +94,31 @@ function AreaStatusBadge({ status }: { status: AreaStatus | null }) {
   );
 }
 
+export function UsageNote() {
+  const { t } = useI18n();
+  return (
+    <p className="text-sm text-muted-foreground" data-testid="settings-usage-note">
+      {t("settings.usage.note")}{" "}
+      <a
+        href={absolute(usageHref())}
+        className="font-medium text-foreground underline-offset-2 hover:underline"
+        data-testid="settings-usage-link"
+      >
+        {t("overview.action.openUsage")} →
+      </a>
+    </p>
+  );
+}
+
 export function SettingsOverview({
   cards,
   expert,
+  usage,
   onNavigate,
 }: {
   cards: readonly AreaCard[];
   expert: boolean;
+  usage: boolean;
   onNavigate(href: string): void;
 }) {
   const { t } = useI18n();
@@ -156,6 +169,7 @@ export function SettingsOverview({
           );
         })}
       </ul>
+      {usage ? <UsageNote /> : null}
       {expert ? (
         <div className="mt-4 grid gap-0.5 border-t pt-6">
           <ExpertLink

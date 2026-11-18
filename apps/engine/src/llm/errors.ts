@@ -5,7 +5,8 @@ export class LlmError extends Error {
     | "llm_quota_exhausted"
     | "llm_context_too_large"
     | "llm_provider_error"
-    | "llm_unavailable";
+    | "llm_unavailable"
+    | "ai_access_missing";
   readonly details: Record<string, unknown> | undefined;
 
   constructor(code: LlmError["code"], message: string, details?: Record<string, unknown>) {
@@ -23,6 +24,16 @@ export class LlmQuotaExhausted extends LlmError {
   ) {
     super("llm_quota_exhausted", message, details);
     this.name = "LlmQuotaExhausted";
+  }
+}
+
+export class LlmAccessMissing extends LlmError {
+  constructor(
+    message = "This workspace has no AI access yet. Enter your provider and API key under Settings → AI assistant.",
+    details?: Record<string, unknown>,
+  ) {
+    super("ai_access_missing", message, details);
+    this.name = "LlmAccessMissing";
   }
 }
 

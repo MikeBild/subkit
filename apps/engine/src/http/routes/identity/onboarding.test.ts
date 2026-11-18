@@ -6,7 +6,6 @@ import { getConfig, setConfigKey } from "../../../config/loader.ts";
 import {
   auditLog,
   authIdentities,
-  hostedBudgetReservations,
   knowledgeSources,
   notificationRules,
   runtimeSecretVersions,
@@ -475,12 +474,6 @@ describe("a new workspace brings its own AI provider key", () => {
       await generateText({ model: resolved.model, prompt: "Reply with OK.", maxRetries: 0 });
       expect(provider.calls).toHaveLength(1);
       expect(provider.calls[0]?.headers["x-api-key"]).toBe(KEY);
-      expect(
-        await ctx.db
-          .select()
-          .from(hostedBudgetReservations)
-          .where(eq(hostedBudgetReservations.tenant_id, tenant.id)),
-      ).toHaveLength(0);
 
       provider.calls.length = 0;
       const repeated = await submit({ ...OWN_ACCESS, llm_api_key: "sk-ant-another-key" });

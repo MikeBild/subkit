@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { PendingElicitationBlockedError } from "../../conversations/service/shared.ts";
 import { LlmTimeoutError } from "../../conversations/turn-failure.ts";
 import { CatalogVocabularyBusyError } from "../../db/catalog-vocabulary.ts";
+import { LlmAccessMissing } from "../../llm/errors.ts";
 import { BadRequestError, ConflictError, HttpError, UnprocessableEntityError } from "../errors.ts";
 import { errorMiddleware, mapKnownErrorResponse } from "../middleware/error.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -141,7 +142,7 @@ describe("error envelope wire — 429 hint + retry_after", () => {
   });
 });
 
-describe("error envelope wire — a model that timed out", () => {
+describe("error envelope wire — a model that timed out or is not set up", () => {
   let server: ServerType;
   let baseUrl: string;
 
@@ -157,6 +158,9 @@ describe("error envelope wire — a model that timed out", () => {
     });
     app.get("/__test__/throw-sdk-timeout", () => {
       throw new DOMException("Step timeout of 5000ms exceeded", "TimeoutError");
+    });
+    app.get("/__test__/throw-ai-access-missing", () => {
+      throw new LlmAccessMissing();
     });
     server = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
     const addr = (server as unknown as { address: () => { port: number } | null }).address();
@@ -176,6 +180,15 @@ describe("error envelope wire — a model that timed out", () => {
     expect(body.message).toBe("Timed out after 120 s");
     expect(body.details).toEqual({ phase: "first_chunk", timeout_ms: 120_000 });
     expect(body.hint).toContain("retry");
+  });
+
+  test("a workspace without AI access is a 409 ai_access_missing that names the settings to open", async () => {
+    const res = await fetch(`${baseUrl}/__test__/throw-ai-access-missing`);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as ErrorBody;
+    expect(body.code).toBe("ai_access_missing");
+    expect(body.message).toContain("no AI access yet");
+    expect(body.hint).toContain("Settings → AI assistant");
   });
 
   test("a raw SDK timeout is classified the same way", async () => {

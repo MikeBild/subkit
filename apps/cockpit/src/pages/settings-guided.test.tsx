@@ -7,14 +7,6 @@ import {
   summarizeChange,
 } from "@/pages/settings-ai";
 import { recommendedModel } from "@/pages/settings-catalog";
-import {
-  CostsArea,
-  type HostedModelEntry,
-  hostedAllowlistDraft,
-  hostedDraftText,
-  hostedFieldText,
-  hostedModelChips,
-} from "@/pages/settings-costs";
 import { type GuidedContext, GuidedRows } from "@/pages/settings-guided";
 import type { SettingItem } from "@/pages/settings-model";
 
@@ -30,23 +22,8 @@ function leaf(
   };
 }
 
-const hosted = (model: string): HostedModelEntry => ({
-  model,
-  max_context_tokens: 200000,
-  max_output_tokens: 8000,
-  input_usd_per_million_tokens: "1",
-  output_usd_per_million_tokens: "5",
-  cache_read_usd_per_million_tokens: "0.1",
-  cache_write_5m_usd_per_million_tokens: "1.25",
-  cache_write_1h_usd_per_million_tokens: "2",
-});
-
 const items: SettingItem[] = [
   leaf("llm.provider", "openai", { kind: "enum", enum_values: ["mock", "openai", "anthropic"] }),
-  leaf("llm.hosted.enabled", true, { kind: "boolean", scope: "global" }),
-  leaf("llm.hosted.tenant_monthly_microunits", "5000000", { kind: "string", scope: "global" }),
-  leaf("llm.hosted.global_monthly_microunits", "50000000", { kind: "string", scope: "global" }),
-  leaf("llm.hosted.models", [hosted("openai:gpt-4.1-mini")], { kind: "json", scope: "global" }),
   leaf("tokens.monthly_budget", 0, { kind: "number", default: 0 }),
   leaf("tokens.currency", "USD", { kind: "string", default: "USD" }),
   leaf("tokens.prices", [], { kind: "json", default: [] }),
@@ -80,7 +57,6 @@ function ctx(overrides: Partial<GuidedContext> = {}): GuidedContext {
     scope: "global",
     scopeAvailable: true,
     catalog,
-    usage: null,
     publicBaseUrl: "https://subkit.test",
     setDraft() {},
     dropDraft() {},
@@ -247,82 +223,6 @@ describe("summaries and suggestions", () => {
   });
 });
 
-describe("hosted budgets", () => {
-  test("show the saved amount once no draft is open, even after typing", () => {
-    expect(hostedFieldText("5000000", undefined, "9")).toBe("5");
-    expect(hostedFieldText("5000000", "7000000", null)).toBe("7");
-    expect(hostedFieldText("5000000", "7000000", "7,0")).toBe("7,0");
-  });
-
-  test("0 stays as typed and is not turned into a valid amount", () => {
-    expect(hostedDraftText("0")).toBe("0");
-    expect(hostedDraftText("12,5")).toBe("12500000");
-  });
-
-  test("are marked as applying to all workspaces in workspace mode", () => {
-    const html = render(<CostsArea ctx={ctx({ scope: "tenant" })} />);
-    expect(html).toContain(
-      'data-testid="settings-global-only-llm.hosted.tenant_monthly_microunits"',
-    );
-    expect(html).toContain('data-testid="settings-global-only-llm.hosted.models"');
-    expect(render(<CostsArea ctx={ctx()} />)).not.toContain("settings-global-only-");
-  });
-});
-
-describe("the hosted allowlist", () => {
-  test("unticking marks the entry disabled; after reloading it is still there to tick again", () => {
-    const mini = hosted("openai:gpt-4.1-mini");
-    const sonnet = hosted("anthropic:claude-sonnet-5");
-    const before = hostedModelChips([mini, sonnet], null);
-    expect([...before.allowed]).toEqual([mini.model, sonnet.model]);
-    const draft = JSON.parse(hostedAllowlistDraft(before.entries, new Set([mini.model])));
-    expect(draft).toEqual([mini, { ...sonnet, disabled: true }]);
-    const reloaded = hostedModelChips(draft, null);
-    expect(reloaded.entries.map((entry) => entry.model)).toEqual([mini.model, sonnet.model]);
-    expect([...reloaded.allowed]).toEqual([mini.model]);
-    expect(
-      JSON.parse(hostedAllowlistDraft(reloaded.entries, new Set([mini.model, sonnet.model]))),
-    ).toEqual([mini, sonnet]);
-  });
-
-  test("counts the active entries and says unticked ones are kept", () => {
-    const models = [
-      hosted("openai:gpt-4.1-mini"),
-      { ...hosted("anthropic:claude-sonnet-5"), disabled: true },
-    ];
-    const html = render(
-      <CostsArea
-        ctx={ctx({
-          items: items.map((entry) =>
-            entry.path === "llm.hosted.models" ? { ...entry, value: models } : entry,
-          ),
-        })}
-      />,
-    );
-    expect(html).toContain("1 von 2 Modellen erlaubt");
-    expect(html).toContain(
-      "Abgewählte Modelle bleiben mit ihren Grenzen gespeichert und lassen sich jederzeit wieder auswählen.",
-    );
-    expect(html).toMatch(
-      /aria-pressed="false"[^>]*data-testid="settings-costs-allowed-anthropic:claude-sonnet-5"/,
-    );
-    expect(html).not.toContain("Beim Speichern entfernt");
-  });
-});
-
-describe("the price list in another currency", () => {
-  test("keeps built-in prices in dollars and asks for own prices", () => {
-    const html = render(<CostsArea ctx={ctx({ drafts: { "tokens.currency": "EUR" } })} />).replace(
-      /\u00a0/g,
-      " ",
-    );
-    expect(html.includes("0,40 $")).toBe(true);
-    expect(html.includes("0,40 €")).toBe(false);
-    expect(html).toContain('data-testid="settings-costs-own-prices-needed"');
-    expect(render(<CostsArea ctx={ctx()} />)).not.toContain("settings-costs-own-prices-needed");
-  });
-});
-
 describe("resetting in workspace mode", () => {
   test("offers no reset for a workspace value, because the engine cannot remove an override", () => {
     const paths = ["notifications.push.thresholdSec"];
@@ -373,49 +273,5 @@ describe("what applies to the signed-in workspace", () => {
     );
     expect(html).toContain("Der allgemeine Wert (Standardmodell des Anbieters) gilt hier nicht.");
     expect(html).not.toContain("(leer)");
-  });
-
-  test("the costs page names the workspace's provider, and says test mode costs nothing", () => {
-    const anthropic = render(<CostsArea ctx={base({ effectiveItems: workspace })} />);
-    expect(anthropic).toContain("Prüf die Rechnung bei Anthropic dann regelmäßig selbst.");
-    expect(anthropic).not.toContain("bei Testmodus");
-    const mock = render(<CostsArea ctx={base({ effectiveItems: global })} />);
-    expect(mock).toContain("Im Testmodus entstehen keine Kosten.");
-    expect(mock).not.toContain("Testmodus ohne echte KI dann");
-    expect(mock).not.toContain("kommt von Testmodus");
-  });
-
-  test("the budget for all workspaces is a limit for each workspace, not a shared pot", () => {
-    const html = render(<CostsArea ctx={base({ effectiveItems: workspace })} />);
-    expect(html).toContain("Für alle Arbeitsbereiche (jeder einzeln)");
-    expect(html).toContain(
-      "Jeder Arbeitsbereich darf so viel verbrauchen, außer er hat ein eigenes Limit.",
-    );
-    expect(html).not.toContain("teilen sich");
-  });
-});
-
-describe("the usage bar", () => {
-  test("measures against the drafted limit, like the sentence below it", async () => {
-    const { budgetBarShare } = await import("@/pages/settings-costs");
-    expect(budgetBarShare(265103, 10000000)).toBeCloseTo(0.0265103);
-    expect(budgetBarShare(265103, 0)).toBeNull();
-    expect(budgetBarShare(null, 100)).toBeNull();
-    const html = render(
-      <CostsArea
-        ctx={ctx({
-          drafts: { "tokens.monthly_budget": "10000000" },
-          usage: {
-            state: "ample",
-            usedTokens: 265103,
-            budgetTokens: 442268,
-            remainingTokens: 177165,
-            consumedShare: 265103 / 442268,
-          },
-        })}
-      />,
-    );
-    expect(html).toContain('data-share="0.0265"');
-    expect(html).toContain("Diesen Monat: ca. 265.103 Textbausteine von 10.000.000 Textbausteine");
   });
 });

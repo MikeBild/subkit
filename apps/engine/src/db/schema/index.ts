@@ -21,7 +21,6 @@ export * from "./events.ts";
 export * from "./executions.ts";
 export * from "./external_call_metering.ts";
 export * from "./files.ts";
-export * from "./hosted-budget.ts";
 export * from "./hosted-storage.ts";
 export * from "./hosted-usage.ts";
 export * from "./hosted-work.ts";

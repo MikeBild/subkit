@@ -23,7 +23,7 @@ import {
   isCatalogModelProvider,
   modelFamilyMismatch,
 } from "../model-catalog-view.ts";
-import { modelTenantContext, wrapHostedBudgetModel } from "./hosted-budget-middleware.ts";
+import { assertOperatorKeyAllowed, modelTenantContext } from "./operator-key-guard.ts";
 import { fetchWithResponseTimeout } from "./response-timeout.ts";
 
 const CONFIG_UNINITIALIZED = Symbol("config_uninitialized");
@@ -173,6 +173,20 @@ export function workspaceOwnsProviderKey(tenantId: string, provider: string): bo
     overlay.providers?.[provider]?.api_key === effective ||
     (overlay.provider === provider && overlay.api_key === effective)
   );
+}
+
+function workspaceKeyProvider(
+  tenantId: string,
+  providerEnvVar: string,
+): CatalogModelProvider | undefined {
+  const overlay = workspaceLlmOverlay(tenantId);
+  const provider = overlay?.provider;
+  if (!provider || !isCatalogModelProvider(provider)) return undefined;
+  if (!workspaceOwnsProviderKey(tenantId, provider)) return undefined;
+  const route = ENV_TO_CONFIG_PATH[providerEnvVar]?.[1];
+  const named = route ? (overlay as Record<string, unknown>)[route] : undefined;
+  if (route !== "provider" && typeof named === "string" && named.length > 0) return undefined;
+  return provider;
 }
 
 export function modelKeyOwner(
@@ -349,6 +363,10 @@ export function detectConfiguredProvider(options?: {
   if (options?.providerOverride) return options.providerOverride;
 
   const providerEnvVar = options?.providerEnvVar ?? "LLM_PROVIDER";
+  const own = options?.tenantId
+    ? workspaceKeyProvider(options.tenantId, providerEnvVar)
+    : undefined;
+  if (own) return own;
   if (
     readEnv("AI_GATEWAY_API_KEY", options?.tenantId) &&
     readEnv("AI_GATEWAY_MODEL", options?.tenantId)
@@ -405,7 +423,7 @@ function resolveAnthropic(
 
 export function nativeWebSearchSetting(tenantId?: string): boolean {
   try {
-    return !getConfig().llm.hosted.enabled && getConfig(tenantId).llm.web_search === true;
+    return getConfig(tenantId).llm.web_search === true;
   } catch {
     return false;
   }
@@ -667,19 +685,14 @@ async function resolveModel(options?: ModelInitOptions): Promise<ResolvedModel> 
 
 export async function initializeModel(options?: ModelInitOptions): Promise<ResolvedModel> {
   const tenantId = modelTenantContext(options?.tenantId);
-  const resolved = await resolveModel({ ...options, ...(tenantId ? { tenantId } : {}) });
-  if (resolved.provider === "mock") return resolved;
-  if (modelKeyOwner(resolved.provider, tenantId, options?.apiKeyOverride) === "workspace") {
-    return resolved;
+  const resolveOptions = { ...options, ...(tenantId ? { tenantId } : {}) };
+  const provider = detectConfiguredProvider(resolveOptions);
+  if (
+    provider !== "mock" &&
+    (provider === "unconfigured" ||
+      modelKeyOwner(provider, tenantId, options?.apiKeyOverride) !== "workspace")
+  ) {
+    await assertOperatorKeyAllowed(tenantId, options?.exec);
   }
-  return {
-    ...resolved,
-    model: await wrapHostedBudgetModel(
-      resolved.model as LanguageModelV4 | string,
-      resolved.provider,
-      resolved.modelId,
-      tenantId,
-      options?.exec,
-    ),
-  };
+  return resolveModel(resolveOptions);
 }

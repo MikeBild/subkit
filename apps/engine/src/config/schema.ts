@@ -296,63 +296,9 @@ const HostedMoney = z
   .string()
   .regex(/^(0|[1-9]\d*)$/)
   .max(18);
-const HostedRate = z
-  .string()
-  .regex(/^(0|[1-9]\d*)(\.\d{1,6})?$/)
-  .max(18);
-
-export const HostedLlmModelSchema = z
-  .object({
-    model: z.string().regex(/^(anthropic|openai|gemini|azure|bedrock|vertex):[^\s]+$/),
-    max_context_tokens: z.number().int().min(1).max(2_000_000),
-    max_output_tokens: z.number().int().min(1).max(2_000_000),
-    input_usd_per_million_tokens: HostedRate,
-    output_usd_per_million_tokens: HostedRate,
-    cache_read_usd_per_million_tokens: HostedRate,
-    cache_write_5m_usd_per_million_tokens: HostedRate,
-    cache_write_1h_usd_per_million_tokens: HostedRate,
-    disabled: z
-      .boolean()
-      .optional()
-      .describe(
-        "Keep this entry with its limits and rates but stop allowing the model; missing means false.",
-      ),
-  })
-  .strict()
-  .refine((value) => value.max_output_tokens <= value.max_context_tokens, {
-    message: "Hosted output limit must not exceed the verified provider context limit",
-  });
 
 const LlmSection = z
   .object({
-    hosted: z
-      .object({
-        enabled: z
-          .boolean()
-          .default(false)
-          .describe(
-            "Hosted paid-model service mode; requires tenant context independently of signup policy.",
-          )
-          .meta(global()),
-        tenant_monthly_microunits: HostedMoney.default("0")
-          .describe(
-            "Operator-owned monthly hosted budget per tenant in USD microunits; zero blocks paid calls.",
-          )
-          .meta(global()),
-        global_monthly_microunits: HostedMoney.default("0")
-          .describe(
-            "Operator-owned global monthly hosted budget in USD microunits; zero blocks paid calls.",
-          )
-          .meta(global()),
-        models: z
-          .array(HostedLlmModelSchema)
-          .default([])
-          .describe(
-            "Exact provider:model allowlist with verified provider-enforced context maxima, including extended context, and maximum USD rates for every context tier. No paid native tools or multimodal inputs.",
-          )
-          .meta(global({ structural: true, runtimeEditable: true })),
-      })
-      .prefault({}),
     provider: LlmProvider.default("mock").describe("Primary LLM provider").meta(tenant()),
     model: z.string().default("").describe("Primary model identifier").meta(tenant()),
     api_key: z

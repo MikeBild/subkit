@@ -4,13 +4,7 @@ import {
   type CatalogModelProvider,
   DEFAULT_MODELS,
 } from "../model-catalog-view.ts";
-import { hostedOperatorModelPolicy } from "./hosted-budget-middleware.ts";
-import {
-  configuredProviderModel,
-  modelForProvider,
-  validateProviderSetup,
-  workspaceOwnsProviderKey,
-} from "./model-init.ts";
+import { validateProviderSetup, workspaceOwnsProviderKey } from "./model-init.ts";
 
 export const WORKSPACE_KEY_PROVIDERS = CATALOG_MODEL_PROVIDERS;
 
@@ -54,20 +48,5 @@ export function workspaceAiAccess(tenant: {
   if (tenant.origin !== "self_service" || ownKey || provider === "mock") {
     return { configured: ownKey || setup.ok, provider, model, own_key: ownKey };
   }
-  if (provider === "gateway") return { configured: false, provider, model, own_key: false };
-  const modelId = modelForProvider(
-    provider,
-    configuredProviderModel(provider, tenant.id),
-    "primary",
-    tenant.id,
-  );
-  return {
-    configured:
-      setup.ok &&
-      modelId !== undefined &&
-      hostedOperatorModelPolicy(config.llm.hosted, provider, modelId).ok,
-    provider,
-    model,
-    own_key: false,
-  };
+  return { configured: false, provider, model, own_key: false };
 }

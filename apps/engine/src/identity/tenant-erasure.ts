@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, isNull, lt, lte, sql } from "drizzle-orm";
+import { and, eq, isNull, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
@@ -8,7 +8,6 @@ import {
   authIdentities,
   chatWorkspaces,
   events,
-  hostedBudgetReservations,
   identityRecoverySessions,
   runtimeConfigReplicas,
   tenantErasureStates,
@@ -258,21 +257,6 @@ export async function eraseExpiredTenant(
         await tx.execute(
           sql`DELETE FROM ${sql.identifier("subkit")}.${sql.identifier(name)} WHERE tenant_id=${tenantId}`,
         );
-      await tx
-        .delete(hostedBudgetReservations)
-        .where(
-          and(
-            eq(hostedBudgetReservations.tenant_id, tenantId),
-            lt(hostedBudgetReservations.month_bucket, new Date(now()).toISOString().slice(0, 7)),
-            inArray(hostedBudgetReservations.state, ["settled", "released"]),
-          ),
-        );
-      await tx
-        .update(hostedBudgetReservations)
-        .set({
-          request_key: sql`encode(public.digest(${hostedBudgetReservations.request_key},'sha256'),'hex')`,
-        })
-        .where(eq(hostedBudgetReservations.tenant_id, tenantId));
       for (const identityId of identityIds) {
         const [remaining] = await tx
           .select({ id: users.id })

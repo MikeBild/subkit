@@ -18,7 +18,7 @@ import { CatalogVocabularyBusyError } from "../../db/catalog-vocabulary.ts";
 import { hostedQuotaError } from "../../db/hosted-quota-errors.ts";
 import { HostedFileQuotaError } from "../../files/hosted-quota.ts";
 import { ApiKeyOwnerNotFoundError } from "../../identity/api-key-owner.ts";
-import { LlmProviderError, LlmQuotaExhausted } from "../../llm/errors.ts";
+import { LlmAccessMissing, LlmProviderError, LlmQuotaExhausted } from "../../llm/errors.ts";
 import { toLlmProviderError } from "../../llm/provider-errors.ts";
 import { logger } from "../../logging/logger.ts";
 import type { CapturedError } from "../../observability/error-ring.ts";
@@ -94,6 +94,11 @@ function readRetryAfter(details: unknown): number | undefined {
 function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
   const quota = hostedQuotaError(err);
   if (quota) return envelope(c, quota.status, quota.code, quota.message);
+  if (err instanceof LlmAccessMissing) {
+    return envelope(c, 409, err.code, err.message, {
+      hint: "open Settings → AI assistant in the Cockpit and enter your provider and API key, then retry",
+    });
+  }
   if (err instanceof Error && err.name === "ProviderMisconfiguredError") {
     captureToRing(c, err, 400, "llm_provider_misconfigured", "llm_provider");
     return envelope(c, 400, "llm_provider_misconfigured", err.message, {

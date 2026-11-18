@@ -29,7 +29,6 @@ import { useI18n } from "@/lib/i18n-context";
 import { useTheme } from "@/lib/theme";
 import type { BrandingDraftHandle } from "@/pages/branding";
 import { NotificationSettings, useNotificationActions } from "@/pages/notification-settings";
-import { canReadOperations } from "@/pages/operations-bar";
 import { AiArea, providerName } from "@/pages/settings-ai";
 import { AreaList } from "@/pages/settings-area-list";
 import {
@@ -56,7 +55,6 @@ import {
   type ModelCatalog,
   modelCatalogQueryKey,
 } from "@/pages/settings-catalog";
-import { CostsArea } from "@/pages/settings-costs";
 import { useSettingsDrafts } from "@/pages/settings-drafts";
 import type { GuidedContext } from "@/pages/settings-guided";
 import {
@@ -85,6 +83,7 @@ import {
   SettingsAreaFrame,
   SettingsOverview,
   settingAreaPurpose,
+  UsageNote,
 } from "@/pages/settings-overview";
 import { PackagesSettings } from "@/pages/settings-packages";
 import {
@@ -116,7 +115,6 @@ import {
 import { applySettingsPatch, settingsReadQuery, settleSettings } from "@/pages/settings-save";
 import { WorkspaceArea } from "@/pages/settings-workspace";
 import { WorkspaceAiArea } from "@/pages/settings-workspace-ai";
-import { type BudgetSummary, budgetSummary } from "@/pages/usage-model";
 
 export * from "@/pages/settings-rows";
 
@@ -167,17 +165,8 @@ function stringItem(items: readonly SettingItem[], path: string): string {
   return typeof value === "string" ? value : "";
 }
 
-function nextMonthStart(locale: string): string {
-  const now = new Date();
-  const first = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  return new Intl.DateTimeFormat(locale === "de" ? "de-DE" : "en-US", {
-    day: "numeric",
-    month: "long",
-  }).format(first);
-}
-
 export function SettingsPage() {
-  const { t, locale, preference } = useI18n();
+  const { t, preference } = useI18n();
   const { theme } = useTheme();
   const session = useSession();
   const sessionUpdate = useSessionUpdate();
@@ -225,13 +214,6 @@ export function SettingsPage() {
     enabled: tenantReadable,
     ...live,
   });
-  const statusAllowed = engineShown && canReadOperations(session.permissions);
-  const status = useQuery({
-    queryKey: ["usage-status"],
-    enabled: statusAllowed,
-    queryFn: () => apiCall("get", "/v1/status", {}),
-  });
-  const usage: BudgetSummary | null = status.data ? budgetSummary(status.data) : null;
   const globalItems = query.data?.items ?? [];
   const tenantItems = tenantReadable ? (tenantQuery.data?.items ?? null) : null;
   const effectiveItems = tenantItems ?? globalItems;
@@ -427,7 +409,6 @@ export function SettingsPage() {
     scope,
     scopeAvailable: scopeAvailable && scopedArea !== null,
     catalog: catalog.data,
-    usage,
     publicBaseUrl,
     setDraft: (path, text) => setDraft(path, text, scope),
     dropDraft: (path) => draftState.dropDraft(path, scope),
@@ -441,7 +422,6 @@ export function SettingsPage() {
   const facts = {
     items: effectiveItems,
     pendingRestart,
-    budgetConsumedShare: usage?.consumedShare ?? null,
   };
   const view = engineShown ? queryView(query, () => false) : "ready";
   const engineReady = engineShown && view === "ready";
@@ -469,9 +449,7 @@ export function SettingsPage() {
       ? overviewCards({
           facts,
           catalog: catalog.data,
-          usage,
           canWrite,
-          locale,
           t,
           restartAction:
             restartNow.offer === "restart" ? (
@@ -507,7 +485,7 @@ export function SettingsPage() {
     ...(engineReady
       ? ENGINE_AREA_IDS.filter((area) => {
           const state = areaStatus(area, facts);
-          return state === "waiting" || state === "restart" || state === "limit";
+          return state === "waiting" || state === "restart";
         })
       : []),
   ]);
@@ -577,7 +555,12 @@ export function SettingsPage() {
           )
         ) : level.kind === "overview" ? (
           <>
-            <SettingsOverview cards={cards} expert={engineReady} onNavigate={navigate} />
+            <SettingsOverview
+              cards={cards}
+              expert={engineReady}
+              usage={engineReady && permissions.includes("stats:read")}
+              onNavigate={navigate}
+            />
             {view === "loading" ? (
               <DataState state="loading" testId="settings-loading" />
             ) : view === "error" ? (
@@ -676,26 +659,19 @@ export function SettingsPage() {
 export function overviewCards({
   facts,
   catalog,
-  usage,
   canWrite,
-  locale,
   t,
   restartAction,
 }: {
   facts: {
     items: readonly SettingItem[];
     pendingRestart: readonly string[];
-    budgetConsumedShare: number | null;
   };
   catalog: ModelCatalog | undefined;
-  usage: BudgetSummary | null;
   canWrite: boolean;
-  locale: string;
   t: ReturnType<typeof useI18n>["t"];
   restartAction: ReactNode;
 }): AreaCard[] {
-  const number = new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US");
-  const tokens = (count: number) => t("settings.costs.tokens", { count: number.format(count) });
   return ENGINE_AREA_IDS.map((id) => {
     const sentences = areaSentences(id, {
       ...facts,
@@ -704,9 +680,6 @@ export function overviewCards({
       modelName: (provider, model) =>
         catalogModelName(catalog, model) ??
         (model || t("settings.ai.model.default", { provider: providerName(provider, t) })),
-      budgetText: tokens,
-      spentText: usage && usage.usedTokens !== null ? tokens(usage.usedTokens) : null,
-      resetDate: nextMonthStart(locale),
       apiKeyName: t("settings.overview.access.apiKey"),
     });
     return {
@@ -721,8 +694,13 @@ export function overviewCards({
 function GuidedArea({ area, ctx }: { area: EngineAreaId; ctx: GuidedContext }) {
   const { t } = useI18n();
   const session = useSession();
-  if (area === "ai") return <AiArea ctx={ctx} />;
-  if (area === "costs") return <CostsArea ctx={ctx} />;
+  if (area === "ai")
+    return (
+      <div className="grid gap-5">
+        <AiArea ctx={ctx} />
+        {session.permissions.includes("stats:read") ? <UsageNote /> : null}
+      </div>
+    );
   if (area === "notifications")
     return (
       <AreaList

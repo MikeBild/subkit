@@ -63,16 +63,14 @@ describe("checking a workspace's own provider key", () => {
     expect(requests.map((request) => request.model)).toEqual(["claude-haiku-4-5"]);
   });
 
-  test("an operator gateway refuses an own key before any provider call", async () => {
+  test("an operator gateway does not stand in the way of an own key", async () => {
     await operatorConfig({
       provider: "anthropic",
       providers: { ai_gateway: { api_key: "gateway-key", model: "anthropic/claude-sonnet-4-6" } },
     });
     const { requests, probe } = recordingProbe();
-    const refused = await checkLlmAccess({ provider: "anthropic", api_key: "sk-ant-own" }, probe);
-    expect(refused).toMatchObject({ ok: false, status: 422, code: "llm_provider_unavailable" });
-    expect(requests).toHaveLength(0);
-    const mock = await checkLlmAccess({ provider: "mock", api_key: "test-provider-key" }, probe);
-    expect(mock).toMatchObject({ ok: false, code: "llm_provider_unavailable" });
+    const accepted = await checkLlmAccess({ provider: "anthropic", api_key: "sk-ant-own" }, probe);
+    expect(accepted).toEqual({ ok: true });
+    expect(requests).toHaveLength(1);
   });
 });

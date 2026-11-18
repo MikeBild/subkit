@@ -22,10 +22,6 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "database.idle_timeout_ms": "Postgres idle connection timeout",
   "database.keepalive_delay_ms": "Postgres keepalive delay",
 
-  "llm.hosted.enabled": "Hosted paid-model service",
-  "llm.hosted.tenant_monthly_microunits": "Hosted monthly budget per tenant (USD microunits)",
-  "llm.hosted.global_monthly_microunits": "Hosted global monthly budget (USD microunits)",
-  "llm.hosted.models": "Hosted model billing allowlist",
   "llm.provider": "Primary AI provider",
   "llm.model": "Primary AI model",
   "llm.api_key": "Primary API key",

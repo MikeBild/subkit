@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { SettingsPatch } from "@/pages/settings-model";
-import { applySettingsPatch, settingsReadQuery, settleSettings } from "@/pages/settings-save";
+import {
+  applySettingsPatch,
+  saveSetting,
+  settingsReadQuery,
+  settleSettings,
+} from "@/pages/settings-save";
 
 const originalFetch = globalThis.fetch;
 const tenant = "5870ae6d-e542-48ca-bbcc-108b5ae73f5f";
@@ -109,5 +114,37 @@ describe("after a save", () => {
   test("reads back the scope it saved", () => {
     expect(settingsReadQuery(patch)).toEqual({ tenant });
     expect(settingsReadQuery({ expected_revision: 1, scope: "global", changes: {} })).toEqual({});
+  });
+});
+
+describe("saving one setting", () => {
+  function recordUrls() {
+    const urls: { method: string; url: URL; body: unknown }[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      urls.push({
+        method: (init?.method ?? "GET").toUpperCase(),
+        url: new URL(String(input), "http://cockpit.test"),
+        body: typeof init?.body === "string" ? JSON.parse(init.body) : null,
+      });
+      return Response.json({ value: 500, requiresRestart: false });
+    }) as typeof fetch;
+    return urls;
+  }
+
+  test("for one workspace names that workspace", async () => {
+    const urls = recordUrls();
+    await saveSetting("tokens.monthly_budget", tenant, 500);
+    expect(urls).toHaveLength(1);
+    expect(urls[0]?.method).toBe("PUT");
+    expect(urls[0]?.url.pathname.endsWith("/v1/settings/tokens.monthly_budget")).toBe(true);
+    expect(urls[0]?.url.searchParams.get("tenant")).toBe(tenant);
+    expect(urls[0]?.body).toEqual({ value: 500 });
+  });
+
+  test("for all workspaces names none", async () => {
+    const urls = recordUrls();
+    await saveSetting("tokens.currency", null, "EUR");
+    expect(urls[0]?.url.searchParams.has("tenant")).toBe(false);
+    expect(urls[0]?.body).toEqual({ value: "EUR" });
   });
 });

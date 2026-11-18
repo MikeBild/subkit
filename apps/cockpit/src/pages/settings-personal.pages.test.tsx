@@ -43,6 +43,7 @@ describe("the overview for a hosted owner", () => {
         { id: "notifications", sentence: "Wer wann benachrichtigt wird.", status: null },
       ]}
       expert={false}
+      usage={false}
       onNavigate={() => {}}
     />,
   );
@@ -59,7 +60,7 @@ describe("the overview for a hosted owner", () => {
   });
 
   test("shows no engine area, no expert list, no read-only wall and no badge without a fact", () => {
-    for (const area of ["ai", "costs", "access", "connections", "operations"])
+    for (const area of ["ai", "access", "connections", "operations"])
       expect(html).not.toContain(`settings-area-card-${area}`);
     expect(html).not.toContain("Alle Einstellungen (für Fachleute)");
     expect(html).not.toContain("Du darfst ansehen, nicht ändern.");
@@ -72,6 +73,7 @@ describe("the overview for a hosted owner", () => {
       <SettingsOverview
         cards={[{ id: "profile", sentence: "Deutsch · helle Darstellung", status: "nameMissing" }]}
         expert={false}
+        usage={false}
         onNavigate={() => {}}
       />,
     );

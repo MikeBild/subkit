@@ -126,21 +126,6 @@ export function setupBrowserMemberships(): void {
     mock = await startMockOidc();
     await setConfigKey("server.public_base_url", ctx.baseUrl);
     await setConfigKey("auth.hosted.enabled", true);
-    await setConfigKey("llm.hosted.enabled", true);
-    await setConfigKey("llm.hosted.tenant_monthly_microunits", "1000000");
-    await setConfigKey("llm.hosted.global_monthly_microunits", "10000000");
-    await setConfigKey("llm.hosted.models", [
-      {
-        model: "anthropic:billing-model",
-        max_context_tokens: 1000,
-        max_output_tokens: 100,
-        input_usd_per_million_tokens: "3",
-        output_usd_per_million_tokens: "15",
-        cache_read_usd_per_million_tokens: "0.3",
-        cache_write_5m_usd_per_million_tokens: "3.75",
-        cache_write_1h_usd_per_million_tokens: "6",
-      },
-    ]);
     await setConfigKey("storage.hosted.retained_rows_per_resource", 1000);
     await setConfigKey("storage.hosted.tenant_bytes", "1000000");
     await setConfigKey("storage.hosted.max_file_bytes", "100000");

@@ -12,7 +12,7 @@ import {
   type LlmAccessProbe,
   probeLlmAccess,
 } from "../../llm/runtime/access-probe.ts";
-import { detectConfiguredProvider, modelKeyOwner } from "../../llm/runtime/model-init.ts";
+import { modelKeyOwner } from "../../llm/runtime/model-init.ts";
 import {
   mockProviderAllowed,
   WORKSPACE_KEY_PROVIDERS,
@@ -42,7 +42,7 @@ export const AiAccessSchema = z
     configured: z
       .boolean()
       .describe(
-        "This workspace can make model calls right now, with its own key or by the operator's policy",
+        "This workspace can make model calls right now. A self-service workspace needs its own provider key for that; a self-hosted one uses the engine settings.",
       ),
     provider: z.string().nullable().describe("Provider the workspace calls; null when none is set"),
     model: z
@@ -72,12 +72,6 @@ const PROVIDER_UNAVAILABLE: LlmAccessRefusal = {
   code: "llm_provider_unavailable",
   message:
     "This provider cannot be used with your own key here. Choose Anthropic, OpenAI or Google.",
-};
-
-const OPERATOR_GATEWAY: LlmAccessRefusal = {
-  ...PROVIDER_UNAVAILABLE,
-  message:
-    "This SubKit sends every model call through its operator's gateway, so your own key cannot be used here.",
 };
 
 const PROBE_REFUSALS: Record<LlmAccessFailure, LlmAccessRefusal> = {
@@ -117,7 +111,6 @@ export async function checkLlmAccess(
   candidate: LlmAccessCandidate,
   probe: LlmAccessProbe = probeLlmAccess,
 ): Promise<{ ok: true } | LlmAccessRefusal> {
-  if (detectConfiguredProvider() === "gateway") return OPERATOR_GATEWAY;
   if (candidate.provider === "mock") {
     return mockProviderAllowed() ? { ok: true } : PROVIDER_UNAVAILABLE;
   }

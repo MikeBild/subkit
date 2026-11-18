@@ -63,6 +63,7 @@ describe("baseline over the squashed migration chain", () => {
       "0003_reserved_role_names",
       "0004_user_start_steps_hidden",
       "0005_hosted_workspace_model_key",
+      "0006_drop_hosted_budget_reservations",
     ]);
     expect(baseline.idx).toBe(0);
   });

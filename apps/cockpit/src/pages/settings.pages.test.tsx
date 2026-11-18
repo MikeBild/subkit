@@ -14,7 +14,6 @@ import {
   SettingsSaveBar,
 } from "@/pages/settings";
 import { AiArea } from "@/pages/settings-ai";
-import { CostsArea } from "@/pages/settings-costs";
 import type { GuidedContext } from "@/pages/settings-guided";
 import {
   changedSettings,
@@ -86,7 +85,7 @@ describe("the page's frame", () => {
     const save = readFileSync(resolve(import.meta.dir, "settings-save.ts"), "utf8");
     expect(source).toContain("applySettingsPatch(");
     expect(save).toContain('apiCall("patch", "/v1/settings"');
-    expect(source).not.toMatch(/method: "PUT"|apiCall\("put"|saveWorkspaceSetting/);
+    expect(source).not.toMatch(/method: "PUT"|apiCall\("put"|saveSetting\(/);
     expect(source).not.toMatch(/method: "PUT"|apiCall\("put"/);
     expect(source).not.toMatch(/setTimeout|autosave/i);
   });
@@ -243,7 +242,6 @@ describe("the guided settings pages", () => {
     scope: "global",
     scopeAvailable: true,
     catalog,
-    usage: null,
     publicBaseUrl: "https://subkit.test",
     setDraft() {},
     dropDraft() {},
@@ -255,25 +253,22 @@ describe("the guided settings pages", () => {
 
   test("the overview is a list of area cards with one sentence each, read-only without a save bar", () => {
     const cards = overviewCards({
-      facts: { items, pendingRestart: [], budgetConsumedShare: null },
+      facts: { items, pendingRestart: [] },
       catalog,
-      usage: null,
       canWrite: false,
-      locale: "de",
       t: de,
       restartAction: null,
     });
     const html = render(
       <>
         <SettingsReadOnlyNotice canWrite={false} ask />
-        <SettingsOverview cards={cards} expert onNavigate={() => {}} />
+        <SettingsOverview cards={cards} expert usage onNavigate={() => {}} />
       </>,
     );
     expect(html).toContain(
       "Du darfst ansehen, nicht ändern. Für Änderungen frag einen Administrator.",
     );
     expect(html).toContain("Nutzt OpenAI mit GPT-4.1 mini. Kein Ersatz, falls OpenAI ausfällt.");
-    expect(html).toContain("Kein Monatslimit. Die KI kann unbegrenzt Kosten verursachen.");
     expect(html).toContain("Nur Administratoren können hier etwas ändern.");
     expect(html).toContain('data-testid="settings-area-status-configured"');
     expect(html).toContain("Alle Einstellungen (für Fachleute)");
@@ -400,11 +395,9 @@ describe("the guided settings pages", () => {
         : entry,
     );
     const cards = overviewCards({
-      facts: { items: workspace, pendingRestart: [], budgetConsumedShare: null },
+      facts: { items: workspace, pendingRestart: [] },
       catalog,
-      usage: null,
       canWrite: true,
-      locale: "de",
       t: de,
       restartAction: null,
     });
@@ -423,14 +416,14 @@ describe("the guided settings pages", () => {
   test("below 720px the area list hides and the way back to all areas shows", () => {
     const html = render(
       <SettingsAreaFrame
-        area="costs"
-        areas={["profile", "workspace", "costs", "notifications"]}
+        area="ai"
+        areas={["profile", "workspace", "ai", "notifications"]}
         expert
         drafted={new Set()}
         attention={new Set()}
         onNavigate={() => {}}
       >
-        <CostsArea ctx={ctx()} />
+        <AiArea ctx={ctx()} />
       </SettingsAreaFrame>,
     );
     expect(html).toMatch(
@@ -445,19 +438,19 @@ describe("the guided settings pages", () => {
     const overview = render(
       <SettingsOverview
         cards={overviewCards({
-          facts: { items, pendingRestart: [], budgetConsumedShare: null },
+          facts: { items, pendingRestart: [] },
           catalog,
-          usage: null,
           canWrite: true,
-          locale: "de",
           t: de,
           restartAction: null,
         })}
         expert
+        usage={false}
         onNavigate={() => {}}
       />,
     );
     expect(overview).not.toContain('data-testid="settings-area-nav"');
+    expect(overview).not.toContain('data-testid="settings-usage-note"');
     expect(overview).toContain("grid-cols-[auto_minmax(0,1fr)_auto]");
   });
 
@@ -467,15 +460,26 @@ describe("the guided settings pages", () => {
     expect(source).not.toMatch(/drafts: (pending|pendingDrafts)\b/);
   });
 
-  test("the costs page offers token presets with no limit as its own option", () => {
-    const html = render(<CostsArea ctx={ctx()} />);
-    expect(html).toContain("Wie viele Textbausteine darf die KI pro Monat verbrauchen?");
-    expect(html).toContain(">Kein Limit<");
-    expect(html).toContain(">10 Mio.<");
-    expect(html).toContain("Was kostet welches Modell?");
-    expect(html).toContain("GPT-4.1 mini");
-    expect(html).toContain("Eingebaut");
-    expect(html).not.toContain("Wann möchtest du vorgewarnt werden?");
-    expect(filled(html)).toBe(0);
+  test("budget, prices and currency have no area of their own; the overview points to the usage page", () => {
+    const cards = overviewCards({
+      facts: { items, pendingRestart: [] },
+      catalog,
+      canWrite: true,
+      t: de,
+      restartAction: null,
+    });
+    expect(cards.map((card) => card.id)).toEqual([
+      "ai",
+      "access",
+      "connections",
+      "notifications",
+      "operations",
+    ]);
+    const html = render(<SettingsOverview cards={cards} expert usage onNavigate={() => {}} />);
+    expect(html).toContain(
+      "Monatskontingent, Modellpreise und Währung änderst du auf der Seite „Nutzung“.",
+    );
+    expect(html).toContain('href="/cockpit/usage" class=');
+    expect(html).not.toContain("settings-area-card-costs");
   });
 });

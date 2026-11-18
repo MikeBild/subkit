@@ -29,10 +29,6 @@ interface HostedRegistrationConfig {
   };
 }
 
-export function hostedModelAllowed(entry: { disabled?: boolean | undefined }): boolean {
-  return entry.disabled !== true;
-}
-
 export function hostedRegistrationPolicyError(config: HostedRegistrationConfig): string | null {
   if (!config.auth.hosted.registration_enabled) return null;
   if (Object.values(config.auth.hosted.admission).some((value) => value <= 0))

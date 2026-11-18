@@ -216,6 +216,8 @@ export const chatEn = {
   "chat.cause.provider_unreachable": "The AI provider could not be reached.",
   "chat.cause.provider_context_too_large": "The conversation is too long for the model.",
   "chat.cause.tenant_budget_exhausted": "This installation's monthly AI budget is used up.",
+  "chat.cause.ai_access_missing":
+    "This workspace has no AI access yet. Enter your provider and API key under Settings → AI assistant.",
   "chat.cause.provider_timeout": "Timed out after {seconds} s",
   "chat.cause.provider_timeoutUnknown": "The AI provider did not answer in time.",
   "chat.empty.title": "Describe what SubKit should do.",
@@ -697,6 +699,8 @@ export const chatDe: Record<keyof typeof chatEn, string> = {
   "chat.cause.provider_context_too_large": "Die Unterhaltung ist zu lang für das Modell.",
   "chat.cause.tenant_budget_exhausted":
     "Das monatliche KI-Budget dieser Installation ist aufgebraucht.",
+  "chat.cause.ai_access_missing":
+    "Für diesen Arbeitsbereich ist noch kein KI-Zugang eingerichtet. Trag unter Einstellungen → KI-Assistent deinen Anbieter und deinen API-Schlüssel ein.",
   "chat.cause.provider_timeout": "Zeitüberschreitung nach {seconds} s",
   "chat.cause.provider_timeoutUnknown": "Der KI-Anbieter hat nicht rechtzeitig geantwortet.",
   "chat.empty.title": "Beschreibe, was SubKit tun soll.",

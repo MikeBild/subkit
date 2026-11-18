@@ -12,6 +12,7 @@ import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
 import {
   ActionButton,
+  ActionMenu,
   type CockpitColumn,
   CodeBlock,
   CollapsibleSection,
@@ -56,6 +57,7 @@ import { PromptCacheSection, PromptCacheTile } from "@/pages/prompt-cache";
 import { OriginChartSvg, OriginChartTable, OriginLegend } from "@/pages/usage-chart";
 import {
   BudgetDialog,
+  CurrencyDialog,
   ExportDialog,
   ForecastText,
   PRICE_SETTING,
@@ -170,6 +172,7 @@ export function UsagePage() {
   const allowed = session.permissions.includes("stats:read");
   const canAll = session.permissions.includes("stats:read:all");
   const canWriteSettings = session.permissions.includes("settings:write");
+  const canWriteGlobal = canWriteSettings && session.permissions.includes("settings:write:global");
   const title = t("resource.usage.title");
 
   const [bounds, setBounds] = useState<WindowBounds>(() =>
@@ -209,7 +212,11 @@ export function UsagePage() {
     );
   }, []);
   const [dialog, setDialog] = useState<
-    { kind: "budget" } | { kind: "export" } | { kind: "price"; model: string } | null
+    | { kind: "budget" }
+    | { kind: "currency" }
+    | { kind: "export" }
+    | { kind: "price"; model: string }
+    | null
   >(null);
   const [asTable, setAsTable] = useState(false);
 
@@ -417,6 +424,26 @@ export function UsagePage() {
             <Download aria-hidden="true" />
             {t("usage.export.open")}
           </ActionButton>
+        ) : undefined
+      }
+      menu={
+        allowed && canWriteSettings ? (
+          <ActionMenu
+            alwaysMenu
+            testId="usage-settings-menu"
+            items={[
+              {
+                label: t("usage.hint.adjustBudget"),
+                onSelect: () => setDialog({ kind: "budget" }),
+                testId: "usage-menu-budget",
+              },
+              {
+                label: t("usage.currency.action"),
+                onSelect: () => setDialog({ kind: "currency" }),
+                testId: "usage-menu-currency",
+              },
+            ]}
+          />
         ) : undefined
       }
     />
@@ -1112,6 +1139,15 @@ export function UsagePage() {
           budget={budget}
           forecast={forecast}
           canWrite={canWriteSettings}
+          canWriteGlobal={canWriteGlobal}
+          tenantId={session.tenant.id}
+        />
+      ) : null}
+      {dialog?.kind === "currency" ? (
+        <CurrencyDialog
+          open
+          onOpenChange={(open) => (open ? undefined : setDialog(null))}
+          canWriteGlobal={canWriteGlobal}
           tenantId={session.tenant.id}
         />
       ) : null}
@@ -1122,6 +1158,7 @@ export function UsagePage() {
           model={modelForPrice}
           modelName={modelName(modelForPrice)}
           currentPrices={Array.isArray(priceSetting?.value) ? priceSetting.value : []}
+          canWriteGlobal={canWriteGlobal}
           tenantId={session.tenant.id}
           pricedBounds={bounds}
         />

@@ -13,7 +13,6 @@ import {
   settingValueText,
 } from "@/pages/settings-model";
 import { SettingField } from "@/pages/settings-rows";
-import type { BudgetSummary } from "@/pages/usage-model";
 
 export interface GuidedContext {
   items: readonly SettingItem[];
@@ -26,7 +25,6 @@ export interface GuidedContext {
   scope: SettingDraftScope;
   scopeAvailable: boolean;
   catalog: ModelCatalog | undefined;
-  usage: BudgetSummary | null;
   publicBaseUrl: string;
   setDraft(path: string, text: string): void;
   dropDraft(path: string): void;
@@ -47,7 +45,6 @@ function guidedValueText(
   value: unknown,
   t: ReturnType<typeof useI18n>["t"],
   catalog: ModelCatalog | undefined,
-  locale = "de",
 ): string {
   const empty = value === null || value === undefined || value === "";
   if (PROVIDER_PATHS.has(path))
@@ -56,12 +53,6 @@ function guidedValueText(
     return empty || typeof value !== "string"
       ? t("settings.value.providerDefault")
       : (catalogModelName(catalog, value) ?? value);
-  if (path === "tokens.monthly_budget" && typeof value === "number")
-    return value <= 0
-      ? t("settings.costs.preset.none")
-      : t("settings.costs.tokens", {
-          count: new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US").format(value),
-        });
   if (empty || (Array.isArray(value) && value.length === 0)) return t("settings.value.notSet");
   return settingValueText(value, t);
 }
@@ -87,25 +78,6 @@ export function guidedDisabled(ctx: GuidedContext, item: SettingItem | undefined
 
 function guidedGlobalOnly(ctx: GuidedContext, item: SettingItem | undefined): boolean {
   return ctx.scope === "tenant" && item !== undefined && item.meta.scope !== "tenant";
-}
-
-export function GlobalOnlyNote({
-  ctx,
-  item,
-}: {
-  ctx: GuidedContext;
-  item: SettingItem | undefined;
-}) {
-  const { t } = useI18n();
-  if (!guidedGlobalOnly(ctx, item)) return null;
-  return (
-    <p
-      className="text-xs text-muted-foreground"
-      data-testid={`settings-global-only-${item?.path ?? "setting"}`}
-    >
-      {t("settings.scope.globalOnly")}
-    </p>
-  );
 }
 
 export function guidedIndex(ctx: GuidedContext, path: string): number {
@@ -161,7 +133,7 @@ export function LockedNote({ item }: { item: SettingItem | undefined }) {
 }
 
 export function OwnValueHint({ ctx, path }: { ctx: GuidedContext; path: string }) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   if (!ctx.tenantItems) return null;
   const own = ctx.tenantItems.find((item) => item.path === path);
   if (own?.meta.source !== "tenant") return null;
@@ -170,7 +142,7 @@ export function OwnValueHint({ ctx, path }: { ctx: GuidedContext; path: string }
     return (
       <p className="text-xs text-muted-foreground" data-testid={`settings-own-value-${path}`}>
         {t("settings.scope.ownValue", {
-          globalValue: guidedValueText(path, general?.value, t, ctx.catalog, locale),
+          globalValue: guidedValueText(path, general?.value, t, ctx.catalog),
         })}
       </p>
     );
@@ -178,23 +150,13 @@ export function OwnValueHint({ ctx, path }: { ctx: GuidedContext; path: string }
   return (
     <p className="text-xs font-medium" data-testid={`settings-own-value-here-${path}`}>
       {t("settings.scope.ownValueHere", {
-        value: guidedValueText(path, own.value, t, ctx.catalog, locale),
+        value: guidedValueText(path, own.value, t, ctx.catalog),
       })}
     </p>
   );
 }
 
-export function ScopeToggle({
-  ctx,
-  tenantLabel,
-  globalLabel,
-  globalHelp,
-}: {
-  ctx: GuidedContext;
-  tenantLabel?: string;
-  globalLabel?: string;
-  globalHelp?: string;
-}) {
+export function ScopeToggle({ ctx }: { ctx: GuidedContext }) {
   const { t } = useI18n();
   if (!ctx.scopeAvailable) return null;
   return (
@@ -208,22 +170,12 @@ export function ScopeToggle({
         label={t("settings.scope.question")}
         testId="settings-scope-toggle"
         options={[
-          {
-            value: "tenant",
-            label: tenantLabel ?? t("settings.scope.tenant"),
-            testId: "settings-scope-tenant",
-          },
-          {
-            value: "global",
-            label: globalLabel ?? t("settings.scope.global"),
-            testId: "settings-scope-global",
-          },
+          { value: "tenant", label: t("settings.scope.tenant"), testId: "settings-scope-tenant" },
+          { value: "global", label: t("settings.scope.global"), testId: "settings-scope-global" },
         ]}
       />
       <p className="text-xs text-muted-foreground">
-        {ctx.scope === "tenant"
-          ? t("settings.scope.tenantHelp")
-          : (globalHelp ?? t("settings.scope.globalHelp"))}
+        {t(ctx.scope === "tenant" ? "settings.scope.tenantHelp" : "settings.scope.globalHelp")}
       </p>
     </div>
   );

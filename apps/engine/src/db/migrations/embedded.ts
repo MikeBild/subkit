@@ -23,6 +23,7 @@ import sql0002DropTenantDlpRules from "./0002_drop_tenant_dlp_rules.sql" with { 
 import sql0003ReservedRoleNames from "./0003_reserved_role_names.sql" with { type: "text" };
 import sql0004UserStartStepsHidden from "./0004_user_start_steps_hidden.sql" with { type: "text" };
 import sql0005HostedWorkspaceModelKey from "./0005_hosted_workspace_model_key.sql" with { type: "text" };
+import sql0006DropHostedBudgetReservations from "./0006_drop_hosted_budget_reservations.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -53,6 +54,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0003_reserved_role_names": sql0003ReservedRoleNames,
   "0004_user_start_steps_hidden": sql0004UserStartStepsHidden,
   "0005_hosted_workspace_model_key": sql0005HostedWorkspaceModelKey,
+  "0006_drop_hosted_budget_reservations": sql0006DropHostedBudgetReservations,
 };
 
 const journal = journalMeta as unknown as Journal;

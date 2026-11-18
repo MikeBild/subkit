@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import {
   auditLog,
@@ -7,7 +6,6 @@ import {
   cockpitInstallations,
   cockpitPushKeys,
   cockpitPushSubscriptions,
-  hostedBudgetReservations,
   hostedTenantUsage,
   sessions,
   tenantBranding,
@@ -48,7 +46,7 @@ test("erasure schema classifies every product table and orders children before p
   expect(order.indexOf("conversation_messages")).toBeLessThan(order.indexOf("conversations"));
   expect(order.indexOf("user_invites")).toBeLessThan(order.indexOf("users"));
   expect(order).not.toContain("auth_identities");
-  expect(order).not.toContain("hosted_budget_reservations");
+  expect(order).not.toContain("hosted_tenant_usage");
 });
 
 test("empty lifecycle sweep never initializes object storage", async () => {
@@ -182,41 +180,10 @@ test("erases app icons and encrypted push storage for exactly the requested tena
   ).toHaveLength(1);
 });
 
-test("expired owned tenant erases online content and objects while retaining ownership and budget cap", async () => {
+test("expired owned tenant erases online content and objects while retaining ownership", async () => {
   const { owned, objects } = await fixture("erase-owner", true, true);
   const foreign = await fixture("erase-foreign", false);
   await objects.put(`${foreign.owned.tenant.id}/untouched`, Buffer.from("foreign"));
-  await ctx.db.insert(hostedBudgetReservations).values({
-    tenant_id: owned.tenant.id,
-    request_key: createHash("sha256").update("sensitive-request@example.test").digest("hex"),
-    month_bucket: "2000-01",
-    currency: "USD",
-    model: "provider:model",
-    reserved_microunits: 100n,
-    state: "reserved",
-  });
-  await ctx.db.insert(hostedBudgetReservations).values([
-    {
-      tenant_id: owned.tenant.id,
-      request_key: createHash("sha256").update("old-settled").digest("hex"),
-      month_bucket: "2000-01",
-      currency: "USD",
-      model: "provider:model",
-      reserved_microunits: 100n,
-      reported_microunits: 50n,
-      state: "settled",
-    },
-    {
-      tenant_id: owned.tenant.id,
-      request_key: createHash("sha256").update("current-settled").digest("hex"),
-      month_bucket: new Date(getTestNow()).toISOString().slice(0, 7),
-      currency: "USD",
-      model: "provider:model",
-      reserved_microunits: 100n,
-      reported_microunits: 50n,
-      state: "settled",
-    },
-  ]);
   expect(await eraseExpiredTenant(owned.tenant.id, { queue: queue(), objects }, ctx.db)).toEqual({
     status: "completed",
   });
@@ -235,18 +202,6 @@ test("expired owned tenant erases online content and objects while retaining own
     .where(eq(authIdentities.id, owned.identity.id));
   expect(identity?.email).toBe("");
   expect(identity?.subject).toBe("erase-owner");
-  const budgets = await ctx.db
-    .select()
-    .from(hostedBudgetReservations)
-    .where(eq(hostedBudgetReservations.tenant_id, owned.tenant.id));
-  const budget = budgets.find((row) => row.state === "reserved");
-  expect(budgets).toHaveLength(2);
-  expect(budgets.filter((row) => row.month_bucket === "2000-01").map((row) => row.state)).toEqual([
-    "reserved",
-  ]);
-  expect(budget?.state).toBe("reserved");
-  expect(budget?.reserved_microunits).toBe(100n);
-  expect(budget?.request_key).toMatch(/^[0-9a-f]{64}$/);
   expect(
     await ctx.db.select().from(auditLog).where(eq(auditLog.tenant_id, owned.tenant.id)),
   ).toHaveLength(1);

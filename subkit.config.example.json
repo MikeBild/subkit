@@ -28,12 +28,6 @@
     "keepalive_delay_ms": 10000
   },
   "llm": {
-    "hosted": {
-      "enabled": false,
-      "tenant_monthly_microunits": "0",
-      "global_monthly_microunits": "0",
-      "models": []
-    },
     "provider": "mock",
     "model": "",
     "api_key": "",

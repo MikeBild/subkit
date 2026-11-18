@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { type ServerType, serve } from "@hono/node-server";
 import { Hono } from "hono";
-import { modelTenantContext } from "../../llm/runtime/hosted-budget-middleware.ts";
+import { modelTenantContext } from "../../llm/runtime/operator-key-guard.ts";
 import { getContext, type LogContext, withContext } from "../../logging/context.ts";
 import { authMiddleware } from "../middleware/auth.ts";
 import { traceMiddleware } from "../middleware/trace.ts";

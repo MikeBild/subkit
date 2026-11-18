@@ -85,18 +85,6 @@ export function sampleConfigLeaf(leaf: ConfigLeaf, salt: number): unknown {
             cache_write_per_mtok: 3.75,
           },
         ],
-        "llm.hosted.models": [
-          {
-            model: "openai:sample",
-            max_context_tokens: 8192,
-            max_output_tokens: 1024,
-            input_usd_per_million_tokens: "1",
-            output_usd_per_million_tokens: "1",
-            cache_read_usd_per_million_tokens: "1",
-            cache_write_5m_usd_per_million_tokens: "1",
-            cache_write_1h_usd_per_million_tokens: "1",
-          },
-        ],
       };
       if (!(path in samples)) throw new Error(`no structural sample for ${path}`);
       candidates = [samples[path]];

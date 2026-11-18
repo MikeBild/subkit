@@ -12,7 +12,6 @@ export type PersonalAreaId = (typeof PERSONAL_AREA_IDS)[number];
 
 export const ENGINE_AREA_IDS = [
   "ai",
-  "costs",
   "access",
   "connections",
   "notifications",
@@ -28,8 +27,7 @@ export function isPersonalArea(area: SettingAreaId): area is PersonalAreaId {
 }
 
 export const SETTING_AREAS: readonly { id: EngineAreaId; sections: readonly string[] }[] = [
-  { id: "ai", sections: ["llm"] },
-  { id: "costs", sections: ["tokens"] },
+  { id: "ai", sections: ["llm", "tokens"] },
   { id: "access", sections: ["auth", "products", "mcp", "egress", "spec"] },
   { id: "connections", sections: ["connectors", "platform", "storage"] },
   { id: "notifications", sections: ["notifications"] },
@@ -50,8 +48,6 @@ export const SETTING_AREAS: readonly { id: EngineAreaId; sections: readonly stri
   },
 ];
 
-const HOSTED_LLM_PREFIX = "llm.hosted.";
-
 function isSettingArea(value: string | null | undefined): value is SettingAreaId {
   return SETTING_AREA_IDS.includes(value as SettingAreaId);
 }
@@ -61,7 +57,6 @@ function settingAreaOfSection(section: string): EngineAreaId {
 }
 
 export function settingAreaOf(path: string): EngineAreaId {
-  if (path.startsWith(HOSTED_LLM_PREFIX)) return "costs";
   return settingAreaOfSection(settingSectionOf(path));
 }
 
@@ -132,8 +127,10 @@ export function openSettingsLevel(level: SettingsLevel, access: SettingsAccess):
   return level;
 }
 
-export const SCOPED_AREAS = ["ai", "costs"] as const;
+export const SCOPED_AREAS = ["ai"] as const;
 export type ScopedArea = (typeof SCOPED_AREAS)[number];
+
+const SCOPED_SECTION: Readonly<Record<ScopedArea, string>> = { ai: "llm" };
 
 export function scopedAreaOf(level: SettingsLevel): ScopedArea | null {
   return level.kind === "area" && (SCOPED_AREAS as readonly string[]).includes(level.area)
@@ -146,7 +143,7 @@ function workspaceHasOwnValue(
   tenantItems: readonly SettingItem[] | null,
 ): boolean {
   return (tenantItems ?? []).some(
-    (item) => item.meta.source === "tenant" && settingAreaOf(item.path) === area,
+    (item) => item.meta.source === "tenant" && settingSectionOf(item.path) === SCOPED_SECTION[area],
   );
 }
 
@@ -161,12 +158,11 @@ export function pageScope(
   return chosen[area] ?? (workspaceHasOwnValue(area, tenantItems) ? "tenant" : "global");
 }
 
-export type AreaStatus = "configured" | "waiting" | "restart" | "limit" | "nameMissing";
+export type AreaStatus = "configured" | "waiting" | "restart" | "nameMissing";
 
 interface AreaFacts {
   items: readonly SettingItem[];
   pendingRestart: readonly string[];
-  budgetConsumedShare: number | null;
 }
 
 function itemValue(items: readonly SettingItem[], path: string): unknown {
@@ -208,11 +204,6 @@ export function areaStatus(area: EngineAreaId, facts: AreaFacts): AreaStatus | n
     if (provider === "mock") return "configured";
     return providerKeyState(facts.items, provider, true) === "missing" ? "waiting" : "configured";
   }
-  if (area === "costs") {
-    if (facts.budgetConsumedShare !== null && facts.budgetConsumedShare >= 1) return "limit";
-    const budget = itemValue(facts.items, "tokens.monthly_budget");
-    return typeof budget === "number" && budget > 0 ? "configured" : null;
-  }
   return null;
 }
 
@@ -225,9 +216,6 @@ interface AreaSentenceFacts extends AreaFacts {
   canWrite: boolean;
   providerName(provider: string): string;
   modelName(provider: string, model: string): string;
-  budgetText(tokens: number): string;
-  spentText: string | null;
-  resetDate: string;
   apiKeyName: string;
 }
 
@@ -297,21 +285,6 @@ export function areaSentences(area: EngineAreaId, facts: AreaSentenceFacts): Are
           },
         ];
   }
-  if (area === "costs") {
-    const budget = itemValue(items, "tokens.monthly_budget");
-    if (typeof budget !== "number" || budget <= 0)
-      return [{ key: "settings.overview.costs.noLimit" }];
-    if (facts.budgetConsumedShare !== null && facts.budgetConsumedShare >= 1)
-      return [{ key: "settings.overview.costs.reached", values: { date: facts.resetDate } }];
-    return [
-      {
-        key: facts.spentText
-          ? "settings.overview.costs.limit"
-          : "settings.overview.costs.limitOnly",
-        values: { amount: facts.budgetText(budget), spent: facts.spentText ?? "" },
-      },
-    ];
-  }
   if (area === "access") {
     const methods = authMethodNames(items, facts.apiKeyName);
     return [
@@ -367,21 +340,14 @@ export function areaSentences(area: EngineAreaId, facts: AreaSentenceFacts): Are
   ];
 }
 
-const MICROUNITS = /^[1-9]\d{0,17}$/;
-const WHOLE_TOKENS = /^\d+$/;
-
 export function settingsGuidedErrors(
   items: readonly SettingItem[],
   drafts: Readonly<Record<string, string>>,
 ): string[] {
   const effective = (path: string) => drafts[path] ?? stringValue(items, path);
-  return Object.entries(drafts).flatMap(([path, text]) => {
-    const draft = { text };
-    if (path.startsWith(HOSTED_LLM_PREFIX) && path.endsWith("_microunits"))
-      return MICROUNITS.test(draft.text) ? [] : [path];
-    if (path === "tokens.monthly_budget") return WHOLE_TOKENS.test(draft.text.trim()) ? [] : [path];
-    if (path === "llm.fallback_provider")
-      return draft.text !== "" && draft.text === effective("llm.provider") ? [path] : [];
-    return [];
-  });
+  return Object.entries(drafts).flatMap(([path, text]) =>
+    path === "llm.fallback_provider" && text !== "" && text === effective("llm.provider")
+      ? [path]
+      : [],
+  );
 }

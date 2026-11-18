@@ -36,10 +36,9 @@ describe("settings areas", () => {
     }
   });
 
-  test("hosted AI budgets belong to costs, the rest of the AI section to the assistant", () => {
-    expect(settingAreaOf("llm.hosted.tenant_monthly_microunits")).toBe("costs");
+  test("the AI section and the token budget belong to the assistant", () => {
     expect(settingAreaOf("llm.model")).toBe("ai");
-    expect(settingAreaOf("tokens.prices")).toBe("costs");
+    expect(settingAreaOf("tokens.prices")).toBe("ai");
   });
 
   test("deep links open the full list; areas and the overview have their own address", () => {
@@ -47,7 +46,8 @@ describe("settings areas", () => {
     expect(settingsLevelFromUrl("?section=llm").kind).toBe("all");
     expect(settingsLevelFromUrl("?filter=changed").kind).toBe("all");
     expect(settingsLevelFromUrl("?view=all").kind).toBe("all");
-    expect(settingsLevelFromUrl("?area=costs")).toEqual({ kind: "area", area: "costs" });
+    expect(settingsLevelFromUrl("?area=ai")).toEqual({ kind: "area", area: "ai" });
+    expect(settingsLevelFromUrl("?area=costs")).toEqual({ kind: "overview" });
     expect(settingsLevelFromUrl("?area=profile")).toEqual({ kind: "area", area: "profile" });
     expect(settingsLevelFromUrl("?area=workspace")).toEqual({ kind: "area", area: "workspace" });
     expect(settingsLevelFromUrl("?tab=notifications")).toEqual({
@@ -58,11 +58,10 @@ describe("settings areas", () => {
     expect(settingsLevelFromUrl("")).toEqual({ kind: "overview" });
   });
 
-  test("status comes from facts: a missing key waits, a pending restart wins, no limit is quiet", () => {
+  test("status comes from facts: a missing key waits and a pending restart wins", () => {
     const facts = (items: SettingItem[], pendingRestart: string[] = []) => ({
       items,
       pendingRestart,
-      budgetConsumedShare: null,
     });
     const openai = [
       item("llm.provider", "openai"),
@@ -89,56 +88,22 @@ describe("settings areas", () => {
     ).toBe("configured");
     expect(areaStatus("ai", facts(openai, ["llm.fallback_provider"]))).toBe("restart");
     expect(areaStatus("operations", facts([], ["llm.fallback_provider"]))).toBe("restart");
-    expect(areaStatus("costs", facts([item("tokens.monthly_budget", 0)]))).toBeNull();
-    expect(areaStatus("costs", facts([item("tokens.monthly_budget", 1000)]))).toBe("configured");
-    expect(
-      areaStatus("costs", {
-        items: [item("tokens.monthly_budget", 1000)],
-        pendingRestart: [],
-        budgetConsumedShare: 1,
-      }),
-    ).toBe("limit");
     expect(areaStatus("access", facts([]))).toBeNull();
   });
 });
 
 describe("guided drafts the save bar has to refuse", () => {
   const items = [item("llm.provider", "openai")];
-  const draft = (text: string) => text;
-  test("hosted amounts are microunit strings, budgets whole numbers, the replacement differs", async () => {
+  test("the replacement differs from the provider", async () => {
     const { settingsGuidedErrors } = await import("@/pages/settings-areas");
-    expect(
-      settingsGuidedErrors(items, {
-        "llm.hosted.tenant_monthly_microunits": draft("0,5"),
-        "llm.hosted.global_monthly_microunits": draft("12500000"),
-        "tokens.monthly_budget": draft("1.5"),
-        "llm.fallback_provider": draft("openai"),
-      }),
-    ).toEqual([
-      "llm.hosted.tenant_monthly_microunits",
-      "tokens.monthly_budget",
+    expect(settingsGuidedErrors(items, { "llm.fallback_provider": "openai" })).toEqual([
       "llm.fallback_provider",
     ]);
-    expect(
-      settingsGuidedErrors(items, {
-        "llm.fallback_provider": draft("anthropic"),
-        "tokens.monthly_budget": draft("1000000"),
-      }),
-    ).toEqual([]);
+    expect(settingsGuidedErrors(items, { "llm.fallback_provider": "anthropic" })).toEqual([]);
   });
 });
 
-describe("hosted amounts and sign-in names", () => {
-  test("a hosted budget of 0 is refused, because it blocks every paid call", async () => {
-    const { settingsGuidedErrors } = await import("@/pages/settings-areas");
-    expect(
-      settingsGuidedErrors([], {
-        "llm.hosted.global_monthly_microunits": "0",
-        "llm.hosted.tenant_monthly_microunits": "1",
-      }),
-    ).toEqual(["llm.hosted.global_monthly_microunits"]);
-  });
-
+describe("sign-in names", () => {
   test("the overview names the API-key sign-in in the reader's words, not its stored label", async () => {
     const { authMethodNames } = await import("@/pages/settings-areas");
     const providers = item("auth.providers", [
@@ -152,9 +117,8 @@ describe("hosted amounts and sign-in names", () => {
 describe("the workspace scope", () => {
   test("belongs to the page that offers it and is global everywhere else", async () => {
     const { pageScope } = await import("@/pages/settings-areas");
-    const chosen = { ai: "tenant", costs: "global" } as const;
+    const chosen = { ai: "tenant" } as const;
     expect(pageScope({ kind: "area", area: "ai" }, true, chosen, null)).toBe("tenant");
-    expect(pageScope({ kind: "area", area: "costs" }, true, chosen, null)).toBe("global");
     for (const area of ["access", "connections", "notifications", "operations"] as const)
       expect(pageScope({ kind: "area", area }, true, chosen, null)).toBe("global");
     expect(pageScope({ kind: "overview" }, true, chosen, null)).toBe("global");
@@ -169,7 +133,9 @@ describe("the workspace scope", () => {
     });
     const tenantItems = [own("llm.provider", "anthropic"), item("tokens.monthly_budget", 0)];
     expect(pageScope({ kind: "area", area: "ai" }, true, {}, tenantItems)).toBe("tenant");
-    expect(pageScope({ kind: "area", area: "costs" }, true, {}, tenantItems)).toBe("global");
+    expect(
+      pageScope({ kind: "area", area: "ai" }, true, {}, [own("tokens.monthly_budget", 1000)]),
+    ).toBe("global");
     expect(pageScope({ kind: "area", area: "ai" }, true, { ai: "global" }, tenantItems)).toBe(
       "global",
     );
@@ -181,13 +147,9 @@ describe("the AI overview sentence", () => {
   const sentenceFacts = (items: SettingItem[]) => ({
     items,
     pendingRestart: [],
-    budgetConsumedShare: null,
     canWrite: true,
     providerName: (provider: string) => (provider === "openai" ? "OpenAI" : "Anthropic"),
     modelName: (_provider: string, model: string) => model || "Standardmodell von OpenAI",
-    budgetText: (tokens: number) => String(tokens),
-    spentText: null,
-    resetDate: "",
     apiKeyName: "API-Schlüssel",
   });
 
@@ -224,7 +186,7 @@ describe("the AI overview sentence", () => {
 });
 
 describe("who sees which area", () => {
-  const ENGINE = ["ai", "costs", "access", "connections", "notifications", "operations"] as const;
+  const ENGINE = ["ai", "access", "connections", "notifications", "operations"] as const;
   const see = async (
     permissions: string[],
     origin: "self_hosted" | "self_service",

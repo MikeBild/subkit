@@ -207,21 +207,20 @@ describe("initializeModel", () => {
     expect(typeof r.model).toBe("object");
   });
 
-  it("hosted service suppresses native paid search without changing self-hosted preferences", async () => {
+  it("native web search follows the tenant-effective setting", async () => {
     configDir = mkdtempSync(join(tmpdir(), "sk-model-search-policy-"));
     await loadConfig({
       env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },
       configPathOverride: join(configDir, "subkit.config.json"),
     });
-    await setConfigKey("llm.web_search", true, { tenantId: "tenant-a", force: true });
-    expect(nativeWebSearchSetting("tenant-a")).toBe(true);
-    await setConfigKey("llm.hosted.enabled", true, { force: true });
-    expect(nativeWebSearchSetting("tenant-a")).toBe(false);
-    expect(nativeWebSearchSetting()).toBe(false);
-    await setConfigKey("llm.hosted.enabled", false, { force: true });
     expect(nativeWebSearchSetting("tenant-a")).toBe(true);
     await setConfigKey("llm.web_search", false, { tenantId: "tenant-a", force: true });
     expect(nativeWebSearchSetting("tenant-a")).toBe(false);
+    expect(nativeWebSearchSetting()).toBe(true);
+    await setConfigKey("llm.web_search", false, { force: true });
+    await setConfigKey("llm.web_search", true, { tenantId: "tenant-a", force: true });
+    expect(nativeWebSearchSetting("tenant-a")).toBe(true);
+    expect(nativeWebSearchSetting()).toBe(false);
   });
 
   it("builds web search with tenant credentials without borrowing another tenant's key", async () => {

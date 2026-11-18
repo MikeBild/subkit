@@ -1,9 +1,4 @@
 export const settingsAiEn = {
-  "settings.costs.budget.mockNoCost": "In test mode there are no costs.",
-  "settings.costs.currency.ownNeeded":
-    "The built-in prices exist only in US dollars and are shown in dollars. With {currency} you enter your own price for each model.",
-  "settings.costs.allowed.kept":
-    "Unticked models stay saved with their limits and can be selected again at any time.",
   "settings.ai.provider.question": "Which AI provider do you use?",
   "settings.ai.provider.help":
     "The provider supplies the AI. It bills you for the use, not SubKit.",
@@ -96,69 +91,9 @@ export const settingsAiEn = {
   "settings.ai.key.mock": "In test mode you need no key.",
   "settings.ai.key.elsewhere":
     "This provider signs in with details from your IT. You find them under all settings of this area.",
-  "settings.costs.budget.question": "How many text pieces may the AI use per month?",
-  "settings.costs.budget.help":
-    "Counted from the 1st of each month. The limit protects you from nasty surprises on the bill.",
-  "settings.costs.preset.none": "No limit",
-  "settings.costs.preset.1m": "1M",
-  "settings.costs.preset.10m": "10M",
-  "settings.costs.preset.100m": "100M",
-  "settings.costs.preset.custom": "Own value",
-  "settings.costs.budget.custom": "Text pieces per month",
-  "settings.costs.budget.invalid": "Enter a number from 1, for example 500000.",
-  "settings.costs.budget.noLimitHint":
-    "Without a limit SubKit never stops because of costs. Then check the bill at {provider} regularly yourself.",
-  "settings.costs.budget.reached":
-    "Once the limit is reached, AI steps pause until the next month. Workflows without AI keep running.",
-  "settings.costs.budget.estimate":
-    "SubKit estimates the costs from the models' prices. The real bill comes from {provider}.",
-  "settings.costs.budget.usage": "This month: about {spent} of {amount}",
-  "settings.costs.budget.usageNoLimit": "This month: about {spent}",
-  "settings.costs.tokens": "{count} text pieces",
-  "settings.costs.hosted.question": "How much may hosted workspaces cost?",
-  "settings.costs.hosted.help":
-    "Applies to all workspaces we run for you. An amount above 0 is required: 0 $ blocks every paid AI call.",
-  "settings.costs.hosted.tenant": "Per workspace and month",
-  "settings.costs.hosted.global": "All workspaces together per month",
-  "settings.costs.hosted.unit": "US dollars",
-  "settings.costs.hosted.invalid": "Enter an amount in US dollars above 0, for example 50.",
-  "settings.costs.prices.question": "What does each model cost?",
-  "settings.costs.prices.help":
-    "SubKit knows the prices of common models. If you negotiated another price, enter it here.",
-  "settings.costs.prices.unit": "per 1M text pieces, values from the price list",
-  "settings.costs.prices.model": "Model",
-  "settings.costs.prices.read": "Reading",
-  "settings.costs.prices.write": "Writing",
-  "settings.costs.prices.origin": "Origin",
-  "settings.costs.prices.builtin": "Built in",
-  "settings.costs.prices.own": "Own price",
-  "settings.costs.prices.add": "Enter own price",
-  "settings.costs.prices.dialog": "Own price for a model",
-  "settings.costs.prices.dialogHelp": "The price applies once you save the page.",
-  "settings.costs.prices.empty": "No prices known in this currency yet.",
-  "settings.costs.prices.invalid": "Enter a model name and both prices.",
-  "settings.costs.currency.question": "Which currency do you work in?",
-  "settings.costs.currency.help":
-    "The built-in prices exist only in US dollars. If you choose euros, you enter all prices yourself.",
-  "settings.costs.currency.usd": "US dollar ($)",
-  "settings.costs.currency.eur": "Euro (€)",
-  "settings.costs.currency.other": "Other ({currency})",
-  "settings.costs.allowed.question": "Which models may workspaces use?",
-  "settings.costs.allowed.help":
-    "Only ticked models are offered in the workspaces. This keeps costs under control.",
-  "settings.costs.allowed.count": "{count} of {total} models allowed",
-  "settings.costs.allowed.all": "Select all",
-  "settings.costs.allowed.none": "Select none",
-  "settings.costs.allowed.empty": "No model allowed. The AI is blocked in all workspaces.",
-  "settings.costs.allowed.more": "New models are added under all settings of this area.",
 } as const;
 
 export const settingsAiDe: Record<keyof typeof settingsAiEn, string> = {
-  "settings.costs.budget.mockNoCost": "Im Testmodus entstehen keine Kosten.",
-  "settings.costs.currency.ownNeeded":
-    "Die eingebauten Preise gibt es nur in US-Dollar und sie stehen hier in Dollar. Mit {currency} trägst du für jedes Modell einen eigenen Preis ein.",
-  "settings.costs.allowed.kept":
-    "Abgewählte Modelle bleiben mit ihren Grenzen gespeichert und lassen sich jederzeit wieder auswählen.",
   "settings.ai.provider.question": "Welchen KI-Anbieter nutzt du?",
   "settings.ai.provider.help":
     "Der Anbieter liefert die KI. Er stellt dir die Nutzung in Rechnung, nicht SubKit.",
@@ -253,61 +188,4 @@ export const settingsAiDe: Record<keyof typeof settingsAiEn, string> = {
   "settings.ai.key.mock": "Im Testmodus brauchst du keinen Schlüssel.",
   "settings.ai.key.elsewhere":
     "Dieser Anbieter meldet sich mit Angaben deiner IT an. Du findest sie unter allen Einstellungen dieses Bereichs.",
-  "settings.costs.budget.question": "Wie viele Textbausteine darf die KI pro Monat verbrauchen?",
-  "settings.costs.budget.help":
-    "Gezählt wird ab dem 1. jedes Monats. Das Limit schützt vor bösen Überraschungen auf der Rechnung.",
-  "settings.costs.preset.none": "Kein Limit",
-  "settings.costs.preset.1m": "1 Mio.",
-  "settings.costs.preset.10m": "10 Mio.",
-  "settings.costs.preset.100m": "100 Mio.",
-  "settings.costs.preset.custom": "Eigener Wert",
-  "settings.costs.budget.custom": "Textbausteine pro Monat",
-  "settings.costs.budget.invalid": "Gib eine Zahl ab 1 ein, zum Beispiel 500000.",
-  "settings.costs.budget.noLimitHint":
-    "Ohne Limit stoppt SubKit nie wegen der Kosten. Prüf die Rechnung bei {provider} dann regelmäßig selbst.",
-  "settings.costs.budget.reached":
-    "Ist das Limit erreicht, pausieren KI-Schritte bis zum nächsten Monat. Workflows ohne KI laufen weiter.",
-  "settings.costs.budget.estimate":
-    "Die Kosten schätzt SubKit aus den Preisen der Modelle. Die echte Rechnung kommt von {provider}.",
-  "settings.costs.budget.usage": "Diesen Monat: ca. {spent} von {amount}",
-  "settings.costs.budget.usageNoLimit": "Diesen Monat: ca. {spent}",
-  "settings.costs.tokens": "{count} Textbausteine",
-  "settings.costs.hosted.question": "Wie viel dürfen gehostete Arbeitsbereiche kosten?",
-  "settings.costs.hosted.help":
-    "Gilt für alle von uns betriebenen Arbeitsbereiche. Ein Betrag über 0 ist Pflicht: 0 $ sperrt jeden kostenpflichtigen KI-Aufruf.",
-  "settings.costs.hosted.tenant": "Je Arbeitsbereich pro Monat",
-  "settings.costs.hosted.global": "Alle Arbeitsbereiche zusammen pro Monat",
-  "settings.costs.hosted.unit": "US-Dollar",
-  "settings.costs.hosted.invalid": "Gib einen Betrag in US-Dollar über 0 ein, zum Beispiel 50.",
-  "settings.costs.prices.question": "Was kostet welches Modell?",
-  "settings.costs.prices.help":
-    "SubKit kennt die Preise der gängigen Modelle. Hast du einen anderen Preis ausgehandelt, trag ihn hier ein.",
-  "settings.costs.prices.unit": "je 1 Mio. Textbausteine, Werte aus der Preisliste",
-  "settings.costs.prices.model": "Modell",
-  "settings.costs.prices.read": "Lesen",
-  "settings.costs.prices.write": "Schreiben",
-  "settings.costs.prices.origin": "Herkunft",
-  "settings.costs.prices.builtin": "Eingebaut",
-  "settings.costs.prices.own": "Eigener Preis",
-  "settings.costs.prices.add": "Eigenen Preis eintragen",
-  "settings.costs.prices.dialog": "Eigener Preis für ein Modell",
-  "settings.costs.prices.dialogHelp": "Der Preis gilt, sobald du die Seite speicherst.",
-  "settings.costs.prices.empty": "In dieser Währung sind noch keine Preise bekannt.",
-  "settings.costs.prices.invalid": "Gib einen Modellnamen und beide Preise ein.",
-  "settings.costs.currency.question": "In welcher Währung rechnest du?",
-  "settings.costs.currency.help":
-    "Die eingebauten Preise gibt es nur in US-Dollar. Wählst du Euro, trägst du alle Preise selbst ein.",
-  "settings.costs.currency.usd": "US-Dollar ($)",
-  "settings.costs.currency.eur": "Euro (€)",
-  "settings.costs.currency.other": "Andere ({currency})",
-  "settings.costs.allowed.question": "Welche Modelle dürfen Arbeitsbereiche nutzen?",
-  "settings.costs.allowed.help":
-    "Nur angehakte Modelle stehen in den Arbeitsbereichen zur Auswahl. Damit hältst du Kosten im Griff.",
-  "settings.costs.allowed.count": "{count} von {total} Modellen erlaubt",
-  "settings.costs.allowed.all": "Alle auswählen",
-  "settings.costs.allowed.none": "Keine auswählen",
-  "settings.costs.allowed.empty":
-    "Kein Modell erlaubt. Die KI ist in allen Arbeitsbereichen gesperrt.",
-  "settings.costs.allowed.more":
-    "Neue Modelle nimmst du unter allen Einstellungen dieses Bereichs auf.",
 };

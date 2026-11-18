@@ -25,14 +25,6 @@ export const settingsHelpEn = {
     "Milliseconds before an unused pooled connection closes. Requires a restart.",
   "settings.help.database.keepalive_delay_ms":
     "Initial TCP keepalive delay for database connections in milliseconds. Requires a restart.",
-  "settings.help.llm.hosted.enabled":
-    "Enable hosted paid-model mode, which requires a workspace context independently of signup policy.",
-  "settings.help.llm.hosted.tenant_monthly_microunits":
-    "Budget per workspace in millionths of a US dollar. Zero blocks paid model calls.",
-  "settings.help.llm.hosted.global_monthly_microunits":
-    "Shared hosted budget in millionths of a US dollar. Zero blocks paid model calls.",
-  "settings.help.llm.hosted.models":
-    "Exact provider and model allowlist with verified provider context limits and maximum USD rates, including long-context tiers. Paid native tools and multimodal inputs are unsupported.",
   "settings.help.auth.hosted.enabled":
     "Enable identity-first hosted browser authentication for explicitly selected providers. Requires a restart.",
   "settings.help.auth.hosted.registration_enabled":
@@ -252,14 +244,6 @@ export const settingsHelpDe: Record<keyof typeof settingsHelpEn, string> = {
     "Millisekunden bis zum Schließen einer ungenutzten Pool-Verbindung. Erfordert einen Neustart.",
   "settings.help.database.keepalive_delay_ms":
     "Anfängliche TCP-Keepalive-Wartezeit für Datenbankverbindungen in Millisekunden. Erfordert einen Neustart.",
-  "settings.help.llm.hosted.enabled":
-    "Aktiviert den Hosted-Modus für kostenpflichtige Modelle. Ein Arbeitsbereichskontext ist unabhängig von der Registrierung nötig.",
-  "settings.help.llm.hosted.tenant_monthly_microunits":
-    "Budget je Arbeitsbereich in Millionstel US-Dollar. Null sperrt kostenpflichtige Modellaufrufe.",
-  "settings.help.llm.hosted.global_monthly_microunits":
-    "Gemeinsames Hosted-Budget in Millionstel US-Dollar. Null sperrt kostenpflichtige Modellaufrufe.",
-  "settings.help.llm.hosted.models":
-    "Exakte Anbieter- und Modellliste mit geprüften Kontextgrenzen und maximalen USD-Preisen einschließlich großer Kontexte. Kostenpflichtige native Werkzeuge und multimodale Eingaben werden nicht unterstützt.",
   "settings.help.auth.hosted.enabled":
     "Aktiviert die identitätsbasierte Hosted-Browseranmeldung für ausdrücklich ausgewählte Anbieter. Erfordert einen Neustart.",
   "settings.help.auth.hosted.registration_enabled":

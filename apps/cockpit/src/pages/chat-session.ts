@@ -60,7 +60,8 @@ type TurnFailureCause =
         | "provider_unreachable"
         | "tool_schema_invalid"
         | "provider_context_too_large"
-        | "tenant_budget_exhausted";
+        | "tenant_budget_exhausted"
+        | "ai_access_missing";
       retryAt: string | null;
     }
   | { kind: "provider_timeout"; timeoutMs: number | null };
@@ -80,6 +81,8 @@ function causeKind(
       return "provider_context_too_large";
     case "llm_quota_exhausted":
       return "tenant_budget_exhausted";
+    case "ai_access_missing":
+      return "ai_access_missing";
     default:
       return null;
   }

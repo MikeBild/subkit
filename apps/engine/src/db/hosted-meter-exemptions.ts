@@ -10,7 +10,6 @@ const erasure =
 export const HOSTED_METER_EXEMPTIONS: Readonly<Record<string, string>> = {
   caller_budget_units: ledger,
   external_call_metering: ledger,
-  hosted_budget_reservations: ledger,
   hosted_tenant_usage: ledger,
   hosted_work_admissions: ledger,
   llm_usage: ledger,

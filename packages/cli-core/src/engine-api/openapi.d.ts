@@ -23852,7 +23852,7 @@ export interface components {
             timezone?: string;
         };
         AiAccess: {
-            /** @description This workspace can make model calls right now, with its own key or by the operator's policy */
+            /** @description This workspace can make model calls right now. A self-service workspace needs its own provider key for that; a self-hosted one uses the engine settings. */
             configured: boolean;
             /** @description Provider the workspace calls; null when none is set */
             provider: string | null;

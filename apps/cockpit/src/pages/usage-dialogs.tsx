@@ -1,8 +1,8 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { apiCall } from "@/api/call";
-import { TextField } from "@/components/cockpit/form-field";
+import { ChoiceField, SelectField, TextField } from "@/components/cockpit/form-field";
 import { FormDialog } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import {
@@ -11,7 +11,7 @@ import {
   type StatsWindow,
   type WindowBounds,
 } from "@/pages/operations-figures";
-import { saveWorkspaceSetting } from "@/pages/settings-save";
+import { saveSetting } from "@/pages/settings-save";
 import { parseAmount, parseTokens } from "@/pages/settings-units";
 import { ORIGIN_LABEL, WINDOW_OPTION } from "@/pages/usage-format";
 import {
@@ -24,6 +24,50 @@ import {
 } from "@/pages/usage-model";
 
 export const PRICE_SETTING = "tokens.prices";
+const CURRENCY_SETTING = "tokens.currency";
+const DEFAULT_CURRENCY = "USD";
+const OFFERED_CURRENCIES = ["USD", "EUR"] as const;
+
+type SettingScope = "tenant" | "global";
+
+function readSetting(path: string, tenantId: string | null) {
+  return apiCall("get", "/v1/settings/{path}", {
+    path: { path },
+    query: tenantId ? { tenant: tenantId } : {},
+  });
+}
+
+function useSettingScope(tenantId: string) {
+  const [scope, setScope] = useState<SettingScope>("tenant");
+  return { scope, setScope, target: scope === "tenant" ? tenantId : null };
+}
+
+function ScopeField({
+  scope,
+  onScope,
+  testId,
+}: {
+  scope: SettingScope;
+  onScope(scope: SettingScope): void;
+  testId: string;
+}) {
+  const { t } = useI18n();
+  return (
+    <ChoiceField
+      label={t("settings.scope.question")}
+      value={scope}
+      onChange={onScope}
+      options={[
+        { value: "tenant", label: t("settings.scope.tenant") },
+        { value: "global", label: t("settings.scope.global") },
+      ]}
+      description={t(
+        scope === "tenant" ? "settings.scope.tenantHelp" : "settings.scope.globalHelp",
+      )}
+      testId={testId}
+    />
+  );
+}
 
 const SETTLE_ATTEMPTS = 10;
 const SETTLE_DELAY_MS = 400;
@@ -55,6 +99,7 @@ export function BudgetDialog({
   budget,
   forecast,
   canWrite,
+  canWriteGlobal,
   tenantId,
 }: {
   open: boolean;
@@ -63,6 +108,7 @@ export function BudgetDialog({
   budget: BudgetSummary;
   forecast: BudgetForecast | null;
   canWrite: boolean;
+  canWriteGlobal: boolean;
 }) {
   const { t, locale } = useI18n();
   const client = useQueryClient();
@@ -72,8 +118,9 @@ export function BudgetDialog({
     budget.budgetTokens ? String(budget.budgetTokens) : "",
   );
   const value = parseTokens(draft);
+  const { scope, setScope, target } = useSettingScope(tenantId);
   const save = useMutation({
-    mutationFn: () => saveWorkspaceSetting(BUDGET_SETTING, tenantId, value ?? 0),
+    mutationFn: () => saveSetting(BUDGET_SETTING, target, value ?? 0),
     onSuccess: async () => {
       const expected = value && value > 0 ? value : null;
       const applied = await settle(async () => {
@@ -117,15 +164,20 @@ export function BudgetDialog({
         <ForecastText forecast={forecast} />
       </p>
       {canWrite ? (
-        <TextField
-          id="usage-budget-tokens"
-          label={t("usage.budget.field")}
-          value={draft}
-          onChange={setDraft}
-          placeholder={t("usage.budget.placeholder")}
-          help={t("usage.budget.help")}
-          invalid={draft !== "" && value === null}
-        />
+        <>
+          <TextField
+            id="usage-budget-tokens"
+            label={t("usage.budget.field")}
+            value={draft}
+            onChange={setDraft}
+            placeholder={t("usage.budget.placeholder")}
+            help={t("usage.budget.help")}
+            invalid={draft !== "" && value === null}
+          />
+          {canWriteGlobal ? (
+            <ScopeField scope={scope} onScope={setScope} testId="usage-budget-scope" />
+          ) : null}
+        </>
       ) : (
         <p className="text-sm text-muted-foreground">{t("usage.askAdmin")}</p>
       )}
@@ -139,12 +191,14 @@ export function PriceDialog({
   model,
   modelName,
   currentPrices,
+  canWriteGlobal,
   tenantId,
   pricedBounds,
 }: {
   open: boolean;
   onOpenChange(open: boolean): void;
   tenantId: string;
+  canWriteGlobal: boolean;
   pricedBounds: WindowBounds;
   model: string;
   modelName: string;
@@ -156,13 +210,16 @@ export function PriceDialog({
   const [output, setOutput] = useState("");
   const inputValue = parseAmount(input);
   const outputValue = parseAmount(output);
+  const { scope, setScope, target } = useSettingScope(tenantId);
   const save = useMutation({
-    mutationFn: () => {
-      const others = currentPrices.filter(
+    mutationFn: async () => {
+      const general = target === null ? (await readSetting(PRICE_SETTING, null)).value : null;
+      const current = target === null ? (Array.isArray(general) ? general : []) : currentPrices;
+      const others = current.filter(
         (entry) =>
           !(entry && typeof entry === "object" && (entry as { model?: unknown }).model === model),
       );
-      return saveWorkspaceSetting(PRICE_SETTING, tenantId, [
+      return saveSetting(PRICE_SETTING, target, [
         ...others,
         { model, input_per_mtok: inputValue ?? 0, output_per_mtok: outputValue ?? 0 },
       ]);
@@ -211,6 +268,89 @@ export function PriceDialog({
         placeholder={t("usage.price.outputPlaceholder")}
         invalid={output !== "" && outputValue === null}
       />
+      {canWriteGlobal ? (
+        <ScopeField scope={scope} onScope={setScope} testId="usage-price-scope" />
+      ) : null}
+    </FormDialog>
+  );
+}
+
+export function CurrencyDialog({
+  open,
+  onOpenChange,
+  canWriteGlobal,
+  tenantId,
+}: {
+  open: boolean;
+  onOpenChange(open: boolean): void;
+  canWriteGlobal: boolean;
+  tenantId: string;
+}) {
+  const { t } = useI18n();
+  const client = useQueryClient();
+  const { scope, setScope, target } = useSettingScope(tenantId);
+  const stored = useQuery({
+    queryKey: ["usage-currency-setting", target],
+    queryFn: () => readSetting(CURRENCY_SETTING, target),
+    retry: false,
+  });
+  const [draft, setDraft] = useState<string | null>(null);
+  const current =
+    typeof stored.data?.value === "string" ? stored.data.value.toUpperCase() : DEFAULT_CURRENCY;
+  const currency = draft ?? current;
+  const save = useMutation({
+    mutationFn: () => saveSetting(CURRENCY_SETTING, target, currency),
+    onSuccess: async () => {
+      await settle(async () => {
+        const applied = await readSetting(CURRENCY_SETTING, target);
+        return applied.value === currency ? applied : null;
+      });
+      await client.invalidateQueries({ queryKey: ["usage-currency-setting"] });
+      await client.invalidateQueries({ queryKey: ["usage-llm"] });
+      toast.success(t("usage.currency.saved"));
+      onOpenChange(false);
+    },
+  });
+  const offered: readonly string[] = OFFERED_CURRENCIES;
+  return (
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t("usage.currency.title")}
+      testId="usage-currency-dialog"
+      submit={{
+        label: t("common.save"),
+        pending: save.isPending,
+        disabled: stored.isPending || currency === current,
+        testId: "usage-currency-save",
+      }}
+      onSubmit={() => save.mutate()}
+      error={save.isError ? t("usage.currency.saveFailed") : null}
+    >
+      <SelectField
+        id="usage-currency"
+        label={t("usage.currency.field")}
+        value={currency}
+        onChange={setDraft}
+        options={[
+          { value: "USD", label: t("usage.currency.usd") },
+          { value: "EUR", label: t("usage.currency.eur") },
+          ...(offered.includes(current)
+            ? []
+            : [{ value: current, label: t("usage.currency.other", { currency: current }) }]),
+        ]}
+        help={t("usage.currency.help")}
+      />
+      {canWriteGlobal ? (
+        <ScopeField
+          scope={scope}
+          onScope={(next) => {
+            setDraft(null);
+            setScope(next);
+          }}
+          testId="usage-currency-scope"
+        />
+      ) : null}
     </FormDialog>
   );
 }

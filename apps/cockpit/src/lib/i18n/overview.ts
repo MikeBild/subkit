@@ -110,9 +110,7 @@ export const overviewEn = {
   "overview.reason.intake_collected": "A collected entry waits for your review",
   "overview.reason.intake_collectedCount": "{count} collected entries wait for your review",
   "overview.reason.budget_critical": "This month's token allowance is almost used up",
-  "overview.reason.ai_access_missing":
-    "Without its own API key, this workspace uses the operator’s allowance",
-  "overview.reason.ai_access_missingNone": "Without an API key, chat and workflows can’t work",
+  "overview.reason.ai_access_missing": "Without an API key, chat and workflows can’t work",
   "overview.reason.risk_critical": "Critical operating signal: {signal}",
   "overview.reason.risk_criticalOther": "Critical operating signal",
   "overview.reason.other": "{subject} needs you",
@@ -236,9 +234,7 @@ export const overviewEn = {
   "overview.short.intake_collected.one": "1 entry to review",
   "overview.short.intake_collected.other": "{count} entries to review",
   "overview.short.budget_critical": "The monthly allowance is nearly used",
-  "overview.short.ai_access_missing":
-    "Without its own API key, this workspace uses the operator’s allowance.",
-  "overview.short.ai_access_missingNone": "Without an API key, chat and workflows can’t work.",
+  "overview.short.ai_access_missing": "Without an API key, chat and workflows can’t work.",
   "overview.short.risk_critical": "A critical operating signal",
   "overview.short.other": "Needs a look",
   "overview.state.answer": "Waits for an answer",
@@ -388,8 +384,6 @@ export const overviewDe: Record<keyof typeof overviewEn, string> = {
   "overview.reason.intake_collectedCount": "{count} gesammelte Einträge warten auf deine Prüfung",
   "overview.reason.budget_critical": "Das Token-Kontingent dieses Monats ist fast aufgebraucht",
   "overview.reason.ai_access_missing":
-    "Ohne eigenen API-Schlüssel nutzt dieser Arbeitsbereich das Kontingent des Betreibers",
-  "overview.reason.ai_access_missingNone":
     "Ohne API-Schlüssel können Chat und Workflows nicht arbeiten",
   "overview.reason.risk_critical": "Kritisches Betriebssignal: {signal}",
   "overview.reason.risk_criticalOther": "Kritisches Betriebssignal",
@@ -516,8 +510,6 @@ export const overviewDe: Record<keyof typeof overviewEn, string> = {
   "overview.short.intake_collected.other": "{count} Einträge zu prüfen",
   "overview.short.budget_critical": "Das Monatskontingent ist fast verbraucht",
   "overview.short.ai_access_missing":
-    "Ohne eigenen API-Schlüssel nutzt dieser Arbeitsbereich das Kontingent des Betreibers.",
-  "overview.short.ai_access_missingNone":
     "Ohne API-Schlüssel können Chat und Workflows nicht arbeiten.",
   "overview.short.risk_critical": "Ein kritisches Betriebssignal",
   "overview.short.other": "Braucht einen Blick",

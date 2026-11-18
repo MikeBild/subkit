@@ -6,12 +6,12 @@ import { getConfig, setConfigKey } from "../../../config/loader.ts";
 import {
   auditLog,
   authIdentities,
-  hostedBudgetReservations,
   runtimeSecretVersions,
   tenants,
   users,
 } from "../../../db/schema/index.ts";
 import { provisionSelfServiceTenant } from "../../../identity/self-service.ts";
+import { LlmAccessMissing } from "../../../llm/errors.ts";
 import { initializeModel } from "../../../llm/runtime/model-init.ts";
 import { invalidateAttention } from "../../../operator/attention.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
@@ -115,55 +115,70 @@ async function callModel(tenantId: string) {
   return resolved;
 }
 
-function reservations(tenantId: string) {
-  return ctx.db
-    .select()
-    .from(hostedBudgetReservations)
-    .where(eq(hostedBudgetReservations.tenant_id, tenantId));
-}
-
-describe("a hosted workspace without its own key keeps the operator's policy", () => {
-  test("model calls use the operator key and reserve the operator budget", async () => {
-    const { tenantId } = await workspaceWithoutKey("access-operator-paid");
-    const provider = stubProviderHttp(() => anthropicAnswer("billing-model"));
+describe("a hosted workspace without its own key never reaches the operator's provider", () => {
+  test("every model initialisation is refused before any provider call", async () => {
+    const { tenantId } = await workspaceWithoutKey("access-operator-refused");
+    const provider = stubProviderHttp(() => anthropicAnswer("operator-model"));
     try {
-      await operatorProvider("billing-model", async () => {
-        const resolved = await callModel(tenantId);
-        expect(resolved.modelId).toBe("billing-model");
-      });
-    } finally {
-      provider.restore();
-    }
-    expect(provider.calls).toHaveLength(1);
-    expect(provider.calls[0]?.headers["x-api-key"]).toBe(OPERATOR_KEY);
-    const reserved = await reservations(tenantId);
-    expect(reserved).toHaveLength(1);
-    expect(reserved[0]).toMatchObject({ model: "anthropic:billing-model", state: "settled" });
-  });
-
-  test("a model the operator has not priced is refused before any provider call", async () => {
-    const { tenantId } = await workspaceWithoutKey("access-operator-unpriced");
-    const provider = stubProviderHttp(() => anthropicAnswer());
-    try {
-      await operatorProvider("claude-haiku-4-5", async () => {
-        await expect(callModel(tenantId)).rejects.toThrow();
+      await operatorProvider("operator-model", async () => {
+        await expect(callModel(tenantId)).rejects.toBeInstanceOf(LlmAccessMissing);
+        await expect(
+          initializeModel({ tenantId, exec: ctx.db, providerOverride: "openai" }),
+        ).rejects.toMatchObject({ code: "ai_access_missing" });
+        await expect(
+          initializeModel({ tenantId, exec: ctx.db, providerOverride: "gateway" }),
+        ).rejects.toBeInstanceOf(LlmAccessMissing);
       });
     } finally {
       provider.restore();
     }
     expect(provider.calls).toHaveLength(0);
-    expect(await reservations(tenantId)).toHaveLength(0);
+  });
+
+  test("the chat answers 409 ai_access_missing with the settings to open", async () => {
+    const { session } = await workspaceWithoutKey("access-chat-refused");
+    const provider = stubProviderHttp(() => anthropicAnswer("operator-model"));
+    try {
+      await operatorProvider("operator-model", async () => {
+        const refused = await fetch(`${ctx.baseUrl}/v1/conversations`, {
+          method: "POST",
+          headers: sessionHeaders(session),
+          body: JSON.stringify({ initial_message: "hello" }),
+        });
+        expect(refused.status).toBe(409);
+        const body = (await refused.json()) as { code: string; message: string; hint: string };
+        expect(body.code).toBe("ai_access_missing");
+        expect(body.message).toContain("no AI access yet");
+        expect(body.hint).toContain("Settings → AI assistant");
+      });
+    } finally {
+      provider.restore();
+    }
+    expect(provider.calls).toHaveLength(0);
+  });
+
+  test("the operator's own workspace keeps calling with the engine settings", async () => {
+    const provider = stubProviderHttp(() => anthropicAnswer("operator-model"));
+    try {
+      await operatorProvider("operator-model", async () => {
+        const resolved = await callModel(ctx.tenantId);
+        expect(resolved.modelId).toBe("operator-model");
+      });
+    } finally {
+      provider.restore();
+    }
+    expect(provider.calls.map((call) => call.headers["x-api-key"])).toEqual([OPERATOR_KEY]);
   });
 });
 
 describe("the Cockpit reads a workspace's AI access", () => {
-  test("bootstrap and attention report the operator allowance, no access and the own key", async () => {
+  test("bootstrap and attention report no access until the workspace stores its own key", async () => {
     const { tenantId, session } = await workspaceWithoutKey("access-states");
     const headers = sessionHeaders(session);
 
-    await operatorProvider("billing-model", async () => {
+    await operatorProvider("operator-model", async () => {
       expect(await aiAccess(session)).toEqual({
-        configured: true,
+        configured: false,
         provider: "anthropic",
         model: null,
         own_key: false,
@@ -171,8 +186,8 @@ describe("the Cockpit reads a workspace's AI access", () => {
       const attention = await attentionFor(headers);
       expect(attention.source).toBe("answered");
       expect(attention.item).toMatchObject({
-        kind: "operator_allowance",
-        class: "decide",
+        kind: "no_access",
+        class: "stopped",
         subject: { kind: "settings", id: tenantId, name: "AI access" },
         actions: [
           {
@@ -182,19 +197,6 @@ describe("the Cockpit reads a workspace's AI access", () => {
             permission: "identity:write",
           },
         ],
-      });
-    });
-
-    await operatorProvider("claude-haiku-4-5", async () => {
-      expect(await aiAccess(session)).toEqual({
-        configured: false,
-        provider: "anthropic",
-        model: null,
-        own_key: false,
-      });
-      expect((await attentionFor(headers)).item).toMatchObject({
-        kind: "no_access",
-        class: "stopped",
       });
     });
 
@@ -294,7 +296,6 @@ describe("the workspace owner changes the AI access", () => {
       provider.calls.length = 0;
       await callModel(tenantId);
       expect(provider.calls.map((call) => call.headers["x-api-key"])).toEqual([NEXT_KEY]);
-      expect(await reservations(tenantId)).toHaveLength(0);
     } finally {
       provider.restore();
     }

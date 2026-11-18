@@ -118,7 +118,6 @@ const AREA_QUESTIONS: Readonly<Partial<Record<EngineAreaId, readonly AreaQuestio
 
 const AREA_EXPERT_SECTION: Readonly<Record<EngineAreaId, string>> = {
   ai: "llm",
-  costs: "tokens",
   access: "auth",
   connections: "connectors",
   notifications: "notifications",

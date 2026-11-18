@@ -1,12 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { generateText, wrapLanguageModel } from "ai";
-import { MockLanguageModelV4 } from "ai/test";
 import { Hono } from "hono";
-import { ConfigSchema } from "../../config/schema.ts";
 import {
-  hostedBudgetMiddleware,
+  assertOperatorKeyAllowed,
   modelTenantContext,
-} from "../../llm/runtime/hosted-budget-middleware.ts";
+} from "../../llm/runtime/operator-key-guard.ts";
 import { getContext, withContext } from "../../logging/context.ts";
 import { parseTraceparent, traceMiddleware } from "../middleware/trace.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -76,55 +73,24 @@ describe("traceMiddleware", () => {
 });
 
 describe("native HTTP request context", () => {
-  test("separates the boot identity from anonymous model initialization and retains budget denial", async () => {
+  test("separates the boot identity from anonymous model initialization and refuses an unknown tenant", async () => {
     const systemTenant = "00000000-0000-0000-0000-000000000000";
     const unknownTenant = "00000000-0000-4000-8000-000000000123";
-    const config = ConfigSchema.parse({ database: { url: "postgres://fixture.invalid/fixture" } });
-    let providerCalls = 0;
     let tenantLookups = 0;
     const enteredTenants: Array<string | undefined> = [];
     const app = new Hono<AppEnv>();
     app.use("*", traceMiddleware());
     app.get("/probe", async (c) => {
       const boundTenant = c.req.query("explicit") ? unknownTenant : modelTenantContext();
-      const model = wrapLanguageModel({
-        model: new MockLanguageModelV4({
-          doGenerate: async () => {
-            providerCalls++;
-            return {
-              content: [{ type: "text", text: "OK" }],
-              finishReason: { unified: "stop", raw: undefined },
-              usage: {
-                inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-                outputTokens: { total: 1, text: 1, reasoning: 0 },
-              },
-              warnings: [],
-            };
-          },
-        }),
-        middleware: hostedBudgetMiddleware("openai", "gpt-4.1-mini", boundTenant, {
-          config: () => config,
-          contextTenant: () => getContext().tenant_id,
-          tenant: async () => {
+      try {
+        await assertOperatorKeyAllowed(boundTenant, undefined, {
+          hostedAuth: () => false,
+          tenantOrigin: async () => {
             tenantLookups++;
             return undefined;
           },
-          reserve: async () => {
-            throw new Error("unexpected budget reservation");
-          },
-          settle: async () => {
-            throw new Error("unexpected budget settlement");
-          },
-          requestKey: () => "unused",
-        }),
-      });
-      try {
-        const result = await generateText({ model, prompt: "Reply with OK.", maxRetries: 0 });
-        return c.json({
-          context: getContext(),
-          model_tenant: boundTenant ?? null,
-          text: result.text,
         });
+        return c.json({ context: getContext(), model_tenant: boundTenant ?? null });
       } catch (error) {
         return c.json({ code: error instanceof Error ? error.name : "unexpected_error" }, 403);
       }
@@ -156,7 +122,6 @@ describe("native HTTP request context", () => {
       expect(enteredTenants).toEqual([systemTenant]);
       expect(response.status).toBe(200);
       const body = await response.json();
-      expect(body.text).toBe("OK");
       expect(body.model_tenant).toBeNull();
       expect(body.context.trace_id).toBe("request-context-proof");
       expect(body.context.request_source).toBe("api");
@@ -170,12 +135,10 @@ describe("native HTTP request context", () => {
       ]) {
         expect(body.context[field]).toBeUndefined();
       }
-      expect(providerCalls).toBe(1);
       expect(tenantLookups).toBe(0);
       const denied = await fetch(`${server.url}probe?explicit=1`);
       expect(denied.status).toBe(403);
-      expect(await denied.json()).toEqual({ code: "LlmQuotaExhausted" });
-      expect(providerCalls).toBe(1);
+      expect(await denied.json()).toEqual({ code: "LlmError" });
       expect(tenantLookups).toBe(1);
     } finally {
       await server.stop(true);

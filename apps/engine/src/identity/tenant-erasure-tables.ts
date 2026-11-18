@@ -115,11 +115,7 @@ export const ERASED_TENANT_TABLES = [
   "workflows",
   "workflows_schedules",
 ] as const;
-export const RETAINED_TENANT_TABLES = [
-  "hosted_tenant_usage",
-  "hosted_budget_reservations",
-  "tenant_erasure_states",
-] as const;
+export const RETAINED_TENANT_TABLES = ["hosted_tenant_usage", "tenant_erasure_states"] as const;
 export const INDIRECT_TENANT_TABLES = [
   "group_members",
   "group_role_assignments",

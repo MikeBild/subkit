@@ -152,8 +152,6 @@ interface AttentionSentence {
 
 export const SUBJECT_NAME_MAX = 60;
 
-const AI_ACCESS_UNAVAILABLE = "no_access";
-
 function subjectName(item: AttentionItem): string | null {
   const name = item.subject?.name?.trim();
   return name ? clipAtWord(name, SUBJECT_NAME_MAX) : null;
@@ -249,13 +247,7 @@ export function attentionSentence(
     case "version_needs_repair":
       return { lead: repairSentence(item, subject, t), machine: null, since };
     case "ai_access_missing":
-      return {
-        lead: t(
-          item.kind === AI_ACCESS_UNAVAILABLE ? "overview.reason.ai_access_missingNone" : reasonKey,
-        ),
-        machine: null,
-        since,
-      };
+      return { lead: t(reasonKey), machine: null, since };
     case "failing": {
       const cause = item.cause_class ? causeClassKey(item.cause_class) : undefined;
       let lead = t(
@@ -610,9 +602,7 @@ export function attentionRow(item: AttentionItem, t: Translate): AttentionRow {
       : (COUNTED_SHORT_REASON_KEYS as Record<string, PluralKey>)[item.reason];
   const key = counted
     ? pluralKey(counted, count)
-    : item.reason === "ai_access_missing" && item.kind === AI_ACCESS_UNAVAILABLE
-      ? "overview.short.ai_access_missingNone"
-      : (SHORT_REASON_KEYS as Record<string, TranslationKey>)[item.reason];
+    : (SHORT_REASON_KEYS as Record<string, TranslationKey>)[item.reason];
   const short = key
     ? t(key, { count, step: item.repair?.step_id ?? "" })
     : t("overview.short.other");

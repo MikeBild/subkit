@@ -523,7 +523,16 @@ function ModelSheet({ ctx, id }: { ctx: SheetContext; id: string }) {
             value={ctx.format.percent(group && group.calls > 0 ? failed / group.calls : null)}
           />
         </Tiles>
-        <Section label={t("usage.sheet.pricePerMillion")}>
+        <Section
+          label={t("usage.sheet.pricePerMillion")}
+          aside={
+            price && ctx.canWriteSettings && ctx.priceSettingReadable ? (
+              <ActionButton size="sm" onClick={() => ctx.setPrice(id)} testId="usage-price-change">
+                {t("usage.price.change")}
+              </ActionButton>
+            ) : null
+          }
+        >
           <FactList
             items={[
               {

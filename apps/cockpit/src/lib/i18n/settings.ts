@@ -113,7 +113,6 @@ export const settingsEn = {
   "settings.value.providerDefault": "the provider's default model",
   "settings.scope.ownValueHere":
     "This workspace uses its own value: {value}. A change here does not apply to it.",
-  "settings.scope.globalOnly": "Always applies to all workspaces.",
   "settings.scope.globalOnlyRows": "Some of these settings always apply to all workspaces.",
   "settings.saveBar.firstGlobal":
     "{count} changes for all workspaces are saved first; the changes for this workspace follow in a second save.",
@@ -121,7 +120,9 @@ export const settingsEn = {
     "1 change for all workspaces is saved first; the changes for this workspace follow in a second save.",
   "settings.saveBar.firstLabel": "Save these first",
   "settings.overview.access.apiKey": "API key",
-  "settings.purpose": "How SubKit works for you: AI, costs, sign-in and connections.",
+  "settings.purpose": "How SubKit works for you: AI, sign-in and connections.",
+  "settings.usage.note":
+    "You change the monthly budget, model prices and currency on the “Usage” page.",
   "settings.level.areas": "Areas",
   "settings.level.allAreas": "All areas",
   "settings.level.expert": "All settings (for experts)",
@@ -134,8 +135,6 @@ export const settingsEn = {
   "settings.area.ai.title": "AI assistant",
   "settings.area.ai.purpose":
     "The AI writes in chat, drafts workflows and summarises results. Here you decide which AI that is.",
-  "settings.area.costs.title": "Costs & budget",
-  "settings.area.costs.purpose": "Decide how much the AI may use each month.",
   "settings.area.access.title": "Sign-in & access",
   "settings.area.access.purpose": "Who signs in how, and which apps may use SubKit.",
   "settings.area.connections.title": "Connections",
@@ -151,7 +150,6 @@ export const settingsEn = {
   "settings.status.configured": "Set up",
   "settings.status.waiting": "Waiting for you",
   "settings.status.restart": "Waiting for restart",
-  "settings.status.limit": "Limit reached",
   "settings.overview.ai.none": "No AI provider chosen yet. Chat and drafts only work after that.",
   "settings.overview.ai.choose": "Choose a provider",
   "settings.overview.ai.mock": "Runs in test mode: answers are sample texts, no real AI.",
@@ -164,10 +162,6 @@ export const settingsEn = {
     "Uses {provider} with its default model. No replacement if {provider} fails.",
   "settings.overview.ai.defaultModelWithFallback":
     "Uses {provider} with its default model. If the service fails, {fallbackProvider} steps in.",
-  "settings.overview.costs.noLimit": "No monthly limit. The AI can cause unlimited costs.",
-  "settings.overview.costs.limit": "At most {amount} per month. Used this month: {spent}.",
-  "settings.overview.costs.limitOnly": "At most {amount} per month.",
-  "settings.overview.costs.reached": "Limit reached. AI steps pause until {date}.",
   "settings.overview.access.methods": "Sign-in with {methods}.",
   "settings.overview.access.purpose": "Who signs in how, and which apps may use SubKit.",
   "settings.overview.connections.chat": "Chat in {platforms}.",
@@ -191,10 +185,6 @@ export const settingsEn = {
   "settings.scope.global": "All workspaces",
   "settings.scope.tenantHelp": "Other workspaces keep their setting.",
   "settings.scope.globalHelp": "Applies everywhere a workspace has not set its own value.",
-  "settings.scope.costsTenant": "Limit only for this workspace",
-  "settings.scope.costsGlobal": "All workspaces (each on its own)",
-  "settings.scope.costsGlobalHelp":
-    "Each workspace may use this much, unless it has its own limit.",
   "settings.scope.ownValue":
     "This workspace has its own value. The general value ({globalValue}) does not apply here.",
   "settings.locked.environment": "Comes from the server environment and cannot be changed here.",
@@ -418,7 +408,6 @@ export const settingsDe: Record<keyof typeof settingsEn, string> = {
   "settings.value.providerDefault": "Standardmodell des Anbieters",
   "settings.scope.ownValueHere":
     "Dieser Arbeitsbereich nutzt einen eigenen Wert: {value}. Die Änderung hier gilt für ihn nicht.",
-  "settings.scope.globalOnly": "Gilt immer für alle Arbeitsbereiche.",
   "settings.scope.globalOnlyRows":
     "Einige dieser Einstellungen gelten immer für alle Arbeitsbereiche.",
   "settings.saveBar.firstGlobal":
@@ -427,7 +416,9 @@ export const settingsDe: Record<keyof typeof settingsEn, string> = {
     "Zuerst wird 1 Änderung für alle Arbeitsbereiche gespeichert, die für diesen Arbeitsbereich danach in einem zweiten Schritt.",
   "settings.saveBar.firstLabel": "Erst diese Änderungen speichern",
   "settings.overview.access.apiKey": "API-Schlüssel",
-  "settings.purpose": "So arbeitet SubKit für dich: KI, Kosten, Anmeldung und Verbindungen.",
+  "settings.purpose": "So arbeitet SubKit für dich: KI, Anmeldung und Verbindungen.",
+  "settings.usage.note":
+    "Monatskontingent, Modellpreise und Währung änderst du auf der Seite „Nutzung“.",
   "settings.level.areas": "Bereiche",
   "settings.level.allAreas": "Alle Bereiche",
   "settings.level.expert": "Alle Einstellungen (für Fachleute)",
@@ -441,8 +432,6 @@ export const settingsDe: Record<keyof typeof settingsEn, string> = {
   "settings.area.ai.title": "KI-Assistent",
   "settings.area.ai.purpose":
     "Die KI schreibt im Chat, entwirft Workflows und fasst Ergebnisse zusammen. Hier legst du fest, welche KI das ist.",
-  "settings.area.costs.title": "Kosten & Budget",
-  "settings.area.costs.purpose": "Bestimme, wie viel die KI im Monat verbrauchen darf.",
   "settings.area.access.title": "Anmeldung & Zugriff",
   "settings.area.access.purpose":
     "Wer sich wie anmeldet und welche Apps auf SubKit zugreifen dürfen.",
@@ -459,7 +448,6 @@ export const settingsDe: Record<keyof typeof settingsEn, string> = {
   "settings.status.configured": "Eingerichtet",
   "settings.status.waiting": "Wartet auf dich",
   "settings.status.restart": "Wartet auf Neustart",
-  "settings.status.limit": "Limit erreicht",
   "settings.overview.ai.none":
     "Noch kein KI-Anbieter gewählt. Chat und Entwürfe funktionieren erst danach.",
   "settings.overview.ai.choose": "Anbieter wählen",
@@ -474,11 +462,6 @@ export const settingsDe: Record<keyof typeof settingsEn, string> = {
     "Nutzt {provider} mit dessen Standardmodell. Kein Ersatz, falls {provider} ausfällt.",
   "settings.overview.ai.defaultModelWithFallback":
     "Nutzt {provider} mit dessen Standardmodell. Fällt der Dienst aus, springt {fallbackProvider} ein.",
-  "settings.overview.costs.noLimit": "Kein Monatslimit. Die KI kann unbegrenzt Kosten verursachen.",
-  "settings.overview.costs.limit":
-    "Höchstens {amount} pro Monat. Diesen Monat verbraucht: {spent}.",
-  "settings.overview.costs.limitOnly": "Höchstens {amount} pro Monat.",
-  "settings.overview.costs.reached": "Limit erreicht. KI-Schritte pausieren bis zum {date}.",
   "settings.overview.access.methods": "Anmeldung mit {methods}.",
   "settings.overview.access.purpose":
     "Wer sich wie anmeldet und welche Apps auf SubKit zugreifen dürfen.",
@@ -503,10 +486,6 @@ export const settingsDe: Record<keyof typeof settingsEn, string> = {
   "settings.scope.global": "Für alle Arbeitsbereiche",
   "settings.scope.tenantHelp": "Andere Arbeitsbereiche behalten ihre Einstellung.",
   "settings.scope.globalHelp": "Gilt überall, wo kein Arbeitsbereich etwas Eigenes festgelegt hat.",
-  "settings.scope.costsTenant": "Limit nur für diesen Arbeitsbereich",
-  "settings.scope.costsGlobal": "Für alle Arbeitsbereiche (jeder einzeln)",
-  "settings.scope.costsGlobalHelp":
-    "Jeder Arbeitsbereich darf so viel verbrauchen, außer er hat ein eigenes Limit.",
   "settings.scope.ownValue":
     "Dieser Arbeitsbereich hat einen eigenen Wert. Der allgemeine Wert ({globalValue}) gilt hier nicht.",
   "settings.locked.environment": "Kommt aus der Server-Umgebung und lässt sich hier nicht ändern.",

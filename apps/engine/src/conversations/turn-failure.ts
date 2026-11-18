@@ -11,6 +11,7 @@ import { now } from "../utils/clock.ts";
 import { ConversationTurnInProgressError } from "./turns.ts";
 
 export type TurnFailureCode =
+  | "ai_access_missing"
   | "llm_tool_schema_invalid"
   | "hosted_storage_quota_exhausted"
   | "hosted_resource_count_exhausted"
@@ -132,7 +133,10 @@ export function describeTurnFailure(error: unknown, now: Date = new Date()): Tur
     };
   }
   const message = error instanceof Error ? error.message : String(error ?? "");
-  if (error instanceof LlmError && error.code === "llm_context_too_large")
+  if (
+    error instanceof LlmError &&
+    (error.code === "llm_context_too_large" || error.code === "ai_access_missing")
+  )
     return { code: error.code, message, at };
   if (error instanceof LlmError && error.code === "llm_quota_exhausted") {
     return { code: "llm_quota_exhausted", message, at };
@@ -148,6 +152,10 @@ const PROVIDER_FAILURE_NOTICES = {
     de: "Das eingestellte KI-Modell ist beim Anbieter nicht verfügbar, deshalb kam keine Antwort. Prüfe das Modell unter Einstellungen → KI & Kosten und sende deine Nachricht dann erneut.",
     en: "The configured AI model is not available at the provider, so no answer was produced. Check the model under Settings → AI & cost, then send your message again.",
   },
+  access: {
+    de: "Für diesen Arbeitsbereich ist noch kein KI-Zugang eingerichtet, deshalb kam keine Antwort. Trag unter Einstellungen → KI-Assistent deinen Anbieter und deinen API-Schlüssel ein und sende deine Nachricht dann erneut.",
+    en: "This workspace has no AI access yet, so no answer was produced. Enter your provider and API key under Settings → AI assistant, then send your message again.",
+  },
   provider: {
     de: "Der KI-Anbieter hat nicht geantwortet, deshalb kam keine Antwort. Prüfe Anbieter und Modell unter Einstellungen → KI & Kosten und sende deine Nachricht dann erneut.",
     en: "The AI provider did not answer, so no answer was produced. Check the provider and model under Settings → AI & cost, then send your message again.",
@@ -156,6 +164,7 @@ const PROVIDER_FAILURE_NOTICES = {
 
 export function providerFailureNotice(error: unknown, locale: "de" | "en"): string | null {
   const failure = describeTurnFailure(error);
+  if (failure.code === "ai_access_missing") return PROVIDER_FAILURE_NOTICES.access[locale];
   const message = error instanceof Error ? error.message : String(error ?? "");
   const status = (error as { statusCode?: unknown } | null)?.statusCode;
   const modelUnavailable = MODEL_UNAVAILABLE_RE.test(message) || status === 404;

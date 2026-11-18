@@ -146,9 +146,10 @@ Some settings are managed by the operator instead of by you.
 
 - **Your own AI access.** Every workspace brings its own AI provider and API key. See "Your AI access".
   The key is the only setting you change for your workspace; the operator sets all limits.
-- **Text models only without your own key.** A workspace that has no API key of its own uses the operator's allowance.
-  There, images, audio and other non-text input to the model are not supported.
-- **No native web search.** The model's built-in web search is not available.
+- **No AI without your own key.** A workspace that has no API key of its own cannot use the chat or run AI steps.
+  The operator's AI access is never used for your workspace.
+- **Built-in web search runs on your key.** With an Anthropic model, the assistant can use the model's built-in web search.
+  Anthropic bills each search to your account. The operator can turn this off for all workspaces.
 - **Public addresses only.** Connectors reach only services on the public internet.
   Addresses in a private network, such as `localhost` or an internal company server, are blocked.
 - **Slack and Google Chat are locked.** Chat workspaces on these platforms stay locked
@@ -170,7 +171,7 @@ When you reach one, SubKit shows a message. Most of these messages appear in Eng
 | "The monthly request allowance is exhausted." | The month's request allowance is used up. Wait for the next month or contact the operator. |
 | "The workspace storage allowance for files and saved content is exhausted. Retained content remains charged until physical cleanup succeeds." | Storage is full. Delete files and saved content you no longer need, or contact the operator. |
 | "The workspace resource limit is exhausted. Ask the engine operator to review retained resources." | Too many resources. Delete workflows or connectors you no longer need, or contact the operator. |
-| "This installation's monthly AI budget is used up." (in the chat) | Your workspace has no API key of its own and the operator's allowance is used up. Enter your own key under **Settings** > **AI assistant**. |
+| "This workspace has no AI access yet. Enter your provider and API key under Settings → AI assistant." (in the chat) | Your workspace has no API key of its own. Enter your provider and key under **Settings** > **AI assistant**. |
 
 ### If something does not work
 

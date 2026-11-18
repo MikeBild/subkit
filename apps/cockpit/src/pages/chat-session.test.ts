@@ -198,6 +198,13 @@ describe("failure cause", () => {
     expect(turnFailureCause({ code: "llm_quota_exhausted" })?.kind).toBe("tenant_budget_exhausted");
   });
 
+  test("a workspace without AI access is pointed to its AI settings", () => {
+    expect(turnFailureCause({ code: "ai_access_missing" })).toEqual({
+      kind: "ai_access_missing",
+      retryAt: null,
+    });
+  });
+
   test("an untyped failure has no named cause", () => {
     expect(turnFailureCause({ code: "internal" })).toBeNull();
     expect(turnFailureCause(null)).toBeNull();

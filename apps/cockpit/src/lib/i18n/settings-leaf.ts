@@ -23,10 +23,6 @@ export const settingsLeafEn = {
   "settings.leaf.database.statement_timeout_ms": "Database server statement deadline",
   "settings.leaf.database.idle_timeout_ms": "Unused database connection lifetime",
   "settings.leaf.database.keepalive_delay_ms": "Database keepalive delay",
-  "settings.leaf.llm.hosted.enabled": "Hosted paid AI service",
-  "settings.leaf.llm.hosted.tenant_monthly_microunits": "Monthly AI budget per hosted workspace",
-  "settings.leaf.llm.hosted.global_monthly_microunits": "Total monthly hosted AI budget",
-  "settings.leaf.llm.hosted.models": "Permitted hosted AI models",
   "settings.leaf.auth.hosted.enabled": "Hosted browser authentication",
   "settings.leaf.auth.hosted.registration_enabled": "Public hosted registration",
   "settings.leaf.auth.hosted.admission.tenant_creations_per_minute":
@@ -239,11 +235,6 @@ export const settingsLeafDe: Record<keyof typeof settingsLeafEn, string> = {
   "settings.leaf.database.statement_timeout_ms": "Zeitlimit für Datenbankanweisungen im Server",
   "settings.leaf.database.idle_timeout_ms": "Lebensdauer ungenutzter Datenbankverbindungen",
   "settings.leaf.database.keepalive_delay_ms": "Wartezeit für Datenbank-Keepalive",
-  "settings.leaf.llm.hosted.enabled": "Kostenpflichtiger Hosted-KI-Dienst",
-  "settings.leaf.llm.hosted.tenant_monthly_microunits":
-    "Monatliches KI-Budget pro Hosted-Arbeitsbereich",
-  "settings.leaf.llm.hosted.global_monthly_microunits": "Monatliches Hosted-KI-Gesamtbudget",
-  "settings.leaf.llm.hosted.models": "Erlaubte Hosted-KI-Modelle",
   "settings.leaf.auth.hosted.enabled": "Hosted-Browseranmeldung",
   "settings.leaf.auth.hosted.registration_enabled": "Öffentliche Hosted-Registrierung",
   "settings.leaf.auth.hosted.admission.tenant_creations_per_minute":

@@ -143,6 +143,7 @@ describe("the overview card of a hosted workspace's AI access", () => {
       <SettingsOverview
         cards={[{ id: "ai", sentence: "Anthropic · Schlüssel hinterlegt", status: null }]}
         expert={false}
+        usage={false}
         onNavigate={() => {}}
       />,
     );
@@ -163,6 +164,7 @@ describe("the overview card of a hosted workspace's AI access", () => {
           },
         ]}
         expert={false}
+        usage={false}
         onNavigate={() => {}}
       />,
     );

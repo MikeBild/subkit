@@ -13,15 +13,15 @@ export const readAiAccess: TenantReader = async (db, tenantId) => {
     .limit(1);
   if (tenant?.origin !== "self_service") return [];
   const access = workspaceAiAccess({ id: tenantId, origin: tenant.origin });
-  if (access.own_key) return [];
+  if (access.configured) return [];
   return [
     {
       source: "ai_access",
       item: {
         id: "ai-access",
-        class: access.configured ? "decide" : "stopped",
-        severity: access.configured ? "notice" : "critical",
-        kind: access.configured ? "operator_allowance" : "no_access",
+        class: "stopped",
+        severity: "critical",
+        kind: "no_access",
         subject: { kind: "settings", id: tenantId, name: "AI access" },
         reason: "ai_access_missing",
         trigger: null,
@@ -29,9 +29,7 @@ export const readAiAccess: TenantReader = async (db, tenantId) => {
         counts: {},
         since: null,
         deadline: null,
-        detail: access.configured
-          ? "This workspace has no API key of its own and uses the operator's allowance."
-          : "Without an API key, chat and workflows cannot work.",
+        detail: "Without an API key, chat and workflows cannot work.",
         actions: [
           {
             verb: "open",
