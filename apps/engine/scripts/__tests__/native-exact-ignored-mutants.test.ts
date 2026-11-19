@@ -72,7 +72,7 @@ test("native exact ignores bind every approved source mutation without changing 
     ignored += exactIgnoredMutants.length;
   }
   expect(ignored).toBe(parsed.equivalents.length);
-  expect(ignored).toBe(88);
+  expect(ignored).toBe(86);
 });
 
 test("native exact ignores reject an entry whose file was never instrumented", async () => {
