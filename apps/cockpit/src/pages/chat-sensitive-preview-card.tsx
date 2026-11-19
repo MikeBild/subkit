@@ -1,4 +1,4 @@
-import { CircleCheck, TriangleAlert } from "lucide-react";
+import { CircleCheck, TriangleExclamationPoint } from "lucide-react";
 import type { ReactNode } from "react";
 import { contextualHref } from "@/app/installation-context";
 import { absolute, workflowHref, workflowRunHref } from "@/app/links";
@@ -54,7 +54,7 @@ export function ChatCardTitle({ title, mention }: { title: string; mention: Reac
 }
 
 function CheckItem({ ok, children, testId }: { ok: boolean; children: string; testId: string }) {
-  const Icon = ok ? CircleCheck : TriangleAlert;
+  const Icon = ok ? CircleCheck : TriangleExclamationPoint;
   return (
     <li className="flex min-w-0 items-start gap-2" data-testid={testId} data-ok={ok}>
       <Icon

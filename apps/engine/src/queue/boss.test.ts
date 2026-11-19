@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { QueueResult } from "pg-boss";
+import type { ListOptions, QueueResult } from "pg-boss";
 import { ensureBossQueues } from "./boss.ts";
 import { QUEUE_NAMES } from "./queues.ts";
 
@@ -38,4 +38,27 @@ test("required queues accept a concurrent creator only after the queue is observ
   });
 
   await expect(ensureBossQueues(boss)).resolves.toBeUndefined();
+});
+
+test("queues beyond the first page of the inventory are not created again", async () => {
+  const names = [
+    ...Array.from({ length: 1000 }, (_, index) => `aaa.filler.${String(index).padStart(4, "0")}`),
+    ...QUEUE_NAMES,
+  ].sort();
+  const created: string[] = [];
+  const boss = {
+    getQueues: async (_names?: string[], options?: ListOptions): Promise<QueueResult[]> => {
+      const after = options?.after;
+      return names
+        .filter((name) => after === undefined || name > after)
+        .slice(0, options?.limit ?? 1000)
+        .map((name) => ({ name }) as QueueResult);
+    },
+    createQueue: async (name: string) => {
+      created.push(name);
+    },
+  };
+
+  await ensureBossQueues(boss);
+  expect(created.filter((name) => (QUEUE_NAMES as readonly string[]).includes(name))).toEqual([]);
 });

@@ -1,4 +1,4 @@
-import { ChevronRight, CircleCheck, TriangleAlert } from "lucide-react";
+import { ChevronRight, CircleCheck, TriangleExclamationPoint } from "lucide-react";
 import { useState } from "react";
 import { Button, ChatCard, Chip, StatusBadge } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
@@ -33,7 +33,7 @@ function FindingRow({
   const { t } = useI18n();
   const rowId = `${testId}-row-${index}`;
   const settled = state !== "open";
-  const Icon = state === "handed" ? CircleCheck : TriangleAlert;
+  const Icon = state === "handed" ? CircleCheck : TriangleExclamationPoint;
   return (
     <li
       className="flex min-w-0 flex-col gap-2 border-b py-2 last:border-b-0 sm:flex-row sm:items-start sm:justify-between sm:gap-3"

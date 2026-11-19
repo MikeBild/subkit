@@ -15,7 +15,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import webpush from "web-push";
+import * as webpush from "web-push";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import { liveBrowserSessionWhere } from "../auth/browser-session-validity.ts";

@@ -1,0 +1,21 @@
+diff --git a/lib/jsdom/living/xhr/XMLHttpRequest-impl.js b/lib/jsdom/living/xhr/XMLHttpRequest-impl.js
+index 13ef2b262390bb9c1e8fdb26309e127e66b494eb..996a58eb527ebae18fe258edf9e97ee47756865d 100644
+--- a/lib/jsdom/living/xhr/XMLHttpRequest-impl.js
++++ b/lib/jsdom/living/xhr/XMLHttpRequest-impl.js
+@@ -33,7 +33,15 @@ const { parseJSONFromBytes } = require("../helpers/json");
+ const { asciiCaseInsensitiveMatch } = require("../helpers/strings");
+ const { serializeEntryList } = require("./multipart-form-data");
+ 
+-const syncWorkerFile = require.resolve("./xhr-sync-worker.js");
++// Patched for Bun --compile compatibility (subkit): the upstream
++// `require.resolve(...)` returned the build machine's workspace path
++// baked into the binary at build time, crashing the boot chain because
++// the path doesn't exist on production hosts. The subkit engine only
++// exercises jsdom for static HTML parsing (readability,
++// html-to-markdown, structured-data) and never triggers sync XHR, so
++// we defer resolution and surface a clear failure if the path is ever
++// dereferenced via `new Worker(syncWorkerFile)`.
++const syncWorkerFile = "./xhr-sync-worker.js";
+ 
+ let syncWorker = null;
+ 

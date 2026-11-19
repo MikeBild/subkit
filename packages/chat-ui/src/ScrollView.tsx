@@ -1,6 +1,7 @@
 import { Box, Text, useInput, useStdout } from "ink";
 import type React from "react";
 import { Children, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { terminalSize } from "./platform.ts";
 import { useTheme } from "./theme/Provider.tsx";
 
 export interface ScrollViewProps {
@@ -28,7 +29,7 @@ export const ScrollView: React.FC<ScrollViewProps> = ({
 
   const [viewportRows, setViewportRows] = useState<number>(() => {
     if (height && height > 0) return height;
-    const rows = stdout?.rows ?? 24;
+    const rows = terminalSize(stdout).rows ?? 24;
     return Math.max(3, rows - reservedRows);
   });
 
@@ -38,7 +39,7 @@ export const ScrollView: React.FC<ScrollViewProps> = ({
       return;
     }
     const recompute = (): void => {
-      const rows = stdout?.rows ?? 24;
+      const rows = terminalSize(stdout).rows ?? 24;
       setViewportRows(Math.max(3, rows - reservedRows));
     };
     recompute();

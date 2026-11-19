@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { CircleAlert, MessageSquare, Workflow } from "lucide-react";
+import { CircleExclamationPoint, MessageSquare, Workflow } from "lucide-react";
 import type { ReactNode } from "react";
 import { apiCall } from "@/api/call";
 import { absolute, conversationHref, runHref, settingsHref, workflowHref } from "@/app/links";
@@ -483,7 +483,7 @@ function ModelSheet({ ctx, id }: { ctx: SheetContext; id: string }) {
             className="flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3 text-sm"
             data-testid="usage-model-unpriced"
           >
-            <CircleAlert aria-hidden="true" className="size-4 text-warning" />
+            <CircleExclamationPoint aria-hidden="true" className="size-4 text-warning" />
             <span className="min-w-0 flex-1">
               {t("usage.sheet.modelUnpriced", { count: ctx.format.count(group?.calls ?? 0) })}
             </span>

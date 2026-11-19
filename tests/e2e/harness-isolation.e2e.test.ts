@@ -37,7 +37,7 @@ describe("e2e harness isolation", () => {
     expect(server.listening).toBe(false);
   }, 30_000);
 
-  test("close() plus closeAllConnections() alone never completes with a stream open", async () => {
+  test("close() plus closeAllConnections() completes with a stream open on the pinned runtime", async () => {
     const { server, port } = await streamingServer();
     const sockets = trackConnections(server as unknown as Parameters<typeof trackConnections>[0]);
     const stream = new AbortController();
@@ -49,10 +49,10 @@ describe("e2e harness isolation", () => {
     server.closeAllConnections();
     const outcome = await Promise.race([
       closed,
-      // allow-wall-clock: proving a callback does NOT fire needs a bound.
+      // allow-wall-clock: proving a callback fires in time needs a bound.
       new Promise<"pending">((resolve) => setTimeout(() => resolve("pending"), 1_500)),
     ]);
-    expect(outcome).toBe("pending");
+    expect(outcome).toBe("closed");
 
     stream.abort();
     for (const socket of [...sockets]) socket.destroy();

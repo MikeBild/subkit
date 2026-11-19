@@ -1,8 +1,9 @@
-import type { FindJobsOptions, JobWithMetadata, Schedule } from "pg-boss";
+import type { FindJobsOptions, JobWithMetadata, ListOptions, Schedule } from "pg-boss";
+import { findAllJobs, listAllQueues } from "./list-all.ts";
 import { QUEUE_DEFINITIONS, QUEUE_NAMES } from "./queues.ts";
 
 export interface TenantErasureQueue {
-  getQueues(): Promise<Array<{ name: string }>>;
+  getQueues(names?: string[], options?: ListOptions): Promise<Array<{ name: string }>>;
   getSchedules(): Promise<Schedule[]>;
   findJobs<T>(name: string, options?: FindJobsOptions): Promise<Array<JobWithMetadata<T>>>;
   cancel(name: string, ids: string[]): Promise<unknown>;
@@ -52,12 +53,13 @@ export async function eraseTenantQueueJobs(boss: TenantErasureQueue, targets: Te
     const deadLetter = QUEUE_DEFINITIONS[name].queue.deadLetter;
     if (deadLetter) allowed.add(deadLetter);
   }
-  const inventory = await boss.getQueues();
+  const inventory = await listAllQueues(boss);
   const platformQueue = "__pgboss__send-it";
   if (inventory.some((queue) => !allowed.has(queue.name) && queue.name !== platformQueue))
     throw new Error("tenant_erasure_queue_unclassified");
-  const schedules = await boss.getSchedules();
-  if (schedules.length > 0) throw new Error("tenant_erasure_sdk_schedules_require_review");
+  const firstPageOfSchedules = await boss.getSchedules();
+  if (firstPageOfSchedules.length > 0)
+    throw new Error("tenant_erasure_sdk_schedules_require_review");
   if (
     inventory.some((queue) => queue.name === platformQueue) &&
     (await boss.findJobs(platformQueue)).length > 0
@@ -69,7 +71,7 @@ export async function eraseTenantQueueJobs(boss: TenantErasureQueue, targets: Te
   for (const queue of queues) {
     const jobs = new Map<string, JobWithMetadata<unknown>>();
     for (const selector of selectorsFor(queue.name, targets)) {
-      const candidates = await boss.findJobs<unknown>(queue.name, { data: selector });
+      const candidates = await findAllJobs<unknown>(boss, queue.name, { data: selector });
       for (const job of candidates) {
         if (!matches(job.data, selector)) throw new Error("tenant_erasure_queue_selector_mismatch");
         jobs.set(job.id, job);

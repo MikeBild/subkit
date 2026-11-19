@@ -4,6 +4,7 @@ import {
   HistorySearch,
   ScrollView,
   ThemeProvider,
+  terminalSize,
 } from "@chat-ui/index.ts";
 import type { SkSessionState, TurnEvent } from "@cli-core/index.ts";
 import { initialSessionState } from "@cli-core/index.ts";
@@ -110,8 +111,8 @@ export const InkApp: React.FC<InkAppProps> = ({
 }) => {
   const { exit } = useApp();
   const { stdout } = useStdout();
-  const columns = stdout?.columns ?? DEFAULT_RULE_WIDTH;
-  const rows = stdout?.rows ?? 30;
+  const columns = terminalSize(stdout).columns ?? DEFAULT_RULE_WIDTH;
+  const rows = terminalSize(stdout).rows ?? 30;
   const [session, setSession] = useState<SkSessionState>(
     () => initialSession ?? initialSessionState(initialConversationId ?? null),
   );

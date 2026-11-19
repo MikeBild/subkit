@@ -1,6 +1,6 @@
 import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ShieldAlert, ShieldCheck, UserCircle } from "lucide-react";
+import { ShieldCheck, ShieldExclamationPoint, UserCircle } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { apiCall } from "@/api/call";
@@ -276,7 +276,7 @@ export function ConnectorCredentials({
         {current && !lost ? (
           <ShieldCheck aria-hidden="true" className="size-4 text-emerald-600" />
         ) : (
-          <ShieldAlert aria-hidden="true" className="size-4 text-muted-foreground" />
+          <ShieldExclamationPoint aria-hidden="true" className="size-4 text-muted-foreground" />
         )}
         <span className="min-w-0 flex-1" data-testid="connector-credential-stored">
           {line}

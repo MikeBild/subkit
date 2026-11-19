@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, eq, inArray, isNull, type SQL, sql } from "drizzle-orm";
-import type webpush from "web-push";
+import type * as webpush from "web-push";
 import { z } from "zod";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";

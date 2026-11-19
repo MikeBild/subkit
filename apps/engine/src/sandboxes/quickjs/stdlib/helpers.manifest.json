@@ -1,34 +1,34 @@
 {
-  "sha256": "aad2d5996c9f817beff7f0caccbc76bcd2e29f2992c9a960b4b597c6160fc248",
-  "bytes": 1354492,
+  "sha256": "57d21f176bf6313e98e30692c153cbacb6341a5f26127c3403c677101daf88bd",
+  "bytes": 1359370,
   "bundles": {
     "money": {
-      "sha256": "361a052dc82dee20dd84cd41c25ce4d1dadd6ae00b3719bd3cc4ed87eae237ee",
-      "bytes": 7745
+      "sha256": "283a532261f3995a4cc2bdd0a72f550187f9a5529d4d30b16c1a88274f62d4ef",
+      "bytes": 7741
     },
     "csv": {
-      "sha256": "8f6b144d1b571f405eb83dfde6ec6c7906e4b14f9e1838a6a8721c9ae1031ead",
-      "bytes": 20573
+      "sha256": "ca63d1ea4e00254abd03c1692c8d4c33bf245220195cb9fde49c647c2a0fd26c",
+      "bytes": 20734
     },
     "date": {
-      "sha256": "b7e485357eb4f6a525474ec6d40caf4954d939cd4fbb09b4e404a374bef5dea9",
-      "bytes": 935565
+      "sha256": "3d524dad5a97293ddfb3ad303948fa1d7791761dc3622bbb80ee22a6b8f669d1",
+      "bytes": 938471
     },
     "schema": {
-      "sha256": "bcec59f0d076796dc8b8ea72af49f35e03389678a53618448b8cfce3e961e033",
-      "bytes": 124629
+      "sha256": "e96cf4d0b1229fd22349e0d5991ad754cd76e6e3654043e2a2137e4a5f63a0e3",
+      "bytes": 124906
     },
     "assert": {
-      "sha256": "8a2062af0d5e7f0ab329cb4fd3ead3a66c07a5146a352ade20345f6c63bfe2e4",
-      "bytes": 124700
+      "sha256": "4d5f1945e57fc28ece1855dbc55c43e44e8c0e43639a18b46a6bf49c70e53249",
+      "bytes": 124977
     },
     "url": {
-      "sha256": "074f406bd3825d39cf221d79cd43aa0d081aae74f63bd2961ee9d790cb8d5d4d",
-      "bytes": 49391
+      "sha256": "f5aa2306a7c347154461af89a42366d9dd5b3451d71f9b03fe5b216e7d692eb1",
+      "bytes": 49477
     },
     "xml": {
-      "sha256": "257186977a62e41be02c30727a4dc6cdf9335cd118f9a9c4e86a570346532bdd",
-      "bytes": 66999
+      "sha256": "f0be754da2ed58bd644b421b16dd758996ad20e74e4ba9784f6a22e04c5f0385",
+      "bytes": 68174
     },
     "template": {
       "sha256": "257e026919df26fd9524b2a3dd8fb83729a16c1cee5ae266989fd56f239344a0",
@@ -51,17 +51,17 @@
     },
     {
       "name": "papaparse",
-      "version": "5.7.0",
+      "version": "5.7.1",
       "license": "MIT"
     },
     {
       "name": "@js-joda/core",
-      "version": "6.3.0",
+      "version": "6.3.2",
       "license": "BSD-3-Clause"
     },
     {
       "name": "@js-joda/timezone",
-      "version": "3.1.0",
+      "version": "3.2.1",
       "license": "BSD-3-Clause"
     },
     {
@@ -71,12 +71,12 @@
     },
     {
       "name": "core-js-pure",
-      "version": "3.50.0",
+      "version": "3.51.0",
       "license": "MIT"
     },
     {
       "name": "fast-xml-parser",
-      "version": "5.11.2",
+      "version": "5.12.1",
       "license": "MIT"
     }
   ],
@@ -84,8 +84,8 @@
     "//! @copyright (c) 2007-present, Stephen Colebourne & Michael Nascimento Santos",
     "//! @copyright (c) 2015-present, Philipp Thürwächter, Pattrick Hüper & js-joda contributors",
     "//! @license BSD-3-Clause (see LICENSE in the root directory of this source tree)",
-    "//! @version @js-joda/core - 6.3.0",
-    "//! @version @js-joda/timezone - 3.1.0-2026e"
+    "//! @version @js-joda/core - 6.3.2",
+    "//! @version @js-joda/timezone - 3.2.1-2026f"
   ],
   "js_joda_license": "BSD License\n\nFor js-joda software\n\nCopyright (c) 2016, Philipp Thürwächter & Pattrick Hüper\n \nAll rights reserved.\n \nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n \n * Redistributions of source code must retain the above copyright notice,\n   this list of conditions and the following disclaimer.\n \n * Redistributions in binary form must reproduce the above copyright notice,\n   this list of conditions and the following disclaimer in the documentation\n   and/or other materials provided with the distribution.\n \n * Neither the name of js-joda nor the names of its contributors\n   may be used to endorse or promote products derived from this software\n   without specific prior written permission.\n \nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS\n\"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT\nLIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR\nA PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR\nCONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,\nEXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,\nPROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR\nPROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF\nLIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING\nNEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\nSOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\n",
   "timezone_data": "embedded full IANA dataset from the pinned timezone package",

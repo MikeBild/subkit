@@ -8,6 +8,7 @@ import {
   runtimeDiagnosticsEnabled,
 } from "../observability/runtime-diagnostics.ts";
 import { queueErrorFields } from "./error-fields.ts";
+import { listAllQueues } from "./list-all.ts";
 import { QUEUE_DEFINITIONS, QUEUE_NAMES, type QueueName } from "./queues.ts";
 
 const ownedBossSchemas = new WeakMap<PgBoss, string>();
@@ -60,7 +61,7 @@ const QUEUE_DEPTH_POLL_INTERVAL_MS = 15_000;
 
 async function pollQueueDepths(boss: PgBoss): Promise<void> {
   try {
-    const queues = (await boss.getQueues()) as QueueResult[];
+    const queues = await listAllQueues(boss);
     for (const q of queues) {
       setQueueDepth(q.name, q.queuedCount ?? 0);
       if (q.name.endsWith(".dlq")) {
@@ -113,7 +114,7 @@ export async function ensureBossQueues(
   onPhase: (phase: string) => void = () => {},
 ): Promise<void> {
   onPhase("discover_queues");
-  const existing = new Set((await boss.getQueues()).map((q: QueueResult) => q.name));
+  const existing = new Set((await listAllQueues(boss)).map((q: QueueResult) => q.name));
   const deadLetters = new Set<string>();
   for (const name of QUEUE_NAMES) {
     const dl = QUEUE_DEFINITIONS[name as QueueName].queue.deadLetter;
@@ -121,7 +122,7 @@ export async function ensureBossQueues(
   }
   const confirmQueue = async (name: string, originalError: unknown): Promise<void> => {
     onPhase("confirm_queue");
-    const queues = await boss.getQueues();
+    const queues = await listAllQueues(boss);
     if (!queues.some((queue: QueueResult) => queue.name === name)) throw originalError;
     existing.add(name);
   };

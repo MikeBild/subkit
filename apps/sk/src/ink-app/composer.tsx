@@ -1,4 +1,4 @@
-import { useTheme } from "@chat-ui/index.ts";
+import { terminalSize, useTheme } from "@chat-ui/index.ts";
 import { Box, Text, useStdout } from "ink";
 import type React from "react";
 import { memo, useEffect, useMemo, useState } from "react";
@@ -18,7 +18,7 @@ interface ComposerProps {
 export const Composer: React.FC<ComposerProps> = memo(({ input, busy, placeholder }) => {
   const theme = useTheme();
   const { stdout } = useStdout();
-  const columns = stdout?.columns ?? DEFAULT_RULE_WIDTH;
+  const columns = terminalSize(stdout).columns ?? DEFAULT_RULE_WIDTH;
   const [cursorOn, setCursorOn] = useState(true);
   const [tick, setTick] = useState(0);
   useEffect(() => {

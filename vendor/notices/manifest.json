@@ -13,12 +13,12 @@
   },
   {
     "name": "drizzle-orm",
-    "version": "0.45.2",
+    "version": "0.45.4",
     "files": [
       {
         "path": "drizzle-orm__tag-license.txt",
         "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
-        "source": "https://github.com/drizzle-team/drizzle-orm/blob/273c78071d4841b497f5144734b38294df7ec64b/LICENSE"
+        "source": "https://github.com/drizzle-team/drizzle-orm/blob/eab8bedbb65d5429c54e612ddbd88aa23091d398/LICENSE"
       }
     ],
     "qualification": "Version-bound notice source; legal distribution approval remains separate."
@@ -107,12 +107,12 @@
   },
   {
     "name": "react-devtools-core",
-    "version": "7.0.1",
+    "version": "8.0.0",
     "files": [
       {
         "path": "react-devtools-core__LICENSE.txt",
         "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
-        "source": "https://github.com/react/react/blob/3cde211b0cb1c707114c27d7fd23683d02086e31/LICENSE"
+        "source": "https://github.com/react/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/LICENSE"
       }
     ],
     "qualification": "Version-bound notice source; legal distribution approval remains separate."
@@ -179,7 +179,7 @@
   },
   {
     "name": "http_ece",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "qualification": "The package ships no license text. Canonical MIT text from the SPDX License List with the holder named by the package.json author field (Martin Thomson); the declared license is MIT. Legal distribution approval remains separate.",
     "files": [
       {
@@ -198,6 +198,18 @@
         "path": "node-html-markdown__MIT.txt",
         "source": "https://spdx.org/licenses/MIT.html",
         "sha256": "27daa01303d1a69d6291734968254cb04b5f8e891c2de04b2ae4de628cf61ac0"
+      }
+    ]
+  },
+  {
+    "name": "proxy-agent-negotiate",
+    "version": "1.1.0",
+    "qualification": "The package ships no license text. Canonical MIT text from the SPDX License List with the holder named by the package.json author field (Nathan Rajlich); the declared license is MIT. Legal distribution approval remains separate.",
+    "files": [
+      {
+        "path": "proxy-agent-negotiate__MIT.txt",
+        "source": "https://spdx.org/licenses/MIT.html",
+        "sha256": "c3d55e4fbbc7aecbaa96db09ea27247813c7bbd683d9ed4686613db743338afa"
       }
     ]
   },
@@ -273,28 +285,16 @@
     ]
   },
   {
-    "name": "dompurify",
-    "version": "3.4.13",
-    "license": "Apache-2.0",
-    "qualification": "Dual-licensed (MPL-2.0 OR Apache-2.0); SubKit elects Apache-2.0. Legal distribution approval remains separate."
-  },
-  {
     "name": "jszip",
-    "version": "3.10.1",
+    "version": "3.10.2",
     "license": "MIT",
     "qualification": "Dual-licensed (MIT OR GPL-3.0-or-later); SubKit elects MIT. Legal distribution approval remains separate."
   },
   {
-    "name": "qrcode-terminal",
-    "version": "0.12.0",
-    "license": "Apache-2.0",
-    "qualification": "package.json declares the legacy licenses entry \"Apache 2.0\"; normalized to the SPDX identifier Apache-2.0. Legal distribution approval remains separate."
-  },
-  {
     "name": "web-push",
-    "version": "3.6.7",
+    "version": "4.0.0",
     "license": "MPL-2.0",
-    "statement": "Covered Software under the Mozilla Public License 2.0, distributed unmodified. Source Code Form: https://registry.npmjs.org/web-push/-/web-push-3.6.7.tgz (npm package web-push@3.6.7) and https://github.com/web-push-libs/web-push.",
+    "statement": "Covered Software under the Mozilla Public License 2.0, distributed unmodified. Source Code Form: https://registry.npmjs.org/web-push/-/web-push-4.0.0.tgz (npm package web-push@4.0.0) and https://github.com/web-push-libs/web-push.",
     "qualification": "MPL-2.0 source availability for the unmodified upstream package. Legal distribution approval remains separate."
   }
 ]

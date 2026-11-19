@@ -5,7 +5,7 @@ import {
   type LucideIcon,
   PenLine,
   Trash2,
-  TriangleAlert,
+  TriangleExclamationPoint,
 } from "lucide-react";
 import { chipClass, RowsSkeleton } from "@/components/cockpit/patterns";
 import { ServiceIcon } from "@/components/cockpit/service-icon";
@@ -239,7 +239,7 @@ export function GrantEffectReview({
           data-testid="authority-review-problems"
         >
           <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
-            <TriangleAlert aria-hidden="true" className="size-4 shrink-0" />
+            <TriangleExclamationPoint aria-hidden="true" className="size-4 shrink-0" />
             {t("authority.review.problem")}
           </summary>
           <ul className="flex flex-col gap-1 pb-3 pl-6">

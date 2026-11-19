@@ -413,7 +413,7 @@ async function executeS3Operation(ctx: {
           credential_id,
         };
       }
-      let data: string | Uint8Array | ReadableStream<Uint8Array>;
+      let data: string | Uint8Array<ArrayBuffer> | ReadableStream<Uint8Array>;
       let streamedBody = false;
       if (
         p.body !== null &&
@@ -449,7 +449,7 @@ async function executeS3Operation(ctx: {
           typeof syncBody === "string"
             ? syncBody
             : syncBody instanceof Uint8Array
-              ? syncBody
+              ? (syncBody as Uint8Array<ArrayBuffer>)
               : new Uint8Array(syncBody);
       }
       const putOpts: Record<string, unknown> = {};

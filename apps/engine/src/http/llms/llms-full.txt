@@ -318,7 +318,7 @@ The dump, object archive and `.env` contain sensitive data.
    Check the exit status before you continue. Keep the engine stopped until both data stores are backed up.
 3. Stop the object store with `docker compose stop object-store`. Find its exact volume
    using `docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}' "$(docker compose ps -aq object-store)"`.
-   Archive it read-only with `docker run --rm --network none -v <object-volume>:/data:ro --entrypoint tar oven/bun:1.4.0-debian -C /data -cf - . > /path/to/backup/objects.tar`.
+   Archive it read-only with `docker run --rm --network none -v <object-volume>:/data:ro --entrypoint tar oven/bun:1.4.5-debian -C /data -cf - . > /path/to/backup/objects.tar`.
    Replace `<object-volume>` with that inspected name, not a guessed one.
 4. Check that each command succeeded. Set all backup files to mode `0600` and record
    their SHA-256 checksums. Restart the original installation with `docker compose up -d --wait`.
@@ -343,7 +343,7 @@ networks:
 1. Create fresh storage with `docker compose -p subkit-recovery create postgres object-store`.
    Inspect the new object-store container's `/data` volume as above, using the recovery
    project. Restore only into that new volume:
-   `docker run --rm -i --network none -v <new-object-volume>:/data --entrypoint tar oven/bun:1.4.0-debian -C /data -xf - < /path/to/backup/objects.tar`.
+   `docker run --rm -i --network none -v <new-object-volume>:/data --entrypoint tar oven/bun:1.4.5-debian -C /data -xf - < /path/to/backup/objects.tar`.
 2. Start the new database with `docker compose -p subkit-recovery up -d --wait postgres`.
    Restore it with `docker compose -p subkit-recovery exec -T postgres pg_restore --exit-on-error --clean --if-exists --no-owner -U subkit -d subkit < /path/to/backup/postgres.dump`.
    This command replaces database contents. Use it only against the new recovery project.

@@ -49,6 +49,7 @@ export { Code, type CodeProps } from "./markdown/Code.tsx";
 export { Table, type TableColumn, type TableProps } from "./markdown/Table.tsx";
 export { Pane, type PaneProps } from "./Pane.tsx";
 export type { Platform, PlatformImage } from "./platform.ts";
+export { terminalSize } from "./platform.ts";
 export { ScrollView, type ScrollViewProps } from "./ScrollView.tsx";
 export { StatusPane, type StatusPaneProps, type StatusPaneRow } from "./StatusPane.tsx";
 export { ThemeProvider, useTheme, useThemeControl } from "./theme/Provider.tsx";

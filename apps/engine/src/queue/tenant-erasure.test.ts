@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { FindJobsOptions, JobWithMetadata } from "pg-boss";
+import type { FindJobsOptions, JobWithMetadata, ListOptions } from "pg-boss";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { eraseTenantQueueJobs, type TenantErasureQueue } from "./tenant-erasure.ts";
 
@@ -127,4 +127,101 @@ test("existing SDK cron schedules and forwarding jobs require operator drain", a
     "tenant_erasure_sdk_forwarding_requires_drain",
   );
   expect(calls).toBe(1);
+});
+
+function pageLikePgBoss<Row>(
+  rows: Row[],
+  cursor: (row: Row) => string,
+  options?: ListOptions,
+): Row[] {
+  const after = options?.after;
+  const start = after === undefined ? 0 : rows.findIndex((row) => cursor(row) === after) + 1;
+  if (after !== undefined && start === 0)
+    throw new Error("after names a row that no longer exists");
+  return rows.slice(start, start + (options?.limit ?? 1000));
+}
+
+test("erasure removes tenant jobs beyond the first page of a queue", async () => {
+  const target = uuid();
+  const foreign = uuid();
+  let jobs = Array.from({ length: 2500 }, (_, index) => ({
+    id: `job-${index}`,
+    state: "created",
+    data: { tenant_id: index === 1700 ? foreign : target },
+  }));
+  const deleted: number[] = [];
+  const boss: TenantErasureQueue = {
+    async getQueues(_names, options) {
+      return pageLikePgBoss([{ name: "execution.run" }], (queue) => queue.name, options);
+    },
+    async getSchedules() {
+      return [];
+    },
+    async findJobs<T>(_name: string, options?: FindJobsOptions) {
+      const tenant = (options?.data as { tenant_id?: string } | undefined)?.tenant_id;
+      return pageLikePgBoss(
+        jobs.filter((job) => job.data.tenant_id === tenant),
+        (job) => job.id,
+        options,
+      ) as JobWithMetadata<T>[];
+    },
+    async cancel() {
+      throw new Error("not active");
+    },
+    async deleteJob(_name, ids) {
+      deleted.push(ids.length);
+      jobs = jobs.filter((job) => !ids.includes(job.id));
+    },
+    async unschedule() {},
+  };
+  expect(
+    await eraseTenantQueueJobs(boss, { tenant_id: target, event_ids: [], workspaces: [] }),
+  ).toEqual({ jobs: 2499, schedules: 0 });
+  expect(deleted).toEqual([2499]);
+  expect(jobs.map((job) => job.id)).toEqual(["job-1700"]);
+});
+
+test("an active tenant job beyond the first page is cancelled before anything is deleted", async () => {
+  const target = uuid();
+  const jobs = Array.from({ length: 1200 }, (_, index) => ({
+    id: `job-${index}`,
+    state: index === 1100 ? "active" : "created",
+    data: { tenant_id: target },
+  }));
+  const cancelled: string[] = [];
+  const boss: TenantErasureQueue = {
+    async getQueues(_names, options) {
+      return pageLikePgBoss([{ name: "execution.run" }], (queue) => queue.name, options);
+    },
+    async getSchedules() {
+      return [];
+    },
+    async findJobs<T>(_name: string, options?: FindJobsOptions) {
+      return pageLikePgBoss(jobs, (job) => job.id, options) as JobWithMetadata<T>[];
+    },
+    async cancel(_name, ids) {
+      cancelled.push(...ids);
+    },
+    async deleteJob() {
+      throw new Error("must not delete while a job is active");
+    },
+    async unschedule() {},
+  };
+  await expect(
+    eraseTenantQueueJobs(boss, { tenant_id: target, event_ids: [], workspaces: [] }),
+  ).rejects.toThrow("tenant_erasure_queue_drain_required");
+  expect(cancelled).toEqual(["job-1100"]);
+});
+
+test("an unclassified queue beyond the first page of queues still fails closed", async () => {
+  const boss = {
+    async getQueues(_names?: string[], options?: ListOptions) {
+      return options?.after === undefined
+        ? Array.from({ length: options?.limit ?? 1000 }, () => ({ name: "execution.run" }))
+        : [{ name: "unclassified.work" }];
+    },
+  } as unknown as TenantErasureQueue;
+  await expect(
+    eraseTenantQueueJobs(boss, { tenant_id: uuid(), event_ids: [], workspaces: [] }),
+  ).rejects.toThrow("tenant_erasure_queue_unclassified");
 });

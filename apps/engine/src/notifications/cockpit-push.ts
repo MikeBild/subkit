@@ -1,4 +1,4 @@
-import type webpush from "web-push";
+import type * as webpush from "web-push";
 import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import {

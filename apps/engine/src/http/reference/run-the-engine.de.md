@@ -111,7 +111,7 @@ Dump, Objektarchiv und `.env` enthalten sensible Daten.
    Prüfe den Exit-Status, bevor du weitermachst. Lass die Engine gestoppt, bis beide Datenspeicher gesichert sind.
 3. Stoppe den Objektspeicher mit `docker compose stop object-store`. Ermittle sein genaues Volume
    mit `docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}' "$(docker compose ps -aq object-store)"`.
-   Archiviere es schreibgeschützt mit `docker run --rm --network none -v <object-volume>:/data:ro --entrypoint tar oven/bun:1.4.0-debian -C /data -cf - . > /path/to/backup/objects.tar`.
+   Archiviere es schreibgeschützt mit `docker run --rm --network none -v <object-volume>:/data:ro --entrypoint tar oven/bun:1.4.5-debian -C /data -cf - . > /path/to/backup/objects.tar`.
    Ersetze `<object-volume>` durch den ermittelten Namen, nicht durch einen geratenen.
 4. Prüfe, dass jeder Befehl erfolgreich war. Setze alle Backup-Dateien auf den Modus `0600` und halte
    ihre SHA-256-Prüfsummen fest. Starte die ursprüngliche Installation mit `docker compose up -d --wait` neu.
@@ -136,7 +136,7 @@ networks:
 1. Lege neuen Speicher mit `docker compose -p subkit-recovery create postgres object-store` an.
    Ermittle das `/data`-Volume des neuen Objektspeicher-Containers wie oben, mit dem Wiederherstellungsprojekt.
    Stelle nur in dieses neue Volume wieder her:
-   `docker run --rm -i --network none -v <new-object-volume>:/data --entrypoint tar oven/bun:1.4.0-debian -C /data -xf - < /path/to/backup/objects.tar`.
+   `docker run --rm -i --network none -v <new-object-volume>:/data --entrypoint tar oven/bun:1.4.5-debian -C /data -xf - < /path/to/backup/objects.tar`.
 2. Starte die neue Datenbank mit `docker compose -p subkit-recovery up -d --wait postgres`.
    Stelle sie mit `docker compose -p subkit-recovery exec -T postgres pg_restore --exit-on-error --clean --if-exists --no-owner -U subkit -d subkit < /path/to/backup/postgres.dump` wieder her.
    Dieser Befehl ersetzt Datenbankinhalte. Verwende ihn nur gegen das neue Wiederherstellungsprojekt.

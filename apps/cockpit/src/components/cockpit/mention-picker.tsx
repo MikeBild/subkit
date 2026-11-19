@@ -1,7 +1,7 @@
 import {
   BookOpen,
   Cable,
-  CircleAlert,
+  CircleExclamationPoint,
   FileText,
   Inbox,
   Layers,
@@ -434,7 +434,7 @@ export function MentionChips({
             data-testid={`${testIdPrefix}-chip-${index++}`}
           >
             {missing ? (
-              <CircleAlert aria-hidden="true" />
+              <CircleExclamationPoint aria-hidden="true" />
             ) : (
               <MentionIcon type={reference.type} id={reference.id} className="size-3" />
             )}

@@ -1,5 +1,5 @@
 import type { ErrorComponentProps } from "@tanstack/react-router";
-import { Lock, RouteOff, TriangleAlert } from "lucide-react";
+import { Lock, RouteOff, TriangleExclamationPoint } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 import { absolute } from "@/app/links";
 import { FAMILY_UI_VERSION, FamilyFailureState } from "@/components/family-ui";
@@ -114,7 +114,7 @@ export function RouteErrorPage({ reset }: ErrorComponentProps) {
       kind="fatal-error"
       title={t("familyFailure.fatal.title")}
       description={t("familyFailure.fatal.description")}
-      icon={<TriangleAlert className="size-5" />}
+      icon={<TriangleExclamationPoint className="size-5" />}
       primaryAction={
         <Button type="button" onClick={reset} data-testid="fatal-error-retry">
           {t("familyFailure.retry")}
@@ -139,7 +139,7 @@ export function BootstrapErrorPage({ onRetry }: { onRetry: () => void }) {
       standalone
       title={t("familyFailure.unreachable.title")}
       description={t("familyFailure.bootstrap.description")}
-      icon={<TriangleAlert className="size-5" />}
+      icon={<TriangleExclamationPoint className="size-5" />}
       primaryAction={
         <Button type="button" onClick={onRetry} data-testid="session-retry">
           {t("familyFailure.retry")}

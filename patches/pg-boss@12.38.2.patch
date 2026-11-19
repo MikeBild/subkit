@@ -1,8 +1,8 @@
 diff --git a/dist/plans.js b/dist/plans.js
-index efe48f464bd9e02de1b0a27eadba45482565a35a..356172dd29c7eff06be866bbe0343bb0fd02a5b3 100644
+index b398dab90aa050bf49c1ce59bc7b397570457052..ac0ab099a27bb3025c73c349af0a69a415b6878b 100644
 --- a/dist/plans.js
 +++ b/dist/plans.js
-@@ -4337,7 +4337,7 @@ export function getNextBamCommand(schema, { useLiveness = false } = {}) {
+@@ -4854,7 +4854,7 @@ export function getNextBamCommand(schema, { useLiveness = false, pendingOnly = f
      WHERE l.locktype = 'relation'
        AND l.granted
        AND l.mode = 'ShareUpdateExclusiveLock'

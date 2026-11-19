@@ -14,3 +14,11 @@ export interface PlatformImage {
   width?: number;
   height?: number;
 }
+
+export function terminalSize(stream: NodeJS.WritableStream | undefined): {
+  columns: number | undefined;
+  rows: number | undefined;
+} {
+  const tty = stream as Partial<Pick<NodeJS.WriteStream, "columns" | "rows">> | undefined;
+  return { columns: tty?.columns, rows: tty?.rows };
+}

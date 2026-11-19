@@ -5,6 +5,7 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { executions } from "../db/schema/index.ts";
 import { logger } from "../logging/index.ts";
+import { findAllJobs } from "../queue/list-all.ts";
 import { EXECUTION_RUN_QUEUE } from "../queue/queues.ts";
 import { verifySignalToken } from "../workflow-signals/token.ts";
 import { cancel as abortCancel } from "./abort.ts";
@@ -23,7 +24,7 @@ async function cancelQueuedJobs(boss: PgBoss | undefined, execution_id: string):
   try {
     const { getBoss } = await import("../queue/boss.ts");
     const queue = boss ?? getBoss();
-    const jobs = await queue.findJobs<{ execution_id: string }>(EXECUTION_RUN_QUEUE, {
+    const jobs = await findAllJobs<{ execution_id: string }>(queue, EXECUTION_RUN_QUEUE, {
       data: { execution_id },
     });
     if (jobs.length > 0) {

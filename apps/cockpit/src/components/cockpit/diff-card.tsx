@@ -1,4 +1,4 @@
-import { CircleAlert, CircleCheck } from "lucide-react";
+import { CircleCheck, CircleExclamationPoint } from "lucide-react";
 import type { PatchCandidateDryRun } from "@/api/decisions";
 import { Section } from "@/components/cockpit/patterns";
 import { Badge } from "@/components/ui/badge";
@@ -252,7 +252,7 @@ export function DiffCard({
                 {dryRun.ok ? (
                   <CircleCheck aria-hidden="true" className="size-4 shrink-0" />
                 ) : (
-                  <CircleAlert aria-hidden="true" className="size-4 shrink-0" />
+                  <CircleExclamationPoint aria-hidden="true" className="size-4 shrink-0" />
                 )}
                 {dryRun.ok ? t("diff.checkPassed") : (dryRun.error ?? t("diff.checkFailed"))}
               </p>

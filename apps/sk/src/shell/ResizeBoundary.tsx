@@ -1,4 +1,4 @@
-import { useTheme } from "@chat-ui/index.ts";
+import { terminalSize, useTheme } from "@chat-ui/index.ts";
 import { Box, Text, useStdout } from "ink";
 import { useEffect, useState } from "react";
 
@@ -27,7 +27,10 @@ export function ResizeBoundary({
   const { stdout } = useStdout();
   const [, bump] = useState(0);
   const [size, setSize] = useState(() =>
-    sanitizeSize({ cols: stdout?.columns, rows: stdout?.rows }, { cols: 80, rows: 24 }),
+    sanitizeSize(
+      { cols: terminalSize(stdout).columns, rows: terminalSize(stdout).rows },
+      { cols: 80, rows: 24 },
+    ),
   );
 
   useEffect(() => {
@@ -36,7 +39,8 @@ export function ResizeBoundary({
     const onResize = (): void => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        setSize(sanitizeSize({ cols: stdout.columns, rows: stdout.rows }, { cols: 80, rows: 24 }));
+        const { columns, rows } = terminalSize(stdout);
+        setSize(sanitizeSize({ cols: columns, rows }, { cols: 80, rows: 24 }));
         bump((n) => n + 1);
       }, debounceMs);
     };

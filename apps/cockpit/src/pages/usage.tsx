@@ -1,7 +1,14 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useRouterState } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
-import { CircleAlert, Download, Gauge, MessageSquare, TrendingUp, Users } from "lucide-react";
+import {
+  CircleExclamationPoint,
+  Download,
+  Gauge,
+  MessageSquare,
+  TrendingUp,
+  Users,
+} from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { apiCall } from "@/api/call";
 import { ApiError } from "@/api/client";
@@ -726,7 +733,7 @@ export function UsagePage() {
     ) : hint.kind === "personShare" ? (
       <Users />
     ) : (
-      <CircleAlert />
+      <CircleExclamationPoint />
     );
   const hintAction = (hint: UsageHint): ReactNode => {
     const action = (label: string, onClick: () => void) => (
