@@ -15,19 +15,35 @@ Du meldest dich im Browser an und arbeitest im Cockpit deines Arbeitsbereichs.
 
 ### Was du brauchst
 
-- Eine Einladung von einer Administratorin oder einem Administrator des Arbeitsbereichs. Eine öffentliche Registrierung gibt es nicht.
+- Ein Konto bei Upraft Auth, dem Anmeldedienst der Plattform, auf der SubKit Cloud läuft. Während der Beta vergibt der Betreiber diese Konten auf Einladung.
+- Einen Einladungslink zu einem bestehenden Arbeitsbereich oder einen API-Schlüssel deines KI-Anbieters, um einen eigenen Arbeitsbereich anzulegen.
 - Die Adresse `https://subkit-cloud.mikebild.dev`. Die Adresse führt dich direkt ins Cockpit.
 
 ### Zugang erhalten
 
-Eine Administratorin oder ein Administrator lädt dich unter **Personen & Rechte** > **Person einladen** ein.
-Anmeldung, Einladungen und Passwort-E-Mails laufen über Upraft Auth, den Anmeldedienst der Plattform, auf der SubKit Cloud läuft.
+Es gibt zwei Wege in SubKit Cloud: Du trittst einem Arbeitsbereich bei, in den dich jemand eingeladen hat, oder du legst einen eigenen an.
 
-1. Öffne die E-Mail von „Upraft Auth“.
-2. Wähle den Link und lege ein Passwort fest.
-3. Melde dich an, wie unter „Anmelden“ beschrieben.
+#### Einem Arbeitsbereich beitreten
 
-Nutze dieselbe E-Mail-Adresse, an die die Einladung ging. Mit einer anderen Adresse klappt es nicht.
+Eine Administratorin oder ein Administrator lädt dich unter **Personen & Rechte** > **Person einladen** ein und gibt dir den Einladungslink weiter.
+SubKit verschickt keine E-Mail.
+
+1. Öffne den Einladungslink.
+2. Wähle **Anmelden und beitreten**.
+3. Melde dich bei Upraft Auth mit der E-Mail-Adresse an, für die die Einladung gilt.
+4. Prüfe deinen Namen und wähle **Beitreten**.
+
+Der Link funktioniert nur einmal, nur für diese Adresse und bis zu dem Datum, das die Seite zeigt.
+Funktioniert er nicht mehr, bitte die Person, die dich eingeladen hat, um einen neuen.
+
+#### Einen eigenen Arbeitsbereich anlegen
+
+Hast du ein Konto, aber noch keinen Arbeitsbereich, zeigt SubKit nach der ersten Anmeldung eine Willkommensseite.
+
+1. Melde dich an, wie unter „Anmelden“ beschrieben.
+2. Gib deinen Namen, einen Namen für deinen Arbeitsbereich und deine Zeitzone an.
+3. Wähle deinen KI-Anbieter und gib deinen API-Schlüssel ein, wie unter „Dein KI-Zugang“ beschrieben.
+4. Wähle **Loslegen**.
 
 ### Anmelden
 
@@ -177,7 +193,7 @@ Erreichst du eines, zeigt SubKit eine Meldung. Die meisten dieser Meldungen ersc
 
 | Was du siehst | Was du tust |
 | --- | --- |
-| Der Einladungslink oder die Anmeldung funktioniert nicht | Nutze die E-Mail-Adresse, an die die Einladung ging. |
+| Der Einladungslink oder die Anmeldung funktioniert nicht | Melde dich mit der E-Mail-Adresse an, für die die Einladung gilt. Ist der Link abgelaufen oder schon benutzt, bitte um einen neuen. |
 | Du hast dein Passwort vergessen | Upraft Auth schickt dir eine E-Mail, mit der du es zurücksetzt. |
 | Du willst ein anderes Konto nutzen | Folge „Konto wechseln“. |
 | Du wirst unerwartet abgemeldet | Deine Sitzung ist nach 8 Stunden Inaktivität oder 24 Stunden abgelaufen. Melde dich erneut an. |

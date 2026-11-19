@@ -15,19 +15,35 @@ You sign in from the browser and work in the Cockpit of your workspace.
 
 ### What you need
 
-- An invitation from a workspace administrator. There is no public sign-up.
+- An account at Upraft Auth, the sign-in service of the platform SubKit Cloud runs on. During the beta, the operator gives out these accounts by invitation.
+- An invitation link to an existing workspace, or an API key from your AI provider to start a workspace of your own.
 - The address `https://subkit-cloud.mikebild.dev`. It takes you straight to the Cockpit.
 
 ### Get access
 
-An administrator invites you from **People & access** > **Invite person**.
-Sign-in, invitations and password emails go through Upraft Auth, the sign-in service of the platform SubKit Cloud runs on.
+There are two ways into SubKit Cloud: you join a workspace someone invited you to, or you start your own.
 
-1. Open the email from "Upraft Auth".
-2. Select the link and set a password.
-3. Sign in as described in "Sign in".
+#### Join a workspace
 
-Use the email address the invitation was sent to. A different address does not work.
+An administrator invites you from **People & access** > **Invite person** and passes the invitation link on to you.
+SubKit does not send an email.
+
+1. Open the invitation link.
+2. Select **Sign in and join**.
+3. Sign in at Upraft Auth with the email address the invitation is for.
+4. Check your name and select **Join**.
+
+The link works only once, only for this address and until the date shown on the page.
+If it no longer works, ask the person who invited you for a new one.
+
+#### Start your own workspace
+
+If you have an account but no workspace yet, SubKit shows a welcome page after your first sign-in.
+
+1. Sign in as described in "Sign in".
+2. Enter your name, a name for your workspace and your time zone.
+3. Choose your AI provider and enter your API key, as described in "Your AI access".
+4. Select **Get started**.
 
 ### Sign in
 
@@ -177,7 +193,7 @@ When you reach one, SubKit shows a message. Most of these messages appear in Eng
 
 | What you see | What to do |
 | --- | --- |
-| The invitation link or sign-in does not work | Use the email address the invitation was sent to. |
+| The invitation link or sign-in does not work | Sign in with the email address the invitation is for. If the link has expired or was already used, ask for a new one. |
 | You forgot your password | Upraft Auth sends you an email to reset it. |
 | You want to use a different account | Follow "Switch accounts". |
 | You are signed out unexpectedly | Your session ended after 8 hours of inactivity or 24 hours. Sign in again. |
