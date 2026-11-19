@@ -212,19 +212,8 @@ stateDiagram-v2
 </table>
 
 <p align="center">
-  <sub>Counted in release 10.23.0. The thresholds are in <a href="stryker.config.json"><code>stryker.config.json</code></a> and <a href="apps/engine/.coverage-floor.json"><code>apps/engine/.coverage-floor.json</code></a>. They are test requirements, not a guarantee.</sub>
+  <sub>Counted on November 19, 2026. The thresholds are in <a href="stryker.config.json"><code>stryker.config.json</code></a> and <a href="apps/engine/.coverage-floor.json"><code>apps/engine/.coverage-floor.json</code></a>. They are test requirements, not a guarantee.</sub>
 </p>
-
-<br />
-
-<p align="center">
-  <img src=".github/readme/heading-queue-dark.webp#gh-dark-mode-only" alt="Next in the queue" width="100%" />
-  <img src=".github/readme/heading-queue.webp#gh-light-mode-only" alt="Next in the queue" width="100%" />
-</p>
-
-- **Public signed releases.** Install the engine and `sk` straight from the releases of this repository.
-- **Open sign-up for SubKit Cloud.** Today the cloud is a beta by invitation.
-- **The Web Clipper in the Chrome Web Store.** Today you install it with `sk clipper install`.
 
 <br />
 
@@ -277,7 +266,7 @@ No. You can design, approve and run workflows in the Cockpit. If you prefer file
 <summary><strong>Is it ready for my team?</strong></summary>
 <br />
 
-You can run your own engine today with Docker Compose. [SubKit Cloud](https://subkit.mikebild.dev/en/documentation/subkit-cloud/) is a hosted beta by invitation. The Web Clipper works in Chrome only.
+SubKit is in beta. [SubKit Cloud](https://subkit.mikebild.dev/en/documentation/subkit-cloud/) is hosted and by invitation, and the self-hosting package follows with the public beta. The Web Clipper works in Chrome only.
 
 </details>
 
@@ -290,62 +279,16 @@ You can run your own engine today with Docker Compose. [SubKit Cloud](https://su
   <img src=".github/readme/heading-run.webp#gh-light-mode-only" alt="Run SubKit" width="100%" />
 </p>
 
-<p align="center">Use SubKit Cloud, or run the engine on your own server.<br />Either way, your first workflow takes a few minutes.</p>
+<p align="center">Use SubKit Cloud, or run the engine on your own server.</p>
 
-**SubKit Cloud.** A hosted beta by invitation. [Ask for an invitation](https://subkit.mikebild.dev/en/contact/), then sign in from the browser.
+<table>
+  <tr>
+    <td width="50%" valign="top"><strong>SubKit Cloud</strong><br />SubKit runs for you, and you sign in from the browser. The cloud is a hosted beta by invitation.<br /><br /><a href="https://subkit.mikebild.dev/en/contact/">Ask for an invitation</a></td>
+    <td width="50%" valign="top"><strong>Your own engine</strong><br />SubKit is built to run on your own server: the engine with the Cockpit, a PostgreSQL database and an object store, started with Docker Compose. The self-hosting package follows with the public beta.<br /><br /><a href="https://subkit.mikebild.dev/en/documentation/run-the-engine/">How self-hosting works</a></td>
+  </tr>
+</table>
 
-**Your own engine.** You need Docker with Compose, OpenSSL and a POSIX shell. Put the `docker-compose.yml` of a release in its own directory, then:
-
-```bash
-# 1. Create the installation secrets once
-(
-  set -eu
-  umask 077
-  set -C
-  install_master_key=$(openssl rand -hex 32)
-  install_database_password=$(openssl rand -hex 32)
-  printf 'MASTER_KEY=%s\nSUBKIT_DB_PASSWORD=%s\n' \
-    "$install_master_key" "$install_database_password" > .env
-)
-
-# 2. Start the engine, the database and the object store
-docker compose pull && docker compose up -d --wait
-curl -fsS http://localhost:3000/health
-
-# 3. Create the admin account and connect your model provider
-docker compose exec engine sk init \
-  --token "$(docker compose logs engine 2>&1 | grep -oE 'sk init --token [a-f0-9]{64}' | tail -1 | cut -d' ' -f4)" \
-  --admin-email you@example.com \
-  --tenant-name "My Org" \
-  --llm-provider anthropic \
-  --llm-api-key <your-provider-key>
-```
-
-Open the Cockpit at `http://localhost:3000/cockpit` and build [your first workflow](https://subkit.mikebild.dev/en/documentation/first-workflow/).
-
-<details>
-<summary><strong>Install the <code>sk</code> CLI</strong></summary>
-<br />
-
-The engine serves its own CLI, so both always match:
-
-```bash
-curl -fsSL http://localhost:3000/install | bash
-sk login --engine-url http://localhost:3000
-sk workflows run <slug> --follow
-```
-
-`sk --help` lists every command. `sk agent init` connects Claude Code and Codex to your engine.
-
-</details>
-
-<details>
-<summary><strong>Connect an AI client over MCP</strong></summary>
-<br />
-
-The engine is an MCP server at `http://localhost:3000/mcp`. Sign in from the client in the browser, or use an API key. Approved workflows appear as tools, next to connectors, knowledge and skills. [Connect AI clients](https://subkit.mikebild.dev/en/documentation/mcp-clients/) has the steps for each client.
-
-</details>
+<p align="center">Then connect the tools you already use: the <code>sk</code> CLI in the terminal,<br />and AI clients such as Claude Code and Codex over MCP.</p>
 
 <details>
 <summary><strong>Develop from source</strong></summary>
@@ -357,7 +300,6 @@ Install the Bun version from [`.bun-version`](.bun-version) and Docker. Then run
 git clone https://github.com/MikeBild/subkit.git
 cd subkit
 bun install --frozen-lockfile
-bun run start:local   # engine, database and a starter workflow
 bun run verify        # the full local release gate
 ```
 
