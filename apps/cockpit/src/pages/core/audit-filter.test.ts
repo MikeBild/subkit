@@ -75,6 +75,7 @@ test("audit filter distinguishes an implicit default window from linked and expl
   const defaultFilter = initialAuditFilter("", now);
   expect(auditCountKey("", defaultFilter, 1, false)).toBe("audit.countWindow.one");
   expect(auditCountKey("", defaultFilter, 2, true)).toBe("audit.countWindowMore");
+  expect(auditCountKey("", defaultFilter, 2, false)).toBe("audit.countWindow");
   const explicit = auditFilterFromUrl("?ts_from=2026-11-01T00:00:00Z");
   expect(auditCountKey("?ts_from=2026-11-01T00:00:00Z", explicit, 1, false)).toBe(
     "audit.count.one",

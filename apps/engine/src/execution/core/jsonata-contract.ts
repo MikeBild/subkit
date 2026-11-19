@@ -299,14 +299,8 @@ export function parseDeps(source: string): ExprDeps {
 }
 
 export function extractAst(source: string): unknown | null {
-  let expr: Expression;
   try {
-    expr = compile(source);
-  } catch {
-    return null;
-  }
-  try {
-    return expr.ast();
+    return compile(source).ast();
   } catch {
     return null;
   }

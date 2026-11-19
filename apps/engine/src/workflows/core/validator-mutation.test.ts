@@ -155,4 +155,24 @@ describe("validator mutation boundaries", () => {
     });
     expect(unknown.errors.some((error) => error.path === "steps.request.url")).toBe(true);
   });
+
+  test("a valid definition with a placeholder destination is rejected and lists the destination", () => {
+    const result = validateWorkflowDef(
+      {
+        name: "placeholder destination",
+        steps: [{ ...request, method: "POST", body: { to: "REPLACE_ME" } }],
+      },
+      { destinationTier: "all" },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.placeholder_destinations?.length).toBeGreaterThan(0);
+    expect(result.errors.length).toBeGreaterThan(0);
+
+    const clean = validateWorkflowDef(
+      { name: "clean destination", steps: [request] },
+      { destinationTier: "tokens" },
+    );
+    expect(clean.ok).toBe(true);
+    expect(clean.placeholder_destinations).toEqual([]);
+  });
 });
