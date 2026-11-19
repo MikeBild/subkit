@@ -47,7 +47,7 @@ describe("journey: sk-cli admin golden path", () => {
         api_key: ctx.apiKey,
         active_tenant_id: ctx.tenantId,
       },
-      prompt: "list users from the JSONPlaceholder connector",
+      prompt: "check the JSONPlaceholder connector for me",
       output: "json",
       noMemory: true,
       stdout: { write: (s) => stdoutBuf.push(s) },

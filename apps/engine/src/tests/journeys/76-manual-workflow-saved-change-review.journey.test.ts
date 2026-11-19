@@ -64,7 +64,7 @@ async function chatTurn(tool: string, args: Record<string, unknown>): Promise<Tu
   getMockProvider().setConversePlan(conversationId, [{ tool, args }]);
   const turn = await journeyFetch(ctx, `/v1/conversations/${conversationId}/messages`, {
     method: "POST",
-    body: JSON.stringify({ message: "Run my workflow" }),
+    body: JSON.stringify({ message: "Help me with my workflow" }),
   });
   expect([200, 202]).toContain(turn.status);
   return ((await turn.json()) as { events: TurnEvent[] }).events;

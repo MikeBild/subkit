@@ -252,7 +252,7 @@ describe("workflow save regressions", () => {
         tenant_id: ctx.tenant_id,
         conversation_id: conversation.id,
         actor_id: ctx.user_id,
-        message: "yes",
+        message: "go ahead with your plan",
         permission_mode: "auto",
       },
       ctx.testDb.db,
