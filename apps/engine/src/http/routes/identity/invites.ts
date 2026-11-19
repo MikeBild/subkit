@@ -8,6 +8,7 @@ import {
   revokeInviteOperation,
 } from "../../../api/operations/identity-users.ts";
 import { browserSessionForPrincipal, createOidcProvider } from "../../../auth/index.ts";
+import { getConfig } from "../../../config/loader.ts";
 import * as identity from "../../../identity/index.ts";
 import { now } from "../../../utils/clock.ts";
 import { ForbiddenError } from "../../errors.ts";
@@ -109,29 +110,23 @@ const INVITE_PREVIEW_MESSAGES: Record<string, string> = {
   invite_credential_only: "This invitation is meant for the sk command line, not for the browser.",
 };
 
+const InviteLoginStarted = z.object({ authorization_url: z.url() }).openapi("InviteLoginStarted");
+
 const inviteLoginRoute = createRoute({
   method: "post",
   path: "/v1/identity/invites/login",
   tags: ["identity"],
   summary: "Start a verified hosted identity login for a membership invitation",
   description:
-    "The invite secret stays in the request body. OIDC state stores only its validated invitation id; no session is issued until the verified identity matches the invited address. A browser submits this as an HTML form and is sent back to /cockpit/invite?error=<code> when the invitation or provider is unavailable; a JSON caller receives the 403 body.",
-  request: {
-    body: {
-      content: {
-        "application/json": { schema: InviteLoginBody },
-        "application/x-www-form-urlencoded": { schema: InviteLoginBody },
-      },
-    },
-  },
+    "The invite secret stays in the request body. OIDC state stores only its validated invitation id; no session is issued until the verified identity matches the invited address. The caller navigates to authorization_url itself, so the page's form-action policy never has to name the identity provider.",
+  request: { body: { content: { "application/json": { schema: InviteLoginBody } } } },
   responses: {
-    302: {
-      description:
-        "Redirect to the configured OIDC provider, or for a form submission that cannot proceed back to /cockpit/invite?error=<code>",
-      headers: { Location: { schema: { type: "string" } } },
+    200: {
+      description: "Where to send the browser to sign in",
+      content: { "application/json": { schema: InviteLoginStarted } },
     },
     403: {
-      description: "Invitation or hosted provider unavailable",
+      description: "Invitation or hosted provider unavailable, or a cross-site caller",
       content: { "application/json": { schema: ErrorSchema } },
     },
   },
@@ -221,20 +216,19 @@ export function registerInviteRoutes(app: OpenAPIHono<AppEnv>): void {
   });
 
   app.openapi(inviteLoginRoute, async (c) => {
-    const form = !(c.req.header("content-type") ?? "").toLowerCase().includes("application/json");
-    const input = form ? c.req.valid("form") : c.req.valid("json");
-    const refuse = (code: string): Response => {
-      if (!form) throw new ForbiddenError(code);
-      return new Response(null, {
-        status: 302,
-        headers: {
-          location: `${identity.INVITE_PAGE_PATH}?error=${encodeURIComponent(code)}`,
-          "cache-control": "no-store",
-        },
-      });
-    };
+    if (c.req.header("sec-fetch-site") === "cross-site")
+      throw new ForbiddenError("invite_login_origin_rejected");
+    const origin = c.req.header("origin");
+    if (
+      origin &&
+      origin !== new URL(c.req.url).origin &&
+      origin !== new URL(getConfig().server.public_base_url).origin
+    )
+      throw new ForbiddenError("invite_login_origin_rejected");
+    const input = c.req.valid("json");
     const provider = hostedIdentityProviders().find((entry) => entry.id === input.provider_id);
-    if (!provider) return refuse("hosted_provider_required");
+    if (!provider) throw new ForbiddenError("hosted_provider_required");
+    let response: Response | undefined;
     try {
       const target = await identity.membershipInviteLoginTarget(input.token, c.get("db"));
       const adapter = createOidcProvider({
@@ -244,17 +238,21 @@ export function registerInviteRoutes(app: OpenAPIHono<AppEnv>): void {
       });
       const start = new URL("/v1/identity/login/start", c.req.url);
       start.searchParams.set("redirect_to", `${identity.INVITE_PAGE_PATH}?joined=1`);
-      const response = await adapter.startLogin?.(new Request(start));
-      if (response?.status !== 302) return refuse("hosted_provider_unavailable");
-      return response;
+      response = await adapter.startLogin?.(new Request(start));
     } catch (error) {
       if (
         error instanceof identity.MembershipInviteError ||
         error instanceof identity.SelfServiceIdentityError
       )
-        return refuse(error.code);
+        throw new ForbiddenError(error.code);
       throw error;
     }
+    const authorizationUrl = response?.status === 302 ? response.headers.get("location") : null;
+    if (!response || !authorizationUrl) throw new ForbiddenError("hosted_provider_unavailable");
+    for (const cookie of response.headers.getSetCookie())
+      c.header("set-cookie", cookie, { append: true });
+    c.header("cache-control", "no-store");
+    return c.json({ authorization_url: authorizationUrl }, 200);
   });
 
   app.openapi(claimInviteRoute, async (c) => {

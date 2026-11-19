@@ -5196,7 +5196,7 @@ export interface paths {
         put?: never;
         /**
          * Start a verified hosted identity login for a membership invitation
-         * @description The invite secret stays in the request body. OIDC state stores only its validated invitation id; no session is issued until the verified identity matches the invited address. A browser submits this as an HTML form and is sent back to /cockpit/invite?error=<code> when the invitation or provider is unavailable; a JSON caller receives the 403 body.
+         * @description The invite secret stays in the request body. OIDC state stores only its validated invitation id; no session is issued until the verified identity matches the invited address. The caller navigates to authorization_url itself, so the page's form-action policy never has to name the identity provider.
          */
         post: {
             parameters: {
@@ -5208,19 +5208,19 @@ export interface paths {
             requestBody?: {
                 content: {
                     "application/json": components["schemas"]["InviteLoginBody"];
-                    "application/x-www-form-urlencoded": components["schemas"]["InviteLoginBody"];
                 };
             };
             responses: {
-                /** @description Redirect to the configured OIDC provider, or for a form submission that cannot proceed back to /cockpit/invite?error=<code> */
-                302: {
+                /** @description Where to send the browser to sign in */
+                200: {
                     headers: {
-                        Location?: string;
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["InviteLoginStarted"];
+                    };
                 };
-                /** @description Invitation or hosted provider unavailable */
+                /** @description Invitation or hosted provider unavailable, or a cross-site caller */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -23907,6 +23907,10 @@ export interface components {
         };
         RedeemInviteBody: {
             token: string;
+        };
+        InviteLoginStarted: {
+            /** Format: uri */
+            authorization_url: string;
         };
         InviteLoginBody: {
             token: string;

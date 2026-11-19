@@ -61,25 +61,15 @@ async function inviteInto(owner: Session, email: string) {
   };
 }
 
-async function inviteSignIn(
-  token: string,
-  claims: { sub: string; email: string },
-  encoding: "form" | "json" = "form",
-) {
+async function inviteSignIn(token: string, claims: { sub: string; email: string }) {
   const start = await fetch(`${ctx.baseUrl}/v1/identity/invites/login`, {
     method: "POST",
-    headers: {
-      "content-type":
-        encoding === "form" ? "application/x-www-form-urlencoded" : "application/json",
-    },
-    body:
-      encoding === "form"
-        ? new URLSearchParams({ token, provider_id: providerId })
-        : JSON.stringify({ token, provider_id: providerId }),
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token, provider_id: providerId }),
     redirect: "manual",
   });
-  expect(start.status).toBe(302);
-  const location = start.headers.get("location") ?? "";
+  expect(start.status).toBe(200);
+  const location = ((await start.json()) as { authorization_url: string }).authorization_url;
   expect(location).not.toContain(token);
   const authUrl = new URL(location);
   const issued = mock.issueFor(
@@ -406,11 +396,10 @@ describe("invitations into a hosted workspace complete in the browser", () => {
     const owner = await login("mismatch-owner");
     const invited = await inviteInto(owner, "mismatch-invited@example.test");
     const tenantsBefore = (await ctx.db.select({ id: tenants.id }).from(tenants)).length;
-    const finished = await inviteSignIn(
-      invited.invite.plaintext_token,
-      { sub: "mismatch-stranger", email: "mismatch-stranger@example.test" },
-      "json",
-    );
+    const finished = await inviteSignIn(invited.invite.plaintext_token, {
+      sub: "mismatch-stranger",
+      email: "mismatch-stranger@example.test",
+    });
     expect(finished.status).toBe(302);
     expect(finished.headers.get("location")).toBe("/cockpit/invite?error=identity_mismatch");
     expect(responseCookie(finished, "subkit_session")).toBeNull();
@@ -444,14 +433,6 @@ describe("invitations into a hosted workspace complete in the browser", () => {
       .set({ revoked_at: new Date(0) })
       .where(eq(userInvites.id, revoked.invite.id));
     for (const token of [expired.invite.plaintext_token, revoked.invite.plaintext_token]) {
-      const form = await fetch(`${ctx.baseUrl}/v1/identity/invites/login`, {
-        method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ token, provider_id: providerId }),
-        redirect: "manual",
-      });
-      expect(form.status).toBe(302);
-      expect(form.headers.get("location")).toBe("/cockpit/invite?error=invite_unavailable");
       const json = await fetch(`${ctx.baseUrl}/v1/identity/invites/login`, {
         method: "POST",
         headers: { "content-type": "application/json" },

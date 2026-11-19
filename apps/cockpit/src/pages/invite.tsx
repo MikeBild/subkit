@@ -2,7 +2,6 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useId, useState } from "react";
 import { apiCall } from "@/api/call";
 import { ApiError, bootstrap } from "@/api/client";
-import { cockpitApiHref } from "@/app/installation-context";
 import { absolute } from "@/app/links";
 import { loginHref } from "@/app/session";
 import {
@@ -19,7 +18,13 @@ import {
 import { nameFromEmail } from "@/lib/display-name";
 import { formatDate } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { type InvitePreview, inviteToken, inviteView, joinCommand } from "./invite-model";
+import {
+  INVITE_PAGE,
+  type InvitePreview,
+  inviteToken,
+  inviteView,
+  joinCommand,
+} from "./invite-model";
 import { NAME_MAX } from "./welcome-model";
 
 function signInHref(): string {
@@ -160,6 +165,19 @@ export function InvitePage() {
 export function InviteOpen({ preview, token }: { preview: InvitePreview; token: string }) {
   const { t, locale } = useI18n();
   const single = preview.providers.length === 1;
+  const signIn = useMutation({
+    mutationFn: (providerId: string) =>
+      apiCall("post", "/v1/identity/invites/login", {
+        body: { token, provider_id: providerId },
+      }),
+    onSuccess: (result) => window.location.assign(result.authorization_url),
+    onError: (error) =>
+      window.location.replace(
+        `${absolute(INVITE_PAGE)}?error=${encodeURIComponent(
+          error instanceof ApiError ? error.message : "invite_unavailable",
+        )}${window.location.hash}`,
+      ),
+  });
   return (
     <StandalonePage
       title={t("invite.open.title")}
@@ -171,23 +189,18 @@ export function InviteOpen({ preview, token }: { preview: InvitePreview; token: 
             })
           : t("invite.open.bodyAnonymous", { workspace: preview.workspace_name })
       }
+      busy={signIn.isPending}
       testId="invite-open"
     >
-      <form
-        method="post"
-        action={cockpitApiHref("/v1/identity/invites/login")}
-        className="flex flex-col gap-3"
-        data-testid="invite-sign-in-form"
-      >
-        <input type="hidden" name="token" value={token} />
+      <div className="flex flex-col gap-3" data-testid="invite-sign-in">
         {preview.providers.map((provider, index) => (
           <Button
             key={provider.id}
-            type="submit"
-            name="provider_id"
-            value={provider.id}
+            type="button"
             variant={index === 0 ? "default" : "outline"}
             className="w-full sm:w-auto sm:self-start"
+            disabled={signIn.isPending || signIn.isSuccess}
+            onClick={() => signIn.mutate(provider.id)}
             data-testid={`invite-provider-${index}`}
           >
             {single
@@ -201,7 +214,7 @@ export function InviteOpen({ preview, token }: { preview: InvitePreview; token: 
             date: formatDate(locale, preview.expires_at),
           })}
         </p>
-      </form>
+      </div>
     </StandalonePage>
   );
 }

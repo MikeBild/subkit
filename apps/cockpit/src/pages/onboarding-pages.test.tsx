@@ -25,7 +25,7 @@ const pending = {
 };
 
 describe("the standalone frame", () => {
-  test("has one h1, the wordmark and a language switch, and no shell", () => {
+  test("has one h1 and the wordmark, follows the browser language without a switch, and no shell", () => {
     const html = render(
       <StandalonePage title="Willkommen bei SubKit" lead="Drei Angaben." testId="page">
         <span data-x="body" />
@@ -33,8 +33,7 @@ describe("the standalone frame", () => {
     );
     expect(count(html, /<h1[\s>]/g)).toBe(1);
     expect(html).toContain(">SubKit<");
-    expect(html).toContain('data-testid="standalone-language-de"');
-    expect(html).toContain('data-testid="standalone-language-en"');
+    expect(html).not.toContain("standalone-language");
     expect(html).toContain("max-w-[480px]");
     expect(html).not.toContain('data-testid="cockpit-sidebar"');
   });
@@ -152,7 +151,7 @@ describe("an open invitation", () => {
   };
 
   test("says who invited into which workspace and offers one filled action", () => {
-    const html = render(<InviteOpen preview={preview} token="skinv_0123456789abcdef" />);
+    const html = withQueries(<InviteOpen preview={preview} token="skinv_0123456789abcdef" />);
     expect(count(html, /<h1[\s>]/g)).toBe(1);
     expect(html).toContain("Du bist eingeladen");
     expect(html).toContain(
@@ -163,28 +162,23 @@ describe("an open invitation", () => {
     expect(html).toContain(">Anmelden und beitreten<");
   });
 
-  test("signs in with a real form post, the token in the body and never in the address", () => {
-    const html = render(<InviteOpen preview={preview} token="skinv_0123456789abcdef" />);
-    const form = html.match(/<form[^>]*>/)?.[0] ?? "";
-    expect(form).toContain('method="post"');
-    expect(form).toContain('action="/v1/identity/invites/login"');
-    expect(html).toContain('<input type="hidden" name="token" value="skinv_0123456789abcdef"/>');
+  test("offers a plain button and keeps the token out of the markup, so no form posts across origins", () => {
+    const html = withQueries(<InviteOpen preview={preview} token="skinv_0123456789abcdef" />);
+    expect(html).not.toContain("<form");
+    expect(html).not.toContain("skinv_0123456789abcdef");
     const button = html.match(/<button[^>]*data-testid="invite-provider-0"[^>]*>/)?.[0] ?? "";
-    expect(button).toContain('type="submit"');
-    expect(button).toContain('name="provider_id"');
-    expect(button).toContain('value="workforce"');
-    expect(html).not.toMatch(/action="[^"]*skinv_/);
+    expect(button).toContain('type="button"');
   });
 
   test("without an inviter name the sentence stays whole", () => {
-    const html = render(
+    const html = withQueries(
       <InviteOpen preview={{ ...preview, invited_by_name: null }} token="skinv_0123456789abcdef" />,
     );
     expect(html).toContain("Du wurdest in den Arbeitsbereich „Albrecht &amp; Partner“ eingeladen.");
   });
 
   test("several sign-in providers are named, only the first is filled", () => {
-    const html = render(
+    const html = withQueries(
       <InviteOpen
         preview={{
           ...preview,
@@ -199,10 +193,9 @@ describe("an open invitation", () => {
     expect(html).toContain(">Mit Workforce anmelden<");
     expect(html).toContain(">Mit Google anmelden<");
     expect(filled(html)).toBe(1);
-    expect(count(html, /<button[^>]*data-variant="outline"[^>]*name="provider_id"/g)).toBe(1);
-    expect(html.match(/<button[^>]*data-testid="invite-provider-1"[^>]*>/)?.[0]).toContain(
-      'value="google"',
-    );
+    expect(
+      count(html, /<button[^>]*data-variant="outline"[^>]*data-testid="invite-provider-1"/g),
+    ).toBe(1);
   });
 });
 

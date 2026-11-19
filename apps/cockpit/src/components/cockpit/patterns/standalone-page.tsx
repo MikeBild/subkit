@@ -1,9 +1,7 @@
 import { Workflow } from "lucide-react";
 import type { ReactNode } from "react";
 import { FAMILY_UI_VERSION } from "@/components/family-ui";
-import { LOCALES } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { SegmentedControl } from "./segmented-control";
 
 export function StandalonePage({
   title,
@@ -18,7 +16,7 @@ export function StandalonePage({
   testId: string;
   children?: ReactNode;
 }) {
-  const { t, locale, setPreference } = useI18n();
+  const { t } = useI18n();
   return (
     <main
       className="min-h-full bg-background px-4 py-6 sm:px-6 sm:py-10"
@@ -29,7 +27,7 @@ export function StandalonePage({
       aria-busy={busy || undefined}
     >
       <div className="mx-auto flex w-full max-w-[480px] flex-col gap-10">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
           <span className="flex min-w-0 items-center gap-2" data-testid="standalone-wordmark">
             <span
               aria-hidden="true"
@@ -39,19 +37,6 @@ export function StandalonePage({
             </span>
             <span className="truncate text-sm font-semibold">{t("app.name")}</span>
           </span>
-          <SegmentedControl
-            label={t("account.language")}
-            value={locale}
-            onValueChange={(next) => {
-              const chosen = LOCALES.find((candidate) => candidate === next);
-              if (chosen) setPreference(chosen);
-            }}
-            testId="standalone-language"
-            options={[
-              { value: "de", label: t("language.native.de"), testId: "standalone-language-de" },
-              { value: "en", label: t("language.native.en"), testId: "standalone-language-en" },
-            ]}
-          />
         </div>
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-2">

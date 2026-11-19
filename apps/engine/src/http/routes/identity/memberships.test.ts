@@ -118,9 +118,8 @@ describe("hosted browser identity and memberships", () => {
         body: JSON.stringify({ token: invitation.plaintext, provider_id: providerId }),
         redirect: "manual",
       });
-      expect(start.status).toBe(302);
-      const location = start.headers.get("location");
-      if (!location) throw new Error("invite redirect missing");
+      expect(start.status).toBe(200);
+      const location = ((await start.json()) as { authorization_url: string }).authorization_url;
       expect(location).not.toContain(invitation.plaintext);
       const authUrl = new URL(location);
       const state = authUrl.searchParams.get("state");

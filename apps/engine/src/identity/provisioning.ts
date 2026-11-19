@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import type { PrincipalKind } from "../auth/types.ts";
@@ -6,6 +6,10 @@ import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Executor } from "../db/client.ts";
 import {
   apiKeys,
+  chatIdentities,
+  groupMembers,
+  groups,
+  resourceGrants,
   sessions,
   tenants,
   userIdentities,
@@ -56,34 +60,81 @@ interface CreateUserInput {
   actor_kind?: PrincipalKind | "system";
 }
 
+async function restoreRemovedUserWithoutFormerAccess(
+  tx: Executor,
+  removed: typeof users.$inferSelect,
+  next: { display_name: string | null; role_id: string; status: UserStatus },
+) {
+  const owned = { tenant_id: removed.tenant_id, user_id: removed.id };
+  await tx
+    .delete(userIdentities)
+    .where(
+      and(eq(userIdentities.tenant_id, owned.tenant_id), eq(userIdentities.user_id, owned.user_id)),
+    );
+  await tx
+    .delete(chatIdentities)
+    .where(
+      and(eq(chatIdentities.tenant_id, owned.tenant_id), eq(chatIdentities.user_id, owned.user_id)),
+    );
+  await tx
+    .delete(groupMembers)
+    .where(
+      and(
+        eq(groupMembers.user_id, owned.user_id),
+        inArray(
+          groupMembers.group_id,
+          tx.select({ id: groups.id }).from(groups).where(eq(groups.tenant_id, owned.tenant_id)),
+        ),
+      ),
+    );
+  await tx
+    .delete(resourceGrants)
+    .where(
+      and(
+        eq(resourceGrants.tenant_id, owned.tenant_id),
+        eq(resourceGrants.subject_type, "user"),
+        eq(resourceGrants.subject_id, owned.user_id),
+      ),
+    );
+  const [row] = await tx
+    .update(users)
+    .set({
+      ...next,
+      auth_identity_id: null,
+      start_steps_hidden_at: null,
+      deleted_at: null,
+      updated_at: new Date(now()),
+    })
+    .where(and(eq(users.tenant_id, owned.tenant_id), eq(users.id, owned.user_id)))
+    .returning();
+  return row;
+}
+
 export async function createUser(input: CreateUserInput, db: Executor) {
   return db.transaction(async (tx) => {
-    const existing = await tx
-      .select({ id: users.id })
+    const [existing] = await tx
+      .select()
       .from(users)
-      .where(
-        and(
-          eq(users.tenant_id, input.tenant_id),
-          eq(users.email, input.email),
-          isNull(users.deleted_at),
-        ),
-      )
+      .where(and(eq(users.tenant_id, input.tenant_id), eq(users.email, input.email)))
+      .for("update")
       .limit(1);
-    if (existing.length > 0) throw new DuplicateUserError(input.email);
+    if (existing && existing.deleted_at === null) throw new DuplicateUserError(input.email);
 
-    const roleId = input.role_id ?? (await builtinRoleId(tx, input.role ?? "member"));
-
-    const [row] = await tx
-      .insert(users)
-      .values({
-        tenant_id: input.tenant_id,
-        email: input.email,
-        display_name: input.display_name ?? null,
-        role_id: roleId,
-        status: input.status ?? "active",
-      })
-      .returning();
-    assertInsertRow(row, "users");
+    const next = {
+      display_name: input.display_name ?? null,
+      role_id: input.role_id ?? (await builtinRoleId(tx, input.role ?? "member")),
+      status: input.status ?? ("active" as const),
+    };
+    const row = existing
+      ? await restoreRemovedUserWithoutFormerAccess(tx, existing, next)
+      : (
+          await tx
+            .insert(users)
+            .values({ tenant_id: input.tenant_id, email: input.email, ...next })
+            .onConflictDoNothing({ target: [users.tenant_id, users.email] })
+            .returning()
+        )[0];
+    if (!row) throw new DuplicateUserError(input.email);
     await auditAwait(
       {
         tenant_id: input.tenant_id,
@@ -97,6 +148,7 @@ export async function createUser(input: CreateUserInput, db: Executor) {
           display_name: row.display_name,
           role_id: row.role_id,
           status: row.status,
+          ...(existing ? { restored: true } : {}),
         },
       },
       tx,

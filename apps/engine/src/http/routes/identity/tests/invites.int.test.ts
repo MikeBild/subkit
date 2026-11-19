@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { userInvites, users } from "../../../../db/schema/index.ts";
+import { userIdentities, userInvites, users } from "../../../../db/schema/index.ts";
 import { issueApiKey } from "../../../../identity/service.ts";
 import { builtinRoleId } from "../../../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../../tests/setup.ts";
@@ -230,6 +230,44 @@ describe("a person created with an invitation", () => {
     });
     expect(again.status).toBe(409);
     expect(await ctx.db.select().from(userInvites)).toHaveLength(before.length);
+  });
+
+  test("a removed person who had left a sign-in trace can be invited again", async () => {
+    const email = "reinvite-after-removal@test.local";
+    const first = await invite(email);
+    await ctx.db.insert(userIdentities).values({
+      tenant_id: ctx.tenantId,
+      user_id: first.id,
+      provider_id: "workspace-sso",
+      subject: "reinvite-subject",
+      email,
+    });
+    const removed = await fetch(`${ctx.baseUrl}/v1/identity/users/${first.id}`, {
+      method: "DELETE",
+      headers: adminHeaders(),
+    });
+    expect(removed.status).toBe(204);
+    const [tombstone] = await ctx.db.select().from(users).where(eq(users.id, first.id));
+    expect(tombstone?.deleted_at).not.toBeNull();
+
+    const again = await invite(email, { display_name: "Back Again" });
+    expect(again.status).toBe("invited");
+    expect(again.invite.plaintext_token).not.toBe(first.invite.plaintext_token);
+    expect((await preview(again.invite.plaintext_token)).status).toBe(200);
+    expect((await preview(first.invite.plaintext_token)).status).toBe(400);
+    const listed = (await (
+      await fetch(`${ctx.baseUrl}/v1/identity/users?limit=200`, { headers: adminHeaders() })
+    ).json()) as { items: Array<{ email: string; status: string; display_name: string | null }> };
+    expect(listed.items.filter((person) => person.email === email)).toMatchObject([
+      { status: "invited", display_name: "Back Again" },
+    ]);
+
+    const duplicate = await fetch(`${ctx.baseUrl}/v1/identity/users`, {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ email, invite: {} }),
+    });
+    expect(duplicate.status).toBe(409);
   });
 
   test("the preview shows the workspace and a masked address without redeeming", async () => {
