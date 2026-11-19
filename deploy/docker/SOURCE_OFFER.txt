@@ -1,7 +1,7 @@
 SubKit container image: written offer for corresponding source
 
 The SubKit container image is built on the pinned Ubuntu 24.04 "noble" base image
-(docker.io/library/ubuntu). Besides SubKit (MIT, see LICENSE and
+(docker.io/library/ubuntu). Besides SubKit (Apache-2.0, see LICENSE and
 THIRD_PARTY_NOTICES.txt) it contains only Ubuntu operating system packages; it
 contains no web browser and no Node.js. Some of these packages are licensed under
 the GNU GPL, the GNU LGPL or the Mozilla Public License. BASE_IMAGE_INVENTORY.txt in this directory lists

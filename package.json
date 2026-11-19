@@ -6,8 +6,8 @@
     "apps/cockpit"
   ],
   "type": "module",
-  "description": "A self-hostable, multi-tenant engine for governed, versioned, AI-assisted workflow execution against connected systems.",
-  "license": "MIT",
+  "description": "Describe recurring work in your own words. AI drafts the workflow, a person approves what it may touch, and it runs in fixed steps with every run on record.",
+  "license": "Apache-2.0",
   "author": "Mike Bild",
   "homepage": "https://github.com/mikebild/subkit#readme",
   "repository": {

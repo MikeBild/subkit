@@ -7,7 +7,7 @@ audience: public
 ---
 ## Lizenz
 
-MIT
+Apache License 2.0 (`Apache-2.0`). Den vollständigen Text findest du in der Datei `LICENSE` jedes Release.
 
 
 ## Drittanbieter-Komponenten

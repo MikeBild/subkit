@@ -2800,7 +2800,7 @@ On Linux an RSS watchdog polls memory use regularly.
 It is not a kernel-enforced memory ceiling.
 ## License
 
-MIT
+Apache License 2.0 (`Apache-2.0`). The full text is in the `LICENSE` file of every release.
 
 
 ## Third-party components
