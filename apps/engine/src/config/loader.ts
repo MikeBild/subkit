@@ -694,22 +694,6 @@ export async function setConfigKey(
           error: err instanceof Error ? err.message : String(err),
         });
       }
-      try {
-        const langfuseModule = await import("../observability/langfuse-spans.ts");
-        try {
-          langfuseModule.resetLangfuseCacheForReload();
-        } catch (err) {
-          reconfigureFailed = true;
-          const { logger } = await import("../logging/logger.ts");
-          logger.warn({
-            module: "config",
-            action: "observability.langfuse_reset_failed",
-            msg: "langfuse cache reset failed after settings.changed",
-            leaf: dottedPath(leaf),
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
-      } catch {}
     }
 
     return {

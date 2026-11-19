@@ -16,7 +16,7 @@ test("developer and release gates keep their distinct quality contracts", () => 
     "bun run verify:gate:static && bun run verify:quality",
   );
   expect(scripts.scripts["verify:gate:release"]).toBe(
-    "bun run check:mutation:release && bun run verify:gate:static && bun run check:coverage-floor && bun run test:docker",
+    "bun run check:mutation:release && bun run verify:gate:static && bun run check:coverage-floor && bun run test:docker && bun run smoke:surfaces",
   );
   expect(scripts.scripts["check:mutation:release"]).toBe(
     "bun run scripts/release-mutation-evidence.ts check",

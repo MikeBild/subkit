@@ -50,9 +50,7 @@ describe("observability hot-reload — setConfigKey triggers reconfigureTracing"
     await setConfigKey("observability.otlp.endpoint", "", { force: true });
   });
 
-  test("resetLangfuseCacheForReload is invalidated by an observability.* setConfigKey", async () => {
-    const { resetLangfuseCacheForReload } = await import("../langfuse-spans.ts");
-    expect(typeof resetLangfuseCacheForReload).toBe("function");
+  test("a langfuse key change reconfigures tracing without a failure", async () => {
     const before = countLogs({ module: "config", action: "observability.reconfigure_failed" });
     await setConfigKey("observability.langfuse.public_key", "pk_test", { force: true });
     const after = countLogs({ module: "config", action: "observability.reconfigure_failed" });

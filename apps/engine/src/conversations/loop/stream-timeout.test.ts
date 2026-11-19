@@ -74,7 +74,7 @@ describe("streamText typed timeouts — the contract the converse loop builds on
     expect(timeoutPhaseOf(aborts[0]?.reason)).toBe("total");
   });
 
-  test("a caller's own abort is no timeout: the stream throws the caller's reason and onAbort stays silent", async () => {
+  test("a caller's own abort is no timeout: the stream ends, the result rejects with the caller's reason and onAbort reports it as such", async () => {
     const aborts: AbortEvent[] = [];
     const errors: unknown[] = [];
     const ctrl = new AbortController();
@@ -90,10 +90,12 @@ describe("streamText typed timeouts — the contract the converse loop builds on
         errors.push(error);
       },
     });
-    const draining = drain(result).catch((err: unknown) => err);
+    const draining = drain(result);
     ctrl.abort("conversation_cancelled");
-    const thrown = await draining;
-    expect(aborts).toEqual([]);
+    await draining;
+    const thrown = await Promise.resolve(result.finishReason).catch((err: unknown) => err);
+    expect(aborts.map((event) => event.reason)).toEqual(["conversation_cancelled"]);
+    expect(timeoutPhaseOf(aborts[0]?.reason)).toBeNull();
     expect(errors).toEqual([]);
     expect(thrown).toBe("conversation_cancelled");
     expect(timeoutPhaseOf(thrown)).toBeNull();

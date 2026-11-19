@@ -1,12 +1,12 @@
 [
   {
     "name": "@ai-sdk/provider-utils",
-    "version": "5.0.15",
+    "version": "5.0.82",
     "files": [
       {
         "path": "@ai-sdk__provider-utils__tag-license.txt",
         "sha256": "b4f9adb7c568904834d0dd6cc98d16c390d21ca32fc17ae7a267715269bd5529",
-        "source": "https://github.com/vercel/ai/blob/a56fbc08fd5c171574a499babfbd82f0b2a7b3fe/LICENSE"
+        "source": "https://github.com/vercel/ai/blob/f35668be8bd5fffafb1461f34c5d4b1ca9a43beb/LICENSE"
       }
     ],
     "qualification": "Version-bound notice source; legal distribution approval remains separate."

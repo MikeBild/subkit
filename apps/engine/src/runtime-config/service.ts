@@ -735,10 +735,6 @@ export async function applyRuntimeConfig(config: Config): Promise<void> {
       error: error instanceof Error ? error.message : String(error),
     });
   }
-  try {
-    const { resetLangfuseCacheForReload } = await import("../observability/langfuse-spans.ts");
-    resetLangfuseCacheForReload();
-  } catch {}
   const { resetObjectStoreForRuntimeConfig } = await import("../storage/object-store.ts");
   resetObjectStoreForRuntimeConfig();
 }

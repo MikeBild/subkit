@@ -1,6 +1,7 @@
 import type { streamText, ToolSet } from "ai";
 import { runOutputGuardStream } from "../../llm/output-guard/index.ts";
 import { createStreamScrubber } from "../../llm/output-guard/stream-scrub.ts";
+import { logger } from "../../logging/logger.ts";
 import { recordLlmStepTimeout } from "../../observability/instrumentation.ts";
 import { now } from "../../utils/clock.ts";
 import {
@@ -11,7 +12,7 @@ import {
   streamErrorTimeoutBudget,
 } from "../core/loop.ts";
 import { LlmTimeoutError, timeoutBudgetOf, timeoutPhaseOf } from "../turn-failure.ts";
-import { throwForStreamError } from "./stream-result.ts";
+import { answeredDespiteToolChoice, throwForStreamError } from "./stream-result.ts";
 import type { Attempt, TurnEnv } from "./types.ts";
 
 type StreamResult = ReturnType<typeof streamText<ToolSet>>;
@@ -67,7 +68,19 @@ export async function consumeAttemptStream(
 ): Promise<void> {
   try {
     await forwardTextStream(env, result);
-    throwForStreamError(await result.finishReason, attempt.capturedError);
+    const finishReason = await result.finishReason;
+    if (finishReason === "error" && answeredDespiteToolChoice(attempt.capturedError)) {
+      logger.warn({
+        module: "llm",
+        action: "converse.tool_choice_ignored",
+        msg: "model answered in text although a tool call was required; keeping the answer",
+        conversation_id: env.p.conversation_id,
+        tenant_id: env.p.tenant_id,
+        provider: attempt.provider,
+        model: attempt.modelId,
+      });
+    }
+    throwForStreamError(finishReason, attempt.capturedError);
   } catch (err) {
     if (attempt.timeoutError) throw attempt.timeoutError;
     const thrown = attempt.capturedError ?? err;

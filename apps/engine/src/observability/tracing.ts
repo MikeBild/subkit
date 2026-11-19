@@ -145,7 +145,7 @@ async function startTracingNow(): Promise<() => Promise<void>> {
     return noop;
   }
 
-  const [{ NodeSDK }, { OTLPTraceExporter }] = await Promise.all([
+  const [{ NodeSDK, tracing }, { OTLPTraceExporter }] = await Promise.all([
     import("@opentelemetry/sdk-node"),
     import("@opentelemetry/exporter-trace-otlp-http"),
   ]);
@@ -177,8 +177,7 @@ async function startTracingNow(): Promise<() => Promise<void>> {
     }
   }
 
-  const primary = exporters[0];
-  if (!primary) {
+  if (exporters.length === 0) {
     logger.info({
       module: "observability",
       action: "tracing.disabled",
@@ -192,7 +191,7 @@ async function startTracingNow(): Promise<() => Promise<void>> {
 
   const sdk = new NodeSDK({
     serviceName: cfg.otlp.service_name || "subkit-engine",
-    traceExporter: primary,
+    spanProcessors: exporters.map((exporter) => new tracing.BatchSpanProcessor(exporter)),
   });
 
   try {

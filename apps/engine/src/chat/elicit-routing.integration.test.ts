@@ -101,7 +101,7 @@ async function driveToElicitation(): Promise<{
       tenant_id: ctx.tenant_id,
       conversation_id: conversationId,
       actor_id: ctx.user_id,
-      message: "yes run the workflow",
+      message: "yes, check it with me first",
     },
     ctx.testDb.db,
   );

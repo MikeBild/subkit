@@ -342,7 +342,7 @@ describe("declined-intent · wired through two real turns", () => {
         tenant_id: ctx.tenant_id,
         conversation_id: conversationId,
         actor_id: ctx.user_id,
-        message: "please commit this workflow",
+        message: "please review this proposal",
       },
       ctx.testDb.db,
     );
@@ -370,7 +370,7 @@ describe("declined-intent · wired through two real turns", () => {
         tenant_id: ctx.tenant_id,
         conversation_id: conversationId,
         actor_id: ctx.user_id,
-        message: "please commit this workflow again",
+        message: "please review this proposal again",
       },
       ctx.testDb.db,
     );
@@ -393,7 +393,7 @@ describe("declined-intent · wired through two real turns", () => {
         tenant_id: ctx.tenant_id,
         conversation_id: conversationId,
         actor_id: ctx.user_id,
-        message: "please commit this workflow",
+        message: "please review this proposal",
       },
       ctx.testDb.db,
     );
@@ -425,7 +425,7 @@ describe("declined-intent · wired through two real turns", () => {
         tenant_id: ctx.tenant_id,
         conversation_id: conversationId,
         actor_id: ctx.user_id,
-        message: "commit the edited version instead",
+        message: "take the edited version instead",
       },
       ctx.testDb.db,
     );

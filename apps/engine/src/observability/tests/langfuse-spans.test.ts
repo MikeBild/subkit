@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { redactPayload, resetLangfuseCacheForReload, startToolSpan } from "../langfuse-spans.ts";
+import { redactPayload, startToolSpan } from "../langfuse-spans.ts";
+import { _resetTracingForTests } from "../tracing.ts";
 
 describe("redactPayload — sensitive key masking", () => {
   test("top-level sensitive keys are replaced with [REDACTED]", () => {
@@ -129,11 +130,9 @@ describe("redactPayload — type preservation", () => {
   });
 });
 
-describe("startToolSpan — no-op when Langfuse keys are absent", () => {
+describe("startToolSpan — no-op while tracing is not active", () => {
   beforeEach(() => {
-    resetLangfuseCacheForReload();
-    delete process.env.LANGFUSE_SECRET_KEY;
-    delete process.env.LANGFUSE_PUBLIC_KEY;
+    _resetTracingForTests();
   });
 
   test("returns inert span with active=false", async () => {

@@ -18,7 +18,10 @@ class FakeSDK {
     return this.completion.promise;
   }
 }
-mock.module("@opentelemetry/sdk-node", () => ({ NodeSDK: FakeSDK }));
+mock.module("@opentelemetry/sdk-node", () => ({
+  NodeSDK: FakeSDK,
+  tracing: { BatchSpanProcessor: class {} },
+}));
 mock.module("@opentelemetry/exporter-trace-otlp-http", () => ({ OTLPTraceExporter: class {} }));
 const { _resetConfigForTests, loadConfig } = await import("../../config/loader.ts");
 const { startTracing, reconfigureTracing, isTracingActive, _resetTracingForTests } = await import(

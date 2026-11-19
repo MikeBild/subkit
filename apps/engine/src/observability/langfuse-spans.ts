@@ -1,67 +1,6 @@
-import { getConfig } from "../config/loader.ts";
+import { SpanStatusCode, trace } from "@opentelemetry/api";
 import { logger } from "../logging/logger.ts";
-
-interface LangfuseTraceHandle {
-  span: (payload: { name: string; input?: unknown; metadata?: Record<string, unknown> }) => {
-    end: (payload: {
-      output?: unknown;
-      level?: "DEFAULT" | "WARNING" | "ERROR";
-      statusMessage?: string;
-    }) => void;
-  };
-}
-
-interface LangfuseClient {
-  trace: (payload: {
-    name: string;
-    metadata?: Record<string, unknown>;
-    sessionId?: string;
-    userId?: string;
-  }) => LangfuseTraceHandle;
-  shutdownAsync: () => Promise<void>;
-}
-
-let cachedClient: LangfuseClient | null | undefined;
-
-async function getClient(): Promise<LangfuseClient | null> {
-  if (cachedClient !== undefined) return cachedClient;
-  let cfg: { secret_key: string; public_key: string; host: string };
-  try {
-    cfg = getConfig().observability.langfuse;
-  } catch {
-    cachedClient = null;
-    return null;
-  }
-  if (!cfg.secret_key || !cfg.public_key) {
-    cachedClient = null;
-    return null;
-  }
-  try {
-    const mod = await import("langfuse");
-    const LangfuseClass = (
-      mod as { Langfuse: new (opts: Record<string, unknown>) => LangfuseClient }
-    ).Langfuse;
-    cachedClient = new LangfuseClass({
-      secretKey: cfg.secret_key,
-      publicKey: cfg.public_key,
-      baseUrl: cfg.host || "https://cloud.langfuse.com",
-    });
-    return cachedClient;
-  } catch (err) {
-    logger.warn({
-      module: "observability.langfuse_spans",
-      action: "init_failed",
-      msg: "langfuse SDK failed to initialise — spans will be no-ops",
-      error: err instanceof Error ? err.message : String(err),
-    });
-    cachedClient = null;
-    return null;
-  }
-}
-
-export function resetLangfuseCacheForReload(): void {
-  cachedClient = undefined;
-}
+import { isTracingActive } from "./tracing.ts";
 
 const SENSITIVE_KEY_SUBSTRINGS = [
   "authorization",
@@ -282,9 +221,21 @@ interface StartToolSpanParams {
   };
 }
 
+function spanAttribute(value: unknown): string {
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+function metadataAttributes(metadata: Record<string, unknown>): Record<string, string> {
+  const attributes: Record<string, string> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (value === undefined || value === null) continue;
+    attributes[`langfuse.observation.metadata.${key}`] = spanAttribute(value);
+  }
+  return attributes;
+}
+
 export async function startToolSpan(p: StartToolSpanParams): Promise<ToolSpanHandle> {
-  const client = await getClient();
-  if (!client) {
+  if (!isTracingActive()) {
     return {
       active: false,
       finish: async () => {},
@@ -293,15 +244,16 @@ export async function startToolSpan(p: StartToolSpanParams): Promise<ToolSpanHan
   const redactedInput = redactPayload(p.input);
   const baseMeta = p.metadata ?? {};
   const enrichedMeta = enrichSpanMetadata(p.name, redactedInput, baseMeta);
-  const trace = client.trace({
-    name: p.name,
-    metadata: enrichedMeta,
-    ...(baseMeta.session_id ? { sessionId: String(baseMeta.session_id) } : {}),
-  });
-  const span = trace.span({
-    name: p.name,
-    input: redactedInput,
-    metadata: enrichedMeta,
+  const span = trace.getTracer("subkit.tools").startSpan(p.name, {
+    attributes: {
+      "langfuse.observation.type": "tool",
+      "langfuse.observation.input": spanAttribute(redactedInput ?? null),
+      ...metadataAttributes(enrichedMeta),
+      ...(baseMeta.session_id ? { "langfuse.session.id": String(baseMeta.session_id) } : {}),
+      ...(baseMeta.tenant_id
+        ? { "langfuse.trace.metadata.tenant_id": String(baseMeta.tenant_id) }
+        : {}),
+    },
   });
   let finished = false;
   return {
@@ -309,18 +261,25 @@ export async function startToolSpan(p: StartToolSpanParams): Promise<ToolSpanHan
     finish: async (f) => {
       if (finished) return;
       finished = true;
-      const level: "DEFAULT" | "ERROR" = f.status === "error" || f.error ? "ERROR" : "DEFAULT";
+      const failed = f.status === "error" || Boolean(f.error);
       const statusMessage = (() => {
         if (f.error instanceof Error) return f.error.message;
         if (typeof f.error === "string") return f.error;
         return undefined;
       })();
       try {
-        span.end({
-          output: redactPayload(f.output),
-          level,
-          ...(statusMessage ? { statusMessage } : {}),
-        });
+        span.setAttribute(
+          "langfuse.observation.output",
+          spanAttribute(redactPayload(f.output) ?? null),
+        );
+        span.setAttribute("langfuse.observation.level", failed ? "ERROR" : "DEFAULT");
+        if (statusMessage) span.setAttribute("langfuse.observation.status_message", statusMessage);
+        span.setStatus(
+          failed
+            ? { code: SpanStatusCode.ERROR, ...(statusMessage ? { message: statusMessage } : {}) }
+            : { code: SpanStatusCode.OK },
+        );
+        span.end();
       } catch (err) {
         logger.debug({
           module: "observability.langfuse_spans",

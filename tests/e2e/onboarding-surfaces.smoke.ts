@@ -85,8 +85,11 @@ async function main(): Promise<void> {
   const listed = await mcpCall("tools/list", {});
   const tools = (listed.body?.result?.tools as Array<{ name: string }> | undefined) ?? [];
   const names = new Set(tools.map((tool) => tool.name));
-  for (const required of ["author_workflow", "test_connector"]) {
+  for (const required of ["find_workflow", "run_workflow", "test_connector"]) {
     if (!names.has(required)) fail(`MCP tools/list missing '${required}'`);
+  }
+  for (const authoringOnly of ["author_workflow", "save_workflow_draft"]) {
+    if (names.has(authoringOnly)) fail(`MCP tools/list exposes authoring tool '${authoringOnly}'`);
   }
   ok(`MCP streamable-HTTP exposes ${tools.length} tenant tools`);
 
