@@ -373,6 +373,8 @@ interface LoginProviderChoice {
 
 export function renderProviderChoice(providers: LoginProviderChoice[], look: PageLook): string {
   const de = look.locale === "de";
+  const severalAccounts =
+    providers.filter((provider) => provider.protocol !== "api_key").length > 1;
   const links = [...providers]
     .sort(
       (left, right) => Number(left.protocol === "api_key") - Number(right.protocol === "api_key"),
@@ -384,7 +386,7 @@ export function renderProviderChoice(providers: LoginProviderChoice[], look: Pag
         ? de
           ? "Mit API-Schlüssel anmelden"
           : "Sign in with API key"
-        : providerLabel
+        : severalAccounts && providerLabel
           ? de
             ? `Mit ${providerLabel} anmelden`
             : `Sign in with ${providerLabel}`

@@ -324,11 +324,26 @@ describe("sign-in pages", () => {
     expect(english).toContain("You are signed out. Choose how to sign in to SubKit.");
   });
 
-  test("a configured provider label names the sign-in button in both languages", () => {
-    const labelled = [{ id: "sso", protocol: "oidc" as const, href: "/sso", label: "Acme ID" }];
-    expect(renderProviderChoice(labelled, DE)).toContain(">Mit Acme ID anmelden</a>");
-    expect(renderProviderChoice(labelled, EN)).toContain(">Sign in with Acme ID</a>");
-    expect(renderProviderChoice(labelled, EN)).not.toContain("work account");
+  test("a single sign-in provider is the work account, whatever its label", () => {
+    const single = [{ id: "sso", protocol: "oidc" as const, href: "/sso", label: "Acme ID" }];
+    expect(renderProviderChoice(single, DE)).toContain(">Mit Firmenkonto anmelden</a>");
+    expect(renderProviderChoice(single, EN)).toContain(">Sign in with work account</a>");
+    expect(renderProviderChoice(single, DE)).not.toContain("Acme ID");
+  });
+
+  test("several sign-in providers are told apart by their labels in both languages", () => {
+    const several = [
+      { id: "acme", protocol: "oidc" as const, href: "/acme", label: "Acme ID" },
+      { id: "other", protocol: "oidc" as const, href: "/other", label: "Harbor" },
+    ];
+    const german = renderProviderChoice(several, DE);
+    expect(german).toContain(">Mit Acme ID anmelden</a>");
+    expect(german).toContain(">Mit Harbor anmelden</a>");
+    expect(german).not.toContain("Firmenkonto");
+    const english = renderProviderChoice(several, EN);
+    expect(english).toContain(">Sign in with Acme ID</a>");
+    expect(english).toContain(">Sign in with Harbor</a>");
+    expect(english).not.toContain("work account");
   });
 
   test("closed registration explains that an invitation link is needed", () => {
