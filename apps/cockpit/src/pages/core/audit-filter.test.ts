@@ -28,6 +28,7 @@ test("audit areas publish the complete stable resource vocabulary", () => {
     knowledge: ["knowledge_source", "knowledge_source_version", "skill", "skill_candidate"],
     files: ["file"],
     conversations: ["conversation", "conversation_elicitation"],
+    tasks: ["task", "task_run", "task_grant"],
     people: [
       "user",
       "user_identity",
@@ -176,7 +177,7 @@ test("audit actions retain only bounded normalized tokens and scopes stay isolat
 test("audit links retain exact delimiters, action limits, and each non-default count boundary", () => {
   expect(auditScopeParams("decisions")).toEqual({
     action:
-      "patch_candidate.approved,patch_candidate.rejected,skill_candidate.approved,skill_candidate.rejected,approval.granted,approval.approved,approval.rejected,approval.declined,workflow.authority_granted,workflow.authority_revoked,workflow.authority_expiry_removed,policy.denied,approval.dispatch_denied,execution.boundary_refused,rbac.role_created,rbac.role_deleted,rbac.permission_granted,rbac.permission_revoked,rbac.user_role_assigned,rbac.user_role_revoked,user.created,user.deleted,user.role_changed,api_key.issued,api_key.revoked,workflow.deleted,workflow.version_restored,knowledge_source.restored,schedule.created,schedule.deleted,connector.deleted,secret.version_created,secret.version_revoked,settings.changed",
+      "patch_candidate.approved,patch_candidate.rejected,skill_candidate.approved,skill_candidate.rejected,approval.granted,approval.approved,approval.rejected,approval.declined,workflow.authority_granted,workflow.authority_revoked,workflow.authority_expiry_removed,task.authority_granted,task.authority_revoked,policy.denied,approval.dispatch_denied,execution.boundary_refused,rbac.role_created,rbac.role_deleted,rbac.permission_granted,rbac.permission_revoked,rbac.user_role_assigned,rbac.user_role_revoked,user.created,user.deleted,user.role_changed,api_key.issued,api_key.revoked,workflow.deleted,workflow.version_restored,knowledge_source.restored,schedule.created,schedule.deleted,connector.deleted,secret.version_created,secret.version_revoked,settings.changed",
   });
   expect(normalizedAuditScope("decisions", "", "")).toBe("decisions");
   expect(normalizedAuditScope("operations", "", "")).toBe("operations");

@@ -13,6 +13,8 @@ import { registerExecutionRunHandler } from "./execution-run.ts";
 import { registerIngestDocsHandler } from "./ingest-docs.ts";
 import { registerIngestKnowledgeHandler } from "./ingest-knowledge.ts";
 import { registerSkillCandidateAnalyzeHandler } from "./skill-candidate-analyze.ts";
+import { registerTaskRunTurnHandler } from "./task-run-turn.ts";
+import { registerTaskRunTurnDlqHandler } from "./task-run-turn-dlq.ts";
 import { registerWebhookDeliverHandler } from "./webhook-deliver.ts";
 import { registerWorkflowRepairHandler } from "./workflow-repair.ts";
 
@@ -26,6 +28,8 @@ interface RegisteredHandlers {
   executionRunWorkerId: string;
   conversationRunTurnWorkerId: string;
   conversationRunTurnDlqWorkerId: string;
+  taskRunTurnWorkerId: string;
+  taskRunTurnDlqWorkerId: string;
   oauth2RefreshWorkerId: string;
   ingestDocsWorkerId: string;
   ingestKnowledgeWorkerId: string;
@@ -50,6 +54,11 @@ export async function registerAllHandlers(
     db: opts.db,
   });
   const conversationRunTurnDlqWorkerId = await registerConversationRunTurnDlqHandler({
+    boss: opts.boss,
+    db: opts.db,
+  });
+  const taskRunTurnWorkerId = await registerTaskRunTurnHandler({ boss: opts.boss, db: opts.db });
+  const taskRunTurnDlqWorkerId = await registerTaskRunTurnDlqHandler({
     boss: opts.boss,
     db: opts.db,
   });
@@ -104,6 +113,8 @@ export async function registerAllHandlers(
     execution_run_worker_id: executionRunWorkerId,
     conversation_run_turn_worker_id: conversationRunTurnWorkerId,
     conversation_run_turn_dlq_worker_id: conversationRunTurnDlqWorkerId,
+    task_run_turn_worker_id: taskRunTurnWorkerId,
+    task_run_turn_dlq_worker_id: taskRunTurnDlqWorkerId,
     oauth2_refresh_worker_id: oauth2RefreshWorkerId,
     ingest_docs_worker_id: ingestDocsWorkerId,
     ingest_knowledge_worker_id: ingestKnowledgeWorkerId,
@@ -120,6 +131,8 @@ export async function registerAllHandlers(
     executionRunWorkerId,
     conversationRunTurnWorkerId,
     conversationRunTurnDlqWorkerId,
+    taskRunTurnWorkerId,
+    taskRunTurnDlqWorkerId,
     oauth2RefreshWorkerId,
     ingestDocsWorkerId,
     ingestKnowledgeWorkerId,

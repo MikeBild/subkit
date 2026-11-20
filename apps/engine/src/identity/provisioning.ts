@@ -3,7 +3,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import type { PrincipalKind } from "../auth/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import type { Executor } from "../db/client.ts";
+import type { Db, Executor } from "../db/client.ts";
 import {
   apiKeys,
   chatIdentities,
@@ -227,6 +227,21 @@ async function removeInvitedUser(
 }
 
 export async function deactivateUser(input: DeactivateUserInput, db: Executor) {
+  const tasks = await import("../tasks/index.ts");
+  const effects = tasks.taskEffects();
+  const removed = await deactivateUserLocked(input, db, async (tx) => {
+    effects.after.length = 0;
+    await tasks.pauseTasksOfOwnerLocked(tx, input.tenant_id, input.user_id, effects);
+  });
+  await tasks.settleTaskEffects(db as Db, effects);
+  return removed;
+}
+
+async function deactivateUserLocked(
+  input: DeactivateUserInput,
+  db: Executor,
+  pauseOwnedTasks: (tx: Executor) => Promise<void>,
+) {
   return db.transaction(async (tx) => {
     const nowTs = new Date(now());
     await assertAdminRemains(tx, {
@@ -247,6 +262,7 @@ export async function deactivateUser(input: DeactivateUserInput, db: Executor) {
       .for("update")
       .limit(1);
     if (!current) return null;
+    await pauseOwnedTasks(tx);
     if (await neverJoined(tx, current)) return removeInvitedUser(tx, input, current);
     const [row] = await tx
       .update(users)

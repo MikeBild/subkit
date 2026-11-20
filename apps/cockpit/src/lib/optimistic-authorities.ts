@@ -45,7 +45,13 @@ export function withAuthorityUntilRevoked(
       ...page,
       items: page.items.map((authority) =>
         authority.id === id
-          ? { ...authority, valid_until: null, open_ended: authority.max_runs === null }
+          ? {
+              ...authority,
+              valid_until: null,
+              max_runs: null,
+              remaining_runs: null,
+              open_ended: true,
+            }
           : authority,
       ),
     })),

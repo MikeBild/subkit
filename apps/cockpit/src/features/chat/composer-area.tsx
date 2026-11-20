@@ -23,6 +23,7 @@ export function ChatComposerArea({
   status,
   pillMode,
   pillLabel,
+  runScope,
   setNewPermissionMode,
   composerHint,
   initialInput,
@@ -43,6 +44,7 @@ export function ChatComposerArea({
   status: "streaming" | "ready";
   pillMode: AuthoringMode | null;
   pillLabel: string | null;
+  runScope: string | null;
   setNewPermissionMode: (mode: AuthoringMode) => void;
   composerHint: { text: string; visible: boolean } | null;
   initialInput: string;
@@ -85,6 +87,11 @@ export function ChatComposerArea({
           </div>
         )}
         <div className="mb-2 flex flex-wrap items-center gap-1.5" data-testid="chat-pills">
+          {runScope && !conversationFailed ? (
+            <p className="text-xs text-muted-foreground" data-testid="chat-task-run-scope">
+              {runScope}
+            </p>
+          ) : null}
           {conversationFailed || !pillLabel ? null : (
             <ModePill
               mode={pillMode}

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  authorityValidity,
   MakeUntilRevoked,
   UntilRevokedDone,
   UntilRevokedHint,
@@ -28,6 +29,38 @@ const authority = {
 } as WorkflowAuthority;
 
 describe("removing the expiry of an approval", () => {
+  test("is offered for a live approval limited only by run count", () => {
+    const counted = { ...authority, valid_until: null, max_runs: 50, remaining_runs: 46 };
+    expect(untilRevokedOffer(counted, NOW, true)).toEqual({ days: null });
+    expect(
+      untilRevokedOffer({ ...counted, valid_until: authority.valid_until }, NOW, true),
+    ).toEqual({ days: 3 });
+    expect(untilRevokedOffer({ ...counted, remaining_runs: 0 }, NOW, true)).toBeNull();
+    expect(untilRevokedOffer(counted, NOW, false)).toBeNull();
+    expect(render(<UntilRevokedHint days={null} remainingRuns={46} />)).toContain(
+      "Noch 46 Läufe erlaubt, danach startet der Workflow nichts mehr, bis du neu freigibst.",
+    );
+    expect(render(<UntilRevokedHint days={null} remainingRuns={1} />)).toContain(
+      "Noch 1 Lauf erlaubt, danach startet der Workflow nichts mehr, bis du neu freigibst.",
+    );
+    expect(render(<UntilRevokedHint days={null} remainingRuns={46} />, "en")).toContain(
+      "46 runs left, after which the workflow starts nothing until you approve again.",
+    );
+    expect(render(<UntilRevokedHint days={null} remainingRuns={1} />, "en")).toContain(
+      "1 run left, after which the workflow starts nothing until you approve again.",
+    );
+    expect(
+      translate("de", "workflowApprovals.untilRevoked.consequenceRuns", {
+        subject: "Version v3 · Produktion",
+      }),
+    ).toBe(
+      "Die Freigabe für „Version v3 · Produktion“ gilt dann bis auf Widerruf, ohne Laufgrenze.",
+    );
+    expect(translate("en", "workflowApprovals.untilRevoked.limitLifted")).toBe(
+      "The run limit is lifted as well.",
+    );
+  });
+
   test("is offered only for a live approval with an expiry to someone who may grant", () => {
     expect(untilRevokedOffer(authority, NOW, true)).toEqual({ days: 3 });
     expect(untilRevokedOffer(authority, NOW + 60 * 60_000, true)).toEqual({ days: 3 });
@@ -44,11 +77,85 @@ describe("removing the expiry of an approval", () => {
   });
 
   test("the hint names the days left and what happens after", () => {
-    expect(render(<UntilRevokedHint days={3} />)).toContain(
-      "Läuft in 3 Tagen ab. Danach startet der Workflow nichts mehr, bis du neu freigibst.",
+    expect(render(<UntilRevokedHint days={3} remainingRuns={null} />)).toContain(
+      "Läuft in 3 Tagen ab, danach startet der Workflow nichts mehr, bis du neu freigibst.",
     );
-    expect(render(<UntilRevokedHint days={1} />)).toContain("Läuft in 1 Tag ab.");
-    expect(render(<UntilRevokedHint days={2} />, "en")).toContain("Expires in 2 days.");
+    expect(render(<UntilRevokedHint days={1} remainingRuns={12} />)).toContain(
+      "Läuft in 1 Tag ab, danach",
+    );
+    expect(render(<UntilRevokedHint days={2} remainingRuns={null} />, "en")).toContain(
+      "Expires in 2 days, after which the workflow starts nothing until you approve again.",
+    );
+  });
+
+  test("every hint is one sentence in both languages", () => {
+    for (const locale of ["de", "en"] as const)
+      for (const hint of [
+        <UntilRevokedHint key="days" days={3} remainingRuns={null} />,
+        <UntilRevokedHint key="runs" days={null} remainingRuns={5} />,
+      ]) {
+        const text = render(hint, locale).replace(/<[^>]+>/g, "");
+        expect(text.split(". ")).toHaveLength(1);
+        expect(text).not.toContain("!");
+      }
+  });
+
+  test("the validity names what really limits the approval", () => {
+    const de = i18nValue("de");
+    const en = i18nValue("en");
+    const openEnded = { ...authority, valid_until: null, max_runs: null, open_ended: true };
+    const counted = {
+      ...authority,
+      valid_until: null,
+      max_runs: 50,
+      remaining_runs: 46,
+      open_ended: false,
+    };
+    const dated = { ...authority, open_ended: false };
+    expect(authorityValidity(openEnded, de)).toBe("Gilt bis auf Widerruf");
+    expect(authorityValidity(counted, de)).toBe("Gilt noch für 46 Läufe");
+    expect(authorityValidity({ ...counted, remaining_runs: 1 }, de)).toBe("Gilt noch für 1 Lauf");
+    expect(authorityValidity(counted, en)).toBe("Applies for 46 more runs");
+    expect(authorityValidity({ ...counted, remaining_runs: 1 }, en)).toBe("Applies for 1 more run");
+    expect(authorityValidity(dated, de)).toBe(
+      `Gilt bis ${de.dateTime("2026-11-19T09:00:00.000Z")}`,
+    );
+    expect(authorityValidity(counted, de)).not.toContain("Widerruf");
+  });
+
+  test("the action is named after the limit that remains", () => {
+    const button = (subject: WorkflowAuthority, locale: Locale) =>
+      render(
+        <QueryClientProvider client={new QueryClient()}>
+          <MakeUntilRevoked
+            authority={subject}
+            subject="Version v3"
+            tiles={null}
+            onDone={() => {}}
+          />
+        </QueryClientProvider>,
+        locale,
+      );
+    const counted = { ...authority, valid_until: null, max_runs: 50, remaining_runs: 46 };
+    expect(button(counted, "de")).toContain(">Laufgrenze aufheben<");
+    expect(button(counted, "en")).toContain(">Remove run limit<");
+    expect(button(counted, "de")).not.toContain("Unbefristet machen");
+    expect(button({ ...authority, max_runs: 50, remaining_runs: 46 }, "de")).toContain(
+      ">Unbefristet machen<",
+    );
+    expect(button(authority, "en")).toContain(">Remove expiry<");
+    const title = (locale: Locale) => {
+      const t = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
+        translate(locale, key, values);
+      return confirmTitle(
+        t,
+        locale,
+        t("workflowApprovals.untilRevoked.objectRuns"),
+        t("workflowApprovals.untilRevoked.verbRuns"),
+      );
+    };
+    expect(title("de")).toBe("Laufgrenze dieser Freigabe aufheben?");
+    expect(title("en")).toBe("Remove run limit from this approval?");
   });
 
   test("the confirmation follows the approved wording", () => {

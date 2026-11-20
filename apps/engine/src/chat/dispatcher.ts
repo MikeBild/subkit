@@ -16,6 +16,7 @@ import {
   respondElicitation,
 } from "../conversations/public/elicitation.ts";
 import {
+  assertTaskRunTurn,
   conversationTurnId,
   registerConversationAbort,
   unregisterConversationAbort,
@@ -366,6 +367,7 @@ async function salvageTypedReplyToPendingElicitation(args: {
     return null;
   }
 
+  await assertTaskRunTurn(deps.db, { tenant_id, conversation_id, actor_id: user_id, principal });
   const turnAbortCtrl = await registerConversationAbort(tenant_id, conversation_id, deps.db);
   try {
     const resolved = await withConversationTurnLock(tenant_id, conversation_id, () =>
@@ -670,6 +672,12 @@ async function handleChatEventImpl(
     try {
       turn = await runTurnForChannel(() =>
         withConversationTurnLock(tenant_id, conversation_id, async () => {
+          await assertTaskRunTurn(db, {
+            tenant_id,
+            conversation_id,
+            actor_id: user_id,
+            principal: chatPrincipal,
+          });
           const turnAbortCtrl = await registerConversationAbort(tenant_id, conversation_id, db);
           try {
             const appended = await appendUserMessage(

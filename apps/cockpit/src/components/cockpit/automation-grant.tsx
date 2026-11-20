@@ -268,7 +268,7 @@ export function AutomationGrant({
   return (
     <GrantWorkflowAuthority
       conversationId={conversationId}
-      key={versionId}
+      key={workflowId}
       workflowId={workflowId}
       versionId={versionId}
       activation={

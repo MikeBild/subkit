@@ -42,6 +42,14 @@ describe("personaCanSee — known personas stay tailored", () => {
     expect(personaCanSee("enduser", "package:import")).toBe(false);
   });
 
+  it("members see the tasks group, end users and portal users do not", () => {
+    expect(personaCanSee("member", "task:read")).toBe(true);
+    expect(personaCanSee("operator", "task:read")).toBe(true);
+    expect(personaCanSee("enduser", "task:read")).toBe(false);
+    expect(personaCanSee("portal", "task:read")).toBe(false);
+    expect(personaCanSee(null, "task:read")).toBe(true);
+  });
+
   it("portal/enduser stay narrowed to tier 1", () => {
     for (const persona of ["portal", "enduser"]) {
       expect(personaCanSee(persona, "conversation:write")).toBe(true);

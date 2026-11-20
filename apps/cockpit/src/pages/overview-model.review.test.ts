@@ -36,6 +36,7 @@ const ANSWERED: Attention["sources"] = {
   budget: "answered",
   ai_access: "answered",
   risk: "answered",
+  tasks: "answered",
 };
 
 function attention(overrides: Partial<Attention> = {}): Attention {

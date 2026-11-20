@@ -19,6 +19,9 @@ test("Cockpit push only wakes a user for catalogued operator attention", () => {
     "connector.auth_failed",
     "connector.health_changed",
     "patch.proposed",
+    "task_run.waiting",
+    "task_run.result_ready",
+    "task_run.failed",
   ]);
   expect(
     shouldDispatchCockpitPushAttention("connector.health_changed", {

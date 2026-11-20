@@ -191,7 +191,25 @@ test("an ordinary production tool start without authority remains held", async (
   });
 });
 
-for (const permissionMode of ["ask", "plan"] as const) {
+test("synthetic tools in ask run a start that a standing grant covers without a question", async () => {
+  const f = await fixture({ maxRuns: 1 });
+  const before = remote.callCount();
+  const result = await f.runTool("synthetic", undefined, { permissionMode: "ask" });
+  expect(result).toMatchObject({ ok: true });
+  expect(remote.callCount() - before).toBe(1);
+  expect(await f.reserved()).toBe(1);
+  expect((await f.rows())[0]).toMatchObject({
+    hold_writes: false,
+    execution_authority_id: f.authority?.id,
+  });
+  const pending = await tdb.db
+    .select()
+    .from(conversationElicitations)
+    .where(eq(conversationElicitations.tenant_id, f.tenant.id));
+  expect(pending).toHaveLength(0);
+});
+
+for (const permissionMode of ["plan"] as const) {
   test(`synthetic tools preserve ${permissionMode} despite an available standing grant`, async () => {
     const f = await fixture({ maxRuns: 1 });
     const before = remote.callCount();

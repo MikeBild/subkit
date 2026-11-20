@@ -66,15 +66,40 @@ Ohne Freigabe startet ein Lauf nur als Probelauf ohne Wirkung.
 Die Freigabe startet keinen Lauf. Eine Freigabe gilt für eine Umgebung und eine Dauer.
 Eine neue Version braucht keine neue Freigabe, solange sie nicht mehr Systeme, Adressen oder Schreibrechte anfasst als die freigegebene. Greift sie weiter, fragt SubKit erneut und nennt den Unterschied.
 Im Tab **Freigaben** kannst du sie jederzeit widerrufen.
+Hat eine Freigabe noch ein Ablaufdatum, macht **Unbefristet machen** im selben Tab daraus eine Freigabe bis auf Widerruf und hebt auch eine Laufgrenze auf. Ist nur noch eine Laufgrenze übrig, heißt die Aktion **Laufgrenze aufheben**.
 Bietet dir der Chat eine Freigabe an, öffnet sie denselben Dialog.
 
 | Feld | Was es festlegt |
 | --- | --- |
 | **Umgebung** | Wo die Läufe erlaubt sind, zum Beispiel **Produktion**. |
 | **Operationen und externe Ziele** | Welche Dienste und Adressen der Workflow erreicht. Jeder Dienst trägt das Logo seines Anbieters. |
-| **Gültigkeit** | Wie lange die Freigabe gilt: **7 Tage**, **30 Tage** oder **Bis auf Widerruf**. |
+| **Gültigkeit** | Wie lange die Freigabe gilt: **7 Tage**, **30 Tage** oder **Bis auf Widerruf**. **Bis auf Widerruf** ist vorausgewählt. Dieselbe Wahl hast du, wenn du im Chat eine gespeicherte Änderung prüfst. |
 
-**Wenn Freigeben fehlt.** Manche Schritte kann keine Freigabe abdecken, etwa eine Mail, deren Empfänger aus Daten stammt, oder ein Aufruf mit freier Adresse. Der Status lautet dann **Umbau nötig vor der Freigabe** und nennt den Schritt. Wähle **Im Chat beheben**: SubKit baut genau diese Schritte um, prüft sie ohne Live-Wirkungen und speichert einen Entwurf. Danach gibst du die neue Version frei.
+**Start aus dem Chat.** Im Chat-Modus **Fragt vorher** fragt SubKit vor einem Start nicht, wenn eine gültige Freigabe genau diesen Lauf deckt: dieselbe Version, dieselbe Umgebung und unveränderte Wirkung. Der Audit-Trail nennt die Freigabe, die den Start gedeckt hat. In drei Fällen fragt SubKit weiterhin: im Modus **Nur planen**, wenn ein Lauf Daten aus einem früheren Lauf weitergibt, und wenn du der Unterhaltung gesagt hast, jeden Start zu bestätigen.
+
+**Wenn SubKit ohne neue Version erneut fragt.** Eine Freigabe gilt für die Konnektoren, wie sie geprüft wurden. Wird ein Konnektor neu angemeldet oder ändert sich seine Konfiguration, braucht der Workflow heute eine neue Prüfung, auch wenn seine Schritte gleich geblieben sind.
+
+**Wenn Freigeben fehlt.** Ein Schritt braucht eine Grenze, bevor eine Freigabe ihn abdecken kann. Eine Grenze legt fest, wohin der Schritt senden oder speichern darf, welche Werte sich ändern dürfen und wie viel er senden darf. Fehlt eine Grenze, lautet der Status **Umbau nötig vor der Freigabe** und bietet **Grenzen festlegen** an.
+
+1. Wähle **Grenzen festlegen**. SubKit liest, was der Schritt in früheren Läufen getan hat, und listet die vorgeschlagenen Grenzen auf.
+2. Prüfe die Liste und wähle **Grenzen übernehmen**. SubKit speichert eine neue Version und zeigt sie dir zur Freigabe. Werte, die eine Grenze auflistet, werden im Workflow gespeichert, prüfe sie deshalb vor der Freigabe.
+3. Ist der Schritt noch nie gelaufen, wähle **Probelauf starten**. Ein Probelauf liest wirklich aus deinen Systemen und hält jede Anfrage zurück, die etwas ändern würde. So wird nichts geschrieben.
+
+Drei Arten von Schritten können eine Grenze bekommen, die sie bisher nicht bekommen konnten:
+
+- **Ein Konnektor, der eigene Query-Parameter anhängt.** Die festen Parameter des Konnektors zählen zur Adresse. Der Dialog nennt sie, aber nicht ihre Werte.
+- **Blättern im Inhalt, den ein Schritt sendet.** Die Grenze enthält die höchste Zahl von Seiten. Von Seite zu Seite ändern sich nur die Felder zum Blättern.
+- **Ein Tool-Aufruf an einem MCP-Server.** Die Grenze nennt das eine Tool, welche Argumentwerte sich ändern dürfen und ob der Aufruf liest oder Daten ändert. Ein Aufruf, der Daten ändern kann, wird nie automatisch wiederholt. Sein Schritt trägt `max_retries: 0`. SubKit prüft die Beschreibung des Tools vor jedem Aufruf. Beschreibt der Server das Tool später anders, hält der nächste Lauf an, und du prüfst erneut.
+
+Manches bleibt außerhalb jeder Grenze, weil die Grenze sonst nichts mehr aussagen würde:
+
+- Blättern ohne höchste Zahl von Seiten,
+- eine Anfrage, deren Adresse zur Laufzeit frei gewählt wird,
+- ein Löschen ohne Liste dessen, was gelöscht werden darf,
+- eine Mail, deren Empfänger aus Daten stammen,
+- Daten, die aus einem früheren Lauf weitergegeben werden.
+
+Wähle bei solchen Schritten **Im Chat beheben**: SubKit baut genau diese Schritte um, prüft sie ohne Live-Wirkungen und speichert einen Entwurf. Danach gibst du die neue Version frei.
 
 ### Den Workflow starten
 

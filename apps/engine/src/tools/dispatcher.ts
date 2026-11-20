@@ -411,7 +411,14 @@ async function dispatchTenantTool(
         : invocation.meta;
       const preparedGate =
         claimed === null
-          ? await prepareGate(entry.descriptor.name, execArgs, deps.principal.tenant_id, deps.db)
+          ? await prepareGate(
+              entry.descriptor.name,
+              execArgs,
+              deps.principal.tenant_id,
+              deps.db,
+              undefined,
+              deps.principal,
+            )
           : null;
       if (preparedGate) execArgs = preparedGate.args;
       const gate = await runConfirmGate({

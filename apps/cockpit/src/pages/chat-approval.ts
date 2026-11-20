@@ -1,6 +1,8 @@
 import type { ConversationDetail } from "@/api/client";
 import type { TranslationKey } from "@/lib/i18n";
 import { toolOutcomeKey } from "@/lib/tool-presentation";
+import { type TaskAction, taskActionLine, taskActionOf } from "./chat-task-approval";
+import { runMarker } from "./chat-task-run";
 
 export interface ChatApproval {
   id: string;
@@ -17,8 +19,10 @@ export interface ChatApproval {
   externalTool?: { connector: string; tool: string; server_claim?: string };
   connectorCall?: { connector: string; method: string; target: string | null };
   gatedTool?: string;
+  taskAction?: TaskAction;
   subjects?: string[];
   transferBytes?: number;
+  ownerOnly?: boolean;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -35,7 +39,10 @@ export function withWorkflowName(
   return name ? { ...approval, workflowName: name } : approval;
 }
 
-export function chatApproval(detail: ConversationDetail | undefined): ChatApproval | null {
+export function chatApproval(
+  detail: ConversationDetail | undefined,
+  viewerId?: string | null,
+): ChatApproval | null {
   const pending = detail?.resume_summary?.pending_approval;
   if (pending?.tool_name !== "ask_user_confirm" || !pending.tool_call_id) return null;
   const call = detail?.tool_calls.find((candidate) => candidate.id === pending.tool_call_id);
@@ -53,6 +60,12 @@ export function chatApproval(detail: ConversationDetail | undefined): ChatApprov
     !externalTool && !connectorCall && intent.kind === "execute_confirmed_tool_call"
       ? call.tool
       : undefined;
+  const taskAction = taskActionOf(gatedTool, call.input);
+  const ownerOnly =
+    pending.prompt?.approval_backed === true &&
+    viewerId !== undefined &&
+    runMarker(detail?.draft) !== null &&
+    detail?.conversation.owner_id !== viewerId;
   return {
     id: pending.id,
     toolCallId: call.id,
@@ -64,6 +77,8 @@ export function chatApproval(detail: ConversationDetail | undefined): ChatApprov
     ...(externalTool ? { externalTool } : {}),
     ...(connectorCall ? { connectorCall } : {}),
     ...(gatedTool ? { gatedTool } : {}),
+    ...(taskAction ? { taskAction } : {}),
+    ...(ownerOnly ? { ownerOnly } : {}),
     ...(pending.prompt?.subjects?.length ? { subjects: pending.prompt.subjects } : {}),
     ...(pending.prompt?.transfer_bytes ? { transferBytes: pending.prompt.transfer_bytes } : {}),
     savesInactiveWorkflow: intent.kind === "save_workflow_draft",
@@ -100,6 +115,7 @@ type ApprovalSubject = Pick<
   | "externalTool"
   | "connectorCall"
   | "gatedTool"
+  | "taskAction"
 >;
 
 type Translate = (key: TranslationKey, values?: Record<string, string>) => string;
@@ -134,6 +150,8 @@ export function approvalLine(
             method: subject.connectorCall.method,
           }),
     );
+  const taskLine = subject.taskAction ? taskActionLine(subject.taskAction, t) : null;
+  if (taskLine) return taskLine;
   if (subject.gatedTool) return t("chat.decision.gatedAction");
   return readable(subject.question);
 }
@@ -150,13 +168,14 @@ export function pendingApprovalSubject(
   const externalTool =
     intent === "grant_relayed_tool_call" ? pending.prompt?.external_tool : undefined;
   const connectorCall = externalTool ? undefined : pending.prompt?.effect;
+  const gated = !externalTool && !connectorCall && intent === "execute_confirmed_tool_call";
+  const taskAction = gated ? taskActionOf(pending.tool_name, null) : null;
   return {
     question: pending.prompt?.question ?? pending.summary,
     ...(externalTool ? { externalTool } : {}),
     ...(connectorCall ? { connectorCall } : {}),
-    ...(!externalTool && !connectorCall && intent === "execute_confirmed_tool_call"
-      ? { gatedTool: pending.tool_name }
-      : {}),
+    ...(gated ? { gatedTool: pending.tool_name } : {}),
+    ...(taskAction ? { taskAction } : {}),
     savesInactiveWorkflow: intent === "save_workflow_draft",
     ...(intent === "commit_held_workflow_writes" || intent === "run_workflow"
       ? { singleRun: true, workflowName: workflowName ?? undefined }

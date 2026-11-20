@@ -464,6 +464,22 @@ export function FilterForm({
                 onChange={(event) => set("workflowId", event.target.value)}
               />
             </Field>
+            <Field label={t("audit.timeline.task")}>
+              <input
+                className={inputClass}
+                value={draft.taskId}
+                onChange={(event) => set("taskId", event.target.value)}
+                data-testid="audit-filter-task"
+              />
+            </Field>
+            <Field label={t("audit.timeline.taskRun")}>
+              <input
+                className={inputClass}
+                value={draft.taskRunId}
+                onChange={(event) => set("taskRunId", event.target.value)}
+                data-testid="audit-filter-task-run"
+              />
+            </Field>
           </div>
         )}
       </div>

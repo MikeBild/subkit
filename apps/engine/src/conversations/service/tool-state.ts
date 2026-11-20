@@ -9,6 +9,7 @@ import {
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
+import { type PlaybookPlan, PlaybookPlanSchema } from "../playbook-contract.ts";
 
 interface ConversationScope {
   readonly tenant_id: string;
@@ -65,6 +66,27 @@ export async function readConversationPlaybookMode(
     .where(conversationRow(scope))
     .limit(1);
   return row?.mode ?? null;
+}
+
+export async function readConversationPlaybookDocument(
+  db: Executor,
+  scope: ConversationScope,
+): Promise<unknown> {
+  const [row] = await db
+    .select({ playbook: conversations.playbook })
+    .from(conversations)
+    .where(conversationRow(scope))
+    .limit(1);
+  return row?.playbook ?? null;
+}
+
+export async function readConversationPlaybookPlan(
+  db: Executor,
+  scope: ConversationScope,
+): Promise<PlaybookPlan | null> {
+  const document = await readConversationPlaybookDocument(db, scope);
+  const plan = PlaybookPlanSchema.safeParse((document as { plan?: unknown } | null)?.plan);
+  return plan.success ? plan.data : null;
 }
 
 export async function readConversationTargets(

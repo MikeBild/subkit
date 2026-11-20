@@ -34,12 +34,14 @@ import {
   auditReasonLabel,
   auditResourceHref,
   auditResourceLabel,
+  auditResourcePermission,
   auditResultLabel,
   auditScopeParams,
   canReadDirectory,
   isAuditEntry,
   normalizedAuditScope,
 } from "./audit-model";
+import { auditTaskFacts } from "./audit-task";
 import {
   AUDIT_GROUPS,
   type AuditGroup,
@@ -115,18 +117,6 @@ export function unverifiedApiKeyClient(entry: TimelineEntry): boolean {
     entry.credential_origin !== "cli_oauth_session" &&
     auditInitiatingSource(entry) === "api"
   );
-}
-function resourcePermission(type: string): string | null {
-  const permissions: Record<string, string> = {
-    workflow: "workflow:read",
-    connector: "connector:read",
-    knowledge_source: "knowledge:read",
-    skill: "skill:read",
-    file: "file:read",
-    execution: "execution:read",
-    conversation: "conversation:read",
-  };
-  return permissions[type] ?? null;
 }
 function TimelineSkeleton() {
   const { t } = useI18n();
@@ -324,6 +314,7 @@ function AuditDetail({
     { label: t("audit.timeline.execution"), value: current.execution_id || missing },
     { label: t("audit.timeline.conversation"), value: current.conversation_id || missing },
     { label: t("audit.timeline.workflow"), value: current.workflow_id || missing },
+    ...auditTaskFacts(current, t, dateTime),
     {
       label: t("audit.timeline.resourceType"),
       value: auditResourceLabel(current.resource_type, t).text,
@@ -488,6 +479,8 @@ export function AuditTimelinePage() {
       ...(filter.executionId ? { execution_id: filter.executionId } : {}),
       ...(filter.conversationId ? { conversation_id: filter.conversationId } : {}),
       ...(filter.workflowId ? { workflow_id: filter.workflowId } : {}),
+      ...(filter.taskId ? { task_id: filter.taskId } : {}),
+      ...(filter.taskRunId ? { task_run_id: filter.taskRunId } : {}),
       ...(filter.result ? { result: filter.result } : {}),
       ...(filter.action ? { action: filter.action } : {}),
       ...(filter.traceId ? { trace_id: filter.traceId } : {}),
@@ -602,6 +595,8 @@ export function AuditTimelinePage() {
         draft.executionId,
         draft.conversationId,
         draft.workflowId,
+        draft.taskId,
+        draft.taskRunId,
       ].some((id) => id && !validUrlUuid(id))
     ) {
       setFilterError(t("audit.timeline.invalidId"));
@@ -655,6 +650,8 @@ export function AuditTimelinePage() {
       "execution_id",
       "conversation_id",
       "workflow_id",
+      "task_id",
+      "task_run_id",
       "result",
       "action",
       "trace_id",
@@ -678,6 +675,8 @@ export function AuditTimelinePage() {
       execution_id: draft.executionId,
       conversation_id: draft.conversationId,
       workflow_id: draft.workflowId,
+      task_id: draft.taskId,
+      task_run_id: draft.taskRunId,
       result: draft.result,
       action: draft.action,
       trace_id: draft.traceId,
@@ -717,6 +716,8 @@ export function AuditTimelinePage() {
       "execution_id",
       "conversation_id",
       "workflow_id",
+      "task_id",
+      "task_run_id",
       "result",
       "action",
       "trace_id",
@@ -809,6 +810,8 @@ export function AuditTimelinePage() {
       "execution_id",
       "conversation_id",
       "workflow_id",
+      "task_id",
+      "task_run_id",
       "result",
       "action",
       "trace_id",
@@ -826,10 +829,10 @@ export function AuditTimelinePage() {
     );
     scrollRef.current?.scrollTo({ top: 0 });
   };
-  const permission = current ? resourcePermission(current.resource_type) : null;
+  const permission = current ? auditResourcePermission(current.resource_type) : null;
   const href =
     current && permission && session.permissions.includes(permission)
-      ? auditResourceHref(current.resource_type, current.resource_id)
+      ? auditResourceHref(current.resource_type, current.resource_id, current.task_id)
       : null;
   if (!allowed || forbidden)
     return (

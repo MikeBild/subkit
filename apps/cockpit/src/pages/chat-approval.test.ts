@@ -55,6 +55,31 @@ test("never guesses a tool call or turns text/form questions into grants", () =>
   ])
     expect(chatApproval(detail)).toBeNull();
 });
+test("held changes of a run can be released only by its owner: anyone else gets no answer buttons", () => {
+  const OWNER = "018f4b4a-6d33-7b3a-9c2d-aaaaaaaaaaaa";
+  const ADMIN = "018f4b4a-6d33-7b3a-9c2d-bbbbbbbbbbbb";
+  const held = (run: boolean, backed: boolean) => {
+    const detail = fixture();
+    const pending = detail.resume_summary?.pending_approval;
+    if (pending)
+      pending.prompt = {
+        question: "Send the reminder?",
+        intent_kind: "execute_confirmed_tool_call",
+        ...(backed ? { approval_backed: true } : {}),
+      };
+    return {
+      ...detail,
+      conversation: { owner_id: OWNER },
+      draft: run ? { session: { task_run: { task_id: OWNER, task_run_id: ADMIN } } } : {},
+    } as unknown as ConversationDetail;
+  };
+  expect(chatApproval(held(true, true), ADMIN)?.ownerOnly).toBe(true);
+  expect(chatApproval(held(true, true), OWNER)?.ownerOnly).toBeUndefined();
+  expect(chatApproval(held(true, false), ADMIN)?.ownerOnly).toBeUndefined();
+  expect(chatApproval(held(false, true), ADMIN)?.ownerOnly).toBeUndefined();
+  expect(chatApproval(held(true, true))?.ownerOnly).toBeUndefined();
+});
+
 test("requires a readable question and does not label other decisions as inactive saves", () => {
   const detail = fixture();
   detail.tool_calls[0]!.input = { question: "Continue?" };

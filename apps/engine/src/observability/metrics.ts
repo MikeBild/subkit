@@ -9,6 +9,10 @@ const HTTP_DURATION_BUCKETS_MS = [5, 25, 100, 500, 2500, 10000] as const;
 
 const SANDBOX_MEMORY_BUCKETS_BYTES = [1048576, 4194304, 16777216, 67108864, 268435456] as const;
 
+const TASK_RUN_DURATION_BUCKETS_MS = [
+  60000, 300000, 900000, 3600000, 14400000, 86400000, 604800000,
+] as const;
+
 const LOOP_LAG_BUCKETS_SECONDS = [60, 300, 1800, 3600, 21600, 86400, 604800] as const;
 
 export type PatchCandidateDecision =
@@ -108,6 +112,10 @@ export const METRIC_NAMES = {
     "subkit_conversation_tool_hallucinated_absence_total",
   WORKFLOW_SCHEDULE_NOT_BOUND_TOTAL: "subkit_workflow_schedule_not_bound_total",
   WORKFLOW_TRIGGER_KIND_TOTAL: "subkit_workflow_trigger_kind_total",
+  TASK_RUN_TOTAL: "subkit_task_run_total",
+  TASK_RUN_DURATION_MS: "subkit_task_run_duration_ms",
+  TASK_SWEEP_CLAIM_TOTAL: "subkit_task_sweep_claim_total",
+  TASK_ADMISSION_TOTAL: "subkit_task_admission_total",
   CRITIC_RUNS_TOTAL: "subkit_critic_runs_total",
   CRITIC_RUBRIC_ITEMS_TOTAL: "subkit_critic_rubric_items_total",
   PREVIEW_JUDGE_VERDICTS_TOTAL: "subkit_preview_judge_verdicts_total",
@@ -527,6 +535,27 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.WORKFLOW_TRIGGER_KIND_TOTAL,
     help: "Workflow commits per trigger kind (request / webhook / schedule). A sudden drop in `schedule` is the canary for chat-authoring regressing back to manual create_schedule calls. Labelled by `tenant_id` for parity with WORKFLOW_SCHEDULE_NOT_BOUND_TOTAL so cohorts can be sliced per tenant.",
     labels: ["tenant_id", "kind"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.TASK_RUN_TOTAL,
+    help: "Task runs by lifecycle point. `outcome` is `started` when a run begins and `completed`, `failed` or `aborted` when it ends, so sum one side only; a run that waits or has a result ready has not ended. `trigger` is `manual`, `once` or `cron`. Labelled by `tenant_id` for parity with execution_total.",
+    labels: ["tenant_id", "outcome", "trigger"],
+  });
+  reg.registerHistogram({
+    name: METRIC_NAMES.TASK_RUN_DURATION_MS,
+    help: "Wall-clock duration of an ended task run in milliseconds, from its start to `completed`, `failed` or `aborted`. It includes the time the run waited for a person or slept.",
+    labels: ["tenant_id", "outcome"],
+    buckets: TASK_RUN_DURATION_BUCKETS_MS,
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.TASK_SWEEP_CLAIM_TOTAL,
+    help: "Due task schedules seen by the sweep. `result` is `claimed` (a run started), `held` (admission refused the start), `skipped` (another worker claimed it first) or `failed` (the claim threw).",
+    labels: ["result"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.TASK_ADMISSION_TOTAL,
+    help: "Task starts that admission refused, by reason code (grant_required, grant_expired, grant_exhausted, grant_fingerprint_mismatch, owner_unavailable, ai_access_missing, previous_run_active, paused). Counted on every refused start, unlike the audit entry, which is written only when the state changes.",
+    labels: ["reason"],
   });
   reg.registerCounter({
     name: METRIC_NAMES.CRITIC_RUNS_TOTAL,

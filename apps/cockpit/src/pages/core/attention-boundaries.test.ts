@@ -47,6 +47,7 @@ test("a mixed attention list is stopped when any entry is stopped", () => {
       budget: "answered",
       ai_access: "answered",
       risk: "answered",
+      tasks: "answered",
     },
     items: [
       item({ id: "stop", subject: null, class: "stopped" }),

@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { cn } from "@/lib/utils";
 import { useEdgeFade } from "./tab-motion";
 
 export interface SegmentedOption {
@@ -31,12 +32,16 @@ export function SegmentedControl({
   onValueChange,
   label,
   testId,
+  disabled = false,
+  wrap = false,
 }: {
   options: readonly SegmentedOption[];
   value: string;
   onValueChange(value: string): void;
   label: string;
   testId?: string;
+  disabled?: boolean;
+  wrap?: boolean;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const edgeFade = useEdgeFade(root);
@@ -58,21 +63,32 @@ export function SegmentedControl({
       type="single"
       variant="outline"
       value={value}
+      disabled={disabled}
+      aria-disabled={disabled || undefined}
       onValueChange={(next) => {
-        if (next) onValueChange(next);
+        if (next && !disabled) onValueChange(next);
       }}
       aria-label={label}
-      data-slot="segmented-control"
+      data-slot={wrap ? "segmented-choices" : "segmented-control"}
       data-testid={testId}
-      style={edgeFade}
-      className="min-w-0 max-w-full flex-nowrap gap-0.5 overflow-x-auto rounded-md bg-muted p-[3px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      style={wrap ? undefined : edgeFade}
+      className={
+        wrap
+          ? "grid w-full min-w-0 grid-cols-2 items-stretch gap-0.5 rounded-md bg-muted p-[3px] sm:grid-cols-3"
+          : "min-w-0 max-w-full flex-nowrap gap-0.5 overflow-x-auto rounded-md bg-muted p-[3px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      }
     >
       {options.map((option) => (
         <ToggleGroupItem
           key={option.value}
           value={option.value}
           data-testid={option.testId}
-          className="h-[26px] shrink-0 pointer-coarse:h-[38px] whitespace-nowrap rounded-sm border-0 bg-transparent px-2.5 shadow-none text-[13px] font-medium text-muted-foreground hover:bg-transparent hover:text-foreground data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm"
+          className={cn(
+            "rounded-sm border-0 bg-transparent px-2.5 shadow-none text-[13px] font-medium text-muted-foreground hover:bg-transparent hover:text-foreground data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm disabled:cursor-not-allowed",
+            wrap
+              ? "h-auto min-h-[30px] w-full min-w-0 shrink py-1 text-center leading-4 whitespace-normal [overflow-wrap:anywhere] pointer-coarse:min-h-[38px]"
+              : "h-[26px] shrink-0 whitespace-nowrap pointer-coarse:h-[38px]",
+          )}
         >
           {option.label}
         </ToggleGroupItem>

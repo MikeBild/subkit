@@ -9,6 +9,7 @@ import type { ResolvedPrincipal } from "./types.ts";
 interface HookRequestCtx {
   method: string;
   url: string;
+  recorded_url?: string;
   headers: Record<string, string>;
   body?: unknown;
   execution_id: string;
@@ -82,6 +83,7 @@ export async function evaluateHook(p: EvaluateHookParams): Promise<HookDecision>
     });
 
     if (!decision.allowed) {
+      const reason = recordedReason(decision.reason, requestCtx);
       try {
         await writeAudit(
           {
@@ -99,14 +101,14 @@ export async function evaluateHook(p: EvaluateHookParams): Promise<HookDecision>
             user_agent: null,
             before: null,
             after: null,
-            reason: decision.reason ?? "hook_denied",
+            reason,
             metadata: {
               hook_role: row.role,
               execution_id: requestCtx.execution_id,
               workflow_id: requestCtx.workflow_id,
               step_id: requestCtx.step_id,
               method: requestCtx.method,
-              url: requestCtx.url,
+              url: requestCtx.recorded_url ?? addressWithoutQuery(requestCtx.url),
             },
           },
           db,
@@ -119,11 +121,47 @@ export async function evaluateHook(p: EvaluateHookParams): Promise<HookDecision>
           error: err instanceof Error ? err.message : String(err),
         });
       }
-      return { allowed: false, reason: decision.reason ?? "hook_denied", hook_id: row.id };
+      return { allowed: false, reason, hook_id: row.id };
     }
   }
 
   return { allowed: true };
+}
+
+const HOOK_REASON_MAX = 200;
+
+function maskedQueryValues(requestCtx: HookRequestCtx): string[] {
+  try {
+    const sent = new URL(requestCtx.url).searchParams;
+    const recorded = requestCtx.recorded_url ? new URL(requestCtx.recorded_url).searchParams : null;
+    return [...sent.entries()]
+      .filter(([key, value]) => value.length > 0 && (!recorded || recorded.get(key) !== value))
+      .map(([, value]) => value);
+  } catch {
+    return [];
+  }
+}
+
+function recordedReason(reason: string | undefined, requestCtx: HookRequestCtx): string {
+  let text = reason ?? "hook_denied";
+  const forms = new Set<string>();
+  for (const value of maskedQueryValues(requestCtx)) {
+    forms.add(value);
+    forms.add(encodeURIComponent(value));
+    forms.add(new URLSearchParams({ v: value }).toString().slice(2));
+  }
+  for (const form of [...forms].sort((a, b) => b.length - a.length))
+    text = text.split(form).join("***");
+  return text.slice(0, HOOK_REASON_MAX);
+}
+
+function addressWithoutQuery(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return url.split("?")[0] ?? "";
+  }
 }
 
 async function runHook(

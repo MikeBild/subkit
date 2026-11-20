@@ -2,7 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { and, eq, isNull } from "drizzle-orm";
 import { resolveGraphqlStepEndpoint } from "../connectors/drivers/graphql-endpoint.ts";
 import { resolveUrl } from "../connectors/drivers/resolve-url.ts";
-import { loadConnectorSystem } from "../connectors/system.ts";
+import { type ConnectorSystem, loadConnectorSystem } from "../connectors/system.ts";
 import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import {
@@ -28,6 +28,7 @@ import {
   type ResolvedCall,
   type ResolvedEffectBinding,
 } from "./effect-manifest.ts";
+import { compileMcpBoundary, type McpBoundary, mcpBoundaryTarget } from "./mcp-boundary.ts";
 import { outboxSourceStep, supportsOutboxDelivery } from "./outbox-delivery-boundary.ts";
 import { factConnector, factVersion, type WorkflowReadFacts } from "./read-facts.ts";
 import { readPathBoundary, readPathTarget } from "./read-path-boundary.ts";
@@ -43,7 +44,9 @@ import {
   type ReportDeliveryEvidence,
 } from "./report-delivery-proposal.ts";
 import {
+  type ConnectorQuery,
   compileRequestBoundary,
+  connectorQueryOf,
   type RequestBoundary,
   type RequestBoundaryRefusal,
   requestBoundaryTarget,
@@ -55,8 +58,9 @@ import {
   storageTarget,
 } from "./storage-boundary.ts";
 import { executableDefinition } from "./stored-definition.ts";
+import { reviewedToolDrift } from "./tool-pin-review.ts";
 import { supportsTransactionalDelivery } from "./transactional-delivery-boundary.ts";
-import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
+import { type RequestStep, type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import {
   describeUnboundSteps,
   type MissingConnectorReference,
@@ -103,6 +107,7 @@ export async function resolveWorkflowEffectManifest(
   db: Executor,
   options: {
     include_review?: boolean;
+    compare_tool_pins?: boolean;
     facts?: WorkflowReadFacts | undefined;
     report_boundaries?: ReportDeliveryBoundaries;
     content_boundaries?: ContentPublicationBoundaries;
@@ -151,7 +156,13 @@ export async function resolveWorkflowEffectManifest(
   const callShapes: ResolvedCallShape[] = [];
   for (const step of definition.steps) {
     if (step.kind !== "call") continue;
-    const resolved = await resolveCall(step, input, db, options.facts);
+    const resolved = await resolveCall(
+      step,
+      input,
+      db,
+      options.facts,
+      options.compare_tool_pins === true,
+    );
     if (!resolved) continue;
     calls.push(resolved.call);
     callShapes.push(resolved.shape);
@@ -208,6 +219,10 @@ export async function resolveWorkflowEffectManifest(
     ...(options.include_review
       ? { execution_shape: authorityExecutionShape(definition, bindings, callShapes) }
       : {}),
+    ...(bindings.some((binding) => binding.mcp) ||
+    calls.some((call) => call.bindings.some((binding) => binding.mcp))
+      ? { tool_pins_compared: options.compare_tool_pins === true }
+      : {}),
     unavailable_steps,
     unavailable_connectors,
     storage_refusals,
@@ -224,6 +239,7 @@ async function resolveBindings(
   definition: WorkflowDef,
   db: Executor,
   options: {
+    compare_tool_pins?: boolean;
     facts?: WorkflowReadFacts | undefined;
     report_boundaries?: ReportDeliveryBoundaries;
     content_boundaries?: ContentPublicationBoundaries;
@@ -318,7 +334,7 @@ async function resolveBindings(
       storage_refusals.push({ step_id: step.id, reason: compiledStorage.refusal });
     if (storage) target = storageTarget(storage);
     const authoredBoundary = restDriver && step.boundary !== undefined;
-    const readPath =
+    let readPath =
       restDriver && !authoredBoundary ? readPathBoundary(step, connector?.base_url) : null;
     if (readPath) target = readPathTarget(readPath);
     const contentShape = restDriver
@@ -368,35 +384,45 @@ async function resolveBindings(
       unavailable_steps.push(step.id);
     const declaredDelivery = contradicted ? null : statedDelivery;
     let boundary: RequestBoundary | null = null;
-    if (restDriver && (authoredBoundary || hasRuntimeValue(step))) {
+    let readNeedsBoundary = false;
+    if (restDriver) {
       const stricter = supportsReportDelivery(step, target) || contentShape !== null;
-      const profile = stricter
-        ? contradicted
-          ? "report_delivery_contradicted"
-          : declaredDelivery || transactional || outbox
-            ? null
-            : profileRefusal(step.id, contentShape !== null, reportEvidence)
-        : undefined;
-      if (!stricter || profile !== null) {
-        const compiled = stricter
-          ? ({ refusal: profile as RequestBoundaryRefusal } as const)
-          : connector?.auth_type === "query" ||
-              Object.keys(
-                (connector?.config as { static_query?: Record<string, unknown> } | undefined)
-                  ?.static_query ?? {},
-              ).length > 0
-            ? ({ refusal: "connector_adds_query" } as const)
-            : compileRequestBoundary(step, connector?.base_url ?? null);
-        const admittedAsRead =
-          compiled.refusal === "no_boundary" &&
-          !authoredBoundary &&
-          (readPath !== null || supportsReadQuery(step));
-        if (compiled.refusal) {
-          if (!admittedAsRead)
-            request_refusals.push({ step_id: step.id, reason: compiled.refusal });
-        } else {
-          boundary = compiled.boundary;
-          target = requestBoundaryTarget(compiled.boundary);
+      const gate = await gateRequestBoundary({
+        step,
+        system: system ?? null,
+        credentials,
+        stricter_profile: !stricter
+          ? null
+          : contradicted
+            ? "report_delivery_contradicted"
+            : declaredDelivery || transactional || outbox
+              ? "covered"
+              : (profileRefusal(step.id, contentShape !== null, reportEvidence) ?? "covered"),
+        read_path: readPath !== null,
+      });
+      if (gate.refusal) request_refusals.push({ step_id: step.id, reason: gate.refusal });
+      if (gate.refusal === "connector_query_needs_boundary") {
+        readNeedsBoundary = true;
+        readPath = null;
+      }
+      if (gate.boundary) {
+        boundary = gate.boundary;
+        target = requestBoundaryTarget(gate.boundary);
+      }
+    }
+    let toolCall: McpBoundary | null = null;
+    if (driver === "mcp" && step.mcp?.operation === "call_tool") {
+      const compiled = compileMcpBoundary(step, connector?.base_url);
+      if (compiled.refusal) request_refusals.push({ step_id: step.id, reason: compiled.refusal });
+      else {
+        toolCall = compiled.boundary;
+        target = mcpBoundaryTarget(compiled.boundary);
+        const drift = options.compare_tool_pins
+          ? await reviewedToolDrift(db, input.tenant_id, connector, compiled.boundary)
+          : null;
+        if (drift) {
+          request_refusals.push({ step_id: step.id, reason: drift });
+          unavailable_steps.push(step.id);
         }
       }
     }
@@ -408,6 +434,7 @@ async function resolveBindings(
       ...(readPath ? { read_path: readPath } : {}),
       ...(storage ? { storage } : {}),
       ...(boundary ? { boundary } : {}),
+      ...(toolCall ? { mcp: toolCall } : {}),
       ...(transactional ? { transactional_delivery: transactional } : {}),
       ...(outbox ? { outbox_delivery: outbox } : {}),
       ...(declaredDelivery
@@ -427,6 +454,7 @@ async function resolveBindings(
       configuration_digest: workflowJsonDigest(configuration),
       credential_binding_digest: credentials ? workflowJsonDigest(credentials.binding) : null,
       rewrites_target:
+        readNeedsBoundary ||
         (Boolean(step.pagination) && !boundary?.pagination) ||
         JSON.stringify({
           base_url: connector?.base_url,
@@ -474,11 +502,69 @@ async function resolveBindings(
   };
 }
 
+export type CredentialAuthorityMetadata = Awaited<
+  ReturnType<ConnectorSystem["getAuthorityMetadata"]>
+>;
+
+async function connectorOwnQuery(
+  system: ConnectorSystem | null,
+  credentials: CredentialAuthorityMetadata | undefined,
+): Promise<ConnectorQuery | null> {
+  if (!system) return connectorQueryOf(undefined, []);
+  const declared = (system.connector.config as { static_query?: unknown } | null | undefined)
+    ?.static_query;
+  if (system.connector.auth_type !== "query" && credentials?.binding.primary?.mode !== "query")
+    return connectorQueryOf(declared, []);
+  try {
+    const stored = await system.getCredentials();
+    if (stored?.value.mode !== "query") return null;
+    return connectorQueryOf(declared, Object.keys(stored.value.query));
+  } catch {
+    return null;
+  }
+}
+
+export interface RequestGateOutcome {
+  boundary: RequestBoundary | null;
+  refusal: RequestBoundaryRefusal | null;
+}
+
+export async function gateRequestBoundary(input: {
+  step: RequestStep;
+  system: ConnectorSystem | null;
+  credentials: CredentialAuthorityMetadata | undefined;
+  stricter_profile: RequestBoundaryRefusal | "covered" | null;
+  read_path: boolean;
+}): Promise<RequestGateOutcome> {
+  const { step, system } = input;
+  const none: RequestGateOutcome = { boundary: null, refusal: null };
+  if (step.boundary === undefined && !hasRuntimeValue(step)) return none;
+  if (input.stricter_profile === "covered") return none;
+  if (input.stricter_profile !== null) return { boundary: null, refusal: input.stricter_profile };
+  const base = system?.connector.base_url ?? null;
+  if (step.boundary === undefined) {
+    const compiled = compileRequestBoundary(step, base);
+    if (compiled.refusal !== "no_boundary" || !(input.read_path || supportsReadQuery(step)))
+      return { boundary: null, refusal: compiled.refusal ?? null };
+    const own = await connectorOwnQuery(system, input.credentials);
+    return !own || Object.keys(own.fixed).length + own.credential.length > 0
+      ? { boundary: null, refusal: "connector_query_needs_boundary" }
+      : none;
+  }
+  const own = await connectorOwnQuery(system, input.credentials);
+  if (!own) return { boundary: null, refusal: "connector_query_unresolved" };
+  const compiled = compileRequestBoundary(step, base, own);
+  return compiled.refusal
+    ? { boundary: null, refusal: compiled.refusal }
+    : { boundary: compiled.boundary, refusal: null };
+}
+
 async function resolveCall(
   step: { id: string; workflow_id?: string | undefined; workflow_slug?: string | undefined },
   input: z.infer<typeof inputSchema>,
   db: Executor,
   facts?: WorkflowReadFacts,
+  compare_tool_pins = false,
 ): Promise<{
   call: ResolvedCall;
   shape: ResolvedCallShape;
@@ -559,6 +645,7 @@ async function resolveCall(
         unbound_steps: [] as UnboundStep[],
       }
     : await resolveBindings(childInput, parsed.data, db, {
+        compare_tool_pins,
         facts,
         report_boundaries: {},
         content_boundaries: {},

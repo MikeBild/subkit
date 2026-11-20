@@ -76,6 +76,26 @@ const AUTOMATION: QueryKey[] = [
   ["attention"],
 ];
 
+const TASK: QueryKey[] = [["tasks"], ["task"], ["task-grants"], ["attention"]];
+
+const TASK_GRANT: QueryKey[] = [
+  ...TASK,
+  ["decisions"],
+  ["workflow-authorities"],
+  ["workflow-automation-status"],
+];
+
+const TASK_RUN: QueryKey[] = [
+  ["tasks"],
+  ["task"],
+  ["task-runs"],
+  ["task-run"],
+  ["task-run-playbook"],
+  ["task-usage"],
+  ["task-grants"],
+  ["attention"],
+];
+
 const KNOWLEDGE: QueryKey[] = [["catalog"], ["catalog-detail"], ["knowledge-source"]];
 
 const FILES: QueryKey[] = [["catalog"], ["catalog-detail"], ["file"]];
@@ -108,6 +128,9 @@ export const LIVE_RULES: readonly LiveRule[] = [
   { prefix: "connector.", keys: CONNECTOR },
   { prefix: "patch.", keys: [...DECISIONS, ["workflow"], ["catalog-detail"]] },
   { prefix: "skill.", keys: [...DECISIONS, ["catalog"], ["catalog-detail"]] },
+  { prefix: "task.grant_changed", keys: TASK_GRANT },
+  { prefix: "task.", keys: TASK },
+  { prefix: "task_run.", keys: TASK_RUN },
   { prefix: "knowledge_source.", keys: KNOWLEDGE },
   { prefix: "file.", keys: FILES },
   { prefix: "identity.", keys: IDENTITY },

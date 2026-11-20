@@ -9,8 +9,10 @@ import {
 import { preparedWorkflowMatches } from "../../../tools/prepared-workflow-approval.ts";
 import { resolveWorkflowByIdOrSlug } from "../../../workflows/lookup.ts";
 import { heldTargetMissing, heldWorkflowSlug, replayInput } from "../../core/auto-persist.ts";
+import { readTaskRunScope } from "../../service/task-run-access.ts";
 import { WORKFLOW_TOOL_PREFIX } from "../../tools/authoring-palette.ts";
 import type { ToolResult } from "../../tools/index.ts";
+import { taskRunWorkflowRefusal } from "../../tools/sdk-wrap/task-run-guard.ts";
 import { grantAndClaim } from "./approval.ts";
 import { invalidIntent, permissionDenied, principalRequired } from "./context.ts";
 import { readString } from "./helpers.ts";
@@ -54,6 +56,9 @@ export async function commitHeldWorkflowWrites(
     return missing.result;
   }
   const workflowId = resolved.id;
+  const taskRun = await readTaskRunScope(p.db, p.tenant_id, p.conversation_id);
+  if (taskRun && (taskRun.marker.sealed || !taskRun.marker.workflow_ids.includes(workflowId)))
+    return taskRunWorkflowRefusal();
   const binding = claim.prepared_workflow;
   if (
     !preparedWorkflowMatches(binding, {

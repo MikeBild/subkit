@@ -198,7 +198,7 @@ export const settingsHelpEn = {
   "settings.help.queue.concurrency":
     "How many runs one engine instance executes at once. More means faster throughput and more memory; takes effect after a restart.",
   "settings.help.repl.permissionMode":
-    "How sk confirms before acting: ask asks every time, auto asks when it matters, plan only plans, yolo lifts the confirmation for destructive actions.",
+    "How sk confirms before acting: ask asks before every write unless an approval covers exactly this run, auto asks when it matters, plan only plans, yolo lifts the confirmation for destructive actions.",
   "settings.help.server.port":
     "The port the engine listens on. A change takes effect only after a restart, and anything pointing at the old port must follow.",
   "settings.help.server.public_base_url":
@@ -418,7 +418,7 @@ export const settingsHelpDe: Record<keyof typeof settingsHelpEn, string> = {
   "settings.help.queue.concurrency":
     "Wie viele Läufe eine Engine-Instanz gleichzeitig ausführt. Mehr heißt mehr Durchsatz und mehr Speicher; wirkt nach einem Neustart.",
   "settings.help.repl.permissionMode":
-    "Wie sk vor einer Aktion nachfragt: „ask“ jedes Mal, „auto“ wenn es darauf ankommt, „plan“ plant nur, „yolo“ hebt die Bestätigung für zerstörende Aktionen auf.",
+    "Wie sk vor einer Aktion nachfragt: „ask“ vor jedem Schreiben, außer es gibt eine Freigabe, die genau diesen Lauf deckt, „auto“ wenn es darauf ankommt, „plan“ plant nur, „yolo“ hebt die Bestätigung für zerstörende Aktionen auf.",
   "settings.help.server.port":
     "Der Port, auf dem die Engine lauscht. Wirkt erst nach einem Neustart; alles, was auf den alten Port zeigt, muss mitziehen.",
   "settings.help.server.public_base_url":

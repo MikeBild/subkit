@@ -67,40 +67,48 @@ export function ChatApprovalCard({
         }
         line={line}
         secondary={
-          <Button
-            variant="outline"
-            disabled={busy || expired}
-            onClick={() => onDecision(approval.id, false)}
-            data-testid={`${testId}-decline`}
-          >
-            {t("chat.approval.decline")}
-          </Button>
+          approval.ownerOnly ? null : (
+            <Button
+              variant="outline"
+              disabled={busy || expired}
+              onClick={() => onDecision(approval.id, false)}
+              data-testid={`${testId}-decline`}
+            >
+              {t("chat.approval.decline")}
+            </Button>
+          )
         }
         action={
-          <Button
-            disabled={
-              busy || expired || (approval.oauth === "complete" && !approval.authorizationUrl)
-            }
-            onClick={() => (reviewable ? setReviewOpen(true) : onDecision(approval.id, true))}
-            data-testid={`${testId}-approve`}
-          >
-            {busy && <Spinner aria-hidden="true" aria-label={undefined} />}
-            {t(
-              busy
-                ? "chat.decision.processing"
-                : approval.oauth
-                  ? approval.oauth === "start"
-                    ? "chat.oauth.start"
-                    : "chat.oauth.check"
-                  : approval.singleRun
-                    ? "chat.singleRun.confirm"
-                    : approval.savesInactiveWorkflow
-                      ? reviewable
-                        ? "reviewWorkflow.open"
-                        : "chat.decision.save"
-                      : "chat.approval.approve",
-            )}
-          </Button>
+          approval.ownerOnly ? (
+            <p className="text-sm text-muted-foreground" data-testid={`${testId}-owner-only`}>
+              {t("chat.taskRun.ownerOnly")}
+            </p>
+          ) : (
+            <Button
+              disabled={
+                busy || expired || (approval.oauth === "complete" && !approval.authorizationUrl)
+              }
+              onClick={() => (reviewable ? setReviewOpen(true) : onDecision(approval.id, true))}
+              data-testid={`${testId}-approve`}
+            >
+              {busy && <Spinner aria-hidden="true" aria-label={undefined} />}
+              {t(
+                busy
+                  ? "chat.decision.processing"
+                  : approval.oauth
+                    ? approval.oauth === "start"
+                      ? "chat.oauth.start"
+                      : "chat.oauth.check"
+                    : approval.singleRun
+                      ? "chat.singleRun.confirm"
+                      : approval.savesInactiveWorkflow
+                        ? reviewable
+                          ? "reviewWorkflow.open"
+                          : "chat.decision.save"
+                        : "chat.approval.approve",
+              )}
+            </Button>
+          )
         }
       >
         {approval.authorizationUrl && !expired && (

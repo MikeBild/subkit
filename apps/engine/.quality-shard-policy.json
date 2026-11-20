@@ -62,6 +62,10 @@
       "resource_tags": ["db", "ports", "global-state"]
     },
     {
+      "id": "tasks",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
       "id": "workflows",
       "resource_tags": ["db", "ports", "global-state"]
     }

@@ -1,10 +1,33 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { apiCall } from "@/api/call";
 import type { ConversationDetail } from "@/api/client";
+import { useSession } from "@/app/session";
+import { taskKeys } from "@/lib/task-keys";
 import { chatApproval } from "./chat-approval";
 import { chatChoice } from "./chat-choice";
 import { chatForm } from "./chat-form";
+import { type TaskAction, withTaskName } from "./chat-task-approval";
 import { chatText } from "./chat-text";
+
+function useTaskActionName(action: TaskAction | null): string | null {
+  const { permissions } = useSession();
+  const runId = action?.taskRunId ?? "";
+  const run = useQuery({
+    queryKey: taskKeys.run(runId),
+    enabled: Boolean(runId) && permissions.includes("task_run:read"),
+    retry: false,
+    queryFn: () => apiCall("get", "/v1/task-runs/{id}", { path: { id: runId } }),
+  });
+  const taskId = action?.taskId ?? run.data?.task_id ?? "";
+  const task = useQuery({
+    queryKey: taskKeys.detail(taskId),
+    enabled: Boolean(taskId) && !action?.name && permissions.includes("task:read"),
+    retry: false,
+    queryFn: () => apiCall("get", "/v1/tasks/{id}", { path: { id: taskId } }),
+  });
+  return task.data?.name ?? null;
+}
 
 export function useChatQuestions(data: ConversationDetail | undefined) {
   const queryClient = useQueryClient();
@@ -16,7 +39,12 @@ export function useChatQuestions(data: ConversationDetail | undefined) {
     seenQuestionId.current = openQuestionId;
     void queryClient.invalidateQueries({ queryKey: ["conversations"] });
   }, [openQuestionId, queryClient]);
-  const pendingDecision = chatApproval(data);
+  const viewerId = useSession().principal.id;
+  const askedDecision = chatApproval(data, viewerId);
+  const taskName = useTaskActionName(askedDecision?.taskAction ?? null);
+  const pendingDecision = askedDecision?.taskAction
+    ? { ...askedDecision, taskAction: withTaskName(askedDecision.taskAction, taskName) }
+    : askedDecision;
   const pendingChoice = chatChoice(data);
   const pendingForm = useMemo(() => chatForm(data), [data]);
   const pendingText = useMemo(() => chatText(data), [data]);

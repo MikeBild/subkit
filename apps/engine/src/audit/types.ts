@@ -320,6 +320,7 @@ export const AuditAction = {
 
   CONNECTOR_DRAFT_CREDENTIAL_REJECTED: "connector.draft.credential_rejected",
   TOOL_POLICY_CONFIRMATION_REQUIRED: "tool_policy.confirmation_required",
+  TOOL_POLICY_CONFIRMATION_SKIPPED: "tool_policy.confirmation_skipped",
   TOOL_POLICY_CONFIRM_COLLAPSED_MCP: "tool_policy.confirm_collapsed_mcp",
   TOOL_POLICY_CHANGED: "tool_policy.changed",
 
@@ -352,6 +353,24 @@ export const AuditAction = {
   SCHEDULE_OCCURRENCE_RESTORED: "schedule.occurrence_restored",
   SCHEDULE_TRIGGER_FIRED: "schedule.trigger.fired",
   SCHEDULE_TRIGGER_UNBOUND: "schedule.trigger.unbound",
+
+  TASK_CREATED: "task.created",
+  TASK_UPDATED: "task.updated",
+  TASK_DELETED: "task.deleted",
+  TASK_PAUSED: "task.paused",
+  TASK_RESUMED: "task.resumed",
+  TASK_AUTHORITY_GRANTED: "task.authority_granted",
+  TASK_AUTHORITY_REVOKED: "task.authority_revoked",
+  TASK_ADMISSION_CHANGED: "task.admission.changed",
+  TASK_SCHEDULE_CLAIMED: "task.schedule_claimed",
+  TASK_RUN_STARTED: "task_run.started",
+  TASK_RUN_WAITING: "task_run.waiting",
+  TASK_RUN_RESUMED: "task_run.resumed",
+  TASK_RUN_RESULT_READY: "task_run.result_ready",
+  TASK_RUN_COMPLETED: "task_run.completed",
+  TASK_RUN_FAILED: "task_run.failed",
+  TASK_RUN_ABORT_REQUESTED: "task_run.abort_requested",
+  TASK_RUN_ABORTED: "task_run.aborted",
 
   EXTERNAL_WRITE: "external_write",
 

@@ -6,6 +6,7 @@ import {
 import { clearReauthIfProved } from "../../../../connectors/reauth.ts";
 import { logger } from "../../../../logging/logger.ts";
 import { recordSuccessShape } from "../../../../schema-versions/service.ts";
+import type { pagedBodyGuard } from "../../../../workflows/request-boundary.ts";
 import type { MaterializedRequest } from "../../../prepared-request.ts";
 import type { RequestMeta } from "../../../types.ts";
 import { RequestError } from "../errors.ts";
@@ -13,6 +14,8 @@ import type { DoOnePageParams } from "../http-attempt.ts";
 import { resolveRetryPolicy } from "../retry.ts";
 import { classifyRequestStepSideEffects } from "../side-effects.ts";
 import { type RequestDispatch, recordDriverOutcome } from "./context.ts";
+
+export { recordedUrl } from "../../../../connectors/recorded-url.ts";
 
 export interface HttpExchange {
   d: RequestDispatch;
@@ -35,6 +38,8 @@ export interface HttpExchange {
   multipart: FormData | undefined;
   last_request: MaterializedRequest | undefined;
   in_flight_checkpoint: Promise<void> | null;
+  paged_body_guard: ReturnType<typeof pagedBodyGuard>;
+  masked_query_keys: readonly string[];
   before_dispatch: (request: MaterializedRequest) => ReturnType<RequestDispatch["before_dispatch"]>;
 }
 

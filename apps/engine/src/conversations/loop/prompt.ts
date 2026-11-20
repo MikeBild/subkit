@@ -17,6 +17,10 @@ import { RUN_VERB_RE } from "../intent-patterns.ts";
 import { buildUserContentParts } from "../persistence/index.ts";
 import { PLAYBOOK_GUIDANCE, readPlaybook } from "../playbook.ts";
 import { lockedToolsBySkill } from "../tools/authoring-palette.ts";
+import {
+  TASK_RUN_UNTRUSTED_CONTENT_NOTE,
+  taskRunMarkerOf,
+} from "../tools/sdk-wrap/task-run-guard.ts";
 import { renderAuthoringContextBlock } from "./authoring-context-block.ts";
 import { appendVolatileSystemContext } from "./shared.ts";
 import type { AssembledPrompt, TurnBase, TurnPrompt, TurnSkills, TurnState } from "./types.ts";
@@ -173,5 +177,7 @@ export async function assembleTurnPrompt(
     ),
   );
   await appendPlaybookContext(base, prompt);
+  if (taskRunMarkerOf(base.ctx))
+    appendVolatileSystemContext(prompt, TASK_RUN_UNTRUSTED_CONTENT_NOTE);
   return { prompt, activeConnectorId, recentToolCalls };
 }

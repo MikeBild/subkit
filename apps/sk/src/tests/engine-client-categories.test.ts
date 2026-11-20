@@ -10,8 +10,16 @@ const source: CatalogCategoryUsage = {
   aliases: ["Accounting"],
   revision: 3,
   total: 1,
-  counts: { workflow: 1, connector: 0, knowledge_source: 0, skill: 0, file: 0, intake: 0 },
-  llm_counts: { workflow: 1, connector: 0, knowledge_source: 0, skill: 0, file: 0, intake: 0 },
+  counts: { workflow: 1, connector: 0, knowledge_source: 0, skill: 0, file: 0, task: 0, intake: 0 },
+  llm_counts: {
+    workflow: 1,
+    connector: 0,
+    knowledge_source: 0,
+    skill: 0,
+    file: 0,
+    task: 0,
+    intake: 0,
+  },
   intake_open: { collected: 0, reviewing: 0 },
 };
 

@@ -1,4 +1,5 @@
 import { connectorEnvironmentKey, getConnectorsForEnvironments } from "../../connectors/service.ts";
+import { admittedCoveringAuthority } from "../../execution/core/run-coverage.ts";
 import type { ExecutionMode } from "../../execution/types.ts";
 import { HELD_PREVIEW_WARNING_CODE } from "../../execution/types.ts";
 import {
@@ -10,11 +11,16 @@ import {
 } from "../../execution/use-cases/run-workflow.ts";
 import { logger } from "../../logging/logger.ts";
 import { confirmEnvelopeFor } from "../../tools/policy.ts";
+import type { PermissionMode, ToolPolicies } from "../../tools/types.ts";
 import { resolveWorkflowReviewEnvironment } from "../../workflows/execution-environment.ts";
 import { resolveWorkflowInputContract } from "../../workflows/input-schema-synth.ts";
 import { resolveWorkflowByIdOrSlug } from "../../workflows/lookup.ts";
 import { getWorkflow } from "../../workflows/service.ts";
-import { runConfirmGate } from "../confirmation.ts";
+import {
+  confirmationSkippedMetadata,
+  recordConfirmationSkipped,
+  runConfirmGate,
+} from "../confirmation.ts";
 import {
   decideRunEnvironment,
   type EnvironmentResolution,
@@ -22,9 +28,17 @@ import {
   runNextActions,
   runReply,
 } from "../core/fast-path.ts";
+import { loadDraft } from "../draft.ts";
 import type { RenderPayload } from "../fast-path-lists.ts";
+import { getStoredPermissionMode } from "../service/shared.ts";
+import { getToolPolicies } from "../tool-policies.ts";
 import type { ToolCallOutcome } from "../tools/result-payload.ts";
 import { prepareGate } from "../tools/sdk-wrap/gate-subjects.ts";
+import {
+  type GateCoverage,
+  loadRunCoverage,
+  workflowConfirmOverride,
+} from "../tools/sdk-wrap/invoke/run-coverage.ts";
 import { answerFastPath } from "./persist.ts";
 import type { FastPathHit, FastPathParams } from "./types.ts";
 
@@ -71,6 +85,20 @@ async function fastPathEnvironment(
     resolution = { kind: "ambiguous" };
   }
   return decideRunEnvironment(resolution);
+}
+
+async function conversationPolicy(
+  p: FastPathParams,
+): Promise<{ permission_mode: PermissionMode | null; overrides: ToolPolicies }> {
+  const [draft, overrides] = await Promise.all([
+    loadDraft(p.tenant_id, p.conversation_id, p.db),
+    getToolPolicies(p.db, p.tenant_id, p.conversation_id),
+  ]);
+  return {
+    permission_mode:
+      p.permission_mode === undefined ? getStoredPermissionMode(draft) : p.permission_mode,
+    overrides,
+  };
 }
 
 async function executeRunWorkflow(
@@ -166,8 +194,29 @@ export async function runAndAnswer(
   input: Record<string, unknown>,
   grant: RunGrant,
   environment: ExecutionMode,
+  decision: { rule: string; coverage: GateCoverage } | null = null,
 ): Promise<FastPathHit> {
   const payload = await executeRunWorkflow(p, wf, grant, environment);
+  const skipped =
+    decision?.coverage.covered &&
+    admittedCoveringAuthority(decision.rule, decision.coverage, payload.data) !== null
+      ? {
+          tool: "run_workflow",
+          conversation_id: p.conversation_id,
+          environment: decision.coverage.environment,
+          covering_authority_id: decision.coverage.authority_id,
+        }
+      : null;
+  if (skipped) {
+    await recordConfirmationSkipped({
+      ...skipped,
+      db: p.db,
+      tenant_id: p.tenant_id,
+      tool_call_id: null,
+      actor_id: p.principal.id,
+      actor_type: p.principal.kind,
+    });
+  }
   return answerFastPath(p, {
     tool: "run_workflow",
     category: "tenant_write",
@@ -175,6 +224,7 @@ export async function runAndAnswer(
     output: { ok: payload.ok, ...payload.data, skipped_llm: true },
     reply: payload.reply,
     outcome: payload.outcome,
+    ...(skipped ? { confirmation_data: confirmationSkippedMetadata(skipped) } : {}),
   });
 }
 
@@ -209,11 +259,25 @@ export async function runPhase(p: FastPathParams, slugOrId: string): Promise<Fas
   );
   const runArgs = { workflow: resolved.slug, environment };
   if (grant.kind === "rejected") return denyRun(p, runArgs, grant);
+  const policy = await conversationPolicy(p);
+  const coverage = await loadRunCoverage(p.db, policy.permission_mode, () =>
+    workflowConfirmOverride(policy.overrides, resolved.slug)
+      ? null
+      : {
+          tenant_id: p.tenant_id,
+          workflow_id: resolved.id,
+          workflow_version_id: resolved.current_version_id ?? undefined,
+          execution_environment: environment,
+        },
+  );
   const gate = await runConfirmGate({
     tool: "run_workflow",
     category: "tenant_write",
     surface: gateSurface,
     args: runArgs,
+    overrides: policy.overrides,
+    permission_mode: policy.permission_mode,
+    ...(coverage.covered ? { authority_covered: true } : {}),
     db: p.db,
     tenant_id: p.tenant_id,
     principal: p.principal,
@@ -267,7 +331,10 @@ export async function runPhase(p: FastPathParams, slugOrId: string): Promise<Fas
   if (gate.kind !== "proceed") {
     throw new Error(`fast path cannot shape a ${gate.kind} confirm gate outcome`);
   }
-  const hit = await runAndAnswer(p, resolved, runArgs, grant, environment);
+  const hit = await runAndAnswer(p, resolved, runArgs, grant, environment, {
+    rule: gate.record.rule,
+    coverage,
+  });
   logger.info({
     module: "conversation",
     action: "conversation.fast_path",

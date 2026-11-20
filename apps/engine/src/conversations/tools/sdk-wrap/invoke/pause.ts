@@ -30,7 +30,8 @@ export async function forwardToolPause(
       : undefined;
   const pausePending =
     pauseInputRecord?.pending_output ??
-    (await prepareGate(inner.name, rawArgs, ctx.tenant_id, db, ctx.locale)).pending_output;
+    (await prepareGate(inner.name, rawArgs, ctx.tenant_id, db, ctx.locale, ctx.principal))
+      .pending_output;
   events.push({
     type: "elicit_request",
     elicitation_id: pause.elicitation_id,

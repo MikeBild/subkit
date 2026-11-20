@@ -1,7 +1,15 @@
 import { invokeMcpConnectorCall, mcpEgressInput } from "../../../../connectors/drivers/mcp.ts";
 import { withEgressAudit } from "../../../../connectors/egress.ts";
 import { clearReauthIfProved } from "../../../../connectors/reauth.ts";
+import type { RemoteToolDescriptor } from "../../../../mcp/client/manifest.ts";
 import { MCP_WIRE_METHOD, type RemoteCall } from "../../../../mcp/client/remote-call.ts";
+import {
+  describeMcpBoundaryViolation,
+  mcpArgumentsViolation,
+  mcpBoundary,
+  mcpToolDescriptorPin,
+} from "../../../../workflows/mcp-boundary.ts";
+import { GOVERNANCE_REFUSALS } from "../../../state.ts";
 import type { ConnectorResolutionSummary, StepResult } from "../../../types.ts";
 import { buildStepErrorDetail } from "../../error-detail.ts";
 import { mcpEvidence } from "../circuit-evidence.ts";
@@ -16,6 +24,24 @@ import {
   recordDriverOutcome,
   requireConnector,
 } from "./context.ts";
+
+class McpAuthorityRefusal extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "McpAuthorityRefusal";
+  }
+}
+
+function outsideDeclaredBoundary(detail: string): string {
+  return (
+    `This tool call is outside the boundary its step declares: ${detail}. Nothing was sent. ` +
+    "Correct `mcp.boundary` on this step so it covers the call, or correct the arguments; do " +
+    "not remove the boundary."
+  );
+}
 
 async function executeMcp(d: RequestDispatch): Promise<StepResult> {
   const { p } = d;
@@ -64,6 +90,18 @@ async function executeMcp(d: RequestDispatch): Promise<StepResult> {
         ? { operation: "get_prompt", prompt: target, arguments: args }
         : { operation: "call_tool", tool: target, arguments: args };
   const wireMethod = MCP_WIRE_METHOD[mcpSpec.operation];
+  const declared =
+    mcpSpec.operation === "call_tool" && mcpSpec.boundary !== undefined
+      ? mcpBoundary(p.step, connector.base_url)
+      : null;
+  if (declared) {
+    const violation = mcpArgumentsViolation(declared, { tool: target, arguments: args });
+    if (violation)
+      return failedStep(d, {
+        code: "request_outside_declared_boundary",
+        message: outsideDeclaredBoundary(describeMcpBoundaryViolation(violation)),
+      });
+  }
 
   if (d.state.holdThisStep) {
     return heldStepResult({
@@ -86,6 +124,33 @@ async function executeMcp(d: RequestDispatch): Promise<StepResult> {
       workflow_id,
       step_id,
     } = egressScope(d);
+    const admit = async (listed: RemoteToolDescriptor | null): Promise<void> => {
+      const snapshot = {
+        ...d.authority_snapshot(),
+        mcp_dispatch: {
+          operation: mcpSpec.operation,
+          ...(mcpSpec.operation === "call_tool"
+            ? {
+                call: {
+                  tool: target,
+                  arguments: args,
+                  descriptor: listed ? mcpToolDescriptorPin(listed) : null,
+                },
+              }
+            : {}),
+        },
+      };
+      try {
+        await p.ctx.before_external_request?.(snapshot);
+      } catch (error) {
+        const reason = (error as { code?: unknown }).code;
+        const code = typeof reason === "string" ? reason : "authority_check_failed";
+        throw new McpAuthorityRefusal(
+          GOVERNANCE_REFUSALS.has(code) ? code : "authority_invalid",
+          `Execution authority could not be verified: ${code}; review the current boundary.`,
+        );
+      }
+    };
     const result = await runMcpWithRetry({
       attempt: () =>
         withEgressAudit(
@@ -107,6 +172,7 @@ async function executeMcp(d: RequestDispatch): Promise<StepResult> {
           }),
           () =>
             invokeMcpConnectorCall({
+              before_call: admit,
               on_dispatch: () => d.record_effect(classifyRequestStepSideEffects(p.step)),
               on_credential_use: d.persist_credential_use,
               db: p.ctx.db,
@@ -137,6 +203,8 @@ async function executeMcp(d: RequestDispatch): Promise<StepResult> {
     }
     return result;
   } catch (err) {
+    if (err instanceof McpAuthorityRefusal)
+      return failedStep(d, { code: err.code, message: err.message });
     return failedStep(d, buildStepErrorDetail({ code: "mcp_step_invalid", err }));
   }
 }

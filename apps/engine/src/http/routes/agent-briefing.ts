@@ -15,7 +15,7 @@ import { ErrorSchema } from "../../api/common-schemas.ts";
 import { DOMAIN_SLUG_RE } from "../../api/domain-slug.ts";
 import type { ResolvedPrincipal } from "../../auth/index.ts";
 import type { Db } from "../../db/client.ts";
-import { can, catalogVisibility, resourceAccess } from "../../rbac/index.ts";
+import { can, catalogVisibility, hasBuiltinAdminRole, resourceAccess } from "../../rbac/index.ts";
 import { BadRequestError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -48,6 +48,12 @@ const AgentBriefingResponse = z
       }),
     ),
     files_omitted: z.number().int(),
+    tasks: z
+      .array(z.string().uuid())
+      .describe(
+        "Ids of the domain's active tasks as listed in the briefing: the caller's own, or every task of the tenant for an admin. Empty without task:read.",
+      ),
+    tasks_omitted: z.number().int(),
     guides: z
       .array(z.string())
       .describe("Slugs of the skills that teach how to work with sk, listed for every domain."),
@@ -119,7 +125,8 @@ const briefingRoute = createRoute({
     "Returns a budgeted markdown grounding block for the requested domains: " +
     "prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge " +
     "index, the domain's workflows and connectors (category or slug prefix equals the " +
-    "domain), readable file metadata without file contents, counts of collected intake material " +
+    "domain), the caller's own tasks in the domain (every task for an admin; name, id and " +
+    "description, never the goal), readable file metadata without file contents, counts of collected intake material " +
     "in the requested domains (never its content), and the search-first grounding rule. Intended " +
     "for coding-agent hooks.",
   security: [{ bearerAuth: [] }],
@@ -217,19 +224,31 @@ export function registerAgentBriefingRoutes(app: OpenAPIHono<AppEnv>): void {
       throw new BadRequestError("domains must be comma-separated lowercase slugs (a-z, 0-9, -, _)");
     }
 
-    const [includeKnowledge, workflowVisible, connectorVisible, fileAccess, intakeDecision] =
-      await Promise.all([
-        canReadKnowledge(db, principal),
-        catalogVisibility(db, principal, "workflow:read", "workflow"),
-        catalogVisibility(db, principal, "connector:read", "connector"),
-        fileVisibility(db, principal),
-        can(db, {
-          tenant_id: principal.tenant_id,
-          principal,
-          permission: "intake:read",
-          quiet: true,
-        }),
-      ]);
+    const [
+      includeKnowledge,
+      workflowVisible,
+      connectorVisible,
+      fileAccess,
+      intakeDecision,
+      taskDecision,
+    ] = await Promise.all([
+      canReadKnowledge(db, principal),
+      catalogVisibility(db, principal, "workflow:read", "workflow"),
+      catalogVisibility(db, principal, "connector:read", "connector"),
+      fileVisibility(db, principal),
+      can(db, {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission: "intake:read",
+        quiet: true,
+      }),
+      can(db, {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission: "task:read",
+        quiet: true,
+      }),
+    ]);
 
     const result = await buildAgentBriefing({
       tenant_id: principal.tenant_id,
@@ -241,6 +260,9 @@ export function registerAgentBriefingRoutes(app: OpenAPIHono<AppEnv>): void {
       connector_visible: connectorVisible,
       file_visible: fileAccess.any ? fileAccess.allows : null,
       file_tenant_wide: fileAccess.tenantWide.allow,
+      task_viewer: taskDecision.allow
+        ? { owner_id: hasBuiltinAdminRole(principal) ? null : principal.id }
+        : null,
       db,
     });
     return c.json(result, 200);

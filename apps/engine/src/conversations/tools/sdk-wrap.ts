@@ -9,8 +9,15 @@ import { compatibleToolPalette } from "../../llm/runtime/tool-schema-compatibili
 import { logger } from "../../logging/logger.ts";
 import { redactUpstreamDetail } from "../../mcp/client/registry.ts";
 import type { PermissionMode, ToolPolicies } from "../../tools/types.ts";
-import type { TurnEvent } from "../types.ts";
-import { filterByAuthoringPalette, filterByChatReadOnlyPalette } from "./authoring-palette.ts";
+import { taskRunPrincipal } from "../service/task-run-marker.ts";
+import { taskRunToolPolicies } from "../tool-policies.ts";
+import type { TaskRunMarker, TurnEvent } from "../types.ts";
+import {
+  filterByAuthoringPalette,
+  filterByChatReadOnlyPalette,
+  filterByTaskRunPalette,
+  withoutTaskRunOnlyTools,
+} from "./authoring-palette.ts";
 import { filterBySkillGate } from "./gated.ts";
 import { listTools, type ToolContext } from "./index.ts";
 import { buildExternalMcpTools } from "./sdk-wrap/external-mcp-tools.ts";
@@ -21,6 +28,11 @@ import {
 import { wrapOne } from "./sdk-wrap/invoke.ts";
 import type { TurnSignals, WrappedToolOutput } from "./sdk-wrap/state.ts";
 import { buildSyntheticWorkflowTools } from "./sdk-wrap/synthetic-workflow-tools.ts";
+import {
+  guardTaskRunTool,
+  taskRunMarkerOf,
+  withTaskRunEnvironment,
+} from "./sdk-wrap/task-run-guard.ts";
 
 export {
   computeValidationFingerprint,
@@ -31,6 +43,94 @@ export {
   type WrappedToolOutput,
 } from "./sdk-wrap/state.ts";
 
+type WrappedPalette = Record<string, Tool<Record<string, unknown>, WrappedToolOutput>>;
+
+async function compatiblePalette(ctx: ToolContext, out: WrappedPalette): Promise<WrappedPalette> {
+  const palette = await compatibleToolPalette(out);
+  for (const name of palette.omitted) {
+    logger.warn({
+      module: "conversation_tool",
+      action: "tool.schema_incompatible",
+      tenant_id: ctx.tenant_id,
+      tool: name,
+      msg: "Tool omitted from model palette because its root input schema is not provider-compatible",
+    });
+    ctx.onLog?.(
+      "warn",
+      `Tool ${name} has an incompatible input schema and was omitted; saved workflows remain accessible through run_workflow.`,
+    );
+  }
+  ctx.availableToolNames = new Set(Object.keys(palette.tools));
+  return palette.tools;
+}
+
+async function wrapTaskRunTools(
+  ctx: ToolContext,
+  signals: TurnSignals,
+  events: TurnEvent[],
+  db: Db,
+  toolPolicies: ToolPolicies,
+  taskRun: TaskRunMarker,
+  callerPrincipal: ResolvedPrincipal | null,
+): Promise<WrappedPalette> {
+  const out: WrappedPalette = {};
+  const principal = callerPrincipal ? taskRunPrincipal(callerPrincipal, taskRun) : null;
+  const marker: TaskRunMarker = principal ? taskRun : { ...taskRun, sealed: true };
+  ctx.task_run = marker;
+  ctx.principal = principal;
+  ctx.permission_mode = "auto";
+  const policies = taskRunToolPolicies(toolPolicies);
+  for (const t of filterByTaskRunPalette(listTools())) {
+    if (
+      ctx.playbook_mode === "off" &&
+      (t.name === "inspect_playbook" || t.name === "update_playbook")
+    )
+      continue;
+    const wrapped = wrapOne(
+      guardTaskRunTool(t, marker),
+      ctx,
+      signals,
+      events,
+      db,
+      policies,
+      "auto",
+    );
+    out[t.name] = t.name === "run_workflow" ? withTaskRunEnvironment(wrapped, marker) : wrapped;
+  }
+  if (principal && !marker.sealed) {
+    Object.assign(
+      out,
+      await buildSyntheticWorkflowTools({
+        db,
+        principal,
+        ctx,
+        signals,
+        events,
+        permissionMode: "auto",
+        toolPolicies: policies,
+        taskRun: marker,
+      }),
+    );
+    if (marker.connector_ids.length > 0) {
+      try {
+        Object.assign(
+          out,
+          await buildExternalMcpTools({ db, principal, ctx, signals, events, taskRun: marker }),
+        );
+      } catch (err) {
+        logger.warn({
+          module: "conversation_tool",
+          action: "external_mcp.assembly_failed",
+          msg: "external MCP tool assembly failed; a task run continues without external tools",
+          tenant_id: ctx.tenant_id,
+          error: redactUpstreamDetail(err instanceof Error ? err.message : String(err)),
+        });
+      }
+    }
+  }
+  return compatiblePalette(ctx, out);
+}
+
 export async function wrapTools(
   ctx: ToolContext,
   signals: TurnSignals,
@@ -40,8 +140,10 @@ export async function wrapTools(
   toolPolicies: ToolPolicies = {},
   permissionMode: PermissionMode | null = null,
   principal: ResolvedPrincipal | null = null,
-): Promise<Record<string, Tool<Record<string, unknown>, WrappedToolOutput>>> {
-  const out: Record<string, Tool<Record<string, unknown>, WrappedToolOutput>> = {};
+): Promise<WrappedPalette> {
+  const taskRun = taskRunMarkerOf(ctx);
+  if (taskRun) return wrapTaskRunTools(ctx, signals, events, db, toolPolicies, taskRun, principal);
+  const out: WrappedPalette = {};
   const isChatSurface = ctx.surface === "chat" || principal?.provider === "chat";
   if (ctx.surface !== "chat" && principal?.provider === "chat") {
     try {
@@ -65,13 +167,15 @@ export async function wrapTools(
     }
   }
   const loadedSkillSet = new Set(loadedSkills);
-  const visibleTools = isChatSurface
-    ? filterByChatReadOnlyPalette(listTools())
-    : filterByAuthoringPalette(
-        filterBySkillGate(listTools(), loadedSkills),
-        ctx.getDraft(),
-        loadedSkillSet,
-      );
+  const visibleTools = withoutTaskRunOnlyTools(
+    isChatSurface
+      ? filterByChatReadOnlyPalette(listTools())
+      : filterByAuthoringPalette(
+          filterBySkillGate(listTools(), loadedSkills),
+          ctx.getDraft(),
+          loadedSkillSet,
+        ),
+  );
   const intakeItemRead = intakeReviewInProgress(ctx.getDraft());
   for (const t of visibleTools) {
     if (
@@ -132,20 +236,5 @@ export async function wrapTools(
       }
     }
   }
-  const palette = await compatibleToolPalette(out);
-  for (const name of palette.omitted) {
-    logger.warn({
-      module: "conversation_tool",
-      action: "tool.schema_incompatible",
-      tenant_id: ctx.tenant_id,
-      tool: name,
-      msg: "Tool omitted from model palette because its root input schema is not provider-compatible",
-    });
-    ctx.onLog?.(
-      "warn",
-      `Tool ${name} has an incompatible input schema and was omitted; saved workflows remain accessible through run_workflow.`,
-    );
-  }
-  ctx.availableToolNames = new Set(Object.keys(palette.tools));
-  return palette.tools;
+  return compatiblePalette(ctx, out);
 }

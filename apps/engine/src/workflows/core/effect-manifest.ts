@@ -6,6 +6,7 @@ import {
   ContentPublicationBoundarySchema,
   supportsContentPublication,
 } from "../content-publication-boundary.ts";
+import { McpBoundarySchema, mcpBoundary, mcpBoundaryTarget } from "../mcp-boundary.ts";
 import {
   OutboxDeliveryBoundarySchema,
   outboxSourceStep,
@@ -57,6 +58,7 @@ export const ResolvedEffectBindingSchema = z
     read_path: ReadPathBoundarySchema.optional(),
     storage: StorageBoundarySchema.optional(),
     boundary: RequestBoundarySchema.optional(),
+    mcp: McpBoundarySchema.optional(),
   })
   .strict();
 export type ResolvedEffectBinding = z.infer<typeof ResolvedEffectBindingSchema>;
@@ -170,12 +172,11 @@ function operationOf(step: RequestStep, driver: ResolvedEffectBinding["driver"])
 function effectOf(
   step: RequestStep,
   binding: ResolvedEffectBinding,
+  statedToolEffect: "read" | "write" | null,
 ): "read" | "write" | "unknown" | "destructive" {
-  if (
-    binding.driver === "postgres" ||
-    (binding.driver === "mcp" && step.mcp?.operation === "call_tool")
-  )
-    return "unknown";
+  if (binding.driver === "mcp" && step.mcp?.operation === "call_tool")
+    return statedToolEffect ?? "unknown";
+  if (binding.driver === "postgres") return "unknown";
   if (
     (binding.driver === "graphql" || (binding.driver === "http" && step.graphql)) &&
     inferGraphqlOperation(step.graphql?.query) === null
@@ -352,13 +353,20 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       binding.driver === "http" && !step.graphql && !step.boundary && supportsReadQuery(step);
     const recompiledBoundary =
       binding.driver === "http" && binding.boundary
-        ? requestBoundary(step, binding.boundary.base_url)
+        ? requestBoundary(step, binding.boundary.base_url, binding.boundary.connector_query)
         : null;
     const supportedBoundary =
       recompiledBoundary !== null &&
       workflowJsonDigest(recompiledBoundary) === workflowJsonDigest(binding.boundary) &&
       binding.target === requestBoundaryTarget(recompiledBoundary);
     if (binding.boundary && !supportedBoundary) issue("binding_mismatch");
+    const recompiledMcp =
+      binding.driver === "mcp" && binding.mcp ? mcpBoundary(step, binding.mcp.server) : null;
+    const supportedMcp =
+      recompiledMcp !== null &&
+      workflowJsonDigest(recompiledMcp) === workflowJsonDigest(binding.mcp) &&
+      binding.target === mcpBoundaryTarget(recompiledMcp);
+    if (binding.mcp && !supportedMcp) issue("binding_mismatch");
     const supportedContent =
       binding.driver === "http" &&
       binding.content_publication &&
@@ -384,6 +392,7 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       (hasRuntimeValue(step) &&
         !(
           supportedStorage ||
+          supportedMcp ||
           (binding.driver === "http" &&
             (supportedBoundary ||
               supportedReadPath ||
@@ -423,7 +432,7 @@ export function compileWorkflowEffectManifest(raw: unknown): {
           workflowJsonDigest(binding.outbox_delivery) !== workflowJsonDigest(step.outbox_delivery)))
     )
       issue("binding_mismatch");
-    const effect = effectOf(step, binding);
+    const effect = effectOf(step, binding, supportedMcp ? recompiledMcp.effect : null);
     if (effect === "unknown") issue("unknown_effect");
     if (effect === "destructive" && !supportedStorage && !supportedBoundary)
       issue("destructive_effect");
@@ -443,6 +452,7 @@ export function compileWorkflowEffectManifest(raw: unknown): {
     if (
       !source ||
       sourceEffect?.effect !== "read" ||
+      sourceEffect.mcp !== undefined ||
       manifest.issues.some((entry) => entry.step_id === source.id && !entry.call_path)
     )
       manifest.issues.push({ step_id: step.id, code: "binding_mismatch" });

@@ -3,7 +3,9 @@ import {
   harvestCitationsFromPersisted,
   keepResolvableCitations,
   messageHasText,
+  messageOrigin,
   serializeEvent,
+  TASK_RUN_CONTINUATION_ORIGIN,
   type TurnEvent,
 } from "../../../conversations/public/authoring.ts";
 import { getConversation } from "../../../conversations/public/lifecycle.ts";
@@ -144,6 +146,7 @@ export function registerStreamRoutes(app: OpenAPIHono<AppEnv>): void {
             content: msg.content,
             id: msg.id,
             parent_message_id: msg.id,
+            ...(messageOrigin(msg.content) ? { origin: TASK_RUN_CONTINUATION_ORIGIN } : {}),
           }),
         );
         if (msg.role === "assistant") {

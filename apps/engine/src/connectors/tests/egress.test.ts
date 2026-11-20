@@ -1,6 +1,12 @@
 import { describe, expect, mock, test } from "bun:test";
 import { withContext } from "../../logging/context.ts";
-import { injectTraceContext, scrubUrl, withEgressAudit } from "../egress.ts";
+import {
+  injectTraceContext,
+  isSensitiveQueryKey,
+  scrubUrl,
+  urlHasInlineCredentials,
+  withEgressAudit,
+} from "../egress.ts";
 
 const noopAudit = async () => undefined;
 
@@ -38,6 +44,10 @@ describe("scrubUrl", () => {
       "password",
       "signature",
       "sig",
+      "session",
+      "sid",
+      "auth",
+      "code",
       "x-amz-signature",
       "x-amz-credential",
     ]) {
@@ -52,6 +62,24 @@ describe("scrubUrl", () => {
 
   test("returns input unchanged on parse failure", () => {
     expect(scrubUrl("not a url")).toBe("not a url");
+  });
+});
+
+describe("isSensitiveQueryKey", () => {
+  test("names the query keys that carry a credential, whatever their case", () => {
+    for (const key of ["token", "API_KEY", "apikey", "Sig", "X-Amz-Signature", "client_secret"])
+      expect(isSensitiveQueryKey(key)).toBe(true);
+    for (const key of ["lang", "page", "tokens", "keyword", "", "token=", "a&token"])
+      expect(isSensitiveQueryKey(key)).toBe(false);
+  });
+
+  test("agrees with the credential check on a whole address", () => {
+    for (const key of ["token", "Signature", "lang", "cursor"])
+      expect(urlHasInlineCredentials(`https://api.example.test/v1?${key}=x`)).toBe(
+        isSensitiveQueryKey(key),
+      );
+    expect(urlHasInlineCredentials("https://user:secret@api.example.test/v1?lang=de")).toBe(true);
+    expect(urlHasInlineCredentials("not a url")).toBe(false);
   });
 });
 

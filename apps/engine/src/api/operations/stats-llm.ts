@@ -24,7 +24,7 @@ type LlmQuery = z.infer<typeof LlmStatsQuery>;
 type LlmReport = Awaited<ReturnType<typeof llmReport>>;
 
 const LLM_DIMS: readonly string[] = LLM_GROUP_DIMS;
-const CROSS_USER_DIMS: readonly LlmGroupDim[] = ["user", "conversation"];
+const CROSS_USER_DIMS: readonly LlmGroupDim[] = ["user", "conversation", "task"];
 
 function validatedResults(values: string[] | undefined): string[] | undefined {
   if (!values || values.length === 0) return undefined;
@@ -77,7 +77,9 @@ async function ensureCrossUserRead(
   });
   if (!decision.allow) {
     throw new ForbiddenError(
-      "permission_denied:stats:read:all — reading another user's usage or a breakdown by user or conversation requires the stats:read:all permission",
+      groupBy.includes("task")
+        ? "permission_denied:stats:read:all — a breakdown by task covers every owner's tasks and requires the stats:read:all permission; pass your own user_id to see your own"
+        : "permission_denied:stats:read:all — reading another user's usage or a breakdown by user or conversation requires the stats:read:all permission",
     );
   }
 }
@@ -177,7 +179,7 @@ export const llmStatsOperation = defineOperation<LlmQuery, LlmReport>({
     response: LlmStatsResponse,
     errors: {
       400: "Invalid window, or an unusable group_by",
-      403: "Another user's usage, or a breakdown by user or conversation, requires stats:read:all",
+      403: "Another user's usage, or a breakdown by user, conversation or task, requires stats:read:all",
     },
     toInput: ({ query }) => query as LlmQuery,
     toBody: (report) => report,

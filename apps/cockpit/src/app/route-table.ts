@@ -41,6 +41,8 @@ export const CHAT_ROUTES = ["/chat", "/chat/new", "/chat/$conversationId"] as co
 
 export const INTAKE_ROUTES = ["/intake", "/intake/$resourceId"] as const;
 
+export const TASK_ROUTES = ["/tasks", "/tasks/$resourceId"] as const;
+
 const INSTALLATION_ROUTES = ["/incoming/files"] as const;
 
 const SKILL_CANDIDATE_ROUTES = ["/skills/candidates"] as const;
@@ -65,6 +67,7 @@ export const ALL_ROUTE_PATHS: readonly string[] = [
   ...PAGE_ROUTES,
   ...CHAT_ROUTES,
   ...INTAKE_ROUTES,
+  ...TASK_ROUTES,
   ...INSTALLATION_ROUTES,
   ...SKILL_CANDIDATE_ROUTES,
   ...DOCS_ROUTES,

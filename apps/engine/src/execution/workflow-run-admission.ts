@@ -69,7 +69,7 @@ export async function admitWorkflowRun(
     resolved.def.product_id,
     resolved.def.required_caller_kind,
   );
-  assertExecutionPrivacySupported(input.request_source, resolved.def.execution_privacy);
+  assertExecutionPrivacySupported(input.request_source, resolved.def.execution_privacy, principal);
   enforce(decideAdmission(input, { stage: "binding" }));
   let downgraded_from: { code: string; message: string } | undefined;
   if (input.hold_writes !== true) {

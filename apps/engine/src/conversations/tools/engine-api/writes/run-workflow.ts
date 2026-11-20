@@ -9,7 +9,6 @@ import {
 } from "../../../../tools/truncate.ts";
 import { workflowExecutionEnvironment } from "../../../../workflows/execution-environment.ts";
 import { resolveWorkflowInputContract } from "../../../../workflows/input-schema-synth.ts";
-import { resolveWorkflowByIdOrSlug } from "../../../../workflows/lookup.ts";
 import { workflowPreparationInput } from "../../../../workflows/preparation-input.ts";
 import { buildScopeAtStep } from "../../../../workflows/scope-shape.ts";
 import type { WorkflowDef } from "../../../../workflows/types.ts";
@@ -29,6 +28,7 @@ import type { DraftDocument } from "../../../types.ts";
 import { pauseForUserInput } from "../../ask-user/common.ts";
 import { buildGateError, buildLifecyclePayload } from "../../authoring-contract.ts";
 import type { ConversationTool } from "../../index.ts";
+import { runWorkflowTargetRef } from "../../sdk-wrap/invoke/run-coverage.ts";
 import { buildRawStepResults } from "../../step-results.ts";
 import { loadWorkflowInputFile, WorkflowInputFileSchema } from "../../workflow-file-input.ts";
 import { structuredInputFields, workflowInputSlot } from "../../workflow-input-normalize.ts";
@@ -92,26 +92,21 @@ export const runWorkflowTool: ConversationTool = {
   async execute(ctx, args: RunWorkflowArgs) {
     const currentDraft = ctx.getDraft();
     const activeTarget = currentDraft.summary?.active_target ?? null;
-    let workflowId: string | null = null;
-    if (args.workflow) {
-      const resolved = await resolveWorkflowByIdOrSlug(ctx.db, ctx.tenant_id, args.workflow);
-      if (!resolved) {
-        return {
-          ok: false,
-          data: withStatus(
-            {
-              error_code: "workflow_not_found",
-              message: `no workflow matched the reference '${args.workflow}' — pass a slug or UUID from the TENANT SNAPSHOT block`,
-              next_best_actions: ["list_workflows", "find_workflow"],
-            },
-            "failed",
-          ),
-        };
-      }
-      workflowId = resolved.id;
-    } else if (activeTarget?.kind === "workflow" && activeTarget.lifecycle_state === "persisted") {
-      workflowId = activeTarget.id;
+    const target = await runWorkflowTargetRef(ctx, args.workflow);
+    if (target.kind === "unmatched") {
+      return {
+        ok: false,
+        data: withStatus(
+          {
+            error_code: "workflow_not_found",
+            message: `no workflow matched the reference '${args.workflow}' — pass a slug or UUID from the TENANT SNAPSHOT block`,
+            next_best_actions: ["list_workflows", "find_workflow"],
+          },
+          "failed",
+        ),
+      };
     }
+    const workflowId = target.kind === "matched" ? target.id : null;
     if (!workflowId) {
       const draftSteps = getWorkflowDraft(currentDraft).steps;
       const hasDraftSteps = Array.isArray(draftSteps) && draftSteps.length > 0;

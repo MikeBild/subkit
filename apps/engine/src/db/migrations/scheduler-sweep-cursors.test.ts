@@ -19,6 +19,7 @@ const expected: typeof schedulerSweepProducerEnum.enumValues = [
   "endpoint-contract",
   "knowledge",
   "skill",
+  "task",
 ];
 let ctx: TestDb;
 

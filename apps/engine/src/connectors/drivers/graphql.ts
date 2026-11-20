@@ -3,10 +3,11 @@ import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { errorFields, logger } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
-import { injectTraceContext, scrubUrl } from "../egress.ts";
+import { injectTraceContext } from "../egress.ts";
 import { fetchWithEgressGuard } from "../egress-fetch.ts";
 import { assertEgressAllowedResolved } from "../egress-guard.ts";
 import { requestUsedStoredCredential } from "../reauth.ts";
+import { connectorMaskedQueryKeys, recordedUrl } from "../recorded-url.ts";
 import { connectorHeaderPolicy, requestHeaderViolations } from "../request-header-policy.ts";
 import type { ConnectorView } from "../types.ts";
 import { getDriverFetch } from "./fetch-seam.ts";
@@ -189,7 +190,7 @@ export async function executeGraphQLRequest(p: {
     operation: p.op.operation,
     operation_name: operationName,
     url_host: new URL(cfg.endpoint).host,
-    url: scrubUrl(url),
+    url: recordedUrl(url, connectorMaskedQueryKeys(p.connector.config, credential)),
     has_credential: credential !== null,
     auth_method,
     oauth2_refreshed,

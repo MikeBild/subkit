@@ -35,6 +35,7 @@ const AuditEntrySchema = z
         "mcp_oauth",
         "token_exchange",
         "external_bearer",
+        "task_run",
         "portal_token",
       ])
       .nullable(),
@@ -46,6 +47,8 @@ const AuditEntrySchema = z
     execution_id: z.string().uuid().nullable(),
     conversation_id: z.string().uuid().nullable(),
     workflow_id: z.string().uuid().nullable(),
+    task_id: z.string().uuid().nullable(),
+    task_run_id: z.string().uuid().nullable(),
     changed_fields: z.array(z.string()),
     changes: z.array(
       z.object({
@@ -101,6 +104,7 @@ const FilterQuery = z
         "mcp_oauth",
         "token_exchange",
         "external_bearer",
+        "task_run",
         "portal_token",
       ])
       .optional(),
@@ -115,6 +119,12 @@ const FilterQuery = z
     execution_id: z.string().uuid().optional(),
     conversation_id: z.string().uuid().optional(),
     workflow_id: z.string().uuid().optional(),
+    task_id: z.string().uuid().optional().openapi({
+      description: "Everything recorded about one task: its own entries and its runs and grants.",
+    }),
+    task_run_id: z.string().uuid().optional().openapi({
+      description: "Everything recorded about one run of a task.",
+    }),
     resource_type: z.string().optional(),
     resource_types: z.string().max(2000).optional(),
     resource_id: z.string().optional(),
@@ -227,6 +237,7 @@ interface RawFilterQuery {
     | "mcp_oauth"
     | "token_exchange"
     | "external_bearer"
+    | "task_run"
     | "portal_token"
     | undefined;
   oauth_client_id?: string | undefined;
@@ -236,6 +247,8 @@ interface RawFilterQuery {
   execution_id?: string | undefined;
   conversation_id?: string | undefined;
   workflow_id?: string | undefined;
+  task_id?: string | undefined;
+  task_run_id?: string | undefined;
   resource_type?: string | undefined;
   resource_types?: string | undefined;
   resource_id?: string | undefined;
@@ -262,6 +275,8 @@ function filtersFromQuery(tenant_id: string, q: RawFilterQuery): AuditQueryFilte
   if (q.execution_id) f.execution_id = q.execution_id;
   if (q.conversation_id) f.conversation_id = q.conversation_id;
   if (q.workflow_id) f.workflow_id = q.workflow_id;
+  if (q.task_id) f.task_id = q.task_id;
+  if (q.task_run_id) f.task_run_id = q.task_run_id;
   if (q.resource_type) f.resource_type = q.resource_type;
   const resourceTypes = parseActions(q.resource_types);
   if (resourceTypes) f.resource_types = resourceTypes;

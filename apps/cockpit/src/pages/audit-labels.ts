@@ -18,6 +18,7 @@ export const ACCESS_KEYS: Record<AccessType, TranslationKey> = {
   mcp_oauth: "audit.timeline.accessType.mcpOAuth",
   token_exchange: "audit.timeline.accessType.tokenExchange",
   external_bearer: "audit.timeline.accessType.externalBearer",
+  task_run: "audit.timeline.accessType.taskRun",
   portal_token: "audit.timeline.accessType.portalToken",
 };
 export function sourceLabel(

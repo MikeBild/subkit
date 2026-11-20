@@ -850,7 +850,7 @@ async function readNextRun(db: Db, tenantId: string, now: Date): Promise<string 
 type WorkflowSource = "conversations" | "schedules" | "freshness" | "failures" | "patches";
 
 export type AttentionReaderOverrides = Partial<
-  Record<Exclude<AttentionSource, WorkflowSource>, TenantReader>
+  Record<Exclude<AttentionSource, WorkflowSource | "tasks">, TenantReader>
 >;
 
 const TENANT_READERS: Required<AttentionReaderOverrides> = {

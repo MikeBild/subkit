@@ -76,6 +76,9 @@ const ALWAYS_AVAILABLE_CLEANUP: ReadonlySet<string> = new Set([
   "move_intake_item",
   "set_default_intake_category",
   "revise_intake_proposal",
+  "run_task",
+  "abort_task_run",
+  "save_task",
 ]);
 
 const CONNECTOR_AUTHORING: ReadonlySet<string> = new Set([
@@ -244,6 +247,60 @@ export const CHAT_READONLY_TOOLS: ReadonlySet<string> = new Set([
 
 export function filterByChatReadOnlyPalette<T extends { name: string }>(tools: readonly T[]): T[] {
   return tools.filter((tool) => CHAT_READONLY_TOOLS.has(tool.name));
+}
+
+export const TASK_RUN_TOOLS: ReadonlySet<string> = new Set([
+  "inspect_playbook",
+  "update_playbook",
+  "load_skill",
+  "find_skill",
+  "list_skills",
+  "get_skill",
+  "ask_user_choice",
+  "ask_user_confirm",
+  "ask_user_form",
+  "ask_user_multi",
+  "ask_user_text",
+  "call_connector",
+  "probe_connector",
+  "schedule_task_check",
+  "get_execution",
+  "inspect_execution",
+  "inspect_execution_step",
+  "list_executions",
+  "find_workflow",
+  "list_workflows",
+  "get_workflow",
+  "find_connector",
+  "list_connectors",
+  "get_connector",
+  "fetch_connector_docs",
+  "search_knowledge",
+  "read_knowledge",
+  "list_knowledge_sources",
+  "get_knowledge_source",
+  "search_docs",
+  "get_raw_result",
+  "list_attachments",
+  "preview_attachment",
+]);
+
+export const TASK_RUN_ONLY_TOOLS: ReadonlySet<string> = new Set(["schedule_task_check"]);
+
+export const TASK_RUN_ACTING_TOOLS: ReadonlySet<string> = new Set([
+  "call_connector",
+  "probe_connector",
+  "load_skill",
+  "update_playbook",
+  "schedule_task_check",
+]);
+
+export function filterByTaskRunPalette<T extends { name: string }>(tools: readonly T[]): T[] {
+  return tools.filter((tool) => TASK_RUN_TOOLS.has(tool.name));
+}
+
+export function withoutTaskRunOnlyTools<T extends { name: string }>(tools: readonly T[]): T[] {
+  return tools.filter((tool) => !TASK_RUN_ONLY_TOOLS.has(tool.name));
 }
 
 export interface ExecutionToolGateState {

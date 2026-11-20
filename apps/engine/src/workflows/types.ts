@@ -2,6 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { FileRefSchema } from "../api/files-schemas.ts";
 import { WORKFLOW_MAX_STEPS } from "./core/definition.ts";
 import type { JsonValue } from "./domain-types.ts";
+import { McpBoundaryScopeSchema } from "./mcp-boundary.ts";
 import { OutboxDeliveryBoundarySchema } from "./outbox-delivery-boundary.ts";
 import { ReportDeliveryBoundarySchema } from "./report-delivery-boundary.ts";
 import { RequestBoundaryScopeSchema } from "./request-boundary.ts";
@@ -374,8 +375,17 @@ export const RequestStepSchema = z
         uri: z.string().min(1).optional(),
         prompt: z.string().min(1).optional(),
         arguments: z.record(z.string(), JsonValueSchema).optional(),
+        boundary: McpBoundaryScopeSchema.optional(),
       })
       .superRefine((m, ctx) => {
+        if (m.boundary !== undefined && m.operation !== "call_tool") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["boundary"],
+            message:
+              "mcp.boundary bounds a tool call; it is only accepted with operation call_tool",
+          });
+        }
         const required = {
           call_tool: "tool",
           read_resource: "uri",

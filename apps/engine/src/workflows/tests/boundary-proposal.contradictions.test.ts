@@ -9,7 +9,13 @@ import {
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { proposeBoundaries } from "../boundary-proposal.ts";
-import { boundaryProposalFixtures, CONNECTOR, definition } from "./boundary-proposal-fixtures.ts";
+import {
+  boundaryProposalFixtures,
+  CONNECTOR,
+  definition,
+  STORAGE,
+  viewer,
+} from "./boundary-proposal-fixtures.ts";
 
 let ctx: TestDb;
 
@@ -29,13 +35,14 @@ beforeAll(async () => {
     .values({ tenant_id, slug: "proposal-wf", name: "Proposal", lifecycle: "active" })
     .returning();
   workflow_id = wf?.id ?? "";
+  await connect();
 });
 
 afterAll(async () => {
   await ctx.cleanup();
 });
 
-const { record } = boundaryProposalFixtures({
+const { connect, record } = boundaryProposalFixtures({
   get ctx() {
     return ctx;
   },
@@ -58,6 +65,8 @@ test("a query inside the path is rewritten, but only when a real request proves 
   const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     definition: definition(listing("/startups?page=${item.n}&limit=10")),
   });
@@ -72,6 +81,8 @@ test("a query inside the path is rewritten, but only when a real request proves 
   const unproven = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     definition: definition(listing("/startups?page=${item.n}&limit=10&sort=revenue")),
   });
@@ -84,8 +95,10 @@ test("a write whose size was never measured gets no ceiling at all", async () =>
   const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition([
-      { id: "store", kind: "request", connector_id: CONNECTOR, method: "PUT", s3: { key: "x" } },
+      { id: "store", kind: "request", connector_id: STORAGE, method: "PUT", s3: { key: "x" } },
     ]),
   });
   expect(proposals).toEqual([]);
@@ -101,7 +114,7 @@ test("a ceiling the step's own writes exceed is the same contradiction as a wron
     {
       id: "store",
       kind: "request",
-      connector_id: CONNECTOR,
+      connector_id: STORAGE,
       method: "PUT",
       s3: { key: "x", scope: { key_prefix: "v1/radar/", max_bytes } },
     },
@@ -109,36 +122,75 @@ test("a ceiling the step's own writes exceed is the same contradiction as a wron
   const tooSmall = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition(scoped(65_536)),
   });
   expect(tooSmall.proposals[0]?.s3_scope?.max_bytes).toBeGreaterThan(337_858);
   expect(tooSmall.proposals[0]?.s3_scope?.key_prefix).toBe("v1/radar/");
+  expect(tooSmall.proposals[0]?.widens).toEqual([
+    { field: "max_bytes", from: 65_536, to: tooSmall.proposals[0]?.s3_scope?.max_bytes ?? 0 },
+  ]);
+  expect(tooSmall.proposals[0]?.evidence.kind).toBe("sent");
 
   const roomy = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition(scoped(1_000_000)),
   });
   expect(roomy.proposals).toEqual([]);
 });
 
-test("the row that proves the contradiction is the refused one", async () => {
-  await record([{ step: "store", key: "v1/radar/products/a.json", bytes: 337_858, refused: true }]);
-  const { proposals } = await proposeBoundaries(ctx.db, {
+test("a request that was refused is not evidence and widens nothing", async () => {
+  const scoped = [
+    {
+      id: "store",
+      kind: "request",
+      connector_id: STORAGE,
+      method: "PUT",
+      s3: { key: "x", scope: { key_prefix: "v1/radar/", max_bytes: 65_536 } },
+    },
+  ];
+  await record([
+    { step: "store", key: "v1/elsewhere/a.json", bytes: 337_858, refused: true },
+    { step: "read_page", url: "https://api.example.test/v1/pages/never-sent", refused: true },
+  ]);
+  const refusedOnly = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition([
+      ...scoped,
       {
-        id: "store",
+        id: "read_page",
         kind: "request",
         connector_id: CONNECTOR,
-        method: "PUT",
-        s3: { key: "x", scope: { key_prefix: "v1/radar/", max_bytes: 65_536 } },
+        method: "GET",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+        path: "/v1/pages/${input.page_id}",
       },
     ]),
   });
-  expect(proposals[0]?.s3_scope?.max_bytes).toBeGreaterThan(337_858);
-  expect(proposals[0]?.s3_scope?.key_prefix).toBe("v1/radar/");
+  expect(refusedOnly).toMatchObject({
+    proposals: [],
+    unproposable: [{ step_id: "read_page", reason: "no_history" }],
+  });
+
+  await record([
+    { step: "store", key: "v1/radar/a.json", bytes: 900 },
+    { step: "store", key: "v1/elsewhere/a.json", bytes: 337_858, refused: true },
+  ]);
+  const mixed = await proposeBoundaries(ctx.db, {
+    tenant_id,
+    workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
+    definition: definition(scoped),
+  });
+  expect(mixed).toMatchObject({ proposals: [], unproposable: [] });
 });
 
 test("a listing records the folder it read, and that is evidence", async () => {
@@ -149,11 +201,13 @@ test("a listing records the folder it read, and that is evidence", async () => {
   const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition([
       {
         id: "list_raw",
         kind: "request",
-        connector_id: CONNECTOR,
+        connector_id: STORAGE,
         method: "LIST",
         s3: { key: "x" },
       },
@@ -172,6 +226,8 @@ test("what a request sent is measured, and that is the ceiling", async () => {
   const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition([
       {
         id: "send",
@@ -211,6 +267,8 @@ test("an omitted body still reports its size", async () => {
   const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition([
       {
         id: "send",
@@ -265,6 +323,8 @@ test("a step that varies its whole address is described, not reported as indescr
   const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition([fetchRoute]),
   });
   expect(unproposable).toEqual([]);
@@ -281,6 +341,8 @@ test("a deeper address than the template does not get a rule fitted to its last 
   const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition([
       {
         id: "edit_page",
@@ -332,6 +394,8 @@ test("a whole-path rule is not proposed under a connector whose base carries a p
   const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition([{ ...fetchRoute, connector_id: deep?.id }]),
   });
   expect(proposals).toEqual([]);

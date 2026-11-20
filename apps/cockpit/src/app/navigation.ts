@@ -1,6 +1,7 @@
 import {
   BookOpen,
   Cable,
+  ClipboardCheck,
   FileText,
   Gauge,
   History,
@@ -86,6 +87,13 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         permission: "connector:read",
         icon: Cable,
         api: ["GET /v1/connectors", "GET /v1/workflows"],
+      },
+      {
+        labelKey: "nav.tasks",
+        path: "/tasks",
+        permission: "task:read",
+        icon: ClipboardCheck,
+        api: ["GET /v1/tasks"],
       },
     ],
   },

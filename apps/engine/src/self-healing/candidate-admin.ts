@@ -7,7 +7,10 @@ import { patchCandidates, workflows } from "../db/schema/index.ts";
 import {
   type GrantWorkflowAuthoritySchema,
   grantWorkflowAuthority,
+  previewWorkflowAuthority,
+  requireHuman,
 } from "../workflows/execution-authorities.ts";
+import { assertToolPinsCurrent } from "../workflows/tool-pin-review.ts";
 import { approvePatchCandidate, PatchDecisionError } from "./candidate-decision.ts";
 import { preparePatchCandidate } from "./prepare-candidate.ts";
 
@@ -84,12 +87,39 @@ export async function findPatchCandidate(
   return rows[0] ?? null;
 }
 
+async function comparedToolPins(
+  db: Db,
+  input: ApproveReviewedInput,
+  authority: z.infer<typeof GrantWorkflowAuthoritySchema>,
+): Promise<"compared" | "refuse"> {
+  const { principal, candidate } = input;
+  await requireHuman({ db, principal, request: input.request }, candidate.workflow_id);
+  let reviewed: Awaited<ReturnType<typeof previewWorkflowAuthority>>;
+  try {
+    reviewed = await previewWorkflowAuthority(
+      {
+        tenant_id: principal.tenant_id,
+        workflow_id: candidate.workflow_id,
+        workflow_version_id: authority.workflow_version_id,
+        execution_environment: authority.execution_environment,
+      },
+      db,
+    );
+  } catch {
+    return "refuse";
+  }
+  if (reviewed.digest !== authority.expected_manifest_digest) return "refuse";
+  await assertToolPinsCurrent(db, principal.tenant_id, reviewed.manifest.effects);
+  return "compared";
+}
+
 async function approveWithAuthority(
   db: Db,
   input: ApproveReviewedInput,
   authority: z.infer<typeof GrantWorkflowAuthoritySchema>,
 ): Promise<string> {
   const { principal, candidate } = input;
+  const toolPins = await comparedToolPins(db, input, authority);
   return db.transaction(async (tx) => {
     const prepared = await preparePatchCandidate(
       {
@@ -103,11 +133,12 @@ async function approveWithAuthority(
     );
     if (prepared.workflow_version_id !== authority.workflow_version_id)
       throw new PatchDecisionError("review_changed");
-    await grantWorkflowAuthority(candidate.workflow_id, authority, {
-      principal,
-      request: input.request,
-      db: tx as unknown as Db,
-    });
+    await grantWorkflowAuthority(
+      candidate.workflow_id,
+      authority,
+      { principal, request: input.request, db: tx as unknown as Db },
+      { tool_pins: toolPins },
+    );
     const applied = await approvePatchCandidate(
       {
         tenant_id: principal.tenant_id,

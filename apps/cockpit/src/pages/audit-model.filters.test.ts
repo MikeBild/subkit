@@ -397,6 +397,7 @@ test("audit areas select resource types on the server without changing actor ide
     knowledge: ["knowledge_source", "knowledge_source_version", "skill", "skill_candidate"],
     files: ["file"],
     conversations: ["conversation", "conversation_elicitation"],
+    tasks: ["task", "task_run", "task_grant"],
     people: [
       "user",
       "user_identity",
@@ -427,6 +428,7 @@ test("audit areas select resource types on the server without changing actor ide
     },
     files: { resource_types: "file" },
     conversations: { resource_types: "conversation,conversation_elicitation" },
+    tasks: { resource_types: "task,task_run,task_grant" },
     people: {
       resource_types:
         "user,user_identity,group,role,resource_grant,api_key,system_account,mcp_oauth_client",

@@ -33,6 +33,7 @@ export const ACCESS_TYPES = [
   "mcp_oauth",
   "token_exchange",
   "external_bearer",
+  "task_run",
   "portal_token",
 ] as const;
 export type AccessType = (typeof ACCESS_TYPES)[number];
@@ -52,6 +53,8 @@ export interface FilterState {
   executionId: string;
   conversationId: string;
   workflowId: string;
+  taskId: string;
+  taskRunId: string;
   result: string;
   action: string;
   traceId: string;
@@ -97,6 +100,8 @@ export function auditFilterFromSearch(search: string, now: number, zone: string)
     executionId: validUrlUuid(params.get("execution_id")),
     conversationId: validUrlUuid(params.get("conversation_id")),
     workflowId: validUrlUuid(params.get("workflow_id")),
+    taskId: validUrlUuid(params.get("task_id")),
+    taskRunId: validUrlUuid(params.get("task_run_id")),
     result: ["success", "denied", "error"].find((candidate) => candidate === result) ?? "",
     action,
     traceId: linked.traceId ?? "",
@@ -125,6 +130,8 @@ export const EMPTY: Readonly<FilterState> = {
   executionId: "",
   conversationId: "",
   workflowId: "",
+  taskId: "",
+  taskRunId: "",
   result: "",
   action: "",
   traceId: "",

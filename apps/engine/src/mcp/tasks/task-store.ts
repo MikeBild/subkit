@@ -4,7 +4,12 @@ import type {
 } from "@modelcontextprotocol/sdk/experimental/tasks/index.js";
 import type { Request, RequestId, Result, Task } from "@modelcontextprotocol/sdk/types.js";
 import { and, eq } from "drizzle-orm";
-import { stopConversationTaskTurn } from "../../conversations/public/lifecycle.ts";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
+import {
+  assertTaskRunWriter,
+  canWriteTaskRun,
+  stopConversationTaskTurn,
+} from "../../conversations/public/lifecycle.ts";
 import type { Db } from "../../db/client.ts";
 import {
   conversationElicitations,
@@ -29,16 +34,32 @@ export const CONVERSATION_TASK_POLL_INTERVAL_MS = 2_000;
 interface ConversationTaskStoreParams {
   db: Db;
   tenant_id: string;
+  principal?: ResolvedPrincipal | null;
 }
 
 export class ConversationTaskStore implements TaskStore {
   private readonly db: Db;
   private readonly tenantId: string;
+  private readonly principal: ResolvedPrincipal | null;
   private inputRequiredHandler?: (row: McpTaskRow) => Promise<boolean>;
 
   constructor(p: ConversationTaskStoreParams) {
     this.db = p.db;
     this.tenantId = p.tenant_id;
+    this.principal = p.principal ?? null;
+  }
+
+  private writer(row: McpTaskRow) {
+    return {
+      tenant_id: this.tenantId,
+      conversation_id: row.conversation_id,
+      actor_id: this.principal?.id ?? null,
+      principal: this.principal,
+    };
+  }
+
+  private async visible(row: McpTaskRow | null): Promise<McpTaskRow | null> {
+    return row && (await canWriteTaskRun(this.db, this.writer(row))) ? row : null;
   }
 
   setInputRequiredHandler(handler: (row: McpTaskRow) => Promise<boolean>): void {
@@ -59,7 +80,7 @@ export class ConversationTaskStore implements TaskStore {
   }
 
   async getTask(taskId: string): Promise<Task | null> {
-    let row = await getMcpTask(this.tenantId, taskId, this.db);
+    let row = await this.visible(await getMcpTask(this.tenantId, taskId, this.db));
     if (!row) return null;
     if ((await this.deriveTask(row)).status === "input_required" && this.inputRequiredHandler) {
       const attempted = await this.inputRequiredHandler(row);
@@ -72,7 +93,7 @@ export class ConversationTaskStore implements TaskStore {
   }
 
   async getTaskResult(taskId: string): Promise<Result> {
-    const row = await getMcpTask(this.tenantId, taskId, this.db);
+    const row = await this.visible(await getMcpTask(this.tenantId, taskId, this.db));
     if (!row) throw new Error(`task not found: ${taskId}`);
     if (row.result) {
       if (await this.derivesInputRequired(row)) {
@@ -124,6 +145,7 @@ export class ConversationTaskStore implements TaskStore {
     if (status === "cancelled") {
       const row = await getMcpTask(this.tenantId, taskId, this.db);
       if (!row) throw new Error(`task not found: ${taskId}`);
+      await assertTaskRunWriter(this.db, this.writer(row));
       const firstCancellation = await setMcpTaskCancelled(this.tenantId, taskId, this.db);
       if (row.job_id) {
         const [turn] = await this.db
@@ -181,7 +203,8 @@ export class ConversationTaskStore implements TaskStore {
     const limit = 50;
     const offset = cursor ? Number.parseInt(cursor, 10) || 0 : 0;
     const rows = await listMcpTasks(this.tenantId, this.db, { limit: limit + 1, offset });
-    const page = rows.slice(0, limit);
+    const page: McpTaskRow[] = [];
+    for (const row of rows.slice(0, limit)) if (await this.visible(row)) page.push(row);
     const tasks = await Promise.all(page.map((row) => this.deriveTask(row)));
     const out: { tasks: Task[]; nextCursor?: string } = { tasks };
     if (rows.length > limit) out.nextCursor = String(offset + limit);

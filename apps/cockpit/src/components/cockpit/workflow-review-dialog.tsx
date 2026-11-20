@@ -1,5 +1,6 @@
 import { Check, ChevronRight, Save, X } from "lucide-react";
 import { useId } from "react";
+import { GRANT_LIMIT_MEANINGS, GrantLimitField } from "@/components/cockpit/grant-limit-field";
 import { IconButton } from "@/components/cockpit/icon-button";
 import {
   Button,
@@ -16,7 +17,7 @@ import {
   SectionSubheading,
   Spinner,
 } from "@/components/cockpit/patterns";
-import { formatDateTime } from "@/lib/i18n";
+import type { GrantLimit } from "@/lib/core/authority-decision";
 import { useI18n } from "@/lib/i18n-context";
 import { formatWeeklyWorkflowReviewSchedule } from "@/lib/workflow-review-schedule";
 
@@ -53,7 +54,7 @@ export interface WorkflowReviewDisplay {
     cron?: string;
     timezone?: string;
   }>;
-  grant: { max_runs: number; valid_until: string } | null;
+  grant: { limit: GrantLimit } | null;
   schedule: { cron: string; timezone: string } | null;
 }
 
@@ -69,6 +70,7 @@ export function WorkflowReviewDialog({
   policyBusy,
   policyAvailable = true,
   onGrantChange,
+  onLimitChange,
   onScheduleChange,
   onRememberChange,
   onComplete,
@@ -86,6 +88,7 @@ export function WorkflowReviewDialog({
   policyBusy: boolean;
   policyAvailable?: boolean;
   onGrantChange: (checked: boolean) => void;
+  onLimitChange: (limit: GrantLimit) => void;
   onScheduleChange: (checked: boolean) => void;
   onRememberChange: (checked: boolean) => void;
   onComplete: (saveOnly: boolean) => void;
@@ -241,13 +244,21 @@ export function WorkflowReviewDialog({
                         </li>
                       ))}
                     </ul>
-                    <p className="border-t border-border pt-3 text-sm">
-                      {t("reviewWorkflow.limits", {
-                        count: String(review.grant.max_runs),
-                        until: formatDateTime(locale, review.grant.valid_until),
-                      })}{" "}
-                      · {t("reviewWorkflow.revokeHint")}
-                    </p>
+                    <Field className="border-t border-border pt-3">
+                      <GrantLimitField
+                        limit={review.grant.limit}
+                        disabled={!editable}
+                        readOnly={state === "completed"}
+                        onChange={onLimitChange}
+                        testId="workflow-review-limit"
+                      />
+                      <FieldDescription
+                        className="text-xs"
+                        data-testid="workflow-review-limit-meaning"
+                      >
+                        {t(GRANT_LIMIT_MEANINGS[review.grant.limit])}
+                      </FieldDescription>
+                    </Field>
                     <div className="border-t border-border pt-3">
                       <SectionSubheading>{t("reviewWorkflow.triggers")}</SectionSubheading>
                       {review.affected_triggers.length ? (

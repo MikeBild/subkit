@@ -15,6 +15,7 @@ import {
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { EngineClient } from "../engine-client/index.ts";
+import { seedMcpConnector } from "../mcp/client/test-fixtures.ts";
 import { databaseNow } from "../test-helpers/database-clock.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../test-helpers/mock-http.ts";
 import type { ToolPolicies } from "../tools/types.ts";
@@ -47,6 +48,7 @@ export async function fixture(
     auxiliaryCredential?: boolean;
     retryCredentials?: boolean;
     upstreamCredential?: boolean;
+    mcpResource?: boolean;
   } = {},
 ) {
   const environment = options.environment ?? "dev";
@@ -123,6 +125,16 @@ export async function fixture(
       tdb.db,
     );
   }
+  const resourceServer = options.mcpResource
+    ? await seedMcpConnector(tdb.db, {
+        tenant_id: tenantId,
+        slug: `${slug}-notes`,
+        display_name: "Notes server",
+        environment,
+        transport: "http",
+        url: "https://notes.fastboundary.example.com/mcp",
+      })
+    : null;
   const definition = {
     name: slug,
     slug,
@@ -136,6 +148,16 @@ export async function fixture(
         }
       : {}),
     steps: [
+      ...(resourceServer
+        ? [
+            {
+              id: "notes",
+              kind: "request",
+              connector_id: resourceServer.id,
+              mcp: { operation: "read_resource", uri: "file:///notes" },
+            },
+          ]
+        : []),
       ...(options.upstreamCredential
         ? [
             {
@@ -277,7 +299,10 @@ export async function fixture(
   async function runTool(
     kind: "generic" | "synthetic",
     executeWrites?: boolean,
-    policy: { permissionMode?: "auto" | "ask" | "plan"; toolPolicies?: ToolPolicies } = {},
+    policy: {
+      permissionMode?: "auto" | "ask" | "plan" | "yolo";
+      toolPolicies?: ToolPolicies;
+    } = {},
   ) {
     const [conversation] = await tdb.db
       .insert(conversations)

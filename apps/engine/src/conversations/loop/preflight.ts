@@ -1,10 +1,9 @@
 import type { ModelMessage } from "ai";
 import {
   actorFields,
-  checkAndDecrement,
-  checkBudget,
   contextCapFor,
   countModelMessagesTokens,
+  turnBudgetVerdict,
 } from "../../llm/accounting/index.ts";
 import { LlmContextTooLarge, LlmQuotaExhausted } from "../../llm/errors.ts";
 import { recordConversationBudgetReport } from "../../llm/runtime/conversation-budget-report.ts";
@@ -30,13 +29,31 @@ async function reserveBudget(
   const { p, route, seedModel } = base;
   const actor = actorFields(p.principal);
   try {
-    await checkBudget(p.tenant_id, estimated, route.monthly_budget, p.db);
-    const verdict = await checkAndDecrement(
-      p.tenant_id,
-      estimated,
+    const verdict = await turnBudgetVerdict(
+      {
+        tenant_id: p.tenant_id,
+        estimated_tokens: estimated,
+        route_budget: route.monthly_budget,
+        user_id: actor.actor_type === "user" ? (actor.user_id ?? null) : null,
+      },
       p.db,
-      actor.actor_type === "user" ? actor.user_id : null,
     );
+    if (!verdict.ok && verdict.source === "route") {
+      logger.warn({
+        module: "llm",
+        action: "llm.budget.exhausted",
+        msg: "llm quota exhausted",
+        tenant_id: p.tenant_id,
+        used: verdict.used,
+        projected_tokens: verdict.projected_tokens,
+        budget: verdict.budget,
+      });
+      throw new LlmQuotaExhausted("llm_quota_exhausted", {
+        used: verdict.used,
+        projected_tokens: verdict.projected_tokens,
+        budget: verdict.budget,
+      });
+    }
     if (!verdict.ok) {
       throw new LlmQuotaExhausted("llm_quota_exhausted", {
         used: verdict.used,

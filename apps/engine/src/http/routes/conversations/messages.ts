@@ -19,6 +19,8 @@ import {
 } from "../../../conversations/public/authoring.ts";
 import { PendingElicitationBlockedError } from "../../../conversations/public/elicitation.ts";
 import {
+  assertTaskRunTurn,
+  assertTaskRunWriter,
   clearConversationTurnFailure,
   conversationTurnId,
   getConversation,
@@ -125,6 +127,13 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
+    await assertTaskRunTurn(db, {
+      tenant_id: principal.tenant_id,
+      conversation_id: id,
+      actor_id: principal.id,
+      principal,
+      permission_mode: body.permission_mode,
+    });
     const turnAbortCtrl = await registerConversationAbort(principal.tenant_id, id, db);
     let ownershipTransferred = false;
     try {
@@ -247,6 +256,12 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const conv = await getConversation(principal.tenant_id, id, db);
     if (!conv) return c.json({ error: "conversation not found" }, 404);
+    await assertTaskRunWriter(db, {
+      tenant_id: principal.tenant_id,
+      conversation_id: id,
+      actor_id: principal.id,
+      principal,
+    });
     const targetWorkflowId = conv.conversation.target_workflow_id;
 
     const turnAbortCtrl = await registerConversationAbort(principal.tenant_id, id, db);

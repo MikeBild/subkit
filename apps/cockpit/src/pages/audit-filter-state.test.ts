@@ -30,6 +30,8 @@ test("deep links preserve independent identity and resource filters", () => {
     execution_id: id,
     conversation_id: id,
     workflow_id: id,
+    task_id: id,
+    task_run_id: id,
     access_type: "api_key",
     oauth_client_id: "client_a.b:c-1",
     origin_source: "cli",
@@ -50,6 +52,8 @@ test("deep links preserve independent identity and resource filters", () => {
     executionId: id,
     conversationId: id,
     workflowId: id,
+    taskId: id,
+    taskRunId: id,
     accessType: "api_key",
     oauthClientId: "client_a.b:c-1",
     originSource: "cli",
@@ -62,7 +66,7 @@ test("deep links preserve independent identity and resource filters", () => {
 
 test("untrusted URL enums and identifiers cannot become query filters", () => {
   const filter = auditFilterFromSearch(
-    "?actor_type=administrator&actor_id=invalid&api_key_id=x&session_id=x&execution_id=x&conversation_id=x&workflow_id=x&access_type=other&origin_source=other&execution_source=other&oauth_client_id=%3Cscript%3E&result=other",
+    "?actor_type=administrator&actor_id=invalid&api_key_id=x&session_id=x&execution_id=x&conversation_id=x&workflow_id=x&task_id=x&task_run_id=x&access_type=other&origin_source=other&execution_source=other&oauth_client_id=%3Cscript%3E&result=other",
     now,
     "UTC",
   );
@@ -74,6 +78,8 @@ test("untrusted URL enums and identifiers cannot become query filters", () => {
     "executionId",
     "conversationId",
     "workflowId",
+    "taskId",
+    "taskRunId",
     "accessType",
     "originSource",
     "executionSource",
@@ -94,6 +100,7 @@ test("all supported access, source, actor and result alternatives round-trip", (
     "mcp_oauth",
     "token_exchange",
     "external_bearer",
+    "task_run",
     "portal_token",
   ]);
   for (const access of ACCESS_TYPES)
@@ -130,6 +137,8 @@ test("reset clears every persisted filter and restores the all-events scope", ()
     executionId: "",
     conversationId: "",
     workflowId: "",
+    taskId: "",
+    taskRunId: "",
     result: "",
     action: "",
     traceId: "",

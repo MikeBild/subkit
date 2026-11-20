@@ -7,6 +7,9 @@ const dedup =
 const erasure =
   "Erasure bookkeeping that must stay writable while a tenant is deleted, even when its allowance is exhausted.";
 
+const taskState =
+  "Task run and standing-permission state without content (ids, closed states, reason codes, counters, each bounded by a check constraint): must stay writable so a tenant at its limit can still end or stop a run and revoke a permission; the task content is metered in tasks and the run conversation in conversations and conversation_messages.";
+
 export const HOSTED_METER_EXEMPTIONS: Readonly<Record<string, string>> = {
   caller_budget_units: ledger,
   external_call_metering: ledger,
@@ -30,6 +33,8 @@ export const HOSTED_METER_EXEMPTIONS: Readonly<Record<string, string>> = {
   webhook_replay_seen: dedup,
   product_identity_tombstones: erasure,
   tenant_erasure_states: erasure,
+  task_grants: taskState,
+  task_runs: taskState,
   conversation_turns:
     "Turn scheduling state without content (one active turn per conversation); the conversation content is metered in conversations and conversation_messages.",
   transactional_mail_receipts:

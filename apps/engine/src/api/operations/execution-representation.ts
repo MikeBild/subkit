@@ -4,6 +4,7 @@ import type { executionSteps, executions } from "../../db/schema/index.ts";
 import { ExecutionCallerSchema } from "../../execution/caller-summary.ts";
 import { PREVIEW_CLASSIFICATIONS } from "../../execution/classify.ts";
 import { describeExecutionEvidence } from "../../execution/evidence.ts";
+import { scrubRecordedUrls } from "../../execution/recorded-url.ts";
 import { WorkflowPermissionSchema } from "../../execution/workflow-permission.ts";
 import { ReportDeliveryRefusalSchema } from "../../workflows/report-delivery-boundary.ts";
 import { paginatedResponse } from "../common-schemas.ts";
@@ -175,8 +176,8 @@ export function serializeStep(row: typeof executionSteps.$inferSelect) {
     result_sha256: row.result_sha256 ?? null,
     result_preview: row.result_preview ?? null,
     output_preview: row.output_preview ?? null,
-    error: row.error ?? null,
-    request_meta: row.request_meta ?? null,
+    error: scrubRecordedUrls(row.error ?? null),
+    request_meta: scrubRecordedUrls(row.request_meta ?? null),
     credential_snapshots: row.credential_snapshots ?? [],
     started_at: row.started_at ? row.started_at.toISOString() : null,
     finished_at: row.finished_at ? row.finished_at.toISOString() : null,

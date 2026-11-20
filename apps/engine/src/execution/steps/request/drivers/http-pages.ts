@@ -28,6 +28,7 @@ import {
   attemptParams,
   type HttpExchange,
   materializePaginatedBody,
+  recordedUrl,
   recordHttpShape,
   settleConnectorHealth,
 } from "./http-exchange.ts";
@@ -156,7 +157,7 @@ export async function runHttpPages(x: HttpExchange): Promise<StepResult> {
           driver: "http" as const,
           credential_id: x.active_credential_id,
           operation: p.step.method,
-          url: pageUrl,
+          url: recordedUrl(pageUrl, x.masked_query_keys),
         }
       : null;
     const res = pageEgressInput
@@ -201,7 +202,7 @@ export async function runHttpPages(x: HttpExchange): Promise<StepResult> {
         }
       : undefined;
     const pageMeta = {
-      url: pageUrl,
+      url: recordedUrl(pageUrl, x.masked_query_keys),
       method: p.step.method ?? "GET",
       status: res.status,
       ...(x.last_idempotency_key.value ? { idempotency_key: x.last_idempotency_key.value } : {}),

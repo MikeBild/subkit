@@ -46,6 +46,36 @@ describe("toolLabel", () => {
     });
   });
 
+  test("the task tools read in plain words, in both languages", () => {
+    const reads = {
+      list_tasks: ["Aufgaben aufgelistet", "Listed tasks"],
+      find_task: ["Aufgabe gesucht", "Searched for a task"],
+      get_task: ["Aufgabe gelesen", "Read a task"],
+      get_task_run: ["Lauf einer Aufgabe gelesen", "Read a task run"],
+    };
+    for (const [tool, [german, english]] of Object.entries(reads)) {
+      const label = toolLabel(tool);
+      expect(toolTier(tool)).toBe("background");
+      if (label.kind !== "background") throw new Error(`${tool} is not a background read`);
+      expect(translate("de", label.words.past)).toBe(german as string);
+      expect(translate("en", label.words.past)).toBe(english as string);
+      expect(translate("de", label.words.active).endsWith("…")).toBe(true);
+    }
+    const actions = {
+      run_task: ["Aufgabe gestartet", "Started a task"],
+      abort_task_run: ["Lauf einer Aufgabe abgebrochen", "Stopped a task run"],
+      save_task: ["Aufgabe gespeichert", "Saved a task"],
+      schedule_task_check: ["Nächste Prüfung festgelegt", "Set the next check"],
+    };
+    for (const [tool, [german, english]] of Object.entries(actions)) {
+      const label = toolLabel(tool);
+      expect(toolTier(tool)).toBe("action");
+      if (label.kind !== "key") throw new Error(`${tool} has no name`);
+      expect(translate("de", label.key)).toBe(german as string);
+      expect(translate("en", label.key)).toBe(english as string);
+    }
+  });
+
   test("names a registered read and a registered action from the catalog", () => {
     expect(toolLabel("list_workflows")).toEqual({
       kind: "background",
@@ -308,6 +338,9 @@ describe("what a workflow call really was", () => {
       "Entwurf noch nicht übernommen",
     );
     expect(workflowRefusalKey({ ok: false, denied: true })).toBe("tool.refusal.permission");
+    expect(workflowRefusalKey({ ok: false, error_code: "task_run_use_workflow_tool" })).toBe(
+      "tool.refusal.ownTool",
+    );
     expect(workflowRefusalKey({ ok: false, data: { error_code: "permission_denied" } })).toBe(
       "tool.refusal.permission",
     );

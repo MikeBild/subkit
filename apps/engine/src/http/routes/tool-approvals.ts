@@ -3,6 +3,10 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { cockpitInstallationIdFromPath, signLoginState } from "../../auth/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import { completeApprovalBackedElicitation } from "../../conversations/public/authoring.ts";
+import {
+  type TaskRunApprovalRefusal,
+  taskRunApprovalRefusal,
+} from "../../conversations/public/lifecycle.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/index.ts";
 import { enqueueApprovalElicitationResume, getBoss } from "../../queue/index.ts";
@@ -122,6 +126,16 @@ async function redirectToSignIn(
   return Response.redirect(loginUrl.toString(), 302);
 }
 
+function taskRunRefusalCopy(refusal: TaskRunApprovalRefusal, locale: string): string {
+  if (refusal === "owner_only")
+    return locale === "de"
+      ? "Nur die Besitzerin der Aufgabe kann diese Freigabe erteilen."
+      : "Only the owner of the task can give this approval.";
+  return locale === "de"
+    ? "Nur die Person, die das angefragt hat, oder ein Admin kann das entscheiden."
+    : "Only the person who asked for this or an admin can decide this.";
+}
+
 export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(approvalPortalPageRoute, async (c) => {
     const db = c.get("db");
@@ -148,6 +162,19 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
     const approver = await resolveApprovalApprover(c, db, view.tenant_id);
     if (!approver) {
       return await redirectToSignIn(grant, publicBaseUrl(), c.req.path);
+    }
+    const refusal = await taskRunApprovalRefusal(db, {
+      tenant_id: view.tenant_id,
+      approval_id: view.approval_id,
+      user_id: approver.user_id,
+    });
+    if (refusal) {
+      const { html, status } = approvalStatusPage(
+        look,
+        copy.refusedTitle,
+        taskRunRefusalCopy(refusal, look.locale),
+      );
+      return c.body(html, status, HTML_HEADERS);
     }
 
     const csrfToken = await signCsrfToken(deriveSessionSecret(), {
@@ -246,6 +273,30 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
         200,
         remembered,
       );
+    }
+
+    const refusal = await taskRunApprovalRefusal(db, {
+      tenant_id: view.tenant_id,
+      approval_id: view.approval_id,
+      user_id: granted_by_user_id,
+    });
+    if (refusal) {
+      logger.warn({
+        module: "tool_approvals",
+        action: "approval.portal.task_run_approver_refused",
+        msg: "a person who may not decide this approval tried to decide it",
+        refusal,
+        approval_id: view.approval_id,
+        tenant_id: view.tenant_id,
+        user_id: granted_by_user_id,
+        decision,
+      });
+      const { html, status } = approvalStatusPage(
+        look,
+        copy.refusedTitle,
+        `${taskRunRefusalCopy(refusal, look.locale)} ${copy.unchanged}`,
+      );
+      return c.body(html, status, HTML_HEADERS);
     }
 
     const result =

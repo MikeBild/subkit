@@ -188,6 +188,36 @@ export async function checkAndDecrement(
   };
 }
 
+export interface TurnBudgetVerdict extends CheckAndDecrementResult {
+  source: "route" | "allowance";
+}
+
+export async function turnBudgetVerdict(
+  p: {
+    tenant_id: string;
+    estimated_tokens: number;
+    route_budget: number | null;
+    user_id: string | null;
+  },
+  exec?: Executor,
+): Promise<TurnBudgetVerdict> {
+  if (p.route_budget != null && p.route_budget > 0) {
+    const used = await monthlyUsage(p.tenant_id, exec);
+    if (used + p.estimated_tokens > p.route_budget)
+      return {
+        ok: false,
+        used,
+        projected_tokens: p.estimated_tokens,
+        budget: p.route_budget,
+        remaining: p.route_budget - used,
+        scope: "tenant",
+        source: "route",
+      };
+  }
+  const allowance = await checkAndDecrement(p.tenant_id, p.estimated_tokens, exec, p.user_id);
+  return { ...allowance, source: "allowance" };
+}
+
 export async function recordUsage(entry: LlmCallLogEntry, exec?: Executor): Promise<void> {
   const db = exec ?? getDb();
   const bucket = currentMonthBucket();

@@ -10,7 +10,10 @@ import type { Db } from "../db/client.ts";
 import { conversations } from "../db/schema/index.ts";
 import type { PermissionMode, ToolModeRule, ToolPolicies, ToolPolicyMode } from "../tools/types.ts";
 import { workflowInputObjectKeys } from "../workflows/run-input.ts";
+import { getTaskRunMarker } from "./core/draft.ts";
 import { isDangerousTool } from "./dangerous-tools.ts";
+import { TaskRunLockedError } from "./service/task-run-errors.ts";
+import { abortTaskRunCard, runTaskCard, saveTaskCard } from "./task-tool-cards.ts";
 
 export interface ToolPolicyAuditCtx {
   actor_type: AuditActorType;
@@ -50,6 +53,12 @@ const AUTO_PREPARATION_WRITES: ReadonlyMap<string, PolicyCategory> = new Map([
   ["export_tenant_package", "tenant_write"],
 ]);
 
+export function taskRunToolPolicies(policies: ToolPolicies): ToolPolicies {
+  return Object.fromEntries(
+    Object.entries(policies).filter(([, mode]) => mode === "confirm_before_execution"),
+  );
+}
+
 export async function getToolPolicies(
   db: Db,
   tenant_id: string,
@@ -84,12 +93,13 @@ export async function setToolPolicies(
   }
   await db.transaction(async (tx) => {
     const [row] = await tx
-      .select({ tool_policies: conversations.tool_policies })
+      .select({ tool_policies: conversations.tool_policies, draft: conversations.draft })
       .from(conversations)
       .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)))
       .limit(1)
       .for("update");
     if (!row) return;
+    if (getTaskRunMarker(row.draft)) throw new TaskRunLockedError("Changing confirmation settings");
     const raw = (row.tool_policies ?? {}) as Record<string, unknown>;
     const next: ToolPolicies = {};
     for (const [k, v] of Object.entries(raw)) {
@@ -269,6 +279,19 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
         ...(obj.input !== undefined ? { input_keys: workflowInputObjectKeys(obj.input) } : {}),
       };
     },
+  },
+  run_task: {
+    defaultMode: "no_confirm",
+    computeModeFromInput: () => "no_confirm",
+    buildPendingOutput: (input) => runTaskCard(input),
+  },
+  abort_task_run: {
+    defaultMode: "confirm_before_execution",
+    buildPendingOutput: (input) => abortTaskRunCard(input),
+  },
+  save_task: {
+    defaultMode: "confirm_before_execution",
+    buildPendingOutput: (input) => saveTaskCard(input),
   },
   discard_intake_items: {
     defaultMode: "confirm_before_execution",
@@ -502,9 +525,12 @@ export function decideToolMode(args: {
   overrides: ToolPolicies;
   permission_mode?: PermissionMode | null;
   connector_trust?: boolean;
+  authority_covered?: boolean;
   execution_data_transfer?: boolean;
+  task_run?: boolean;
 }): ToolModeDecision {
-  const { tool, category, input, overrides, permission_mode } = args;
+  const { tool, category, input, permission_mode } = args;
+  const overrides = args.task_run === true ? taskRunToolPolicies(args.overrides) : args.overrides;
 
   const def = TOOL_POLICIES[tool];
   const isDangerous = isDangerousTool(tool) || (def?.computeDangerFromInput?.(input) ?? false);
@@ -531,7 +557,7 @@ export function decideToolMode(args: {
     return { mode: "confirm_before_execution", rule: "computed_from_input" };
   }
 
-  if (args.connector_trust === true && permission_mode !== "plan") {
+  if (args.connector_trust === true && args.task_run !== true && permission_mode !== "plan") {
     return { mode: "no_confirm", rule: "connector_trust" };
   }
 
@@ -567,6 +593,15 @@ export function decideToolMode(args: {
     };
   }
   if (permission_mode === "ask" || permission_mode === "plan") {
+    if (
+      permission_mode === "ask" &&
+      args.authority_covered === true &&
+      tool === "run_workflow" &&
+      !isDangerous &&
+      overrides[tool] !== "confirm_before_execution"
+    ) {
+      return { mode: "no_confirm", rule: "authority_covered" };
+    }
     if (category === "tenant_write" || isDangerous) {
       return { mode: "confirm_before_execution", rule: "permission_mode" };
     }

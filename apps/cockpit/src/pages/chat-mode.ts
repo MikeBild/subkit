@@ -44,10 +44,16 @@ interface ModeGates {
   guidance: TranslationKey | null;
 }
 
+const ASKED_ROW_KEYS: Readonly<Partial<Record<GateRow, TranslationKey>>> = {
+  liveRuns: "chat.mode.gate.liveRunsUncovered",
+};
+
 export function modeGates(mode: AuthoringMode): ModeGates {
   const rows = Object.keys(GATE_MATRIX) as GateRow[];
   return {
-    asks: rows.filter((row) => GATE_MATRIX[row][mode]).map((row) => ROW_KEYS[row]),
+    asks: rows
+      .filter((row) => GATE_MATRIX[row][mode])
+      .map((row) => ASKED_ROW_KEYS[row] ?? ROW_KEYS[row]),
     free: rows.filter((row) => !GATE_MATRIX[row][mode]).map((row) => ROW_KEYS[row]),
     outside: ["chat.mode.gate.admission"],
     guidance: mode === "plan" ? "chat.mode.guidance.plan" : null,

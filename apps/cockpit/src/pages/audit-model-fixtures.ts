@@ -30,6 +30,8 @@ export const ENTRY: AuditEntry = {
   resource_type: "settings",
   resource_id: null,
   resource_name: null,
+  task_id: null,
+  task_run_id: null,
   result: "success",
   trace_id: "cli-949cacce25ff4379",
   ip: "203.0.113.42",

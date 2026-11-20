@@ -21,6 +21,7 @@ const QueryInput = z
         "mcp_oauth",
         "token_exchange",
         "external_bearer",
+        "task_run",
         "portal_token",
       ])
       .optional(),
@@ -39,6 +40,12 @@ const QueryInput = z
     execution_id: z.string().uuid().optional(),
     conversation_id: z.string().uuid().optional(),
     workflow_id: z.string().uuid().optional(),
+    task_id: z
+      .string()
+      .uuid()
+      .optional()
+      .describe("Everything recorded about one task, including its runs and grants."),
+    task_run_id: z.string().uuid().optional().describe("Everything recorded about one task run."),
     result: z.enum(["success", "denied", "error"]).optional(),
     trace_id: z.string().min(1).max(128).optional(),
     ts_from: z.string().datetime().optional(),
@@ -63,7 +70,7 @@ const GetInput = z.object({ id: z.string().uuid() }).openapi("GetAuditEntryToolI
 export const queryAuditTool: ConversationTool = {
   name: "list_audit",
   description:
-    "Query the tenant audit log, newest first. Omit cursor on the first page. Use only filters justified by the task; do not invent action, result, channel or date bounds. `origin_source` is the trusted initiating channel and `execution_source` the immediate server step. Legacy `request_source` is only a recorded value and may be client-declared. Filter by actor, API key/session, access type, OAuth client, resource, result, trace/correlation, run/conversation/workflow ID and UTC time bounds. `ts_to` is exclusive. Missing provenance is not inferred. Pass a non-null `next_cursor` back verbatim with unchanged filters for the next page. A failed read is missing evidence, not an empty history.",
+    "Query the tenant audit log, newest first. Omit cursor on the first page. Use only filters justified by the task; do not invent action, result, channel or date bounds. `origin_source` is the trusted initiating channel and `execution_source` the immediate server step. Legacy `request_source` is only a recorded value and may be client-declared. Filter by actor, API key/session, access type, OAuth client, resource, result, trace/correlation, run/conversation/workflow/task/task run ID and UTC time bounds. `ts_to` is exclusive. Missing provenance is not inferred. Pass a non-null `next_cursor` back verbatim with unchanged filters for the next page. A failed read is missing evidence, not an empty history.",
   inputSchema: QueryInput,
   strict: false,
   category: "tenant_read",
@@ -96,6 +103,8 @@ export const queryAuditTool: ConversationTool = {
     if (args.execution_id) filters.execution_id = args.execution_id;
     if (args.conversation_id) filters.conversation_id = args.conversation_id;
     if (args.workflow_id) filters.workflow_id = args.workflow_id;
+    if (args.task_id) filters.task_id = args.task_id;
+    if (args.task_run_id) filters.task_run_id = args.task_run_id;
     if (args.result) filters.result = args.result;
     if (args.trace_id) filters.trace_id = args.trace_id;
     if (args.ts_from) filters.ts_from = new Date(args.ts_from);

@@ -8,21 +8,40 @@ export {
 } from "../answer-actor.ts";
 export { completeApprovalBackedElicitation } from "../approval-completion.ts";
 export { harvestCitationsFromPersisted } from "../citations.ts";
+export { getTaskRunCheck, getTaskRunMarker, withoutTaskRunCheck } from "../core/draft.ts";
 export { loadDraft, loadFocusExecution } from "../draft.ts";
 export { surfaceFromClientHeader } from "../lifecycle-view.ts";
 export { continueConversationDevLiveTest } from "../live-test-continuation.ts";
 export { messageHasText } from "../parts.ts";
-export { PlaybookViewSchema } from "../playbook-contract.ts";
-export { ResumeFormFieldSchema } from "../resume-form.ts";
-export { type AppendMessageResult, appendUserMessage } from "../service/append.ts";
+export { readPlaybook, updatePlaybook } from "../playbook.ts";
 export {
+  type PlaybookPlan,
+  PlaybookPlanSchema,
+  type PlaybookView,
+  PlaybookViewSchema,
+} from "../playbook-contract.ts";
+export type { PlaybookScope } from "../playbook-evidence.ts";
+export { ResumeFormFieldSchema } from "../resume-form.ts";
+export {
+  type AppendMessageParams,
+  type AppendMessageResult,
+  appendUserMessage,
+} from "../service/append.ts";
+export {
+  type CreateConversationParams,
   type CreateConversationResult,
   createConversation,
 } from "../service/create.ts";
 export { type RunConversationTurnParams, runConversationTurn } from "../service/run-turn.ts";
 export type { ConversationTurnOutcome } from "../service/shared.ts";
+export { clearTaskRunCheck } from "../service/task-run-check.ts";
+export {
+  readConversationPlaybookPlan,
+  setConversationLoadedSkills,
+} from "../service/tool-state.ts";
 export { keepResolvableCitations } from "../source-faithful.ts";
 export { serializeEvent } from "../streaming.ts";
+export { messageOrigin, TASK_RUN_CONTINUATION_ORIGIN } from "../task-run-continuation.ts";
 export { importConnectorFromSpecInputSchema } from "../tools/import-connector-from-spec-contract.ts";
 export const importConnectorDraftFromSpec = async (params: unknown) => {
   const tool = await import("../tools/import-connector-from-spec.ts");
@@ -48,6 +67,10 @@ export {
   turnFailureFramePayload,
   workerExpiredTurnFailure,
 } from "../turn-failure.ts";
-export type { TurnEvent } from "../types.ts";
+export type { TaskRunCheck, TaskRunMarker, TurnEvent } from "../types.ts";
 
+import type { setConversationLoadedSkills } from "../service/tool-state.ts";
 import { importConnectorFromSpecInputSchema } from "../tools/import-connector-from-spec-contract.ts";
+
+export type ConversationSkillScope = Parameters<typeof setConversationLoadedSkills>[1];
+export type ConversationLoadedSkills = Parameters<typeof setConversationLoadedSkills>[2];

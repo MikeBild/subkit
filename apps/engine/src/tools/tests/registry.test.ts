@@ -57,11 +57,14 @@ describe("tools/registry — providers (active)", () => {
       .list({ surface: "mcp", mcpMode: "admin", readOnly: true })
       .filter((d) => d.category === "tenant_write");
     expect(writes.map((d) => d.name).sort()).toEqual([
+      "abort_task_run",
       "approve_skill_candidate",
       "propose_workflow_repair",
       "reject_skill_candidate",
+      "run_task",
       "run_workflow",
       "save_learning",
+      "save_task",
     ]);
   });
 

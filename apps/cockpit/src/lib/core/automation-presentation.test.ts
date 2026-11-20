@@ -23,10 +23,16 @@ test("automation presentation maps every standalone action and repair route to i
   expect(automationActionKey({ kind: "extend" })).toBe("automation.action.extend");
   expect(automationActionKey({ kind: "view" })).toBe("automation.action.view");
   expect(
-    (["review", "auto", "prepare", "chat"] as const).map((via) =>
+    (["review", "auto", "prepare", "chat", "limits"] as const).map((via) =>
       automationActionKey({ kind: "repair", via, stepId: null }),
     ),
-  ).toEqual(["remedy.reviewRepair", "diagnosis.repair", "diagnosis.prepare", "remedy.chat"]);
+  ).toEqual([
+    "remedy.reviewRepair",
+    "diagnosis.repair",
+    "diagnosis.prepare",
+    "remedy.chat",
+    "authorityProposals.action.open",
+  ]);
 });
 
 test("automation presentation only adopts a complete repeatable activation", () => {

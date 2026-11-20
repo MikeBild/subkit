@@ -49,6 +49,7 @@ import { startListener, stopListener } from "./pubsub/listener.ts";
 import { bossPoolCounts, startBoss, stopBoss } from "./queue/boss.ts";
 import { EVENT_FANOUT_QUEUE } from "./queue/handlers/event-fanout.ts";
 import { registerAllHandlers } from "./queue/handlers/index.ts";
+import { registerTaskRunTurnListener } from "./queue/handlers/task-run-turn.ts";
 import type { RuntimeConfigCoordinator as Coordinator } from "./runtime-config/coordinator.ts";
 import { registerRestartTrigger, shutdownExitCode } from "./runtime-config/restart.ts";
 import { closeSandboxWorkers, prewarmSandboxWorkers } from "./sandboxes/quickjs/runtime.ts";
@@ -334,6 +335,7 @@ async function runServer(): Promise<void> {
       () => stopBoss(SHUTDOWN_DRAIN_TIMEOUT_MS),
     );
     recordBootConsumer("queue");
+    registerTaskRunTurnListener();
     await lifetime.step(() =>
       bootPhase("queue_handlers", () => registerAllHandlers({ boss, db, chatRegistry })),
     );

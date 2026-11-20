@@ -28,13 +28,31 @@ export {
   setConversationHidden,
 } from "../service/lifecycle.ts";
 export { getContextSnapshot } from "../service/snapshot.ts";
+export {
+  assertTaskRunTurn,
+  assertTaskRunWriter,
+  canWriteTaskRun,
+  mayDecideTaskRunApproval,
+  type TaskRunApprovalRefusal,
+  TaskRunLockedError,
+  TaskRunPermissionModeError,
+  TaskRunWriteForbiddenError,
+  type TaskRunWriter,
+  taskRunApprovalRefusal,
+} from "../service/task-run-access.ts";
+export { canReadTaskRun, taskRunListReader } from "../service/task-run-read.ts";
 export { isConversationTitleOpening, refreshConversationTitle } from "../title.ts";
+export {
+  type ConversationTurnRelease,
+  onConversationTurnReleased,
+} from "../turn-listeners.ts";
 export {
   acquireConversationTurn as registerConversationAbort,
   bindConversationTurn,
   conversationTurnId,
   finishConversationTurn,
   parkConversationTurn,
+  reconcileInterruptedConversationTurn,
   releaseConversationTurn as unregisterConversationAbort,
   reserveConversationTurn,
   stopConversationTaskTurn,

@@ -13,6 +13,7 @@ import { createDeterministicUuidFactory } from "../../../test-helpers/determinis
 import { adminPrincipal } from "../../../test-helpers/principals.ts";
 import { createEmptyDraftDocument } from "../../authoring-state/index.ts";
 import type { DraftDocument } from "../../types.ts";
+import { buildExecutionDiagnosis } from "../execution-diagnosis.ts";
 import type { ToolContext } from "../index.ts";
 import { inspectExecutionStepTool } from "../inspect-execution-step.ts";
 
@@ -186,5 +187,35 @@ describe("inspect_execution_step · canonical offload resolution", () => {
     expect(result.ok).toBe(false);
     const data = result.data as { error_code: string };
     expect(data.error_code).toBe("execution_not_found");
+  });
+});
+
+describe("step metadata written with a credential value in its address", () => {
+  test("inspect_execution_step and the execution diagnosis return it scrubbed", async () => {
+    const { execution_id, step_id } = await seedExecutionWithStep({
+      tenant: tenant_id,
+      step_key: "old_row",
+    });
+    await ctx.db
+      .update(executionSteps)
+      .set({
+        result_storage_uri: null,
+        request_meta: { driver: "http", url: "https://api.test/v2?api_key=s3cr3t-old&page=2" },
+        error: { code: "http_4xx", resolved_url: "https://api.test/v2?token=s3cr3t-old" },
+      })
+      .where(eq(executionSteps.id, step_id));
+    const result = await inspectExecutionStepTool.execute(makeCtx(), {
+      execution_id,
+      step_key: "old_row",
+    });
+    expect(result.ok).toBe(true);
+    expect(JSON.stringify(result.data)).not.toContain("s3cr3t-old");
+    expect((result.data as { request_meta: { url: string } }).request_meta.url).toBe(
+      "https://api.test/v2?api_key=***&page=2",
+    );
+    const diagnosis = await buildExecutionDiagnosis(ctx.db, tenant_id, execution_id);
+    expect(diagnosis.found).toBe(true);
+    expect(JSON.stringify(diagnosis)).not.toContain("s3cr3t-old");
+    expect(JSON.stringify(diagnosis)).toContain("https://api.test/v2?api_key=***&page=2");
   });
 });

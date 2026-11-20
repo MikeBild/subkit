@@ -101,6 +101,23 @@ describe("attention-driven cockpit push", () => {
     expect(await dispatch(fixture, [conversation, item("wf-1", "failing", "failing")])).toBe(1);
   });
 
+  test("each task reason wakes the person once, and again only when it changes", async () => {
+    const task = (reason: AttentionReason, attentionClass: AttentionClass): AttentionItem => ({
+      ...item("task:44444444-5555-4666-8777-888888888888", attentionClass, reason),
+      kind: "task",
+    });
+    const reasons = [
+      task("task_run_failed", "failing"),
+      task("task_grant_required", "decide"),
+      task("task_result_ready", "decide"),
+      task("task_grant_expiring", "decide"),
+    ];
+    for (const current of reasons) {
+      expect(await dispatch(fixture, [current])).toBe(1);
+      expect(await dispatch(fixture, [current])).toBe(0);
+    }
+  });
+
   test("stores only hashed attention keys", async () => {
     await dispatch(fixture, [conversation, authority]);
     const keys = await fixtures.storedKeys(fixture);

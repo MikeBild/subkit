@@ -1,3 +1,4 @@
+import { scrubRecordedUrls } from "../../execution/recorded-url.ts";
 import { truncateStepPreviewForLlm } from "../../tools/truncate.ts";
 
 export interface RawStepResultSource {
@@ -47,7 +48,7 @@ export function buildRawStepResults(steps: ReadonlyArray<RawStepResultSource>): 
       kind: s.kind,
       status: s.status,
       ...(s.duration_ms != null ? { duration_ms: s.duration_ms } : {}),
-      input,
+      input: scrubRecordedUrls(input),
       ...(outputForLlm
         ? {
             output: outputForLlm.data,
@@ -60,7 +61,7 @@ export function buildRawStepResults(steps: ReadonlyArray<RawStepResultSource>): 
             ...(rawForLlm.raw_ref ? { raw_output_ref: rawForLlm.raw_ref } : {}),
           }
         : {}),
-      ...(s.error ? { error: s.error } : {}),
+      ...(s.error ? { error: scrubRecordedUrls(s.error) } : {}),
     };
   });
 }

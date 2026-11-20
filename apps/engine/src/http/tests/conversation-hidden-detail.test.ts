@@ -97,3 +97,49 @@ describe("GET /v1/conversations/:id · hidden", () => {
     expect(hiddenRows).toHaveLength(0);
   });
 });
+
+describe("GET /v1/conversations · task runs", () => {
+  test("run conversations are listed only when the query asks for them", async () => {
+    const [chat, run] = await srv.db
+      .insert(conversations)
+      .values([
+        { tenant_id: srv.tenantId, status: "active", owner_id: srv.userId, title: "Plain chat" },
+        {
+          tenant_id: srv.tenantId,
+          status: "active",
+          owner_id: srv.userId,
+          title: "Task run",
+          title_locked: true,
+          draft: {
+            session: {
+              task_run: {
+                task_id: "44444444-5555-4666-8777-888888888888",
+                task_run_id: "55555555-6666-4777-8888-999999999999",
+                environment: "prod",
+                workflow_ids: [],
+                connector_ids: [],
+                web_search: false,
+              },
+            },
+          },
+        },
+      ])
+      .returning({ id: conversations.id });
+    if (!chat || !run) throw new Error("seed conversations failed");
+    const listed = async (query: string) => {
+      const res = await call("GET", `/v1/conversations?limit=200${query}`);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { items: { id: string }[]; total: number };
+      return { ids: body.items.map((item) => item.id), total: body.total };
+    };
+    const standard = await listed("");
+    expect(standard.ids).toContain(chat.id);
+    expect(standard.ids).not.toContain(run.id);
+    const only = await listed("&task_runs=only");
+    expect(only).toEqual({ ids: [run.id], total: 1 });
+    const all = await listed("&task_runs=all");
+    expect(all.ids).toEqual(expect.arrayContaining([chat.id, run.id]));
+    expect(all.total).toBe(standard.total + 1);
+    expect((await call("GET", "/v1/conversations?task_runs=some")).status).toBe(400);
+  });
+});

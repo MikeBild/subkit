@@ -13,6 +13,7 @@ export type PermissionMode = "auto" | "ask" | "plan" | "yolo";
 export type ToolModeRule =
   | "inline_credential"
   | "connector_trust"
+  | "authority_covered"
   | "never_gate"
   | "permission_mode"
   | "conversation_override"

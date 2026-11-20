@@ -119,18 +119,24 @@ async function mounted(respond: (call: FetchCall) => Promise<Response> | Respons
   mock.module("./workflow-review-dialog", () => ({
     WorkflowReviewDialog: (props: {
       state: string;
-      review: { workflow_slug: string; reviewed_version_label: string } | null;
+      review: {
+        workflow_slug: string;
+        reviewed_version_label: string;
+        grant: { limit: string } | null;
+      } | null;
       remember: boolean;
       policyBusy: boolean;
       onComplete: (saveOnly: boolean) => void;
       onCheckResult: () => void;
       onGrantChange: (checked: boolean) => void;
+      onLimitChange: (limit: "until_revoked" | "7d" | "30d") => void;
       onRememberChange: (checked: boolean) => void;
     }) => (
       <div
         data-testid="workflow-review"
         data-state={props.state}
         data-digest={props.review?.reviewed_version_label ?? ""}
+        data-limit={props.review?.grant?.limit ?? ""}
         data-remember={String(props.remember)}
         data-policy-busy={String(props.policyBusy)}
       >
@@ -148,6 +154,7 @@ async function mounted(respond: (call: FetchCall) => Promise<Response> | Respons
         />
         <button type="button" data-testid="check-result" onClick={props.onCheckResult} />
         <button type="button" data-testid="grant" onClick={() => props.onGrantChange(true)} />
+        <button type="button" data-testid="limit-7d" onClick={() => props.onLimitChange("7d")} />
         <button type="button" data-testid="remember" onClick={() => props.onRememberChange(true)} />
       </div>
     ),
@@ -461,3 +468,70 @@ isolated("a receipt cannot cross a conversation or pending-decision boundary", a
     await view.close();
   }
 });
+
+isolated(
+  "granting from the card asks for an approval until revoked unless a duration is chosen",
+  async () => {
+    const suggested = {
+      environment: "prod",
+      valid_from: "2026-11-19T09:00:00.000Z",
+      valid_until: "2026-11-20T09:00:00.000Z",
+      max_runs: 1,
+    };
+    const prepared: Array<{ activate: boolean; grant: unknown }> = [];
+    const view = await mounted((call) => {
+      if (call.path.endsWith("/tool-policies"))
+        return json({ policies: {}, eligible_no_confirm_tools: ["save_workflow_draft"] });
+      if (reviewPath(call)) {
+        const body = JSON.parse(String(call.init.body)) as { activate: boolean; grant: unknown };
+        prepared.push(body);
+        return json({
+          ...receipt(`digest-${prepared.length}`),
+          actions: { activate: body.activate, grant: body.grant, schedule: null },
+          suggested_actions: { activate: false, grant: suggested, schedule: null },
+        });
+      }
+      throw new Error(`unexpected ${call.path}`);
+    });
+    const click = async (id: string) => {
+      await act(async () =>
+        (
+          view.dom.window.document.querySelector(`[data-testid="${id}"]`) as HTMLButtonElement
+        ).click(),
+      );
+      await view.flush();
+    };
+    const limit = () =>
+      view.dom.window.document
+        .querySelector('[data-testid="workflow-review"]')
+        ?.getAttribute("data-limit");
+    try {
+      expect(limit()).toBe("until_revoked");
+      await click("grant");
+      expect(prepared.at(-1)).toMatchObject({
+        activate: true,
+        grant: {
+          environment: "prod",
+          valid_from: suggested.valid_from,
+          valid_until: null,
+          max_runs: null,
+        },
+      });
+      expect(limit()).toBe("until_revoked");
+      await click("limit-7d");
+      expect(prepared.at(-1)).toMatchObject({
+        activate: true,
+        grant: {
+          environment: "prod",
+          valid_from: suggested.valid_from,
+          valid_until: "2026-11-26T09:00:00.000Z",
+          max_runs: null,
+        },
+      });
+      expect(limit()).toBe("7d");
+      expect(prepared).toHaveLength(3);
+    } finally {
+      await view.close();
+    }
+  },
+);

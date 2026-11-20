@@ -51,6 +51,16 @@ test("a diagnostic transfer names its size on the card", () => {
   );
 });
 
+test("an admin reads who can release the held changes instead of the answer buttons", () => {
+  const held: ChatApproval = { ...approval, externalTool: undefined, ownerOnly: true };
+  const de = render(held, "de");
+  expect(de).toContain("Nur die Besitzerin der Aufgabe kann diese Freigabe erteilen.");
+  expect(de).not.toContain("approval-approve");
+  expect(de).not.toContain("approval-decline");
+  expect(render(held, "en")).toContain("Only the owner of the task can give this approval.");
+  expect(render({ ...held, ownerOnly: undefined }, "de")).toContain("approval-approve");
+});
+
 function claim(html: string): string {
   return html.match(/<p[^>]*data-testid="approval-server-claim"[^>]*>(.*?)<\/p>/)?.[1] ?? "";
 }

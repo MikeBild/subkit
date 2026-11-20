@@ -15,6 +15,7 @@ import { OverviewPage } from "@/pages/overview";
 import { SettingsPage } from "@/pages/settings";
 import { SkillCandidatesPage } from "@/pages/skill-candidates";
 import { SkillPage, SkillsPage } from "@/pages/skills";
+import { TaskPage, TasksPage } from "@/pages/tasks";
 import { UsagePage } from "@/pages/usage";
 import { cockpitBasePath } from "./installation-context";
 import { absolute } from "./links";
@@ -99,6 +100,19 @@ const knowledgeRoutes = [
   }),
 ];
 
+const taskRoutes = [
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/tasks",
+    component: () => <TasksPage permissions={useSession().permissions} />,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/tasks/$resourceId",
+    component: () => <TaskPage permissions={useSession().permissions} />,
+  }),
+];
+
 const filesRoutes = [
   createRoute({ getParentRoute: () => rootRoute, path: "/files", component: FilesPage }),
   createRoute({
@@ -145,6 +159,7 @@ const routeTree = rootRoute.addChildren([
   ...redirectRoutes,
   ...catalogRoutes,
   ...knowledgeRoutes,
+  ...taskRoutes,
   ...filesRoutes,
   ...docsRoutes,
 ]);

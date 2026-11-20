@@ -37,6 +37,7 @@ const KIND_LABELS = {
   knowledge_source: "inbox.resource.knowledgeSource",
   skill: "inbox.resource.skill",
   file: "inbox.resource.file",
+  task: "tasks.kind",
 } as const;
 
 export function useCatalogMetadataActions({

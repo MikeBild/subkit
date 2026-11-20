@@ -196,6 +196,19 @@ export async function resolveWorkflowReviewManifest(
               : []),
           ]
         : []),
+      ...(effect.mcp
+        ? [
+            `Effect ${effect.mcp.effect} as stated on the step; the tool's description is compared with the server only when you approve`,
+            `At most ${effect.mcp.max_calls} calls`,
+            ...(effect.mcp.arguments.length
+              ? [
+                  `Argument variables: ${effect.mcp.arguments
+                    .map((entry) => `${entry.path.join(".")} (${entry.var})`)
+                    .join(", ")}`,
+                ]
+              : []),
+          ]
+        : []),
     ];
     return {
       step_id: effect.step_id,
@@ -206,7 +219,9 @@ export async function resolveWorkflowReviewManifest(
         : effect.effect === "unknown"
           ? "unknown"
           : "write") as WorkflowReviewEffect["effect"],
-      target: effect.report_delivery?.to ?? displayTarget(effect.target),
+      target: effect.mcp
+        ? `${effect.mcp.server}#${effect.mcp.tool}`
+        : (effect.report_delivery?.to ?? displayTarget(effect.target)),
       ...(details.length ? { details } : {}),
     };
   });

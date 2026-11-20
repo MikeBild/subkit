@@ -7,7 +7,7 @@ import {
   cockpitStreamFallbackConds,
   projectCockpitPayload,
 } from "../../identity/index.ts";
-import { can } from "../../rbac/index.ts";
+import { can, hasBuiltinAdminRole } from "../../rbac/index.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
 import { streamOutboxTail } from "./sse-outbox-tail.ts";
@@ -35,7 +35,9 @@ export function registerCockpitEventRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const tenantId = principal.tenant_id;
     const permissions = await cockpitStreamPermissions(db, principal);
-    const conds = cockpitStreamConds(tenantId, permissions);
+    const conds = cockpitStreamConds(tenantId, permissions, {
+      task_owner_id: hasBuiltinAdminRole(principal) ? null : principal.id,
+    });
     return streamOutboxTail(c, {
       db,
       replay: "tail",

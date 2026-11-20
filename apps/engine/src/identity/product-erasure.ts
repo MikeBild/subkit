@@ -1,7 +1,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import { productSubjectDigest } from "../auth/identity-link.ts";
-import type { Executor } from "../db/client.ts";
+import type { Db, Executor } from "../db/client.ts";
 import {
   apiKeys,
   callerBudgetUnits,
@@ -59,13 +59,18 @@ function erasureAudit(caller: ErasableCaller & { productId: string }, context: E
   };
 }
 
+export type ErasureFollowUp = (db: Db) => Promise<void>;
+
 export async function eraseProductCaller(
   tx: Executor,
   caller: ErasableCaller,
   context: ErasureContext,
-): Promise<void> {
+): Promise<ErasureFollowUp> {
   if (caller.principalKind !== "user" || !caller.productId || !caller.subject)
     refuse("caller erasure needs a product user with a verified subject");
+  const tasks = await import("../tasks/index.ts");
+  const effects = tasks.taskEffects();
+  await tasks.pauseTasksOfOwnerLocked(tx, caller.tenantId, caller.principalId, effects);
   const subject = caller.subject;
   const now = context.now ?? new Date();
   const [identity] = await tx
@@ -174,4 +179,5 @@ export async function eraseProductCaller(
     },
     tx,
   );
+  return (db) => tasks.settleTaskEffects(db, effects);
 }

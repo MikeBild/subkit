@@ -70,11 +70,28 @@ export function callerFromPrincipal(
   });
 }
 
+interface PrivacyCaller {
+  provider?: string | undefined;
+  auth_source?: { kind: string } | undefined;
+}
+
+function sensitiveExecutionUnsupported(
+  requestSource: RequestSource | undefined,
+  caller: PrivacyCaller | null | undefined,
+): boolean {
+  return (
+    requestSource === "chat" ||
+    caller?.provider === "task" ||
+    caller?.auth_source?.kind === "task_run"
+  );
+}
+
 export function assertExecutionPrivacySupported(
   requestSource: RequestSource,
   executionPrivacy: string | null | undefined,
+  caller?: PrivacyCaller | null,
 ): void {
-  if (requestSource === "chat" && executionPrivacy === "sensitive")
+  if (executionPrivacy === "sensitive" && sensitiveExecutionUnsupported(requestSource, caller))
     throw Object.assign(new Error("Sensitive execution is unavailable on conversation surfaces."), {
       code: "sensitive_execution_unsupported",
     });
@@ -93,7 +110,7 @@ interface WorkflowDispatchBoundary {
 
 export function workflowDispatchRefusal(
   boundary: WorkflowDispatchBoundary,
-  principal: Pick<ResolvedPrincipal, "kind" | "product_id">,
+  principal: Pick<ResolvedPrincipal, "kind" | "product_id"> & PrivacyCaller,
   requestSource?: RequestSource,
 ): WorkflowDispatchRefusal | null {
   const productId = boundary.product_id ?? undefined;
@@ -101,7 +118,10 @@ export function workflowDispatchRefusal(
     return "caller_kind_mismatch";
   if (principal.product_id && principal.product_id !== productId) return "caller_product_mismatch";
   if (productId && principal.product_id !== productId) return "caller_product_mismatch";
-  if (requestSource === "chat" && boundary.execution_privacy === "sensitive")
+  if (
+    boundary.execution_privacy === "sensitive" &&
+    sensitiveExecutionUnsupported(requestSource, principal)
+  )
     return "sensitive_execution_unsupported";
   return null;
 }

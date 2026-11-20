@@ -34,6 +34,7 @@ import { now } from "../../utils/clock.ts";
 import { abortTimeout, isLateStage, repairAttribution, turnBudgetMs } from "../core/loop.ts";
 import { turnToolChoice } from "../intent-detector.ts";
 import { type ConversationTool, listTools } from "../tools/index.ts";
+import { taskRunAllowsWebSearch, taskRunMarkerOf } from "../tools/sdk-wrap/task-run-guard.ts";
 import { LlmTimeoutError, timeoutPhaseOf } from "../turn-failure.ts";
 import { assertConversationTurn } from "../turns.ts";
 import { MAX_REPAIRS_PER_TURN, resolveLanguageModel } from "./model-resolver.ts";
@@ -159,7 +160,9 @@ export async function runAttempt(
   );
   attempt.thinkingThisTurn = thinkingDecision.enabled;
   const webSearchSetting = nativeWebSearchSetting(p.tenant_id);
-  const webSearchEnabled = anthropicWebSearchApplies(provider, modelId, webSearchSetting);
+  const webSearchEnabled =
+    taskRunAllowsWebSearch(taskRunMarkerOf(env.ctx)) &&
+    anthropicWebSearchApplies(provider, modelId, webSearchSetting);
   const turnTools: ToolSet = webSearchEnabled
     ? { ...env.tools, web_search: buildAnthropicWebSearchTool(5, p.tenant_id) }
     : env.tools;

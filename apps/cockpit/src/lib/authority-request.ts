@@ -6,9 +6,10 @@ export interface RequestBoundaryView {
   segments: Array<string | { var: string }>;
   variables: Record<string, { enum: string[] } | { class: string } | { caller_bound: true }>;
   query: { fixed: Record<string, string>; variable: Array<{ key: string; var: string }> };
+  connector_query?: { fixed: Record<string, string>; credential: string[] };
   max_body_bytes: number;
   max_calls: number;
-  pagination?: { params: string[]; max_requests: number };
+  pagination?: { params: string[]; max_requests: number; location?: "body" };
   destructive?: true;
 }
 
@@ -21,6 +22,7 @@ interface RequestBoundaryPresentation {
   body: { key: TranslationKey; values: Record<string, string | number> };
   calls: number;
   paging: { key: TranslationKey; values: Record<string, string | number> } | null;
+  connectorQuery: { key: TranslationKey; values: Record<string, string> } | null;
   declaredDestructive: boolean;
 }
 
@@ -47,9 +49,14 @@ export function presentRequestBoundary(
   boundary: RequestBoundaryView,
   formatNumber: (value: number) => string,
 ): RequestBoundaryPresentation {
+  const connectorKeys = [
+    ...Object.keys(boundary.connector_query?.fixed ?? {}),
+    ...(boundary.connector_query?.credential ?? []),
+  ];
   const query = [
     ...Object.entries(boundary.query.fixed).map(([key, value]) => `${key}=${value}`),
     ...boundary.query.variable.map((entry) => `${entry.key}={${entry.var}}`),
+    ...connectorKeys.map((key) => `${key}=…`),
   ].join("&");
   let unknownRule = false;
   const variables = Object.entries(boundary.variables).map(
@@ -89,17 +96,30 @@ export function presentRequestBoundary(
         };
   const paging = boundary.pagination
     ? {
-        key: pluralKey("authority.boundary.paging", boundary.pagination.max_requests),
+        key: pluralKey(
+          boundary.pagination.location === "body"
+            ? "authority.boundary.bodyPaging"
+            : "authority.boundary.paging",
+          boundary.pagination.max_requests,
+        ),
         values: {
           params: boundary.pagination.params.join(", "),
           count: boundary.pagination.max_requests,
         },
       }
     : null;
+  const connectorQuery =
+    connectorKeys.length > 0
+      ? {
+          key: pluralKey("authority.boundary.connectorQuery", connectorKeys.length),
+          values: { names: connectorKeys.join(", ") },
+        }
+      : null;
   const shared = {
     target,
     variables,
     paging,
+    connectorQuery,
     classNotice: Object.values(boundary.variables).some((entry) => "class" in entry),
     body,
     calls: boundary.max_calls,

@@ -12,6 +12,7 @@ import {
   respondElicitation,
 } from "../../../conversations/public/elicitation.ts";
 import {
+  assertTaskRunTurn,
   clearConversationTurnFailure,
   recordConversationTurnFailure,
   registerConversationAbort,
@@ -93,6 +94,13 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id, elicitation_id } = c.req.valid("param");
     const body = c.req.valid("json");
+    await assertTaskRunTurn(db, {
+      tenant_id: principal.tenant_id,
+      conversation_id: id,
+      actor_id: principal.id,
+      principal,
+      permission_mode: body.permission_mode,
+    });
     const turnAbortCtrl = await registerConversationAbort(principal.tenant_id, id, db);
     let ownershipTransferred = false;
     try {
@@ -206,6 +214,13 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!elicit) {
       throw new NotFoundError("elicitation_for_tool_call");
     }
+    await assertTaskRunTurn(db, {
+      tenant_id: principal.tenant_id,
+      conversation_id: id,
+      actor_id: principal.id,
+      principal,
+      permission_mode: body.permission_mode,
+    });
     const turnAbortCtrl = await registerConversationAbort(principal.tenant_id, id, db);
     let ownershipTransferred = false;
     try {

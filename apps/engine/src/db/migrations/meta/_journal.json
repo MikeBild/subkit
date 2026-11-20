@@ -50,6 +50,13 @@
       "when": 1794993275922,
       "tag": "0006_drop_hosted_budget_reservations",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795099395329,
+      "tag": "0007_tasks",
+      "breakpoints": true
     }
   ]
 }

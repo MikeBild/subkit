@@ -22,6 +22,8 @@ export {
   recordUsage,
   resolveMonthlyBudget,
   resolveUserMonthlyBudget,
+  type TurnBudgetVerdict,
+  turnBudgetVerdict,
 } from "./budget.ts";
 export {
   completionBudgetFor,

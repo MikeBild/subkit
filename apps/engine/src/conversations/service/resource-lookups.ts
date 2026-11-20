@@ -98,3 +98,21 @@ async function knowledgeSourceExists(
     ).length > 0
   );
 }
+
+export async function connectorIdsBySlug(
+  db: Executor,
+  tenant_id: string,
+  slug: string,
+): Promise<string[]> {
+  const rows = await db
+    .select({ id: connectors.id })
+    .from(connectors)
+    .where(
+      and(
+        eq(connectors.tenant_id, tenant_id),
+        eq(connectors.slug, slug),
+        isNull(connectors.deleted_at),
+      ),
+    );
+  return rows.map((row) => row.id);
+}

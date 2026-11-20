@@ -4,7 +4,7 @@ import { ActionButton, ConfirmDialog } from "@/components/cockpit/patterns";
 import type { AuthorityReviewModel } from "@/lib/authority-review-model";
 import { automationQueryKeys } from "@/lib/automation-queries";
 import { formatDateTime } from "@/lib/i18n";
-import { useI18n } from "@/lib/i18n-context";
+import { type I18nValue, useI18n } from "@/lib/i18n-context";
 import { type AuthorityPages, withAuthorityUntilRevoked } from "@/lib/optimistic-authorities";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import type { WorkflowAuthority } from "@/lib/workflow-authorities";
@@ -23,14 +23,35 @@ export function untilRevokedCounts(tiles: Tiles, tn: Plural): string {
     .join(", ");
 }
 
-export function UntilRevokedHint({ days }: { days: number }) {
+export function authorityValidity(
+  authority: WorkflowAuthority,
+  i18n: Pick<I18nValue, "t" | "tn" | "dateTime">,
+): string {
+  if (authority.valid_until !== null)
+    return i18n.t("workflowApprovals.validity.until", {
+      until: i18n.dateTime(authority.valid_until),
+    });
+  if (authority.open_ended || authority.remaining_runs === null)
+    return i18n.t("workflowApprovals.validity.untilRevoked");
+  return i18n.tn("workflowApprovals.validity.runs", authority.remaining_runs);
+}
+
+export function UntilRevokedHint({
+  days,
+  remainingRuns,
+}: {
+  days: number | null;
+  remainingRuns: number | null;
+}) {
   const { tn } = useI18n();
   return (
     <p
       className="text-sm text-amber-700 dark:text-amber-400"
       data-testid="authority-until-revoked-hint"
     >
-      {tn("workflowApprovals.untilRevoked.hint", days)}
+      {days === null
+        ? tn("workflowApprovals.untilRevoked.hintRuns", remainingRuns ?? 0)
+        : tn("workflowApprovals.untilRevoked.hint", days)}
     </p>
   );
 }
@@ -83,7 +104,12 @@ export function MakeUntilRevoked({
       onDone();
     },
   });
-  const verb = t("workflowApprovals.untilRevoked.action");
+  const onlyRunLimit = authority.valid_until === null && authority.max_runs !== null;
+  const action = t(
+    onlyRunLimit
+      ? "workflowApprovals.untilRevoked.actionRuns"
+      : "workflowApprovals.untilRevoked.action",
+  );
   return (
     <>
       <ActionButton
@@ -92,17 +118,25 @@ export function MakeUntilRevoked({
         onClick={() => setOpen(true)}
         testId="authority-until-revoked"
       >
-        {verb}
+        {action}
       </ActionButton>
       <ConfirmDialog
         open={open}
         onOpenChange={(next) => !change.isPending && setOpen(next)}
-        object={t("workflowApprovals.untilRevoked.object")}
-        verb={verb}
-        consequence={t("workflowApprovals.untilRevoked.consequence", {
-          subject,
-          until: formatDateTime(locale, authority.valid_until),
-        })}
+        object={t(
+          onlyRunLimit
+            ? "workflowApprovals.untilRevoked.objectRuns"
+            : "workflowApprovals.untilRevoked.object",
+        )}
+        verb={onlyRunLimit ? t("workflowApprovals.untilRevoked.verbRuns") : action}
+        consequence={
+          authority.valid_until === null
+            ? t("workflowApprovals.untilRevoked.consequenceRuns", { subject })
+            : t("workflowApprovals.untilRevoked.consequence", {
+                subject,
+                until: formatDateTime(locale, authority.valid_until),
+              })
+        }
         points={[
           ...(tiles
             ? [
@@ -110,6 +144,9 @@ export function MakeUntilRevoked({
                   counts: untilRevokedCounts(tiles, tn),
                 }),
               ]
+            : []),
+          ...(authority.valid_until !== null && authority.max_runs !== null
+            ? [t("workflowApprovals.untilRevoked.limitLifted")]
             : []),
           t("workflowApprovals.untilRevoked.runs"),
           t("workflowApprovals.untilRevoked.revocable"),

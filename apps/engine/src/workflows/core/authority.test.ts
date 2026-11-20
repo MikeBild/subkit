@@ -154,6 +154,20 @@ describe("sameBoundary and replacementFor", () => {
     }
   });
 
+  test("a successor keeps the boundary when it keeps or lifts the run limit", () => {
+    const limited = boundary("a", { max_runs: 3 });
+    expect(sameBoundary(boundary("b", { max_runs: 3 }), limited)).toBe(true);
+    expect(sameBoundary(boundary("b", { max_runs: null }), limited)).toBe(true);
+    expect(sameBoundary(boundary("b", { max_runs: 5 }), limited)).toBe(false);
+    expect(sameBoundary(boundary("b", { max_runs: 3 }), boundary("a"))).toBe(false);
+    expect(
+      replacementFor([boundary("a", { max_runs: 3, superseded_by: "b" }), boundary("b")], "a"),
+    ).toBe("b");
+    expect(
+      replacementFor([boundary("a", { superseded_by: "b" }), boundary("b", { max_runs: 3 })], "a"),
+    ).toBe("a");
+  });
+
   test("follows the supersede chain while the boundary stays the same", () => {
     const chain = [
       boundary("a", { superseded_by: "b" }),

@@ -30,6 +30,7 @@ const PERM_TIER: Record<string, number> = {
   "discovery:read": 3,
   "subscription:read": 3,
   "inbound_hook:read": 3,
+  "task:read": 2,
   "file:read": 1,
   "file:write": 1,
   "file:delete": 1,

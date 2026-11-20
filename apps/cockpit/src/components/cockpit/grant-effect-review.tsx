@@ -10,7 +10,12 @@ import {
 import { chipClass, RowsSkeleton } from "@/components/cockpit/patterns";
 import { ServiceIcon } from "@/components/cockpit/service-icon";
 import { type BoundaryGrowth, growthLine } from "@/lib/authority-growth";
-import { CLASS_KEYS, presentRequestBoundary } from "@/lib/authority-request";
+import { mcpBoundaryOf, presentMcpBoundary } from "@/lib/authority-mcp";
+import {
+  CLASS_KEYS,
+  presentRequestBoundary,
+  type RequestBoundaryView,
+} from "@/lib/authority-request";
 import type { AuthorityReviewModel, ReviewGroup, ReviewRow } from "@/lib/authority-review-model";
 import { presentStorageScope } from "@/lib/authority-storage";
 import { effectLabel } from "@/lib/effect-label";
@@ -42,12 +47,14 @@ function Chevron() {
   );
 }
 
-function RowDetails({ row }: { row: ReviewRow }) {
+function RowDetails({ row, toolPinsCompared }: { row: ReviewRow; toolPinsCompared: boolean }) {
   const { t, tn, locale } = useI18n();
   const number = (value: number) => new Intl.NumberFormat(locale).format(value);
   const effect = row.source;
   const request = effect.boundary ? presentRequestBoundary(effect.boundary, number) : null;
   const storage = effect.storage ? presentStorageScope(effect.storage, number) : null;
+  const toolBoundary = mcpBoundaryOf(effect);
+  const tool = toolBoundary ? presentMcpBoundary(toolBoundary, toolPinsCompared) : null;
   const classSentence = (name: string, rule: string) => {
     const key = CLASS_KEYS[rule];
     return key ? t(key, { name }) : t("authority.boundary.unknownRule", { name, rule });
@@ -81,16 +88,38 @@ function RowDetails({ row }: { row: ReviewRow }) {
                 ))}
               </ul>
             )}
-            <p>{t(request.body.key, request.body.values)}</p>
-            {effect.boundary.pagination && (
-              <p>
-                {t("authority.review.paging", {
-                  params: effect.boundary.pagination.params.join(", "),
-                })}
-              </p>
+            {request.connectorQuery && (
+              <p>{t(request.connectorQuery.key, request.connectorQuery.values)}</p>
             )}
+            <p>{t(request.body.key, request.body.values)}</p>
+            {request.paging &&
+              ((effect.boundary as RequestBoundaryView).pagination?.location === "body" ? (
+                <p>{t(request.paging.key, request.paging.values)}</p>
+              ) : (
+                <p>
+                  {t("authority.review.paging", {
+                    params: effect.boundary.pagination?.params.join(", ") ?? "",
+                  })}
+                </p>
+              ))}
             <p>{tn("authority.boundary.calls", effect.boundary.max_calls)}</p>
             {request.declaredDestructive && <p>{t("authority.boundary.declaredDestructive")}</p>}
+          </>
+        ) : tool ? (
+          <>
+            <p className="break-all font-mono">{`${effect.operation} ${tool.target}`}</p>
+            <p>{t(tool.fixed)}</p>
+            {tool.variables.length > 0 && (
+              <ul className="flex flex-col gap-0.5">
+                {tool.variables.map((entry) => (
+                  <li key={entry.values.name}>{t(entry.key, entry.values)}</li>
+                ))}
+              </ul>
+            )}
+            <p>{tn("authority.boundary.calls", tool.calls)}</p>
+            <p className="break-all">
+              {t("authority.mcp.descriptor", { digest: tool.descriptor })}
+            </p>
           </>
         ) : storage && effect.storage ? (
           <>
@@ -110,7 +139,43 @@ function RowDetails({ row }: { row: ReviewRow }) {
   );
 }
 
-function EffectRow({ row }: { row: ReviewRow }) {
+function RowNotes({ row, toolPinsCompared }: { row: ReviewRow; toolPinsCompared: boolean }) {
+  const { t, tn } = useI18n();
+  const boundary = row.source.boundary as RequestBoundaryView | undefined;
+  const bodyPages =
+    boundary?.pagination?.location === "body" ? boundary.pagination.max_requests : null;
+  const connectorAdds =
+    boundary?.connector_query !== undefined &&
+    Object.keys(boundary.connector_query.fixed).length +
+      boundary.connector_query.credential.length >
+      0;
+  const toolBoundary = mcpBoundaryOf(row.source);
+  const tool = toolBoundary ? presentMcpBoundary(toolBoundary, toolPinsCompared) : null;
+  if (!connectorAdds && bodyPages === null && !tool) return null;
+  return (
+    <div className="flex flex-col gap-1" data-testid={`authority-effect-notes-${row.step_id}`}>
+      {connectorAdds && <p>{t("authority.boundary.connectorAdds")}</p>}
+      {bodyPages !== null && <p>{tn("authority.boundary.bodyPagingNote", bodyPages)}</p>}
+      {tool && (
+        <>
+          <p>{t(tool.stated)}</p>
+          <p className="text-muted-foreground">{t(tool.hint)}</p>
+          {tool.unconfirmedRead && (
+            <p
+              className="text-amber-700 dark:text-amber-400"
+              data-testid={`authority-effect-unconfirmed-${row.step_id}`}
+            >
+              {t("authority.mcp.statedReadUnconfirmed")}
+            </p>
+          )}
+          <p className="text-muted-foreground">{t("authority.mcp.pinned")}</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function EffectRow({ row, toolPinsCompared }: { row: ReviewRow; toolPinsCompared: boolean }) {
   const { t } = useI18n();
   const Icon = ICONS[row.effect];
   const label = effectLabel(t, row.subject, row.step_id);
@@ -160,13 +225,14 @@ function EffectRow({ row }: { row: ReviewRow }) {
             {t("authority.review.unbound", { names: row.unbound.join(", ") })}
           </p>
         )}
-        <RowDetails row={row} />
+        <RowNotes row={row} toolPinsCompared={toolPinsCompared} />
+        <RowDetails row={row} toolPinsCompared={toolPinsCompared} />
       </div>
     </details>
   );
 }
 
-function Group({ group }: { group: ReviewGroup }) {
+function Group({ group, toolPinsCompared }: { group: ReviewGroup; toolPinsCompared: boolean }) {
   const { t } = useI18n();
   return (
     <details
@@ -198,7 +264,7 @@ function Group({ group }: { group: ReviewGroup }) {
       </summary>
       <div className="px-3">
         {group.rows.map((row) => (
-          <EffectRow key={row.key} row={row} />
+          <EffectRow key={row.key} row={row} toolPinsCompared={toolPinsCompared} />
         ))}
       </div>
     </details>
@@ -219,7 +285,9 @@ export function GrantEffectReview({
   growth,
   problems,
   loading,
+  toolPinsCompared = false,
 }: {
+  toolPinsCompared?: boolean;
   model: AuthorityReviewModel | null;
   growth: readonly BoundaryGrowth[] | undefined;
   problems: readonly string[];
@@ -311,7 +379,9 @@ export function GrantEffectReview({
       {model.groups.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("authority.noEffects")}</p>
       ) : (
-        model.groups.map((group) => <Group key={group.key} group={group} />)
+        model.groups.map((group) => (
+          <Group key={group.key} group={group} toolPinsCompared={toolPinsCompared} />
+        ))
       )}
       {model.groups.length > 0 && (
         <p className="text-xs text-muted-foreground" data-testid="authority-review-runtime">

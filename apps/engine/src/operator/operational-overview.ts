@@ -209,9 +209,41 @@ function rowsOf<T>(result: unknown): T[] {
   return (result as { rows?: T[] } | null)?.rows ?? [];
 }
 
+export function taskStartsHeld(tenantId: string) {
+  return sql`
+    SELECT t.admission_hold_since AS created_at
+      FROM tasks t
+     WHERE t.tenant_id = ${tenantId} AND t.lifecycle = 'active' AND t.paused_at IS NULL
+       AND t.admission_hold_reason IS NOT NULL AND t.admission_hold_since IS NOT NULL
+       AND (t.schedule_cron IS NOT NULL OR t.schedule_run_at IS NOT NULL)`;
+}
+
+function tasksAwaitingStandingPermission(tenantId: string) {
+  return sql`
+    SELECT GREATEST(t.updated_at, COALESCE((
+             SELECT max(COALESCE(g.revoked_at,
+                      CASE WHEN g.valid_until <= now() THEN g.valid_until END, g.created_at))
+               FROM task_grants g
+              WHERE g.tenant_id = t.tenant_id AND g.task_id = t.id), t.updated_at)) AS created_at
+      FROM tasks t
+     WHERE t.tenant_id = ${tenantId} AND t.lifecycle = 'active' AND t.paused_at IS NULL
+       AND (t.schedule_cron IS NOT NULL
+         OR (t.schedule_run_at IS NOT NULL AND NOT EXISTS (
+           SELECT 1 FROM task_runs r
+            WHERE r.tenant_id = t.tenant_id AND r.task_id = t.id
+              AND r.trigger = 'once' AND r.created_at >= t.schedule_run_at)))
+       AND NOT EXISTS (
+         SELECT 1 FROM task_grants g
+          WHERE g.tenant_id = t.tenant_id AND g.task_id = t.id
+            AND g.environment = t.environment AND g.fingerprint = t.fingerprint
+            AND g.revoked_at IS NULL AND g.valid_from <= now()
+            AND (g.valid_until IS NULL OR g.valid_until > now())
+            AND (g.max_runs IS NULL OR g.reserved_runs < g.max_runs))`;
+}
+
 function heldAutomation(tenantId: string) {
   return sql`
-    SELECT w.id AS workflow_id, w.name AS name, 'held_schedule' AS kind, s.created_at
+    SELECT w.id AS subject_id, w.name AS name, 'held_schedule' AS kind, s.created_at
       FROM workflows_schedules s
       JOIN workflows w ON w.id = s.workflow_id AND w.tenant_id = s.tenant_id
      WHERE s.tenant_id = ${tenantId} AND NOT s.paused AND s.admission_hold IS NOT NULL
@@ -258,6 +290,11 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
        WHERE tenant_id = ${tenantId} AND status = 'proposed'
       UNION ALL
       SELECT created_at, TRUE AS blocking FROM (${heldAutomation(tenantId)}) held
+      UNION ALL
+      SELECT created_at, TRUE AS blocking FROM (${taskStartsHeld(tenantId)}) held_tasks
+      UNION ALL
+      SELECT created_at, FALSE AS blocking
+        FROM (${tasksAwaitingStandingPermission(tenantId)}) ungranted_tasks
     ), finished AS (
       SELECT status, source_kind, request_source FROM executions
        WHERE tenant_id = ${tenantId} AND finished_at >= now() - interval '24 hours'
@@ -339,8 +376,10 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
   const overdueMetric = core({
     id: "decisions.overdue",
     label: "Overdue",
-    definition: "Non-blocking repair or skill proposals waiting longer than 72 hours.",
-    relevance: "Old proposals allow avoidable risk or learning debt to accumulate.",
+    definition:
+      "Non-blocking repair or skill proposals, and scheduled tasks without a valid standing permission, waiting longer than 72 hours.",
+    relevance:
+      "Old proposals allow avoidable risk or learning debt to accumulate; an ungranted task does not start by itself.",
     kind: "count",
     value: overdue,
     unit: "count",
@@ -353,8 +392,9 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
   const otherMetric = core({
     id: "decisions.other",
     label: "Other decisions",
-    definition: "Recent repair and skill proposals that do not block workflow execution.",
-    relevance: "These proposals still require accountable review.",
+    definition:
+      "Recent repair and skill proposals, and scheduled tasks without a valid standing permission, that do not block workflow execution.",
+    relevance: "These decisions still require accountable review.",
     kind: "count",
     value: other,
     unit: "count",
@@ -678,8 +718,8 @@ async function readHealthCauses(
   type Held = { workflow_id: string; name: string; kind: HealthCause["kind"] & `held_${string}` };
   const held = rowsOf<Held>(
     await db.execute(sql`
-      SELECT workflow_id, name, kind FROM (${heldAutomation(tenantId)}) held
-       ORDER BY created_at, workflow_id
+      SELECT subject_id AS workflow_id, name, kind FROM (${heldAutomation(tenantId)}) held
+       ORDER BY created_at, subject_id
        LIMIT ${MAX_HEALTH_CAUSES}`),
   );
   const causes: HealthCause[] = held.map((row) => ({

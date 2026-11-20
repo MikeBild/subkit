@@ -12,6 +12,7 @@ const DISPLAY_FIELDS: Record<string, readonly string[]> = {
   connector: ["name", "display_name", "status", "enabled"],
   skill: ["name", "title", "status"],
   file: ["filename", "status"],
+  task: ["name", "lifecycle"],
 };
 const DETAIL_FIELDS: Record<string, readonly string[]> = {
   "workflow.updated": [
@@ -33,6 +34,12 @@ const DETAIL_FIELDS: Record<string, readonly string[]> = {
   ],
   "workflow.authority_revoked": ["workflow_version_id", "execution_environment"],
   "schedule.admission.changed": ["state", "reason_code"],
+  "tool_policy.confirmation_skipped": [
+    "tool",
+    "environment",
+    "resolver_reason",
+    "covering_authority_id",
+  ],
   "schedule.created": ["cron", "timezone", "execution_mode", "paused"],
   "schedule.updated": ["cron", "timezone", "execution_mode", "paused"],
   "execution.queued": [
@@ -51,6 +58,7 @@ const ACCESS_TYPES = [
   "mcp_oauth",
   "token_exchange",
   "external_bearer",
+  "task_run",
   "portal_token",
 ] as const;
 const SAFE_REASONS = new Set([
@@ -70,11 +78,29 @@ const SAFE_REASONS = new Set([
   "manual_re_issue",
   "client_retired",
   "auto_mode_no_prior_approval",
+  "authority_covered",
   "manual_re_issue",
   "force_save_override",
   "playbook_updated",
   "playbook_decision_applied",
   "playbook_turn_settled",
+  "grant_required",
+  "grant_expired",
+  "grant_exhausted",
+  "grant_fingerprint_mismatch",
+  "owner_unavailable",
+  "ai_access_missing",
+  "previous_run_active",
+  "paused",
+  "owner_request",
+  "admin",
+  "question",
+  "approval",
+  "no_progress",
+  "budget",
+  "question_expired",
+  "ai_access",
+  "turn_stopped",
 ]);
 
 function recordedId(value: unknown): string | null {
@@ -97,7 +123,174 @@ function detailValue(value: unknown): string | number | boolean | null | undefin
   return DETAIL_TEXT.test(value) ? value : undefined;
 }
 
+type Detail = string | number | boolean | null;
+type DetailCheck = (value: unknown) => Detail | undefined;
+
+const TASK_CODE = /^[a-z0-9_.:-]{1,200}$/;
+const TASK_FINGERPRINT = /^[0-9a-f]{64}$/;
+const TASK_ID_LIST_LIMIT = 200;
+const TASK_GRANT_ID_LISTS = [
+  "workflow_authority_ids",
+  "covered_workflow_ids",
+  "superseded_grant_ids",
+  "revoked_workflow_authority_ids",
+  "retained_successor_authority_ids",
+  "transferred_workflow_authority_ids",
+] as const;
+
+export const TASK_DETAIL_VOCABULARY = {
+  environments: ["dev", "prod"],
+  triggers: ["manual", "once", "cron"],
+  run_states: ["running", "waiting", "sleeping", "result_ready", "completed", "aborted", "failed"],
+  waiting_reasons: [
+    "question",
+    "approval",
+    "no_progress",
+    "budget",
+    "question_expired",
+    "ai_access",
+    "turn_stopped",
+  ],
+  admission_reasons: [
+    "grant_required",
+    "grant_expired",
+    "grant_exhausted",
+    "grant_fingerprint_mismatch",
+    "owner_unavailable",
+    "ai_access_missing",
+    "previous_run_active",
+    "paused",
+  ],
+  paused_reasons: ["owner_request", "admin", "owner_unavailable"],
+  schedule_kinds: ["none", "cron", "once"],
+  admission_states: ["held", "admitted"],
+} as const;
+
+function oneOf(allowed: readonly string[]): DetailCheck {
+  return (value) => (typeof value === "string" && allowed.includes(value) ? value : undefined);
+}
+
+function matching(pattern: RegExp): DetailCheck {
+  return (value) => (typeof value === "string" && pattern.test(value) ? value : undefined);
+}
+
+function nullable(check: DetailCheck): DetailCheck {
+  return (value) => (value === null ? null : check(value));
+}
+
+const detailId: DetailCheck = (value) => recordedId(value) ?? undefined;
+const taskCount: DetailCheck = (value) =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
+const taskFlag: DetailCheck = (value) => (typeof value === "boolean" ? value : undefined);
+const taskInstant: DetailCheck = (value) =>
+  typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value) && !Number.isNaN(Date.parse(value))
+    ? value
+    : undefined;
+
+function buildTaskDetailChecks(): Record<string, Record<string, DetailCheck>> {
+  const environment = oneOf(TASK_DETAIL_VOCABULARY.environments);
+  const trigger = oneOf(TASK_DETAIL_VOCABULARY.triggers);
+  const runState = oneOf(TASK_DETAIL_VOCABULARY.run_states);
+  const scheduleKind = oneOf(TASK_DETAIL_VOCABULARY.schedule_kinds);
+  const code = matching(TASK_CODE);
+  const grant = {
+    task_grant_id: detailId,
+    execution_environment: environment,
+    fingerprint: matching(TASK_FINGERPRINT),
+    valid_from: taskInstant,
+    valid_until: nullable(taskInstant),
+    max_runs: nullable(taskCount),
+    open_ended: taskFlag,
+  };
+  return {
+    "task.created": {
+      revision: taskCount,
+      environment,
+      owner_id: detailId,
+      schedule_kind: scheduleKind,
+    },
+    "task.updated": {
+      revision: taskCount,
+      previous_revision: taskCount,
+      environment,
+      schedule_kind: scheduleKind,
+      grant_invalidated: taskFlag,
+    },
+    "task.deleted": { revision: taskCount },
+    "task.paused": { paused_reason: oneOf(TASK_DETAIL_VOCABULARY.paused_reasons) },
+    "task.resumed": { previous_paused_reason: oneOf(TASK_DETAIL_VOCABULARY.paused_reasons) },
+    "task.authority_granted": grant,
+    "task.authority_revoked": { ...grant, reason_code: code, reserved_runs: taskCount },
+    "task.admission.changed": {
+      state: oneOf(TASK_DETAIL_VOCABULARY.admission_states),
+      reason_code: nullable(oneOf(TASK_DETAIL_VOCABULARY.admission_reasons)),
+      trigger,
+    },
+    "task.schedule_claimed": {
+      trigger,
+      scheduled_for: taskInstant,
+      task_grant_id: nullable(detailId),
+    },
+    "task_run.started": {
+      trigger,
+      task_revision: taskCount,
+      task_grant_id: nullable(detailId),
+      environment,
+      deadline_at: taskInstant,
+    },
+    "task_run.waiting": {
+      state: runState,
+      waiting_reason: oneOf(TASK_DETAIL_VOCABULARY.waiting_reasons),
+      turns_used: taskCount,
+    },
+    "task_run.resumed": { previous_state: runState, resume_reason: code, turns_used: taskCount },
+    "task_run.result_ready": { turns_used: taskCount },
+    "task_run.completed": {
+      previous_state: runState,
+      turns_used: taskCount,
+      duration_ms: taskCount,
+    },
+    "task_run.failed": {
+      previous_state: runState,
+      failure_code: code,
+      turns_used: taskCount,
+      duration_ms: taskCount,
+    },
+    "task_run.abort_requested": { previous_state: runState },
+    "task_run.aborted": {
+      previous_state: runState,
+      turns_used: taskCount,
+      duration_ms: taskCount,
+    },
+  };
+}
+
+let taskDetailChecks: Record<string, Record<string, DetailCheck>> | null = null;
+
+function taskDetails(entry: AuditEntry): Record<string, Detail> | null {
+  taskDetailChecks ??= buildTaskDetailChecks();
+  if (!Object.hasOwn(taskDetailChecks, entry.action)) return null;
+  const checks = taskDetailChecks[entry.action] ?? {};
+  const details: Record<string, Detail> = {};
+  for (const [field, check] of Object.entries(checks)) {
+    if (!Object.hasOwn(entry.metadata, field)) continue;
+    const value = check(entry.metadata[field]);
+    if (value !== undefined) details[field] = value;
+  }
+  if (entry.action === "task.authority_granted" || entry.action === "task.authority_revoked") {
+    for (const list of TASK_GRANT_ID_LISTS) {
+      const value = entry.metadata[list];
+      if (Array.isArray(value) && value.length <= TASK_ID_LIST_LIMIT) {
+        details[`${list.slice(0, -"_ids".length)}_count`] = value.length;
+      }
+    }
+  }
+  return details;
+}
+
 function recordedDetails(entry: AuditEntry): Record<string, string | number | boolean | null> {
+  const task = taskDetails(entry);
+  if (task) return task;
   const fields = DETAIL_FIELDS[entry.action] ?? [];
   return Object.fromEntries(
     fields.flatMap((field) => {
@@ -155,6 +348,14 @@ export function projectAuditEntry(entry: AuditEntry): Record<string, unknown> {
     entry.resource_type === "workflow"
       ? recordedId(entry.resource_id)
       : recordedId(entry.metadata.workflow_id);
+  const taskId =
+    entry.resource_type === "task"
+      ? recordedId(entry.resource_id)
+      : recordedId(entry.metadata.task_id);
+  const taskRunId =
+    entry.resource_type === "task_run"
+      ? recordedId(entry.resource_id)
+      : recordedId(entry.metadata.task_run_id);
   const requestSource = source.success ? source.data : null;
   const correlationId =
     typeof entry.metadata.audit_trace_id === "string" &&
@@ -196,6 +397,8 @@ export function projectAuditEntry(entry: AuditEntry): Record<string, unknown> {
     execution_id: executionId,
     conversation_id: conversationId,
     workflow_id: workflowId,
+    task_id: taskId,
+    task_run_id: taskRunId,
     ip: null,
     user_agent: null,
     before: null,
@@ -217,6 +420,8 @@ export function projectAuditEntry(entry: AuditEntry): Record<string, unknown> {
       ...(executionId ? { execution_id: executionId } : {}),
       ...(conversationId ? { conversation_id: conversationId } : {}),
       ...(workflowId ? { workflow_id: workflowId } : {}),
+      ...(taskId ? { task_id: taskId } : {}),
+      ...(taskRunId ? { task_run_id: taskRunId } : {}),
     },
   };
 }

@@ -79,9 +79,14 @@ const DEFAULT_SEVERITY: Record<string, NotificationSeverity> = {
   "patch.proposed": "warn",
   "patch.applied": "warn",
   "api_key.rotated": "info",
+  "task_run.started": "info",
+  "task_run.waiting": "warn",
+  "task_run.result_ready": "info",
+  "task_run.completed": "info",
+  "task_run.failed": "error",
 };
 
-function extractSeverity(type: string, payload: unknown): NotificationSeverity {
+export function extractSeverity(type: string, payload: unknown): NotificationSeverity {
   if (payload && typeof payload === "object" && "severity" in payload) {
     const s = (payload as { severity?: unknown }).severity;
     if (s === "debug" || s === "info" || s === "warn" || s === "error" || s === "critical") {

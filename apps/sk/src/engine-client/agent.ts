@@ -16,6 +16,8 @@ interface AgentBriefing {
   connectors_omitted: number;
   files: { name: string; slug: string | null; category: string; description: string | null }[];
   files_omitted: number;
+  tasks: string[];
+  tasks_omitted: number;
   guides: string[];
   intake?: { clips: number; sessions: number; proposals: number } | null;
 }

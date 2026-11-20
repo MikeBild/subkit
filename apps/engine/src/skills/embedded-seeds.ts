@@ -69,6 +69,7 @@ import workflowAuthoringTransforms from "./seeds/workflow-authoring-transforms.m
   type: "text",
 };
 import workflowFindRunCheck from "./seeds/workflow-find-run-check.md" with { type: "text" };
+import workingOnATask from "./seeds/working-on-a-task.md" with { type: "text" };
 
 interface EmbeddedSeedFile {
   file: string;
@@ -121,4 +122,5 @@ export const EMBEDDED_SKILL_SEEDS: readonly EmbeddedSeedFile[] = [
   { file: "workflow-authoring-transforms.md", content: workflowAuthoringTransforms },
   { file: "workflow-authoring.md", content: workflowAuthoring },
   { file: "workflow-find-run-check.md", content: workflowFindRunCheck },
+  { file: "working-on-a-task.md", content: workingOnATask },
 ];

@@ -35,6 +35,7 @@ function turnStopConditions(budget: number): TurnStopConditions {
     hasToolCall("ask_user_multi"),
     hasToolCall("ask_user_text"),
     hasToolCall("ask_user_form"),
+    hasToolCall("schedule_task_check"),
     abstainedStopCondition,
     pausedStopCondition,
     automationReviewStopCondition,

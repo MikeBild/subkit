@@ -388,7 +388,9 @@ async function applyFinalization(
   let request_source: string = "api";
   let duration_ms: number | null = null;
   let applied = false;
+  let afterCommit: ((db: Db) => Promise<void>) | undefined;
   await db.transaction(async (tx) => {
+    afterCommit = undefined;
     const [persisted] = await tx
       .select({ input: executions.input })
       .from(executions)
@@ -435,6 +437,7 @@ async function applyFinalization(
       status: refused ? "failed" : status,
       output: sensitive_result,
     });
+    afterCommit = settlement.after_commit;
     const resultObject =
       sensitive_result && typeof sensitive_result === "object" && !Array.isArray(sensitive_result)
         ? (sensitive_result as Record<string, unknown>)
@@ -493,6 +496,15 @@ async function applyFinalization(
     request_source,
     duration_ms,
   });
+  await afterCommit?.(db).catch((error: unknown) =>
+    logger.warn({
+      module: "execution",
+      action: "execution.erasure_follow_up_failed",
+      msg: "the caller was erased; ending the open task run conversations failed",
+      execution_id,
+      error: error instanceof Error ? error.message : String(error),
+    }),
+  );
 }
 
 export async function insertStepRow(

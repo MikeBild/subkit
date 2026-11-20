@@ -17,6 +17,12 @@ import {
   type AttentionV1,
   projectAttentionItems,
 } from "./core/attention.ts";
+import {
+  readTaskAttention,
+  retargetRunConversations,
+  type TaskAttentionReader,
+  taskAttentionScope,
+} from "./task-attention.ts";
 import { registerTenantStateCache } from "./tenant-state.ts";
 
 export {
@@ -57,6 +63,7 @@ const SOURCE_GATES: Record<AttentionSource, SourceGate> = {
   budget: { permission: "stats:read" },
   ai_access: { permission: "identity:write" },
   risk: { permission: "stats:read" },
+  tasks: { permission: "task:read" },
 };
 const CACHE_MS = 10_000;
 const cache = new Map<string, { until: number; value: Promise<TenantFacts> }>();
@@ -88,6 +95,7 @@ function tenantFacts(db: Db, tenantId: string, now: Date): Promise<TenantFacts> 
 export interface BuildAttentionOptions {
   now?: Date;
   readers?: AttentionReaderOverrides;
+  task_reader?: TaskAttentionReader;
 }
 
 export async function buildAttention(
@@ -144,10 +152,22 @@ export async function buildAttention(
     }
   }
 
+  let tasksState: "answered" | "failed" = "answered";
+  if (permitted("tasks")) {
+    try {
+      const read = opts.task_reader ?? readTaskAttention;
+      own = await retargetRunConversations(db, tenantId, own);
+      own.push(...(await read(db, taskAttentionScope(principal), now)));
+    } catch {
+      tasksState = "failed";
+    }
+  }
+
   const sources = {} as Record<AttentionSource, AttentionSourceState>;
   for (const source of ATTENTION_SOURCES) {
     if (!permitted(source)) sources[source] = "not_permitted";
     else if (source === "conversations") sources[source] = conversationsState;
+    else if (source === "tasks") sources[source] = tasksState;
     else sources[source] = facts.sources[source] ?? "failed";
   }
 

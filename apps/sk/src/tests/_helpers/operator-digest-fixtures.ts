@@ -25,6 +25,7 @@ export function attentionSources(
     budget: "answered",
     ai_access: "answered",
     risk: "answered",
+    tasks: "answered",
     ...overrides,
   };
 }

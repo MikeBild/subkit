@@ -84,6 +84,9 @@ describe("rules", () => {
       "Anmeldung abgelehnt",
       "Konnektor-Zustand geändert",
       "Korrektur vorgeschlagen",
+      "Aufgabe wartet auf dich",
+      "Ergebnis einer Aufgabe liegt vor",
+      "Aufgabe fehlgeschlagen",
     ]);
     expect(labels.every((label) => !label.machine)).toBe(true);
   });

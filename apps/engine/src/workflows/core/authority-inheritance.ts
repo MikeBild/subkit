@@ -28,6 +28,7 @@ const SUB_BOUNDARIES = [
   "storage",
   "boundary",
   "read_query",
+  "mcp",
 ] as const;
 
 function sameConfiguration(next: Effect, granted: Effect): boolean {
@@ -73,9 +74,10 @@ export function projectBoundaryGrowth(
       continue;
     }
     const sameShape = sameTarget.flatMap((candidate) => {
-      const read = evidence
-        ? readEffectInherits(effect, candidate, evidence, SUB_BOUNDARIES)
-        : null;
+      const read =
+        evidence && effect.mcp === undefined && candidate.mcp === undefined
+          ? readEffectInherits(effect, candidate, evidence, SUB_BOUNDARIES)
+          : null;
       if (read === null)
         return sameConfiguration(effect, candidate) ? [{ candidate, keys: [] }] : [];
       return read ? [{ candidate, keys: read.relaxed }] : [];

@@ -49,6 +49,7 @@ import { statsCommand } from "./commands/stats.ts";
 import { subscriptionsCommand } from "./commands/subscriptions.ts";
 import { systemCommand } from "./commands/system.ts";
 import { systemAccountsCommand } from "./commands/system-accounts.ts";
+import { tasksCommand } from "./commands/tasks.ts";
 import { updateCommand } from "./commands/update.ts";
 import { usersCommand } from "./commands/users.ts";
 import { workflowsCommand } from "./commands/workflows.ts";
@@ -454,6 +455,7 @@ const mainCommand = defineCommand({
     discovery: discoveryCommand,
     executions: executionsCommand,
     schedules: schedulesCommand,
+    tasks: tasksCommand,
     "patch-candidates": patchCandidatesCommand,
     review: reviewCommand,
     "self-healing": selfHealingCommand,
@@ -626,6 +628,7 @@ export const SUB_COMMANDS: Record<string, SubEntry> = {
   discovery: { command: discoveryCommand, requires: "discovery:read" },
   executions: { command: executionsCommand, requires: "execution:read" },
   schedules: { command: schedulesCommand, requires: "workflow:read" },
+  tasks: { command: tasksCommand, requires: "task:read" },
   "patch-candidates": { command: patchCandidatesCommand, requires: "workflow:read" },
   review: { command: reviewCommand, requires: "workflow:read" },
   "self-healing": { command: selfHealingCommand, requires: "workflow:write" },

@@ -8,7 +8,15 @@ type Driver = "http" | "graphql" | "postgres" | "s3" | "mcp";
 
 const GMAIL_SEND_TARGET = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
 
+const PROPOSED_LIMITS_FIRST =
+  "SubKit can derive this limit from what the step really did: on the workflow page the status " +
+  "line offers **Set limits**, which lists the suggested limit for review, applies it to a new " +
+  "draft and, for a step that never ran, starts a trial run that holds back every write. Point " +
+  "the person there first. Author it by hand only when that dialog has nothing to suggest for " +
+  "this step or the person asks you to. ";
+
 const STORAGE_SCOPE_REMEDY =
+  PROPOSED_LIMITS_FIRST +
   "Author a fixed folder boundary on this step: add `s3.scope` with `key_prefix` (a narrow " +
   "existing folder ending in `/`) and `max_bytes`, plus `max_deletes` when the step removes " +
   "objects — a DELETE is eligible only with `max_deletes`. Patch it with `edit_workflow_patch` " +
@@ -48,6 +56,7 @@ const STORAGE_REFUSAL_REMEDY: Partial<Record<StorageBoundaryRefusal, string>> = 
 };
 
 const REQUEST_BOUNDARY_REMEDY =
+  PROPOSED_LIMITS_FIRST +
   'Patch ONLY this step: `edit_workflow_patch` `step_patches: [{step_id, op: "add", path: ' +
   '"/boundary", value: {variables, max_body_bytes, max_calls}}]`. Do not re-author the workflow ' +
   "and do not change `path`, `query`, `body` or `for_each`. `boundary` sits directly on the step " +
@@ -134,15 +143,25 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
     "`boundary` needs exactly one of `path` or `url`, without `?`, `#`, `%` or `\\`. Move query " +
     "parameters into the step's `query` object.",
   pagination_unsupported:
-    "`boundary` covers a paginated step only when the paging runs through the query. This step " +
-    'sets `parameter_location: "body"`, so the follow-up requests are not describable as a ' +
-    "target and a key set. Move the paging to the query, or split the read into its own step.",
+    "`boundary` cannot cover this paginated step: it sends a multipart body, or a paging " +
+    "parameter has no name. A multipart upload cannot be paged under a boundary; split the " +
+    "read into its own step. Otherwise give every paging parameter a name.",
+  pagination_body_unsupported:
+    'This step pages through the request body (`parameter_location: "body"`), and `boundary` ' +
+    "covers that only when the paging fields are top-level fields of a JSON object body on a " +
+    "method that carries one. Use POST, PUT or PATCH, and make `body` a JSON object (or omit " +
+    "it) whose own keys are literals — not a string, a list, or one placeholder for the whole " +
+    "body. Every later page must equal the first except for the paging fields, and " +
+    "`pagination.max_pages` is the most pages one run may read.",
   pagination_unbounded:
     "This step paginates without `max_pages`, so the number of requests it makes is not a number " +
-    "anyone can review. Set `pagination.max_pages` to the most pages one run may read.",
+    "anyone can review. When the step has run before, **Set limits** on the workflow page " +
+    "suggests the ceiling from the pages it really fetched. Otherwise set " +
+    "`pagination.max_pages` to the most pages one run may read.",
   pagination_param_conflict:
-    "A paging parameter is also one of this step's own query keys, which would give one value two " +
-    "rules. Rename the paging parameter, or drop that key from `query`.",
+    "A paging parameter is also one of this step's own query keys — or, when the step pages " +
+    "through the body, one of the body's own top-level fields — which would give one value two " +
+    "rules. Rename the paging parameter, or drop that key from `query` or `body`.",
   variable_in_base_prefix:
     "This step already has `boundary`, but a path placeholder sits where the connector's base path " +
     "is matched, so a runtime value would decide how the URL is assembled. The path has to START " +
@@ -164,9 +183,23 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
   target_unresolved:
     "The request target cannot be resolved: the connector has no base URL and the path is not an " +
     "absolute http(s) URL, or the target carries credentials or a fragment.",
-  connector_adds_query:
-    "`boundary` cannot cover this step: its connector appends query parameters of its own " +
-    "(query-mode authentication or a static query), so no reviewed query could ever match.",
+  connector_query_conflict:
+    "This step's connector appends query parameters of its own (query-mode authentication or a " +
+    "static query), and they are reviewed as part of the address. One of them has the same name " +
+    "as a key in this step's `query` or as a paging parameter, so one key would have two rules. " +
+    "Remove that key from the step's `query` — the connector already sends it — or rename the " +
+    "paging parameter.",
+  connector_query_needs_boundary:
+    "This read varies its path or query at run time, and its connector appends query parameters " +
+    "of its own (query-mode authentication or a static query). Without `boundary` such a read is " +
+    "checked against its exact authored query, so every run would be refused. Add `boundary` to " +
+    "this step: the connector's own parameters are then reviewed as part of the address. " +
+    REQUEST_BOUNDARY_REMEDY,
+  connector_query_unresolved:
+    "This step's connector appends query parameters of its own, and the engine could not read " +
+    "which ones: the connector's `static_query` is not a flat map of text values, or its " +
+    "query-mode credential is missing or unreadable. Nothing on the step fixes this. The " +
+    "connector needs a working credential (or a corrected `static_query`); then review again.",
   stricter_profile_applies:
     "Do not add `boundary` here: this step is a report e-mail or a content publication, which has " +
     "its own stricter review of the recipient or the published items.",
@@ -202,8 +235,33 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
     "`boundary`. Save, let a preparation run, and recheck.",
   not_http_step:
     "`boundary` applies to plain HTTP request steps only. A storage step is bounded with " +
-    "`s3.scope`; SQL, MCP, GraphQL, XML and multipart steps cannot be bounded yet.",
+    "`s3.scope` and an MCP tool call with `mcp.boundary`; SQL, GraphQL, XML and multipart steps " +
+    "cannot be bounded yet.",
 };
+
+const MCP_BOUNDARY_REMEDY =
+  "An MCP tool call is approvable only with `mcp.boundary` on the step, beside `mcp.tool`: " +
+  "`{effect, variables, max_calls, descriptor}`. `mcp.tool` must be the literal tool name, with " +
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
+  "no `${…}`. Inside `mcp.arguments` a runtime value must be one WHOLE placeholder per value " +
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
+  '(`"${input.query}"`, never text around it and never in a key); every other argument is a ' +
+  "literal. `variables` has exactly one entry per such placeholder, keyed by the expression " +
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
+  "without `${}`, each `{enum: [every allowed value]}`, `{class: identifier|uuid|integer|date|" +
+  "timestamp|timestamp_range|file_name}`, or `{caller_bound: true}` for `caller.subject` / " +
+  "`caller.principalId`; use `{}` when nothing varies. `max_calls` is the most calls one run " +
+  'may make (1 without `for_each`). `effect` is what the call does, `"read"` or `"write"`, as ' +
+  "the person approving will read it; leave it out and it counts as a write, and never state " +
+  "`read` for a tool that changes anything. `descriptor` pins the tool as the server lists it " +
+  "now: copy `boundary_descriptor` of that tool from `POST /v1/connectors/{id}/mcp/inspect` " +
+  "unchanged — do not invent the digest or the annotations; the review compares the pin with " +
+  "the server and refuses a mismatch. A call stated as `write` (or with no stated effect) also " +
+  "needs `max_retries: 0` on the step, because a retry could repeat the write. Before every call the engine compares the server's current " +
+  "description of the tool with this pin; when the server changes the tool, the run is refused " +
+  "and a person reviews again. No placeholder may sit anywhere else on the step. Only " +
+  "`call_tool` can be bounded; a `read_resource` or `get_prompt` step cannot be approved for " +
+  "repeated runs yet.";
 
 const GMAIL_REPORT_REMEDY =
   "A reviewed report boundary is not available yet; this alone does NOT establish malformed MIME. " +
@@ -231,9 +289,13 @@ const REMEDIES: Partial<Record<ManifestIssueCode, Partial<Record<Driver, string>
   dynamic_request: {
     s3: STORAGE_SCOPE_REMEDY,
     http: REQUEST_BOUNDARY_REMEDY,
+    mcp: MCP_BOUNDARY_REMEDY,
   },
   destructive_effect: {
     s3: STORAGE_SCOPE_REMEDY,
+  },
+  unknown_effect: {
+    mcp: MCP_BOUNDARY_REMEDY,
   },
 };
 

@@ -5,6 +5,7 @@ import {
   conversationHref,
   recordHref,
   runHref,
+  taskHref,
   workflowHref,
 } from "@/app/links";
 import type { CatalogResource } from "@/app/route-table";
@@ -42,7 +43,10 @@ type AuditEntry = Omit<components["schemas"]["AuditEntry"], "resource_name"> & {
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 type FormatDateTime = (value: string | Date) => string;
 
-const RESOURCE_ROUTES: Record<string, CatalogResource | "chat" | "runs"> = {
+const RESOURCE_ROUTES: Record<string, CatalogResource | "chat" | "runs" | "tasks"> = {
+  task: "tasks",
+  task_run: "tasks",
+  task_grant: "tasks",
   workflow: "workflows",
   connector: "connectors",
   knowledge_source: "knowledge",
@@ -54,10 +58,37 @@ const RESOURCE_ROUTES: Record<string, CatalogResource | "chat" | "runs"> = {
 
 export const LINKED_RESOURCE_TYPES: readonly string[] = Object.keys(RESOURCE_ROUTES);
 
-export function auditResourceHref(resourceType: string, resourceId: string | null): string | null {
+const RESOURCE_PERMISSIONS: Record<string, string> = {
+  workflow: "workflow:read",
+  connector: "connector:read",
+  knowledge_source: "knowledge:read",
+  skill: "skill:read",
+  file: "file:read",
+  execution: "execution:read",
+  conversation: "conversation:read",
+  task: "task:read",
+  task_run: "task:read",
+  task_grant: "task:read",
+};
+
+export function auditResourcePermission(resourceType: string): string | null {
+  return Object.hasOwn(RESOURCE_PERMISSIONS, resourceType)
+    ? (RESOURCE_PERMISSIONS[resourceType] ?? null)
+    : null;
+}
+
+export function auditResourceHref(
+  resourceType: string,
+  resourceId: string | null,
+  taskId: string | null = null,
+): string | null {
   if (!resourceId) return null;
   const route = RESOURCE_ROUTES[resourceType];
   if (!route) return null;
+  if (route === "tasks") {
+    const task = resourceType === "task" ? resourceId : taskId;
+    return task ? absolute(taskHref(task)) : null;
+  }
   return absolute(
     route === "chat"
       ? conversationHref(resourceId)
@@ -126,6 +157,39 @@ const REASON_KEYS: Record<string, TranslationKey> = {
   refresh_replayed: "audit.reason.refreshReplayed",
   manual_re_issue: "audit.reason.manualReissue",
   client_retired: "audit.reason.clientRetired",
+  authority_covered: "audit.reason.authorityCovered",
+  question: "audit.reason.taskQuestion",
+  approval: "audit.reason.taskApproval",
+  no_progress: "audit.reason.taskNoProgress",
+  budget: "audit.reason.taskBudget",
+  budget_exhausted: "audit.reason.taskBudget",
+  question_expired: "audit.reason.taskQuestionExpired",
+  turn_stopped: "audit.reason.taskTurnStopped",
+  ai_access: "audit.reason.taskAiAccess",
+  ai_access_missing: "audit.reason.taskAiAccess",
+  grant_required: "audit.reason.taskGrantRequired",
+  grant_expired: "audit.reason.taskGrantExpired",
+  grant_exhausted: "audit.reason.taskGrantExhausted",
+  grant_fingerprint_mismatch: "audit.reason.taskGrantChanged",
+  superseded: "audit.reason.taskGrantSuperseded",
+  owner_unavailable: "audit.reason.taskOwnerUnavailable",
+  previous_run_active: "audit.reason.taskPreviousRunActive",
+  paused: "audit.reason.taskPaused",
+  owner_request: "audit.reason.taskPausedByOwner",
+  admin: "audit.reason.taskPausedByAdmin",
+  turn_failed: "audit.reason.taskTurnFailed",
+  turn_interrupted: "audit.reason.taskTurnInterrupted",
+  start_failed: "audit.reason.taskStartFailed",
+  playbook_tampered: "audit.reason.taskPlanTampered",
+  playbook_cancelled: "audit.reason.taskPlanCancelled",
+  conversation_closed: "audit.reason.taskConversationClosed",
+  task_changed: "audit.reason.taskChanged",
+  task_archived: "audit.reason.taskRemoved",
+  task_deleted: "audit.reason.taskRemoved",
+  deadline_exceeded: "audit.reason.taskDeadline",
+  check_requested: "audit.reason.taskCheckRequested",
+  provider_throttled: "audit.reason.taskProviderThrottled",
+  wake: "audit.reason.taskWake",
 };
 
 export function auditReasonLabel(
@@ -139,6 +203,9 @@ export function auditReasonLabel(
 }
 
 const RESOURCE_KEYS: Record<string, TranslationKey> = {
+  task: "audit.resource.task",
+  task_run: "audit.resource.taskRun",
+  task_grant: "audit.resource.taskGrant",
   workflow: "audit.resource.workflow",
   patch_candidate: "decisions.kind.patch",
   skill_candidate: "decisions.kind.skill",
@@ -350,6 +417,24 @@ const ACTION_KEYS: Record<string, TranslationKey> = {
   "wait.started": "audit.action.waitStarted",
   "wait.completed": "audit.action.waitCompleted",
   "webhook.trigger.failed_verification": "audit.action.webhookVerificationFailed",
+  "tool_policy.confirmation_skipped": "audit.action.toolPolicyConfirmationSkipped",
+  "task.created": "audit.action.taskCreated",
+  "task.updated": "audit.action.taskUpdated",
+  "task.deleted": "audit.action.taskDeleted",
+  "task.paused": "audit.action.taskPaused",
+  "task.resumed": "audit.action.taskResumed",
+  "task.authority_granted": "audit.action.taskAuthorityGranted",
+  "task.authority_revoked": "audit.action.taskAuthorityRevoked",
+  "task.admission.changed": "audit.action.taskAdmissionChanged",
+  "task.schedule_claimed": "audit.action.taskScheduleClaimed",
+  "task_run.started": "audit.action.taskRunStarted",
+  "task_run.waiting": "audit.action.taskRunWaiting",
+  "task_run.resumed": "audit.action.taskRunResumed",
+  "task_run.result_ready": "audit.action.taskRunResultReady",
+  "task_run.completed": "audit.action.taskRunCompleted",
+  "task_run.failed": "audit.action.taskRunFailed",
+  "task_run.abort_requested": "audit.action.taskRunAbortRequested",
+  "task_run.aborted": "audit.action.taskRunAborted",
 };
 
 type AuditActionLabel = { kind: "named"; key: TranslationKey } | { kind: "machine"; value: string };

@@ -17,15 +17,20 @@ import {
 import { executionVisibilityFilter } from "../execution/execution-owner.ts";
 import { loadExecutionOutcome } from "../execution/outcome.ts";
 import { can } from "../rbac/evaluator.ts";
+import { getTaskRunMarker } from "./core/draft.ts";
+import { elicitationAnsweredInBrowser } from "./elicitation-channel.ts";
 import {
   type PlaybookDocument,
   PlaybookDocumentSchema,
   type PlaybookResource,
   type PlaybookStep,
 } from "./playbook-contract.ts";
+import { calledWorkflowHeldWrites } from "./playbook-held-writes.ts";
 import type { PlaybookEvidenceResolution } from "./playbook-state.ts";
 import { canonicalJson } from "./text-line-diff.ts";
 import { interpretConfirmDecision } from "./tools/ask-user/interpret-confirm.ts";
+
+const TASK_RUN_RESULT_STEP_ID = "confirm-result";
 
 export interface PlaybookScope {
   tenant_id: string;
@@ -362,6 +367,16 @@ export async function resolvePlaybookEvidence(
         ),
       )
       .limit(1);
+    if (
+      step.id === TASK_RUN_RESULT_STEP_ID &&
+      getTaskRunMarker(conversation?.draft) &&
+      !(await elicitationAnsweredInBrowser(db, {
+        tenant_id: scope.tenant_id,
+        elicitation_id: decision.id,
+        decided_by: decision.decided_by,
+      }))
+    )
+      return missing;
     const currentContext = humanConfirmationContextFingerprint(
       conversation?.playbook,
       step.criterion.question,
@@ -499,6 +514,9 @@ export async function resolvePlaybookEvidence(
     .limit(1);
   if (!run || run.workflow_id !== step.criterion.workflow_id) return missing;
   const outcome = await loadExecutionOutcome(scope.tenant_id, run, db);
+  const heldInCalledWorkflow = run.hold_writes
+    ? await calledWorkflowHeldWrites(db, scope.tenant_id, run.id)
+    : false;
   const fresh =
     outcome.kind === "succeeded" &&
     outcome.output_contract !== "violated" &&
@@ -516,7 +534,7 @@ export async function resolvePlaybookEvidence(
     object(output.outcome).kind === "succeeded" &&
     run.finished_at !== null &&
     call.created_at.getTime() >= run.finished_at.getTime() &&
-    !run.hold_writes &&
+    !heldInCalledWorkflow &&
     !run.failure;
   return {
     matches: fresh,

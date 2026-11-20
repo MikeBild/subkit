@@ -44,6 +44,7 @@ const KIND_NOUN: Record<CatalogKind, string> = {
   knowledge_source: "knowledge source",
   skill: "skill (operating guidance for the assistant)",
   file: "file",
+  task: "task (a goal the assistant works on in the background)",
 };
 
 function clip(text: string, max: number): string {

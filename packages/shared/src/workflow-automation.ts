@@ -22,6 +22,7 @@ export interface WorkflowAuthority {
   reserved_runs: number;
 }
 export interface GateDiagnosis {
+  code?: string;
   subject: { step_id: string | null };
   fixer?: unknown;
   candidate_id?: string | null;
@@ -143,7 +144,7 @@ export type AutomationAction =
   | { kind: "view" }
   | {
       kind: "repair";
-      via: "review" | "auto" | "prepare" | "chat";
+      via: "review" | "auto" | "prepare" | "chat" | "limits";
       stepId: string | null;
     };
 
@@ -368,13 +369,31 @@ export function automationEnvironment(input: EnvironmentInputs): ReviewEnvironme
 export function automationRepairAction(
   entry: GateDiagnosis | undefined,
   isCurrent: boolean,
-): Extract<AutomationAction, { kind: "repair" }> {
+): { kind: "repair"; via: "review" | "auto" | "prepare" | "chat"; stepId: string | null } {
   if (!entry) return { kind: "repair", via: "chat", stepId: null };
   const stepId = entry.subject.step_id;
   if (entry.fixer && isCurrent)
     return { kind: "repair", via: entry.candidate_id ? "review" : "auto", stepId };
   if (entry.remedy_kind === "prepare") return { kind: "repair", via: "prepare", stepId };
   return { kind: "repair", via: "chat", stepId };
+}
+
+const LIMIT_PROPOSAL_CODES: readonly string[] = [
+  "no_boundary",
+  "no_scope",
+  "pagination_unbounded",
+  "boundary_contradicted_by_history",
+];
+
+export function limitsProposable(entry: Pick<GateDiagnosis, "code">): boolean {
+  return LIMIT_PROPOSAL_CODES.includes(entry.code ?? "");
+}
+
+function limitsDiagnosis(blocks: readonly GateDiagnosis[]): GateDiagnosis | undefined {
+  const [first] = blocks;
+  if (first && limitsProposable(first)) return first;
+  const ownRemedy = blocks.some((entry) => entry.fixer || entry.remedy_kind === "prepare");
+  return ownRemedy ? undefined : blocks.find(limitsProposable);
 }
 
 export function automationState<A extends WorkflowAuthority>(
@@ -478,7 +497,10 @@ export function automationState<A extends WorkflowAuthority>(
   const needsRepair =
     blocks.length > 0 || rows.some((row) => row === "repair_required" || row === "input_required");
   if (needsRepair) {
-    const action = automationRepairAction(blocks[0], input.diagnosis?.is_current ?? false);
+    const unbounded = limitsDiagnosis(blocks);
+    const action: Extract<AutomationAction, { kind: "repair" }> = unbounded
+      ? { kind: "repair", via: "limits", stepId: unbounded.subject.step_id }
+      : automationRepairAction(blocks[0], input.diagnosis?.is_current ?? false);
     return {
       ...base,
       state: "repair",
@@ -516,7 +538,7 @@ export function automationState<A extends WorkflowAuthority>(
         runsLeft: grant.remaining_runs,
         runsMax: grant.max_runs,
         runsSoFar: grant.reserved_runs,
-        untilRevoked: grant.valid_until === null,
+        untilRevoked: grant.valid_until === null && grant.max_runs === null,
       }
     : facts;
   const approved = (): AutomationState<A> => ({
@@ -593,7 +615,9 @@ export function automationActionPermitted(
   if (action.kind === "view") return true;
   const requiredRight =
     action.kind === "repair"
-      ? ({ prepare: "run", chat: "chat", review: "write", auto: "write" } as const)[action.via]
+      ? (
+          { prepare: "run", chat: "chat", review: "write", auto: "write", limits: "write" } as const
+        )[action.via]
       : "write";
   return rights[requiredRight];
 }

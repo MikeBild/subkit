@@ -3,7 +3,9 @@ import {
   ENVIRONMENT_BLOCK_CODES,
   ENVIRONMENT_RECOMMENDATION_REASONS,
 } from "@shared/approval-choice.ts";
+import { browserSessionForPrincipal } from "../../auth/browser-session.ts";
 import type { Executor } from "../../db/client.ts";
+import { can } from "../../rbac/evaluator.ts";
 import { nextScheduleFire } from "../../scheduler/next-fire.ts";
 import { inboundHookDeliveryRate } from "../../scheduler/workflow-automation-view.ts";
 import {
@@ -104,6 +106,10 @@ const previewSchema = z
     preparation_required: z.boolean().optional(),
     content_items: z.array(z.object({ id: z.string().uuid(), label: z.string() })).optional(),
     unavailable_steps: z.array(z.string()),
+    tool_pins_compared: z.boolean().optional().openapi({
+      description:
+        "Present when the workflow calls MCP tools: whether each pinned tool description was compared with its server for this caller. It is only compared for a caller who may grant the approval.",
+    }),
     unavailable_connectors: z
       .array(
         z.object({
@@ -214,6 +220,8 @@ const AUTHORITY_ERROR_STATUSES: Record<string, RejectionStatus> = {
   authority_manifest_changed: 409,
   authority_activation_changed: 409,
   authority_effect_unbound: 409,
+  mcp_tool_changed: 409,
+  mcp_tool_unavailable: 409,
   authority_revoked: 409,
   authority_not_live: 409,
   authority_preparation_ambiguous: 409,
@@ -269,6 +277,21 @@ export const previewWorkflowAuthorityOperation = defineOperation<
     const db = scope.db;
     const tenant_id = scope.tenant_id;
     try {
+      const human =
+        scope.principal && scope.request
+          ? await browserSessionForPrincipal(scope.request, scope.principal)
+          : null;
+      const mayGrant =
+        scope.principal && human
+          ? (
+              await can(db, {
+                tenant_id,
+                principal: scope.principal,
+                permission: "workflow:write",
+                resource: { type: "workflow", id },
+              })
+            ).allow
+          : false;
       const result = await previewWorkflowAuthority(
         {
           tenant_id,
@@ -277,7 +300,7 @@ export const previewWorkflowAuthorityOperation = defineOperation<
           execution_environment: environment,
         },
         db,
-        { include_review: true },
+        { include_review: true, compare_tool_pins: mayGrant },
       );
       if (!result.execution_shape) throw new Error("authority review unavailable");
       const now = await readDatabaseNow(db);

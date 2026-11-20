@@ -1,9 +1,10 @@
-import { and, count, eq, sql } from "drizzle-orm";
+import { and, count, eq, gte, lt, sql } from "drizzle-orm";
 import { AuditAction } from "../audit/index.ts";
 import { connectorNeedsReauth } from "../connectors/health-ratio.ts";
 import { listConnectors } from "../connectors/service.ts";
 import type { Db } from "../db/client.ts";
 import { connectors, executionSteps } from "../db/schema/index.ts";
+import { taskRuns } from "../db/schema/tasks.ts";
 import { aggregateAudit } from "../stats/aggregate-audit.ts";
 import { aggregateExecutions } from "../stats/aggregate-executions.ts";
 import { aggregateLlm, type LlmGroup } from "../stats/aggregate-llm.ts";
@@ -51,6 +52,11 @@ export interface OperatingFigures {
   };
   prompt_cache: {
     flows: PromptCacheFlow[];
+  };
+  task_runs: {
+    total: number;
+    completed: number;
+    failed: number;
   };
 }
 
@@ -139,21 +145,22 @@ export async function readOperatingFigures(
 ): Promise<OperatingFigures> {
   const bucket = statsBucketFor(bounds.from, bounds.to);
   const window = { tenantId, bucket, from: bounds.from, to: bounds.to, tz: "UTC" } as const;
-  const [executions, repairs, enabled, notOk, needsReauth, llm, heldSucceeded] = await Promise.all([
-    aggregateExecutions(db, { ...window, groupBy: [] }),
-    aggregateAudit(db, {
-      ...window,
-      actions: [...DECIDED_REPAIR_ACTIONS],
-      groupBy: ["action"],
-    }),
-    listConnectors(tenantId, { enabled: true, limit: 1 }, db),
-    listConnectors(tenantId, { health: "not_ok", limit: 1 }, db),
-    db
-      .select({ total: count() })
-      .from(connectors)
-      .where(and(eq(connectors.tenant_id, tenantId), connectorNeedsReauth())),
-    aggregateLlm(db, { ...window, groupBy: ["flow"] }),
-    db.execute(sql`
+  const [executions, repairs, enabled, notOk, needsReauth, llm, heldSucceeded, taskRunCounts] =
+    await Promise.all([
+      aggregateExecutions(db, { ...window, groupBy: [] }),
+      aggregateAudit(db, {
+        ...window,
+        actions: [...DECIDED_REPAIR_ACTIONS],
+        groupBy: ["action"],
+      }),
+      listConnectors(tenantId, { enabled: true, limit: 1 }, db),
+      listConnectors(tenantId, { health: "not_ok", limit: 1 }, db),
+      db
+        .select({ total: count() })
+        .from(connectors)
+        .where(and(eq(connectors.tenant_id, tenantId), connectorNeedsReauth())),
+      aggregateLlm(db, { ...window, groupBy: ["flow"] }),
+      db.execute(sql`
       select count(distinct ${executionSteps.execution_id})::int as total
       from ${executionSteps}
       inner join executions
@@ -169,7 +176,21 @@ export async function readOperatingFigures(
           or ${executionSteps.request_meta}->'extras'->>'held' = 'true'
         )
     `),
-  ]);
+      db
+        .select({
+          total: count(),
+          completed: sql<number>`count(*) filter (where ${taskRuns.state} = 'completed')::int`,
+          failed: sql<number>`count(*) filter (where ${taskRuns.state} = 'failed')::int`,
+        })
+        .from(taskRuns)
+        .where(
+          and(
+            eq(taskRuns.tenant_id, tenantId),
+            gte(taskRuns.created_at, bounds.from),
+            lt(taskRuns.created_at, bounds.to),
+          ),
+        ),
+    ]);
 
   const total = executions.totals.executions.count;
   const byStatus = executions.totals.executions.by_status;
@@ -222,5 +243,10 @@ export async function readOperatingFigures(
       }),
     },
     prompt_cache: { flows: promptCacheByFlow(llm.groups) },
+    task_runs: {
+      total: Number(taskRunCounts[0]?.total ?? 0),
+      completed: Number(taskRunCounts[0]?.completed ?? 0),
+      failed: Number(taskRunCounts[0]?.failed ?? 0),
+    },
   };
 }

@@ -143,6 +143,19 @@ const BACKGROUND_TOOLS: Record<string, BackgroundWords> = {
     active: "tool.background.suggestConnectorTemplates.active",
     past: "tool.background.suggestConnectorTemplates.past",
   },
+  list_tasks: {
+    active: "tool.background.listTasks.active",
+    past: "tool.background.listTasks.past",
+  },
+  find_task: {
+    active: "tool.background.findTask.active",
+    past: "tool.background.findTask.past",
+  },
+  get_task: { active: "tool.background.getTask.active", past: "tool.background.getTask.past" },
+  get_task_run: {
+    active: "tool.background.getTaskRun.active",
+    past: "tool.background.getTaskRun.past",
+  },
 };
 
 const ACTION_TOOLS: Record<string, TranslationKey> = {
@@ -205,6 +218,10 @@ const ACTION_TOOLS: Record<string, TranslationKey> = {
   ask_user_multi: "tool.name.askUser",
   ask_user_form: "tool.name.askUser",
   ask_user_confirm: "tool.name.askUserConfirm",
+  run_task: "tool.name.runTask",
+  abort_task_run: "tool.name.abortTaskRun",
+  save_task: "tool.name.saveTask",
+  schedule_task_check: "tool.name.scheduleTaskCheck",
 };
 
 export function workflowSlugFromTool(toolName: string): string | null {
@@ -294,6 +311,7 @@ const REFUSAL_WORDS: Record<string, TranslationKey> = {
   execution_authority_required: "tool.refusal.approval",
   execution_authority_unavailable: "tool.refusal.approval",
   execution_authority_changed: "tool.refusal.approval",
+  task_run_use_workflow_tool: "tool.refusal.ownTool",
 };
 
 export type WorkflowResultLink = { url: string; expiresAt: string };

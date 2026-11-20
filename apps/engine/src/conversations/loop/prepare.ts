@@ -8,6 +8,7 @@ import { log, logger } from "../../logging/logger.ts";
 import { now } from "../../utils/clock.ts";
 import { resolveAttachmentSlugsInText } from "../attachments.ts";
 import { hasInProgressWorkflowDraft, startNewWorkflowDraft } from "../authoring-state/index.ts";
+import { getTaskRunMarker } from "../core/draft.ts";
 import { hasBoundSavedWorkflow } from "../core/loop.ts";
 import { appendSnapshot, loadDraft } from "../draft.ts";
 import { EventSink } from "../event-sink.ts";
@@ -19,6 +20,7 @@ import {
 } from "../intent-detector.ts";
 import { appendMessage } from "../persistence/index.ts";
 import { markLatestUserMessageUnresolvedReferences, resolveReferences } from "../references.ts";
+import { withTaskRunMarker } from "../service/task-run-marker.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { assertConversationTurn } from "../turns.ts";
 import type { TurnEvent } from "../types.ts";
@@ -95,9 +97,11 @@ export async function openTurn(
       : undefined,
   );
   let workflowIdForTurn = p.workflow_id;
+  const openingDraft = await loadDraft(p.tenant_id, p.conversation_id, p.db);
+  const taskRun = getTaskRunMarker(openingDraft);
 
   const state: TurnState = {
-    draft: await loadDraft(p.tenant_id, p.conversation_id, p.db),
+    draft: openingDraft,
     promptTokensLastCall: null,
     turnTokensTotal: 0,
     turnInputTokens: 0,
@@ -109,6 +113,7 @@ export async function openTurn(
     cancelled: false,
   };
   if (
+    !taskRun &&
     detectedIntent.startNewWorkflow === true &&
     hasBoundSavedWorkflow(workflowIdForTurn, state.draft) &&
     !hasInProgressWorkflowDraft(state.draft)
@@ -131,6 +136,7 @@ export async function openTurn(
     conversation_id: p.conversation_id,
     actor_id: p.actor_id,
     principal: p.principal ?? null,
+    task_run: taskRun,
     connector_id: p.connector_id,
     workflow_id: workflowIdForTurn,
     permission_mode: p.permission_mode ?? null,
@@ -144,8 +150,8 @@ export async function openTurn(
     getDraft: () => state.draft,
     setDraft: async (next) => {
       await assertConversationTurn(abort.signal);
-      state.draft = next;
-      await appendSnapshot(p.tenant_id, p.conversation_id, next, p.db);
+      state.draft = withTaskRunMarker(next, taskRun);
+      await appendSnapshot(p.tenant_id, p.conversation_id, state.draft, p.db);
     },
     abortSignal: abort.signal,
     recentUserMessage: ingestedUserMessage ?? null,

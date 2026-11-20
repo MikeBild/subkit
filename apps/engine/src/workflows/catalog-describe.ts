@@ -20,6 +20,7 @@ import {
   workflows,
   workflowVersions,
 } from "../db/schema/index.ts";
+import { tasks } from "../db/schema/tasks.ts";
 import { isTransientDbError, retryTransient } from "../db/transient.ts";
 import { type FileRow, resolvedFromRow } from "../files/resolver.ts";
 import {
@@ -38,7 +39,10 @@ const TABLES = {
   knowledge_source: knowledgeSources,
   skill: skills,
   file: files,
+  task: tasks,
 } as const;
+
+const DESCRIBED_KINDS = CATALOG_KINDS.filter((kind) => kind !== "task");
 
 const FILE_EXCERPT_BYTES = 4096;
 
@@ -95,7 +99,7 @@ export async function hasPendingCatalogDescriptions(
   exec?: Executor,
 ): Promise<boolean> {
   const db = exec ?? getDb();
-  for (const kind of CATALOG_KINDS) {
+  for (const kind of DESCRIBED_KINDS) {
     const table = TABLES[kind];
     const live = liveCondition(kind);
     const [row] = await db
@@ -130,7 +134,7 @@ interface PendingRef {
 
 async function pendingRefs(tenant_id: string, limit: number, db: Executor): Promise<PendingRef[]> {
   const out: PendingRef[] = [];
-  for (const kind of CATALOG_KINDS) {
+  for (const kind of DESCRIBED_KINDS) {
     if (out.length >= limit) break;
     const table = TABLES[kind];
     const live = liveCondition(kind);
@@ -418,6 +422,7 @@ const INPUT_BUILDERS: Record<
   knowledge_source: knowledgeSourceInput,
   skill: skillInput,
   file: fileInput,
+  task: async () => null,
 };
 
 type CatalogDescribeOutcome = "described" | "unchanged" | "skipped" | "failed";

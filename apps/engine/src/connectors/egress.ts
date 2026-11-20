@@ -18,9 +18,17 @@ const SENSITIVE_QUERY_KEYS = new Set([
   "password",
   "signature",
   "sig",
+  "session",
+  "sid",
+  "auth",
+  "code",
   "x-amz-signature",
   "x-amz-credential",
 ]);
+
+export function isSensitiveQueryKey(key: string): boolean {
+  return SENSITIVE_QUERY_KEYS.has(key.toLowerCase());
+}
 
 export function urlHasInlineCredentials(url: URL | string): boolean {
   let parsed: URL;
@@ -30,9 +38,7 @@ export function urlHasInlineCredentials(url: URL | string): boolean {
     return false;
   }
   return Boolean(
-    parsed.username ||
-      parsed.password ||
-      [...parsed.searchParams.keys()].some((key) => SENSITIVE_QUERY_KEYS.has(key.toLowerCase())),
+    parsed.username || parsed.password || [...parsed.searchParams.keys()].some(isSensitiveQueryKey),
   );
 }
 
@@ -50,7 +56,7 @@ export function scrubUrl(url: URL | string): string {
     mutated = true;
   }
   for (const key of [...parsed.searchParams.keys()]) {
-    if (SENSITIVE_QUERY_KEYS.has(key.toLowerCase())) {
+    if (isSensitiveQueryKey(key)) {
       parsed.searchParams.set(key, "***");
       mutated = true;
     }

@@ -16,7 +16,7 @@ const OPTIONS: readonly Option[] = [
   {
     mode: "ask",
     label: "Default",
-    desc1: "Confirm every destructive or unbounded action.",
+    desc1: "Ask before every write unless an approval covers exactly this run.",
     desc2: "Safest default; most interactive.",
   },
   {

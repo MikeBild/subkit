@@ -13,7 +13,8 @@ export type QueueName =
   | "workflow.repair"
   | "webhook.deliver"
   | "event.fanout"
-  | "chat.event";
+  | "chat.event"
+  | "task.run-turn";
 
 export const QUEUE_NAMES: QueueName[] = [
   "execution.run",
@@ -28,6 +29,7 @@ export const QUEUE_NAMES: QueueName[] = [
   "webhook.deliver",
   "event.fanout",
   "chat.event",
+  "task.run-turn",
 ];
 
 export interface QueueConfig {
@@ -149,6 +151,15 @@ export const QUEUE_DEFINITIONS: Record<QueueName, QueueConfig> = {
       retentionSeconds: DEFAULT_RETENTION_SECONDS,
     },
   },
+  "task.run-turn": {
+    name: "task.run-turn",
+    queue: {
+      retryLimit: 0,
+      expireInSeconds: CONVERSATION_RUN_TURN_VISIBILITY_SECONDS,
+      deadLetter: "task.run-turn.dlq",
+      retentionSeconds: DEFAULT_RETENTION_SECONDS,
+    },
+  },
 };
 
 export const EXECUTION_RUN_QUEUE: QueueName = "execution.run";
@@ -158,6 +169,9 @@ export const CONVERSATION_RUN_TURN_QUEUE: QueueName = "conversation.run-turn";
 export const CONVERSATION_RUN_TURN_DLQ: string = "conversation.run-turn.dlq";
 
 export const CHAT_EVENT_QUEUE: QueueName = "chat.event";
+
+export const TASK_RUN_TURN_QUEUE: QueueName = "task.run-turn";
+export const TASK_RUN_TURN_DLQ: string = "task.run-turn.dlq";
 
 export interface ChatEventJob {
   event: ChatEvent;

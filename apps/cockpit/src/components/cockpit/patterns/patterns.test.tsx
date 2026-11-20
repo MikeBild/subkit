@@ -411,6 +411,28 @@ describe("P17 SegmentedControl", () => {
     expect(html).toMatch(/aria-checked="true"[^>]*>7 Tage|7 Tage/);
   });
 
+  test("a disabled control disables every option and keeps the chosen one marked", () => {
+    const html = render(
+      <SegmentedControl
+        label="Zeitraum"
+        value="7d"
+        disabled
+        onValueChange={() => {}}
+        options={[
+          { value: "24h", label: "24 h" },
+          { value: "7d", label: "7 Tage" },
+        ]}
+      />,
+    );
+    const items = [...html.matchAll(/<button[^>]*role="radio"[^>]*>/g)].map((m) => m[0]);
+    expect(items).toHaveLength(2);
+    for (const item of items) expect(item).toContain('disabled=""');
+    expect(items[1]).toContain('data-state="on"');
+    expect(html.match(/<div[^>]*data-slot="segmented-control"[^>]*>/)?.[0]).toContain(
+      'aria-disabled="true"',
+    );
+  });
+
   test("labels stay whole on one row; a narrow container scrolls instead of truncating", () => {
     const html = render(
       <SegmentedControl

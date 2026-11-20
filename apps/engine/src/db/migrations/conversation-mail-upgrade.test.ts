@@ -28,7 +28,7 @@ test("conversation and mail columns, the operational guard, and the scheduler cu
           "SELECT count(*)::int AS count FROM subkit.scheduler_sweep_cursors",
         )
       ).rows,
-    ).toEqual([{ count: 8 }]);
+    ).toEqual([{ count: 9 }]);
   } finally {
     await fixture.cleanup();
   }

@@ -15,12 +15,18 @@ import { can } from "../../rbac/evaluator.ts";
 import { getWorkflow } from "../../workflows/service.ts";
 import { resolveAttachmentSlugsInText } from "../attachments.ts";
 import { createEmptyDraftDocument, withFocusedExecution } from "../authoring-state/index.ts";
+import { normalizeTaskRunMarker } from "../core/draft.ts";
 import type { ConversationSurface } from "../lifecycle-view.ts";
 import { appendMessage } from "../persistence/index.ts";
 import { type ConversationReference, dedupeReferences } from "../references.ts";
 import { listBaselineSlugs, loadActivationCatalog } from "../skill-autoload.ts";
 import { deriveConversationTitle } from "../title.ts";
-import type { ConversationRecord, DraftDocument, LatestExecutionSummary } from "../types.ts";
+import type {
+  ConversationRecord,
+  DraftDocument,
+  LatestExecutionSummary,
+  TaskRunMarker,
+} from "../types.ts";
 import { normalizePermissionMode, rowToRecord } from "./shared.ts";
 
 export interface CreateConversationParams {
@@ -41,6 +47,7 @@ export interface CreateConversationParams {
   playground?: boolean;
   playbook_mode?: "off" | "auto";
   intake_item_ids?: string[] | null;
+  task_run?: TaskRunMarker | null;
 }
 
 const PLAYGROUND_PRELOADED_SKILL = "workflow-authoring";
@@ -141,6 +148,12 @@ export async function createConversation(
   p: CreateConversationParams,
   exec: Db,
 ): Promise<CreateConversationResult> {
+  const taskRun =
+    p.task_run === undefined || p.task_run === null ? null : normalizeTaskRunMarker(p.task_run);
+  if (p.task_run !== undefined && p.task_run !== null && !taskRun)
+    throw Object.assign(new Error("The task run marker for this conversation is not valid."), {
+      code: "task_run_marker_invalid",
+    });
   const memory = typeof p.memory === "string" ? p.memory : null;
   const initialPermissionMode = normalizePermissionMode(p.permission_mode) ?? "auto";
   const focus = p.focus_execution ?? null;
@@ -150,12 +163,13 @@ export async function createConversation(
     : createEmptyDraftDocument();
   const playground = p.playground === true;
   const targetWorkflowId = playground ? null : (p.workflow_id ?? focus?.workflow_id ?? null);
-  if (initialPermissionMode || playground || p.intake_item_ids?.length) {
+  if (initialPermissionMode || playground || p.intake_item_ids?.length || taskRun) {
     initialDraft.session = {
       ...(initialPermissionMode ? { permission_mode: initialPermissionMode } : {}),
       ...(playground ? { playground: true } : {}),
       ...(p.intake_item_ids?.length ? { intake_item_ids: [...new Set(p.intake_item_ids)] } : {}),
       ...(p.intake_item_ids?.length ? { intake_review_locked: true } : {}),
+      ...(taskRun ? { task_run: taskRun } : {}),
     };
   }
   const catalog = await loadActivationCatalog(p.tenant_id, exec);

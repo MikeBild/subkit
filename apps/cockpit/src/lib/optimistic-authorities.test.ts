@@ -51,6 +51,38 @@ describe("optimistic approvals", () => {
     expect(b).toMatchObject({ id: "b", valid_until: null, open_ended: true });
   });
 
+  test("making an approval open-ended lifts its run limit as well", () => {
+    const data: AuthorityPages = {
+      pages: [
+        {
+          items: [
+            {
+              ...authority("a"),
+              valid_until: null,
+              max_runs: 50,
+              remaining_runs: 46,
+              open_ended: false,
+            } as WorkflowAuthority,
+          ],
+          next_cursor: null,
+        },
+      ],
+      pageParams: [null],
+    };
+    expect(withAuthorityUntilRevoked(data, "a")?.pages[0]?.items[0]).toMatchObject({
+      valid_until: null,
+      max_runs: null,
+      remaining_runs: null,
+      open_ended: true,
+    });
+    expect(withAuthorityUntilRevoked(data, "other")?.pages[0]?.items[0]).toMatchObject({
+      max_runs: 50,
+      remaining_runs: 46,
+      open_ended: false,
+    });
+    expect(withAuthorityUntilRevoked(undefined, "a")).toBeUndefined();
+  });
+
   test("a granted approval stands newest until the engine answers", () => {
     const review = {
       manifest: { workflow_id: "w", workflow_version_id: "v9" },

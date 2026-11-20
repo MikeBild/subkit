@@ -22,6 +22,8 @@ export interface AuditQueryFilters {
   execution_id?: string;
   conversation_id?: string;
   workflow_id?: string;
+  task_id?: string;
+  task_run_id?: string;
   resource_type?: string;
   resource_types?: string[];
   resource_id?: string;
@@ -133,6 +135,16 @@ function buildWhere(filters: AuditQueryFilters, before?: AuditKeysetCursor) {
       sql`((${auditLog.resource_type} = 'workflow' AND ${auditLog.resource_id} = ${filters.workflow_id}) OR ${auditLog.metadata}->>'workflow_id' = ${filters.workflow_id})`,
     );
   }
+  if (filters.task_id) {
+    tenantConds.push(
+      sql`((${auditLog.resource_type} = 'task' AND ${auditLog.resource_id} = ${filters.task_id}) OR ${auditLog.metadata}->>'task_id' = ${filters.task_id})`,
+    );
+  }
+  if (filters.task_run_id) {
+    tenantConds.push(
+      sql`((${auditLog.resource_type} = 'task_run' AND ${auditLog.resource_id} = ${filters.task_run_id}) OR ${auditLog.metadata}->>'task_run_id' = ${filters.task_run_id})`,
+    );
+  }
   if (filters.resource_type) tenantConds.push(eq(auditLog.resource_type, filters.resource_type));
   if (filters.resource_types?.length) {
     tenantConds.push(inArray(auditLog.resource_type, filters.resource_types));
@@ -239,6 +251,7 @@ export async function searchAuditResources(
           WHEN 'skill' THEN coalesce(a.after->>'title', a.after->>'name')
           WHEN 'file' THEN a.after->>'filename'
           WHEN 'conversation' THEN a.after->>'title'
+          WHEN 'task' THEN a.after->>'name'
         END),
         (CASE a.resource_type
           WHEN 'workflow' THEN a.before->>'name'
@@ -247,11 +260,12 @@ export async function searchAuditResources(
           WHEN 'skill' THEN coalesce(a.before->>'title', a.before->>'name')
           WHEN 'file' THEN a.before->>'filename'
           WHEN 'conversation' THEN a.before->>'title'
+          WHEN 'task' THEN a.before->>'name'
         END)
       ) AS historical(resource_name)
       WHERE a.tenant_id = ${tenant_id}::uuid
         AND a.resource_id IS NOT NULL
-        AND a.resource_type IN ('workflow', 'connector', 'knowledge_source', 'skill', 'file', 'conversation')
+        AND a.resource_type IN ('workflow', 'connector', 'knowledge_source', 'skill', 'file', 'conversation', 'task')
         AND (${resource_type ?? null}::text IS NULL OR a.resource_type = ${resource_type ?? null})
         AND (a.resource_id ILIKE ${pattern} OR historical.resource_name ILIKE ${pattern})
       GROUP BY a.resource_type, a.resource_id
@@ -272,6 +286,7 @@ export async function searchAuditResources(
           WHEN 'skill' THEN coalesce(a.after->>'title', a.after->>'name')
           WHEN 'file' THEN a.after->>'filename'
           WHEN 'conversation' THEN a.after->>'title'
+          WHEN 'task' THEN a.after->>'name'
           END), ''),
           nullif(btrim(CASE a.resource_type
           WHEN 'workflow' THEN a.before->>'name'
@@ -280,6 +295,7 @@ export async function searchAuditResources(
           WHEN 'skill' THEN coalesce(a.before->>'title', a.before->>'name')
           WHEN 'file' THEN a.before->>'filename'
           WHEN 'conversation' THEN a.before->>'title'
+          WHEN 'task' THEN a.before->>'name'
           END), '')
         ) AS resource_name, a.ts, a.id
         FROM audit_log a

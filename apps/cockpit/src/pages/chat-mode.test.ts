@@ -135,4 +135,20 @@ describe("the matrix is the engine's", () => {
     expect(asks({ tool: "run_workflow", category: "tenant_write" }, "auto")).toBe(false);
     expect(modeGates("auto").free).toContain("chat.mode.gate.liveRuns");
   });
+
+  test("asking before a live run is said with its exception: a covering approval", () => {
+    for (const mode of ["ask", "plan"] as const) {
+      expect(modeGates(mode).asks).toContain("chat.mode.gate.liveRunsUncovered");
+      expect(modeGates(mode).asks).not.toContain("chat.mode.gate.liveRuns");
+    }
+    expect(modeGates("auto").asks).not.toContain("chat.mode.gate.liveRunsUncovered");
+    for (const locale of ["de", "en"] as const) {
+      const copy = [
+        translate(locale, "chat.mode.description.ask"),
+        translate(locale, "chat.mode.gate.liveRunsUncovered"),
+      ];
+      for (const text of copy)
+        expect(text).toContain(locale === "de" ? "den keine Freigabe deckt" : "no approval covers");
+    }
+  });
 });

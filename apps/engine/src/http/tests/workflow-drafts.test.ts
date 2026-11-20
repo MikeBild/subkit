@@ -1,7 +1,13 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { apiKeys, auditLog, workflowsSchedules } from "../../db/schema/index.ts";
+import {
+  apiKeys,
+  auditLog,
+  executionSteps,
+  executions,
+  workflowsSchedules,
+} from "../../db/schema/index.ts";
 import { WorkflowDraftSchema } from "../../workflows/index.ts";
 import {
   browserSessionHeaders,
@@ -203,46 +209,183 @@ test("the derived limits reach every surface through one endpoint, and change no
   expect(created.status).toBe(201);
   const draft = (await created.json()) as { workflow_id: string; version_id: string };
 
-  const empty = await fetch(`${ctx.baseUrl}/v1/workflows/${draft.workflow_id}/boundary-proposals`, {
-    headers: headers(),
-  });
+  const url = `${ctx.baseUrl}/v1/workflows/${draft.workflow_id}/boundary-proposals`;
+  expect((await fetch(url, { headers: headers() })).status).toBe(400);
+  const empty = await fetch(`${url}?environment=prod`, { headers: headers() });
   expect(empty.status).toBe(200);
   const nothing = (await empty.json()) as {
     proposals: unknown[];
     unproposable: Array<{ step_id: string; reason: string }>;
+    digest: string;
+    base_version_id: string;
+    draft_version_id: string;
   };
   expect(nothing.proposals).toEqual([]);
   expect(nothing.unproposable).toEqual([{ step_id: "read_page", reason: "no_history" }]);
+  expect(nothing.base_version_id).toBe(draft.version_id);
+  expect(nothing.draft_version_id).toBe(draft.version_id);
+  const body = JSON.stringify({
+    base_version_id: nothing.base_version_id,
+    proposals_digest: nothing.digest,
+    environment: "prod",
+  });
 
-  const refused = await fetch(
-    `${ctx.baseUrl}/v1/workflows/${draft.workflow_id}/boundary-proposals/apply`,
-    {
-      method: "POST",
-      headers: headers(),
-      body: JSON.stringify({ expected_draft_version_id: draft.version_id }),
-    },
-  );
+  const refused = await fetch(`${url}/apply`, { method: "POST", headers: headers(), body });
   expect(refused.status).toBe(400);
+  const unpinned = await fetch(`${url}/apply`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ environment: "prod" }),
+  });
+  expect(unpinned.status).toBe(400);
 
-  const readOnly = await fetch(
-    `${ctx.baseUrl}/v1/workflows/${draft.workflow_id}/boundary-proposals`,
-    { headers: headers(readKey) },
-  );
+  const readOnly = await fetch(`${url}?environment=prod`, { headers: headers(readKey) });
   expect(readOnly.status).toBe(200);
-  const denied = await fetch(
-    `${ctx.baseUrl}/v1/workflows/${draft.workflow_id}/boundary-proposals/apply`,
-    {
-      method: "POST",
-      headers: headers(readKey),
-      body: JSON.stringify({ expected_draft_version_id: draft.version_id }),
-    },
-  );
+  const denied = await fetch(`${url}/apply`, { method: "POST", headers: headers(readKey), body });
   expect(denied.status).toBe(403);
 
   const after = await fetch(`${ctx.baseUrl}/v1/workflows/${draft.workflow_id}/draft`, {
     headers: headers(),
   });
   expect(((await after.json()) as { version_id: string }).version_id).toBe(draft.version_id);
+});
+
+test("the read shows the concrete limit for the reviewed environment, and apply writes exactly that", async () => {
+  const created = await fetch(`${ctx.baseUrl}/v1/workflows/drafts`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({
+      definition: {
+        name: "preview-limits",
+        slug: "preview-limits",
+        steps: [
+          {
+            kind: "request",
+            id: "read_page",
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+            url: "https://api.example.test/v1/pages/${input.page_id}",
+            method: "GET",
+          },
+        ],
+      },
+    }),
+  });
+  expect(created.status).toBe(201);
+  const draft = (await created.json()) as { workflow_id: string; version_id: string };
+  const [execution] = await ctx.db
+    .insert(executions)
+    .values({
+      tenant_id: ctx.tenantId,
+      workflow_id: draft.workflow_id,
+      status: "succeeded",
+      request_source: "api",
+      execution_mode: "prod",
+    })
+    .returning();
+  await ctx.db.insert(executionSteps).values({
+    tenant_id: ctx.tenantId,
+    execution_id: execution?.id as string,
+    step_key: "read_page",
+    step_index: 0,
+    kind: "request",
+    status: "succeeded",
+    request_meta: { driver: "http", url: "https://api.example.test/v1/pages/home" },
+  });
+  const url = `${ctx.baseUrl}/v1/workflows/${draft.workflow_id}/boundary-proposals`;
+
+  const elsewhere = await fetch(`${url}?environment=dev`, { headers: headers() });
+  expect(await elsewhere.json()).toMatchObject({
+    proposals: [],
+    unproposable: [{ step_id: "read_page", reason: "no_history" }],
+  });
+  expect((await fetch(`${url}?environment=staging`, { headers: headers() })).status).toBe(400);
+
+  const read = await fetch(`${url}?environment=prod`, { headers: headers() });
+  expect(read.status).toBe(200);
+  const derived = (await read.json()) as {
+    proposals: Array<{ step_id: string; boundary: unknown; request: unknown; evidence: unknown }>;
+    unproposable: unknown[];
+    digest: string;
+    base_version_id: string;
+  };
+  expect(derived.unproposable).toEqual([]);
+  expect(derived.proposals).toHaveLength(1);
+  expect(derived.proposals[0]?.boundary).toEqual({
+    variables: { "input.page_id": { enum: ["home"] } },
+    max_body_bytes: 0,
+    max_calls: 2,
+  });
+  expect(derived.proposals[0]?.request).toEqual({
+    method: "GET",
+    origin: "https://api.example.test",
+    segments: ["", "v1", "pages", { var: "input.page_id" }],
+    variables: { "input.page_id": { enum: ["home"] } },
+    query: { fixed: {}, variable: [] },
+    max_body_bytes: 0,
+    max_calls: 2,
+  });
+  expect(derived.proposals[0]?.evidence).toMatchObject({
+    kind: "sent",
+    sample: "https://api.example.test/v1/pages/{input.page_id}",
+  });
+  expect(derived.digest).toMatch(/^[a-f0-9]{64}$/);
+  expect(derived.base_version_id).toBe(draft.version_id);
+  const apply = (body: Record<string, unknown>) =>
+    fetch(`${url}/apply`, { method: "POST", headers: headers(), body: JSON.stringify(body) });
+  const pinned = {
+    base_version_id: derived.base_version_id,
+    proposals_digest: derived.digest,
+    step_ids: ["read_page"],
+    environment: "prod",
+  };
+
+  const otherEnvironment = await apply({ ...pinned, environment: "dev" });
+  expect(otherEnvironment.status).toBe(409);
+  const otherVersion = await apply({
+    ...pinned,
+    base_version_id: "00000000-0000-4000-8000-00000000dead",
+  });
+  expect(otherVersion.status).toBe(409);
+
+  await ctx.db.insert(executionSteps).values({
+    tenant_id: ctx.tenantId,
+    execution_id: execution?.id as string,
+    step_key: "read_page",
+    step_index: 1,
+    kind: "request",
+    status: "succeeded",
+    request_meta: { driver: "http", url: "https://api.example.test/v1/pages/about" },
+  });
+  const moved = await apply(pinned);
+  expect(moved.status).toBe(409);
+  expect(JSON.stringify(await moved.json())).toContain("proposals_changed");
+  const unchanged = await fetch(`${ctx.baseUrl}/v1/workflows/${draft.workflow_id}/draft`, {
+    headers: headers(),
+  });
+  expect(((await unchanged.json()) as { version_id: string }).version_id).toBe(draft.version_id);
+
+  const reread = (await (
+    await fetch(`${url}?environment=prod`, { headers: headers() })
+  ).json()) as typeof derived;
+  expect(reread.digest).not.toBe(derived.digest);
+  const applied = await apply({ ...pinned, proposals_digest: reread.digest });
+  expect(applied.status).toBe(200);
+  const written = (await applied.json()) as {
+    applied_step_ids: string[];
+    draft: { version_id: string; definition: { steps: Array<{ boundary?: unknown }> } };
+  };
+  expect(written.applied_step_ids).toEqual(["read_page"]);
+  expect(written.draft.version_id).not.toBe(draft.version_id);
+  expect(written.draft.definition.steps[0]?.boundary).toEqual(reread.proposals[0]?.boundary);
+
+  const after = (await (await fetch(`${url}?environment=prod`, { headers: headers() })).json()) as {
+    proposals: unknown[];
+    unproposable: unknown[];
+    base_version_id: string;
+  };
+  expect(after.proposals).toEqual([]);
+  expect(after.unproposable).toEqual([]);
+  expect(after.base_version_id).toBe(written.draft.version_id);
 });
 
 function spec(goal: string, origin: "person" | "chat" | "derived" = "chat") {

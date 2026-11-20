@@ -1,6 +1,8 @@
 import { z } from "@hono/zod-openapi";
 import { resolveUrl } from "../connectors/drivers/resolve-url.ts";
 import type { MaterializedRequest } from "../execution/prepared-request.ts";
+import { canonicalWorkflowJson, workflowJsonDigest } from "./canonical-json.ts";
+import type { McpBoundaryRefusal } from "./mcp-boundary.ts";
 import { hasRuntimeValue } from "./report-delivery-boundary.ts";
 import type { RequestStep } from "./types.ts";
 
@@ -13,7 +15,7 @@ const VARIABLES_KEY_ERROR =
   "`scope` or `item` — for example `scope.window.data.start` or `item.id` — or one of " +
   "`caller.subject` and `caller.principalId` with the rule `{ caller_bound: true }`. A query " +
   "parameter's name or a path segment's label is not a key.";
-const variablesError = (issue: { code?: string }) =>
+export const variablesError = (issue: { code?: string }) =>
   issue.code === "invalid_key" ? VARIABLES_KEY_ERROR : undefined;
 
 const enumValue = z
@@ -60,12 +62,14 @@ const rule = z.union([
   z.object({ caller_bound: z.literal(true) }).strict(),
 ]);
 export type RequestVariableRule = z.infer<typeof rule>;
+export const VariableExpressionSchema = expression;
+export const RequestVariableRuleSchema = rule;
 
 function isCallerExpression(name: string): boolean {
   return name.startsWith("caller.");
 }
 
-function callerRulesConsistent(variables: Record<string, RequestVariableRule>): boolean {
+export function callerRulesConsistent(variables: Record<string, RequestVariableRule>): boolean {
   return Object.entries(variables).every(
     ([name, entry]) => isCallerExpression(name) === "caller_bound" in entry,
   );
@@ -94,6 +98,50 @@ export type RequestBoundaryScope = z.infer<typeof RequestBoundaryScopeSchema>;
 
 const HTTP_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const;
 
+const queryKey = z.string().min(1).max(200);
+export const ConnectorQuerySchema = z
+  .object({
+    fixed: z.record(queryKey, z.string().regex(/^[a-f0-9]{64}$/)),
+    credential: z.array(queryKey).max(20),
+  })
+  .strict();
+export type ConnectorQuery = z.infer<typeof ConnectorQuerySchema>;
+
+export function connectorQueryOf(
+  staticQuery: unknown,
+  credentialKeys: readonly string[],
+): ConnectorQuery | null {
+  const fixed: Record<string, string> = {};
+  if (staticQuery)
+    for (const [key, value] of Object.entries(staticQuery))
+      fixed[key] = workflowJsonDigest(String(value));
+  const parsed = ConnectorQuerySchema.safeParse({ fixed, credential: [...credentialKeys] });
+  return parsed.success ? parsed.data : null;
+}
+
+function connectorQueryKeys(query: ConnectorQuery | undefined): string[] {
+  return query ? [...Object.keys(query.fixed), ...query.credential] : [];
+}
+
+function connectorQueryConsistent(boundary: {
+  connector_query?: ConnectorQuery | undefined;
+  query: { fixed: Record<string, string>; variable: Array<{ key: string }> };
+  pagination?: { params: string[]; location?: "body" | undefined } | undefined;
+}): boolean {
+  const own = connectorQueryKeys(boundary.connector_query);
+  if (!boundary.connector_query) return true;
+  if (own.length === 0 || new Set(own).size !== own.length) return false;
+  const sorted = [...boundary.connector_query.credential].sort();
+  if (sorted.some((key, index) => key !== boundary.connector_query?.credential[index]))
+    return false;
+  const taken = new Set([
+    ...Object.keys(boundary.query.fixed),
+    ...boundary.query.variable.map((entry) => entry.key),
+    ...(boundary.pagination?.location === "body" ? [] : (boundary.pagination?.params ?? [])),
+  ]);
+  return !own.some((key) => taken.has(key));
+}
+
 export const RequestBoundarySchema = z
   .object({
     base_url: z.string().url().nullable(),
@@ -112,12 +160,14 @@ export const RequestBoundarySchema = z
         variable: z.array(z.object({ key: z.string().min(1), var: expression }).strict()).max(50),
       })
       .strict(),
+    connector_query: ConnectorQuerySchema.optional(),
     max_body_bytes: z.number().int().min(0).max(10_000_000),
     max_calls: z.number().int().min(1).max(10_000),
     pagination: z
       .object({
         params: z.array(z.string().min(1)).min(1).max(4),
         max_requests: z.number().int().min(1).max(1000),
+        location: z.literal("body").optional(),
       })
       .strict()
       .optional(),
@@ -137,6 +187,16 @@ export const RequestBoundarySchema = z
   )
   .refine((boundary) => callerRulesConsistent(boundary.variables), {
     message: "caller.* variables need the rule { caller_bound: true }, and only they may use it",
+  })
+  .refine(
+    (boundary) =>
+      boundary.pagination?.location !== "body" ||
+      (boundary.body_encoding === undefined && !["GET", "HEAD"].includes(boundary.method)),
+    { message: "paging through the body needs a JSON body on a method that carries one" },
+  )
+  .refine((boundary) => connectorQueryConsistent(boundary), {
+    message:
+      "connector query keys must be distinct from each other and from the step's own query and paging keys",
   });
 export type RequestBoundary = z.infer<typeof RequestBoundarySchema>;
 
@@ -145,6 +205,7 @@ export type RequestBoundaryRefusal =
   | "pagination_unsupported"
   | "pagination_unbounded"
   | "pagination_param_conflict"
+  | "pagination_body_unsupported"
   | "query_placeholder_unsupported"
   | "runtime_header"
   | "runtime_value_outside_path_and_body"
@@ -160,7 +221,10 @@ export type RequestBoundaryRefusal =
   | "variable_in_base_prefix"
   | "enum_value_unroutable"
   | "path_class_misplaced"
-  | "connector_adds_query"
+  | "connector_query_conflict"
+  | "connector_query_unresolved"
+  | "connector_query_needs_boundary"
+  | McpBoundaryRefusal
   | "report_delivery_unprepared"
   | "report_delivery_unobserved"
   | "report_delivery_unreachable"
@@ -194,7 +258,7 @@ function authoredSegments(
 
 function paginationShape(
   pagination: NonNullable<RequestStep["pagination"]>,
-): { params: string[]; max_requests: number } | null | "unbounded" {
+): { params: string[]; max_requests: number; location?: "body" } | null | "unbounded" {
   if (pagination.strategy === "link") {
     const params = [
       ...pagination.link_params,
@@ -203,7 +267,6 @@ function paginationShape(
     if (pagination.max_pages === undefined) return "unbounded";
     return { params: [...new Set(params)].sort(), max_requests: pagination.max_pages };
   }
-  if (pagination.parameter_location === "body") return null;
   const params =
     pagination.strategy === "cursor"
       ? [
@@ -215,12 +278,34 @@ function paginationShape(
         : [pagination.page_param, pagination.limit_param];
   if (params.some((name) => typeof name !== "string" || name.length === 0)) return null;
   if (pagination.max_pages === undefined) return "unbounded";
-  return { params: [...new Set(params)].sort(), max_requests: pagination.max_pages };
+  return {
+    params: [...new Set(params)].sort(),
+    max_requests: pagination.max_pages,
+    ...(pagination.parameter_location === "body" ? { location: "body" as const } : {}),
+  };
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function bodyPagingRefusal(
+  step: RequestStep,
+  params: readonly string[],
+): RequestBoundaryRefusal | null {
+  const method = (step.method ?? "GET").toUpperCase();
+  if (method === "GET" || method === "HEAD") return "pagination_body_unsupported";
+  if (step.body === undefined || step.body === null) return null;
+  if (!isPlainRecord(step.body)) return "pagination_body_unsupported";
+  const keys = Object.keys(step.body);
+  if (keys.some((key) => hasRuntimeValue(key))) return "pagination_body_unsupported";
+  return keys.some((key) => params.includes(key)) ? "pagination_param_conflict" : null;
 }
 
 export function compileRequestBoundary(
   step: RequestStep,
   base_url: string | null,
+  connector_query?: ConnectorQuery | null,
 ):
   | { boundary: RequestBoundary; refusal?: never }
   | { boundary?: never; refusal: RequestBoundaryRefusal } {
@@ -229,6 +314,11 @@ export function compileRequestBoundary(
   const paging = step.pagination ? paginationShape(step.pagination) : null;
   if (step.pagination && !paging) return refuse("pagination_unsupported");
   if (step.pagination && paging === "unbounded") return refuse("pagination_unbounded");
+  const pagesThroughBody = paging !== null && paging !== "unbounded" && paging.location === "body";
+  if (pagesThroughBody) {
+    const refusal = bodyPagingRefusal(step, paging.params);
+    if (refusal) return refuse(refusal);
+  }
   const fixedQuery: Record<string, string> = {};
   const variableQuery: Array<{ key: string; var: string }> = [];
   for (const [key, value] of Object.entries(step.query ?? {})) {
@@ -282,6 +372,15 @@ export function compileRequestBoundary(
   if (!step.boundary) return refuse("no_boundary");
   const scope = RequestBoundaryScopeSchema.safeParse(step.boundary);
   if (!scope.success) return refuse("boundary_invalid");
+  const connectorQuery = ConnectorQuerySchema.safeParse(
+    connector_query ?? { fixed: {}, credential: [] },
+  );
+  if (!connectorQuery.success) return refuse("connector_query_unresolved");
+  const ownQuery: ConnectorQuery = {
+    fixed: connectorQuery.data.fixed,
+    credential: [...new Set(connectorQuery.data.credential)].sort(),
+  };
+  const ownQueryKeys = connectorQueryKeys(ownQuery);
   const used = [
     ...split.segments.flatMap((part) => (typeof part === "string" ? [] : [part.var])),
     ...variableQuery.map((entry) => entry.var),
@@ -355,11 +454,22 @@ export function compileRequestBoundary(
   if (
     paging &&
     paging !== "unbounded" &&
+    !pagesThroughBody &&
     paging.params.some(
       (name) => name in fixedQuery || variableQuery.some((entry) => entry.key === name),
     )
   )
     return refuse("pagination_param_conflict");
+  if (
+    new Set(ownQueryKeys).size !== ownQueryKeys.length ||
+    ownQueryKeys.some(
+      (name) =>
+        name in fixedQuery ||
+        variableQuery.some((entry) => entry.key === name) ||
+        (paging && paging !== "unbounded" && !pagesThroughBody && paging.params.includes(name)),
+    )
+  )
+    return refuse("connector_query_conflict");
   const candidate = RequestBoundarySchema.safeParse({
     base_url,
     method,
@@ -369,6 +479,7 @@ export function compileRequestBoundary(
     segments,
     variables: scope.data.variables,
     query: { fixed: fixedQuery, variable: variableQuery },
+    ...(ownQueryKeys.length > 0 ? { connector_query: ownQuery } : {}),
     max_body_bytes: scope.data.max_body_bytes,
     max_calls: scope.data.max_calls,
     ...(paging && paging !== "unbounded" ? { pagination: paging } : {}),
@@ -392,7 +503,8 @@ export function compileRequestBoundary(
         const url = resolveUrl(base_url, concrete);
         for (const [key, fixed] of Object.entries(fixedQuery)) url.searchParams.set(key, fixed);
         for (const entry of variableQuery) url.searchParams.set(entry.key, pick(entry.var));
-        if (!matchTarget(candidate.data, url) || !matchQuery(candidate.data, url))
+        const { connector_query: _connectorQuery, ...ownRequest } = candidate.data;
+        if (!matchTarget(ownRequest, url) || !matchQuery(ownRequest, url))
           return refuse("enum_value_unroutable");
       } catch {
         return refuse("enum_value_unroutable");
@@ -405,14 +517,22 @@ export function compileRequestBoundary(
 export function requestBoundary(
   step: RequestStep,
   base_url: string | null,
+  connector_query?: ConnectorQuery | null,
 ): RequestBoundary | null {
-  return compileRequestBoundary(step, base_url).boundary ?? null;
+  return compileRequestBoundary(step, base_url, connector_query).boundary ?? null;
 }
 
 export function requestBoundaryTarget(boundary: RequestBoundary): string {
   return `${boundary.origin}${boundary.segments
     .map((part) => (typeof part === "string" ? part : `{${part.var}}`))
     .join("/")}`;
+}
+
+export function variableValueAllowed(
+  variableRule: RequestVariableRule | undefined,
+  value: string,
+): boolean {
+  return valueAllowed(variableRule, value);
 }
 
 function valueAllowed(variableRule: RequestVariableRule | undefined, value: string): boolean {
@@ -481,13 +601,25 @@ function queryViolation(boundary: RequestBoundary, url: URL): RequestQueryViolat
   const duplicate = keys.find((key, index) => keys.indexOf(key) !== index);
   if (duplicate !== undefined) return { reason: "duplicate_key", key: duplicate };
   const fixedKeys = Object.keys(boundary.query.fixed);
-  const reviewed = new Set([...fixedKeys, ...boundary.query.variable.map((entry) => entry.key)]);
-  const paging = new Set(boundary.pagination?.params ?? []);
+  const pinned = boundary.connector_query?.fixed ?? {};
+  const reviewed = new Set([
+    ...fixedKeys,
+    ...Object.keys(pinned),
+    ...boundary.query.variable.map((entry) => entry.key),
+    ...(boundary.connector_query?.credential ?? []),
+  ]);
+  const paging = new Set(
+    boundary.pagination?.location === "body" ? [] : (boundary.pagination?.params ?? []),
+  );
   const unexpected = keys.find((key) => !reviewed.has(key) && !paging.has(key));
   if (unexpected !== undefined) return { reason: "unexpected_key", key: unexpected };
   const missing = [...reviewed].find((key) => !url.searchParams.has(key));
   if (missing !== undefined) return { reason: "missing_key", key: missing };
-  const changed = fixedKeys.find((key) => url.searchParams.get(key) !== boundary.query.fixed[key]);
+  const changed =
+    fixedKeys.find((key) => url.searchParams.get(key) !== boundary.query.fixed[key]) ??
+    Object.keys(pinned).find(
+      (key) => workflowJsonDigest(url.searchParams.get(key) ?? "") !== pinned[key],
+    );
   if (changed !== undefined) return { reason: "fixed_value", key: changed };
   for (const entry of boundary.query.variable) {
     const value = url.searchParams.get(entry.key) ?? "";
@@ -525,7 +657,56 @@ export type RequestBoundaryViolation =
   | { kind: "target"; reviewed: string; actual: string }
   | { kind: "query"; detail: RequestQueryViolation }
   | { kind: "body_forbidden"; method: string }
-  | { kind: "body_size"; bytes: number; max_body_bytes: number };
+  | { kind: "body_size"; bytes: number; max_body_bytes: number }
+  | { kind: "paged_body"; detail: PagedBodyViolation };
+
+export type PagedBodyViolation =
+  | { reason: "not_an_object" | "changed_between_pages" }
+  | { reason: "paging_value"; field: string };
+
+function pagedBodyParts(
+  boundary: RequestBoundary,
+  body: unknown,
+): { rest: string } | PagedBodyViolation {
+  let parsed: unknown = body;
+  if (typeof body === "string") {
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      return { reason: "not_an_object" };
+    }
+  }
+  if (!isPlainRecord(parsed)) return { reason: "not_an_object" };
+  const params = boundary.pagination?.params ?? [];
+  const rest: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (!params.includes(key)) {
+      rest[key] = value;
+      continue;
+    }
+    if (typeof value !== "string" && !(typeof value === "number" && Number.isFinite(value)))
+      return { reason: "paging_value", field: key };
+  }
+  try {
+    return { rest: canonicalWorkflowJson(rest) };
+  } catch {
+    return { reason: "not_an_object" };
+  }
+}
+
+export function pagedBodyGuard(
+  boundary: RequestBoundary,
+): ((body: unknown) => PagedBodyViolation | null) | null {
+  if (boundary.pagination?.location !== "body") return null;
+  let first: string | undefined;
+  return (body) => {
+    const parts = pagedBodyParts(boundary, body);
+    if ("reason" in parts) return parts;
+    if (first !== undefined && parts.rest !== first) return { reason: "changed_between_pages" };
+    first = parts.rest;
+    return null;
+  };
+}
 
 export function requestBoundaryViolation(
   boundary: RequestBoundary,
@@ -585,6 +766,10 @@ export function requestBoundaryViolation(
       ? { kind: "body_size", bytes, max_body_bytes: reviewed.max_body_bytes }
       : null;
   }
+  if (reviewed.pagination?.location === "body") {
+    const parts = pagedBodyParts(reviewed, request.body);
+    if ("reason" in parts) return { kind: "paged_body", detail: parts };
+  }
   if (request.body === null || request.body === undefined) return null;
   const wire = typeof request.body === "string" ? request.body : JSON.stringify(request.body);
   if (wire === undefined) return { kind: "unsupported_body" };
@@ -609,20 +794,30 @@ export function describeRequestBoundaryViolation(violation: RequestBoundaryViola
       if (detail.reason === "variable_value")
         return `the query value \`${detail.key}\` is "${detail.value}", which is outside its rule (${detail.rule})`;
       if (detail.reason === "fixed_value")
-        return `the query parameter \`${detail.key}\` no longer has the fixed value the step declares`;
+        return `the query parameter \`${detail.key}\` no longer has the fixed value that was reviewed`;
       if (detail.reason === "missing_key")
-        return `the query parameter \`${detail.key}\` the step declares is missing from the request`;
+        return `the reviewed query parameter \`${detail.key}\` is missing from the request`;
       if (detail.reason === "duplicate_key")
         return `the query parameter \`${detail.key}\` appears more than once`;
-      return `the request carries a query parameter \`${detail.key}\` the step does not declare`;
+      return `the request carries a query parameter \`${detail.key}\` that was not reviewed`;
     }
     case "body_forbidden":
       return `a ${violation.method} request under a boundary may not carry a body`;
+    case "paged_body":
+      return describePagedBodyViolation(violation.detail);
     case "unsupported_body":
       return "the body encoding or measured size does not match the reviewed request";
     default:
       return "the request could not be compared with the boundary";
   }
+}
+
+export function describePagedBodyViolation(detail: PagedBodyViolation): string {
+  if (detail.reason === "paging_value")
+    return `the paging field \`${detail.field}\` in the body is not a plain text or number value`;
+  if (detail.reason === "changed_between_pages")
+    return "a later page differs from the first page in more than the reviewed paging fields";
+  return "paging through the body needs a JSON object body";
 }
 
 export function assertRequestBoundary(

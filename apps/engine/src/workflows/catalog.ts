@@ -58,6 +58,7 @@ interface ListWorkflowToolsParams {
   principal: ResolvedPrincipal;
   limit?: number;
   request_source?: RequestSource;
+  bound_workflow_ids?: readonly string[];
 }
 
 interface WorkflowToolRow {
@@ -74,7 +75,8 @@ interface WorkflowToolRow {
 }
 
 async function selectWorkflowToolRows(p: ListWorkflowToolsParams): Promise<WorkflowToolRow[]> {
-  const limit = p.limit ?? 40;
+  const bound = p.bound_workflow_ids;
+  const limit = Math.max(p.limit ?? 40, bound?.length ?? 0);
   const principal = p.principal;
   const allowlistSqlFilter =
     Array.isArray(principal.allowed_workflows) && principal.allowed_workflows.length > 0
@@ -110,7 +112,7 @@ async function selectWorkflowToolRows(p: ListWorkflowToolsParams): Promise<Workf
           eq(workflows.tenant_id, principal.tenant_id),
           isNull(workflows.deleted_at),
           ne(workflows.lifecycle, "archived"),
-          eq(workflows.is_tool, true),
+          bound ? inArray(workflows.id, [...bound]) : eq(workflows.is_tool, true),
           ...(allowlistSqlFilter ? [allowlistSqlFilter] : []),
         ),
       )

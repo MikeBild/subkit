@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { UNDESCRIBED_METADATA } from "../api/catalog-metadata.ts";
-import { intakeItems, skillCandidates } from "../db/schema/index.ts";
+import { intakeItems, skillCandidates, tasks } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import type { KnowledgeSourceView } from "../knowledge/types.ts";
 import { countTokens } from "../llm/accounting/count.ts";
@@ -191,6 +191,7 @@ describe("trimToBudget", () => {
       workflowCount: 2,
       connectorCount: 1,
       fileCount: 0,
+      taskCount: 0,
     });
     expect(oneLess.markdown).toContain("…and 1 more — call `find_connector` for the rest.");
     const noConnectors = trimToBudget(input({ connectors: [] }), 16000);
@@ -406,5 +407,142 @@ describe("buildAgentBriefing collected material", () => {
     });
     expect(briefing.intake).toBeNull();
     expect(briefing.markdown).not.toContain("## Collected material");
+  });
+});
+
+describe("tasks in the briefing", () => {
+  const entry = (n: number): CatalogEntry => ({
+    id: `00000000-0000-4000-8000-00000000010${n}`,
+    slug: `00000000-0000-4000-8000-00000000010${n}`,
+    name: `Task ${n}`,
+    description: "Chases what is still open",
+    category: "a",
+  });
+  const base: AssembleInput = {
+    domains: ["a"],
+    skills: [],
+    knowledge: [],
+    includeKnowledgeIndex: false,
+    workflows: [
+      { id: "w1", slug: "wf-one", name: "Workflow one", description: null, category: "a" },
+    ],
+    connectors: [],
+    files: [],
+    guides: [],
+  };
+
+  test("tasks are listed by name and id and are the first thing trimmed", () => {
+    const full = trimToBudget({ ...base, tasks: [entry(1), entry(2)] }, 16000);
+    expect(full.markdown).toContain("## Tasks (start with `run_task` instead of redoing the work)");
+    expect(full.markdown).toContain(
+      "- **Task 1** (`00000000-0000-4000-8000-000000000101`, a) — Chases what is still open",
+    );
+    expect(full.state.taskCount).toBe(2);
+    const tight = trimToBudget(
+      { ...base, tasks: [entry(1), entry(2)] },
+      countTokens(full.markdown) - 1,
+    );
+    expect(tight.state).toMatchObject({ taskCount: 1, workflowCount: 1 });
+    expect(tight.markdown).toContain("…and 1 more — call `find_task` for the rest.");
+  });
+
+  test("a briefing without tasks has no task section", () => {
+    expect(trimToBudget(base, 16000).markdown).not.toContain("## Tasks");
+    expect(trimToBudget({ ...base, tasks: [] }, 16000).markdown).not.toContain("## Tasks");
+  });
+});
+
+describe("buildAgentBriefing tasks", () => {
+  let testDb: TestDb;
+  let tenantId = "";
+  let otherTenantId = "";
+  const viewer = "00000000-0000-4000-8000-0000000000d1";
+  const colleague = "00000000-0000-4000-8000-0000000000d2";
+  const ids: Record<string, string> = {};
+
+  async function seedTask(
+    key: string,
+    tenant: string,
+    owner_id: string,
+    values: { category?: string; lifecycle?: "active" | "archived" } = {},
+  ) {
+    const [row] = await testDb.db
+      .insert(tasks)
+      .values({
+        tenant_id: tenant,
+        name: key,
+        description: `About ${key}`,
+        category: values.category ?? "a",
+        category_source: "human",
+        description_source: "human",
+        owner_id,
+        goal: `Confidential goal of ${key}`,
+        done_when: "Done",
+        plan: { title: key, goal: "Goal", steps: [] },
+        bindings: { workflow_ids: [], connector_ids: [], skill_slugs: [], web_search: false },
+        environment: "prod",
+        fingerprint: "a".repeat(64),
+        lifecycle: values.lifecycle ?? "active",
+      })
+      .returning({ id: tasks.id });
+    if (!row) throw new Error("task fixture missing");
+    ids[key] = row.id;
+  }
+
+  const briefingFor = (task_viewer: { owner_id: string | null } | null | undefined) =>
+    buildAgentBriefing({
+      tenant_id: tenantId,
+      domains: ["a"],
+      budget_tokens: 16000,
+      include_knowledge_index: false,
+      workflow_visible: null,
+      connector_visible: null,
+      file_visible: null,
+      file_tenant_wide: false,
+      ...(task_viewer === undefined ? {} : { task_viewer }),
+      db: testDb.db,
+    });
+
+  beforeAll(async () => {
+    testDb = await createTestDb("agent_briefing_tasks");
+    tenantId = (await seedTenant(testDb.db, { slug: "briefing-tasks", display_name: "T" })).id;
+    otherTenantId = (await seedTenant(testDb.db, { slug: "briefing-tasks-b", display_name: "B" }))
+      .id;
+    await seedTask("Own task", tenantId, viewer);
+    await seedTask("Colleague task", tenantId, colleague);
+    await seedTask("Other domain task", tenantId, viewer, { category: "b" });
+    await seedTask("Archived task", tenantId, viewer, { lifecycle: "archived" });
+    await seedTask("Foreign task", otherTenantId, viewer);
+  });
+
+  afterAll(async () => {
+    await testDb?.cleanup();
+  });
+
+  test("a person sees own active tasks of the domain, never the goal", async () => {
+    const briefing = await briefingFor({ owner_id: viewer });
+    expect(briefing.tasks).toEqual([ids["Own task"] as string]);
+    expect(briefing.tasks_omitted).toBe(0);
+    expect(briefing.markdown).toContain(
+      `- **Own task** (\`${ids["Own task"]}\`, a) — About Own task`,
+    );
+    for (const hidden of ["Colleague task", "Other domain task", "Archived task", "Foreign task"])
+      expect(briefing.markdown).not.toContain(hidden);
+    expect(briefing.markdown).not.toContain("Confidential goal");
+  });
+
+  test("an admin sees every active task of the domain in this tenant", async () => {
+    const briefing = await briefingFor({ owner_id: null });
+    expect(briefing.tasks).toEqual([ids["Colleague task"] as string, ids["Own task"] as string]);
+    expect(briefing.markdown).not.toContain("Foreign task");
+  });
+
+  test("without task:read no task is listed", async () => {
+    for (const viewerScope of [null, undefined]) {
+      const briefing = await briefingFor(viewerScope);
+      expect(briefing.tasks).toEqual([]);
+      expect(briefing.tasks_omitted).toBe(0);
+      expect(briefing.markdown).not.toContain("## Tasks");
+    }
   });
 });

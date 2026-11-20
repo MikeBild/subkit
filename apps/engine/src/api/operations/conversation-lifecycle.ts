@@ -3,6 +3,7 @@ import { actorType } from "../../audit/actor.ts";
 import type { AuditActorType } from "../../audit/types.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { canReadTaskRun } from "../../conversations/public/lifecycle.ts";
 import type { ConversationRecord } from "../../conversations/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationLocale } from "../../http/routes/conversations/locale.ts";
@@ -73,6 +74,7 @@ export interface ConversationLifecycleServices {
     actor_id: string | null,
     exec: Db,
     actor_type?: "user" | "system_account" | "system" | "unknown",
+    principal?: ResolvedPrincipal | null,
   ): Promise<ConversationRecord | null>;
   deleteConversation(
     p: {
@@ -86,7 +88,13 @@ export interface ConversationLifecycleServices {
     exec: Db,
   ): Promise<DeleteOutcome>;
   setConversationHidden(
-    p: { tenant_id: string; conversation_id: string; user_id: string; hidden: boolean },
+    p: {
+      tenant_id: string;
+      conversation_id: string;
+      user_id: string;
+      hidden: boolean;
+      principal?: ResolvedPrincipal | null;
+    },
     exec: Db,
   ): Promise<ConversationRecord | null>;
   getContextSnapshot(
@@ -112,10 +120,20 @@ export interface ConversationLifecycleServices {
       conversation_id: string;
       actor_id: string | null;
       actor_type: AuditActorType;
+      principal?: ResolvedPrincipal | null;
       keep_last?: number;
     },
     exec: Db,
   ): Promise<object>;
+  assertTaskRunTurn(
+    exec: Db,
+    writer: {
+      tenant_id: string;
+      conversation_id: string;
+      actor_id: string | null;
+      principal?: ResolvedPrincipal | null;
+    },
+  ): Promise<unknown>;
   forkConversation(
     p: {
       tenant_id: string;
@@ -154,6 +172,7 @@ export function conversationLifecycleOperations(svc: ConversationLifecycleServic
         principal.id,
         scope.db,
         actorType(principal),
+        principal,
       );
       return row ?? reject.notFound("conversation");
     },
@@ -236,7 +255,13 @@ export function conversationLifecycleOperations(svc: ConversationLifecycleServic
           return reject.forbidden("conversation_list_visibility_requires_user");
         }
         const row = await svc.setConversationHidden(
-          { tenant_id: scope.tenant_id, conversation_id: id, user_id: principal.id, hidden },
+          {
+            tenant_id: scope.tenant_id,
+            conversation_id: id,
+            user_id: principal.id,
+            hidden,
+            principal,
+          },
           scope.db,
         );
         return row ?? reject.notFound("conversation");
@@ -301,6 +326,12 @@ export function conversationLifecycleOperations(svc: ConversationLifecycleServic
     async handler(scope, { id, keep_last }) {
       const principal = scope.principal;
       if (!principal) return reject.unauthorized();
+      await svc.assertTaskRunTurn(scope.db, {
+        tenant_id: scope.tenant_id,
+        conversation_id: id,
+        actor_id: principal.id,
+        principal,
+      });
       const ctrl = await svc.registerConversationAbort(scope.tenant_id, id, scope.db);
       try {
         return await svc.compactConversation(
@@ -309,6 +340,7 @@ export function conversationLifecycleOperations(svc: ConversationLifecycleServic
             conversation_id: id,
             actor_id: principal.id,
             actor_type: actorType(principal),
+            principal,
             ...(keep_last !== undefined ? { keep_last } : {}),
           },
           scope.db,
@@ -342,6 +374,12 @@ export function conversationLifecycleOperations(svc: ConversationLifecycleServic
     async handler(scope, { id, message_id }) {
       const principal = scope.principal;
       if (!principal) return reject.unauthorized();
+      const readable = await canReadTaskRun(scope.db, {
+        tenant_id: scope.tenant_id,
+        conversation_id: id,
+        principal,
+      });
+      if (!readable) return reject.notFound("conversation");
       const result = await svc.forkConversation(
         {
           tenant_id: scope.tenant_id,

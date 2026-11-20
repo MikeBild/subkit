@@ -3,7 +3,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { and, asc } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { writeEvent } from "../../db/events.ts";
-import { events } from "../../db/schema/index.ts";
+import { events, tasks } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { cockpitStreamConds, projectCockpitPayload } from "../../identity/cockpit-stream.ts";
 import { adminPrincipal } from "../../test-helpers/principals.ts";
@@ -17,6 +17,32 @@ let tenantB = "";
 const WORKFLOW = "11111111-1111-4111-8111-111111111111";
 const EXECUTION = "22222222-2222-4222-8222-222222222222";
 const CONNECTOR = "33333333-3333-4333-8333-333333333333";
+const TASK_OWNER = "44444444-4444-4444-8444-444444444444";
+const COLLEAGUE = "55555555-5555-4555-8555-555555555555";
+const RUN = "66666666-6666-4666-8666-666666666666";
+const GRANT = "77777777-7777-4777-8777-777777777777";
+
+async function seedTask(tenant_id: string, owner_id: string): Promise<string> {
+  const [row] = await ctx.db
+    .insert(tasks)
+    .values({
+      tenant_id,
+      name: "Weekly report",
+      category: "reports",
+      category_source: "human",
+      description_source: "human",
+      owner_id,
+      goal: "Send the weekly report",
+      done_when: "The report is in the inbox",
+      plan: { title: "Report", goal: "Send the weekly report", steps: [] },
+      bindings: { workflow_ids: [], connector_ids: [], skill_slugs: [], web_search: false },
+      environment: "prod",
+      fingerprint: "a".repeat(64),
+    })
+    .returning({ id: tasks.id });
+  if (!row) throw new Error("task fixture missing");
+  return row.id;
+}
 
 interface Frame {
   id?: string;
@@ -220,6 +246,109 @@ describe("cockpitStreamConds", () => {
     for (const [permission, type] of changes) expect(await heard([permission])).toEqual([type]);
     expect(await heard(["audit:read"])).toEqual(changes.map(([, type]) => type));
     expect(await heard(["workflow:read", "connector:read", "execution:read"])).toEqual([]);
+  });
+
+  test("task changes reach the task's owner and admins, nobody else", async () => {
+    const own = await seedTask(tenantA, TASK_OWNER);
+    const theirs = await seedTask(tenantA, COLLEAGUE);
+    const foreign = await seedTask(tenantB, TASK_OWNER);
+    const first = await emit(tenantA, "resource.lifecycle", "task.changed", { task_id: own });
+    await emit(tenantA, "resource.lifecycle", "task_run.changed", {
+      task_id: own,
+      task_run_id: RUN,
+    });
+    await emit(tenantA, "resource.lifecycle", "task.grant_changed", {
+      task_id: own,
+      task_grant_id: GRANT,
+    });
+    await emit(tenantA, "resource.lifecycle", "task.changed", { task_id: theirs });
+    await emit(tenantA, "resource.lifecycle", "task_run.changed", {
+      task_id: theirs,
+      task_run_id: RUN,
+    });
+    await emit(tenantA, "resource.lifecycle", "task.changed", { task_id: foreign });
+    await emit(tenantA, "resource.lifecycle", "task.changed", {});
+    await emit(tenantB, "resource.lifecycle", "task.changed", { task_id: foreign });
+    const heard = async (permissions: string[], viewer?: { task_owner_id: string | null }) => {
+      const conds = cockpitStreamConds(tenantA, new Set(permissions), viewer);
+      if (!conds) return [];
+      const rows = await ctx.db
+        .select({ id: events.id, type: events.type, payload: events.payload })
+        .from(events)
+        .where(and(...conds))
+        .orderBy(asc(events.id));
+      return rows
+        .filter((row) => row.id >= first)
+        .map((row) => [row.type, (row.payload as { task_id?: string }).task_id ?? null]);
+    };
+    const ownEvents = [
+      ["task.changed", own],
+      ["task_run.changed", own],
+      ["task.grant_changed", own],
+    ];
+    expect(await heard(["task:read"], { task_owner_id: TASK_OWNER })).toEqual(ownEvents);
+    expect(await heard(["task:read"], { task_owner_id: COLLEAGUE })).toEqual([
+      ["task.changed", theirs],
+      ["task_run.changed", theirs],
+    ]);
+    expect(await heard(["task:read"], { task_owner_id: null })).toEqual([
+      ...ownEvents,
+      ["task.changed", theirs],
+      ["task_run.changed", theirs],
+      ["task.changed", foreign],
+      ["task.changed", null],
+    ]);
+    expect(await heard(["task:read"])).toEqual([]);
+    expect(await heard(["workflow:read", "execution:read"], { task_owner_id: null })).toEqual([]);
+    expect(await heard(["audit:read"], { task_owner_id: TASK_OWNER })).toEqual(ownEvents);
+    expect(await heard(["audit:read"])).toEqual([]);
+    expect(await heard(["audit:read"], { task_owner_id: null })).toHaveLength(7);
+  });
+
+  test("the stream hands a member only the changes of own tasks, as ids", async () => {
+    const own = await seedTask(tenantA, TASK_OWNER);
+    const theirs = await seedTask(tenantA, COLLEAGUE);
+    const before = await emit(tenantA, "event.emitted", "noise", {});
+    await emit(tenantA, "resource.lifecycle", "task_run.changed", {
+      task_id: theirs,
+      task_run_id: RUN,
+    });
+    await emit(tenantA, "resource.lifecycle", "task_run.changed", {
+      task_id: own,
+      task_run_id: RUN,
+      goal: "Send the weekly report",
+    });
+    const member: ResolvedPrincipal = {
+      provider: "api_key",
+      kind: "user",
+      id: TASK_OWNER,
+      tenant_id: tenantA,
+      roles: ["member"],
+    };
+    const mine = await frames(await openStream(member, { "last-event-id": String(before) }), (s) =>
+      s.some((f) => f.event === "hello"),
+    );
+    expect(mine.filter((f) => f.event === "task_run.changed").map((f) => f.data)).toEqual([
+      { task_id: own, task_run_id: RUN },
+    ]);
+    const admins = await frames(
+      await openStream(adminPrincipal(tenantA), { "last-event-id": String(before) }),
+      (s) => s.some((f) => f.event === "hello"),
+    );
+    expect(
+      admins.filter((f) => f.event === "task_run.changed").map((f) => f.data?.task_id),
+    ).toEqual([theirs, own]);
+  });
+
+  test("projection keeps the task ids", () => {
+    expect(
+      projectCockpitPayload({
+        task_id: WORKFLOW,
+        task_run_id: RUN,
+        task_grant_id: GRANT,
+        goal: "x",
+      }),
+    ).toEqual({ task_id: WORKFLOW, task_run_id: RUN, task_grant_id: GRANT });
   });
 
   test("projection keeps id-shaped values of allowlisted keys only", () => {

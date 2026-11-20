@@ -83,3 +83,64 @@ test("resolves an unsaved candidate through tenant connector facts without persi
     },
   ]);
 });
+
+test("an MCP tool call shows its tool, the effect as stated, its ceiling and its argument variables", async () => {
+  const [server] = await testDb.db
+    .insert(connectors)
+    .values({
+      tenant_id: tenantId,
+      slug: "tools",
+      display_name: "Tools server",
+      driver: "mcp",
+      environment: "dev",
+      auth_type: "none",
+      base_url: "https://tools.example.test/mcp",
+      config: { mcp: { transport: "http" } },
+    })
+    .returning();
+  if (!server) throw new Error("mcp connector insert failed");
+  const definition = {
+    name: "Tool call",
+    steps: [
+      {
+        id: "lookup",
+        kind: "request",
+        connector_id: server.id,
+        mcp: {
+          operation: "call_tool",
+          tool: "search",
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+          arguments: { q: "${input.q}", mode: "exact" },
+          boundary: {
+            effect: "read",
+            variables: { "input.q": { enum: ["alpha"] } },
+            max_calls: 3,
+            descriptor: {
+              input_schema_digest: "a".repeat(64),
+              annotations: { readOnlyHint: true },
+            },
+          },
+        },
+      },
+    ],
+  };
+  const review = await resolveWorkflowReviewManifest(
+    { tenant_id: tenantId, definition, environment: "dev" },
+    testDb.db,
+  );
+  expect(review.effects).toEqual([
+    {
+      step_id: "lookup",
+      connector_name: "Tools server",
+      connector_slug: "tools",
+      effect: "read",
+      target: "https://tools.example.test/mcp#search",
+      details: [
+        "tools/call:search",
+        "Effect read as stated on the step; the tool's description is compared with the server only when you approve",
+        "At most 3 calls",
+        "Argument variables: q (input.q)",
+      ],
+    },
+  ]);
+});

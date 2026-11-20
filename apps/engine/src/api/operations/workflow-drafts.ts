@@ -2,9 +2,9 @@ import { z } from "@hono/zod-openapi";
 import { AuditAction } from "../../audit/types.ts";
 import {
   applyBoundaryProposals,
-  currentOrDraftDefinition,
+  type BoundaryProposalRead,
+  readBoundaryProposals,
 } from "../../workflows/apply-boundary-proposals.ts";
-import { proposeBoundaries } from "../../workflows/boundary-proposal.ts";
 import {
   CreateWorkflowDraftSchema,
   recipeAuditMetadata,
@@ -30,6 +30,35 @@ const draftFailures = {
 
 const DRAFT_DESCRIPTION = "Inert draft; no activation or execution authority";
 
+const ProposedRuleSchema = z.union([
+  z.object({ enum: z.array(z.string()) }),
+  z.object({ class: z.string() }),
+  z.object({ caller_bound: z.literal(true) }),
+]);
+
+const ProposedRequestSchema = z.object({
+  method: z.string(),
+  origin: z.string(),
+  segments: z.array(z.union([z.string(), z.object({ var: z.string() })])),
+  variables: z.record(z.string(), ProposedRuleSchema),
+  query: z.object({
+    fixed: z.record(z.string(), z.string()),
+    variable: z.array(z.object({ key: z.string(), var: z.string() })),
+  }),
+  max_body_bytes: z.number().int(),
+  max_calls: z.number().int(),
+  pagination: z.object({ params: z.array(z.string()), max_requests: z.number().int() }).optional(),
+  destructive: z.literal(true).optional(),
+});
+
+const ProposedStorageSchema = z.object({
+  operation: z.string(),
+  key_prefix: z.string(),
+  max_bytes: z.number().int(),
+  max_keys: z.number().int(),
+  max_deletes: z.number().int().optional(),
+});
+
 const ProposalSchema = z
   .object({
     proposals: z.array(
@@ -37,27 +66,59 @@ const ProposalSchema = z
         step_id: z.string(),
         boundary: z
           .object({
-            variables: z.record(z.string(), z.unknown()),
+            variables: z.record(z.string(), ProposedRuleSchema),
             max_body_bytes: z.number().int(),
             max_calls: z.number().int(),
+            destructive: z.literal(true).optional(),
           })
           .optional(),
-        s3_scope: z.object({ key_prefix: z.string(), max_bytes: z.number().int() }).optional(),
+        max_pages: z.number().int().optional(),
+        path_rewrite: z
+          .object({ path: z.string(), query: z.record(z.string(), z.string()) })
+          .optional(),
+        s3_scope: z
+          .object({
+            key_prefix: z.string(),
+            max_bytes: z.number().int(),
+            max_deletes: z.number().int().optional(),
+          })
+          .optional(),
+        request: ProposedRequestSchema.optional(),
+        storage: ProposedStorageSchema.optional(),
+        widens: z
+          .array(
+            z.object({
+              field: z.enum(["key_prefix", "max_bytes"]),
+              from: z.union([z.string(), z.number()]),
+              to: z.union([z.string(), z.number()]),
+            }),
+          )
+          .optional(),
         evidence: z.object({
           observations: z.number().int(),
           sample: z.string(),
           newest_at: z.string(),
+          kind: z.enum(["sent", "trial"]),
         }),
       }),
     ),
-    unproposable: z.array(z.object({ step_id: z.string(), reason: z.string() })),
+    unproposable: z.array(
+      z.object({ step_id: z.string(), reason: z.string(), refusal: z.string().optional() }),
+    ),
+    digest: z.string(),
+    base_version_id: z.string().uuid().nullable(),
+    draft_version_id: z.string().uuid().nullable(),
   })
   .openapi("WorkflowBoundaryProposals");
 
+const ProposalQuery = z.object({ environment: z.enum(["dev", "prod"]) });
+
 const ApplyBoundaryProposalsBody = z
   .object({
-    expected_draft_version_id: z.string().uuid().nullable(),
+    base_version_id: z.string().uuid().nullable(),
+    proposals_digest: z.string().regex(/^[a-f0-9]{64}$/),
     step_ids: z.array(z.string().min(1)).max(200).optional(),
+    environment: z.enum(["dev", "prod"]),
   })
   .openapi("ApplyBoundaryProposalsBody");
 
@@ -73,7 +134,7 @@ type UpdateDraft = z.infer<typeof UpdateWorkflowDraftSchema>;
 type ApplyBody = z.infer<typeof ApplyBoundaryProposalsBody>;
 type Draft = NonNullable<SaveWorkflowDraftResult["draft"]>;
 type WorkflowDraft = NonNullable<Awaited<ReturnType<typeof getWorkflowDraft>>>;
-type Proposals = Awaited<ReturnType<typeof proposeBoundaries>>;
+type ProposalRead = z.infer<typeof ProposalQuery> & { id: string };
 
 function unwrap(result: SaveWorkflowDraftResult): Draft | Rejection {
   if (result.draft) return result.draft;
@@ -203,30 +264,39 @@ export const getWorkflowDraftOperation = defineOperation<string, WorkflowDraft>(
   },
 });
 
-export const workflowBoundaryProposalsOperation = defineOperation<string, Proposals>({
+export const workflowBoundaryProposalsOperation = defineOperation<
+  ProposalRead,
+  BoundaryProposalRead
+>({
   id: "workflows.boundary_proposals.read",
   summary: "Read the boundaries SubKit derives from what each step has really done",
   permission: "workflow:read",
   resource: { type: "workflow", param: "id" },
   effect: "read",
-  async handler(scope, id) {
-    const definition = await currentOrDraftDefinition(scope.tenant_id, id, scope.db);
-    if (!definition) return reject.notFound("workflow");
-    return proposeBoundaries(scope.db, {
-      tenant_id: scope.tenant_id,
-      workflow_id: id,
-      definition,
-    });
+  async handler(scope, { id, environment }) {
+    const principal = scope.principal;
+    if (!principal) return reject.unauthorized();
+    const derived = await readBoundaryProposals(
+      { tenant_id: scope.tenant_id, workflow_id: id, environment, viewer: principal },
+      scope.db,
+    );
+    if (!derived) return reject.notFound("workflow");
+    const { definition: _definition, ...read } = derived;
+    return read;
   },
   http: {
     method: "get",
     path: "/v1/workflows/{id}/boundary-proposals",
     tags: ["workflows"],
     params: IdParam,
+    query: ProposalQuery,
     response: ProposalSchema,
     success: { status: 200, description: "Derived from execution history; nothing is changed" },
     errors: draftFailures,
-    toInput: ({ param }) => idOf(param),
+    toInput: ({ param, query }) => ({
+      id: idOf(param),
+      ...(query as z.infer<typeof ProposalQuery>),
+    }),
     toBody: (derived) => derived,
   },
 });
@@ -255,8 +325,11 @@ export const applyWorkflowBoundaryProposalsOperation = defineOperation<ApplyInpu
       {
         tenant_id: scope.tenant_id,
         workflow_id: id,
-        expected_draft_version_id: body.expected_draft_version_id,
+        base_version_id: body.base_version_id,
+        proposals_digest: body.proposals_digest,
         ...(body.step_ids ? { step_ids: body.step_ids } : {}),
+        environment: body.environment,
+        viewer: principal,
         actor_id: principal.id,
         actor_type: principal.kind,
         request_source: scope.request_source ?? "api",
@@ -264,6 +337,11 @@ export const applyWorkflowBoundaryProposalsOperation = defineOperation<ApplyInpu
       scope.db,
     );
     if (!("applied_step_ids" in result)) {
+      if ("code" in result && result.code === "proposals_changed")
+        return reject.conflict(
+          "the proposed limits or the workflow version changed since they were read; read them again",
+          { reason: "proposals_changed" },
+        );
       if ("code" in result && result.code === "nothing_to_apply")
         return reject.badRequest(
           "nothing could be derived for this workflow: its steps have no recorded history to read",

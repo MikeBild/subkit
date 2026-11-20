@@ -19,9 +19,15 @@ import { appendMessage, insertToolCall, updateToolCallOutput } from "../persiste
 import type { ConversationReference } from "../references.ts";
 import { refreshConversationTitle, shouldRefreshTitle } from "../title.ts";
 import { conversationTurnId, markConversationTurnFailed } from "../turns.ts";
-import type { ConversationPermissionMode, TurnEvent } from "../types.ts";
+import type { ConversationPermissionMode, TaskRunMarker, TurnEvent } from "../types.ts";
 import { getConversation } from "./get.ts";
 import { type ConversationTurnOutcome, getStoredPermissionMode } from "./shared.ts";
+import {
+  assertTaskRunPermissionMode,
+  assertTaskRunWriter,
+  requireTaskRunPrincipal,
+  TaskRunLockedError,
+} from "./task-run-access.ts";
 
 export interface RequestCredentialFormEvent {
   type: "request_credential_form";
@@ -98,6 +104,9 @@ async function driveConversationTurn(
     p.locale,
   );
   if (!conv) throw new Error("conversation not found");
+  const taskRun = await assertTaskRunWriter(exec, p);
+  assertTaskRunPermissionMode(taskRun, p.permission_mode);
+  if (taskRun) return driveTaskRunTurn(p, exec, conv, taskRun);
   const effectivePermissionMode = p.permission_mode ?? getStoredPermissionMode(conv.draft);
 
   if (p.event?.type === "request_credential_form") {
@@ -125,6 +134,7 @@ async function driveConversationTurn(
       principal: p.principal,
       user_message: p.user_message,
       answer_actor: p.answer_actor,
+      permission_mode: effectivePermissionMode,
       ...(p.surface ? { surface: p.surface } : {}),
     });
     if (hit) {
@@ -150,6 +160,32 @@ async function driveConversationTurn(
     }
   }
 
+  return finishLoopTurn(p, exec, conv, effectivePermissionMode);
+}
+
+type LoadedConversation = NonNullable<Awaited<ReturnType<typeof getConversation>>>;
+
+function driveTaskRunTurn(
+  p: RunConversationTurnParams,
+  exec: Db,
+  conv: LoadedConversation,
+  taskRun: TaskRunMarker,
+): Promise<ConversationTurnOutcome> {
+  if (p.event) throw new TaskRunLockedError("Collecting a credential");
+  return finishLoopTurn(
+    { ...p, principal: requireTaskRunPrincipal(p.principal, taskRun), permission_mode: "auto" },
+    exec,
+    conv,
+    "auto",
+  );
+}
+
+async function finishLoopTurn(
+  p: RunConversationTurnParams,
+  exec: Db,
+  conv: LoadedConversation,
+  effectivePermissionMode: ConversationPermissionMode | null,
+): Promise<ConversationTurnOutcome> {
   const result = await runLoop({
     db: exec,
     tenant_id: p.tenant_id,

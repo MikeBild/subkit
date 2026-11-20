@@ -27,6 +27,7 @@ import {
   skills,
   workflows,
 } from "../db/schema/index.ts";
+import { tasks } from "../db/schema/tasks.ts";
 import { getContext } from "../logging/context.ts";
 import { workflowIdsUsingConnector } from "./connector-refs.ts";
 import type { OperatingStatusAccess } from "./operating-status.ts";
@@ -114,6 +115,7 @@ const CATALOG_TABLES = {
   knowledge_source: knowledgeSources,
   skill: skills,
   file: files,
+  task: tasks,
 } as const;
 
 export interface CategoryUsage {
@@ -133,18 +135,27 @@ function liveRows(kind: CatalogKind) {
   if (kind === "connector") return isNull(connectors.deleted_at);
   if (kind === "knowledge_source") return isNull(knowledgeSources.deleted_at);
   if (kind === "file") return isNull(files.deleted_at);
+  if (kind === "task") return eq(tasks.lifecycle, "active");
   return undefined;
+}
+
+export interface CategoryVocabularyViewer {
+  task_owner_id: string | null;
 }
 
 export async function loadCategoryVocabulary(
   tenant_id: string,
   exec?: Executor,
+  viewer?: CategoryVocabularyViewer,
 ): Promise<CategoryUsage[]> {
   const db = exec ?? getDb();
   const byCategory = new Map<string, CategoryUsage>();
   for (const kind of CATALOG_KINDS) {
     const table = CATALOG_TABLES[kind];
-    const live = liveRows(kind);
+    const live =
+      kind === "task" && viewer?.task_owner_id
+        ? and(liveRows(kind), eq(tasks.owner_id, viewer.task_owner_id))
+        : liveRows(kind);
     const rows = await db
       .select({
         category: table.category,
@@ -162,13 +173,22 @@ export async function loadCategoryVocabulary(
         aliases: [],
         revision: null,
         total: 0,
-        counts: { workflow: 0, connector: 0, knowledge_source: 0, skill: 0, file: 0, intake: 0 },
+        counts: {
+          workflow: 0,
+          connector: 0,
+          knowledge_source: 0,
+          skill: 0,
+          file: 0,
+          task: 0,
+          intake: 0,
+        },
         llm_counts: {
           workflow: 0,
           connector: 0,
           knowledge_source: 0,
           skill: 0,
           file: 0,
+          task: 0,
           intake: 0,
         },
         intake_open: { collected: 0, reviewing: 0 },
@@ -197,8 +217,24 @@ export async function loadCategoryVocabulary(
       aliases: [],
       revision: null,
       total: 0,
-      counts: { workflow: 0, connector: 0, knowledge_source: 0, skill: 0, file: 0, intake: 0 },
-      llm_counts: { workflow: 0, connector: 0, knowledge_source: 0, skill: 0, file: 0, intake: 0 },
+      counts: {
+        workflow: 0,
+        connector: 0,
+        knowledge_source: 0,
+        skill: 0,
+        file: 0,
+        task: 0,
+        intake: 0,
+      },
+      llm_counts: {
+        workflow: 0,
+        connector: 0,
+        knowledge_source: 0,
+        skill: 0,
+        file: 0,
+        task: 0,
+        intake: 0,
+      },
       intake_open: { collected: 0, reviewing: 0 },
     };
     usage.counts.intake = Number(row.total);
@@ -226,6 +262,18 @@ export async function loadCategoryVocabulary(
       { category: b.category, count: b.total },
     ),
   );
+}
+
+export async function categoryRenameAffectsTasks(
+  p: { tenant_id: string; from: string },
+  exec?: Executor,
+): Promise<boolean> {
+  const rows = await (exec ?? getDb())
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(and(eq(tasks.tenant_id, p.tenant_id), eq(tasks.category, p.from)))
+    .limit(1);
+  return rows.length > 0;
 }
 
 export async function categoryRenameAffectsIntake(
@@ -403,6 +451,7 @@ export async function renameCategory(input: RenameCategoryInput, exec?: Executor
       knowledge_source: 0,
       skill: 0,
       file: 0,
+      task: 0,
       intake: 0,
     };
     if (input.from !== input.to) {

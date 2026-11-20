@@ -2,6 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { scrubStringsDeep } from "../../../logging/scrub-secrets.ts";
 import { requestApproval } from "../../../tools/approval.ts";
 import { getWorkflowDraft } from "../../authoring-state/index.ts";
+import { getTaskRunMarker } from "../../core/draft.ts";
 import {
   authoringIntentFingerprint,
   type ConfirmIntent,
@@ -12,7 +13,7 @@ import {
   commitWorkflowAtomic,
 } from "../../persistence/commit-workflow.ts";
 import { autoPreparationProceeds, getToolPolicies } from "../../tool-policies.ts";
-import type { ConversationTool, ToolResult } from "../index.ts";
+import type { ConversationTool, ToolContext, ToolResult } from "../index.ts";
 import { resolveConversationPrincipal } from "../permission-gate.ts";
 import type { ModelCommitIntent } from "./commit-intent.ts";
 import { commitIntentSchema, describePatchOps, withApprovalHandle } from "./commit-intent.ts";
@@ -169,6 +170,10 @@ function defaultCommitIntent(args: z.infer<typeof inputSchema>): ModelCommitInte
   };
 }
 
+function askedInsideTaskRun(ctx: Pick<ToolContext, "task_run" | "getDraft">): boolean {
+  return (ctx.task_run ?? getTaskRunMarker(ctx.getDraft())) !== null;
+}
+
 const inputSchema = z
   .object({
     question: z.string().min(1),
@@ -232,7 +237,8 @@ export const askUserConfirmTool: ConversationTool = {
     if (
       ctx.permission_mode === "auto" &&
       args.destructive !== true &&
-      proposedCommitIntent === undefined
+      proposedCommitIntent === undefined &&
+      !askedInsideTaskRun(ctx)
     ) {
       return {
         ok: true,

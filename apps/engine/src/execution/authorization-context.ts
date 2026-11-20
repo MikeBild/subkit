@@ -15,6 +15,9 @@ import {
   roles,
   sessions,
   systemAccounts,
+  taskGrants,
+  taskRuns,
+  tasks,
   userIdentities,
   users,
 } from "../db/schema/index.ts";
@@ -50,6 +53,14 @@ const SourceSchema = z.discriminatedUnion("kind", [
       identity_id: z.uuid(),
       issued_at: z.iso.datetime(),
       expires_at: z.iso.datetime(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("task_run"),
+      task_id: z.uuid(),
+      task_run_id: z.uuid(),
+      grant_id: z.uuid().nullable(),
     })
     .strict(),
 ]);
@@ -242,6 +253,65 @@ async function rehydrateExternalBearer(
   return identity;
 }
 
+const OPEN_TASK_RUN_STATES: readonly string[] = ["running", "waiting", "sleeping"];
+
+function boundIds(raw: unknown): string[] {
+  return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string") : [];
+}
+
+async function rehydrateTaskRun(
+  db: Db,
+  caller: CallerContext,
+  authorization: ExecutionAuthorizationContext,
+  source: Extract<ExecutionAuthorizationContext["source"], { kind: "task_run" }>,
+  identity: ResolvedPrincipal,
+): Promise<ResolvedPrincipal> {
+  if (
+    caller.principalKind !== "user" ||
+    caller.provider !== "task" ||
+    caller.productId ||
+    !Array.isArray(authorization.allowed_workflows) ||
+    !Array.isArray(authorization.allowed_connectors)
+  )
+    refuse();
+  const [run] = await db
+    .select({
+      task_id: taskRuns.task_id,
+      state: taskRuns.state,
+      grant_id: taskRuns.grant_id,
+      owner_id: tasks.owner_id,
+      lifecycle: tasks.lifecycle,
+      paused_at: tasks.paused_at,
+      bindings: tasks.bindings,
+    })
+    .from(taskRuns)
+    .innerJoin(tasks, and(eq(tasks.tenant_id, taskRuns.tenant_id), eq(tasks.id, taskRuns.task_id)))
+    .where(and(eq(taskRuns.tenant_id, caller.tenantId), eq(taskRuns.id, source.task_run_id)))
+    .limit(1);
+  if (
+    !run ||
+    run.task_id !== source.task_id ||
+    run.owner_id !== caller.principalId ||
+    run.lifecycle !== "active" ||
+    run.paused_at !== null ||
+    !OPEN_TASK_RUN_STATES.includes(run.state) ||
+    run.grant_id !== source.grant_id
+  )
+    refuse();
+  if (run.grant_id !== null) {
+    const [grant] = await db
+      .select({ task_id: taskGrants.task_id, revoked_at: taskGrants.revoked_at })
+      .from(taskGrants)
+      .where(and(eq(taskGrants.tenant_id, caller.tenantId), eq(taskGrants.id, run.grant_id)))
+      .limit(1);
+    if (!grant || grant.task_id !== run.task_id || grant.revoked_at !== null) refuse();
+  }
+  const bindings: { workflow_ids?: unknown; connector_ids?: unknown } = run.bindings ?? {};
+  identity.allowed_workflows = boundIds(bindings.workflow_ids);
+  identity.allowed_connectors = boundIds(bindings.connector_ids);
+  return identity;
+}
+
 export async function rehydrateExecutionPrincipal(
   db: Db,
   rawCaller: unknown,
@@ -293,6 +363,8 @@ export async function rehydrateExecutionPrincipal(
     if (session.product_id) principal.product_id = session.product_id;
   } else if (source.kind === "external_bearer") {
     principal = await rehydrateExternalBearer(db, caller, source, identity);
+  } else if (source.kind === "task_run") {
+    principal = await rehydrateTaskRun(db, caller, authorization, source, identity);
   } else {
     const [token] = await db
       .select()

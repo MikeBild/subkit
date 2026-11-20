@@ -121,6 +121,7 @@ const UIMessageSchema = z
     parts: z.array(z.unknown()),
     model: z.string().nullable(),
     created_at: z.string(),
+    origin: z.enum(["task_run_continuation"]).optional(),
   })
   .openapi("UIMessage");
 
@@ -199,6 +200,7 @@ export const ConversationDetailSchema = z
               .object({
                 question: z.string(),
                 intent_kind: z.string().optional(),
+                approval_backed: z.boolean().optional(),
                 authorization_url: z.string().optional(),
                 fields: z.array(ResumeFormFieldSchema).optional(),
                 external_tool: z

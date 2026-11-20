@@ -35,7 +35,7 @@ function admissionRefusal(
 ): string | null {
   try {
     callerFromPrincipal(principal, TENANT, def.product_id, def.required_caller_kind);
-    assertExecutionPrivacySupported(requestSource, def.execution_privacy);
+    assertExecutionPrivacySupported(requestSource, def.execution_privacy, principal);
     return null;
   } catch (error) {
     return (error as { code?: string }).code ?? "unknown";
@@ -46,6 +46,13 @@ const productDef: DispatchDef = {
   product_id: "tekit",
   required_caller_kind: "user",
   execution_privacy: "sensitive",
+};
+
+const taskRunSource = {
+  kind: "task_run" as const,
+  task_id: "55555555-5555-4555-8555-555555555555",
+  task_run_id: "66666666-6666-4666-8666-666666666666",
+  grant_id: null,
 };
 
 const cases: Array<{
@@ -120,6 +127,51 @@ const cases: Array<{
     expected: "sensitive_execution_unsupported",
   },
   {
+    label: "task principal on chat for sensitive def",
+    def: { execution_privacy: "sensitive" },
+    principal: principalOf({
+      provider: "task",
+      auth_source: {
+        kind: "task_run",
+        task_id: "55555555-5555-4555-8555-555555555555",
+        task_run_id: "66666666-6666-4666-8666-666666666666",
+        grant_id: null,
+      },
+    }),
+    source: "chat",
+    expected: "sensitive_execution_unsupported",
+  },
+  ...(["queue", "scheduler", "mcp", "api"] as const).flatMap((source) => [
+    {
+      label: `task provider on ${source} for sensitive def`,
+      def: { execution_privacy: "sensitive" as const },
+      principal: principalOf({ provider: "task" }),
+      source,
+      expected: "sensitive_execution_unsupported" as const,
+    },
+    {
+      label: `task run auth source on ${source} for sensitive def`,
+      def: { execution_privacy: "sensitive" as const },
+      principal: principalOf({ auth_source: taskRunSource }),
+      source,
+      expected: "sensitive_execution_unsupported" as const,
+    },
+    {
+      label: `task principal on ${source} for plain def`,
+      def: {},
+      principal: principalOf({ provider: "task", auth_source: taskRunSource }),
+      source,
+      expected: null,
+    },
+  ]),
+  {
+    label: "task principal on chat for plain def",
+    def: {},
+    principal: principalOf({ provider: "task" }),
+    source: "chat",
+    expected: null,
+  },
+  {
     label: "cockpit user on chat for product def",
     def: productDef,
     principal: principalOf(),
@@ -137,6 +189,27 @@ describe("workflow dispatchability agrees with run admission", () => {
       );
     });
   }
+
+  test("a stored caller of the task provider is refused a sensitive run on background sources", () => {
+    const caller = callerFromPrincipal(principalOf({ provider: "task" }), TENANT);
+    for (const source of ["queue", "scheduler"] as const) {
+      expect(() => assertExecutionPrivacySupported(source, "sensitive", caller)).toThrow(
+        expect.objectContaining({ code: "sensitive_execution_unsupported" }),
+      );
+      expect(() => assertExecutionPrivacySupported(source, null, caller)).not.toThrow();
+      expect(() => assertExecutionPrivacySupported(source, "sensitive", null)).not.toThrow();
+      expect(() => assertExecutionPrivacySupported(source, "sensitive")).not.toThrow();
+    }
+  });
+
+  test("a task principal is refused a sensitive workflow even without a request source", () => {
+    expect(
+      workflowDispatchRefusal(
+        { execution_privacy: "sensitive" },
+        principalOf({ provider: "task" }),
+      ),
+    ).toBe("sensitive_execution_unsupported");
+  });
 
   test("without a request source only caller rules apply", () => {
     expect(workflowDispatchRefusal({ execution_privacy: "sensitive" }, principalOf())).toBeNull();

@@ -12,6 +12,23 @@ test("projects a policy question without its execution arguments or approval cap
     }),
   ).toEqual({ prompt: { question: "Start sign-in?", intent_kind: "execute_tool" } });
 });
+test("says that a question releases held changes without exposing the approval it is bound to", () => {
+  expect(
+    pendingPrompt({
+      question: "Send the reminder?",
+      commit_intent: {
+        kind: "execute_confirmed_tool_call",
+        payload: { approval_id: "0e7d371c-6240-4832-a335-2178652ba344" },
+      },
+    }),
+  ).toEqual({
+    prompt: {
+      question: "Send the reminder?",
+      intent_kind: "execute_confirmed_tool_call",
+      approval_backed: true,
+    },
+  });
+});
 test("projects a gated connector call's effect so a reader can phrase it in their language", () => {
   const effect = {
     connector: "Reporting API",

@@ -23,6 +23,7 @@ import {
   refreshDraftSummary,
 } from "./authoring-state/index.ts";
 import { normalizeWorkflowDraft } from "./authoring-state/normalize.ts";
+import { withStoredTaskRunMarker } from "./service/task-run-marker.ts";
 import { canonicalJson } from "./text-line-diff.ts";
 import { stepWarningSources } from "./tools/execution-diagnosis.ts";
 import type {
@@ -414,6 +415,19 @@ export async function loadDraft(
   );
 }
 
+async function storedConversationDraft(
+  tenant_id: string,
+  conversation_id: string,
+  exec: Executor,
+): Promise<unknown> {
+  const [row] = await exec
+    .select({ draft: conversations.draft })
+    .from(conversations)
+    .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)))
+    .limit(1);
+  return row?.draft;
+}
+
 export async function appendSnapshot(
   tenant_id: string,
   conversation_id: string,
@@ -430,7 +444,9 @@ export async function appendSnapshot(
       ),
     )) as Array<{ n: number }>;
   const next = (row?.n ?? 0) + 1;
-  const normalized = normalizeDraftDocument(draft);
+  const normalized = normalizeDraftDocument(
+    withStoredTaskRunMarker(draft, await storedConversationDraft(tenant_id, conversation_id, exec)),
+  );
   await exec.insert(conversationDrafts).values({
     tenant_id,
     conversation_id,
@@ -464,7 +480,10 @@ export async function undoLastSnapshot(
   await exec.delete(conversationDrafts).where(eq(conversationDrafts.id, head.id));
   const next = rows[1];
   const draft = normalizeDraftDocument(
-    (next?.snapshot as DraftDocument | undefined) ?? emptyDraft(),
+    withStoredTaskRunMarker(
+      (next?.snapshot as DraftDocument | undefined) ?? emptyDraft(),
+      await storedConversationDraft(tenant_id, conversation_id, exec),
+    ),
   );
   await exec
     .update(conversations)

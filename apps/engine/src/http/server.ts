@@ -136,6 +136,7 @@ import { registerStatsRoutes } from "./routes/stats/index.ts";
 import { registerStatusRoute } from "./routes/status.ts";
 import { registerSubscriptionRoutes } from "./routes/subscriptions.ts";
 import { registerSystemRestartRoutes } from "./routes/system-restart.ts";
+import { registerTaskRoutes } from "./routes/tasks.ts";
 import { registerTenantBrandingRoutes } from "./routes/tenant-branding.ts";
 import { registerToolApprovalRoutes } from "./routes/tool-approvals.ts";
 import { registerWorkflowRoutes } from "./routes/workflows.ts";
@@ -368,6 +369,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerConnectorDocsRoutes(app);
   registerCredentialRoutes(app);
   registerSkillRoutes(app);
+  registerTaskRoutes(app);
   registerCategoryRoutes(app);
   registerIntakeRoutes(app);
   registerKnowledgeSourceRoutes(app);

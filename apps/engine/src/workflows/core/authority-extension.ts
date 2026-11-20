@@ -6,7 +6,7 @@ type ExtensionFacts =
   | Readonly<{
       stage: "live";
       valid_from_ms: number;
-      valid_until_ms: number;
+      valid_until_ms: number | null;
       now_ms: number;
       max_runs: number | null;
       reserved_runs: number;
@@ -42,7 +42,7 @@ export function decideAuthorityExtension(facts: ExtensionFacts): ExtensionDecisi
       return { kind: facts.open_ended ? "unchanged" : "proceed" };
     case "live":
       return facts.valid_from_ms > facts.now_ms ||
-        facts.valid_until_ms <= facts.now_ms ||
+        (facts.valid_until_ms !== null && facts.valid_until_ms <= facts.now_ms) ||
         (facts.max_runs !== null && facts.reserved_runs >= facts.max_runs)
         ? {
             kind: "rejected",

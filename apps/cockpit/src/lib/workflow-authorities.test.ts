@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { untilRevokedOffer as coreUntilRevokedOffer } from "@/lib/core/authority-decision";
+import {
+  untilRevokedOffer as coreUntilRevokedOffer,
+  grantLimitOf,
+  reviewGrantAction,
+} from "@/lib/core/authority-decision";
 import { translate } from "@/lib/i18n";
 import {
   AUTHORITY_EFFECT_KEYS,
@@ -54,12 +58,74 @@ test("authority core offers a bounded approval only when it is active and writab
   expect(coreUntilRevokedOffer(authority, now, true)).toEqual({ days: 1 });
   expect(coreUntilRevokedOffer(authority, now, false)).toBeNull();
   expect(coreUntilRevokedOffer({ ...authority, revoked_at: UNTIL }, now, true)).toBeNull();
-  expect(coreUntilRevokedOffer({ ...authority, valid_until: null }, now, true)).toBeNull();
+  expect(coreUntilRevokedOffer({ ...authority, valid_until: null }, now, true)).toEqual({
+    days: null,
+  });
+  expect(coreUntilRevokedOffer({ ...authority, max_runs: null }, now, true)).toEqual({ days: 1 });
+  expect(
+    coreUntilRevokedOffer({ ...authority, valid_until: null, max_runs: null }, now, true),
+  ).toBeNull();
+  expect(
+    coreUntilRevokedOffer({ ...authority, valid_until: null, remaining_runs: 0 }, now, true),
+  ).toBeNull();
+  expect(
+    coreUntilRevokedOffer({ ...authority, valid_until: null, revoked_at: UNTIL }, now, true),
+  ).toBeNull();
+  expect(coreUntilRevokedOffer({ ...authority, valid_until: null }, now, false)).toBeNull();
   expect(coreUntilRevokedOffer({ ...authority, state: "superseded" }, now, true)).toBeNull();
   expect(
     coreUntilRevokedOffer({ ...authority, valid_until: "2026-01-04T00:00:00.000Z" }, now, true),
   ).toEqual({ days: 3 });
 });
+
+describe("the grant the chat review card asks for", () => {
+  const manual = {
+    environment: "prod" as const,
+    valid_from: "2026-01-01T00:00:00.000Z",
+    valid_until: UNTIL,
+    max_runs: 1,
+  };
+  test("starts at until revoked, whatever finite bounds were suggested", () => {
+    expect(reviewGrantAction(manual, DEFAULT_GRANT_LIMIT)).toEqual({
+      environment: "prod",
+      valid_from: manual.valid_from,
+      valid_until: null,
+      max_runs: null,
+    });
+    const hooked = { ...manual, valid_until: "2026-01-31T00:00:00.000Z", max_runs: 100 };
+    expect(reviewGrantAction(hooked, "until_revoked")).toEqual(
+      reviewGrantAction(manual, "until_revoked"),
+    );
+  });
+  test("a chosen duration counts from the suggested start and carries no run limit", () => {
+    expect(reviewGrantAction({ ...manual, environment: "dev" }, "7d")).toEqual({
+      environment: "dev",
+      valid_from: manual.valid_from,
+      valid_until: "2026-01-08T00:00:00.000Z",
+      max_runs: null,
+    });
+    expect(reviewGrantAction(manual, "30d")).toMatchObject({
+      valid_until: "2026-01-31T00:00:00.000Z",
+      max_runs: null,
+    });
+  });
+  test("an unreadable start yields no grant", () => {
+    expect(reviewGrantAction({ ...manual, valid_from: "soon" }, "until_revoked")).toBeNull();
+    expect(reviewGrantAction({ ...manual, valid_from: "soon" }, "7d")).toBeNull();
+  });
+  test("a selected grant maps back to the choice that shows it", () => {
+    const from = manual.valid_from;
+    expect(grantLimitOf({ valid_from: from, valid_until: null })).toBe("until_revoked");
+    expect(grantLimitOf({ valid_from: from })).toBe("until_revoked");
+    expect(grantLimitOf({ valid_from: from, valid_until: UNTIL })).toBe("7d");
+    expect(grantLimitOf({ valid_from: from, valid_until: "2026-01-08T00:00:00.000Z" })).toBe("7d");
+    expect(grantLimitOf({ valid_from: from, valid_until: "2026-01-08T00:00:00.001Z" })).toBe("30d");
+    expect(grantLimitOf({ valid_from: from, valid_until: "2026-01-31T00:00:00.000Z" })).toBe("30d");
+    for (const limit of ["until_revoked", "7d", "30d"] as const)
+      expect(grantLimitOf(reviewGrantAction(manual, limit)!)).toBe(limit);
+  });
+});
+
 const during = Date.parse("2026-01-01T12:00:00.000Z");
 
 const preview: WorkflowAuthorityPreview = {

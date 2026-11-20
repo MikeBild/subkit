@@ -2,6 +2,7 @@ import {
   type ConversationReference,
   isConversationReferenceType,
 } from "@shared/conversation-reference.ts";
+import { messageOrigin } from "./task-run-continuation.ts";
 import type {
   ContentPart,
   ConversationMessageRecord,
@@ -49,12 +50,14 @@ export function toMessageParts(
     }
   }
 
+  const origin = messageOrigin(message.content);
   return {
     id: message.id,
     role: message.role,
     parts,
     model: message.model,
     created_at: message.created_at,
+    ...(origin ? { origin } : {}),
   };
 }
 

@@ -27,6 +27,7 @@ test("access mechanisms retain distinct names", () => {
     mcp_oauth: "mcpOAuth",
     token_exchange: "tokenExchange",
     external_bearer: "externalBearer",
+    task_run: "taskRun",
     portal_token: "portalToken",
   };
   for (const [access, label] of Object.entries(expected)) {

@@ -72,6 +72,14 @@ describe("conversation tools — registration", () => {
   ] as const;
 
   const EXPECTED_EXTENSION_TOOLS = [
+    "list_tasks",
+    "find_task",
+    "get_task",
+    "get_task_run",
+    "run_task",
+    "abort_task_run",
+    "save_task",
+    "schedule_task_check",
     "load_skill",
     "get_raw_result",
     "test_rbac_expression",

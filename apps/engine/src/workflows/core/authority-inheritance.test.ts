@@ -287,3 +287,106 @@ test("effect authority covers the complete lattice and unknown operations requir
     }
   }
 });
+
+const TOOL_TARGET = "https://tools.example.test/mcp#search";
+const toolBoundary = (over: Record<string, unknown> = {}) => ({
+  server: "https://tools.example.test/mcp",
+  tool: "search",
+  effect: "read",
+  variables: { "input.q": { enum: ["alpha"] } },
+  arguments: [{ path: ["q"], var: "input.q" }],
+  fixed_arguments_digest: "1".repeat(64),
+  max_calls: 2,
+  descriptor: {
+    name: "search",
+    annotations: { readOnlyHint: true },
+    input_schema_digest: "2".repeat(64),
+    digest: "3".repeat(64),
+  },
+  ...over,
+});
+const toolEffect = (step_id: string, over: Record<string, unknown> = {}, kind = "read") =>
+  effect(step_id, {
+    driver: "mcp",
+    target: TOOL_TARGET,
+    operation: "tools/call:search",
+    effect: kind,
+    mcp: toolBoundary(over),
+  } as Partial<Effect>);
+
+test("an identical tool boundary carries the approval forward", () => {
+  expect(growth([toolEffect("granted")], [toolEffect("next")]).growth).toEqual([]);
+});
+
+test("every difference in a tool boundary is a changed boundary", () => {
+  for (const changed of [
+    { max_calls: 3 },
+    { max_calls: 1 },
+    { variables: { "input.q": { enum: ["alpha", "beta"] } } },
+    { variables: { "input.q": { class: "identifier" } } },
+    { fixed_arguments_digest: "9".repeat(64) },
+    { arguments: [{ path: ["query"], var: "input.q" }] },
+    {
+      descriptor: {
+        name: "search",
+        annotations: { readOnlyHint: true },
+        input_schema_digest: "8".repeat(64),
+        digest: "7".repeat(64),
+      },
+    },
+    {
+      descriptor: {
+        name: "search",
+        annotations: {},
+        input_schema_digest: "2".repeat(64),
+        digest: "6".repeat(64),
+      },
+    },
+  ])
+    expect(growth([toolEffect("granted")], [toolEffect("next", changed)]).growth).toEqual([
+      { kind: "changed_boundary", connector_id: connector, target: TOOL_TARGET, effect: "read" },
+    ]);
+});
+
+test("a tool boundary that appears or disappears is a changed boundary", () => {
+  const bare = effect("bare", {
+    driver: "mcp",
+    target: TOOL_TARGET,
+    operation: "tools/call:search",
+  } as Partial<Effect>);
+  expect(growth([bare], [toolEffect("next")]).growth).toHaveLength(1);
+  expect(growth([toolEffect("granted")], [bare]).growth).toHaveLength(1);
+});
+
+test("a tool call stated as a read gets no relaxed read inheritance", () => {
+  const tool = (id: string, max_retries: number) => ({
+    id,
+    kind: "request",
+    connector_id: connector,
+    mcp: { operation: "call_tool", tool: "search", arguments: { q: "alpha" } },
+    max_retries,
+  });
+  const result = projectBoundaryGrowth(
+    manifest(ids.granted, [toolEffect("granted", { max_calls: 5 })]),
+    manifest(ids.next, [toolEffect("next", { max_calls: 2 })]),
+    evidence([tool("granted", 0)], [tool("next", 0)]),
+  );
+  expect(result.growth).toEqual([
+    { kind: "changed_boundary", connector_id: connector, target: TOOL_TARGET, effect: "read" },
+  ]);
+  const same = projectBoundaryGrowth(
+    manifest(ids.granted, [toolEffect("granted")]),
+    manifest(ids.next, [toolEffect("next")]),
+    evidence([tool("granted", 0)], [tool("next", 3)]),
+  );
+  expect(same.growth).toEqual([]);
+  expect(same.relaxed.size).toBe(0);
+});
+
+test("a tool call stated as a write is not covered by one approved as a read", () => {
+  expect(
+    growth([toolEffect("granted")], [toolEffect("next", { effect: "write" }, "write")]).growth,
+  ).toEqual([
+    { kind: "changed_boundary", connector_id: connector, target: TOOL_TARGET, effect: "write" },
+  ]);
+});

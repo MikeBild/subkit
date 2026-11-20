@@ -13,6 +13,7 @@ import {
 } from "../db/schema/index.ts";
 import { can } from "../rbac/evaluator.ts";
 import { createScheduleLocked } from "../scheduler/repo.ts";
+import { inboundHookDeliveryRate } from "../scheduler/workflow-automation-view.ts";
 import { suggestAuthorityBounds } from "../workflows/authority-suggestions.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
 import { RECEIPT_PURGE_BATCH, receiptsToPurge } from "../workflows/core/review-receipt.ts";
@@ -37,8 +38,10 @@ import { readReviewTriggerState } from "../workflows/review-triggers.ts";
 import { appendSnapshot, loadDraft } from "./draft.ts";
 import { resolveElicitation } from "./elicitations.ts";
 import { commitWorkflowAtomic, workflowDefFromDraft } from "./persistence/commit-workflow.ts";
+import { readTaskRunScope, TaskRunLockedError } from "./service/task-run-access.ts";
 import type { ToolContext } from "./tools/index.ts";
 import type { DraftDocument } from "./types.ts";
+import { assertReviewedToolPinsCurrent } from "./workflow-review-tool-pins.ts";
 
 const REVIEW_ERROR_STATUS: Record<string, number> = {
   authority_permission_denied: 403,
@@ -72,6 +75,16 @@ export class WorkflowReviewError extends Error {
 
 function fail(code: string, message: string): never {
   throw new WorkflowReviewError(code, message);
+}
+
+function toolPinRefusal(error: unknown): never {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (
+    !(error instanceof WorkflowReviewError) &&
+    (code === "mcp_tool_changed" || code === "mcp_tool_unavailable")
+  )
+    fail(code, (error as Error).message);
+  throw error;
 }
 
 function isPendingWorkflowSave(input: unknown): boolean {
@@ -116,6 +129,14 @@ function receiptView(row: typeof workflowReviewReceipts.$inferSelect): WorkflowR
   });
 }
 
+async function refuseInTaskRun(
+  db: Db,
+  p: { tenant_id: string; conversation_id: string },
+): Promise<void> {
+  if (await readTaskRunScope(db, p.tenant_id, p.conversation_id))
+    throw new TaskRunLockedError("Reviewing or activating a workflow");
+}
+
 export async function prepareWorkflowReview(
   p: {
     tenant_id: string;
@@ -126,6 +147,7 @@ export async function prepareWorkflowReview(
   },
   db: Db,
 ): Promise<WorkflowReviewReceipt> {
+  await refuseInTaskRun(db, p);
   const input = PrepareWorkflowReviewSchema.parse(p.raw);
   if (input.activate !== Boolean(input.grant) || (input.schedule && !input.grant))
     fail(
@@ -236,11 +258,19 @@ export async function prepareWorkflowReview(
         ...(cron ? { cron } : {}),
         ...(timezone ? { timezone } : {}),
       }));
+    const suggestedAt = new Date();
+    const observedHooks = saved
+      ? await inboundHookDeliveryRate(p.tenant_id, saved.id, tx, suggestedAt)
+      : null;
     const suggestedBounds = suggestAuthorityBounds(
-      new Date(),
+      suggestedAt,
       manifest.affected_triggers.flatMap((entry) =>
         entry.cron && entry.timezone ? [{ cron: entry.cron, timezone: entry.timezone }] : [],
       ),
+      observedHooks ??
+        (manifest.affected_triggers.some((entry) => entry.kind === "webhook")
+          ? { deliveries: 0, window_days: 0 }
+          : null),
     );
     const { valid_from, valid_until, max_runs } = suggestedBounds;
     const snapshot = {
@@ -398,6 +428,7 @@ export async function finalizeWorkflowReview(
   },
   db: Db,
 ): Promise<WorkflowReviewReceipt> {
+  await refuseInTaskRun(db, p);
   const input = FinalizeWorkflowReviewSchema.parse(p.raw);
   const session = await browserSessionForPrincipal(p.request, p.principal);
   if (!session) fail("human_session_required", "a signed human browser session is required");
@@ -406,256 +437,275 @@ export async function finalizeWorkflowReview(
     !(await verifyBrowserCsrf(p.request.headers.get("x-subkit-csrf") ?? "", session))
   )
     fail("csrf_rejected", "a valid browser CSRF proof is required");
-  return db.transaction(async (tx) => {
-    await lockLiveSession(tx, session);
-    const [conversation] = await tx
-      .select({ id: conversations.id })
-      .from(conversations)
-      .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
-      .for("update")
-      .limit(1);
-    if (!conversation) fail("conversation_not_found", "conversation unavailable");
-    const [receipt] = await tx
-      .select()
-      .from(workflowReviewReceipts)
-      .where(
-        and(
-          eq(workflowReviewReceipts.tenant_id, p.tenant_id),
-          eq(workflowReviewReceipts.conversation_id, p.conversation_id),
-          eq(workflowReviewReceipts.id, p.receipt_id),
-        ),
-      )
-      .for("update")
-      .limit(1);
-    if (!receipt) fail("workflow_review_not_found", "review receipt unavailable");
-    if (receipt.prepared_by !== p.principal.id || receipt.session_id !== session.session_id)
-      fail("workflow_review_forbidden", "review receipt belongs to another signed-in session");
-    const permission = await can(tx, {
-      tenant_id: p.tenant_id,
-      principal: p.principal,
-      permission: "workflow:write",
-      ...(receipt.workflow_id ? { resource: { type: "workflow", id: receipt.workflow_id } } : {}),
-    });
-    if (!permission.allow)
-      fail("authority_permission_denied", "workflow:write permission is required");
-    if (receipt.snapshot_digest !== input.expected_snapshot_digest)
-      fail("workflow_review_stale", "the review changed; prepare it again");
-    if (receipt.status === "completed") return receiptView(receipt);
-    const clock = await tx.execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
-    const clockValue = clock.rows[0]?.now;
-    const now = clockValue ? new Date(clockValue) : null;
-    if (!now || !Number.isFinite(now.getTime()) || receipt.expires_at <= now)
-      fail("workflow_review_expired", "the review expired; prepare it again");
-
-    const snapshot = receipt.snapshot as Record<string, unknown>;
-    const elicitationId =
-      typeof snapshot.elicitation_id === "string" ? snapshot.elicitation_id : null;
-    if (!elicitationId) fail("workflow_review_stale", "the review is incomplete; prepare it again");
-    const [elicitation] = await tx
-      .select({
-        id: conversationElicitations.id,
-        tool_call_id: conversationElicitations.tool_call_id,
-      })
-      .from(conversationElicitations)
-      .where(
-        and(
-          eq(conversationElicitations.tenant_id, p.tenant_id),
-          eq(conversationElicitations.conversation_id, p.conversation_id),
-          eq(conversationElicitations.id, elicitationId),
-          eq(conversationElicitations.status, "pending"),
-          sql`${conversationElicitations.input}->'commit_intent'->>'kind' = 'save_workflow_draft'`,
-        ),
-      )
-      .for("update")
-      .limit(1);
-    if (!elicitation)
-      fail("workflow_review_stale", "the confirmation changed; prepare the review again");
-    const latest = await loadDraft(p.tenant_id, p.conversation_id, tx, p.principal);
-    if (workflowJsonDigest(latest) !== snapshot.conversation_draft_digest)
-      fail("workflow_review_stale", "the draft changed; prepare it again");
-    const trigger_state = await readReviewTriggerState(p.tenant_id, receipt.workflow_id, tx, true);
-    if (workflowJsonDigest(trigger_state) !== workflowJsonDigest(snapshot.trigger_state ?? []))
-      fail("workflow_review_stale", "affected triggers changed; prepare the review again");
-    const fullDraft = latest as DraftDocument;
-    let savedDraft = fullDraft;
-    const ctx: ToolContext = {
-      db: tx,
+  if (!input.save_only)
+    await assertReviewedToolPinsCurrent(db, {
       tenant_id: p.tenant_id,
       conversation_id: p.conversation_id,
-      actor_id: p.principal.id,
+      receipt_id: p.receipt_id,
       principal: p.principal,
-      connector_id: null,
-      workflow_id: receipt.workflow_id,
-      engineClient: {} as ToolContext["engineClient"],
-      getDraft: () => savedDraft,
-      setDraft: async (next) => {
-        savedDraft = next;
-        await appendSnapshot(p.tenant_id, p.conversation_id, next, tx);
-      },
-      permission_mode: "ask",
-    };
-    const saved = await commitWorkflowAtomic({
-      ctx,
-      skipPriorApprovalCheck: true,
-      expected_draft_version_id:
-        typeof snapshot.expected_draft_version_id === "string"
-          ? snapshot.expected_draft_version_id
-          : null,
-      reason: "workflow_review_finalized",
-    });
-    if (!saved.ok)
-      fail(
-        saved.error_code ?? "workflow_review_save_failed",
-        saved.message ?? "workflow draft could not be saved",
-      );
-    const result = (saved.data ?? {}) as Record<string, unknown>;
-    const workflow_id =
-      typeof result.workflow_id === "string" ? result.workflow_id : saved.committed_workflow_id;
-    const workflow_version_id =
-      typeof result.workflow_version_id === "string" ? result.workflow_version_id : null;
-    if (!workflow_id || !workflow_version_id)
-      fail("workflow_review_save_failed", "save returned no workflow");
-
-    const actions = snapshot.actions as {
-      activate?: boolean;
-      grant?: {
-        environment: "dev" | "prod";
-        valid_from: string;
-        valid_until?: string | null;
-        max_runs?: number | null;
-      } | null;
-      schedule?: { cron: string; timezone: string; input?: unknown; paused?: boolean } | null;
-    };
-    if (actions.activate !== Boolean(actions.grant) || (actions.schedule && !actions.grant))
-      fail(
-        "workflow_review_actions_invalid",
-        "a schedule requires activation and a bounded execution authority",
-      );
-    const reviewedManifest = await resolveWorkflowReviewManifest(
-      {
-        tenant_id: p.tenant_id,
-        workflow_id,
-        definition: snapshot.saved_definition,
-        environment: actions.grant?.environment ?? "prod",
-      },
-      tx,
-    );
-    if (reviewedManifest.digest !== snapshot.manifest_digest)
-      fail("workflow_review_stale", "the reviewed effects changed; prepare the review again");
-    let authority_id: string | null = null;
-    const manifest = await previewWorkflowAuthority(
-      {
-        tenant_id: p.tenant_id,
-        workflow_id,
-        workflow_version_id,
-        execution_environment: actions.grant?.environment ?? "prod",
-      },
-      tx,
-    );
-    if (workflowReviewBoundaryDigest(manifest.manifest) !== snapshot.manifest_digest)
-      fail("workflow_review_stale", "the saved effects differ from the reviewed effects");
-    if (!input.save_only && actions.grant) {
-      const granted = await grantWorkflowAuthority(
-        workflow_id,
-        {
-          workflow_version_id,
-          expected_manifest_digest: manifest.digest,
-          execution_environment: actions.grant.environment,
-          valid_from: actions.grant.valid_from,
-          ...(actions.grant.valid_until !== undefined
-            ? { valid_until: actions.grant.valid_until }
-            : {}),
-          ...(actions.grant.max_runs !== undefined ? { max_runs: actions.grant.max_runs } : {}),
-          ...(actions.activate
-            ? {
-                activation: {
-                  expected_current_version_id: snapshot.expected_current_version_id ?? null,
-                },
-              }
-            : {}),
-          conversation_id: p.conversation_id,
-        },
-        { db: tx as unknown as Db, principal: p.principal, request: p.request },
-      );
-      authority_id = granted.id;
-    } else if (!input.save_only && actions.activate) {
-      await activateWorkflowDraftLocked(
-        tx,
-        workflow_id,
-        {
-          workflow_version_id,
-          expected_current_version_id:
-            typeof snapshot.expected_current_version_id === "string"
-              ? snapshot.expected_current_version_id
-              : null,
-          expected_manifest_digest: manifest.digest,
-          execution_environment: "prod",
-          conversation_id: p.conversation_id,
-        },
-        p.principal,
-      );
-    }
-    let schedule_id: string | null = null;
-    if (!input.save_only && actions.schedule) {
-      const schedule = await createScheduleLocked(tx, {
-        tenant_id: p.tenant_id,
-        workflow_id,
-        cron: actions.schedule.cron,
-        timezone: actions.schedule.timezone,
-        ...(actions.schedule.input !== undefined ? { input: actions.schedule.input } : {}),
-        ...(actions.schedule.paused !== undefined ? { paused: actions.schedule.paused } : {}),
-        execution_mode: actions.grant?.environment ?? "prod",
-      });
-      schedule_id = schedule.row.id;
-    }
-    const [completed] = await tx
-      .update(workflowReviewReceipts)
-      .set({
-        workflow_id,
-        authority_id,
-        schedule_id,
-        status: "completed",
-        completed_at: now,
-        updated_at: now,
-      })
-      .where(eq(workflowReviewReceipts.id, receipt.id))
-      .returning();
-    if (!completed) throw new Error("review receipt completion failed");
-    await purgeSpentReviewReceipts(tx, p.tenant_id, now, completed.id);
-    const resolved = await resolveElicitation(
-      {
-        tenant_id: p.tenant_id,
-        id: elicitation.id,
-        output: { confirmed: true, receipt_id: receipt.id, workflow_id },
-        decided_by: { kind: "user", id: p.principal.id },
-      },
-      tx,
-    );
-    if (resolved.kind !== "resolved")
-      fail("workflow_review_stale", "the confirmation changed; prepare the review again");
-    if (elicitation.tool_call_id) {
-      await tx
-        .update(conversationToolCalls)
-        .set({
-          output: {
-            ok: true,
-            data: { workflow_id, workflow_version_id, review_receipt_id: receipt.id },
-          },
-          outcome: "ok",
-        })
+      session_id: session.session_id,
+    }).catch(toolPinRefusal);
+  return db
+    .transaction(async (tx) => {
+      await lockLiveSession(tx, session);
+      const [conversation] = await tx
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(
+          and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)),
+        )
+        .for("update")
+        .limit(1);
+      if (!conversation) fail("conversation_not_found", "conversation unavailable");
+      const [receipt] = await tx
+        .select()
+        .from(workflowReviewReceipts)
         .where(
           and(
-            eq(conversationToolCalls.tenant_id, p.tenant_id),
-            eq(conversationToolCalls.id, elicitation.tool_call_id),
+            eq(workflowReviewReceipts.tenant_id, p.tenant_id),
+            eq(workflowReviewReceipts.conversation_id, p.conversation_id),
+            eq(workflowReviewReceipts.id, p.receipt_id),
           ),
-        );
-    }
-    await tx
-      .update(conversations)
-      .set({ status: "active", updated_at: now })
-      .where(
-        and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)),
+        )
+        .for("update")
+        .limit(1);
+      if (!receipt) fail("workflow_review_not_found", "review receipt unavailable");
+      if (receipt.prepared_by !== p.principal.id || receipt.session_id !== session.session_id)
+        fail("workflow_review_forbidden", "review receipt belongs to another signed-in session");
+      const permission = await can(tx, {
+        tenant_id: p.tenant_id,
+        principal: p.principal,
+        permission: "workflow:write",
+        ...(receipt.workflow_id ? { resource: { type: "workflow", id: receipt.workflow_id } } : {}),
+      });
+      if (!permission.allow)
+        fail("authority_permission_denied", "workflow:write permission is required");
+      if (receipt.snapshot_digest !== input.expected_snapshot_digest)
+        fail("workflow_review_stale", "the review changed; prepare it again");
+      if (receipt.status === "completed") return receiptView(receipt);
+      const clock = await tx.execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
+      const clockValue = clock.rows[0]?.now;
+      const now = clockValue ? new Date(clockValue) : null;
+      if (!now || !Number.isFinite(now.getTime()) || receipt.expires_at <= now)
+        fail("workflow_review_expired", "the review expired; prepare it again");
+
+      const snapshot = receipt.snapshot as Record<string, unknown>;
+      const elicitationId =
+        typeof snapshot.elicitation_id === "string" ? snapshot.elicitation_id : null;
+      if (!elicitationId)
+        fail("workflow_review_stale", "the review is incomplete; prepare it again");
+      const [elicitation] = await tx
+        .select({
+          id: conversationElicitations.id,
+          tool_call_id: conversationElicitations.tool_call_id,
+        })
+        .from(conversationElicitations)
+        .where(
+          and(
+            eq(conversationElicitations.tenant_id, p.tenant_id),
+            eq(conversationElicitations.conversation_id, p.conversation_id),
+            eq(conversationElicitations.id, elicitationId),
+            eq(conversationElicitations.status, "pending"),
+            sql`${conversationElicitations.input}->'commit_intent'->>'kind' = 'save_workflow_draft'`,
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!elicitation)
+        fail("workflow_review_stale", "the confirmation changed; prepare the review again");
+      const latest = await loadDraft(p.tenant_id, p.conversation_id, tx, p.principal);
+      if (workflowJsonDigest(latest) !== snapshot.conversation_draft_digest)
+        fail("workflow_review_stale", "the draft changed; prepare it again");
+      const trigger_state = await readReviewTriggerState(
+        p.tenant_id,
+        receipt.workflow_id,
+        tx,
+        true,
       );
-    return receiptView(completed);
-  });
+      if (workflowJsonDigest(trigger_state) !== workflowJsonDigest(snapshot.trigger_state ?? []))
+        fail("workflow_review_stale", "affected triggers changed; prepare the review again");
+      const fullDraft = latest as DraftDocument;
+      let savedDraft = fullDraft;
+      const ctx: ToolContext = {
+        db: tx,
+        tenant_id: p.tenant_id,
+        conversation_id: p.conversation_id,
+        actor_id: p.principal.id,
+        principal: p.principal,
+        connector_id: null,
+        workflow_id: receipt.workflow_id,
+        engineClient: {} as ToolContext["engineClient"],
+        getDraft: () => savedDraft,
+        setDraft: async (next) => {
+          savedDraft = next;
+          await appendSnapshot(p.tenant_id, p.conversation_id, next, tx);
+        },
+        permission_mode: "ask",
+      };
+      const saved = await commitWorkflowAtomic({
+        ctx,
+        skipPriorApprovalCheck: true,
+        expected_draft_version_id:
+          typeof snapshot.expected_draft_version_id === "string"
+            ? snapshot.expected_draft_version_id
+            : null,
+        reason: "workflow_review_finalized",
+      });
+      if (!saved.ok)
+        fail(
+          saved.error_code ?? "workflow_review_save_failed",
+          saved.message ?? "workflow draft could not be saved",
+        );
+      const result = (saved.data ?? {}) as Record<string, unknown>;
+      const workflow_id =
+        typeof result.workflow_id === "string" ? result.workflow_id : saved.committed_workflow_id;
+      const workflow_version_id =
+        typeof result.workflow_version_id === "string" ? result.workflow_version_id : null;
+      if (!workflow_id || !workflow_version_id)
+        fail("workflow_review_save_failed", "save returned no workflow");
+
+      const actions = snapshot.actions as {
+        activate?: boolean;
+        grant?: {
+          environment: "dev" | "prod";
+          valid_from: string;
+          valid_until?: string | null;
+          max_runs?: number | null;
+        } | null;
+        schedule?: { cron: string; timezone: string; input?: unknown; paused?: boolean } | null;
+      };
+      if (actions.activate !== Boolean(actions.grant) || (actions.schedule && !actions.grant))
+        fail(
+          "workflow_review_actions_invalid",
+          "a schedule requires activation and a bounded execution authority",
+        );
+      const reviewedManifest = await resolveWorkflowReviewManifest(
+        {
+          tenant_id: p.tenant_id,
+          workflow_id,
+          definition: snapshot.saved_definition,
+          environment: actions.grant?.environment ?? "prod",
+        },
+        tx,
+      );
+      if (reviewedManifest.digest !== snapshot.manifest_digest)
+        fail("workflow_review_stale", "the reviewed effects changed; prepare the review again");
+      let authority_id: string | null = null;
+      const manifest = await previewWorkflowAuthority(
+        {
+          tenant_id: p.tenant_id,
+          workflow_id,
+          workflow_version_id,
+          execution_environment: actions.grant?.environment ?? "prod",
+        },
+        tx,
+      );
+      if (workflowReviewBoundaryDigest(manifest.manifest) !== snapshot.manifest_digest)
+        fail("workflow_review_stale", "the saved effects differ from the reviewed effects");
+      if (!input.save_only && actions.grant) {
+        const granted = await grantWorkflowAuthority(
+          workflow_id,
+          {
+            workflow_version_id,
+            expected_manifest_digest: manifest.digest,
+            execution_environment: actions.grant.environment,
+            valid_from: actions.grant.valid_from,
+            ...(actions.grant.valid_until !== undefined
+              ? { valid_until: actions.grant.valid_until }
+              : {}),
+            ...(actions.grant.max_runs !== undefined ? { max_runs: actions.grant.max_runs } : {}),
+            ...(actions.activate
+              ? {
+                  activation: {
+                    expected_current_version_id: snapshot.expected_current_version_id ?? null,
+                  },
+                }
+              : {}),
+            conversation_id: p.conversation_id,
+          },
+          { db: tx as unknown as Db, principal: p.principal, request: p.request },
+          { tool_pins: "compared" },
+        );
+        authority_id = granted.id;
+      } else if (!input.save_only && actions.activate) {
+        await activateWorkflowDraftLocked(
+          tx,
+          workflow_id,
+          {
+            workflow_version_id,
+            expected_current_version_id:
+              typeof snapshot.expected_current_version_id === "string"
+                ? snapshot.expected_current_version_id
+                : null,
+            expected_manifest_digest: manifest.digest,
+            execution_environment: "prod",
+            conversation_id: p.conversation_id,
+          },
+          p.principal,
+        );
+      }
+      let schedule_id: string | null = null;
+      if (!input.save_only && actions.schedule) {
+        const schedule = await createScheduleLocked(tx, {
+          tenant_id: p.tenant_id,
+          workflow_id,
+          cron: actions.schedule.cron,
+          timezone: actions.schedule.timezone,
+          ...(actions.schedule.input !== undefined ? { input: actions.schedule.input } : {}),
+          ...(actions.schedule.paused !== undefined ? { paused: actions.schedule.paused } : {}),
+          execution_mode: actions.grant?.environment ?? "prod",
+        });
+        schedule_id = schedule.row.id;
+      }
+      const [completed] = await tx
+        .update(workflowReviewReceipts)
+        .set({
+          workflow_id,
+          authority_id,
+          schedule_id,
+          status: "completed",
+          completed_at: now,
+          updated_at: now,
+        })
+        .where(eq(workflowReviewReceipts.id, receipt.id))
+        .returning();
+      if (!completed) throw new Error("review receipt completion failed");
+      await purgeSpentReviewReceipts(tx, p.tenant_id, now, completed.id);
+      const resolved = await resolveElicitation(
+        {
+          tenant_id: p.tenant_id,
+          id: elicitation.id,
+          output: { confirmed: true, receipt_id: receipt.id, workflow_id },
+          decided_by: { kind: "user", id: p.principal.id },
+        },
+        tx,
+      );
+      if (resolved.kind !== "resolved")
+        fail("workflow_review_stale", "the confirmation changed; prepare the review again");
+      if (elicitation.tool_call_id) {
+        await tx
+          .update(conversationToolCalls)
+          .set({
+            output: {
+              ok: true,
+              data: { workflow_id, workflow_version_id, review_receipt_id: receipt.id },
+            },
+            outcome: "ok",
+          })
+          .where(
+            and(
+              eq(conversationToolCalls.tenant_id, p.tenant_id),
+              eq(conversationToolCalls.id, elicitation.tool_call_id),
+            ),
+          );
+      }
+      await tx
+        .update(conversations)
+        .set({ status: "active", updated_at: now })
+        .where(
+          and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)),
+        );
+      return receiptView(completed);
+    })
+    .catch(toolPinRefusal);
 }

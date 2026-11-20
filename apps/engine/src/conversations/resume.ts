@@ -1,6 +1,7 @@
 import { refreshDraftSummary, WORKFLOW_BINDING_TOOL } from "./authoring-state/index.ts";
 import type { ResumeFormField } from "./resume-form.ts";
 import { resumeFormFields } from "./resume-form.ts";
+import { approvalHandleFromElicitationInput } from "./tools/ask-user/commit-intent.ts";
 import type { ConversationRecord, DraftDocument, WorkflowDraftPreviewSummary } from "./types.ts";
 
 type ConnectorProbe = NonNullable<NonNullable<DraftDocument["connector"]>["latest_probe"]>;
@@ -33,6 +34,7 @@ export interface ResumeSummary {
     prompt?: {
       question: string;
       intent_kind?: string;
+      approval_backed?: boolean;
       authorization_url?: string;
       fields?: ResumeFormField[];
       external_tool?: ExternalToolSubject;
@@ -437,6 +439,7 @@ export function pendingPrompt(
   prompt?: {
     question: string;
     intent_kind?: string;
+    approval_backed?: boolean;
     authorization_url?: string;
     fields?: ResumeFormField[];
     external_tool?: ExternalToolSubject;
@@ -478,6 +481,7 @@ export function pendingPrompt(
       question: value.question,
       ...(fields ? { fields } : {}),
       ...(typeof intent?.kind === "string" ? { intent_kind: intent.kind } : {}),
+      ...(approvalHandleFromElicitationInput(input) ? { approval_backed: true } : {}),
       ...(authorizationUrl ? { authorization_url: authorizationUrl } : {}),
       ...(externalTool ? { external_tool: externalTool } : {}),
       ...(effect ? { effect } : {}),

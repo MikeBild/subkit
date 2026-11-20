@@ -6,6 +6,7 @@ const RESOURCE_NAME_FIELDS: Readonly<Record<string, readonly string[]>> = {
   knowledge_source: ["name"],
   skill: ["title", "name"],
   file: ["filename"],
+  task: ["name"],
   user: ["email"],
   system_account: ["name"],
   group: ["name"],

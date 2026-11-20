@@ -300,6 +300,7 @@ export function mcpEgressInput(p: {
 }
 
 export async function invokeMcpConnectorCall(p: {
+  before_call?: (tool: RemoteToolDescriptor | null) => Promise<void>;
   on_dispatch?: () => void;
   on_credential_use?: (snapshot: CredentialUseSnapshot) => Promise<void>;
   db: Db;
@@ -315,6 +316,7 @@ export async function invokeMcpConnectorCall(p: {
     p.call.operation === "call_tool" ? buildMcpToolName(p.connector.slug, p.call.tool) : undefined;
   const cfg = parseMcpConnectorConfig(p.connector);
   const res = await invokeRemoteTool({
+    ...(p.before_call ? { before_call: p.before_call } : {}),
     ...(p.on_dispatch ? { on_dispatch: p.on_dispatch } : {}),
     ...(p.on_credential_use ? { on_credential_use: p.on_credential_use } : {}),
     db: p.db,

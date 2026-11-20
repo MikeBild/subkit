@@ -105,7 +105,8 @@ export const chatEn = {
   "chat.mode.plan": "Plan only",
   "chat.mode.description.auto":
     "Prepares drafts without asking; changes and live runs stay guarded.",
-  "chat.mode.description.ask": "Asks before saving anything and before a live run.",
+  "chat.mode.description.ask":
+    "Asks before saving anything and before a live run that no approval covers.",
   "chat.mode.description.plan": "Plans and proposes; asks like “Asks first” before any step.",
   "chat.mode.explain": "What does this mean?",
   "chat.mode.yolo": "Explicit unrestricted exception",
@@ -453,6 +454,7 @@ export const chatEn = {
   "chat.mode.gate.dangerous": "deleting, overwriting and writing to outside systems",
   "chat.mode.gate.inlineCredential": "storing credentials pasted into the chat",
   "chat.mode.gate.liveRuns": "running a workflow live",
+  "chat.mode.gate.liveRunsUncovered": "running a workflow live that no approval covers",
   "chat.mode.gate.admission":
     "A live run also needs a standing permission or an approval — in every mode; one a standing permission covers starts without a further question.",
   "chat.mode.outside": "In every mode:",
@@ -579,7 +581,8 @@ export const chatDe: Record<keyof typeof chatEn, string> = {
   "chat.mode.plan": "Nur planen",
   "chat.mode.description.auto":
     "Bereitet Entwürfe ohne Rückfrage vor; Änderungen und Live-Läufe bleiben geschützt.",
-  "chat.mode.description.ask": "Fragt vor jedem Speichern und vor einem Live-Lauf.",
+  "chat.mode.description.ask":
+    "Fragt vor jedem Speichern und vor einem Live-Lauf, den keine Freigabe deckt.",
   "chat.mode.description.plan":
     "Plant und schlägt vor; fragt wie „Fragt vorher“ vor jedem Schritt.",
   "chat.mode.explain": "Was heißt das?",
@@ -943,6 +946,7 @@ export const chatDe: Record<keyof typeof chatEn, string> = {
   "chat.mode.gate.dangerous": "löschen, überschreiben und nach draußen schreiben",
   "chat.mode.gate.inlineCredential": "eingefügte Zugangsdaten speichern",
   "chat.mode.gate.liveRuns": "einen Workflow live ausführen",
+  "chat.mode.gate.liveRunsUncovered": "einen Workflow live ausführen, den keine Freigabe deckt",
   "chat.mode.gate.admission":
     "Live-Läufe brauchen außerdem eine stehende Berechtigung oder eine Freigabe — in jedem Modus; was eine stehende Berechtigung abdeckt, startet ohne weitere Rückfrage.",
   "chat.mode.outside": "In jedem Modus:",

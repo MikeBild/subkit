@@ -13,6 +13,7 @@ import { resolveAttachmentSlugsInText } from "../attachments.ts";
 import { captureDraftCredentialFromChatText } from "../persistence/auto-persist/credential-cache.ts";
 import { appendMessage } from "../persistence/index.ts";
 import type { ConversationReference } from "../references.ts";
+import type { ConversationMessageOrigin } from "../task-run-continuation.ts";
 import { assertConversationAvailable } from "../turns.ts";
 import type { ConversationPermissionMode, ConversationRecord } from "../types.ts";
 import { getConversation } from "./get.ts";
@@ -22,6 +23,7 @@ import {
   PendingElicitationBlockedError,
   persistPermissionModeIfChanged,
 } from "./shared.ts";
+import { assertTaskRunPermissionMode, assertTaskRunWriter } from "./task-run-access.ts";
 
 export interface AppendMessageParams {
   turn_id?: string | undefined;
@@ -33,6 +35,7 @@ export interface AppendMessageParams {
   references?: ConversationReference[] | null;
   memory?: string | null;
   permission_mode?: ConversationPermissionMode | null;
+  origin?: ConversationMessageOrigin;
 }
 
 export interface AppendMessageResult {
@@ -50,7 +53,9 @@ export async function appendUserMessage(
   await assertConversationAvailable(exec, p.tenant_id, p.conversation_id, p.turn_id);
   const conv = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!conv) throw new Error("conversation not found");
-  const explicitPermissionMode = normalizePermissionMode(p.permission_mode);
+  const taskRun = await assertTaskRunWriter(exec, p);
+  assertTaskRunPermissionMode(taskRun, p.permission_mode);
+  const explicitPermissionMode = taskRun ? null : normalizePermissionMode(p.permission_mode);
   const storedPermissionMode = getStoredPermissionMode(conv.draft);
   if (explicitPermissionMode && explicitPermissionMode !== storedPermissionMode) {
     await persistPermissionModeIfChanged({
@@ -152,6 +157,7 @@ export async function appendUserMessage(
         appendMessage(tx, p.tenant_id, p.conversation_id, "user", {
           text: persistedText,
           ...(references ? { references } : {}),
+          ...(p.origin ? { origin: p.origin } : {}),
         }),
       ),
     {

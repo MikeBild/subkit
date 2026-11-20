@@ -43,6 +43,8 @@ import type {
   LatestDiagnosisSummary,
   LatestExecutionSummary,
   PersistedResourceRef,
+  TaskRunCheck,
+  TaskRunMarker,
   WorkflowDraftDocument,
 } from "../types.ts";
 
@@ -53,6 +55,85 @@ export type DraftClock = () => string;
 type RefreshedDraft = DraftDocument & { state: AuthoringState; summary: AuthoringSummary };
 
 type DraftSummaryInput = Omit<DraftDocument, "mode"> & { mode?: AuthoringMode | undefined };
+
+function uuidList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(raw.filter((id): id is string => typeof id === "string" && UUID_RE.test(id)))];
+}
+
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+
+export function normalizeTaskRunMarker(raw: unknown): TaskRunMarker | null {
+  if (
+    !isRecord(raw) ||
+    raw.sealed !== undefined ||
+    typeof raw.task_id !== "string" ||
+    !UUID_RE.test(raw.task_id) ||
+    typeof raw.task_run_id !== "string" ||
+    !UUID_RE.test(raw.task_run_id) ||
+    (raw.environment !== "dev" && raw.environment !== "prod")
+  )
+    return null;
+  return {
+    task_id: raw.task_id,
+    task_run_id: raw.task_run_id,
+    environment: raw.environment,
+    workflow_ids: uuidList(raw.workflow_ids),
+    connector_ids: uuidList(raw.connector_ids),
+    web_search: raw.web_search === true,
+  };
+}
+
+function storedTaskRunMarker(session: Record<string, unknown>): TaskRunMarker | null {
+  if (session.task_run === undefined) return null;
+  return (
+    normalizeTaskRunMarker(session.task_run) ?? {
+      task_id: NIL_UUID,
+      task_run_id: NIL_UUID,
+      environment: "dev",
+      workflow_ids: [],
+      connector_ids: [],
+      web_search: false,
+      sealed: true,
+    }
+  );
+}
+
+export function getTaskRunMarker(draft: unknown): TaskRunMarker | null {
+  return isRecord(draft) && isRecord(draft.session) ? storedTaskRunMarker(draft.session) : null;
+}
+
+const ISO_INSTANT_RE =
+  /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d{1,3})?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/;
+
+export function getTaskRunCheck(draft: unknown): TaskRunCheck | null {
+  const raw = isRecord(draft) && isRecord(draft.session) ? draft.session.task_check : null;
+  if (
+    !isRecord(raw) ||
+    typeof raw.at !== "string" ||
+    !ISO_INSTANT_RE.test(raw.at) ||
+    typeof raw.reason !== "string" ||
+    raw.reason.length > 200
+  )
+    return null;
+  return { at: raw.at, reason: raw.reason };
+}
+
+function withoutSessionKey<T>(draft: T, key: string): T {
+  if (!isRecord(draft) || !isRecord(draft.session) || !(key in draft.session)) return draft;
+  const session = Object.fromEntries(
+    Object.entries(draft.session).filter(([name]) => name !== key),
+  );
+  return { ...draft, session };
+}
+
+export function withoutTaskRunMarker<T>(draft: T): T {
+  return withoutSessionKey(draft, "task_run");
+}
+
+export function withoutTaskRunCheck<T>(draft: T): T {
+  return withoutSessionKey(draft, "task_check");
+}
 
 export function createEmptyDraftDocument(now: DraftClock, mode?: AuthoringMode): RefreshedDraft {
   return refreshDraftSummary(now, {
@@ -334,6 +415,10 @@ export function normalizeDraftDocument(now: DraftClock, raw: unknown): Refreshed
             : {}),
         };
       }
+      const task_run = storedTaskRunMarker(raw.session);
+      if (task_run) session.task_run = task_run;
+      const task_check = getTaskRunCheck(raw);
+      if (task_check) session.task_check = task_check;
       return Object.keys(session).length > 0 ? { session } : {};
     })(),
     ...(isRecord(raw.latest_preview)

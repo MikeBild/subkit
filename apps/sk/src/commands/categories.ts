@@ -7,7 +7,7 @@ const listCommand = defineCommand({
   meta: {
     name: "list",
     description:
-      "List the catalog categories with how many workflows, connectors, knowledge sources, skills and files use each",
+      "List the catalog categories with how many workflows, connectors, knowledge sources, skills, files and tasks use each",
   },
   args: { json: { type: "boolean", description: "JSON output" } },
   async run({ args }) {
@@ -16,7 +16,16 @@ const listCommand = defineCommand({
         const { categories } = await makeClient().listCategories();
         emitList(
           Boolean(args.json),
-          ["category", "total", "workflow", "connector", "knowledge_source", "skill", "file"],
+          [
+            "category",
+            "total",
+            "workflow",
+            "connector",
+            "knowledge_source",
+            "skill",
+            "file",
+            "task",
+          ],
           categories.map((c) => ({ category: c.category, total: c.total, ...c.counts })),
         );
       },

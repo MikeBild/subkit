@@ -54,6 +54,18 @@ test("extension requires a live interval and available run budget", () => {
       message: "only an approval that currently applies can be made open-ended",
     });
   expect(decideAuthorityExtension({ ...base, max_runs: 1 })).toEqual({ kind: "proceed" });
+  expect(decideAuthorityExtension({ ...base, now_ms: 10, valid_until_ms: 11 })).toEqual({
+    kind: "proceed",
+  });
+  expect(
+    decideAuthorityExtension({ ...base, valid_until_ms: null, now_ms: 1_000_000, max_runs: 2 }),
+  ).toEqual({ kind: "proceed" });
+  for (const change of [{ now_ms: 9 }, { max_runs: 2, reserved_runs: 2 }])
+    expect(decideAuthorityExtension({ ...base, valid_until_ms: null, ...change })).toEqual({
+      kind: "rejected",
+      code: "authority_not_live",
+      message: "only an approval that currently applies can be made open-ended",
+    });
   fc.assert(
     fc.property(fc.integer({ min: 10, max: 19 }), (now_ms) => {
       const facts = Object.freeze({ ...base, now_ms });
@@ -86,7 +98,7 @@ test("preview rejects changed effect boundaries before unbound effects", () => {
   ).toEqual({ kind: "proceed" });
 });
 
-test("only an open-ended successor with the same boundary is reusable", () => {
+test("only a successor without an end date and with the same boundary is reusable", () => {
   expect(reusableOpenEndedSuccessor(null, boundary)).toBe(false);
   expect(reusableOpenEndedSuccessor({ ...boundary, valid_until: new Date(0) }, boundary)).toBe(
     false,
@@ -100,4 +112,17 @@ test("only an open-ended successor with the same boundary is reusable", () => {
   expect(reusableOpenEndedSuccessor({ ...boundary, id: "next", valid_until: null }, boundary)).toBe(
     true,
   );
+  const limited = { ...boundary, max_runs: 3 };
+  expect(reusableOpenEndedSuccessor({ ...boundary, id: "next", valid_until: null }, limited)).toBe(
+    true,
+  );
+  expect(reusableOpenEndedSuccessor({ ...limited, id: "next", valid_until: null }, limited)).toBe(
+    true,
+  );
+  expect(
+    reusableOpenEndedSuccessor({ ...limited, id: "next", valid_until: null, max_runs: 5 }, limited),
+  ).toBe(false);
+  expect(
+    reusableOpenEndedSuccessor({ ...limited, id: "next", valid_until: new Date(0) }, limited),
+  ).toBe(false);
 });

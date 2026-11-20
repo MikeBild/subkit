@@ -9,6 +9,7 @@ export const LLM_GROUP_DIMS = [
   "workflow",
   "conversation",
   "execution",
+  "task",
 ] as const;
 export type LlmGroupDim = (typeof LLM_GROUP_DIMS)[number];
 
@@ -25,6 +26,7 @@ export interface LlmStatsParams {
   userId?: string | null | undefined;
   result?: string[] | undefined;
   workflowId?: string | undefined;
+  taskId?: string | undefined;
   groupBy: LlmGroupDim[];
 }
 
@@ -81,6 +83,7 @@ export function dimColumn(dim: LlmGroupDim): SQL {
   if (dim === "workflow") return sql`executions.workflow_id`;
   if (dim === "conversation") return sql`llm_usage.conversation_id`;
   if (dim === "execution") return sql`llm_usage.execution_id`;
+  if (dim === "task") return sql`task_runs.task_id`;
   return sql`llm_usage.flow`;
 }
 
@@ -130,7 +133,7 @@ function readLatency(row: Record<string, unknown>): LatencyAgg {
 
 type LlmFilter = Pick<
   LlmStatsParams,
-  "tenantId" | "from" | "to" | "model" | "flow" | "userId" | "result" | "workflowId"
+  "tenantId" | "from" | "to" | "model" | "flow" | "userId" | "result" | "workflowId" | "taskId"
 > & {
   groupBy?: LlmGroupDim[];
 };
@@ -145,6 +148,7 @@ export function buildWhere(p: LlmFilter): SQL {
   if (p.flow && p.flow.length > 0) conds.push(sql`llm_usage.flow in ${p.flow}`);
   if (p.result && p.result.length > 0) conds.push(sql`llm_usage.result in ${p.result}`);
   if (p.workflowId) conds.push(sql`executions.workflow_id = ${p.workflowId}`);
+  if (p.taskId) conds.push(sql`task_runs.task_id = ${p.taskId}`);
   if (p.userId) {
     conds.push(sql`llm_usage.user_id = ${p.userId}`);
     conds.push(sql`llm_usage.actor_type = 'user'`);
@@ -162,10 +166,20 @@ function fromClause(p: LlmStatsParams): SQL {
 export function llmFromClause(p: {
   groupBy?: readonly LlmGroupDim[] | undefined;
   workflowId?: string | undefined;
+  taskId?: string | undefined;
 }): SQL {
-  return p.groupBy?.includes("workflow") || p.workflowId
-    ? sql`llm_usage left join executions on executions.id = llm_usage.execution_id and executions.tenant_id = llm_usage.tenant_id`
-    : sql`llm_usage`;
+  const parts: SQL[] = [sql`llm_usage`];
+  if (p.groupBy?.includes("workflow") || p.workflowId) {
+    parts.push(
+      sql`left join executions on executions.id = llm_usage.execution_id and executions.tenant_id = llm_usage.tenant_id`,
+    );
+  }
+  if (p.groupBy?.includes("task") || p.taskId) {
+    parts.push(
+      sql`left join task_runs on task_runs.conversation_id = llm_usage.conversation_id and task_runs.tenant_id = llm_usage.tenant_id`,
+    );
+  }
+  return sql.join(parts, sql` `);
 }
 
 const GROUP_BY_BUCKET = sql`bucket_ts`;

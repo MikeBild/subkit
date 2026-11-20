@@ -25,9 +25,11 @@ import {
   type RestoreComposer,
   selectionFromPath,
   setChatPath,
+  TaskRunLine,
   TurnErrors,
   useContextDock,
   useConversationDialogs,
+  useRunOfConversation,
 } from "@/features/chat";
 import { formatDateTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -51,6 +53,7 @@ import { useChatQuestions } from "./chat-questions";
 import { resumeNextAction, resumeSummaryLine } from "./chat-resume";
 import { activeConversationId, type ConversationSelection } from "./chat-selection";
 import { budgetPill, chatHeaderTitle, optimisticVisible } from "./chat-session";
+import { runMarker, runPlaybook } from "./chat-task-run";
 import { questionExcerpt } from "./chat-text";
 import { useChatTurn } from "./chat-turn";
 import { useChatWorkspace } from "./chat-workspace";
@@ -125,7 +128,8 @@ export function ChatPage() {
   const chatWorkspace = useChatWorkspace(Boolean(current));
   const contextDock = useContextDock(chatWorkspace);
   const resume = detail.data?.resume_summary;
-  const playbook = detail.data?.playbook ?? null;
+  const run = detail.data ? runMarker(detail.data.draft) : null;
+  const storedPlaybook = detail.data?.playbook ?? null;
   const questions = useChatQuestions(detail.data);
   const { pendingDecision, pendingChoice, pendingForm, pendingText, clock, open } = questions;
   const { choiceOpen, formOpen, anyQuestion, playbookQuestions } = questions;
@@ -177,9 +181,12 @@ export function ChatPage() {
     });
   };
   const session = useSession();
+  const runState = useRunOfConversation(run?.taskRunId ?? "", session.permissions).data?.state;
+  const playbook =
+    storedPlaybook && run ? runPlaybook(storedPlaybook, t, runState) : storedPlaybook;
   const heldSchedules = useHeldSchedules(session.permissions);
   const targetWorkflowId =
-    resume?.active_target.kind === "workflow" ? resume.active_target.id : null;
+    !run && resume?.active_target.kind === "workflow" ? resume.active_target.id : null;
   const heldTarget = heldSchedules.find((schedule) => schedule.workflow_id === targetWorkflowId);
   const nextActionSaid =
     anyQuestion || resume?.stage === "workflow_saved" || !resume
@@ -464,6 +471,16 @@ export function ChatPage() {
               menuItems={menuItems}
             />
           </ReadingColumn>
+          {run?.taskRunId && activeId && !conversationFailed ? (
+            <TaskRunLine
+              key={run.taskRunId}
+              marker={run}
+              conversationId={activeId}
+              playbook={storedPlaybook}
+              permissions={session.permissions}
+              refreshedAt={detail.dataUpdatedAt}
+            />
+          ) : null}
           {summaryLine ? (
             <ReadingColumn className="pt-2">
               <p className="truncate text-xs text-muted-foreground" data-testid="chat-summary">
@@ -524,7 +541,8 @@ export function ChatPage() {
             busy={busy}
             status={status}
             pillMode={pillMode}
-            pillLabel={pillLabel}
+            pillLabel={run ? null : pillLabel}
+            runScope={run ? t("chat.taskRun.scope") : null}
             setNewPermissionMode={setNewPermissionMode}
             composerHint={composerHint}
             initialInput={selection.kind === "new" ? initialPrompt : ""}

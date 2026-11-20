@@ -1,4 +1,7 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
+import type { MiddlewareHandler } from "hono";
+import { canReadTaskRun } from "../../../conversations/public/lifecycle.ts";
+import { NotFoundError } from "../../errors.ts";
 import { requireAnyPermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { registerCollectionRoutes } from "./collection.ts";
@@ -33,6 +36,21 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/conversations/:id/stream", async (c, next) => {
     return requireAnyPermission(["conversation:read", "workflow:read"])(c, next);
   });
+
+  const taskRunReadGuard: MiddlewareHandler<AppEnv> = async (c, next) => {
+    const principal = c.get("principal");
+    const id = c.req.param("id");
+    if ((c.req.method !== "GET" && c.req.method !== "HEAD") || !principal || !id) return next();
+    const readable = await canReadTaskRun(c.get("db"), {
+      tenant_id: principal.tenant_id,
+      conversation_id: id,
+      principal,
+    });
+    if (!readable) throw new NotFoundError("conversation");
+    return next();
+  };
+  app.use("/v1/conversations/:id", taskRunReadGuard);
+  app.use("/v1/conversations/:id/*", taskRunReadGuard);
 
   registerCollectionRoutes(app);
   registerDirectToolRoutes(app);

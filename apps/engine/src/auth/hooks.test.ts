@@ -255,3 +255,115 @@ describe("lintHookSource", () => {
     expect(result.ok).toBe(true);
   });
 });
+
+describe("evaluateHook — the audit row never holds a credential value", () => {
+  const denying = async (role: string) => {
+    const [row] = await testDb.db
+      .insert(requestHooks)
+      .values({
+        tenant_id: tenantId,
+        role,
+        source:
+          "return { allow: !input.request.url.includes('appid=s3cr3t-hook'), reason: 'saw_raw_url' };",
+        version: 1,
+        enabled: true,
+      })
+      .returning();
+    if (!row) throw new Error("seed hook failed");
+    return row;
+  };
+  const auditFor = (hookId: string) =>
+    testDb.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, tenantId), eq(auditLog.resource_id, hookId)));
+
+  test("the hook sees the real address, the audit row stores the recorded one", async () => {
+    const role = "deny-masked-url";
+    const row = await denying(role);
+    const decision = await evaluateHook({
+      db: testDb.db,
+      tenant_id: tenantId,
+      principal: principal([role]),
+      requestCtx: ctx({
+        url: "https://example.com/items?tz=UTC&appid=s3cr3t-hook",
+        recorded_url: "https://example.com/items?tz=UTC&appid=***",
+      }),
+    });
+    expect(decision).toMatchObject({ allowed: false, reason: "saw_raw_url" });
+    const audits = await auditFor(row.id);
+    expect(audits).toHaveLength(1);
+    expect(JSON.stringify(audits)).not.toContain("s3cr3t-hook");
+    expect((audits[0]?.metadata as { url?: string } | undefined)?.url).toBe(
+      "https://example.com/items?tz=UTC&appid=***",
+    );
+  });
+
+  test("without a recorded address the audit row keeps no query at all", async () => {
+    const role = "deny-unmasked-url";
+    const row = await denying(role);
+    await evaluateHook({
+      db: testDb.db,
+      tenant_id: tenantId,
+      principal: principal([role]),
+      requestCtx: ctx({ url: "https://example.com/items?tz=UTC&appid=s3cr3t-hook" }),
+    });
+    const audits = await auditFor(row.id);
+    expect(JSON.stringify(audits)).not.toContain("s3cr3t-hook");
+    expect((audits[0]?.metadata as { url?: string } | undefined)?.url).toBe(
+      "https://example.com/items",
+    );
+  });
+});
+
+describe("evaluateHook — a reason that echoes the request never carries a credential value", () => {
+  test("masked query values are replaced in the reason, in the audit row and in the decision", async () => {
+    const role = "deny-echo-url";
+    const [row] = await testDb.db
+      .insert(requestHooks)
+      .values({
+        tenant_id: tenantId,
+        role,
+        source: "return { allow: false, reason: 'blocked ' + input.request.url };",
+        version: 1,
+        enabled: true,
+      })
+      .returning();
+    if (!row) throw new Error("seed hook failed");
+    const decision = await evaluateHook({
+      db: testDb.db,
+      tenant_id: tenantId,
+      principal: principal([role]),
+      requestCtx: ctx({
+        url: "https://example.com/items?tz=UTC&appid=s3cr3t%2Fhook%20value",
+        recorded_url: "https://example.com/items?tz=UTC&appid=***",
+      }),
+    });
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toBe("blocked https://example.com/items?tz=UTC&appid=***");
+    const audits = await testDb.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, tenantId), eq(auditLog.resource_id, row.id)));
+    expect(audits[0]?.reason).toBe("blocked https://example.com/items?tz=UTC&appid=***");
+    expect(JSON.stringify(audits)).not.toContain("s3cr3t");
+  });
+
+  test("a reason is capped in length", async () => {
+    const role = "deny-long-reason";
+    await testDb.db.insert(requestHooks).values({
+      tenant_id: tenantId,
+      role,
+      source: "return { allow: false, reason: 'x'.repeat(5000) };",
+      version: 1,
+      enabled: true,
+    });
+    const decision = await evaluateHook({
+      db: testDb.db,
+      tenant_id: tenantId,
+      principal: principal([role]),
+      requestCtx: ctx(),
+    });
+    expect(decision.reason).toHaveLength(200);
+  });
+});

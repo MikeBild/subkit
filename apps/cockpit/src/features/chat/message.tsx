@@ -60,6 +60,7 @@ import { ChatReauthCard } from "@/pages/chat-reauth-card";
 import { referencesFromPart } from "@/pages/chat-references";
 import { ChatSensitivePreviewCard } from "@/pages/chat-sensitive-preview-card";
 import { messageAuthor } from "@/pages/chat-session";
+import { isRunContinuation } from "@/pages/chat-task-run";
 import { chatSensitiveTestRun } from "@/pages/chat-test-run";
 import { ChatTestRunCard } from "@/pages/chat-test-run-card";
 import type { ChatText } from "@/pages/chat-text";
@@ -124,6 +125,18 @@ export function ChatMessage({
 }) {
   const { t, locale } = useI18n();
   const from = messageAuthor(message.role);
+  if (isRunContinuation(message))
+    return (
+      <p
+        className="flex items-center gap-3 text-xs text-muted-foreground"
+        data-cockpit-ui="chat-run-continues"
+        data-testid={`chat-message-${messageIndex}-continues`}
+      >
+        <span aria-hidden="true" className="h-px flex-1 bg-border" />
+        {t("chat.taskRun.continues")}
+        <span aria-hidden="true" className="h-px flex-1 bg-border" />
+      </p>
+    );
   const groups = groupMessageParts(message.parts, pendingApprovalId).filter(
     (group) => group.kind !== "part" || Boolean(textFromPart(group.part)?.trim()),
   );

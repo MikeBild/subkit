@@ -171,6 +171,22 @@ describe("workflow status strip (D15, reviewed)", () => {
     }
     expect(CATALOGS.de[stripActionKey({ kind: "approve", via: "grant" })]).toBe("Freigeben");
   });
+
+  test("a repair that only lacks limits offers to set them, in both languages", () => {
+    const strip = workflowStrip(
+      input({
+        automation: state({
+          state: "repair",
+          primaryAction: { kind: "repair", via: "limits", stepId: "send" },
+        }),
+      }),
+    );
+    expect(strip.kind).toBe("repair");
+    expect(strip.action).toEqual({ kind: "approve", via: "limits" });
+    const key = stripActionKey({ kind: "approve", via: "limits" });
+    expect(CATALOGS.en[key]).toBe("Set limits");
+    expect(CATALOGS.de[key]).toBe("Grenzen festlegen");
+  });
 });
 
 describe("deleted connector evidence", () => {

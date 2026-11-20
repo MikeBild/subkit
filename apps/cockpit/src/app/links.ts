@@ -103,6 +103,10 @@ export function workflowRunHref(id: string): string {
   return `${workflowHref(id)}#${WORKFLOW_RUN_ANCHOR}`;
 }
 
+export function taskHref(id: string, tab?: string | null): string {
+  return withQuery(record("tasks", id), { tab });
+}
+
 export function connectorHref(id: string): string {
   return record("connectors", id);
 }

@@ -28,6 +28,11 @@ describe("events catalog", () => {
       "patch.applied",
       "apikey.rotated",
       "conversation.committed",
+      "task_run.started",
+      "task_run.waiting",
+      "task_run.result_ready",
+      "task_run.completed",
+      "task_run.failed",
     ]);
   });
 
@@ -126,6 +131,7 @@ describe("event classification", () => {
       "conversation",
       "execution",
       "patch_candidate",
+      "task_run",
       "workflow",
     ]);
     for (const type of Object.keys(EVENT_CATALOG)) {

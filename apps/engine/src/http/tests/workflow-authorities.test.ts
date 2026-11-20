@@ -94,7 +94,8 @@ test("a browser makes a time-limited approval apply until revoked; an agent cann
   expect(successor).toMatchObject({
     state: "approved",
     valid_until: null,
-    max_runs: 1,
+    max_runs: null,
+    open_ended: true,
     effect_manifest_digest: f.body.expected_manifest_digest,
     target_constraints: { targets: ["https://example.test/api/messages"] },
   });

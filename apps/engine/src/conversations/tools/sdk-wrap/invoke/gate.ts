@@ -14,8 +14,10 @@ import { prepareGate } from "../gate-subjects.ts";
 import { mapToolToCommitIntentKind, topLevelElicitationKindForTool } from "../policy-helpers.ts";
 import { checkBeforeGate } from "../pregate.ts";
 import type { WrappedToolOutput } from "../state.ts";
+import { taskRunMarkerOf } from "../task-run-guard.ts";
 import { pauseForConfirmation } from "./confirm.ts";
 import { type InvokeCall, type InvokeEnv, persistToolResult, recordCall } from "./env.ts";
+import { type GateCoverage, runWorkflowToolCoverage } from "./run-coverage.ts";
 
 const PRIOR_APPROVAL_WINDOW_MS = 5 * 60 * 1000;
 
@@ -27,6 +29,8 @@ export interface GatePassed {
   principal: Principal;
   pregateRefusal: ToolResult | null;
   resolvedMode: Gate["record"]["mode"];
+  resolvedRule: Gate["record"]["rule"];
+  coverage: GateCoverage;
 }
 
 export type GateOutcome = { done: WrappedToolOutput } | { passed: GatePassed };
@@ -58,6 +62,13 @@ export async function runGate(env: InvokeEnv, call: InvokeCall): Promise<GateOut
     ctx.tenant_id,
     db,
     ctx.locale,
+    principal,
+  );
+  const coverage = await runWorkflowToolCoverage(
+    perCallCtx,
+    inner.name === "run_workflow" ? permissionMode : null,
+    preparedGate.args,
+    toolPolicies,
   );
   const gate = await runConfirmGate({
     tool: inner.name,
@@ -68,6 +79,8 @@ export async function runGate(env: InvokeEnv, call: InvokeCall): Promise<GateOut
     permission_mode: permissionMode,
     prior_approval: priorApproval,
     ...(preparedGate.execution_data_transfer ? { execution_data_transfer: true } : {}),
+    ...(coverage.covered ? { authority_covered: true } : {}),
+    ...(taskRunMarkerOf(ctx) ? { task_run: true } : {}),
     db,
     tenant_id: ctx.tenant_id,
     principal,
@@ -132,5 +145,7 @@ export async function runGate(env: InvokeEnv, call: InvokeCall): Promise<GateOut
     return { done: await pauseForConfirmation(env, call, gate, preparedGate) };
   }
 
-  return { passed: { principal, pregateRefusal, resolvedMode } };
+  return {
+    passed: { principal, pregateRefusal, resolvedMode, resolvedRule: gate.record.rule, coverage },
+  };
 }

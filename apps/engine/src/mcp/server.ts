@@ -40,7 +40,7 @@ const SHARED_INTRO = [
 ];
 
 const CATALOG_AND_GROUNDING = [
-  "Workflows, connectors, knowledge sources, skills and files carry a `description` (what",
+  "Workflows, connectors, knowledge sources, skills, files and tasks carry a `description` (what",
   "each is for, when known) and a `category` (the catalog block it belongs to, one vocabulary",
   "for all of them). `list_*` and `find_*` return both and take `category` as a filter; `find_*` ranks",
   "by category, name and description and says why each match matched. Only the most",
@@ -94,6 +94,7 @@ const CATALOG_READ_PERMISSIONS = [
   ["workflow", "workflow:read"],
   ["connector", "connector:read"],
   ["knowledge_source", "knowledge:read"],
+  ["task", "task:read"],
 ] as const;
 
 async function readableCatalogKinds(
@@ -163,7 +164,7 @@ async function connectHealthSummary(
 export async function createMcpServer(p: CreateMcpServerParams): Promise<Server> {
   const { db, principal, transport } = p;
 
-  const taskStore = new ConversationTaskStore({ db, tenant_id: principal.tenant_id });
+  const taskStore = new ConversationTaskStore({ db, tenant_id: principal.tenant_id, principal });
 
   const INSTRUCTIONS_TIMEOUT_MS = 400;
   const intro = resolveMcpMode(principal) === "product" ? READ_EXECUTE_INTRO : AUTHORING_INTRO;

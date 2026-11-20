@@ -118,8 +118,8 @@ Your role still limits every single call. A scope never gives the client more th
 
 | On the access page | Scope | The client can |
 | --- | --- | --- |
-| **Read** | `mcp:read` | Read workflows, runs, connectors and knowledge, and run saved workflows. |
-| **Authoring** | `mcp:authoring` | Additionally build workflows and connectors in a guided conversation. |
+| **Read** | `mcp:read` | Read workflows, runs, connectors, knowledge and tasks, run saved workflows, and start and stop tasks. |
+| **Authoring** | `mcp:authoring` | Additionally build workflows and connectors in a guided conversation, and create and change tasks. |
 | **Administration** | `mcp:admin` | Additionally create, change and delete things in the workspace. |
 | **Operational counters** | `metrics:read` | Read the operational counters, nothing else. |
 
@@ -140,11 +140,35 @@ Writing always needs a person, in two places:
 
 - **Writes inside a workflow:** A workflow writes for real only after a person approves it in the Cockpit. Without approval the run is a dry run: writes are held back and nothing is sent.
   A new version needs no new approval as long as it touches no more systems, addresses or write permissions than the approved one. If it reaches further, SubKit asks again and names the difference.
+  In chat, the mode **Asks first** asks before every write unless there is an approval that covers exactly this run: the same version, the same environment, still valid and with unchanged effects. **Plan only** always asks. So does a run that passes on data from an earlier run, and a conversation you told to confirm every start.
 - **Write tools in the client:** A write tool pauses and returns a link.
   Open it, sign in, check what will happen, and select **Allow once** or **Decline**.
   Only then can the client finish the call with `confirm_tool_call`.
 
 The AI cannot approve or allow anything itself. The link alone allows nothing either.
+
+### Tasks from an AI client
+
+A task is a goal with limits that SubKit works towards on its own. The chapter “Hand over a goal as a task” explains it. From an AI client you reach tasks with these tools:
+
+| Tool | What it does | Level |
+| --- | --- | --- |
+| `list_tasks`, `find_task`, `get_task` | List, search and read the tasks you may see. | **Read** |
+| `get_task_run` | Read the state of one run. | **Read** |
+| `run_task` | Start a run now, as you. The call returns the run and does not wait for the result. | **Read** |
+| `abort_task_run` | Stop a run that is running, waiting or sleeping. | **Read** |
+| `save_task` | Create a task or change one. It only stores the task and starts nothing. | **Authoring** |
+
+You see your own tasks. With the Admin role you see all of them. `get_attention` also lists tasks that wait for you.
+
+What a client cannot do:
+
+- **Give the standing permission.** A task that should start on its own needs a person signed in to the Cockpit in the browser.
+- **Answer the questions of a run.** A run works in its own conversation in the Cockpit. Every task result carries `cockpit_path`, the address of the task there.
+- **Confirm a result or send it back.** Only a person does that, signed in to the Cockpit in the browser.
+- **Create or change tasks without Authoring.** Without `mcp:authoring`, `save_task` answers `authoring_scope_required`.
+
+A run that a client starts has the same limits as every run: it uses only what is bound to the task, and anything that writes asks a person first, unless a valid approval of a bound workflow covers it.
 
 ### Use an MCP server as a connector
 

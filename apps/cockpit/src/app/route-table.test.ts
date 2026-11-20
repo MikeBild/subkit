@@ -11,6 +11,7 @@ import {
   RECOVERY_ROUTE,
   REDIRECT_ROUTES,
   STANDALONE_ROUTES,
+  TASK_ROUTES,
   WELCOME_ROUTE,
 } from "@/app/route-table";
 import { peopleSectionFromUrl } from "./links";
@@ -98,6 +99,17 @@ describe("cockpit route table", () => {
       );
       expect(code, `${page} rows do not link their page`).toContain("recordHref(");
     }
+  });
+
+  test("gives tasks a list page and a page per task, and a list row opens that page", () => {
+    expect([...TASK_ROUTES]).toEqual(["/tasks", "/tasks/$resourceId"]);
+    for (const path of TASK_ROUTES) expect(ALL_ROUTE_PATHS).toContain(path);
+    const source = readFileSync(new URL("./router.tsx", import.meta.url), "utf8");
+    expect(source).toMatch(/path: "\/tasks",\s*component: \(\) => <TasksPage/);
+    expect(source).toMatch(/path: "\/tasks\/\$resourceId",\s*component: \(\) => <TaskPage/);
+    const list = readFileSync(new URL("../pages/tasks-list.tsx", import.meta.url), "utf8");
+    expect(list).toContain("rowHref={(row) => taskHref(row.task.id)}");
+    expect(list).not.toMatch(/RecordSheet|\?item=/);
   });
 
   test("names the routes no menu links to, which is why they are here", () => {

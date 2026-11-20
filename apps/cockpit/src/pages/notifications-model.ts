@@ -48,6 +48,7 @@ const EVENT_AREA_KEYS: Readonly<Record<string, TranslationKey>> = {
   workflow: "notifications.eventArea.workflow",
   connector: "notifications.eventArea.connector",
   schedule: "notifications.eventArea.schedule",
+  task_run: "notifications.eventArea.taskRun",
   patch: "notifications.eventArea.repair",
   patch_candidate: "notifications.eventArea.repair",
   self_healing: "notifications.eventArea.repair",
@@ -67,6 +68,11 @@ export const EVENT_KEYS: Readonly<Record<string, TranslationKey>> = {
   "patch.applied": "notifications.event.patch.applied",
   "apikey.rotated": "notifications.event.apikey.rotated",
   "conversation.committed": "notifications.event.conversation.committed",
+  "task_run.started": "notifications.event.task_run.started",
+  "task_run.waiting": "notifications.event.task_run.waiting",
+  "task_run.result_ready": "notifications.event.task_run.result_ready",
+  "task_run.completed": "notifications.event.task_run.completed",
+  "task_run.failed": "notifications.event.task_run.failed",
 };
 
 function eventPartLabel(part: string, t: Translate): CatalogLabel {

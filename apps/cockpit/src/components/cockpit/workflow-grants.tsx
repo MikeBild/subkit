@@ -4,6 +4,7 @@ import { apiCall } from "@/api/call";
 import { useActorDirectory } from "@/app/actor-directory";
 import { actorDirectoryName } from "@/app/actor-directory-model";
 import {
+  authorityValidity,
   MakeUntilRevoked,
   UntilRevokedDone,
   UntilRevokedHint,
@@ -125,9 +126,11 @@ function ApprovalSheet({
     {
       label: t("authority.window"),
       value: `${formatDateTime(locale, authority.valid_from)} — ${
-        authority.valid_until === null
-          ? t("authority.headline.untilRevoked")
-          : formatDateTime(locale, authority.valid_until)
+        authority.valid_until !== null
+          ? formatDateTime(locale, authority.valid_until)
+          : authority.open_ended
+            ? t("authority.headline.untilRevoked")
+            : t("workflowApprovals.validity.noEnd")
       }`,
     },
     {
@@ -334,6 +337,7 @@ function PendingVersion({
           growth={preview.data?.boundary_growth}
           problems={[]}
           loading={preview.isPending}
+          toolPinsCompared={preview.data?.tool_pins_compared === true}
         />
       )}
     </section>
@@ -353,7 +357,7 @@ function ActiveGrant({
   madeUntilRevoked: boolean;
   onUntilRevoked(): void;
 }) {
-  const { t, dateTime } = useI18n();
+  const { t, tn, dateTime } = useI18n();
   const directory = useActorDirectory(true);
   const environmentWord = useEnvironmentWord();
   const model = useAuthorityModel(grantPreview(authority), automation, false);
@@ -371,9 +375,7 @@ function ActiveGrant({
         <StatusBadge state={badgeState(state)} label={t(AUTHORITY_STATE_KEYS[state])} />
         <span className="text-xs text-muted-foreground" data-testid="authority-current-validity">
           {[
-            authority.valid_until === null
-              ? t("workflowApprovals.validity.untilRevoked")
-              : t("workflowApprovals.validity.until", { until: dateTime(authority.valid_until) }),
+            authorityValidity(authority, { t, tn, dateTime }),
             t("workflowApprovals.active.granted", {
               when: dateTime(authority.created_at),
               who:
@@ -403,8 +405,10 @@ function ActiveGrant({
           ) : null}
         </span>
       </div>
-      {offer ? <UntilRevokedHint days={offer.days} /> : null}
-      {madeUntilRevoked && authority.valid_until === null ? <UntilRevokedDone /> : null}
+      {offer ? (
+        <UntilRevokedHint days={offer.days} remainingRuns={authority.remaining_runs} />
+      ) : null}
+      {madeUntilRevoked && authority.open_ended ? <UntilRevokedDone /> : null}
       <GrantEffectReview model={model} growth={undefined} problems={[]} loading={false} />
     </section>
   );

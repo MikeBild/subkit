@@ -30,12 +30,13 @@ import { truncateForLlm } from "../../../tools/truncate.ts";
 import { runConfirmGate } from "../../confirmation.ts";
 import { createElicitation } from "../../elicitations.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persistence/index.ts";
-import type { TurnEvent } from "../../types.ts";
+import type { TaskRunMarker, TurnEvent } from "../../types.ts";
 import { withoutApprovalHandle } from "../ask-user/commit-intent.ts";
 import type { ToolContext } from "../index.ts";
 import { readOnlyPaletteSpecs } from "./external-mcp-readonly.ts";
 import { jsonSafeModelOutput } from "./json-safe-output.ts";
 import type { TurnSignals, WrappedToolOutput } from "./state.ts";
+import { taskRunConnectorRefusal, taskRunMarkerOf } from "./task-run-guard.ts";
 
 export interface PaletteOperationSpec {
   suffix: string;
@@ -129,6 +130,11 @@ export interface BuildExternalMcpToolsParams {
   ctx: ToolContext;
   signals: TurnSignals;
   events: TurnEvent[];
+  taskRun?: TaskRunMarker | null;
+}
+
+function boundToTaskRun(taskRun: TaskRunMarker | null | undefined, connector_id: string): boolean {
+  return !taskRun || (!taskRun.sealed && taskRun.connector_ids.includes(connector_id));
 }
 
 type ExternalMcpToolsBuilder = (
@@ -144,12 +150,16 @@ export function __setExternalMcpToolsBuilderForTests(fn: ExternalMcpToolsBuilder
 export async function buildExternalMcpTools(
   p: BuildExternalMcpToolsParams,
 ): Promise<Record<string, Tool<Record<string, unknown>, WrappedToolOutput>>> {
+  const taskRun = p.taskRun ?? taskRunMarkerOf(p.ctx);
+  if (taskRun && (taskRun.sealed || taskRun.connector_ids.length === 0)) return {};
   if (builderOverride) return builderOverride(p);
-  const servers = await getTenantMcpTools(p.db, p.principal.tenant_id, {
+  const tenantServers = await getTenantMcpTools(p.db, p.principal.tenant_id, {
     requestSource: "chat",
     actor_id: p.principal.id,
     actor_type: p.principal.kind === "system_account" ? "system_account" : "user",
+    ...(taskRun ? { connector_ids: taskRun.connector_ids } : {}),
   });
+  const servers = tenantServers.filter((server) => boundToTaskRun(taskRun, server.connector_id));
   const out: Record<string, Tool<Record<string, unknown>, WrappedToolOutput>> = {};
   for (const server of servers) {
     let guide = serverGuide(server);
@@ -244,6 +254,10 @@ async function executeExternalMcpTool(
     rawArgs,
   } = p;
   const startedAt = Date.now();
+  const taskRun = p.taskRun ?? taskRunMarkerOf(ctx);
+  if (!boundToTaskRun(taskRun, connector_id)) {
+    return { ok: false, data: taskRunConnectorRefusal().data };
+  }
 
   if (ctx.tenant_id !== principal.tenant_id) {
     try {
@@ -419,6 +433,7 @@ async function executeExternalMcpTool(
 
   const trustedByOperator =
     !claim &&
+    !taskRun &&
     resolved.call.operation === "call_tool" &&
     (await readMcpToolsWithoutConfirmation(db, ctx.tenant_id, connector_id)).includes(
       resolved.call.tool,
@@ -433,6 +448,7 @@ async function executeExternalMcpTool(
         args: effectiveInput,
         ...(ctx.permission_mode === "plan" ? { permission_mode: "plan" as const } : {}),
         ...(trustedByOperator ? { connector_trust: true } : {}),
+        ...(taskRun ? { task_run: true } : {}),
         db,
         tenant_id: ctx.tenant_id,
         principal,

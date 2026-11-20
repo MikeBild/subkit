@@ -55,7 +55,7 @@ describe("cockpit navigation contract", () => {
   test("the groups are the decided information architecture, in order", () => {
     expect(NAVIGATION.map((group) => group.items.map((item) => item.path))).toEqual([
       ["/", "/chat"],
-      ["/workflows", "/connectors"],
+      ["/workflows", "/connectors", "/tasks"],
       ["/intake", "/knowledge", "/skills", "/files"],
       ["/usage", "/audit", "/people", "/api-access", "/settings"],
     ]);
@@ -92,6 +92,22 @@ describe("cockpit navigation contract", () => {
     expect(paths(["intake:read"])).toEqual(["/", "/intake", "/settings"]);
     const icons = NAVIGATION.flatMap((group) => group.items).map((item) => item.icon);
     expect(new Set(icons).size).toBe(icons.length);
+  });
+
+  test("Aufgaben follows the connectors, behind its own read, and stays active on a task", () => {
+    expect(navigationItem("/tasks")?.labelKey).toBe("nav.tasks");
+    expect(navigationItem("/tasks/abc")).toBe(navigationItem("/tasks"));
+    expect(navigationItem("/tasks")?.permission).toBe("task:read");
+    expect(navigationItem("/tasks")?.api).toContain("GET /v1/tasks");
+    expect(paths(["task:read"])).toEqual(["/tasks", "/settings"]);
+    expect(paths(["workflow:read", "connector:read"])).not.toContain("/tasks");
+    expect(
+      visiblePrimaryNavigation(["workflow:read", "connector:read", "task:read"]).flatMap((group) =>
+        group.items.map((item) => item.path),
+      ),
+    ).toEqual(["/workflows", "/connectors", "/tasks"]);
+    expect(translate("de", "nav.tasks")).toBe("Aufgaben");
+    expect(translate("en", "nav.tasks")).toBe("Tasks");
   });
 
   test("Einstellungen shows for every signed-in person, because everybody has a profile", () => {

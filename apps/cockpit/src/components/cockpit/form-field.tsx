@@ -1,6 +1,19 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
+import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
-import { ContextHelp, CopyField, SegmentedControl } from "./patterns";
+import { ContextHelp, CopyField, SECTION_LABEL, SearchInput, SegmentedControl } from "./patterns";
+
+export const CHECK_LIST_FILTER_FROM = 9;
+
+export function checkListMatches(
+  options: readonly { value: string; label: string }[],
+  needle: string,
+): { value: string; label: string }[] {
+  const term = needle.trim().toLocaleLowerCase();
+  return term
+    ? options.filter((option) => option.label.toLocaleLowerCase().includes(term))
+    : [...options];
+}
 
 const CONTROL =
   "w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 text-base outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive md:text-sm dark:bg-input/30";
@@ -189,6 +202,7 @@ export function ChoiceField<T extends string>({
   options,
   help,
   description,
+  wrap,
   testId,
 }: {
   label: string;
@@ -197,6 +211,7 @@ export function ChoiceField<T extends string>({
   options: { value: T; label: string }[];
   help?: string;
   description?: string;
+  wrap?: boolean;
   testId: string;
 }) {
   return (
@@ -214,6 +229,7 @@ export function ChoiceField<T extends string>({
         value={value}
         onValueChange={(next) => onChange(next as T)}
         testId={testId}
+        wrap={wrap}
         options={options.map((option) => ({ ...option, testId: `${testId}-${option.value}` }))}
       />
       {description ? (
@@ -234,6 +250,7 @@ export function CheckListField({
   help,
   empty,
   error,
+  quiet = false,
 }: {
   id: string;
   label: string;
@@ -243,7 +260,12 @@ export function CheckListField({
   help?: string;
   empty: string;
   error?: string | null;
+  quiet?: boolean;
 }) {
+  const { t } = useI18n();
+  const [needle, setNeedle] = useState("");
+  const filters = options.length >= CHECK_LIST_FILTER_FROM;
+  const shown = filters ? checkListMatches(options, needle) : options;
   return (
     <fieldset
       className="flex min-w-0 flex-col gap-1.5"
@@ -251,7 +273,12 @@ export function CheckListField({
       data-testid={id}
       aria-invalid={Boolean(error) || undefined}
     >
-      <legend className="flex items-center gap-1 text-sm font-medium">
+      <legend
+        className={cn(
+          "mb-1.5 flex items-center gap-1",
+          quiet ? SECTION_LABEL : "text-sm font-medium",
+        )}
+      >
         {label}
         {help ? (
           <ContextHelp label={label} testId={`${id}-help`}>
@@ -259,29 +286,51 @@ export function CheckListField({
           </ContextHelp>
         ) : null}
       </legend>
+      {filters ? (
+        <SearchInput
+          value={needle}
+          onChange={setNeedle}
+          label={`${t("pattern.filterList")}: ${label}`}
+          testId={`${id}-filter`}
+        />
+      ) : null}
       {options.length === 0 ? (
         <p className="text-sm text-muted-foreground">{empty}</p>
+      ) : shown.length === 0 ? (
+        <p className="text-sm text-muted-foreground" data-testid={`${id}-no-match`}>
+          {t("pattern.noMatch")}
+        </p>
       ) : (
-        <div className="flex flex-wrap gap-x-4 gap-y-1">
-          {options.map((option) => (
-            <label key={option.value} className="flex items-center gap-1.5 text-sm">
-              <input
-                type="checkbox"
-                className="size-4 accent-primary"
-                checked={values.includes(option.value)}
-                data-testid={`${id}-${option.value}`}
-                onChange={(event) =>
-                  onChange(
-                    event.target.checked
-                      ? [...values, option.value]
-                      : values.filter((value) => value !== option.value),
-                  )
-                }
-              />
-              <span className="font-mono text-xs">{option.label}</span>
-            </label>
+        <ul
+          className={cn(
+            "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-x-4 sm:grid-cols-[repeat(2,minmax(0,1fr))]",
+            filters && "max-h-56 overflow-y-auto",
+          )}
+          data-slot="check-list"
+        >
+          {shown.map((option) => (
+            <li key={option.value} className="min-w-0">
+              <label className="flex min-h-9 min-w-0 cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="size-4 shrink-0 accent-primary"
+                  checked={values.includes(option.value)}
+                  data-testid={`${id}-${option.value}`}
+                  onChange={(event) =>
+                    onChange(
+                      event.target.checked
+                        ? [...values, option.value]
+                        : values.filter((value) => value !== option.value),
+                    )
+                  }
+                />
+                <span className="min-w-0 truncate" title={option.label}>
+                  {option.label}
+                </span>
+              </label>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
       {error ? (
         <p role="alert" className="text-destructive text-xs" data-testid={`${id}-error`}>

@@ -62,6 +62,7 @@ import { reviewWorkflowAutomationTool } from "./review-workflow-automation.ts";
 import { saveConnectorDraftTool } from "./save-connector-draft.ts";
 import { saveLearningTool } from "./save-learning.ts";
 import { saveWorkflowDraftTool } from "./save-workflow-draft.ts";
+import { scheduleTaskCheckTool } from "./schedule-task-check.ts";
 import { searchDocsTool } from "./search-docs.ts";
 import { startConnectorFromDescriptionTool } from "./start-connector-from-description.ts";
 import { startConnectorFromTemplateTool } from "./start-connector-from-template.ts";
@@ -83,6 +84,7 @@ export interface ToolContext {
   conversation_id: string;
   actor_id: string | null;
   principal?: import("../../auth/types.ts").ResolvedPrincipal | null;
+  task_run?: import("../types.ts").TaskRunMarker | null;
   tool_call_id?: string;
   assistant_message_id?: string | null;
   connector_id: string | null;
@@ -262,6 +264,7 @@ register(askUserTextTool);
 register(askUserFormTool);
 register(askUserConfirmTool);
 register(cannotHelpTool);
+register(scheduleTaskCheckTool);
 
 import { loadSkillTool } from "./load-skill.ts";
 
@@ -297,9 +300,11 @@ register(restoreWorkflowVersionTool);
 
 import { ALL_ENGINE_API_READ_TOOLS } from "./engine-api/index.ts";
 import { ALL_ENGINE_API_WRITE_TOOLS } from "./engine-api/writes/index.ts";
+import { taskWriteTools } from "./engine-api/writes/tasks.ts";
 
 for (const t of ALL_ENGINE_API_READ_TOOLS) register(t);
 for (const t of ALL_ENGINE_API_WRITE_TOOLS) register(t);
+for (const t of taskWriteTools) register(t);
 
 export function getTool(name: string): ConversationTool | undefined {
   return registry.get(name);

@@ -143,15 +143,15 @@
     },
     {
       "file": "apps/cockpit/src/pages/core/audit-filter.ts",
-      "source_sha256": "f0c73f26c424b8fbb2da8a420fce3b7f3768ebefae8fe926b99de162d6b3e14d",
+      "source_sha256": "cfbb23cbcb7d6d2011795cc9f18b49e192aba798c944a983e1f5589e8a82ac04",
       "location": {
         "end": {
           "column": 7,
-          "line": 54
+          "line": 56
         },
         "start": {
           "column": 5,
-          "line": 54
+          "line": 56
         }
       },
       "mutatorName": "StringLiteral",
@@ -163,15 +163,15 @@
     },
     {
       "file": "apps/cockpit/src/pages/core/audit-filter.ts",
-      "source_sha256": "f0c73f26c424b8fbb2da8a420fce3b7f3768ebefae8fe926b99de162d6b3e14d",
+      "source_sha256": "cfbb23cbcb7d6d2011795cc9f18b49e192aba798c944a983e1f5589e8a82ac04",
       "location": {
         "end": {
           "column": 7,
-          "line": 62
+          "line": 64
         },
         "start": {
           "column": 5,
-          "line": 62
+          "line": 64
         }
       },
       "mutatorName": "StringLiteral",
@@ -183,15 +183,15 @@
     },
     {
       "file": "apps/cockpit/src/pages/core/audit-filter.ts",
-      "source_sha256": "f0c73f26c424b8fbb2da8a420fce3b7f3768ebefae8fe926b99de162d6b3e14d",
+      "source_sha256": "cfbb23cbcb7d6d2011795cc9f18b49e192aba798c944a983e1f5589e8a82ac04",
       "location": {
         "end": {
           "column": 7,
-          "line": 98
+          "line": 100
         },
         "start": {
           "column": 5,
-          "line": 98
+          "line": 100
         }
       },
       "mutatorName": "StringLiteral",
@@ -203,15 +203,15 @@
     },
     {
       "file": "apps/cockpit/src/pages/core/audit-filter.ts",
-      "source_sha256": "f0c73f26c424b8fbb2da8a420fce3b7f3768ebefae8fe926b99de162d6b3e14d",
+      "source_sha256": "cfbb23cbcb7d6d2011795cc9f18b49e192aba798c944a983e1f5589e8a82ac04",
       "location": {
         "end": {
           "column": 7,
-          "line": 114
+          "line": 116
         },
         "start": {
           "column": 5,
-          "line": 114
+          "line": 116
         }
       },
       "mutatorName": "StringLiteral",
@@ -223,15 +223,15 @@
     },
     {
       "file": "apps/cockpit/src/pages/core/audit-filter.ts",
-      "source_sha256": "f0c73f26c424b8fbb2da8a420fce3b7f3768ebefae8fe926b99de162d6b3e14d",
+      "source_sha256": "cfbb23cbcb7d6d2011795cc9f18b49e192aba798c944a983e1f5589e8a82ac04",
       "location": {
         "end": {
           "column": 9,
-          "line": 130
+          "line": 132
         },
         "start": {
           "column": 7,
-          "line": 130
+          "line": 132
         }
       },
       "mutatorName": "StringLiteral",
@@ -1793,6 +1793,363 @@
       "statusReason": "",
       "reason": "mismatched is a local native Set built exclusively after typeof step === 'string'. In the accounting filter, step is already the local mapped value, not a second getter read. Therefore mismatched.has(step) implies step is a string, and removal of the redundant typeof conjunct cannot alter the predicate.",
       "independent_review": "Independently reviewed by jsonata_pure_leaf in equivalence-independent-review-workflow-review-environment-and-conversation-reference.json, approved prior mutant 59. Fresh patched-instrumenter report SHA256 79bf342c6bde051dd5e5a67ae65135288dcc81bf6763fe2e66137a931e71bf1a matches exact location/mutator/replacement as mutant 126; four rejected getter cases and conversation guard were killed by new regressions.",
+      "status": "Survived"
+    },
+    {
+      "file": "apps/engine/src/tasks/core/grant.ts",
+      "source_sha256": "006d157c683c05b00ac5dcf8c6460bdadf9fb4c30eb2b7d517669b698fcab51e",
+      "location": {
+        "start": {
+          "line": 60,
+          "column": 5
+        },
+        "end": {
+          "line": 61,
+          "column": 23
+        }
+      },
+      "mutatorName": "LogicalOperator",
+      "replacement": "grant.max_runs !== null || remaining !== null",
+      "original": "grant.max_runs !== null &&\n    remaining !== null",
+      "statusReason": "",
+      "reason": "remainingRuns returns null exactly when max_runs is null, so the two guards are always both true or both false and || equals && here. When both are null the remaining conjunct is null < null * share, which JavaScript evaluates as 0 < 0, false, as in the original.",
+      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. It emulated the mutant against the real remainingRuns over a 14x14 grid of max_runs and reserved_runs (null, undefined, NaN, negatives, Infinity, strings) and found zero differences.",
+      "status": "Survived"
+    },
+    {
+      "file": "apps/engine/src/tasks/core/grant.ts",
+      "source_sha256": "006d157c683c05b00ac5dcf8c6460bdadf9fb4c30eb2b7d517669b698fcab51e",
+      "location": {
+        "start": {
+          "line": 60,
+          "column": 5
+        },
+        "end": {
+          "line": 61,
+          "column": 23
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "grant.max_runs !== null &&\n    remaining !== null",
+      "statusReason": "",
+      "reason": "Both guards only narrow types. For a null max_runs remainingRuns is null as well and the remaining conjunct null < null * share is 0 < 0, false, the same result the guards give. For a non-null max_runs both guards are already true.",
+      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. It emulated the mutant against the real remainingRuns over a 14x14 grid of max_runs and reserved_runs (null, undefined, NaN, negatives, Infinity, strings) and found zero differences.",
+      "status": "Survived"
+    },
+    {
+      "file": "apps/engine/src/tasks/core/grant.ts",
+      "source_sha256": "006d157c683c05b00ac5dcf8c6460bdadf9fb4c30eb2b7d517669b698fcab51e",
+      "location": {
+        "start": {
+          "line": 61,
+          "column": 5
+        },
+        "end": {
+          "line": 61,
+          "column": 23
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "remaining !== null",
+      "statusReason": "",
+      "reason": "The preceding conjunct grant.max_runs !== null already holds, and remainingRuns returns null only for a null max_runs, so remaining !== null is always true at this point.",
+      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. It emulated the mutant against the real remainingRuns over a 14x14 grid of max_runs and reserved_runs (null, undefined, NaN, negatives, Infinity, strings) and found zero differences.",
+      "status": "Survived"
+    },
+    {
+      "file": "apps/engine/src/tasks/core/grant.ts",
+      "source_sha256": "006d157c683c05b00ac5dcf8c6460bdadf9fb4c30eb2b7d517669b698fcab51e",
+      "location": {
+        "start": {
+          "line": 60,
+          "column": 5
+        },
+        "end": {
+          "line": 60,
+          "column": 28
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "grant.max_runs !== null",
+      "statusReason": "",
+      "reason": "With the guard removed a null max_runs still reaches remaining !== null, which is false because remainingRuns returns null exactly for a null max_runs. For a non-null max_runs the guard was true.",
+      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. It emulated the mutant against the real remainingRuns over a 14x14 grid of max_runs and reserved_runs (null, undefined, NaN, negatives, Infinity, strings) and found zero differences.",
+      "status": "Survived"
+    },
+    {
+      "file": "apps/engine/src/tasks/core/run-state.ts",
+      "source_sha256": "80ea035d7e63820c79a4f522a196bca7186c6bbb8e93c1da34606fe07cc99c5c",
+      "location": {
+        "start": {
+          "line": 53,
+          "column": 20
+        },
+        "end": {
+          "line": 53,
+          "column": 28
+        }
+      },
+      "mutatorName": "EqualityOperator",
+      "replacement": "at >= now",
+      "original": "at > now",
+      "statusReason": "",
+      "reason": "The mutant differs only when at and now are the same instant, where it returns at instead of now: two Date objects with the same time value. The decision carries the instant, not the reference; the caller stores it and compares it through getTime(). An invalid at yields now in both forms.",
+      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. Verdict: identity-only. It read the only caller, tasks/service/runs.ts, which passes next_check_at to writeRun as a column value and compares it through getTime(); it found no reference comparison or mutation of the returned Date. It did not read the body of writeRun.",
+      "status": "Survived"
+    },
+    {
+      "file": "apps/engine/src/tasks/core/run-state.ts",
+      "source_sha256": "80ea035d7e63820c79a4f522a196bca7186c6bbb8e93c1da34606fe07cc99c5c",
+      "location": {
+        "start": {
+          "line": 54,
+          "column": 10
+        },
+        "end": {
+          "line": 54,
+          "column": 29
+        }
+      },
+      "mutatorName": "EqualityOperator",
+      "replacement": "earliest <= deadline",
+      "original": "earliest < deadline",
+      "statusReason": "",
+      "reason": "The mutant differs only when earliest and deadline are the same instant, where it returns earliest instead of deadline: two Date objects with the same time value. The decision carries the instant, not the reference; the caller stores it and compares it through getTime().",
+      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. Verdict: identity-only. It read the only caller, tasks/service/runs.ts, which passes next_check_at to writeRun as a column value and compares it through getTime(); it found no reference comparison or mutation of the returned Date. It did not read the body of writeRun.",
+      "status": "Survived"
+    },
+    {
+      "file": "apps/engine/src/tasks/core/schedule.ts",
+      "source_sha256": "571d4287ddcbd234c4ed81595badadaa39acd13d4e573edc346b84388a1f4919",
+      "location": {
+        "start": {
+          "line": 26,
+          "column": 11
+        },
+        "end": {
+          "line": 28,
+          "column": 4
+        }
+      },
+      "mutatorName": "BlockStatement",
+      "replacement": "{}",
+      "original": "{\n    return false;\n  }",
+      "statusReason": "",
+      "reason": "timezoneValid is module-private and its only call site negates the result. An empty catch body returns undefined instead of false and !undefined equals !false, so taskScheduleIssue still answers timezone_invalid. The proof covers only this exact empty block.",
+      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. It emulated the mutant over nine timezone strings and found no difference in the negated result, and confirmed the single call site.",
+      "status": "Survived"
+    },
+    {
+      "file": "apps/engine/src/tasks/core/schedule.ts",
+      "source_sha256": "571d4287ddcbd234c4ed81595badadaa39acd13d4e573edc346b84388a1f4919",
+      "location": {
+        "start": {
+          "line": 42,
+          "column": 30
+        },
+        "end": {
+          "line": 42,
+          "column": 44
+        }
+      },
+      "mutatorName": "EqualityOperator",
+      "replacement": "gap <= smallest",
+      "original": "gap < smallest",
+      "statusReason": "",
+      "reason": "When gap equals smallest the mutant assigns the same number again. A NaN gap makes both comparisons false.",
+      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. Verdict: equivalent, by reading.",
+      "status": "Survived"
+    },
+    {
+      "file": "apps/engine/src/tasks/core/schedule.ts",
+      "source_sha256": "571d4287ddcbd234c4ed81595badadaa39acd13d4e573edc346b84388a1f4919",
+      "location": {
+        "start": {
+          "line": 116,
+          "column": 7
+        },
+        "end": {
+          "line": 116,
+          "column": 17
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "false",
+      "original": "a === null",
+      "statusReason": "",
+      "reason": "With a null and b a string the mutant falls through to Date.parse(null) === Date.parse(b). Date.parse(null) is NaN, so the result is false as in the original. Both null still returns true through b === null.",
+      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. It emulated the mutant over a 9x9 grid of inputs with zero differences and confirmed Date.parse(null) is NaN in Bun, the runtime of the engine.",
+      "status": "Survived"
+    },
+    {
+      "file": "apps/engine/src/tasks/core/schedule.ts",
+      "source_sha256": "571d4287ddcbd234c4ed81595badadaa39acd13d4e573edc346b84388a1f4919",
+      "location": {
+        "start": {
+          "line": 116,
+          "column": 7
+        },
+        "end": {
+          "line": 116,
+          "column": 31
+        }
+      },
+      "mutatorName": "LogicalOperator",
+      "replacement": "a === null && b === null",
+      "original": "a === null || b === null",
+      "statusReason": "",
+      "reason": "Exactly one null side falls through to a comparison with Date.parse(null), which is NaN and never equal, so the result is false as in the original. Both null is unchanged.",
+      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. It emulated the mutant over a 9x9 grid of inputs with zero differences and confirmed Date.parse(null) is NaN in Bun, the runtime of the engine.",
+      "status": "Survived"
+    },
+    {
+      "file": "apps/engine/src/tasks/core/schedule.ts",
+      "source_sha256": "571d4287ddcbd234c4ed81595badadaa39acd13d4e573edc346b84388a1f4919",
+      "location": {
+        "start": {
+          "line": 116,
+          "column": 21
+        },
+        "end": {
+          "line": 116,
+          "column": 31
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "false",
+      "original": "b === null",
+      "statusReason": "",
+      "reason": "With b null and a a string the mutant falls through to Date.parse(a) === Date.parse(null), which is false because Date.parse(null) is NaN, as in the original. Both null is caught by a === null.",
+      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. It emulated the mutant over a 9x9 grid of inputs with zero differences and confirmed Date.parse(null) is NaN in Bun, the runtime of the engine.",
+      "status": "Survived"
+    },
+    {
+      "file": "packages/shared/src/workflow-automation.ts",
+      "source_sha256": "51bc318e67941e45293efdb42d74805cc615dd59b2985ae252bd3d57b2ab6295",
+      "location": {
+        "start": {
+          "line": 389,
+          "column": 54
+        },
+        "end": {
+          "line": 389,
+          "column": 56
+        }
+      },
+      "mutatorName": "StringLiteral",
+      "replacement": "\"Stryker was here!\"",
+      "original": "\"\"",
+      "statusReason": "",
+      "reason": "The literal is only the fallback for a missing diagnosis code that is looked up in LIMIT_PROPOSAL_CODES, a module-private list of four fixed codes. Neither the empty string nor the sentinel is in that list, so includes is false either way.",
+      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. Verdict: equivalent, by reading the private constant and its single use.",
+      "status": "Survived"
+    },
+    {
+      "file": "apps/engine/src/workflows/core/authority-inheritance.ts",
+      "source_sha256": "8e172178c271285e4aca1cd9f4dffbcb4a0e160a59bc3965fe5e6b0dd4863fa6",
+      "location": {
+        "start": {
+          "line": 78,
+          "column": 21
+        },
+        "end": {
+          "line": 78,
+          "column": 45
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "effect.mcp === undefined",
+      "statusReason": "",
+      "reason": "Applied alone, the mutant differs only when the next effect has an mcp boundary and the granted one has none. The original then answers null and falls to sameConfiguration, which is false because SUB_BOUNDARIES contains mcp, so the pair has no shape. The mutant calls readEffectInherits, which compares the same SUB_BOUNDARIES and can therefore only answer null or false, never an object; both again leave the pair without a shape.",
+      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. It fuzzed a re-implementation of the flatMap body against the real readEffectInherits with 400,000 random effect pairs, about 138,600 of them with an mcp boundary on one side only, and found zero differences; a direct check on an otherwise fully relaxable pair returned false for every one-sided mcp value. It assumed manifest effects are plain JSON data and the evidence maps are real Maps.",
+      "status": "Survived"
+    },
+    {
+      "file": "apps/engine/src/workflows/core/authority-inheritance.ts",
+      "source_sha256": "8e172178c271285e4aca1cd9f4dffbcb4a0e160a59bc3965fe5e6b0dd4863fa6",
+      "location": {
+        "start": {
+          "line": 78,
+          "column": 49
+        },
+        "end": {
+          "line": 78,
+          "column": 76
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "candidate.mcp === undefined",
+      "statusReason": "",
+      "reason": "Applied alone, the mutant differs only when the granted effect has an mcp boundary and the next one has none. The original answers null and sameConfiguration is false because SUB_BOUNDARIES contains mcp. The mutant calls readEffectInherits, which compares the same SUB_BOUNDARIES and can only answer null or false, never an object; in every case the pair has no shape.",
+      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. It fuzzed a re-implementation of the flatMap body against the real readEffectInherits with 400,000 random effect pairs, about 138,600 of them with an mcp boundary on one side only, and found zero differences; a direct check on an otherwise fully relaxable pair returned false for every one-sided mcp value. It assumed manifest effects are plain JSON data and the evidence maps are real Maps.",
+      "status": "Survived"
+    },
+    {
+      "file": "apps/engine/src/workflows/core/boundary-derivation.ts",
+      "source_sha256": "ab3379cca16320adbbebbb412c4ac8ce87805491d7f688c67022f95fef666a00",
+      "location": {
+        "start": {
+          "line": 124,
+          "column": 7
+        },
+        "end": {
+          "line": 124,
+          "column": 25
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "false",
+      "original": "json === undefined",
+      "statusReason": "",
+      "reason": "reviewedBodyBytes is module-private. Without the guard JSON.parse(undefined) throws a SyntaxError inside the existing try and the catch returns null, the value of the early return.",
+      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. It ran the mutant path for undefined and the real observedContentBytes for prepared values of null, {}, {url} and {redacted_request_json: undefined}; all returned null. It confirmed the single caller by reading.",
+      "status": "Survived"
+    },
+    {
+      "file": "apps/engine/src/workflows/core/boundary-derivation.ts",
+      "source_sha256": "ab3379cca16320adbbebbb412c4ac8ce87805491d7f688c67022f95fef666a00",
+      "location": {
+        "start": {
+          "line": 133,
+          "column": 7
+        },
+        "end": {
+          "line": 133,
+          "column": 27
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "true",
+      "original": "entry.bytes !== null",
+      "statusReason": "",
+      "reason": "For a null bytes value the remaining conjunct null > 0 is already false, so the conjunction is false with or without the null check. The guard only narrows the type.",
+      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. It compared 13 bytes values (including null, undefined, NaN, strings, arrays) across held and prepared variants with zero differences.",
+      "status": "Survived"
+    },
+    {
+      "file": "apps/engine/src/workflows/core/boundary-derivation.ts",
+      "source_sha256": "ab3379cca16320adbbebbb412c4ac8ce87805491d7f688c67022f95fef666a00",
+      "location": {
+        "start": {
+          "line": 254,
+          "column": 9
+        },
+        "end": {
+          "line": 254,
+          "column": 24
+        }
+      },
+      "mutatorName": "ConditionalExpression",
+      "replacement": "false",
+      "original": "target === null",
+      "statusReason": "",
+      "reason": "alignFromEnd begins with the same parsed(raw) and returns null when the address does not parse. So whenever target is null the second disjunct is true and the function returns false before target.searchParams is read.",
+      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. It compared 14 addresses (including unparseable ones) across 7 part shapes and 3 query shapes with zero differences and no throws.",
       "status": "Survived"
     }
   ]

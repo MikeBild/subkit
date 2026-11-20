@@ -2,6 +2,8 @@ import { accessDe, accessEn } from "./i18n/access";
 import { appsDe, appsEn } from "./i18n/apps";
 import { auditDe, auditEn } from "./i18n/audit";
 import { authorityDe, authorityEn } from "./i18n/authority";
+import { authorityBoundariesDe, authorityBoundariesEn } from "./i18n/authority-boundaries";
+import { authorityProposalsDe, authorityProposalsEn } from "./i18n/authority-proposals";
 import { automationDe, automationEn } from "./i18n/automation";
 import { brandingDe, brandingEn } from "./i18n/branding";
 import { catalogDe, catalogEn } from "./i18n/catalog";
@@ -26,6 +28,9 @@ import { settingsPackagesDe, settingsPackagesEn } from "./i18n/settings-packages
 import { settingsPersonalDe, settingsPersonalEn } from "./i18n/settings-personal";
 import { shellDe, shellEn } from "./i18n/shell";
 import { skillsDe, skillsEn } from "./i18n/skills";
+import { taskGrantDe, taskGrantEn } from "./i18n/task-grant";
+import { taskRunDe, taskRunEn } from "./i18n/task-run";
+import { tasksDe, tasksEn } from "./i18n/tasks";
 import { toolDe, toolEn } from "./i18n/tool";
 import { usageDe, usageEn } from "./i18n/usage";
 import { workflowDe, workflowEn } from "./i18n/workflow";
@@ -44,6 +49,8 @@ const EN = {
   ...appsEn,
   ...auditEn,
   ...authorityEn,
+  ...authorityBoundariesEn,
+  ...authorityProposalsEn,
   ...automationEn,
   ...brandingEn,
   ...catalogEn,
@@ -68,6 +75,9 @@ const EN = {
   ...settingsPersonalEn,
   ...shellEn,
   ...skillsEn,
+  ...taskGrantEn,
+  ...tasksEn,
+  ...taskRunEn,
   ...toolEn,
   ...usageEn,
   ...workflowEn,
@@ -81,6 +91,8 @@ const DE: Record<TranslationKey, string> = {
   ...appsDe,
   ...auditDe,
   ...authorityDe,
+  ...authorityBoundariesDe,
+  ...authorityProposalsDe,
   ...automationDe,
   ...brandingDe,
   ...catalogDe,
@@ -105,6 +117,9 @@ const DE: Record<TranslationKey, string> = {
   ...settingsPersonalDe,
   ...shellDe,
   ...skillsDe,
+  ...taskGrantDe,
+  ...tasksDe,
+  ...taskRunDe,
   ...toolDe,
   ...usageDe,
   ...workflowDe,

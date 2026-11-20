@@ -2,6 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { actorType } from "../../audit/actor.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { assertTaskRunWriter } from "../../conversations/public/lifecycle.ts";
 import type { Db } from "../../db/client.ts";
 import { recordFilesDedupSeen } from "../../files/dedup-counter.ts";
 import { FileLinkError, linkStoredFile } from "../../files/links.ts";
@@ -201,6 +202,12 @@ const upload = defineOperation<UploadInput, AttachmentWire>({
     const principal = scope.principal;
     if (!principal) return reject.unauthorized();
     if (!(await conversationExists(scope.db, scope.tenant_id, id))) return CONVERSATION_NOT_FOUND();
+    await assertTaskRunWriter(scope.db, {
+      tenant_id: scope.tenant_id,
+      conversation_id: id,
+      actor_id: principal.id,
+      principal,
+    });
     const linkScope: LinkScope = {
       db: scope.db,
       tenant_id: scope.tenant_id,
@@ -256,6 +263,12 @@ const remove = defineOperation<SlugInput, true>({
   async handler(scope, { id, slug }) {
     const principal = scope.principal;
     if (!principal) return reject.unauthorized();
+    await assertTaskRunWriter(scope.db, {
+      tenant_id: scope.tenant_id,
+      conversation_id: id,
+      actor_id: principal.id,
+      principal,
+    });
     const unlinked = await unlinkConversationAttachment(
       scope.db,
       { principal, request_source: scope.request_source },

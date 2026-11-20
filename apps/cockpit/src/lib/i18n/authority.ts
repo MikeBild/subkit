@@ -104,23 +104,6 @@ export const authorityEn = {
     "Suggested minimum for a webhook: only 1 call arrived in the last {days} days.",
   "authority.suggestion.hookMinimum.other":
     "Suggested minimum for a webhook: only {count} calls arrived in the last {days} days.",
-  "authority.repairTitle": "SubKit can work this out itself",
-  "authority.repairDescription.one":
-    "1 step does not say where it may go, and SubKit has read what it really did. It can write that limit into a draft for you to review — nothing is applied and nothing is approved by this.",
-  "authority.repairDescription.other":
-    "{count} steps do not say where they may go, and SubKit has read what each of them really did. It can write those limits into a draft for you to review — nothing is applied and nothing is approved by this.",
-  "authority.repairAction": "Let SubKit set the limits",
-  "authority.repairCreates": "Creates {version} for you to review. Nothing runs yet.",
-  "authority.repairSwitched": "The new version is shown for review.",
-  "authority.repairWorking": "Reading what these steps did…",
-  "authority.repairDone.one":
-    "Limit written into a draft for 1 step. Review it below and apply it when it is right.",
-  "authority.repairDone.other":
-    "Limits written into a draft for {count} steps. Review it below and apply it when it is right.",
-  "authority.repairFailed":
-    "Writing the limits did not go through, so nothing was changed. Try again; if it keeps failing, the workflow was edited elsewhere in the meantime.",
-  "authority.repairNone":
-    "SubKit cannot work these out: {steps}. These steps have no recorded history to read, or what they did cannot be stated as a limit.",
   "authority.adjustPrompt":
     "Automatic runs of this workflow cannot be approved yet. Diagnose which steps block the approval and change exactly those steps so an approval can cover them; keep the schedule and destinations unless I ask otherwise. Check the change without live effects and save it as a draft. Do not activate or approve anything: a person approves in the dialog afterwards. If no permitted change exists, say plainly why and what works instead. If a business detail such as a sender or recipient is missing, ask one short question with clear options and a recommendation. Answer briefly, without code or tool names.",
   "authority.incompleteTitle": "Request details are incomplete",
@@ -179,8 +162,6 @@ export const authorityEn = {
     "{connector} is switched off in {environment}.",
   "authority.window": "Valid from — until (local time)",
   "authority.requests": "Request contents",
-  "authority.repairLine.one": "1 step without a stated target",
-  "authority.repairLine.other": "{count} steps without a stated target",
   "authority.growth.newConnector": "New target: {name}",
   "authority.growth.newTarget": "New address: {target}",
   "authority.growth.writes": "New: writes to {name}",
@@ -290,6 +271,11 @@ export const authorityEn = {
     "No webhook call arrived in the last {days} days, so the suggestion is a small starting value.",
   "authority.limit.label": "Validity",
   "authority.limit.untilRevoked": "Until revoked",
+  "authority.limit.untilRevokedMeaning": "Runs are allowed until you revoke the approval.",
+  "authority.limit.thirtyDaysMeaning":
+    "Runs are allowed for 30 days unless you revoke the approval earlier.",
+  "authority.limit.sevenDaysMeaning":
+    "Runs are allowed for 7 days unless you revoke the approval earlier.",
   "authority.limit.limited": "Limit",
   "authority.limit.untilRevokedHint":
     "No run limit and no end date. A new version keeps this approval as long as it reaches nothing new. You can revoke it at any time.",
@@ -343,7 +329,7 @@ export const authorityEn = {
     "This step is a report e-mail or a content publication. Those have their own, stricter review of the recipient or the published items — a general limit does not belong here.",
   "authority.trial.title": "Trial run in progress",
   "authority.trial.what":
-    "Opening this approval started a trial run. It reads from the connected systems for real, and holds back everything it would send — nothing leaves your systems. That is how the addresses below are worked out.",
+    "This trial run reads from your connected systems for real and holds back every write, so nothing is changed there.",
   "authority.trial.elapsed": "Running for {seconds} seconds.",
   "authority.trial.alreadyRunning":
     "A trial run for this workflow is already in progress — most likely in another tab. This one is waiting for it rather than starting a second.",
@@ -360,8 +346,6 @@ export const authorityEn = {
     "A trial run reached this step but did not record a recipient, so there is nothing to approve yet. Open that run and look at this step: the address was probably never worked out.",
   "authority.refusal.report_delivery_unreachable":
     "A trial run never got as far as this step, so nobody has seen who would receive the e-mail. Another trial run will not help, because the step is only reached after something has been sent. Name the recipient on the step instead. What is sent is still checked against that name every time.",
-  "authority.refusal.connector_adds_query":
-    "The connector appends query parameters of its own, so no reviewed query could ever match what is actually sent.",
   "authority.refusal.target_unresolved":
     "The target cannot be worked out: the connector has no base address and the path is not an absolute one.",
   "authority.refusal.path_unsupported":
@@ -419,6 +403,9 @@ export const authorityEn = {
   "permission.resource.memory": "Conversation memory",
   "permission.resource.connections": "Account connections",
   "permission.resource.schedules": "Schedules",
+  "permission.resource.tasks": "Tasks",
+  "permission.resource.taskRuns": "Task runs",
+  "permission.action.grant": "Give the standing permission",
   "permission.resource.subscriptions": "Subscriptions",
   "permission.action.commit": "Commit",
   "permission.action.export": "Export",
@@ -542,23 +529,6 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
     "Vorschlag: Mindestwert für Webhooks – in den letzten {days} Tagen kam nur 1 Aufruf.",
   "authority.suggestion.hookMinimum.other":
     "Vorschlag: Mindestwert für Webhooks – in den letzten {days} Tagen kamen nur {count} Aufrufe.",
-  "authority.repairTitle": "Das kann SubKit selbst herausfinden",
-  "authority.repairDescription.one":
-    "1 Schritt sagt nicht, wohin er gehen darf. SubKit hat gelesen, was er tatsächlich getan hat, und kann diese Grenze in einen Entwurf schreiben, den du prüfst — nichts wird dadurch übernommen oder freigegeben.",
-  "authority.repairDescription.other":
-    "{count} Schritte sagen nicht, wohin sie gehen dürfen. SubKit hat gelesen, was jeder von ihnen tatsächlich getan hat, und kann diese Grenzen in einen Entwurf schreiben, den du prüfst — nichts wird dadurch übernommen oder freigegeben.",
-  "authority.repairAction": "SubKit die Grenzen setzen lassen",
-  "authority.repairCreates": "Erzeugt {version} zur Prüfung. Noch läuft nichts.",
-  "authority.repairSwitched": "Die neue Version wird zur Prüfung angezeigt.",
-  "authority.repairWorking": "Liest, was diese Schritte getan haben…",
-  "authority.repairDone.one":
-    "Grenze für 1 Schritt in einen Entwurf geschrieben. Unten prüfen und übernehmen, wenn es stimmt.",
-  "authority.repairDone.other":
-    "Grenzen für {count} Schritte in einen Entwurf geschrieben. Unten prüfen und übernehmen, wenn es stimmt.",
-  "authority.repairFailed":
-    "Das Schreiben der Grenzen ist nicht durchgegangen, geändert wurde nichts. Noch einmal versuchen; bleibt es dabei, wurde der Ablauf zwischenzeitlich an anderer Stelle bearbeitet.",
-  "authority.repairNone":
-    "Das kann SubKit nicht herleiten: {steps}. Zu diesen Schritten gibt es keine aufgezeichnete Historie, oder was sie taten, lässt sich nicht als Grenze aussprechen.",
   "authority.adjustPrompt":
     "Automatische Läufe dieses Ablaufs lassen sich noch nicht freigeben. Ermittle, welche Schritte die Freigabe blockieren, und baue genau diese Schritte so um, dass eine Freigabe sie abdecken kann; Zeitplan und Ziele bleiben, außer ich wünsche es anders. Prüfe die Änderung ohne Live-Wirkungen und speichere sie als Entwurf. Aktiviere nichts und gib nichts frei: Die Freigabe erteilt danach ein Mensch im Dialog. Ist kein zulässiger Umbau möglich, sage klar warum und was stattdessen geht. Fehlt eine fachliche Angabe wie Absender oder Empfänger, stelle eine kurze Frage mit klaren Auswahlmöglichkeiten und einer Empfehlung. Antworte knapp, ohne Code oder Tool-Namen.",
   "authority.incompleteTitle": "Anfragedetails fehlen",
@@ -617,8 +587,6 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
     "{connector} ist in {environment} ausgeschaltet.",
   "authority.window": "Gültig von — bis (Ortszeit)",
   "authority.requests": "Anfrageinhalte",
-  "authority.repairLine.one": "1 Schritt ohne festgelegtes Ziel",
-  "authority.repairLine.other": "{count} Schritte ohne festgelegtes Ziel",
   "authority.growth.newConnector": "Neues Ziel: {name}",
   "authority.growth.newTarget": "Neue Adresse: {target}",
   "authority.growth.writes": "Neu: schreibt an {name}",
@@ -732,6 +700,11 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
     "In den letzten {days} Tagen kam kein Webhook-Aufruf; der Vorschlag ist deshalb ein kleiner Startwert.",
   "authority.limit.label": "Gültigkeit",
   "authority.limit.untilRevoked": "Bis auf Widerruf",
+  "authority.limit.untilRevokedMeaning": "Läufe sind erlaubt, bis du die Freigabe widerrufst.",
+  "authority.limit.thirtyDaysMeaning":
+    "Läufe sind 30 Tage lang erlaubt, solange du die Freigabe nicht vorher widerrufst.",
+  "authority.limit.sevenDaysMeaning":
+    "Läufe sind 7 Tage lang erlaubt, solange du die Freigabe nicht vorher widerrufst.",
   "authority.limit.limited": "Begrenzen",
   "authority.limit.untilRevokedHint":
     "Ohne Laufgrenze und ohne Ablaufdatum. Eine neue Version behält die Freigabe, solange sie nichts Neues erreicht. Jederzeit widerrufbar.",
@@ -785,7 +758,7 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
     "Dieser Schritt ist eine Bericht-E-Mail oder eine Veröffentlichung. Dafür gibt es eine eigene, strengere Prüfung des Empfängers bzw. der veröffentlichten Einträge; eine allgemeine Grenze gehört hier nicht hin.",
   "authority.trial.title": "Probelauf läuft",
   "authority.trial.what":
-    "Mit dem Öffnen dieser Freigabe hat ein Probelauf begonnen. Er liest echt aus den angebundenen Systemen und hält alles zurück, was er senden würde — nichts verlässt deine Systeme. So werden die Adressen unten ermittelt.",
+    "Dieser Probelauf liest wirklich aus deinen verbundenen Systemen und hält jeden Schreibzugriff zurück, sodass dort nichts geändert wird.",
   "authority.trial.elapsed": "Läuft seit {seconds} Sekunden.",
   "authority.trial.alreadyRunning":
     "Für diesen Workflow läuft bereits ein Probelauf — vermutlich in einem anderen Tab. Dieser wartet darauf, statt einen zweiten zu starten.",
@@ -803,8 +776,6 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
     "Ein Probelauf hat diesen Schritt erreicht, aber keinen Empfänger festgehalten — es gibt also noch nichts freizugeben. Öffne diesen Lauf und sieh dir den Schritt an: die Adresse wurde vermutlich nie ermittelt.",
   "authority.refusal.report_delivery_unreachable":
     "Ein Probelauf ist nie bis zu diesem Schritt gekommen, also hat niemand gesehen, wer die E-Mail bekäme. Ein weiterer Probelauf hilft nicht, wenn der Schritt erst erreicht wird, nachdem etwas gesendet wurde — genau das hält ein Probelauf zurück. Nenne den Empfänger stattdessen am Schritt selbst; was tatsächlich gesendet wird, wird weiterhin jedes Mal dagegen geprüft.",
-  "authority.refusal.connector_adds_query":
-    "Der Konnektor hängt eigene Abfrageparameter an. Keine geprüfte Abfrage könnte je zu dem passen, was tatsächlich gesendet wird.",
   "authority.refusal.target_unresolved":
     "Das Ziel lässt sich nicht ermitteln: Der Konnektor hat keine Basisadresse und der Pfad ist keine vollständige Adresse.",
   "authority.refusal.path_unsupported":
@@ -865,6 +836,9 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "permission.resource.memory": "Gesprächsgedächtnis",
   "permission.resource.connections": "Kontoverbindungen",
   "permission.resource.schedules": "Zeitpläne",
+  "permission.resource.tasks": "Aufgaben",
+  "permission.resource.taskRuns": "Läufe von Aufgaben",
+  "permission.action.grant": "Dauererlaubnis geben",
   "permission.resource.subscriptions": "Abonnements",
   "permission.action.commit": "Festschreiben",
   "permission.action.export": "Exportieren",

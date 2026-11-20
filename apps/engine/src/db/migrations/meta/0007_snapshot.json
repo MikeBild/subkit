@@ -1,6 +1,6 @@
 {
-  "id": "e4b782a1-f353-4ae0-8b36-3606f1f7a9c4",
-  "prevId": "e6c1885b-d0ea-455e-b8d6-be2c899c1256",
+  "id": "b35f0e4f-0d7f-4370-9672-9efdf5dd8cc5",
+  "prevId": "e4b782a1-f353-4ae0-8b36-3606f1f7a9c4",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -16856,6 +16856,961 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.task_grants": {
+      "name": "task_grants",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fingerprint": {
+          "name": "fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "environment": {
+          "name": "environment",
+          "type": "execution_mode",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valid_from": {
+          "name": "valid_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "valid_until": {
+          "name": "valid_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "max_runs": {
+          "name": "max_runs",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reserved_runs": {
+          "name": "reserved_runs",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revoked_by": {
+          "name": "revoked_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "workflow_authority_ids": {
+          "name": "workflow_authority_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        }
+      },
+      "indexes": {
+        "task_grants_tenant_id_key": {
+          "name": "task_grants_tenant_id_key",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "task_grants_tenant_task_idx": {
+          "name": "task_grants_tenant_task_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "task_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "task_grants_one_unrevoked_key": {
+          "name": "task_grants_one_unrevoked_key",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "task_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "environment",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"task_grants\".\"revoked_at\" IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "task_grants_tenant_id_tenants_id_fk": {
+          "name": "task_grants_tenant_id_tenants_id_fk",
+          "tableFrom": "task_grants",
+          "tableTo": "tenants",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "task_grants_task_id_tasks_id_fk": {
+          "name": "task_grants_task_id_tasks_id_fk",
+          "tableFrom": "task_grants",
+          "tableTo": "tasks",
+          "columnsFrom": ["task_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "task_grants_fingerprint_check": {
+          "name": "task_grants_fingerprint_check",
+          "value": "\"task_grants\".\"fingerprint\" ~ '^[0-9a-f]{64}$'"
+        },
+        "task_grants_window_check": {
+          "name": "task_grants_window_check",
+          "value": "\"task_grants\".\"valid_until\" IS NULL OR \"task_grants\".\"valid_until\" > \"task_grants\".\"valid_from\""
+        },
+        "task_grants_run_limit_check": {
+          "name": "task_grants_run_limit_check",
+          "value": "\"task_grants\".\"reserved_runs\" >= 0 AND (\"task_grants\".\"max_runs\" IS NULL OR (\"task_grants\".\"max_runs\" > 0 AND \"task_grants\".\"reserved_runs\" <= \"task_grants\".\"max_runs\"))"
+        },
+        "task_grants_revocation_check": {
+          "name": "task_grants_revocation_check",
+          "value": "(\"task_grants\".\"revoked_at\" IS NULL) = (\"task_grants\".\"revoked_by\" IS NULL)"
+        },
+        "task_grants_authorities_check": {
+          "name": "task_grants_authorities_check",
+          "value": "jsonb_typeof(\"task_grants\".\"workflow_authority_ids\") = 'array' AND jsonb_array_length(\"task_grants\".\"workflow_authority_ids\") <= 200 AND octet_length(\"task_grants\".\"workflow_authority_ids\"::text) <= 8192"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.task_runs": {
+      "name": "task_runs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_revision": {
+          "name": "task_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fingerprint": {
+          "name": "fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trigger": {
+          "name": "trigger",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "started_by": {
+          "name": "started_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "grant_id": {
+          "name": "grant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "waiting_reason": {
+          "name": "waiting_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "next_check_at": {
+          "name": "next_check_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sleep_reason": {
+          "name": "sleep_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deadline_at": {
+          "name": "deadline_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "turns_used": {
+          "name": "turns_used",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "no_progress_count": {
+          "name": "no_progress_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "last_seen_turn_id": {
+          "name": "last_seen_turn_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_seen_turn_seq": {
+          "name": "last_seen_turn_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "turn_job_failures": {
+          "name": "turn_job_failures",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "budget_wait_tokens": {
+          "name": "budget_wait_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rejected_playbook_revision": {
+          "name": "rejected_playbook_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_playbook_revision": {
+          "name": "last_playbook_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "trace_id": {
+          "name": "trace_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "failure_code": {
+          "name": "failure_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "result_ready_at": {
+          "name": "result_ready_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "completed_by": {
+          "name": "completed_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "task_runs_tenant_id_key": {
+          "name": "task_runs_tenant_id_key",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "task_runs_tenant_task_created_idx": {
+          "name": "task_runs_tenant_task_created_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "task_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "task_runs_tenant_conversation_idx": {
+          "name": "task_runs_tenant_conversation_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "task_runs_one_run_per_conversation_key": {
+          "name": "task_runs_one_run_per_conversation_key",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"task_runs\".\"conversation_id\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "task_runs_one_open_run_key": {
+          "name": "task_runs_one_open_run_key",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "task_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"task_runs\".\"state\" IN ('running', 'waiting', 'sleeping')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "task_runs_tenant_wake_idx": {
+          "name": "task_runs_tenant_wake_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "next_check_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"task_runs\".\"state\" = 'sleeping'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "task_runs_tenant_id_tenants_id_fk": {
+          "name": "task_runs_tenant_id_tenants_id_fk",
+          "tableFrom": "task_runs",
+          "tableTo": "tenants",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "task_runs_task_id_tasks_id_fk": {
+          "name": "task_runs_task_id_tasks_id_fk",
+          "tableFrom": "task_runs",
+          "tableTo": "tasks",
+          "columnsFrom": ["task_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "task_runs_conversation_id_conversations_id_fk": {
+          "name": "task_runs_conversation_id_conversations_id_fk",
+          "tableFrom": "task_runs",
+          "tableTo": "conversations",
+          "columnsFrom": ["conversation_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "task_runs_trigger_check": {
+          "name": "task_runs_trigger_check",
+          "value": "\"task_runs\".\"trigger\" IN ('manual', 'once', 'cron')"
+        },
+        "task_runs_state_check": {
+          "name": "task_runs_state_check",
+          "value": "\"task_runs\".\"state\" IN ('running', 'waiting', 'sleeping', 'result_ready', 'completed', 'aborted', 'failed')"
+        },
+        "task_runs_waiting_reason_check": {
+          "name": "task_runs_waiting_reason_check",
+          "value": "\"task_runs\".\"waiting_reason\" IS NULL OR \"task_runs\".\"waiting_reason\" IN ('question', 'approval', 'no_progress', 'budget', 'question_expired', 'ai_access', 'turn_stopped')"
+        },
+        "task_runs_sleep_reason_check": {
+          "name": "task_runs_sleep_reason_check",
+          "value": "\"task_runs\".\"sleep_reason\" IS NULL OR char_length(\"task_runs\".\"sleep_reason\") <= 200"
+        },
+        "task_runs_failure_code_check": {
+          "name": "task_runs_failure_code_check",
+          "value": "\"task_runs\".\"failure_code\" IS NULL OR char_length(\"task_runs\".\"failure_code\") <= 200"
+        },
+        "task_runs_fingerprint_check": {
+          "name": "task_runs_fingerprint_check",
+          "value": "\"task_runs\".\"fingerprint\" ~ '^[0-9a-f]{64}$'"
+        },
+        "task_runs_trace_id_check": {
+          "name": "task_runs_trace_id_check",
+          "value": "\"task_runs\".\"trace_id\" ~ '^[0-9a-f]{32}$'"
+        },
+        "task_runs_counters_check": {
+          "name": "task_runs_counters_check",
+          "value": "\"task_runs\".\"task_revision\" >= 1 AND \"task_runs\".\"turns_used\" >= 0 AND \"task_runs\".\"no_progress_count\" >= 0 AND \"task_runs\".\"last_playbook_revision\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.tasks": {
+      "name": "tasks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'other'"
+        },
+        "description_source": {
+          "name": "description_source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'llm'"
+        },
+        "category_source": {
+          "name": "category_source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'llm'"
+        },
+        "catalog_input_hash": {
+          "name": "catalog_input_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "catalog_described_at": {
+          "name": "catalog_described_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "goal": {
+          "name": "goal",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "done_when": {
+          "name": "done_when",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan": {
+          "name": "plan",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bindings": {
+          "name": "bindings",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "environment": {
+          "name": "environment",
+          "type": "execution_mode",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "schedule_cron": {
+          "name": "schedule_cron",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "schedule_timezone": {
+          "name": "schedule_timezone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "schedule_run_at": {
+          "name": "schedule_run_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_claimed_at": {
+          "name": "last_claimed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "admission_hold_reason": {
+          "name": "admission_hold_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "admission_hold_since": {
+          "name": "admission_hold_since",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "schedule_anchor_at": {
+          "name": "schedule_anchor_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "paused_at": {
+          "name": "paused_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paused_by": {
+          "name": "paused_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paused_reason": {
+          "name": "paused_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "max_turns": {
+          "name": "max_turns",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 20
+        },
+        "run_deadline_minutes": {
+          "name": "run_deadline_minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 240
+        },
+        "fingerprint": {
+          "name": "fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "lifecycle": {
+          "name": "lifecycle",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "locale": {
+          "name": "locale",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'de'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "tasks_tenant_id_key": {
+          "name": "tasks_tenant_id_key",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tasks_tenant_owner_idx": {
+          "name": "tasks_tenant_owner_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tasks_tenant_category_idx": {
+          "name": "tasks_tenant_category_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "category",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "tasks_tenant_id_tenants_id_fk": {
+          "name": "tasks_tenant_id_tenants_id_fk",
+          "tableFrom": "tasks",
+          "tableTo": "tenants",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "tasks_category_format": {
+          "name": "tasks_category_format",
+          "value": "\"tasks\".\"category\" ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND length(\"tasks\".\"category\") <= 40"
+        },
+        "tasks_catalog_sources": {
+          "name": "tasks_catalog_sources",
+          "value": "\"tasks\".\"description_source\" IN ('human', 'llm') AND \"tasks\".\"category_source\" IN ('human', 'llm')"
+        },
+        "tasks_lifecycle_check": {
+          "name": "tasks_lifecycle_check",
+          "value": "\"tasks\".\"lifecycle\" IN ('active', 'archived')"
+        },
+        "tasks_locale_check": {
+          "name": "tasks_locale_check",
+          "value": "\"tasks\".\"locale\" IN ('de', 'en')"
+        },
+        "tasks_fingerprint_check": {
+          "name": "tasks_fingerprint_check",
+          "value": "\"tasks\".\"fingerprint\" ~ '^[0-9a-f]{64}$'"
+        },
+        "tasks_revision_check": {
+          "name": "tasks_revision_check",
+          "value": "\"tasks\".\"revision\" >= 1"
+        },
+        "tasks_limits_check": {
+          "name": "tasks_limits_check",
+          "value": "\"tasks\".\"max_turns\" >= 1 AND \"tasks\".\"run_deadline_minutes\" >= 1"
+        },
+        "tasks_documents_check": {
+          "name": "tasks_documents_check",
+          "value": "jsonb_typeof(\"tasks\".\"plan\") = 'object' AND jsonb_typeof(\"tasks\".\"bindings\") = 'object'"
+        },
+        "tasks_schedule_check": {
+          "name": "tasks_schedule_check",
+          "value": "\"tasks\".\"schedule_cron\" IS NULL OR \"tasks\".\"schedule_run_at\" IS NULL"
+        },
+        "tasks_admission_hold_check": {
+          "name": "tasks_admission_hold_check",
+          "value": "(\"tasks\".\"admission_hold_reason\" IS NULL AND \"tasks\".\"admission_hold_since\" IS NULL) OR (\"tasks\".\"admission_hold_since\" IS NOT NULL AND \"tasks\".\"admission_hold_reason\" IN ('grant_required', 'grant_expired', 'grant_exhausted', 'grant_fingerprint_mismatch', 'owner_unavailable', 'ai_access_missing', 'previous_run_active', 'paused'))"
+        },
+        "tasks_paused_check": {
+          "name": "tasks_paused_check",
+          "value": "(\"tasks\".\"paused_at\" IS NULL AND \"tasks\".\"paused_by\" IS NULL AND \"tasks\".\"paused_reason\" IS NULL) OR (\"tasks\".\"paused_at\" IS NOT NULL AND \"tasks\".\"paused_reason\" IN ('owner_request', 'admin', 'owner_unavailable'))"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.tenant_branding": {
       "name": "tenant_branding",
       "schema": "",
@@ -20117,7 +21072,8 @@
         "reauth",
         "endpoint-contract",
         "knowledge",
-        "skill"
+        "skill",
+        "task"
       ]
     },
     "public.skill_candidate_confidence": {

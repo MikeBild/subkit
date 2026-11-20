@@ -19,6 +19,7 @@ export function KpiTile({
   testId,
   detailTestId,
   data,
+  dense = false,
 }: {
   label: ReactNode;
   value?: ReactNode;
@@ -30,10 +31,16 @@ export function KpiTile({
   testId?: string;
   detailTestId?: string;
   data?: Readonly<Record<`data-${string}`, string | undefined>>;
+  dense?: boolean;
 }) {
   return (
-    <div className={KPI_TILE_BOX} data-slot="kpi-tile" data-testid={testId} {...data}>
-      <p className={KPI_TILE_LABEL}>{label}</p>
+    <div
+      className={cn(KPI_TILE_BOX, dense && "min-h-0")}
+      data-slot="kpi-tile"
+      data-testid={testId}
+      {...data}
+    >
+      <p className={cn(KPI_TILE_LABEL, dense && "min-h-0")}>{label}</p>
       {value !== undefined ? (
         <p className={KPI_TILE_VALUE_ROW}>
           {prefix ? (
@@ -47,18 +54,21 @@ export function KpiTile({
           className={cn(
             "flex min-w-0 flex-wrap items-center gap-x-2 text-muted-foreground",
             value === undefined ? "min-h-8 text-xs xl:text-sm" : "text-sm",
+            dense && "min-h-0 text-sm [overflow-wrap:anywhere]",
           )}
         >
           {note}
         </p>
       ) : null}
-      <p
-        className={KPI_TILE_DETAIL}
-        title={detailTitle}
-        data-testid={detail ? detailTestId : undefined}
-      >
-        {detail}
-      </p>
+      {dense && !detail ? null : (
+        <p
+          className={cn(KPI_TILE_DETAIL, dense && "min-h-0")}
+          title={detailTitle}
+          data-testid={detail ? detailTestId : undefined}
+        >
+          {detail}
+        </p>
+      )}
     </div>
   );
 }

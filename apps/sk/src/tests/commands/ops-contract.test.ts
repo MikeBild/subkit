@@ -62,6 +62,8 @@ const auditEntry = {
   resource_type: "workflow",
   resource_id: null,
   resource_name: null,
+  task_id: null,
+  task_run_id: null,
   result: "success",
   trace_id: null,
   correlation_id: null,

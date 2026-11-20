@@ -105,7 +105,7 @@ test("a refused query says which parameter, and for a declared variable which va
     "`tz` no longer has the fixed value",
   );
   expect(describe("from=2026-09-20T00%3A00%3A00Z&tz=UTC")).toContain(
-    "`to` the step declares is missing",
+    "the reviewed query parameter `to` is missing",
   );
   const extra = describe(`${GOOD_QUERY}&api_key=s3cr3t-value`);
   expect(extra).toContain("`api_key`");

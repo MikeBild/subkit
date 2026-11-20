@@ -15,6 +15,9 @@ export const RESOURCE_CHANGE_TYPES = [
   "rbac.changed",
   "api_key.changed",
   "settings.changed",
+  "task.changed",
+  "task.grant_changed",
+  "task_run.changed",
 ] as const;
 
 export type ResourceChangeType = (typeof RESOURCE_CHANGE_TYPES)[number];
@@ -27,6 +30,9 @@ export interface ResourceChangeIds {
   hook_id?: string | null;
   connector_id?: string | null;
   knowledge_source_id?: string | null;
+  task_id?: string | null;
+  task_run_id?: string | null;
+  task_grant_id?: string | null;
 }
 
 export async function emitCredentialChange(

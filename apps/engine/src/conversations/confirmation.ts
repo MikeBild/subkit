@@ -1,5 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
+import { auditAwait } from "../audit/audit.ts";
 import { recordToolPolicyConfirmationRequired } from "../audit/recorders/index.ts";
+import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { conversationMessages, conversationToolCalls } from "../db/schema/index.ts";
@@ -282,6 +284,105 @@ async function recordConfirmationRequired(p: {
       error: err instanceof Error ? err.message : String(err),
     });
   });
+}
+
+export interface ConfirmationSkipped {
+  readonly tool: string;
+  readonly conversation_id: string;
+  readonly environment: string;
+  readonly covering_authority_id: string;
+}
+
+export function confirmationSkippedMetadata(p: ConfirmationSkipped): Record<string, string> {
+  return {
+    tool: p.tool,
+    conversation_id: p.conversation_id,
+    environment: p.environment,
+    resolver_reason: "authority_covered",
+    covering_authority_id: p.covering_authority_id,
+  };
+}
+
+async function claimSkippedRecord(
+  p: { readonly db: Db; readonly tenant_id: string },
+  tool_call_id: string,
+  metadata: Record<string, string>,
+): Promise<boolean> {
+  const entry: InteractionLogEntry = {
+    type: "confirmation_skipped",
+    ts: new Date().toISOString(),
+    meta: metadata,
+  };
+  const recorded = JSON.stringify({ resolver_reason: metadata.resolver_reason });
+  const claimed = await p.db
+    .update(conversationToolCalls)
+    .set({
+      confirmation_data: sql`COALESCE(${conversationToolCalls.confirmation_data}, '{}'::jsonb) || ${JSON.stringify(
+        metadata,
+      )}::jsonb`,
+      interaction_log: sql`COALESCE(${conversationToolCalls.interaction_log}, '[]'::jsonb) || ${JSON.stringify(
+        [entry],
+      )}::jsonb`,
+    })
+    .where(
+      and(
+        eq(conversationToolCalls.id, tool_call_id),
+        eq(conversationToolCalls.tenant_id, p.tenant_id),
+        sql`NOT (COALESCE(${conversationToolCalls.confirmation_data}, '{}'::jsonb) @> ${recorded}::jsonb)`,
+      ),
+    )
+    .returning({ id: conversationToolCalls.id });
+  if (claimed.length > 0) return true;
+  const [known] = await p.db
+    .select({ id: conversationToolCalls.id })
+    .from(conversationToolCalls)
+    .where(
+      and(
+        eq(conversationToolCalls.id, tool_call_id),
+        eq(conversationToolCalls.tenant_id, p.tenant_id),
+      ),
+    )
+    .limit(1);
+  return known === undefined;
+}
+
+export async function recordConfirmationSkipped(
+  p: ConfirmationSkipped & {
+    readonly db: Db;
+    readonly tenant_id: string;
+    readonly tool_call_id: string | null;
+    readonly actor_id: string | null;
+    readonly actor_type: "user" | "system_account" | "system" | "unknown";
+  },
+): Promise<void> {
+  const metadata = confirmationSkippedMetadata(p);
+  try {
+    if (p.tool_call_id !== null && !(await claimSkippedRecord(p, p.tool_call_id, metadata))) return;
+    await auditAwait(
+      {
+        tenant_id: p.tenant_id,
+        actor_type: p.actor_type,
+        actor_id: p.actor_id,
+        action: AuditAction.TOOL_POLICY_CONFIRMATION_SKIPPED,
+        resource_type: "conversation",
+        resource_id: p.conversation_id,
+        result: "success",
+        reason: "authority_covered",
+        metadata,
+      },
+      p.db,
+    );
+  } catch (err: unknown) {
+    logger.warn({
+      module: "conversation_loop",
+      action: "tool_policy.audit_failed",
+      msg: "failed to record tool_policy.confirmation_skipped",
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      tool: p.tool,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 export async function runConfirmGate(input: ConfirmGateInput): Promise<ConfirmGateResult> {

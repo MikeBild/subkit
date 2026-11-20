@@ -2,6 +2,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { conversations, roles, systemAccounts, tenants, users } from "../db/schema/index.ts";
+import { notTaskRunConversation } from "../db/task-run-conversations.ts";
 
 interface UserProfile {
   email: string;
@@ -150,7 +151,13 @@ export async function listRecentOwnedConversations(
       updated_at: conversations.updated_at,
     })
     .from(conversations)
-    .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.owner_id, owner_id)))
+    .where(
+      and(
+        eq(conversations.tenant_id, tenant_id),
+        eq(conversations.owner_id, owner_id),
+        notTaskRunConversation(),
+      ),
+    )
     .orderBy(desc(conversations.updated_at))
     .limit(10);
 }

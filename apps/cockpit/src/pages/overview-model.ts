@@ -116,6 +116,11 @@ const REASON_KEYS = {
   budget_critical: "overview.reason.budget_critical",
   ai_access_missing: "overview.reason.ai_access_missing",
   risk_critical: "overview.reason.risk_critical",
+  task_run_failed: "overview.reason.task_run_failed",
+  task_result_ready: "overview.reason.task_result_ready",
+  task_grant_required: "overview.reason.task_grant_required",
+  task_grant_expiring: "overview.reason.task_grant_expiring",
+  task_owner_unavailable: "overview.reason.task_owner_unavailable",
 } as const satisfies Record<AttentionItem["reason"], TranslationKey>;
 
 const SUBJECT_KEYS = {
@@ -125,6 +130,7 @@ const SUBJECT_KEYS = {
   connection: "overview.subject.connection",
   secret: "overview.subject.secret",
   settings: "overview.subject.settings",
+  task: "overview.subject.task",
 } as const satisfies Record<NonNullable<AttentionItem["subject"]>["kind"], TranslationKey>;
 
 const HEARTBEAT_KEYS: Record<string, TranslationKey> = {
@@ -248,6 +254,15 @@ export function attentionSentence(
       return { lead: repairSentence(item, subject, t), machine: null, since };
     case "ai_access_missing":
       return { lead: t(reasonKey), machine: null, since };
+    case "task_grant_required":
+      return {
+        lead: t(
+          item.detail === "grant_required" ? "overview.reason.task_grant_requiredFirst" : reasonKey,
+          { subject },
+        ),
+        machine: null,
+        since,
+      };
     case "failing": {
       const cause = item.cause_class ? causeClassKey(item.cause_class) : undefined;
       let lead = t(
@@ -372,8 +387,13 @@ export function entryActions(item: AttentionItem): {
 export function actionLabelKey(action: AttentionAction, item: AttentionItem): TranslationKey {
   switch (action.verb) {
     case "review":
-      return "overview.action.review";
+      return item.reason === "task_result_ready"
+        ? "overview.action.reviewResult"
+        : "overview.action.review";
     case "open":
+      if (item.reason === "task_grant_required") return "overview.action.allow";
+      if (item.reason === "task_owner_unavailable") return "overview.action.resume";
+      if (item.subject?.kind === "task") return "overview.action.openTask";
       if (
         item.reason === "version_awaiting_approval" ||
         item.reason === "execution_authority_unavailable"
@@ -397,7 +417,7 @@ export function actionLabelKey(action: AttentionAction, item: AttentionItem): Tr
     case "reauth":
       return "overview.action.reauth";
     case "renew":
-      return "overview.action.renew";
+      return item.subject?.kind === "task" ? "overview.action.extend" : "overview.action.renew";
     case "open_runs":
       return "overview.action.openRuns";
     case "chat":
@@ -424,6 +444,7 @@ const SOURCE_KEYS = {
   budget: "overview.source.budget",
   ai_access: "overview.source.ai_access",
   risk: "overview.source.risk",
+  tasks: "overview.source.tasks",
 } as const satisfies Record<AttentionSource, TranslationKey>;
 
 export function sourceLabel(source: AttentionSource, t: Translate): string {
@@ -527,6 +548,11 @@ const SHORT_REASON_KEYS = {
   budget_critical: "overview.short.budget_critical",
   ai_access_missing: "overview.short.ai_access_missing",
   risk_critical: "overview.short.risk_critical",
+  task_run_failed: "overview.short.task_run_failed",
+  task_result_ready: "overview.short.task_result_ready",
+  task_grant_required: "overview.short.task_grant_required",
+  task_grant_expiring: "overview.short.task_grant_expiring",
+  task_owner_unavailable: "overview.short.task_owner_unavailable",
 } as const satisfies Partial<Record<AttentionItem["reason"], TranslationKey>>;
 
 const COUNTED_SHORT_REASON_KEYS = {
@@ -561,6 +587,11 @@ const STATE_OF_REASON: Record<AttentionItem["reason"], { state: string; label: T
   budget_critical: { state: "critical", label: "overview.state.budget" },
   ai_access_missing: { state: "pending", label: "settings.status.waiting" },
   risk_critical: { state: "critical", label: "overview.state.risk" },
+  task_run_failed: { state: "failed", label: "status.failed" },
+  task_result_ready: { state: "pending", label: "overview.state.taskResult" },
+  task_grant_required: { state: "pending", label: "overview.state.taskAllow" },
+  task_grant_expiring: { state: "expiring", label: "overview.state.taskExpiring" },
+  task_owner_unavailable: { state: "needs_attention", label: "overview.state.taskPaused" },
 };
 
 interface AttentionRow {

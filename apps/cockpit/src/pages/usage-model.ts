@@ -25,6 +25,7 @@ export const CONSUMPTION_AXES = [
   "model",
   "conversation",
   "execution",
+  "task",
 ] as const;
 export type ConsumptionAxis = (typeof CONSUMPTION_AXES)[number];
 
@@ -539,7 +540,7 @@ export function originChart(
   };
 }
 
-export const BREAKDOWN_DIMS = ["workflow", "person", "model", "conversation"] as const;
+export const BREAKDOWN_DIMS = ["workflow", "person", "model", "conversation", "task"] as const;
 export type BreakdownDim = (typeof BREAKDOWN_DIMS)[number];
 
 export const BREAKDOWN_AXIS: Record<BreakdownDim, ConsumptionAxis> = {
@@ -547,10 +548,25 @@ export const BREAKDOWN_AXIS: Record<BreakdownDim, ConsumptionAxis> = {
   person: "user",
   model: "model",
   conversation: "conversation",
+  task: "task",
 };
 
 export function isBreakdownDim(value: string): value is BreakdownDim {
   return (BREAKDOWN_DIMS as readonly string[]).includes(value);
+}
+
+const BREAKDOWN_NEEDS: Record<BreakdownDim, readonly string[]> = {
+  workflow: [],
+  model: [],
+  person: ["stats:read:all"],
+  conversation: ["stats:read:all"],
+  task: ["stats:read:all", "task:read"],
+};
+
+export function breakdownDims(permissions: readonly string[]): BreakdownDim[] {
+  return BREAKDOWN_DIMS.filter((dim) =>
+    BREAKDOWN_NEEDS[dim].every((permission) => permissions.includes(permission)),
+  );
 }
 
 export interface BreakdownRow {

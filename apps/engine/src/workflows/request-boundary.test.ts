@@ -70,6 +70,8 @@ test("every refusal names its cause", () => {
   ).toBe("pagination_unbounded");
   expect(
     reason({
+      body: undefined,
+      multipart: [{ name: "note", value: "a" }],
       pagination: {
         strategy: "cursor",
         cursor_request_param: "cursor",

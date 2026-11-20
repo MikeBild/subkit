@@ -22,6 +22,7 @@ import type {
 } from "../types.ts";
 import { getConversation } from "./get.ts";
 import { rowToRecord } from "./shared.ts";
+import { assertTaskRunWriter, type TaskRunWriter } from "./task-run-access.ts";
 
 export interface CompactConversationParams {
   tenant_id: string;
@@ -230,6 +231,7 @@ export async function compactConversation(
   p: CompactConversationParams,
   exec: Db,
 ): Promise<CompactConversationResult> {
+  await assertTaskRunWriter(exec, p);
   const keepLast = Math.max(0, Math.min(p.keep_last ?? 4, 50));
   const conv = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!conv) throw new Error("conversation not found");
@@ -302,6 +304,8 @@ export async function undoLastDraftMutation(
   tenant_id: string,
   conversation_id: string,
   exec: Db,
+  writer: Pick<TaskRunWriter, "actor_id" | "principal"> = { actor_id: null },
 ): Promise<DraftDocument> {
+  await assertTaskRunWriter(exec, { tenant_id, conversation_id, ...writer });
   return undoLastSnapshot(tenant_id, conversation_id, exec);
 }

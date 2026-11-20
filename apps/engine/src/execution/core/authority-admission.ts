@@ -68,3 +68,23 @@ export function credentialWithinBoundary(
 export function governingExecutionCanDispatch(status: string, aborted: boolean): boolean {
   return !aborted && (status === "queued" || status === "running");
 }
+
+export function mcpDispatchWithinBoundary(
+  driver: string,
+  hasToolBoundary: boolean,
+  dispatch: Readonly<{ operation: string; has_call: boolean }> | "malformed" | null,
+): "not_mcp" | "tool_call" | "other_operation" | "refused" {
+  if (driver !== "mcp") return dispatch === null && !hasToolBoundary ? "not_mcp" : "refused";
+  if (dispatch === null || dispatch === "malformed") return "refused";
+  if (dispatch.operation === "call_tool")
+    return hasToolBoundary && dispatch.has_call ? "tool_call" : "refused";
+  return hasToolBoundary || dispatch.has_call ? "refused" : "other_operation";
+}
+
+export function toolCallsWithinCeiling(
+  started: Readonly<{ exact: number; iterations: number }>,
+  maxCalls: number,
+): boolean {
+  const calls = started.iterations > 0 ? started.iterations : started.exact;
+  return calls >= 1 && calls <= maxCalls;
+}

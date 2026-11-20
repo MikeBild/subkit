@@ -25,7 +25,7 @@ export type StripAction =
   | { kind: "chat" }
   | { kind: "enable" }
   | { kind: "resume"; scheduleIds: string[] }
-  | { kind: "approve"; via: "apply" | "grant" | "extend" }
+  | { kind: "approve"; via: "apply" | "grant" | "extend" | "limits" }
   | { kind: "recheck" }
   | { kind: "connector"; connectorId: string }
   | { kind: "cause"; runId: string }
@@ -114,9 +114,17 @@ export function workflowStrip(input: StripInput): WorkflowStrip {
       });
       break;
     }
-    case "repair":
-      candidates.push({ kind: "repair", action: null });
+    case "repair": {
+      const repair = automation!.primaryAction;
+      candidates.push({
+        kind: "repair",
+        action:
+          repair?.kind === "repair" && repair.via === "limits" && approvable
+            ? { kind: "approve", via: "limits" }
+            : null,
+      });
       break;
+    }
     case "grant": {
       const once = automation!.history.length > 0;
       candidates.push({

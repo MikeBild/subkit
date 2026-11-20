@@ -22,6 +22,8 @@ const DECISION_ACTIONS = [
   "workflow.authority_granted",
   "workflow.authority_revoked",
   "workflow.authority_expiry_removed",
+  "task.authority_granted",
+  "task.authority_revoked",
   "policy.denied",
   "approval.dispatch_denied",
   "execution.boundary_refused",
@@ -207,6 +209,7 @@ export const AUDIT_AREAS = {
   knowledge: ["knowledge_source", "knowledge_source_version", "skill", "skill_candidate"],
   files: ["file"],
   conversations: ["conversation", "conversation_elicitation"],
+  tasks: ["task", "task_run", "task_grant"],
   people: [
     "user",
     "user_identity",

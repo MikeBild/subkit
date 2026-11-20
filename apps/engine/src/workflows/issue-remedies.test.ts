@@ -238,3 +238,21 @@ test("a draft's deterministic repair is described, never offered for proposal", 
   expect(draft[0]?.instruction).toContain("sk.base64UrlEncodeUtf8(");
   expect(draft[1]?.instruction).toContain("report_delivery");
 });
+
+test("a missing limit is first sent to the one-click proposal, and only then authored by hand", () => {
+  for (const remedy of [remedyFor("dynamic_request", "s3"), remedyFor("dynamic_request", "http")]) {
+    expect(remedy).toContain("**Set limits**");
+    expect(remedy).toContain("trial run that holds back every write");
+    expect(remedy?.indexOf("**Set limits**")).toBeLessThan(
+      remedy?.indexOf("`edit_workflow_patch`") ?? -1,
+    );
+  }
+  const [paging] = repairGuidanceForIssues(
+    [{ step_id: "read", code: "dynamic_request" }],
+    [{ step_id: "read", driver: "http", target: null }],
+    [],
+    [{ step_id: "read", reason: "pagination_unbounded" }],
+  );
+  expect(paging?.instruction).toContain("**Set limits**");
+  expect(paging?.instruction).toContain("pagination.max_pages");
+});

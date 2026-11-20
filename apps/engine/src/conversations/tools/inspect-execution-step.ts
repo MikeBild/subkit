@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { isSensitivePayload } from "../../execution/index.ts";
 import { OffloadResolutionError, resolveOffloaded } from "../../execution/offload.ts";
+import { scrubRecordedUrls } from "../../execution/recorded-url.ts";
 import {
   findExecutionStepByKey,
   findVisibleExecutionHead,
@@ -149,8 +150,8 @@ export const inspectExecutionStepTool: ConversationTool = {
         duration_ms: step.duration_ms,
         retry_count: step.retry_count,
         credential_snapshots: step.credential_snapshots ?? [],
-        ...(step.error ? { error: step.error } : {}),
-        ...(step.request_meta ? { request_meta: step.request_meta } : {}),
+        ...(step.error ? { error: scrubRecordedUrls(step.error) } : {}),
+        ...(step.request_meta ? { request_meta: scrubRecordedUrls(step.request_meta) } : {}),
         output_preview: step.output_preview,
         ...(fullPayload !== undefined ? { full_payload: fullPayload } : {}),
         payload_source: payloadSource,

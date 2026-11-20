@@ -13,7 +13,7 @@ const source: CategoryUsage = {
   aliases: ["Buchhaltung"],
   revision: 4,
   total: 1,
-  counts: { workflow: 1, connector: 0, knowledge_source: 0, skill: 0, file: 0 },
+  counts: { workflow: 1, connector: 0, knowledge_source: 0, skill: 0, file: 0, task: 0 },
 };
 
 describe("shared category editing", () => {

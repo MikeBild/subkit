@@ -359,21 +359,27 @@ describe("workflow routes keep their HTTP responses byte for byte", () => {
       }),
     );
     const proposals = `/v1/workflows/${draft.workflow_id}/boundary-proposals`;
-    record("http.proposals", await http("GET", proposals));
+    const readProposals = await http("GET", `${proposals}?environment=prod`);
+    record("http.proposals", readProposals);
+    const read = readProposals.body as { digest: string; base_version_id: string };
     record(
       "http.proposals.missing",
-      await http("GET", `/v1/workflows/${MISSING}/boundary-proposals`),
+      await http("GET", `/v1/workflows/${MISSING}/boundary-proposals?environment=prod`),
     );
     record(
       "http.proposals.apply.nothing",
       await http("POST", `${proposals}/apply`, {
-        expected_draft_version_id: (updated.body as { version_id: string }).version_id,
+        base_version_id: read.base_version_id,
+        proposals_digest: read.digest,
+        environment: "prod",
       }),
     );
     record(
       "http.proposals.apply.missing",
       await http("POST", `/v1/workflows/${MISSING}/boundary-proposals/apply`, {
-        expected_draft_version_id: null,
+        base_version_id: null,
+        proposals_digest: read.digest,
+        environment: "prod",
       }),
     );
     record(
@@ -448,7 +454,7 @@ describe("workflow routes keep their HTTP responses byte for byte", () => {
       ["drafts.create", "POST", "/v1/workflows/drafts", { definition: 1 }],
       ["drafts.get", "GET", `/v1/workflows/${updateTargetId}/draft`],
       ["drafts.update", "PUT", `/v1/workflows/${updateTargetId}/draft`, { definition: 1 }],
-      ["proposals", "GET", `/v1/workflows/${updateTargetId}/boundary-proposals`],
+      ["proposals", "GET", `/v1/workflows/${updateTargetId}/boundary-proposals?environment=prod`],
       [
         "proposals.apply",
         "POST",

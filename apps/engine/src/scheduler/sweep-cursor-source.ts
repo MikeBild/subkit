@@ -19,6 +19,7 @@ export type SweepCadenceProducer = keyof typeof SWEEP_CADENCE_MS;
 
 export function sweepSource(producer: SchedulerSweepProducer): SQL {
   switch (producer) {
+    case "task":
     case "catalog":
     case "drift":
     case "reauth":

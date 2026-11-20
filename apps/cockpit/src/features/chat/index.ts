@@ -23,6 +23,7 @@ export { ChatMessage } from "./message";
 export { ModePill, UsagePills } from "./mode";
 export { AttachmentPreviewSheet, FollowSubmittedTurn, ReadingColumn } from "./parts";
 export { QuestionDock } from "./question-dock";
+export { TaskRunLine, useRunOfConversation } from "./task-run-line";
 export { ChatTranscript } from "./transcript";
 
 export function selectionFromPath(initialPrompt: string): ConversationSelection {

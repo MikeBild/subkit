@@ -1,3 +1,4 @@
+import { admittedCoveringAuthority } from "../../../../execution/core/run-coverage.ts";
 import { withContext } from "../../../../logging/context.ts";
 import { errorFields, log, logger } from "../../../../logging/logger.ts";
 import { startToolSpan } from "../../../../observability/langfuse-spans.ts";
@@ -13,7 +14,7 @@ import {
   resolveAttachmentSlugsInArgs,
   walkAndResolve,
 } from "../../../attachments.ts";
-import { recordTransition } from "../../../confirmation.ts";
+import { recordConfirmationSkipped, recordTransition } from "../../../confirmation.ts";
 import { createDraftSnapshot } from "../../../draft-checkpoints.ts";
 import { updateToolCallOutput } from "../../../persistence/index.ts";
 import { describeToolExecutionFailure } from "../../../tool-execution-failure.ts";
@@ -188,6 +189,29 @@ export async function executeTool(
       actor_id: ctx.actor_id,
       tool: inner.name,
       ...(result.ok ? {} : { data: { reason: "tool returned ok=false" } }),
+    });
+  }
+  const { coverage } = passed;
+  const admitted: {
+    execution_authority_id?: unknown;
+    hold_writes?: unknown;
+    idempotent_replay?: unknown;
+  } = result.data && typeof result.data === "object" ? result.data : {};
+  if (
+    coverage.covered &&
+    admitted.idempotent_replay !== true &&
+    admittedCoveringAuthority(passed.resolvedRule, coverage, admitted) !== null
+  ) {
+    await recordConfirmationSkipped({
+      db,
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      tool_call_id: toolCallId,
+      tool: inner.name,
+      environment: coverage.environment,
+      covering_authority_id: coverage.authority_id,
+      actor_id: ctx.actor_id ?? null,
+      actor_type: passed.principal?.kind ?? (ctx.actor_id ? "unknown" : "system"),
     });
   }
 

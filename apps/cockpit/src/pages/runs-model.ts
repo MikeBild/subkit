@@ -129,6 +129,7 @@ const VERIFICATION_KEYS = {
   mcp_oauth: "runs.caller.method.mcp_oauth",
   token_exchange: "runs.caller.method.token_exchange",
   external_bearer: "runs.caller.method.external_bearer",
+  task_run: "runs.caller.method.task_run",
 } as const satisfies Record<string, TranslationKey>;
 
 type RunCaller = {

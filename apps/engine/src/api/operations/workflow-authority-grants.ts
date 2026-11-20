@@ -233,7 +233,7 @@ export const makeWorkflowAuthorityUntilRevokedOperation = defineOperation<
 >({
   id: "workflows.authorities.until_revoked",
   summary:
-    "Replace a time-limited approval with one until revoked for the identical boundary from an authenticated human browser",
+    "Replace an approval limited by time or run count with one until revoked and without a run limit for the identical boundary from an authenticated human browser",
   permission: "workflow:write",
   resource: { type: "workflow", param: "id" },
   effect: "write",
@@ -258,7 +258,7 @@ export const makeWorkflowAuthorityUntilRevokedOperation = defineOperation<
     success: {
       status: 200,
       description:
-        "The approval that now applies until revoked; the time-limited one is superseded in the same transaction",
+        "The approval that now applies until revoked without a run limit; the limited one is superseded in the same transaction",
     },
     errors: authorityFailures,
     toInput: ({ param, json }) => ({

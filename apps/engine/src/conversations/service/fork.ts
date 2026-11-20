@@ -7,6 +7,7 @@ import type { Db } from "../../db/client.ts";
 import { conversationMessages, conversations, fileLinks } from "../../db/schema/index.ts";
 import { linkStoredFile } from "../../files/links.ts";
 import { log } from "../../logging/logger.ts";
+import { withoutTaskRunCheck, withoutTaskRunMarker } from "../core/draft.ts";
 import { forkPlaybookDocument } from "../playbook.ts";
 import type { ConversationRecord } from "../types.ts";
 import { rowToRecord } from "./shared.ts";
@@ -66,7 +67,7 @@ export async function forkConversation(
       status: "active",
       origin_client: source.origin_client ?? null,
       surface: source.surface ?? null,
-      draft: source.draft,
+      draft: withoutTaskRunCheck(withoutTaskRunMarker(source.draft)),
       playbook_mode: source.playbook_mode,
       playbook,
       playbook_revision: playbook ? 1 : 0,

@@ -36,6 +36,26 @@ describe("toMessageParts", () => {
     expect(ui.parts).toEqual([{ type: "text", text: "hello" }]);
   });
 
+  test("the continuation message of a task run is marked as written by the run, not by a person", () => {
+    const continuation = toMessageParts(
+      msg({
+        id: "m-run",
+        role: "user",
+        content: { text: "Continue.", origin: "task_run_continuation" },
+      }),
+      [],
+    );
+    expect(continuation.role).toBe("user");
+    expect(continuation.parts).toEqual([{ type: "text", text: "Continue." }]);
+    expect(continuation.origin).toBe("task_run_continuation");
+    const person = toMessageParts(
+      msg({ id: "m-person", role: "user", content: { text: "Continue." } }),
+      [],
+    );
+    expect(person.parts).toEqual([{ type: "text", text: "Continue." }]);
+    expect(Object.hasOwn(person, "origin")).toBe(false);
+  });
+
   test("a recorded approval decision carries its verdict for the reader's language", () => {
     const ui = toMessageParts(
       msg({

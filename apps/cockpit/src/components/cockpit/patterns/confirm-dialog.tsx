@@ -40,6 +40,8 @@ export function ConfirmDialog({
   verb,
   consequence,
   points,
+  confirmLabel,
+  dismissLabel,
   destructive = false,
   pending = false,
   onConfirm,
@@ -51,6 +53,8 @@ export function ConfirmDialog({
   verb: string;
   consequence: string;
   points?: readonly string[];
+  confirmLabel?: string;
+  dismissLabel?: string;
   destructive?: boolean;
   pending?: boolean;
   onConfirm(): void | Promise<void>;
@@ -96,7 +100,7 @@ export function ConfirmDialog({
         </div>
         <AlertDialogFooter className={DIALOG_FOOT}>
           <AlertDialogCancel variant="ghost" disabled={working} data-testid={`${testId}-cancel`}>
-            {t("common.cancel")}
+            {dismissLabel ?? t("common.cancel")}
           </AlertDialogCancel>
           <Button
             variant="default"
@@ -112,7 +116,7 @@ export function ConfirmDialog({
               }
             }}
           >
-            {verb}
+            {confirmLabel ?? verb}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

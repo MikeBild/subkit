@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { listConnectors } from "../connectors/service.ts";
 import type { Db } from "../db/client.ts";
-import { files } from "../db/schema/index.ts";
+import { files, tasks } from "../db/schema/index.ts";
 import { getIntakeSummary, type IntakeSummary } from "../knowledge/index.ts";
 import { listKnowledgeSources } from "../knowledge/service.ts";
 import { DOMAIN_TAG_PREFIX } from "../knowledge/tags.ts";
@@ -35,6 +35,7 @@ interface BriefingParams {
   connector_visible: ((id: string) => boolean) | null;
   file_visible: ((id: string) => boolean) | null;
   file_tenant_wide: boolean;
+  task_viewer?: { owner_id: string | null } | null;
   db: Db;
 }
 
@@ -53,6 +54,8 @@ interface BriefingResult {
   connectors_omitted: number;
   files: BriefingFileEntry[];
   files_omitted: number;
+  tasks: string[];
+  tasks_omitted: number;
   guides: string[];
   intake: IntakeSummary | null;
 }
@@ -108,6 +111,11 @@ function catalogLine(entry: CatalogEntry): string {
   return `- **${entry.name}** (\`${entry.slug}\`, ${entry.category})${desc}`;
 }
 
+function taskLine(entry: CatalogEntry): string {
+  const desc = entry.description?.trim() ? ` — ${entry.description.trim()}` : "";
+  return `- **${entry.name}** (\`${entry.id}\`, ${entry.category})${desc}`;
+}
+
 function fileLine(entry: BriefingFileEntry): string {
   const slug = entry.slug ? ` (\`${entry.slug}\`, ${entry.category})` : ` (${entry.category})`;
   const desc = entry.description?.trim() ? ` — ${entry.description.trim()}` : "";
@@ -122,6 +130,7 @@ export interface AssembleInput {
   workflows: CatalogEntry[];
   connectors: CatalogEntry[];
   files: BriefingFileEntry[];
+  tasks?: CatalogEntry[];
   guides: Skill[];
   intake?: IntakeSummary | null;
 }
@@ -132,6 +141,7 @@ interface AssembleState {
   workflowCount: number;
   connectorCount: number;
   fileCount: number;
+  taskCount: number;
 }
 
 function catalogSection(
@@ -140,10 +150,11 @@ function catalogSection(
   entries: CatalogEntry[],
   kept: number,
   more: string,
+  line: (entry: CatalogEntry) => string = catalogLine,
 ): void {
   if (entries.length === 0) return;
   lines.push("", heading);
-  for (const entry of entries.slice(0, kept)) lines.push(catalogLine(entry));
+  for (const entry of entries.slice(0, kept)) lines.push(line(entry));
   const omitted = entries.length - kept;
   if (omitted > 0) lines.push(`- …and ${omitted} more — ${more}`);
 }
@@ -184,6 +195,14 @@ function assemble(input: AssembleInput, state: AssembleState): string {
     input.workflows,
     state.workflowCount,
     "call `find_workflow` for the rest.",
+  );
+  catalogSection(
+    lines,
+    "## Tasks (start with `run_task` instead of redoing the work)",
+    input.tasks ?? [],
+    state.taskCount,
+    "call `find_task` for the rest.",
+    taskLine,
   );
   if (input.files.length > 0) {
     lines.push("", "## Files");
@@ -226,10 +245,12 @@ export function trimToBudget(
     workflowCount: input.workflows.length,
     connectorCount: input.connectors.length,
     fileCount: input.files.length,
+    taskCount: input.tasks?.length ?? 0,
   };
   let markdown = assemble(input, state);
   const over = () => countTokens(markdown) > budget_tokens;
   const steps: Array<keyof AssembleState> = [
+    "taskCount",
     "connectorCount",
     "fileCount",
     "workflowCount",
@@ -245,10 +266,14 @@ export function trimToBudget(
   return { markdown, state };
 }
 
-async function catalogFor(
-  p: BriefingParams,
-): Promise<{ workflows: CatalogEntry[]; connectors: CatalogEntry[]; files: BriefingFileEntry[] }> {
-  const [workflowRows, connectorRows, fileRows] = await Promise.all([
+async function catalogFor(p: BriefingParams): Promise<{
+  workflows: CatalogEntry[];
+  connectors: CatalogEntry[];
+  files: BriefingFileEntry[];
+  tasks: CatalogEntry[];
+}> {
+  const taskViewer = p.task_viewer;
+  const [workflowRows, connectorRows, fileRows, taskRows] = await Promise.all([
     p.workflow_visible
       ? listWorkflowSummaries(p.tenant_id, { status: "active" }, p.db).then((r) => r.rows)
       : Promise.resolve([]),
@@ -271,6 +296,24 @@ async function catalogFor(
               eq(files.status, "ready"),
               isNull(files.deleted_at),
               inArray(files.category, p.domains),
+            ),
+          )
+      : Promise.resolve([]),
+    taskViewer
+      ? p.db
+          .select({
+            id: tasks.id,
+            name: tasks.name,
+            category: tasks.category,
+            description: tasks.description,
+          })
+          .from(tasks)
+          .where(
+            and(
+              eq(tasks.tenant_id, p.tenant_id),
+              eq(tasks.lifecycle, "active"),
+              inArray(tasks.category, p.domains),
+              ...(taskViewer.owner_id === null ? [] : [eq(tasks.owner_id, taskViewer.owner_id)]),
             ),
           )
       : Promise.resolve([]),
@@ -307,7 +350,8 @@ async function catalogFor(
       description: file.description,
     }))
     .sort((a, b) => a.name.localeCompare(b.name) || (a.slug ?? "").localeCompare(b.slug ?? ""));
-  return { workflows, connectors, files: catalogFiles };
+  const catalogTasks = taskRows.map((task) => ({ ...task, slug: task.id })).sort(byNameThenSlug);
+  return { workflows, connectors, files: catalogFiles, tasks: catalogTasks };
 }
 
 export async function buildAgentBriefing(p: BriefingParams): Promise<BriefingResult> {
@@ -339,6 +383,7 @@ export async function buildAgentBriefing(p: BriefingParams): Promise<BriefingRes
       workflows: catalog.workflows,
       connectors: catalog.connectors,
       files: catalog.files,
+      tasks: catalog.tasks,
       guides,
       intake,
     },
@@ -360,6 +405,8 @@ export async function buildAgentBriefing(p: BriefingParams): Promise<BriefingRes
     connectors_omitted: catalog.connectors.length - state.connectorCount,
     files: catalog.files.slice(0, state.fileCount),
     files_omitted: catalog.files.length - state.fileCount,
+    tasks: catalog.tasks.slice(0, state.taskCount).map((task) => task.id),
+    tasks_omitted: catalog.tasks.length - state.taskCount,
     guides: guides.map((g) => g.slug ?? g.title),
     intake,
   };

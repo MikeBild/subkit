@@ -35,6 +35,7 @@ export function stripActionKey(action: StripAction): TranslationKey {
     case "resume":
       return "automation.action.resume";
     case "approve":
+      if (action.via === "limits") return "authorityProposals.action.open";
       return action.via === "extend" ? "workflowStrip.action.extend" : "workflowStrip.action.grant";
     case "recheck":
       return "automation.action.recheck";

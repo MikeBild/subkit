@@ -60,7 +60,7 @@ export function sameBoundary(next: AuthorityBoundary, origin: AuthorityBoundary)
     next.workflow_version_id === origin.workflow_version_id &&
     next.execution_environment === origin.execution_environment &&
     next.effect_manifest_digest === origin.effect_manifest_digest &&
-    next.max_runs === origin.max_runs &&
+    (next.max_runs === origin.max_runs || next.max_runs === null) &&
     next.inherited_from === null &&
     workflowJsonDigest(next.target_constraints) === workflowJsonDigest(origin.target_constraints)
   );

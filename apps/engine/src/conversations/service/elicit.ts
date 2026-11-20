@@ -34,6 +34,12 @@ import {
   normalizePermissionMode,
   persistPermissionModeIfChanged,
 } from "./shared.ts";
+import {
+  assertTaskRunApprovalDecider,
+  assertTaskRunPermissionMode,
+  assertTaskRunWriter,
+  requireTaskRunPrincipal,
+} from "./task-run-access.ts";
 
 export interface RespondElicitationParams {
   tenant_id: string;
@@ -102,6 +108,9 @@ async function driveElicitation(
   p: RespondElicitationParams,
   exec: Db,
 ): Promise<ConversationTurnOutcome> {
+  const taskRun = await assertTaskRunWriter(exec, p);
+  assertTaskRunPermissionMode(taskRun, p.permission_mode);
+  const principal = taskRun ? requireTaskRunPrincipal(p.principal, taskRun) : p.principal;
   if (p.require_same_actor) {
     const detail = await getConversation(p.tenant_id, p.conversation_id, exec);
     if (!detail) throw new ConversationNotFoundError(p.conversation_id);
@@ -114,6 +123,8 @@ async function driveElicitation(
   const pendingRow = await getElicitation(p.tenant_id, p.elicitation_id, exec);
   if (!pendingRow || pendingRow.conversation_id !== p.conversation_id)
     throw new ElicitationNotFoundError(p.elicitation_id);
+  if (pendingRow.status === "pending")
+    await assertTaskRunApprovalDecider(exec, p, pendingRow.input);
   if (p.answer_actor.kind === "human" && p.answer_actor.via === "portal") {
     const [answerUser] = await exec
       .select({ id: users.id })
@@ -252,7 +263,7 @@ async function driveElicitation(
     conversation_id: p.conversation_id,
     actor_id: p.actor_id,
     answer_actor: p.answer_actor,
-    ...(p.principal !== undefined ? { principal: p.principal } : {}),
+    ...(principal !== undefined ? { principal } : {}),
     ...(p.surface ? { surface: p.surface } : {}),
     output,
     elicitation: {
@@ -266,9 +277,11 @@ async function driveElicitation(
 
   const conv = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!conv) throw new Error("conversation not found");
-  const explicitPermissionMode = normalizePermissionMode(p.permission_mode);
+  const explicitPermissionMode = taskRun ? null : normalizePermissionMode(p.permission_mode);
   const storedPermissionMode = getStoredPermissionMode(conv.draft);
-  const effectivePermissionMode = explicitPermissionMode ?? storedPermissionMode;
+  const effectivePermissionMode = taskRun
+    ? "auto"
+    : (explicitPermissionMode ?? storedPermissionMode);
   if (explicitPermissionMode && explicitPermissionMode !== storedPermissionMode) {
     await persistPermissionModeIfChanged({
       exec,
@@ -341,7 +354,7 @@ async function driveElicitation(
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
     actor_id: p.actor_id,
-    ...(p.principal ? { principal: p.principal } : {}),
+    ...(principal ? { principal } : {}),
     connector_id: conv.conversation.target_connector_id,
     workflow_id: conv.conversation.target_workflow_id,
     user_message: null,

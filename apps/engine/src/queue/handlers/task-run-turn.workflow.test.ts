@@ -1,0 +1,159 @@
+import { describe, expect, test } from "bun:test";
+import { and, eq } from "drizzle-orm";
+import { getTool } from "../../conversations/tools/index.ts";
+import { taskRunToolRefusal } from "../../conversations/tools/sdk-wrap/task-run-guard.ts";
+import { conversationElicitations, workflows, workflowVersions } from "../../db/schema/index.ts";
+import { getMockProvider } from "../../llm/mock-provider.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { enqueueTaskRunTurn } from "./task-run-turn.ts";
+import {
+  answerAsPerson,
+  clearQueue,
+  db,
+  jobOf,
+  ownedTask,
+  runRow,
+  script,
+  startedRun,
+  taskInput,
+  useTaskRunQueue,
+  type Workspace,
+  workQueuedTurn,
+  workspace,
+} from "./task-run-turn-fixtures.ts";
+
+const nextUuid = createDeterministicUuidFactory(0x7a5c08);
+
+useTaskRunQueue("task_run_turn_workflow");
+
+let sequence = 0;
+
+async function writingWorkflow(w: Workspace): Promise<{ id: string; slug: string }> {
+  const slug = `send-report-${++sequence}`;
+  const [workflow] = await db
+    .insert(workflows)
+    .values({ tenant_id: w.tenant_id, slug, name: slug, lifecycle: "active", is_tool: false })
+    .returning();
+  if (!workflow) throw new Error("missing workflow");
+  const [version] = await db
+    .insert(workflowVersions)
+    .values({
+      tenant_id: w.tenant_id,
+      workflow_id: workflow.id,
+      version: 1,
+      dag: {
+        name: slug,
+        slug,
+        steps: [
+          {
+            id: "send",
+            kind: "request",
+            method: "POST",
+            url: "http://127.0.0.1:9/messages",
+            body: { recipient: "reviewed@example.test" },
+          },
+        ],
+      },
+    })
+    .returning();
+  if (!version) throw new Error("missing version");
+  await db
+    .update(workflows)
+    .set({ current_version_id: version.id })
+    .where(and(eq(workflows.tenant_id, w.tenant_id), eq(workflows.id, workflow.id)));
+  return { id: workflow.id, slug };
+}
+
+function palette(): string[] {
+  const palettes = getMockProvider().toolPalettes;
+  return (palettes[palettes.length - 1] ?? []).map((tool) => tool.name);
+}
+
+describe("bound workflows in a task run", () => {
+  test("every bound workflow has its own tool and a change asks the person before it is made", async () => {
+    const w = await workspace();
+    const bound = [];
+    for (let index = 0; index < 20; index++) bound.push(await writingWorkflow(w));
+    const task = await ownedTask(
+      w,
+      taskInput({
+        bindings: {
+          workflow_ids: bound.map((workflow) => workflow.id),
+          connector_ids: [],
+          skill_slugs: [],
+          web_search: false,
+        },
+      }),
+    );
+    const run = await startedRun(w, task);
+    await clearQueue();
+    await enqueueTaskRunTurn(db, jobOf(w, run));
+    const first = bound[0] as { id: string; slug: string };
+    script(run.conversation_id, [
+      { tool: `wf_${first.slug}`, args: {} },
+      { text: "never reached" },
+    ]);
+    expect(await workQueuedTurn()).toBe(true);
+    const offered = palette();
+    for (const workflow of bound) expect(offered).toContain(`wf_${workflow.slug}`);
+    expect(offered).not.toContain("run_workflow");
+
+    const pending = await db
+      .select({ input: conversationElicitations.input, status: conversationElicitations.status })
+      .from(conversationElicitations)
+      .where(
+        and(
+          eq(conversationElicitations.tenant_id, w.tenant_id),
+          eq(conversationElicitations.conversation_id, run.conversation_id),
+        ),
+      );
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.status).toBe("pending");
+    expect(pending[0]?.input).toMatchObject({
+      commit_intent: { kind: "commit_held_workflow_writes" },
+    });
+    expect(await runRow(w, run.id)).toMatchObject({
+      state: "waiting",
+      waiting_reason: "approval",
+      turns_used: 1,
+    });
+
+    await expect(
+      answerAsPerson(w, run.conversation_id, w.admin, { confirmed: true }),
+    ).rejects.toMatchObject({ status: 403, code: "task_run_approval_owner_only" });
+    const [still] = await db
+      .select({ status: conversationElicitations.status })
+      .from(conversationElicitations)
+      .where(
+        and(
+          eq(conversationElicitations.tenant_id, w.tenant_id),
+          eq(conversationElicitations.conversation_id, run.conversation_id),
+        ),
+      );
+    expect(still?.status).toBe("pending");
+    expect((await runRow(w, run.id)).state).toBe("waiting");
+  }, 240_000);
+
+  test("the generic run tool is refused with the name of the workflow's own tool", async () => {
+    const w = await workspace();
+    const workflow = await writingWorkflow(w);
+    const marker = {
+      task_id: nextUuid(),
+      task_run_id: nextUuid(),
+      environment: "dev" as const,
+      workflow_ids: [workflow.id],
+      connector_ids: [],
+      web_search: false,
+    };
+    const ctx = { db, tenant_id: w.tenant_id } as never;
+    const tool = getTool("run_workflow");
+    if (!tool) throw new Error("run_workflow is not registered");
+    const named = await taskRunToolRefusal(tool, marker, ctx, { workflow: workflow.slug });
+    expect(named).toMatchObject({ ok: false, error_code: "task_run_use_workflow_tool" });
+    expect(JSON.stringify(named)).toContain(`wf_${workflow.slug}`);
+    const unnamed = await taskRunToolRefusal(tool, marker, ctx, {});
+    expect(unnamed).toMatchObject({ error_code: "task_run_use_workflow_tool" });
+    const foreign = await taskRunToolRefusal(tool, marker, ctx, { workflow: "not-part-of-it" });
+    expect(foreign).toMatchObject({ error_code: "task_run_workflow_not_bound" });
+  }, 120_000);
+});

@@ -28,6 +28,7 @@ test("attention schema publishes its stable sources, reasons, and subject kinds"
     "budget",
     "ai_access",
     "risk",
+    "tasks",
   ]);
   expect(ATTENTION_REASONS).toEqual([
     "awaiting_answer",
@@ -53,6 +54,11 @@ test("attention schema publishes its stable sources, reasons, and subject kinds"
     "budget_critical",
     "ai_access_missing",
     "risk_critical",
+    "task_run_failed",
+    "task_result_ready",
+    "task_grant_required",
+    "task_grant_expiring",
+    "task_owner_unavailable",
   ]);
   expect(ATTENTION_SUBJECT_KINDS).toEqual([
     "workflow",
@@ -61,6 +67,7 @@ test("attention schema publishes its stable sources, reasons, and subject kinds"
     "connection",
     "secret",
     "settings",
+    "task",
   ]);
 });
 
@@ -173,4 +180,60 @@ test("equal present dates defer to the remaining date and stable ID order", () =
   expect(compareAttentionItems(a, b)).toBe(-1);
   expect(compareAttentionItems(b, a)).toBe(1);
   expect(compareAttentionItems(a, a)).toBe(0);
+});
+
+const TASK_REASONS = [
+  "task_run_failed",
+  "task_result_ready",
+  "task_grant_required",
+  "task_grant_expiring",
+  "task_owner_unavailable",
+] as const;
+
+test("task reasons, the task subject kind and the tasks source belong to the published vocabulary", () => {
+  for (const reason of TASK_REASONS) expect(ATTENTION_REASONS).toContain(reason);
+  expect(ATTENTION_REASONS.filter((reason) => reason.startsWith("task_"))).toEqual([
+    ...TASK_REASONS,
+  ]);
+  expect(ATTENTION_SUBJECT_KINDS).toContain("task");
+  expect(ATTENTION_SOURCES).toContain("tasks");
+  expect(new Set(ATTENTION_REASONS).size).toBe(ATTENTION_REASONS.length);
+  expect(new Set(ATTENTION_SOURCES).size).toBe(ATTENTION_SOURCES.length);
+  expect(new Set(ATTENTION_SUBJECT_KINDS).size).toBe(ATTENTION_SUBJECT_KINDS.length);
+});
+
+test("task items keep their subject and order by class, deadline and id like every other item", () => {
+  const taskItem = (
+    reason: (typeof TASK_REASONS)[number],
+    overrides: Partial<AttentionItem>,
+  ): AttentionItem => ({
+    ...item(`task:${reason}`),
+    kind: "task",
+    subject: { kind: "task", id: reason, name: "Weekly report" },
+    reason,
+    ...overrides,
+  });
+  const failed = taskItem("task_run_failed", { class: "failing", severity: "urgent" });
+  const ready = taskItem("task_result_ready", {});
+  const required = taskItem("task_grant_required", { class: "stopped", severity: "urgent" });
+  const expiring = taskItem("task_grant_expiring", { deadline: "2026-11-20T00:00:00.000Z" });
+  const ownerGone = taskItem("task_owner_unavailable", {
+    class: "stopped",
+    severity: "urgent",
+    since: "2026-11-18T00:00:00.000Z",
+  });
+  const projected = projectAttentionItems([ready, expiring, failed, ownerGone, required], false);
+  expect(projected.map((entry) => entry.reason)).toEqual([
+    "task_owner_unavailable",
+    "task_grant_required",
+    "task_run_failed",
+    "task_grant_expiring",
+    "task_result_ready",
+  ]);
+  expect(projected.every((entry) => entry.subject?.kind === "task")).toBe(true);
+  expect(attentionAllClear({ ...empty, items: [ready] })).toBe(false);
+  expect(attentionAllClear({ ...empty, sources: { ...sources, tasks: "failed" } })).toBe(false);
+  expect(attentionAllClear({ ...empty, sources: { ...sources, tasks: "not_permitted" } })).toBe(
+    true,
+  );
 });

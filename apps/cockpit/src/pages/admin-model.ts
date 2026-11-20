@@ -49,6 +49,8 @@ const PERMISSION_RESOURCE_KEYS: Readonly<Record<string, TranslationKey>> = {
   skill: "resource.skills.title",
   stats: "resource.usage.title",
   system: "permission.resource.engine",
+  task: "permission.resource.tasks",
+  task_run: "permission.resource.taskRuns",
   workflow: "resource.workflows.title",
 };
 
@@ -65,6 +67,7 @@ const PERMISSION_ACTION_KEYS: Readonly<Record<string, TranslationKey>> = {
   delete: "permission.action.delete",
   disable: "permission.action.disable",
   export: "permission.action.export",
+  grant: "permission.action.grant",
   import: "permission.action.import",
   invoke: "permission.action.invoke",
   list: "permission.action.list",

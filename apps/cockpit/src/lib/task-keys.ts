@@ -1,0 +1,15 @@
+export const taskKeys = {
+  lists: ["tasks"] as const,
+  list: (q: string) => ["tasks", "list", q] as const,
+  details: ["task"] as const,
+  detail: (id: string) => ["task", id] as const,
+  runsOf: (id: string) => ["task-runs", id] as const,
+  runs: (id: string) => ["task-runs", id, "list"] as const,
+  runDetails: ["task-run"] as const,
+  run: (runId: string) => ["task-run", runId] as const,
+  grantsOf: (id: string) => ["task-grants", id] as const,
+  grantPreview: (id: string) => ["task-grants", id, "preview"] as const,
+  usage: (id: string) => ["task-usage", id] as const,
+  history: (id: string) => ["audit", "task", id] as const,
+  playbook: (conversationId: string) => ["task-run-playbook", conversationId] as const,
+};

@@ -198,6 +198,24 @@ describe("workflow automation boundary contracts", () => {
     expect(automationState(input()).facts.untilRevoked).toBe(false);
   });
 
+  test("only an approval without an end date and without a run limit counts as until revoked", () => {
+    const facts = (overrides: Parameters<typeof authority>[0]) =>
+      automationState(input({ authorities: [authority(overrides)] })).facts;
+    expect(facts({ valid_until: null, max_runs: null, remaining_runs: null })).toMatchObject({
+      untilRevoked: true,
+      runsLeft: null,
+      runsMax: null,
+    });
+    expect(facts({ valid_until: null, max_runs: 50, remaining_runs: 46 })).toMatchObject({
+      untilRevoked: false,
+      validUntil: null,
+      runsLeft: 46,
+      runsMax: 50,
+    });
+    expect(facts({ max_runs: null, remaining_runs: null }).untilRevoked).toBe(false);
+    expect(facts({}).untilRevoked).toBe(false);
+  });
+
   test("keeps every running environment for prepared workflow and hidden-hook verification", () => {
     expect(
       automationState(

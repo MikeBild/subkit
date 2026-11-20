@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { eq } from "drizzle-orm";
+import { createConversation } from "../../conversations/service.ts";
 import { deriveConversationTitle, isStillOpeningLine } from "../../conversations/title.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages, conversations, dataMigrations } from "../../db/schema/index.ts";
@@ -155,6 +156,55 @@ describe("runConversationTitleSweep — the walk", () => {
     await runConversationTitleSweep(srv.db, { refreshTitle });
     expect(refreshTitle).toHaveBeenCalledTimes(11);
     expect(new Set(refreshTitle.mock.calls.map((call) => call[1])).size).toBe(11);
+  }, 60_000);
+});
+
+describe("runConversationTitleSweep — task runs", () => {
+  test("a run conversation keeps the task's name even when it reads like an opening line", async () => {
+    await srv.db
+      .delete(dataMigrations)
+      .where(eq(dataMigrations.name, CONVERSATION_TITLE_SWEEP_NAME));
+    const opening =
+      "Sorge dafür, dass die offene Lieferantenrechnung geprüft und zur Zahlung angewiesen wird";
+    const title = deriveConversationTitle({ text: opening }) as string;
+    const run = await createConversation(
+      {
+        tenant_id: srv.tenantId,
+        actor_id: null,
+        title,
+        task_run: {
+          task_id: "70000000-0000-4000-8000-000000000001",
+          task_run_id: "70000000-0000-4000-8000-000000000002",
+          environment: "prod",
+          workflow_ids: [],
+          connector_ids: [],
+          web_search: false,
+        },
+      },
+      srv.db,
+    );
+    const plainId = "70000000-0000-4000-8000-000000000003";
+    await srv.db.insert(conversationMessages).values({
+      tenant_id: srv.tenantId,
+      conversation_id: run.conversation.id,
+      role: "user",
+      content: { text: opening },
+    });
+    await seedConversation({ id: plainId, title, locked: false, opening });
+    const refreshTitle = mock(async (_tenantId: string, _conversationId: string, _db: Db) => null);
+    resetConversationTitleSweep();
+
+    for (let tick = 0; tick < 20; tick += 1)
+      if ((await runConversationTitleSweep(srv.db, { refreshTitle })).done) break;
+
+    const visited = refreshTitle.mock.calls.map((call) => call[1]);
+    expect(visited).toContain(plainId);
+    expect(visited).not.toContain(run.conversation.id);
+    const [stored] = await srv.db
+      .select({ title: conversations.title, title_locked: conversations.title_locked })
+      .from(conversations)
+      .where(eq(conversations.id, run.conversation.id));
+    expect(stored).toEqual({ title, title_locked: true });
   }, 60_000);
 });
 

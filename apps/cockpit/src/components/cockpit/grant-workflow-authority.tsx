@@ -2,7 +2,7 @@ import type { components } from "@cli-core/engine-api/openapi";
 import { approvalChoice } from "@shared/approval-choice.ts";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { type ApiResponse, apiCall } from "@/api/call";
 import { ApiError } from "@/api/client";
@@ -10,8 +10,10 @@ import { cockpitApiHref } from "@/app/installation-context";
 import { absolute, chatNewHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { useConnectorNames, useConnectorServices } from "@/components/cockpit/connector-names";
+import { GrantBoundaryProposals } from "@/components/cockpit/grant-boundary-proposals";
 import { GrantEffectReview } from "@/components/cockpit/grant-effect-review";
 import { GrantEnvironmentDecision } from "@/components/cockpit/grant-environment";
+import { GrantLimitField } from "@/components/cockpit/grant-limit-field";
 import {
   GrantRemedyAction,
   GrantScopeWarnings,
@@ -33,12 +35,12 @@ import {
   FieldLabel,
   FormDialog,
   Section,
-  SegmentedControl,
   Textarea,
 } from "@/components/cockpit/patterns";
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { authorityIssues } from "@/lib/authority-issues";
+import { authorityIssues, authorityProblems } from "@/lib/authority-issues";
+import { proposalStepIds, proposalsModel, readBoundaryProposals } from "@/lib/authority-proposals";
 import { authorityReviewModel, replacedVersion, reviewTitle } from "@/lib/authority-review-model";
 import { automationQueryKeys, invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import { carryOverChoice } from "@/lib/automation-state";
@@ -180,7 +182,30 @@ export function GrantWorkflowAuthority({
   const [decision, setDecision] = useState<WorkflowAuthorityPreview | null>(null);
   const latestReview = useRef(0);
   const isLatest = (token: number) => token === latestReview.current;
-  const [sample, setSample] = useState<{ slug: string; versionId: string } | null>(null);
+  const [sample, setSample] = useState<{
+    slug: string;
+    versionId: string;
+    trial: boolean;
+  } | null>(null);
+  const [trialAsked, setTrialAsked] = useState(false);
+  const [trialSkipped, setTrialSkipped] = useState(false);
+  const mounted = useRef(true);
+  const savedVersion = useRef<string | null>(null);
+  const followedVersion = useRef(versionId);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (followedVersion.current === versionId) return;
+    followedVersion.current = versionId;
+    if (savedVersion.current === versionId) return;
+    savedVersion.current = null;
+    setReviewVersionId(versionId);
+    if (open) leaveReview();
+  }, [versionId]);
   const [sampleText, setSampleText] = useState("");
   const [sampleInvalid, setSampleInvalid] = useState(false);
   async function sampleCall(): Promise<string> {
@@ -206,18 +231,22 @@ export function GrantWorkflowAuthority({
       version,
       input,
       pinned,
+      trial,
     }: {
       env: "dev" | "prod";
       token: number;
       version?: string;
       input?: WorkflowJsonValue;
       pinned: boolean;
+      trial: boolean;
     }): Promise<{
       review: WorkflowAuthorityPreview | null;
       decision: WorkflowAuthorityPreview;
       versionId: string;
       environment: "dev" | "prod";
       token: number;
+      trial: boolean;
+      skipped?: boolean;
       sample?: { slug: string; text: string };
     }> => {
       const superseded = () => new Error("authority_review_superseded");
@@ -245,13 +274,14 @@ export function GrantWorkflowAuthority({
         choice = approvalChoice(result, asked);
       }
       const preparationKey = `${workflowId}:${targetVersion}:${asked}`;
-      if (
+      const mayRun = session.permissions.includes("workflow:run");
+      const prepares =
         choice.kind !== "none" &&
         !result.eligible_for_repeated_runs &&
         result.preparation_required &&
-        session.permissions.includes("workflow:run") &&
-        (input !== undefined || !preparationRecentlyRan(preparationKey, Date.now()))
-      ) {
+        (input !== undefined || !preparationRecentlyRan(preparationKey, Date.now()));
+      let skipped = false;
+      if (mayRun && (trial || prepares)) {
         notePreparation(preparationKey, Date.now());
         setTrialStartedAt(Date.now());
         let outcome: PrepareOutcome;
@@ -265,6 +295,11 @@ export function GrantWorkflowAuthority({
             },
           );
           if (isLatest(token)) setTrialElsewhere(outcome.reason === "preparation_in_flight");
+          skipped =
+            trial &&
+            !outcome.prepared &&
+            outcome.reason !== "preparation_in_flight" &&
+            outcome.reason !== "input_required";
         } finally {
           if (isLatest(token)) setTrialStartedAt(null);
         }
@@ -276,6 +311,7 @@ export function GrantWorkflowAuthority({
             versionId: targetVersion,
             environment: asked,
             token,
+            trial,
             sample: { slug: outcome.trigger.slug, text: await sampleCall() },
           };
         result = await preview(asked);
@@ -295,6 +331,8 @@ export function GrantWorkflowAuthority({
         versionId: targetVersion,
         environment: asked,
         token,
+        trial,
+        skipped,
       };
     },
   });
@@ -303,6 +341,7 @@ export function GrantWorkflowAuthority({
     version?: string,
     input?: WorkflowJsonValue,
     pinned = true,
+    trial = false,
   ) {
     const token = latestReview.current + 1;
     latestReview.current = token;
@@ -311,17 +350,26 @@ export function GrantWorkflowAuthority({
     setWriteChecked(false);
     setTrialElsewhere(false);
     setTrialStartedAt(null);
+    setTrialAsked(trial);
+    setTrialSkipped(false);
     prepare.reset();
     prepare.mutate(
-      { env, token, version, input, pinned },
+      { env, token, version, input, pinned, trial },
       {
         onSuccess: (answer) => {
+          if (answer.trial)
+            void client.invalidateQueries({ queryKey: ["boundary-proposals", workflowId] });
           if (!isLatest(answer.token)) return;
+          setTrialSkipped(answer.skipped === true);
           setReviewVersionId(answer.versionId);
           setEnvironment(answer.environment);
           setDecision(answer.decision);
           if (answer.sample) {
-            setSample({ slug: answer.sample.slug, versionId: answer.versionId });
+            setSample({
+              slug: answer.sample.slug,
+              versionId: answer.versionId,
+              trial: answer.trial,
+            });
             setSampleText(answer.sample.text);
             return;
           }
@@ -410,36 +458,45 @@ export function GrantWorkflowAuthority({
     },
   });
   const repairable = useQuery({
-    queryKey: ["boundary-proposals", workflowId],
+    queryKey: ["boundary-proposals", workflowId, environment],
     enabled: open && Boolean(review) && !review?.eligible_for_repeated_runs,
-    queryFn: async () => {
-      const body = await apiCall("get", "/v1/workflows/{id}/boundary-proposals", {
-        path: { id: workflowId },
-      });
-      return {
-        proposals: Array.isArray(body?.proposals) ? body.proposals : [],
-        unproposable: Array.isArray(body?.unproposable) ? body.unproposable : [],
-      };
-    },
+    queryFn: async () =>
+      readBoundaryProposals(
+        await apiCall("get", "/v1/workflows/{id}/boundary-proposals", {
+          path: { id: workflowId },
+          query: { environment },
+        } as { path: { id: string } }),
+      ),
   });
+  const proposals = repairable.data
+    ? proposalsModel(repairable.data, (value) => new Intl.NumberFormat(locale).format(value))
+    : null;
   const repair = useMutation({
     mutationFn: async () => {
       const opening = latestReview.current;
-      const current = await apiCall("get", "/v1/workflows/{id}", { path: { id: workflowId } });
+      const derivedIn = environment;
       const result = await apiCall("post", "/v1/workflows/{id}/boundary-proposals/apply", {
         path: { id: workflowId },
-        body: { expected_draft_version_id: current.draft_version_id ?? null },
+        body: {
+          base_version_id: repairable.data?.base_version_id ?? null,
+          proposals_digest: repairable.data?.digest ?? "",
+          step_ids: proposals ? proposalStepIds(proposals) : [],
+          environment: derivedIn,
+        },
       });
-      return { ...result, opening };
+      return { ...result, opening, derivedIn };
     },
     onSuccess: async (result) => {
+      savedVersion.current = result.draft.version_id;
+      toast.info(t("authorityProposals.applied"));
       await client.invalidateQueries({ queryKey: ["catalog-detail", "workflows", workflowId] });
       await client.invalidateQueries({ queryKey: ["workflow-draft-version", workflowId] });
       await client.invalidateQueries({ queryKey: ["boundary-proposals", workflowId] });
-      if (latestReview.current !== result.opening) return;
-      toast.info(t("authority.repairSwitched"));
-      startReview(environment, result.draft.version_id);
+      if (!mounted.current || latestReview.current !== result.opening) return;
+      setEnvironment(result.derivedIn);
+      startReview(result.derivedIn, result.draft.version_id);
     },
+    onError: () => void client.invalidateQueries({ queryKey: ["boundary-proposals", workflowId] }),
   });
   const actionError = grant.error ?? activateOnly.error;
   const sessionExpired =
@@ -503,28 +560,7 @@ export function GrantWorkflowAuthority({
         carryOver: carriesOver,
       })
     : null;
-  const problems = unsupported
-    ? [
-        ...issues.map(
-          (issue) =>
-            `${
-              issue.call_step_id
-                ? t("authority.issueInCall", { step: issue.step_id, call: issue.call_step_id })
-                : t("authority.issueStep", { step: issue.step_id })
-            }: ${t(issue.reasonKey ?? issue.messageKey)}${
-              issue.evidence
-                ? ` ${t("authority.issueEvidence", {
-                    declared: issue.evidence.declared_prefix,
-                    observed: issue.evidence.observed_key,
-                  })}`
-                : ""
-            }`,
-        ),
-        ...(review?.unavailable_steps ?? []).map((step) =>
-          t("authority.issueUnavailable", { step }),
-        ),
-      ]
-    : [];
+  const problems = unsupported ? authorityProblems(review, t) : [];
   const hasRequestDetails =
     review !== null &&
     review.execution_shape.requests.length + review.execution_shape.iterations.length > 0;
@@ -549,7 +585,7 @@ export function GrantWorkflowAuthority({
   const remedy = useGrantRemedy(
     workflowId,
     environment,
-    open && Boolean(unsupported) && (repairable.data?.proposals.length ?? 0) === 0,
+    open && Boolean(unsupported) && (proposals?.rows.length ?? 0) === 0,
   );
   const adjustUrl = absolute(
     chatNewHref({
@@ -558,25 +594,32 @@ export function GrantWorkflowAuthority({
       references: [{ type: "workflow", id: workflowId }],
     }),
   );
-  function openDialog(value: boolean) {
-    if (submitting) return;
-    setOpen(value);
+  function leaveReview() {
+    setOpen(false);
     grant.reset();
     activateOnly.reset();
     setSample(null);
-    if (value) {
-      setRunAfter(false);
-      setLimit(DEFAULT_GRANT_LIMIT);
-      const opening = initialEnvironment ?? "dev";
-      setEnvironment(opening);
-      startReview(opening, undefined, undefined, false);
-    } else {
-      latestReview.current += 1;
-      setReview(null);
-      setDecision(null);
-      setTrialStartedAt(null);
-      prepare.reset();
+    latestReview.current += 1;
+    setReview(null);
+    setDecision(null);
+    setTrialStartedAt(null);
+    prepare.reset();
+  }
+  function openDialog(value: boolean) {
+    if (submitting) return;
+    if (!value) {
+      leaveReview();
+      return;
     }
+    setOpen(true);
+    grant.reset();
+    activateOnly.reset();
+    setSample(null);
+    setRunAfter(false);
+    setLimit(DEFAULT_GRANT_LIMIT);
+    const opening = initialEnvironment ?? "dev";
+    setEnvironment(opening);
+    startReview(opening, undefined, undefined, false);
   }
   const requested = useRef(openRequest);
   useEffect(() => {
@@ -892,51 +935,19 @@ export function GrantWorkflowAuthority({
             })}
           </p>
         )}
-        {unsupported && (repairable.data?.proposals?.length ?? 0) > 0 && (
-          <Section
-            testId="authority-repair"
-            label={t("authority.repairTitle")}
-            aside={
-              <ContextHelp label={t("authority.repairTitle")} testId="authority-repair-help">
-                {tn("authority.repairDescription", repairable.data?.proposals?.length ?? 0)}
-              </ContextHelp>
-            }
-          >
-            <div className="flex flex-col items-start gap-3 text-sm">
-              <p>{tn("authority.repairLine", repairable.data?.proposals?.length ?? 0)}</p>
-              {(repairable.data?.unproposable?.length ?? 0) > 0 && (
-                <p data-testid="authority-repair-remaining">
-                  {t("authority.repairNone", {
-                    steps: (repairable.data?.unproposable ?? [])
-                      .map((entry) => entry.step_id)
-                      .join(", "),
-                  })}
-                </p>
-              )}
-              {repair.error && (
-                <p data-testid="authority-repair-failed">{t("authority.repairFailed")}</p>
-              )}
-              {repair.isSuccess && (
-                <p data-testid="authority-repair-done">
-                  {tn("authority.repairDone", repair.data?.applied_step_ids?.length ?? 0)}
-                </p>
-              )}
-              {titleFacts.data ? (
-                <p className="text-muted-foreground" data-testid="authority-repair-creates">
-                  {t("authority.repairCreates", { version: `v${titleFacts.data.latest + 1}` })}
-                </p>
-              ) : null}
-              <Button
-                type="button"
-                size="sm"
-                disabled={busy || repair.isPending}
-                onClick={() => repair.mutate()}
-                data-testid="authority-repair-apply"
-              >
-                {t(repair.isPending ? "authority.repairWorking" : "authority.repairAction")}
-              </Button>
-            </div>
-          </Section>
+        {unsupported && proposals && !prepare.isPending && (
+          <GrantBoundaryProposals
+            model={proposals}
+            nextVersion={titleFacts.data ? `v${titleFacts.data.latest + 1}` : null}
+            busy={busy}
+            applying={repair.isPending}
+            applyFailed={Boolean(repair.error)}
+            trialSkipped={trialSkipped}
+            mayApply={session.permissions.includes("workflow:write")}
+            mayTry={session.permissions.includes("workflow:run") && !blocked}
+            onApply={() => repair.mutate()}
+            onTrial={() => startReview(environment, reviewVersionId, undefined, true, true)}
+          />
         )}
         {incomplete && !unsupported && (
           <p className="flex items-center gap-1 text-sm" data-testid="authority-incomplete">
@@ -961,41 +972,11 @@ export function GrantWorkflowAuthority({
           )}
           {boundsVisible && (
             <Field>
-              <FieldLabel className="flex items-center gap-1">
-                {t("authority.limit.label")}
-                <ContextHelp label={t("authority.limit.label")} testId="authority-limit-hint">
-                  {t(
-                    limit === "until_revoked"
-                      ? "authority.limit.untilRevokedHint"
-                      : "authority.limit.durationHint",
-                  )}
-                </ContextHelp>
-              </FieldLabel>
-              <SegmentedControl
-                label={t("authority.limit.label")}
-                value={limit}
-                onValueChange={(next) => {
-                  if (!busy && (next === "until_revoked" || next === "7d" || next === "30d"))
-                    setLimit(next);
-                }}
+              <GrantLimitField
+                limit={limit}
+                disabled={busy}
+                onChange={setLimit}
                 testId="authority-limit"
-                options={[
-                  {
-                    value: "until_revoked",
-                    label: t("authority.limit.untilRevoked"),
-                    testId: "authority-limit-until-revoked",
-                  },
-                  {
-                    value: "30d",
-                    label: t("authority.limit.thirtyDays"),
-                    testId: "authority-limit-thirty-days",
-                  },
-                  {
-                    value: "7d",
-                    label: t("authority.limit.sevenDays"),
-                    testId: "authority-limit-seven-days",
-                  },
-                ]}
               />
               <p className="text-xs text-muted-foreground" data-testid="authority-revocable">
                 {t("authority.review.revocable")}
@@ -1052,7 +1033,7 @@ export function GrantWorkflowAuthority({
               {" · "}
               {t("authority.trial.elapsed", { seconds: elapsed })}
               <ContextHelp label={t("authority.trial.title")} testId="authority-trial-help">
-                {t("authority.trial.what")}
+                {t(trialAsked ? "authorityProposals.trial.what" : "authority.trial.what")}
               </ContextHelp>
             </p>
           ))}
@@ -1108,7 +1089,7 @@ export function GrantWorkflowAuthority({
                     setSampleInvalid(true);
                     return;
                   }
-                  startReview(environment, sample.versionId, parsed);
+                  startReview(environment, sample.versionId, parsed, true, sample.trial);
                 }}
               >
                 {t("authority.sample.prepare")}
@@ -1148,6 +1129,7 @@ export function GrantWorkflowAuthority({
               growth={review.boundary_growth}
               problems={problems}
               loading={false}
+              toolPinsCompared={review.tool_pins_compared === true}
             />
             {hasRequestDetails ? (
               <CollapsibleSection

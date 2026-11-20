@@ -16,7 +16,10 @@ import {
   stageElicitationAnswer,
   validateElicitationAnswer,
 } from "../../conversations/public/elicitation.ts";
-import { withReservedConversationTurn } from "../../conversations/public/lifecycle.ts";
+import {
+  assertTaskRunTurn,
+  withReservedConversationTurn,
+} from "../../conversations/public/lifecycle.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 
@@ -132,6 +135,18 @@ export async function deliverPendingNativeElicitationCore(p: {
       pending_elicitation_id: pending.id,
     });
   }
+
+  const deliverable = await assertTaskRunTurn(p.db, {
+    tenant_id: p.principal.tenant_id,
+    conversation_id: pending.conversation_id,
+    actor_id: p.principal.id,
+    principal: p.principal,
+    permission_mode: p.permission_mode,
+  }).then(
+    () => true,
+    () => false,
+  );
+  if (!deliverable) return null;
 
   const claim = await claimNativeElicitationDelivery(
     {

@@ -690,7 +690,7 @@ export function WorkflowStatus({
       ) : null}
       {automation.canWrite && state && target && !invalid ? (
         <GrantWorkflowAuthority
-          key={`${automation.workflowId}:${target.version_id}`}
+          key={automation.workflowId}
           workflowId={automation.workflowId}
           versionId={target.version_id}
           {...(target.activation ? { activation: target.activation } : {})}

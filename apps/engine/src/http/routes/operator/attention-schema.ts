@@ -23,7 +23,7 @@ const AttentionItem = z
     id: z
       .string()
       .describe(
-        "Stable id: workflow:<id>, conversation:<id>, connector:<id>, connection:<id>, secret-approval:<name>@<version>, skills, budget, freshness:<source>, risk:<kind>.",
+        "Stable id: workflow:<id>, conversation:<id>, connector:<id>, connection:<id>, secret-approval:<name>@<version>, skills, budget, freshness:<source>, risk:<kind>, task:<id>.",
       ),
     class: z.enum(["stopped", "failing", "decide"]),
     severity: z.enum(["critical", "urgent", "notice"]),

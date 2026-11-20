@@ -19,6 +19,7 @@ export { skillCandidateReadTools } from "./skill-candidates.ts";
 export { skillReadTools } from "./skills.ts";
 export { statusReadTools } from "./status.ts";
 export { subscriptionReadTools } from "./subscriptions.ts";
+export { taskReadTools } from "./tasks.ts";
 export { workflowReadTools } from "./workflows.ts";
 
 import type { ConversationTool } from "../index.ts";
@@ -42,6 +43,7 @@ import { skillCandidateReadTools } from "./skill-candidates.ts";
 import { skillReadTools } from "./skills.ts";
 import { statusReadTools } from "./status.ts";
 import { subscriptionReadTools } from "./subscriptions.ts";
+import { taskReadTools } from "./tasks.ts";
 import { workflowReadTools } from "./workflows.ts";
 
 export const ALL_ENGINE_API_READ_TOOLS: ConversationTool[] = [
@@ -60,6 +62,7 @@ export const ALL_ENGINE_API_READ_TOOLS: ConversationTool[] = [
   ...hookReadTools,
   ...subscriptionReadTools,
   ...statusReadTools,
+  ...taskReadTools,
   listDiscoveryArtifactsTool,
   getDiscoveryArtifactTool,
   approveDiscoveryArtifactTool,

@@ -8,11 +8,12 @@ import {
 } from "../../api/catalog-metadata.ts";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import { actorType } from "../../audit/index.ts";
-import { can } from "../../rbac/index.ts";
+import { can, hasBuiltinAdminRole } from "../../rbac/index.ts";
 import {
   CategoryRenameRefused,
   CategoryRevisionConflict,
   categoryRenameAffectsIntake,
+  categoryRenameAffectsTasks,
   loadCategoryVocabulary,
   renameCategory,
 } from "../../workflows/index.ts";
@@ -27,6 +28,7 @@ const READ_PERMISSION: Record<CategoryKind, string> = {
   knowledge_source: "knowledge:read",
   skill: "skill:read",
   file: "file:read",
+  task: "task:read",
   intake: "intake:read",
 };
 
@@ -37,6 +39,7 @@ const KindCountsSchema = z
     knowledge_source: z.number().int().nonnegative(),
     skill: z.number().int().nonnegative(),
     file: z.number().int().nonnegative(),
+    task: z.number().int().nonnegative(),
     intake: z.number().int().nonnegative(),
   })
   .openapi("CategoryKindCounts");
@@ -135,7 +138,11 @@ export function registerCategoryRoutes(app: OpenAPIHono<AppEnv>): void {
       });
       if (decision.allow) readable.add(kind);
     }
-    const categories = (await loadCategoryVocabulary(principal.tenant_id, db))
+    const categories = (
+      await loadCategoryVocabulary(principal.tenant_id, db, {
+        task_owner_id: hasBuiltinAdminRole(principal) ? null : principal.id,
+      })
+    )
       .map((usage) => {
         const counts = { ...usage.counts };
         const llm_counts = { ...usage.llm_counts };
@@ -173,6 +180,15 @@ export function registerCategoryRoutes(app: OpenAPIHono<AppEnv>): void {
         quiet: true,
       });
       if (!decision.allow) throw new ForbiddenError("permission_denied:intake:write");
+    }
+    if (await categoryRenameAffectsTasks({ tenant_id: principal.tenant_id, from: name }, db)) {
+      const decision = await can(db, {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission: "task:write",
+        quiet: true,
+      });
+      if (!decision.allow) throw new ForbiddenError("permission_denied:task:write");
     }
     try {
       const result = await renameCategory(

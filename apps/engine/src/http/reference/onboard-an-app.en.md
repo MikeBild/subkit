@@ -149,7 +149,7 @@ A person with write access approves each product workflow once per environment.
 2. Select **Approve** in the status line or on the **Approvals** tab. The dialog **Approve <workflow> v<n>** opens.
 3. Check that **Environment** (**Production** or **Test**) matches the product's `execution_environment`.
 4. Review the connectors, addresses and read or write access.
-5. Under **Validity**, choose **7 days**, **30 days** or **Until revoked**. **Until revoked** is preset and sets no run limit and no end date.
+5. Under **Validity**, choose **7 days**, **30 days** or **Until revoked**. **Until revoked** is preset and sets no run limit and no end date. The same choice appears when you review a saved change in the chat.
 6. Select **Approve**. Approving starts no run.
 
 A workflow that only the app's HTTP calls start is checked in the environment of its connectors.

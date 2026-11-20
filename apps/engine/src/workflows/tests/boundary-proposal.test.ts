@@ -3,7 +3,13 @@ import { eq } from "drizzle-orm";
 import { executionSteps, executions, tenants, workflows } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { proposeBoundaries } from "../boundary-proposal.ts";
-import { boundaryProposalFixtures, CONNECTOR, definition } from "./boundary-proposal-fixtures.ts";
+import {
+  boundaryProposalFixtures,
+  CONNECTOR,
+  definition,
+  STORAGE,
+  viewer,
+} from "./boundary-proposal-fixtures.ts";
 
 let ctx: TestDb;
 
@@ -23,13 +29,14 @@ beforeAll(async () => {
     .values({ tenant_id, slug: "proposal-wf", name: "Proposal", lifecycle: "active" })
     .returning();
   workflow_id = wf?.id ?? "";
+  await connect();
 });
 
 afterAll(async () => {
   await ctx.cleanup();
 });
 
-const { record } = boundaryProposalFixtures({
+const { connect, record } = boundaryProposalFixtures({
   get ctx() {
     return ctx;
   },
@@ -64,6 +71,8 @@ test("a value the step really sent decides its rule, and the narrowest one wins"
   const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition([read]),
   });
   expect(unproposable).toEqual([]);
@@ -81,10 +90,12 @@ test("values no class covers are listed, and only while the list is readable", a
   const listed = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition([read]),
   });
   expect(listed.proposals[0]?.boundary?.variables).toEqual({
-    "input.page_id": { class: "file_name" },
+    "input.page_id": { enum: ["alpha.beta", "gamma.delta"] },
   });
 
   await record([
@@ -94,6 +105,8 @@ test("values no class covers are listed, and only while the list is readable", a
   const escaped = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition([read]),
   });
   expect(escaped.proposals).toEqual([]);
@@ -107,6 +120,8 @@ test("no history means no proposal — silence, never a plausible guess", async 
   const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition([read]),
   });
   expect(proposals).toEqual([]);
@@ -120,6 +135,8 @@ test("a step that sends content gets no invented size ceiling", async () => {
   const { unproposable } = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition([
       {
         id: "send",
@@ -143,8 +160,10 @@ test("a storage step is given the deepest folder that holds everything it touche
   const { proposals } = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition([
-      { id: "store", kind: "request", connector_id: CONNECTOR, method: "PUT", s3: { key: "x" } },
+      { id: "store", kind: "request", connector_id: STORAGE, method: "PUT", s3: { key: "x" } },
     ]),
   });
   expect(proposals[0]?.s3_scope?.key_prefix).toBe("v1/facts/year=2026/");
@@ -161,6 +180,8 @@ test("a step that already declares a boundary is left alone", async () => {
   const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition([
       {
         ...read,
@@ -181,6 +202,8 @@ test("a path whose placeholder is not a whole segment is reported, not half-prop
   const { unproposable } = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition([
       {
         id: "partial",
@@ -233,6 +256,8 @@ test("a step that pages without a cap is given the number it really fetched", as
   const { proposals } = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition([paging]),
   });
   expect(proposals[0]?.max_pages).toBe(14);
@@ -240,6 +265,8 @@ test("a step that pages without a cap is given the number it really fetched", as
   const capped = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition([{ ...paging, pagination: { ...paging.pagination, max_pages: 4 } }]),
   });
   expect(capped.proposals[0]?.max_pages).toBeUndefined();
@@ -282,6 +309,8 @@ test("a held request is evidence too — target and size both", async () => {
   const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition([
       {
         id: "send",
@@ -335,6 +364,8 @@ test("the preparation run the dialog itself asks for counts as evidence", async 
   const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition([
       {
         id: "send",
@@ -381,6 +412,8 @@ test("a step inside a loop is the same step, iteration suffix and all", async ()
   const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition([read]),
   });
   expect(unproposable).toEqual([]);
@@ -399,7 +432,7 @@ test("a folder the step's own writes contradict is corrected, one it fits is not
     {
       id: "store",
       kind: "request",
-      connector_id: CONNECTOR,
+      connector_id: STORAGE,
       method: "PUT",
       s3: { key: "x", scope: { key_prefix, max_bytes: 4096 } },
     },
@@ -407,15 +440,63 @@ test("a folder the step's own writes contradict is corrected, one it fits is not
   const wrong = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition(storage("v1/latest/")),
   });
   expect(wrong.proposals[0]?.s3_scope?.key_prefix).toBe("v1/infrastructure/manifests/year=2026/");
+  expect(wrong.proposals[0]?.widens).toEqual([
+    { field: "key_prefix", from: "v1/latest/", to: "v1/infrastructure/manifests/year=2026/" },
+  ]);
 
   const right = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
     definition: definition(storage("v1/infrastructure/")),
   });
   expect(right.proposals).toEqual([]);
-  expect(right.unproposable).toEqual([{ step_id: "store", reason: "not_supported" }]);
+  expect(right.unproposable).toEqual([]);
+});
+
+test("a recorded address whose compared value is masked is never read as an observed value", async () => {
+  const keyed = {
+    id: "read_keyed",
+    kind: "request",
+    connector_id: CONNECTOR,
+    method: "GET",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+    path: "/v1/pages?tenant=${input.tenant}",
+  };
+  await record([
+    { step: "read_keyed", url: "https://api.example.test/v1/pages?tenant=***" },
+    { step: "read_keyed", url: "https://api.example.test/v1/pages?tenant=***" },
+  ]);
+  const masked = await proposeBoundaries(ctx.db, {
+    tenant_id,
+    workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
+    definition: definition([keyed]),
+  });
+  expect(masked.proposals).toEqual([]);
+  expect(masked.unproposable).toEqual([
+    { step_id: "read_keyed", reason: "values_not_describable" },
+  ]);
+  expect(JSON.stringify(masked)).not.toContain("***");
+
+  await record([
+    { step: "read_keyed", url: "https://api.example.test/v1/pages?tenant=alpha" },
+    { step: "read_keyed", url: "https://api.example.test/v1/pages?tenant=***" },
+  ]);
+  const mixed = await proposeBoundaries(ctx.db, {
+    tenant_id,
+    workflow_id,
+    environment: "prod",
+    viewer: viewer(tenant_id),
+    definition: definition([keyed]),
+  });
+  expect(mixed.proposals).toEqual([]);
+  expect(mixed.unproposable).toEqual([{ step_id: "read_keyed", reason: "values_not_describable" }]);
 });

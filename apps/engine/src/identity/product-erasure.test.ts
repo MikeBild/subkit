@@ -13,10 +13,13 @@ import {
   executions,
   productIdentityTombstones,
   sessions,
+  tasks,
   userIdentities,
   users,
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { createTask } from "../tasks/index.ts";
+import { taskInput } from "../tasks/tests/fixtures.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
 import { emptyRoleId } from "../test-helpers/roles.ts";
@@ -362,6 +365,46 @@ describe("erasing a product caller", () => {
     });
     expect(await tombstones(other.id)).toEqual([]);
     expect(await deletionAudits(tenant.id, neighbour.user_id)).toEqual([]);
+  });
+
+  test("the erased person's tasks are paused like those of a deactivated person", async () => {
+    const tenant = await seedTenant(tdb.db);
+    const victim = await seedProductUser(tenant.id, "task-victim");
+    const neighbour = await seedProductUser(tenant.id, "task-neighbour");
+    const own = (user_id: string) =>
+      createTask(
+        {
+          tenant_id: tenant.id,
+          principal: {
+            provider: "session",
+            kind: "user",
+            id: user_id,
+            tenant_id: tenant.id,
+            roles: [],
+          },
+          input: taskInput({ schedule_cron: "0 7 * * *", schedule_timezone: "Europe/Berlin" }),
+        },
+        tdb.db,
+      );
+    const owned = await own(victim.user_id);
+    const foreign = await own(neighbour.user_id);
+
+    const followUp = await eraseProductCaller(
+      tdb.db,
+      caller(tenant.id, victim.user_id, victim.subject),
+      { kind: "operator", operator: { kind: "user", id: OPERATOR }, now: AT },
+    );
+    await followUp(tdb.db);
+
+    const state = async (id: string) => {
+      const [row] = await tdb.db
+        .select({ paused_at: tasks.paused_at, paused_reason: tasks.paused_reason })
+        .from(tasks)
+        .where(and(eq(tasks.tenant_id, tenant.id), eq(tasks.id, id)));
+      return { paused: row?.paused_at != null, reason: row?.paused_reason ?? null };
+    };
+    expect(await state(owned.id)).toEqual({ paused: true, reason: "owner_unavailable" });
+    expect(await state(foreign.id)).toEqual({ paused: false, reason: null });
   });
 
   test("an erasure in the wrong tenant changes nothing for the real owner", async () => {

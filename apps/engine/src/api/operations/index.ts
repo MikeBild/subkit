@@ -23,6 +23,7 @@ export interface OperationScope {
   readonly request_source?: RequestSource;
   readonly boss?: PgBoss;
   readonly request?: Request;
+  readonly locale?: "de" | "en";
   readonly trace_id?: string;
   ensurePermission?(permission: string, resource?: { type: string; id: string }): Promise<void>;
 }

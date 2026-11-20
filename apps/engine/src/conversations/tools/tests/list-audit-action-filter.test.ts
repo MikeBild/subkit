@@ -48,6 +48,20 @@ describe("list_audit action filter", () => {
     expect(filters.actions).toEqual(["workflow.executed"]);
   });
 
+  test("passes the task and task run filters through and rejects a non-uuid", async () => {
+    const { ctx, recorded } = makeCtx();
+    const task_id = "11111111-1111-4111-8111-111111111111";
+    const task_run_id = "22222222-2222-4222-8222-222222222222";
+
+    await queryAuditTool.execute(ctx, { task_id, task_run_id });
+
+    const filters = recorded[0] as Record<string, unknown>;
+    expect(filters.task_id).toBe(task_id);
+    expect(filters.task_run_id).toBe(task_run_id);
+    expect(queryAuditTool.inputSchema.safeParse({ task_id: "weekly report" }).success).toBe(false);
+    expect(queryAuditTool.inputSchema.safeParse({ task_run_id }).success).toBe(true);
+  });
+
   test("omits the actions filter entirely when no action arg is given", async () => {
     const { ctx, recorded } = makeCtx();
 

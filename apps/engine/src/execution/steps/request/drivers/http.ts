@@ -7,6 +7,7 @@ import {
 } from "../../../../connectors/drivers/http-multipart.ts";
 import { flagConnectorContractFailure } from "../../../../connectors/health-state.ts";
 import { flagConnectorAuthFailure } from "../../../../connectors/reauth.ts";
+import { connectorMaskedQueryKeys } from "../../../../connectors/recorded-url.ts";
 import { connectorEndpointSchemas } from "../../../../db/schema/index.ts";
 import { logger } from "../../../../logging/logger.ts";
 import { inspectContentRevisionRequest } from "../../../../workflows/content-publication-boundary.ts";
@@ -16,7 +17,11 @@ import {
   reportInspectionRecord,
 } from "../../../../workflows/report-delivery-boundary.ts";
 import {
+  type ConnectorQuery,
+  connectorQueryOf,
+  describePagedBodyViolation,
   describeRequestBoundaryViolation,
+  pagedBodyGuard,
   requestBoundary,
   requestBoundaryViolation,
 } from "../../../../workflows/request-boundary.ts";
@@ -50,7 +55,12 @@ import {
   recordDriverOutcome,
   setupFailure,
 } from "./context.ts";
-import { type HttpExchange, materializePaginatedBody, requestIsReadOnly } from "./http-exchange.ts";
+import {
+  type HttpExchange,
+  materializePaginatedBody,
+  recordedUrl,
+  requestIsReadOnly,
+} from "./http-exchange.ts";
 import { runHttpPages } from "./http-pages.ts";
 import { runHttpSinglePage } from "./http-single.ts";
 
@@ -70,6 +80,8 @@ interface HttpTarget {
   active_credential_id: string | null;
   signed_jwt: DoOnePageParams["signed_jwt"];
   stored_credential_used: boolean;
+  connector_query: ConnectorQuery | null;
+  masked_query_keys: string[];
 }
 
 async function connectorTarget(
@@ -121,6 +133,11 @@ async function connectorTarget(
         ? { connector, credential: plan.credential }
         : undefined,
     stored_credential_used: plan.stored_credential_used,
+    connector_query: connectorQueryOf(
+      (connector.config as { static_query?: unknown } | null | undefined)?.static_query,
+      plan.credential?.mode === "query" ? Object.keys(plan.credential.query) : [],
+    ),
+    masked_query_keys: connectorMaskedQueryKeys(connector.config, plan.credential),
   };
 }
 
@@ -144,13 +161,19 @@ async function resolveTarget(d: RequestDispatch): Promise<HttpTarget | { result:
       active_credential_id: null,
       signed_jwt: undefined,
       stored_credential_used: false,
+      connector_query: connectorQueryOf(undefined, []),
+      masked_query_keys: [],
     };
   } catch (err) {
     return { result: setupFailure(d, err) };
   }
 }
 
-async function policyHookRefusal(d: RequestDispatch, baseUrl: URL): Promise<StepResult | null> {
+async function policyHookRefusal(
+  d: RequestDispatch,
+  baseUrl: URL,
+  maskedQueryKeys: readonly string[],
+): Promise<StepResult | null> {
   const { p } = d;
   if (!p.ctx.principal) return null;
   try {
@@ -161,6 +184,7 @@ async function policyHookRefusal(d: RequestDispatch, baseUrl: URL): Promise<Step
       requestCtx: {
         method: p.step.method,
         url: baseUrl.toString(),
+        recorded_url: recordedUrl(baseUrl, maskedQueryKeys),
         headers: d.parts.headers,
         body: d.parts.body ?? null,
         execution_id: p.ctx.execution_id,
@@ -230,6 +254,14 @@ function httpBeforeDispatch(x: HttpExchange) {
         "authority_invalid",
       );
     }
+    const paging = x.paged_body_guard?.(request.body);
+    if (paging)
+      throw new RequestError(
+        `This request is outside the boundary its step declares: ${describePagedBodyViolation(paging)}. Nothing was sent.`,
+        "authority_invalid",
+        undefined,
+        { reason: "request_outside_declared_boundary" },
+      );
     const key = request.headers["Idempotency-Key"];
     const idempotencyBase = x.idempotency_base;
     const suffix =
@@ -251,6 +283,7 @@ function heldHttpResult(
   d: RequestDispatch,
   idempotencyBase: string | null,
   preparedMultipart: Awaited<ReturnType<typeof prepareMultipartBody>> | undefined,
+  maskedQueryKeys: readonly string[],
   held: HeldStepResultParams,
 ): StepResult {
   const { p } = d;
@@ -279,7 +312,7 @@ function heldHttpResult(
     proof && held.url
       ? preparedRequestReview({
           method: held.method,
-          url: held.url,
+          url: recordedUrl(held.url, maskedQueryKeys),
           headers: preparedMultipart
             ? multipartObservationHeaders(held.headers ?? {})
             : (held.headers ?? {}),
@@ -290,7 +323,7 @@ function heldHttpResult(
   const metadata = held.request_meta ?? {
     driver: "connectorless" as const,
     method: held.method,
-    url: held.url,
+    url: held.url ? recordedUrl(held.url, maskedQueryKeys) : held.url,
   };
   const report =
     held.method === "POST" && held.url === GMAIL_SEND_TARGET
@@ -307,6 +340,7 @@ function heldHttpResult(
       : null;
   return heldStepResult({
     ...held,
+    url: held.url ? recordedUrl(held.url, maskedQueryKeys) : held.url,
     request_meta: {
       ...metadata,
       extras: {
@@ -326,7 +360,7 @@ async function prepareHttp(d: RequestDispatch): Promise<Prepared> {
   const target = await resolveTarget(d);
   if ("result" in target) return target;
   const baseUrl = target.base_url;
-  const refusal = await policyHookRefusal(d, baseUrl);
+  const refusal = await policyHookRefusal(d, baseUrl, target.masked_query_keys);
   if (refusal) return { result: refusal };
 
   const registryRow = await endpointRegistryRow(d);
@@ -363,14 +397,14 @@ async function prepareHttp(d: RequestDispatch): Promise<Prepared> {
   const meta: RequestMeta = d.connector_resolution
     ? {
         driver: "http",
-        url: baseUrl.toString(),
+        url: recordedUrl(baseUrl, target.masked_query_keys),
         method: p.step.method ?? "GET",
         connector: d.connector_resolution,
         digest,
       }
     : {
         driver: "connectorless",
-        url: baseUrl.toString(),
+        url: recordedUrl(baseUrl, target.masked_query_keys),
         method: p.step.method ?? "GET",
         digest,
       };
@@ -403,8 +437,10 @@ async function prepareHttp(d: RequestDispatch): Promise<Prepared> {
     multipartFormData = await buildMultipartBody(p.resolved_multipart);
     preparedMultipart = await prepareMultipartBody(multipartFormData);
   }
+  const declared = p.step.boundary
+    ? requestBoundary(p.step, d.state.activeConnector?.base_url ?? null, target.connector_query)
+    : null;
   if (p.step.boundary) {
-    const declared = requestBoundary(p.step, d.state.activeConnector?.base_url ?? null);
     const violation = declared
       ? requestBoundaryViolation(declared, {
           method: p.step.method ?? "GET",
@@ -444,7 +480,7 @@ async function prepareHttp(d: RequestDispatch): Promise<Prepared> {
     d.state.holdThisStep = false;
   if (d.state.holdThisStep) {
     return {
-      result: heldHttpResult(d, idempotencyBase, preparedMultipart, {
+      result: heldHttpResult(d, idempotencyBase, preparedMultipart, target.masked_query_keys, {
         start: d.start,
         clock: d.clock,
         method: p.step.method ?? "GET",
@@ -477,6 +513,8 @@ async function prepareHttp(d: RequestDispatch): Promise<Prepared> {
     multipart: multipartFormData,
     last_request: undefined,
     in_flight_checkpoint: null,
+    paged_body_guard: declared ? pagedBodyGuard(declared) : null,
+    masked_query_keys: target.masked_query_keys,
     before_dispatch: async () => undefined,
   };
   exchange.before_dispatch = httpBeforeDispatch(exchange);

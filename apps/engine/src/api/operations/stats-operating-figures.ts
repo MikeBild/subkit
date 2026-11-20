@@ -74,6 +74,15 @@ const OperatingFiguresResponse = z
       .describe(
         "Prompt-cache reads against prompt tokens per LLM flow in the window, largest prompt volume first.",
       ),
+    task_runs: z
+      .object({
+        total: z.number().int(),
+        completed: z.number().int(),
+        failed: z.number().int(),
+      })
+      .describe(
+        "Task runs that started in the window, and how many of them are confirmed as completed or have failed by now.",
+      ),
   })
   .openapi("OperatingFigures");
 

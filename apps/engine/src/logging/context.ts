@@ -34,6 +34,7 @@ export type LogContext = {
     | "mcp_oauth"
     | "token_exchange"
     | "external_bearer"
+    | "task_run"
     | "portal_token";
   audit_oauth_client_id?: string;
   audit_credential_origin?: "cli_oauth_session";

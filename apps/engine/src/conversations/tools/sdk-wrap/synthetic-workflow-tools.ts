@@ -3,6 +3,7 @@ import { auditAwait } from "../../../audit/audit.ts";
 import { AuditAction } from "../../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import type { Db } from "../../../db/client.ts";
+import { admittedCoveringAuthority } from "../../../execution/core/run-coverage.ts";
 import { HELD_PREVIEW_WARNING_CODE } from "../../../execution/types.ts";
 import { completedRun, createRunWorkflow } from "../../../execution/use-cases/run-workflow.ts";
 import { logger } from "../../../logging/logger.ts";
@@ -21,18 +22,22 @@ import {
   gateRecordFor,
   logGateDecision,
   openHeldWritesApproval,
+  recordConfirmationSkipped,
 } from "../../confirmation.ts";
 import { createElicitation } from "../../elicitations.ts";
 import { executionSuppressionRefusal } from "../../execution-suppression.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persistence/index.ts";
-import type { TurnEvent } from "../../types.ts";
+import { taskRunToolPolicies } from "../../tool-policies.ts";
+import type { TaskRunMarker, TurnEvent } from "../../types.ts";
 import { withoutApprovalHandle } from "../ask-user/commit-intent.ts";
 import { WORKFLOW_TOOL_PREFIX as TOOL_PREFIX } from "../authoring-palette.ts";
 import { hideCapabilityLinks } from "../capability-link.ts";
 import type { ToolContext } from "../index.ts";
 import { executionDataTransfer } from "./gate-subjects.ts";
+import { loadRunCoverage, workflowConfirmOverride } from "./invoke/run-coverage.ts";
 import { jsonSafeModelOutput } from "./json-safe-output.ts";
 import type { TurnSignals, WrappedToolOutput } from "./state.ts";
+import { taskRunMarkerOf, taskRunWorkflowRefusal } from "./task-run-guard.ts";
 
 export interface BuildSyntheticWorkflowToolsParams {
   db: Db;
@@ -42,6 +47,11 @@ export interface BuildSyntheticWorkflowToolsParams {
   events: TurnEvent[];
   permissionMode?: PermissionMode | null;
   toolPolicies?: ToolPolicies;
+  taskRun?: TaskRunMarker | null;
+}
+
+function boundToTaskRun(taskRun: TaskRunMarker | null | undefined, workflow_id: string): boolean {
+  return !taskRun || (!taskRun.sealed && taskRun.workflow_ids.includes(workflow_id));
 }
 
 export async function buildSyntheticWorkflowTools(
@@ -51,9 +61,11 @@ export async function buildSyntheticWorkflowTools(
     db: p.db,
     principal: p.principal,
     request_source: "chat",
+    ...(p.taskRun && !p.taskRun.sealed ? { bound_workflow_ids: p.taskRun.workflow_ids } : {}),
   });
   const out: Record<string, Tool<Record<string, unknown>, WrappedToolOutput>> = {};
   for (const entry of catalog) {
+    if (!boundToTaskRun(p.taskRun, entry.workflow_id)) continue;
     const name = `${TOOL_PREFIX}${entry.slug}`;
     out[name] = buildOneSyntheticWorkflowTool({ ...p, entry, name });
   }
@@ -93,6 +105,11 @@ async function executeSyntheticRun(
   p: BuildOneParams & { rawArgs: Record<string, unknown> },
 ): Promise<WrappedToolOutput> {
   const { entry, ctx, signals, events, db, name, principal, rawArgs } = p;
+  const taskRun = p.taskRun ?? taskRunMarkerOf(ctx);
+  if (!boundToTaskRun(taskRun, entry.workflow_id)) {
+    const refused = taskRunWorkflowRefusal();
+    return { ok: false, data: refused.data };
+  }
   const suppressionRefusal = await executionSuppressionRefusal({
     db,
     tenant_id: ctx.tenant_id,
@@ -175,19 +192,32 @@ async function executeSyntheticRun(
   const inputForRun = Object.keys(workflowInput).length > 0 ? workflowInput : undefined;
 
   try {
-    const environment = await workflowExecutionEnvironment(db, ctx.tenant_id, entry.workflow_id);
+    const environment = taskRun
+      ? taskRun.environment
+      : await workflowExecutionEnvironment(db, ctx.tenant_id, entry.workflow_id);
     ctx.onLog?.("info", `running workflow ${entry.slug} in env=${environment}`);
-    const policies = p.toolPolicies ?? {};
+    const policies = taskRun ? taskRunToolPolicies(p.toolPolicies ?? {}) : (p.toolPolicies ?? {});
     const specificPolicy = policies[name] ?? policies.run_workflow;
-    const permissionMode = p.permissionMode ?? ctx.permission_mode ?? null;
+    const permissionMode = taskRun ? "auto" : (p.permissionMode ?? ctx.permission_mode ?? null);
     const transfersExecutionData =
       (await executionDataTransfer(workflowInput, ctx.tenant_id, db)) !== null;
+    const coverage = await loadRunCoverage(db, permissionMode, () =>
+      workflowConfirmOverride(policies, entry.slug)
+        ? null
+        : {
+            tenant_id: ctx.tenant_id,
+            workflow_id: entry.workflow_id,
+            execution_environment: environment,
+          },
+    );
     const decision = policyDecide({
       tool: "run_workflow",
       category: "tenant_write",
       surface: "chat",
       args: { environment },
       ...(transfersExecutionData ? { execution_data_transfer: true } : {}),
+      ...(coverage.covered ? { authority_covered: true } : {}),
+      ...(taskRun ? { task_run: true } : {}),
       overrides: specificPolicy ? { run_workflow: specificPolicy } : {},
       permission_mode: permissionMode,
     });
@@ -450,6 +480,19 @@ async function executeSyntheticRun(
       },
       db,
     );
+    if (coverage.covered && admittedCoveringAuthority(decision.rule, coverage, admitted) !== null) {
+      await recordConfirmationSkipped({
+        db,
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        tool_call_id: toolCallId,
+        tool: name,
+        environment: coverage.environment,
+        covering_authority_id: coverage.authority_id,
+        actor_id: principal.id,
+        actor_type: principal.kind,
+      });
+    }
     recordConversationToolCall({
       category: "tenant_write",
       tool: name,

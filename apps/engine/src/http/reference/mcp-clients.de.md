@@ -118,8 +118,8 @@ Deine Rolle begrenzt trotzdem jeden einzelnen Aufruf. Ein Scope gibt dem Client 
 
 | Auf der Zugriffsseite | Scope | Der Client kann |
 | --- | --- | --- |
-| **Lesen** | `mcp:read` | Workflows, Läufe, Konnektoren und Wissen lesen und gespeicherte Workflows starten. |
-| **Bearbeiten** | `mcp:authoring` | Zusätzlich Workflows und Konnektoren in einer geführten Unterhaltung bauen. |
+| **Lesen** | `mcp:read` | Workflows, Läufe, Konnektoren, Wissen und Aufgaben lesen, gespeicherte Workflows starten und Aufgaben starten und abbrechen. |
+| **Bearbeiten** | `mcp:authoring` | Zusätzlich Workflows und Konnektoren in einer geführten Unterhaltung bauen und Aufgaben anlegen und ändern. |
 | **Verwalten** | `mcp:admin` | Zusätzlich im Arbeitsbereich anlegen, ändern und löschen. |
 | **Betriebszähler** | `metrics:read` | Die Betriebszähler lesen, sonst nichts. |
 
@@ -140,11 +140,35 @@ Schreiben braucht immer einen Menschen, und zwar an zwei Stellen:
 
 - **Schreiben in einem Workflow:** Ein Workflow schreibt erst wirklich, wenn eine Person ihn im Cockpit freigegeben hat. Ohne Freigabe ist der Lauf ein Probelauf: Schreibzugriffe werden zurückgehalten, nichts wird gesendet.
   Eine neue Version braucht keine neue Freigabe, solange sie nicht mehr Systeme, Adressen oder Schreibrechte anfasst als die freigegebene. Greift sie weiter, fragt SubKit erneut und nennt den Unterschied.
+  Im Chat fragt der Modus **Fragt vorher** vor jedem Schreiben, außer es gibt eine Freigabe, die genau diesen Lauf deckt: dieselbe Version, dieselbe Umgebung, noch gültig und mit unveränderter Wirkung. **Nur planen** fragt immer. Ebenso ein Lauf, der Daten aus einem früheren Lauf weitergibt, und eine Unterhaltung, der du gesagt hast, jeden Start zu bestätigen.
 - **Schreibende Tools im Client:** Ein schreibendes Tool hält an und liefert einen Link.
   Öffne ihn, melde dich an, prüfe, was passieren wird, und wähle **Einmal erlauben** oder **Ablehnen**.
   Erst danach kann der Client den Aufruf mit `confirm_tool_call` abschließen.
 
 Die KI kann nichts selbst freigeben oder erlauben. Auch der Link allein erlaubt nichts.
+
+### Aufgaben aus einem KI-Client
+
+Eine Aufgabe ist ein Ziel mit Grenzen, auf das SubKit alleine hinarbeitet. Das Kapitel „Ein Ziel als Aufgabe übergeben“ erklärt sie. Aus einem KI-Client erreichst du Aufgaben mit diesen Tools:
+
+| Tool | Was es tut | Stufe |
+| --- | --- | --- |
+| `list_tasks`, `find_task`, `get_task` | Die Aufgaben auflisten, durchsuchen und lesen, die du sehen darfst. | **Lesen** |
+| `get_task_run` | Den Zustand eines Laufs lesen. | **Lesen** |
+| `run_task` | Jetzt einen Lauf starten, als du. Der Aufruf liefert den Lauf und wartet nicht auf das Ergebnis. | **Lesen** |
+| `abort_task_run` | Einen Lauf abbrechen, der läuft, wartet oder schläft. | **Lesen** |
+| `save_task` | Eine Aufgabe anlegen oder ändern. Es speichert die Aufgabe nur und startet nichts. | **Bearbeiten** |
+
+Du siehst deine eigenen Aufgaben. Mit der Rolle Admin siehst du alle. `get_attention` listet auch Aufgaben, die auf dich warten.
+
+Was ein Client nicht kann:
+
+- **Die Dauererlaubnis erteilen.** Eine Aufgabe, die alleine starten soll, braucht eine Person, die im Browser im Cockpit angemeldet ist.
+- **Die Rückfragen eines Laufs beantworten.** Ein Lauf arbeitet in einer eigenen Unterhaltung im Cockpit. Jedes Aufgaben-Ergebnis enthält `cockpit_path`, die Adresse der Aufgabe dort.
+- **Ein Ergebnis bestätigen oder verwerfen.** Das tut nur ein Mensch, der im Browser im Cockpit angemeldet ist.
+- **Aufgaben ohne Bearbeiten anlegen oder ändern.** Ohne `mcp:authoring` antwortet `save_task` mit `authoring_scope_required`.
+
+Ein Lauf, den ein Client startet, hat dieselben Grenzen wie jeder Lauf: Er nutzt nur, was an die Aufgabe gebunden ist, und alles, was schreibt, fragt vorher einen Menschen, außer eine gültige Freigabe eines gebundenen Workflows deckt es.
 
 ### MCP-Server als Konnektor nutzen
 

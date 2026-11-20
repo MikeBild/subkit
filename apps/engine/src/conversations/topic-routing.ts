@@ -1,6 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { type Executor, getDb } from "../db/client.ts";
 import { conversations } from "../db/schema/conversations.ts";
+import { notTaskRunConversation } from "../db/task-run-conversations.ts";
 import { vectorScoreCandidates } from "../embeddings/vector-rerank.ts";
 
 const TOPIC_MIN_COSINE = 0.425;
@@ -31,6 +32,7 @@ export async function suggestConversationsByTopic(
         eq(conversations.tenant_id, p.tenant_id),
         eq(conversations.owner_id, p.owner_id),
         eq(conversations.status, "active"),
+        notTaskRunConversation(),
       ),
     )
     .orderBy(desc(conversations.updated_at))

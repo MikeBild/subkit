@@ -23,6 +23,7 @@ import { egressScope, elapsed, failedStep } from "./context.ts";
 import {
   attemptParams,
   type HttpExchange,
+  recordedUrl,
   recordHttpShape,
   settleConnectorHealth,
 } from "./http-exchange.ts";
@@ -120,10 +121,7 @@ export async function runHttpSinglePage(x: HttpExchange): Promise<StepResult> {
         driver: "http" as const,
         credential_id: x.active_credential_id,
         operation: p.step.method,
-        url:
-          d.own_credentials.length > 0
-            ? redactOwnCredentials(baseUrl.toString(), d.own_credentials)
-            : baseUrl,
+        url: redactOwnCredentials(recordedUrl(baseUrl, x.masked_query_keys), d.own_credentials),
       }
     : null;
   const llmCall = isLlmProviderUrl(baseUrl);
@@ -235,7 +233,7 @@ export async function runHttpSinglePage(x: HttpExchange): Promise<StepResult> {
           typeof heldRequestBody === "string" ? heldRequestBody : JSON.stringify(heldRequestBody),
         ).byteLength;
   const shared = {
-    url: baseUrl.toString(),
+    url: recordedUrl(baseUrl, x.masked_query_keys),
     method: p.step.method ?? "GET",
     status: res.status,
     bytes_in: res.bytes_in,

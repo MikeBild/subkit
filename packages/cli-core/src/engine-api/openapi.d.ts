@@ -909,7 +909,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Another user's usage, or a breakdown by user or conversation, requires stats:read:all */
+                /** @description Another user's usage, or a breakdown by user, conversation or task, requires stats:read:all */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -7796,7 +7796,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Replace a time-limited approval with one until revoked for the identical boundary from an authenticated human browser */
+        /** Replace an approval limited by time or run count with one until revoked and without a run limit for the identical boundary from an authenticated human browser */
         post: {
             parameters: {
                 query?: never;
@@ -7815,7 +7815,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description The approval that now applies until revoked; the time-limited one is superseded in the same transaction */
+                /** @description The approval that now applies until revoked without a run limit; the limited one is superseded in the same transaction */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -8365,7 +8365,9 @@ export interface paths {
         /** Read the boundaries SubKit derives from what each step has really done */
         get: {
             parameters: {
-                query?: never;
+                query: {
+                    environment: "dev" | "prod";
+                };
                 header?: never;
                 path: {
                     id: string;
@@ -12981,6 +12983,933 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List tasks; a person sees their own tasks, an admin sees all */
+        get: {
+            parameters: {
+                query?: {
+                    lifecycle?: "active" | "archived";
+                    owner_id?: string;
+                    /** @description Only objects in this catalog block (see `GET /v1/categories`). */
+                    category?: components["schemas"]["CatalogCategoryFilter"];
+                    q?: string;
+                    sort?: "name" | "updated_at" | "created_at";
+                    order?: "asc" | "desc";
+                    limit?: number;
+                    offset?: number | null;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskListResponse"] & {
+                            total: number;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create a task owned by the calling person */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["TaskCreateInput"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Task"];
+                    };
+                };
+                /** @description The request is not valid for this task */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The caller may not do this */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tasks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch a task with its latest run, standing permission state and next start */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskView"];
+                    };
+                };
+                /** @description Task not found or not visible to the caller */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /** Replace a task's definition; a content change stops its open run and ends its standing permission */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["TaskUpdateInput"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskUpdateResponse"];
+                    };
+                };
+                /** @description The request is not valid for this task */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Task not found or not visible to the caller */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The task changed meanwhile */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        /** Delete a task: it is archived, its open run stops and its standing permission ends */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskDeleteResponse"];
+                    };
+                };
+                /** @description Task not found or not visible to the caller */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tasks/{id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pause a task: no run starts and an open run sleeps until the task is resumed */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Task"];
+                    };
+                };
+                /** @description Task not found or not visible to the caller */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tasks/{id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume a paused task; a run that slept through the pause continues */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskResumeResponse"];
+                    };
+                };
+                /** @description Task not found or not visible to the caller */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tasks/{id}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Model usage of a task: its latest run and the current month, as calls, tokens and priced cost */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskUsageResponse"];
+                    };
+                };
+                /** @description Task not found or not visible to the caller */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tasks/{id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the runs of a task, newest first */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                    offset?: number | null;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskRunListResponse"] & {
+                            total: number;
+                        };
+                    };
+                };
+                /** @description Task not found or not visible to the caller */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Start a manual run of a task as the calling person; the run works in its own conversation */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Run started; follow it through its conversation_id */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskRun"];
+                    };
+                };
+                /** @description The request is not valid for this task */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Task not found or not visible to the caller */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The run was not admitted; the code names the reason */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/task-runs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch a task run with the conversation it works in */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskRunDetail"];
+                    };
+                };
+                /** @description Task run not found or not visible to the caller */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/task-runs/{id}/abort": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop a run that is running, waiting or sleeping */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskRun"];
+                    };
+                };
+                /** @description Task run not found or not visible to the caller */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The run has already ended */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/task-runs/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm the result of a run as the calling person */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskRun"];
+                    };
+                };
+                /** @description The caller may not do this */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Task run not found or not visible to the caller */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The run is not in a state that allows this */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/task-runs/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject the result of a run as the calling person; the run continues working */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskRun"];
+                    };
+                };
+                /** @description The caller may not do this */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Task run not found or not visible to the caller */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The run is not in a state that allows this */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tasks/{id}/grant-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Review from a human browser what a standing permission would allow: every bound workflow with its effects, the connectors and the schedule */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskAuthorityPreview"];
+                    };
+                };
+                /** @description A signed human browser session on the same site is required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Task or standing permission not found or not visible to the caller */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tasks/{id}/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the standing permissions of a task, newest first, revoked ones included */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskGrantListResponse"];
+                    };
+                };
+                /** @description Task or standing permission not found or not visible to the caller */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Give a task its standing permission from an authenticated human browser; bound workflows receive matching execution authorities */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["TaskAuthorityGrantInput"];
+                };
+            };
+            responses: {
+                /** @description An identical standing permission already applies */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskAuthorityGrantResult"];
+                    };
+                };
+                /** @description Standing permission given */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskAuthorityGrantResult"];
+                    };
+                };
+                /** @description The validity window is not allowed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description A signed human browser session with CSRF proof and task:grant is required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Task or standing permission not found or not visible to the caller */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The task or a bound workflow changed since the preview */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tasks/{id}/grants/{grant_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke a standing permission from an authenticated human browser, together with the workflow authorities it created */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    grant_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskAuthorityRevokeResult"];
+                    };
+                };
+                /** @description A signed human browser session with CSRF proof and task:grant is required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Task or standing permission not found or not visible to the caller */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/categories": {
         parameters: {
             query?: never;
@@ -13149,7 +14078,7 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
-                    /** @description The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills and files of a tenant; `GET /v1/categories` lists it. */
+                    /** @description The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills, files and tasks of a tenant; `GET /v1/categories` lists it. */
                     category?: components["schemas"]["CatalogCategory"];
                     state?: "collected" | "reviewing" | "admitted" | "discarded";
                     /** @description capture: collected from a source address; note: written without an address; session: prepared by an AI agent from a work session. */
@@ -15075,7 +16004,7 @@ export interface paths {
         };
         /**
          * Domain-scoped session briefing for external coding agents
-         * @description Returns a budgeted markdown grounding block for the requested domains: prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge index, the domain's workflows and connectors (category or slug prefix equals the domain), readable file metadata without file contents, counts of collected intake material in the requested domains (never its content), and the search-first grounding rule. Intended for coding-agent hooks.
+         * @description Returns a budgeted markdown grounding block for the requested domains: prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge index, the domain's workflows and connectors (category or slug prefix equals the domain), the caller's own tasks in the domain (every task for an admin; name, id and description, never the goal), readable file metadata without file contents, counts of collected intake material in the requested domains (never its content), and the search-first grounding rule. Intended for coding-agent hooks.
          */
         get: {
             parameters: {
@@ -15664,6 +16593,8 @@ export interface paths {
                     status?: "active" | "awaiting_input" | "committed" | "abandoned";
                     owner?: "me";
                     hidden?: "exclude" | "only" | "all";
+                    /** @description Conversations that belong to a task run. They are left out by default; `only` lists just them, `all` lists both. */
+                    task_runs?: "exclude" | "only" | "all";
                     owner_kind?: "user" | "system_account";
                     target_workflow_id?: string;
                     target_connector_id?: string;
@@ -22133,7 +23064,7 @@ export interface paths {
                     api_key_id?: string;
                     /** @description Matches verified use or historical recorded metadata; inspect the returned field to distinguish provenance. */
                     session_id?: string;
-                    access_type?: "api_key" | "browser_session" | "mcp_oauth" | "token_exchange" | "external_bearer" | "portal_token";
+                    access_type?: "api_key" | "browser_session" | "mcp_oauth" | "token_exchange" | "external_bearer" | "task_run" | "portal_token";
                     oauth_client_id?: string;
                     request_source?: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui" | "chat" | "queue";
                     origin_source?: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui" | "chat" | "queue";
@@ -22141,6 +23072,10 @@ export interface paths {
                     execution_id?: string;
                     conversation_id?: string;
                     workflow_id?: string;
+                    /** @description Everything recorded about one task: its own entries and its runs and grants. */
+                    task_id?: string;
+                    /** @description Everything recorded about one run of a task. */
+                    task_run_id?: string;
                     resource_type?: string;
                     resource_types?: string;
                     resource_id?: string;
@@ -23272,6 +24207,12 @@ export interface components {
                     /** @description Share of the flow's prompt tokens read from the provider prompt cache. */
                     cache_read_percent: number | null;
                 }[];
+            };
+            /** @description Task runs that started in the window, and how many of them are confirmed as completed or have failed by now. */
+            task_runs: {
+                total: number;
+                completed: number;
+                failed: number;
             };
         };
         StatsQualityResponse: {
@@ -24591,14 +25532,57 @@ export interface components {
                             var: string;
                         }[];
                     };
+                    connector_query?: {
+                        fixed: {
+                            [key: string]: string;
+                        };
+                        credential: string[];
+                    };
                     max_body_bytes: number;
                     max_calls: number;
                     pagination?: {
                         params: string[];
                         max_requests: number;
+                        /** @enum {string} */
+                        location?: "body";
                     };
                     /** @enum {boolean} */
                     destructive?: true;
+                };
+                mcp?: {
+                    /** Format: uri */
+                    server: string;
+                    tool: string;
+                    /** @enum {string} */
+                    effect: "read" | "write";
+                    variables: {
+                        [key: string]: {
+                            enum: string[];
+                        } | {
+                            /** @enum {string} */
+                            class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        } | {
+                            /** @enum {boolean} */
+                            caller_bound: true;
+                        };
+                    };
+                    arguments: {
+                        path: string[];
+                        var: string;
+                    }[];
+                    fixed_arguments_digest: string;
+                    max_calls: number;
+                    descriptor: {
+                        name: string;
+                        annotations: {
+                            readOnlyHint?: boolean;
+                            destructiveHint?: boolean;
+                            idempotentHint?: boolean;
+                            openWorldHint?: boolean;
+                        };
+                        input_schema_digest: string;
+                        digest: string;
+                    };
                 };
                 read_query?: {
                     fixed: {
@@ -24643,6 +25627,8 @@ export interface components {
                 label: string;
             }[];
             unavailable_steps: string[];
+            /** @description Present when the workflow calls MCP tools: whether each pinned tool description was compared with its server for this caller. It is only compared for a caller who may grant the approval. */
+            tool_pins_compared?: boolean;
             unavailable_connectors?: {
                 step_id: string;
                 /** Format: uuid */
@@ -25310,6 +26296,31 @@ export interface components {
                 arguments?: {
                     [key: string]: components["schemas"]["WorkflowJsonValue"];
                 };
+                boundary?: {
+                    /** @enum {string} */
+                    effect?: "read" | "write";
+                    variables: {
+                        [key: string]: {
+                            enum: string[];
+                        } | {
+                            /** @enum {string} */
+                            class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        } | {
+                            /** @enum {boolean} */
+                            caller_bound: true;
+                        };
+                    };
+                    max_calls: number;
+                    descriptor: {
+                        input_schema_digest: string;
+                        annotations?: {
+                            readOnlyHint?: boolean;
+                            destructiveHint?: boolean;
+                            idempotentHint?: boolean;
+                            openWorldHint?: boolean;
+                        };
+                    };
+                };
             };
             body_schema?: {
                 [key: string]: unknown;
@@ -25537,6 +26548,31 @@ export interface components {
                 prompt?: string;
                 arguments?: {
                     [key: string]: components["schemas"]["WorkflowJsonValue"];
+                };
+                boundary?: {
+                    /** @enum {string} */
+                    effect?: "read" | "write";
+                    variables: {
+                        [key: string]: {
+                            enum: string[];
+                        } | {
+                            /** @enum {string} */
+                            class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        } | {
+                            /** @enum {boolean} */
+                            caller_bound: true;
+                        };
+                    };
+                    max_calls: number;
+                    descriptor: {
+                        input_schema_digest: string;
+                        annotations?: {
+                            readOnlyHint?: boolean;
+                            destructiveHint?: boolean;
+                            idempotentHint?: boolean;
+                            openWorldHint?: boolean;
+                        };
+                    };
                 };
             };
             body_schema?: {
@@ -26208,7 +27244,7 @@ export interface components {
             spec?: components["schemas"]["WorkflowSpec"] & unknown;
             recipe?: components["schemas"]["RecipeOrigin"];
         };
-        /** @description The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills and files of a tenant; `GET /v1/categories` lists it. */
+        /** @description The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills, files and tasks of a tenant; `GET /v1/categories` lists it. */
         CatalogCategory: string;
         /** @description The recipe pack entry this workflow was created from; recorded in the audit trail. */
         RecipeOrigin: {
@@ -26232,25 +27268,97 @@ export interface components {
                 step_id: string;
                 boundary?: {
                     variables: {
-                        [key: string]: unknown;
+                        [key: string]: {
+                            enum: string[];
+                        } | {
+                            class: string;
+                        } | {
+                            /** @enum {boolean} */
+                            caller_bound: true;
+                        };
                     };
                     max_body_bytes: number;
                     max_calls: number;
+                    /** @enum {boolean} */
+                    destructive?: true;
+                };
+                max_pages?: number;
+                path_rewrite?: {
+                    path: string;
+                    query: {
+                        [key: string]: string;
+                    };
                 };
                 s3_scope?: {
                     key_prefix: string;
                     max_bytes: number;
+                    max_deletes?: number;
                 };
+                request?: {
+                    method: string;
+                    origin: string;
+                    segments: (string | {
+                        var: string;
+                    })[];
+                    variables: {
+                        [key: string]: {
+                            enum: string[];
+                        } | {
+                            class: string;
+                        } | {
+                            /** @enum {boolean} */
+                            caller_bound: true;
+                        };
+                    };
+                    query: {
+                        fixed: {
+                            [key: string]: string;
+                        };
+                        variable: {
+                            key: string;
+                            var: string;
+                        }[];
+                    };
+                    max_body_bytes: number;
+                    max_calls: number;
+                    pagination?: {
+                        params: string[];
+                        max_requests: number;
+                    };
+                    /** @enum {boolean} */
+                    destructive?: true;
+                };
+                storage?: {
+                    operation: string;
+                    key_prefix: string;
+                    max_bytes: number;
+                    max_keys: number;
+                    max_deletes?: number;
+                };
+                widens?: {
+                    /** @enum {string} */
+                    field: "key_prefix" | "max_bytes";
+                    from: string | number;
+                    to: string | number;
+                }[];
                 evidence: {
                     observations: number;
                     sample: string;
                     newest_at: string;
+                    /** @enum {string} */
+                    kind: "sent" | "trial";
                 };
             }[];
             unproposable: {
                 step_id: string;
                 reason: string;
+                refusal?: string;
             }[];
+            digest: string;
+            /** Format: uuid */
+            base_version_id: string | null;
+            /** Format: uuid */
+            draft_version_id: string | null;
         };
         ApplyBoundaryProposalsResponse: {
             draft: components["schemas"]["WorkflowDraft"];
@@ -26258,8 +27366,11 @@ export interface components {
         };
         ApplyBoundaryProposalsBody: {
             /** Format: uuid */
-            expected_draft_version_id: string | null;
+            base_version_id: string | null;
+            proposals_digest: string;
             step_ids?: string[];
+            /** @enum {string} */
+            environment: "dev" | "prod";
         };
         WorkflowVersionListResponse: {
             items: components["schemas"]["WorkflowVersion"][];
@@ -26929,7 +28040,7 @@ export interface components {
             provider: string | null;
             product_id: string | null;
             /** @enum {string|null} */
-            verified_by: "api_key" | "browser_session" | "mcp_oauth" | "token_exchange" | "external_bearer" | null;
+            verified_by: "api_key" | "browser_session" | "mcp_oauth" | "token_exchange" | "external_bearer" | "task_run" | null;
             channel: string;
             /** Format: uuid */
             origin_execution_id: string | null;
@@ -28207,6 +29318,16 @@ export interface components {
                 } | null;
                 /** @enum {string} */
                 claims?: "read" | "write";
+                /** @description The exact value for `mcp.boundary.descriptor` on a step that calls this tool. */
+                boundary_descriptor: {
+                    input_schema_digest: string;
+                    annotations: {
+                        readOnlyHint?: boolean;
+                        destructiveHint?: boolean;
+                        idempotentHint?: boolean;
+                        openWorldHint?: boolean;
+                    };
+                };
             }[];
             capabilities: {
                 tools: boolean;
@@ -28789,6 +29910,444 @@ export interface components {
             /** Format: uuid */
             audit_entry_id: string;
         };
+        TaskView: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string | null;
+            category: string;
+            /** Format: uuid */
+            owner_id: string;
+            goal: string;
+            done_when: string;
+            plan: components["schemas"]["TaskPlan"];
+            bindings: components["schemas"]["TaskBindings"];
+            /** @enum {string} */
+            environment: "dev" | "prod";
+            schedule_cron: string | null;
+            schedule_timezone: string | null;
+            /** Format: date-time */
+            schedule_run_at: string | null;
+            /** Format: date-time */
+            last_claimed_at: string | null;
+            /** Format: date-time */
+            paused_at: string | null;
+            /** Format: uuid */
+            paused_by: string | null;
+            /** @enum {string|null} */
+            paused_reason: "owner_request" | "admin" | "owner_unavailable" | null;
+            max_turns: number;
+            run_deadline_minutes: number;
+            fingerprint: string;
+            revision: number;
+            /** @enum {string} */
+            lifecycle: "active" | "archived";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            latest_run: components["schemas"]["TaskLatestRun"] | null;
+            grant_live: boolean;
+            /** Format: date-time */
+            next_start_at: string | null;
+        };
+        TaskPlan: {
+            title: string;
+            goal: string;
+            steps: {
+                id: string;
+                label: string;
+                criterion: {
+                    /** @enum {string} */
+                    kind: "assessment";
+                    description: string;
+                    result: string | null;
+                } | {
+                    /** @enum {string} */
+                    kind: "resource_observed";
+                    resource: {
+                        /** @enum {string} */
+                        type: "connector" | "workflow" | "execution" | "knowledge" | "file" | "intake";
+                        /** Format: uuid */
+                        id: string;
+                    };
+                } | {
+                    /** @enum {string} */
+                    kind: "execution_succeeded";
+                    /** Format: uuid */
+                    workflow_id: string;
+                    /** @enum {string} */
+                    environment: "dev" | "prod";
+                    /** Format: date-time */
+                    after: string;
+                } | {
+                    /** @enum {string} */
+                    kind: "human_confirmation";
+                    question: string;
+                };
+                depends_on: string[];
+                evidence_ids: string[];
+                note: string | null;
+                /** @enum {string} */
+                progress: "open" | "in_progress" | "blocked" | "waiting_for_input";
+                next_action: {
+                    label: string;
+                    owner: string | null;
+                    /** Format: uuid */
+                    elicitation_id: string | null;
+                } | null;
+            }[];
+            cancelled: boolean;
+            /** @description Leave null for assessment results and resource reads. Set an ID only when that step's explicit proof is human_confirmation or execution_succeeded. */
+            completion_step_id: string | null;
+        };
+        TaskBindings: {
+            workflow_ids: string[];
+            connector_ids: string[];
+            skill_slugs: string[];
+            web_search: boolean;
+        };
+        TaskLatestRun: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            state: "running" | "waiting" | "sleeping" | "result_ready" | "completed" | "aborted" | "failed";
+            /** @enum {string|null} */
+            waiting_reason: "question" | "approval" | "no_progress" | "budget" | "question_expired" | "ai_access" | "turn_stopped" | null;
+            /** Format: date-time */
+            next_check_at: string | null;
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            ended_at: string | null;
+            /** Format: uuid */
+            conversation_id: string | null;
+        };
+        TaskListResponse: {
+            items: components["schemas"]["TaskView"][];
+            next_cursor?: string | null;
+        };
+        Task: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string | null;
+            category: string;
+            /** Format: uuid */
+            owner_id: string;
+            goal: string;
+            done_when: string;
+            plan: components["schemas"]["TaskPlan"];
+            bindings: components["schemas"]["TaskBindings"];
+            /** @enum {string} */
+            environment: "dev" | "prod";
+            schedule_cron: string | null;
+            schedule_timezone: string | null;
+            /** Format: date-time */
+            schedule_run_at: string | null;
+            /** Format: date-time */
+            last_claimed_at: string | null;
+            /** Format: date-time */
+            paused_at: string | null;
+            /** Format: uuid */
+            paused_by: string | null;
+            /** @enum {string|null} */
+            paused_reason: "owner_request" | "admin" | "owner_unavailable" | null;
+            max_turns: number;
+            run_deadline_minutes: number;
+            fingerprint: string;
+            revision: number;
+            /** @enum {string} */
+            lifecycle: "active" | "archived";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        TaskCreateInput: {
+            name: string;
+            /** @default null */
+            description?: string | null;
+            category?: string;
+            goal: string;
+            done_when: string;
+            plan: components["schemas"]["TaskPlan"];
+            bindings: components["schemas"]["TaskBindings"];
+            /** @enum {string} */
+            environment: "dev" | "prod";
+            /** @default null */
+            schedule_cron?: string | null;
+            /** @default null */
+            schedule_timezone?: string | null;
+            /**
+             * Format: date-time
+             * @default null
+             */
+            schedule_run_at?: string | null;
+            /** @default 20 */
+            max_turns?: number;
+            /** @default 240 */
+            run_deadline_minutes?: number;
+        };
+        TaskUpdateResponse: components["schemas"]["Task"] & {
+            schedule_changed: boolean;
+            grant_invalidated: boolean;
+            /** Format: uuid */
+            aborted_run_id: string | null;
+        };
+        TaskUpdateInput: {
+            name: string;
+            /** @default null */
+            description?: string | null;
+            category?: string;
+            goal: string;
+            done_when: string;
+            plan: components["schemas"]["TaskPlan"];
+            bindings: components["schemas"]["TaskBindings"];
+            /** @enum {string} */
+            environment: "dev" | "prod";
+            /** @default null */
+            schedule_cron?: string | null;
+            /** @default null */
+            schedule_timezone?: string | null;
+            /**
+             * Format: date-time
+             * @default null
+             */
+            schedule_run_at?: string | null;
+            /** @default 20 */
+            max_turns?: number;
+            /** @default 240 */
+            run_deadline_minutes?: number;
+            expected_revision: number;
+        };
+        TaskDeleteResponse: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {boolean} */
+            deleted: true;
+        };
+        TaskResumeResponse: components["schemas"]["Task"] & {
+            run: components["schemas"]["TaskRun"] | null;
+        };
+        TaskRun: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            task_id: string;
+            task_revision: number;
+            fingerprint: string;
+            /** Format: uuid */
+            conversation_id: string | null;
+            /** @enum {string} */
+            trigger: "manual" | "once" | "cron";
+            /** Format: uuid */
+            started_by: string | null;
+            /** Format: uuid */
+            grant_id: string | null;
+            /** @enum {string} */
+            state: "running" | "waiting" | "sleeping" | "result_ready" | "completed" | "aborted" | "failed";
+            /** @enum {string|null} */
+            waiting_reason: "question" | "approval" | "no_progress" | "budget" | "question_expired" | "ai_access" | "turn_stopped" | null;
+            /** Format: date-time */
+            next_check_at: string | null;
+            sleep_reason: string | null;
+            /** Format: date-time */
+            deadline_at: string;
+            turns_used: number;
+            no_progress_count: number;
+            /** Format: uuid */
+            last_seen_turn_id: string | null;
+            last_playbook_revision: number;
+            trace_id: string;
+            /** @enum {string|null} */
+            failure_code: "turn_failed" | "turn_interrupted" | "start_failed" | "playbook_tampered" | "playbook_cancelled" | "conversation_closed" | "task_changed" | "task_archived" | "owner_unavailable" | "budget_exhausted" | "deadline_exceeded" | null;
+            /** Format: date-time */
+            result_ready_at: string | null;
+            /** Format: date-time */
+            completed_at: string | null;
+            /** Format: uuid */
+            completed_by: string | null;
+            /** Format: date-time */
+            ended_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        TaskUsageResponse: {
+            last_run: components["schemas"]["TaskUsagePeriod"];
+            current_month: components["schemas"]["TaskUsagePeriod"];
+        };
+        TaskUsagePeriod: {
+            /** @enum {string} */
+            period: "last_run" | "current_month";
+            /** Format: uuid */
+            task_run_id: string | null;
+            /** @enum {string} */
+            attribution: "conversation_turns" | "conversation_removed";
+            not_included: "workflow_run_model_calls"[];
+            calls: number;
+            tokens: number;
+            cost: {
+                amount: number;
+                currency: string;
+                unpriced_models: string[];
+            } | null;
+        };
+        TaskRunListResponse: {
+            items: components["schemas"]["TaskRun"][];
+            next_cursor?: string | null;
+        };
+        TaskRunDetail: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            task_id: string;
+            task_revision: number;
+            fingerprint: string;
+            /** Format: uuid */
+            conversation_id: string | null;
+            /** @enum {string} */
+            trigger: "manual" | "once" | "cron";
+            /** Format: uuid */
+            started_by: string | null;
+            /** Format: uuid */
+            grant_id: string | null;
+            /** @enum {string} */
+            state: "running" | "waiting" | "sleeping" | "result_ready" | "completed" | "aborted" | "failed";
+            /** @enum {string|null} */
+            waiting_reason: "question" | "approval" | "no_progress" | "budget" | "question_expired" | "ai_access" | "turn_stopped" | null;
+            /** Format: date-time */
+            next_check_at: string | null;
+            sleep_reason: string | null;
+            /** Format: date-time */
+            deadline_at: string;
+            turns_used: number;
+            no_progress_count: number;
+            /** Format: uuid */
+            last_seen_turn_id: string | null;
+            last_playbook_revision: number;
+            trace_id: string;
+            /** @enum {string|null} */
+            failure_code: "turn_failed" | "turn_interrupted" | "start_failed" | "playbook_tampered" | "playbook_cancelled" | "conversation_closed" | "task_changed" | "task_archived" | "owner_unavailable" | "budget_exhausted" | "deadline_exceeded" | null;
+            /** Format: date-time */
+            result_ready_at: string | null;
+            /** Format: date-time */
+            completed_at: string | null;
+            /** Format: uuid */
+            completed_by: string | null;
+            /** Format: date-time */
+            ended_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            pending_question: string | null;
+        };
+        TaskAuthorityPreview: {
+            /** Format: uuid */
+            task_id: string;
+            fingerprint: string;
+            /** @enum {string} */
+            environment: "dev" | "prod";
+            grantable: boolean;
+            schedule: {
+                schedule_cron: string | null;
+                schedule_timezone: string | null;
+                /** Format: date-time */
+                schedule_run_at: string | null;
+            };
+            workflows: {
+                /** Format: uuid */
+                workflow_id: string;
+                /** Format: uuid */
+                workflow_version_id: string | null;
+                name: string | null;
+                effect_manifest_digest: string | null;
+                effect_manifest: components["schemas"]["WorkflowEffectManifest"] | null;
+                /** @enum {string|null} */
+                blocked_reason: "workflow_missing" | "workflow_not_active" | "workflow_sensitive" | "workflow_not_repeatable" | "workflow_permission_missing" | "workflow_not_readable" | null;
+                covering_authority: {
+                    /** Format: uuid */
+                    id: string;
+                    /** Format: date-time */
+                    valid_until: string | null;
+                    remaining_runs: number | null;
+                } | null;
+                may_grant: boolean;
+            }[];
+            connectors: {
+                /** Format: uuid */
+                connector_id: string;
+                name: string | null;
+                /** @enum {string|null} */
+                access: "none" | "read-only" | "read-write" | null;
+            }[];
+            web_search: boolean;
+            /** @enum {boolean} */
+            workflow_run_limit_shared_with_other_triggers: true;
+            live_grant: components["schemas"]["TaskGrant"] | null;
+        };
+        TaskGrant: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            task_id: string;
+            fingerprint: string;
+            /** @enum {string} */
+            environment: "dev" | "prod";
+            /** Format: date-time */
+            valid_from: string;
+            /** Format: date-time */
+            valid_until: string | null;
+            max_runs: number | null;
+            reserved_runs: number;
+            /** Format: uuid */
+            created_by: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            revoked_at: string | null;
+            /** Format: uuid */
+            revoked_by: string | null;
+            workflow_authority_ids: string[];
+        };
+        TaskGrantListResponse: {
+            items: components["schemas"]["TaskGrant"][];
+        };
+        TaskAuthorityGrantResult: {
+            grant: components["schemas"]["TaskGrant"];
+            changed: boolean;
+            superseded_grant_ids: string[];
+            workflows: {
+                /** Format: uuid */
+                workflow_id: string;
+                /** @enum {string} */
+                outcome: "granted" | "covered" | "not_granted";
+                /** Format: uuid */
+                authority_id: string | null;
+                /** @enum {string|null} */
+                reason: "workflow_missing" | "workflow_not_active" | "workflow_sensitive" | "workflow_not_repeatable" | "workflow_permission_missing" | "workflow_not_readable" | null;
+            }[];
+        };
+        TaskAuthorityGrantInput: {
+            expected_fingerprint: string;
+            /** Format: date-time */
+            valid_until: string | null;
+            max_runs: number | null;
+            /** @default {} */
+            expected_workflow_digests?: {
+                [key: string]: string;
+            };
+        };
+        TaskAuthorityRevokeResult: {
+            grant: components["schemas"]["TaskGrant"];
+            changed: boolean;
+            revoked_workflow_authority_ids: string[];
+            transferred_workflow_authority_ids: string[];
+            retained_successor_authority_ids: string[];
+        };
         CategoryListResponse: {
             categories: components["schemas"]["CategoryUsage"][];
         };
@@ -28812,6 +30371,7 @@ export interface components {
             knowledge_source: number;
             skill: number;
             file: number;
+            task: number;
             intake: number;
         };
         RenameCategoryResponse: {
@@ -29466,6 +31026,9 @@ export interface components {
                 description: string | null;
             }[];
             files_omitted: number;
+            /** @description Ids of the domain's active tasks as listed in the briefing: the caller's own, or every task of the tenant for an admin. Empty without task:read. */
+            tasks: string[];
+            tasks_omitted: number;
             /** @description Slugs of the skills that teach how to work with sk, listed for every domain. */
             guides: string[];
             /** @description Intake items awaiting review whose shared category is one of the requested domains, split into collected clips and session learnings, plus the draft proposals that cite them; null when the caller cannot read intake. Never includes item content. */
@@ -29718,6 +31281,7 @@ export interface components {
                     prompt?: {
                         question: string;
                         intent_kind?: string;
+                        approval_backed?: boolean;
                         authorization_url?: string;
                         fields?: {
                             name: string;
@@ -29777,6 +31341,8 @@ export interface components {
             parts: unknown[];
             model: string | null;
             created_at: string;
+            /** @enum {string} */
+            origin?: "task_run_continuation";
         };
         ConversationToolCall: {
             id: string;
@@ -30855,6 +32421,8 @@ export interface components {
                 ai_access: "answered" | "failed" | "not_permitted";
                 /** @enum {string} */
                 risk: "answered" | "failed" | "not_permitted";
+                /** @enum {string} */
+                tasks: "answered" | "failed" | "not_permitted";
             };
             status: {
                 /** @enum {string} */
@@ -30864,7 +32432,7 @@ export interface components {
             items: components["schemas"]["AttentionItem"][];
         };
         AttentionItem: {
-            /** @description Stable id: workflow:<id>, conversation:<id>, connector:<id>, connection:<id>, secret-approval:<name>@<version>, skills, budget, freshness:<source>, risk:<kind>. */
+            /** @description Stable id: workflow:<id>, conversation:<id>, connector:<id>, connection:<id>, secret-approval:<name>@<version>, skills, budget, freshness:<source>, risk:<kind>, task:<id>. */
             id: string;
             /** @enum {string} */
             class: "stopped" | "failing" | "decide";
@@ -30873,12 +32441,12 @@ export interface components {
             kind: string;
             subject: {
                 /** @enum {string} */
-                kind: "workflow" | "conversation" | "connector" | "connection" | "secret" | "settings";
+                kind: "workflow" | "conversation" | "connector" | "connection" | "secret" | "settings" | "task";
                 id: string;
                 name: string | null;
             } | null;
             /** @enum {string} */
-            reason: "awaiting_answer" | "execution_authority_required" | "execution_authority_unavailable" | "version_awaiting_approval" | "version_needs_repair" | "approval_expiring" | "scheduler_stale" | "failing" | "patch_proposed" | "needs_reauth" | "needs_update" | "degraded" | "unhealthy" | "refresh_refused" | "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | "secret_prepared" | "skills_proposed" | "intake_collected" | "budget_critical" | "ai_access_missing" | "risk_critical";
+            reason: "awaiting_answer" | "execution_authority_required" | "execution_authority_unavailable" | "version_awaiting_approval" | "version_needs_repair" | "approval_expiring" | "scheduler_stale" | "failing" | "patch_proposed" | "needs_reauth" | "needs_update" | "degraded" | "unhealthy" | "refresh_refused" | "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | "secret_prepared" | "skills_proposed" | "intake_collected" | "budget_critical" | "ai_access_missing" | "risk_critical" | "task_run_failed" | "task_result_ready" | "task_grant_required" | "task_grant_expiring" | "task_owner_unavailable";
             /** @description What starts the workflow. Null unless it is held or the item is about its approval. */
             trigger: {
                 /** @enum {string} */
@@ -31592,7 +33160,7 @@ export interface components {
         };
         EmitEventBody: {
             /** @enum {string} */
-            type: "execution.succeeded" | "execution.failed" | "execution.refused" | "workflow.updated" | "connector.oauth.refreshed" | "connector.oauth.callback_succeeded" | "connector.oauth.callback_failed" | "connector.auth_failed" | "connector.health_changed" | "patch.proposed" | "patch.applied" | "apikey.rotated" | "conversation.committed";
+            type: "execution.succeeded" | "execution.failed" | "execution.refused" | "workflow.updated" | "connector.oauth.refreshed" | "connector.oauth.callback_succeeded" | "connector.oauth.callback_failed" | "connector.auth_failed" | "connector.health_changed" | "patch.proposed" | "patch.applied" | "apikey.rotated" | "conversation.committed" | "task_run.started" | "task_run.waiting" | "task_run.result_ready" | "task_run.completed" | "task_run.failed";
             payload: {
                 [key: string]: unknown;
             };
@@ -31728,7 +33296,7 @@ export interface components {
             /** Format: uuid */
             recorded_session_id: string | null;
             /** @enum {string|null} */
-            access_type: "api_key" | "browser_session" | "mcp_oauth" | "token_exchange" | "external_bearer" | "portal_token" | null;
+            access_type: "api_key" | "browser_session" | "mcp_oauth" | "token_exchange" | "external_bearer" | "task_run" | "portal_token" | null;
             oauth_client_id: string | null;
             /** @enum {string|null} */
             credential_origin: "cli_oauth_session" | null;
@@ -31744,6 +33312,10 @@ export interface components {
             conversation_id: string | null;
             /** Format: uuid */
             workflow_id: string | null;
+            /** Format: uuid */
+            task_id: string | null;
+            /** Format: uuid */
+            task_run_id: string | null;
             changed_fields: string[];
             changes: {
                 field: string;

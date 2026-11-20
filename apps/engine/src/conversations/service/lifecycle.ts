@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, isNull, or, sql } fr
 import { auditAwait } from "../../audit/audit.ts";
 import { resolveActor } from "../../audit/recorders/types.ts";
 import { AuditAction, ConversationDeletedMetadataSchema } from "../../audit/types.ts";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db, Executor } from "../../db/client.ts";
 import {
   connectors,
@@ -13,6 +14,11 @@ import {
   mcpTasks,
   workflows,
 } from "../../db/schema/index.ts";
+import {
+  notTaskRunConversation,
+  type TaskRunConversationFilter,
+  taskRunConversationCond,
+} from "../../db/task-run-conversations.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
 import { now } from "../../utils/clock.ts";
 import { cancelConversationAbort, hasConversationAbort } from "../abort.ts";
@@ -28,6 +34,7 @@ import type {
   ConversationTargetRef,
 } from "../types.ts";
 import { loadOwners, rowToRecord } from "./shared.ts";
+import { assertTaskRunWriter } from "./task-run-access.ts";
 
 export async function cancelConversation(
   tenant_id: string,
@@ -35,7 +42,11 @@ export async function cancelConversation(
   actor_id: string | null,
   exec: Db,
   actor_type?: "user" | "system_account" | "system" | "unknown",
+  principal?: ResolvedPrincipal | null,
 ): Promise<ConversationRecord | null> {
+  const bySystem = actor_id === null && actor_type === "system" && !principal;
+  if (!bySystem)
+    await assertTaskRunWriter(exec, { tenant_id, conversation_id, actor_id, principal });
   const [row] = await exec
     .update(conversations)
     .set({ status: "abandoned", updated_at: new Date(now()) })
@@ -75,6 +86,8 @@ export interface ListConversationsParams {
   q?: string;
   viewer_user_id?: string;
   hidden?: "exclude" | "only" | "all";
+  task_runs?: TaskRunConversationFilter;
+  task_run_reader?: string;
   owner_kind?: "user" | "system_account";
   sort?: "title" | "status" | "created_at" | "updated_at";
   order?: "asc" | "desc";
@@ -136,6 +149,12 @@ function knowledgeReadIn(tenant_id: string, source_id: string) {
 
 function conversationListConds(p: ListConversationsParams) {
   const tenantConds = [eq(conversations.tenant_id, p.tenant_id)];
+  const taskRuns = taskRunConversationCond(p.task_runs);
+  if (taskRuns) tenantConds.push(taskRuns);
+  if (p.task_run_reader)
+    tenantConds.push(
+      sql<boolean>`(${notTaskRunConversation()} or ${conversations.owner_id} = ${p.task_run_reader})`,
+    );
   if (p.status) tenantConds.push(eq(conversations.status, p.status));
   if (p.owner_id) tenantConds.push(eq(conversations.owner_id, p.owner_id));
   if (p.target_workflow_id) {
@@ -386,7 +405,13 @@ export async function isConversationHiddenFor(
 }
 
 export async function setConversationHidden(
-  p: { tenant_id: string; conversation_id: string; user_id: string; hidden: boolean },
+  p: {
+    tenant_id: string;
+    conversation_id: string;
+    user_id: string;
+    hidden: boolean;
+    principal?: ResolvedPrincipal | null;
+  },
   exec: Db,
 ): Promise<ConversationRecord | null> {
   const [row] = await exec
@@ -395,6 +420,12 @@ export async function setConversationHidden(
     .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
     .limit(1);
   if (!row) return null;
+  await assertTaskRunWriter(exec, {
+    tenant_id: p.tenant_id,
+    conversation_id: p.conversation_id,
+    actor_id: p.user_id,
+    principal: p.principal,
+  });
   if (p.hidden) {
     await exec
       .insert(conversationHidden)
@@ -542,6 +573,7 @@ export async function patchConversation(
   p: PatchConversationParams,
   exec: Db,
 ): Promise<ConversationRecord | null> {
+  await assertTaskRunWriter(exec, p);
   const updates: Partial<typeof conversations.$inferInsert> = { updated_at: new Date(now()) };
   if (p.model !== undefined) updates.model = p.model;
   if (p.title !== undefined) {

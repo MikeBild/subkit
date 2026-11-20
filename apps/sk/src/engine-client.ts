@@ -38,6 +38,7 @@ import { selfHealingMethods } from "./engine-client/self-healing.ts";
 import { settingsMethods } from "./engine-client/settings.ts";
 import { skillsMethods } from "./engine-client/skills.ts";
 import { statsMethods } from "./engine-client/stats.ts";
+import { tasksMethods } from "./engine-client/tasks.ts";
 import { workflowsMethods } from "./engine-client/workflows.ts";
 
 export type { AppCheck, AppSummary, AppView } from "./engine-client/apps.ts";
@@ -650,6 +651,7 @@ export interface EngineClient
     ApiMethods<typeof settingsMethods>,
     ApiMethods<typeof skillsMethods>,
     ApiMethods<typeof statsMethods>,
+    ApiMethods<typeof tasksMethods>,
     ApiMethods<typeof workflowsMethods> {}
 
 Object.assign(
@@ -675,5 +677,6 @@ Object.assign(
   settingsMethods,
   skillsMethods,
   statsMethods,
+  tasksMethods,
   workflowsMethods,
 );

@@ -104,7 +104,14 @@ describe("fuzz: describe prompt and result", () => {
       const hostile = `${randomPhrase(12)} ${rnd.float() < 0.3 ? secret() : ""} ${randomText(40)}`;
       const prompt = buildDescribePrompt(
         {
-          kind: rnd.pick(["workflow", "connector", "knowledge_source", "skill", "file"] as const),
+          kind: rnd.pick([
+            "workflow",
+            "connector",
+            "knowledge_source",
+            "skill",
+            "file",
+            "task",
+          ] as const),
           name: randomPhrase(4) || "x",
           fields: [
             ["body", hostile],

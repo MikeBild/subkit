@@ -15,6 +15,12 @@ test("uses the recorded new name and retains the old name for deleted resources"
   expect(
     auditResourceName({ resource_type: "file", before: null, after: { filename: "report.csv" } }),
   ).toBe("report.csv");
+  expect(
+    auditResourceName({ resource_type: "task", before: { name: "Weekly report" }, after: null }),
+  ).toBe("Weekly report");
+  expect(
+    auditResourceName({ resource_type: "task_run", before: null, after: { name: "Run" } }),
+  ).toBeNull();
 });
 
 test("person names remain email addresses and missing evidence never becomes another field", () => {

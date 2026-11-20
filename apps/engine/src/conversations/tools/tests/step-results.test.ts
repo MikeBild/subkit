@@ -96,4 +96,32 @@ describe("buildRawStepResults", () => {
     expect(result?.raw_output).toEqual({ full: { picked: 1, dropped: 2 } });
     expect(result?.error).toEqual({ code: "http_4xx", message: "bad request" });
   });
+
+  test("an address recorded with a credential value is shown scrubbed", () => {
+    const results = buildRawStepResults([
+      {
+        step_key: "old",
+        kind: "request",
+        status: "failed",
+        request_meta: { method: "GET", url: "https://api.test/v2?api_key=s3cr3t-old&page=2" },
+        error: { code: "http_4xx", resolved_url: "https://api.test/v2?token=s3cr3t-old" },
+      },
+      {
+        step_key: "held",
+        kind: "request",
+        status: "succeeded",
+        held: true,
+        held_request: { method: "POST", url: "https://api.test/v2?access_token=s3cr3t-old" },
+      },
+    ]);
+    expect(JSON.stringify(results)).not.toContain("s3cr3t-old");
+    expect(results[0]?.input).toEqual({
+      method: "GET",
+      url: "https://api.test/v2?api_key=***&page=2",
+    });
+    expect(results[1]?.input).toEqual({
+      method: "POST",
+      url: "https://api.test/v2?access_token=***",
+    });
+  });
 });

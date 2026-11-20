@@ -42,7 +42,9 @@ export function automationActionKey(action: AutomationAction): TranslationKey {
           ? "diagnosis.repair"
           : action.via === "prepare"
             ? "diagnosis.prepare"
-            : "remedy.chat";
+            : action.via === "limits"
+              ? "authorityProposals.action.open"
+              : "remedy.chat";
   }
 }
 

@@ -374,6 +374,21 @@ export interface AuthoringSummary {
   latest_diagnosis: LatestDiagnosisSummary | null;
 }
 
+export interface TaskRunMarker {
+  task_id: string;
+  task_run_id: string;
+  environment: "dev" | "prod";
+  workflow_ids: string[];
+  connector_ids: string[];
+  web_search: boolean;
+  sealed?: true;
+}
+
+export interface TaskRunCheck {
+  at: string;
+  reason: string;
+}
+
 export interface DraftDocument {
   mode?: AuthoringMode;
   workflow: WorkflowDraftDocument;
@@ -398,6 +413,8 @@ export interface DraftDocument {
       state: "pending" | "running" | "succeeded" | "failed" | "blocked";
       execution_id?: string | null;
     } | null;
+    task_run?: TaskRunMarker | null;
+    task_check?: TaskRunCheck | null;
   };
 }
 
@@ -408,6 +425,7 @@ export type TurnEvent =
       content: unknown;
       id?: string;
       parent_message_id?: string;
+      origin?: "task_run_continuation";
     }
   | { type: "text_delta"; text: string }
   | {
@@ -518,6 +536,7 @@ export interface ConversationResumeSummary {
     prompt?: {
       question: string;
       intent_kind?: string;
+      approval_backed?: boolean;
       kind?: string;
       diffs?: { label: string; preview?: string }[];
       authorization_url?: string;
@@ -576,6 +595,7 @@ export interface UIMessage {
   parts: ContentPart[];
   model: string | null;
   created_at: string;
+  origin?: "task_run_continuation";
 }
 
 export type { GateOutcome, GateRecord } from "./confirmation.ts";

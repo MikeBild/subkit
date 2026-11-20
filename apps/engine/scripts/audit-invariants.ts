@@ -154,6 +154,7 @@ function checkRouteLayering(): Result {
     "sandboxes",
     "observability",
     "logging",
+    "tasks",
   ]);
   const explicitConversationFacades = new Set([
     "conversations/public/lifecycle.ts",

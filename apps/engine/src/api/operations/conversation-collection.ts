@@ -2,6 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { actorType } from "../../audit/actor.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { taskRunListReader } from "../../conversations/public/lifecycle.ts";
 import type {
   ConversationDetail,
   ConversationRecord,
@@ -25,6 +26,12 @@ const ListConversationsQuery = z
     status: z.enum(["active", "awaiting_input", "committed", "abandoned"]).optional(),
     owner: z.literal("me").optional(),
     hidden: z.enum(["exclude", "only", "all"]).optional(),
+    task_runs: z
+      .enum(["exclude", "only", "all"])
+      .optional()
+      .describe(
+        "Conversations that belong to a task run. They are left out by default; `only` lists just them, `all` lists both.",
+      ),
     owner_kind: z.enum(["user", "system_account"]).optional(),
     target_workflow_id: z.string().uuid().optional(),
     target_connector_id: z.string().uuid().optional(),
@@ -67,6 +74,8 @@ interface ListParams {
   owner_id?: string;
   viewer_user_id?: string;
   hidden?: "exclude" | "only" | "all";
+  task_runs?: "exclude" | "only" | "all";
+  task_run_reader?: string;
   owner_kind?: "user" | "system_account";
   target_workflow_id?: string;
   target_connector_id?: string;
@@ -169,12 +178,15 @@ function withConfirmPrompt(detail: ConversationDetail): ConversationDetail {
 }
 
 function listParams(principal: ResolvedPrincipal, q: ListQuery): ListParams {
+  const reader = taskRunListReader(principal);
   return {
     tenant_id: principal.tenant_id,
     ...(q.status ? { status: q.status } : {}),
     ...(q.owner === "me" ? { owner_id: principal.id } : {}),
     ...(principal.kind === "user" ? { viewer_user_id: principal.id } : {}),
     ...(q.hidden ? { hidden: q.hidden } : {}),
+    ...(q.task_runs ? { task_runs: q.task_runs } : {}),
+    ...(reader ? { task_run_reader: reader } : {}),
     ...(q.owner_kind ? { owner_kind: q.owner_kind } : {}),
     ...(q.target_workflow_id ? { target_workflow_id: q.target_workflow_id } : {}),
     ...(q.target_connector_id ? { target_connector_id: q.target_connector_id } : {}),

@@ -12,6 +12,7 @@ import { setMcpTaskFailureIfNotTerminal } from "../mcp/tasks/store.ts";
 import { registerConversationAbort, unregisterConversationAbort } from "./abort.ts";
 import { ConversationTurnInProgressError } from "./errors.ts";
 import { ConversationNotFoundError } from "./service/shared.ts";
+import { notifyConversationTurnReleased } from "./turn-listeners.ts";
 
 const workerId = randomUUID();
 const owners = new WeakMap<AbortController, { id: string; attempt: string; db: Db }>();
@@ -93,7 +94,7 @@ async function releaseLease(client: pg.Client, id: string): Promise<void> {
   }
 }
 
-async function reconcileInterruptedConversationTurn(
+export async function reconcileInterruptedConversationTurn(
   db: Db,
   tenantId: string,
   conversationId: string,
@@ -556,6 +557,7 @@ export async function releaseConversationTurn(
   state: "completed" | "failed" | "cancelled" = "completed",
 ): Promise<void> {
   const owner = owners.get(ctrl);
+  const finished = ctrl.signal.aborted ? "cancelled" : failures.has(ctrl) ? "failed" : state;
   try {
     if (owner)
       await finishConversationTurn(
@@ -563,7 +565,7 @@ export async function releaseConversationTurn(
         tenantId,
         conversationId,
         owner.id,
-        ctrl.signal.aborted ? "cancelled" : failures.has(ctrl) ? "failed" : state,
+        finished,
         owner.attempt,
       );
   } catch (error) {
@@ -585,6 +587,14 @@ export async function releaseConversationTurn(
     if (owner && proof) await releaseLease(proof, owner.id);
     unregisterConversationAbort(tenantId, conversationId, ctrl);
   }
+  if (owner)
+    await notifyConversationTurnReleased({
+      db: owner.db,
+      tenant_id: tenantId,
+      conversation_id: conversationId,
+      turn_id: owner.id,
+      state: finished,
+    });
 }
 
 export { ConversationTurnInProgressError } from "./errors.ts";

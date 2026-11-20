@@ -51,6 +51,8 @@ test("every address a link builder produces resolves to one of the cockpit's pag
     run: links.runHref(id),
     workflow: links.workflowHref(id),
     connector: links.connectorHref(id),
+    task: links.taskHref(id),
+    taskTab: links.taskHref(id, "runs"),
     ...Object.fromEntries(
       CATALOG_RESOURCES.map((resource) => [`record:${resource}`, links.recordHref(resource, id)]),
     ),

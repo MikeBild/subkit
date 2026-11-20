@@ -1,6 +1,6 @@
 import { UNCATEGORIZED } from "@/lib/workflow-category";
 
-export type CatalogKind = "workflow" | "connector" | "knowledge_source" | "skill" | "file";
+export type CatalogKind = "workflow" | "connector" | "knowledge_source" | "skill" | "file" | "task";
 
 export interface CatalogMetadataRecord {
   name?: unknown;

@@ -15,7 +15,7 @@ Everything is on the **Usage** page. At the top, one sentence sums up the time w
 ### What you need
 
 - To view the page: `stats:read`. By default only the Admin role has it.
-- For **Person** and **Conversation** under **Break down by**: `stats:read:all`. Without it you do not see these tabs.
+- For **Person**, **Conversation** and **Task** under **Break down by**: `stats:read:all`. Without it you do not see these tabs.
 - To change the budget and prices: `settings:write`. The Admin role has both.
 
 ### Choose the time window
@@ -88,7 +88,7 @@ When prices are missing, the chart shows token amounts instead of cost.
 
 ### Break down by
 
-Under **Break down by** you choose **Workflow**, **Person**, **Model** or **Conversation**.
+Under **Break down by** you choose **Workflow**, **Person**, **Model**, **Conversation** or **Task**.
 Each row shows **Cost**, **AI calls**, **Share** and **Trend**.
 Some tabs add a column: **Runs** for Workflow, **Error rate** for Model, **Last active** for Conversation.
 
@@ -100,6 +100,8 @@ The last row collects what belongs to no row:
 - **No conversation (runs, knowledge, checks …)**
 
 That way all rows together add up to the total at the top.
+
+**Task** shows what each task cost: the AI calls of its runs, including the rounds in which you wrote into a run yourself. Two things are not in a task’s row. AI calls inside the workflow runs a task started count for the workflow, under **Workflow**. And when the conversation of a run was deleted, its calls can no longer be assigned to the task. The chapter “Hand over a goal as a task” explains how to keep a task cheap.
 
 ### Open details
 
@@ -135,6 +137,7 @@ What happens as tokens are used:
 - From 75% a notice appears.
 - At 100% chat, designing workflows and fixes pause until the first of the month.
 - Approved workflows keep running. What is already in operation does not stop.
+- A run of a task waits. It does not fail, and it continues on its own once budget is available again.
 - Requests SubKit rejects because of the budget never count towards usage.
 
 Without a budget, AI calls are unlimited.
@@ -176,7 +179,7 @@ Expand **Technical details** at the end of the page. It shows:
 | What you see | What you do |
 | --- | --- |
 | **No rights** instead of the page | Ask someone with the Admin role for `stats:read`. |
-| **Person** and **Conversation** are missing | You lack `stats:read:all`. Ask someone with the Admin role for it. |
+| **Person**, **Conversation** and **Task** are missing | You lack `stats:read:all`. Ask someone with the Admin role for it. |
 | **at least** in front of the cost | Some models have no price. Add it through **Set a price**. |
 | **Cost unknown** | None of the models used has a price. Add the prices. |
 | "Ask someone with the Admin role." instead of **Adjust budget** | You lack `settings:write`. Ask someone with the Admin role to change the budget. |
@@ -192,7 +195,7 @@ You get the same numbers with `sk stats llm` or through the HTTP API with `GET /
 sk stats llm --bucket day --from <from> --to <to> --group-by workflow
 ```
 
-- `group_by` breaks down by `model`, `flow`, `user`, `workflow`, `conversation` or `execution`. At most two values at once.
+- `group_by` breaks down by `model`, `flow`, `user`, `workflow`, `conversation`, `execution` or `task`. At most two values at once.
 - `result=` filters by result: `success`, `quota_exhausted`, `context_too_large` or `error`.
 - `workflow_id=` shows only the calls of one workflow.
-- Breakdowns by `user` or `conversation` need `stats:read:all`. That does not apply when `user_id` is your own ID.
+- Breakdowns by `user`, `conversation` or `task` need `stats:read:all`. That does not apply when `user_id` is your own ID.

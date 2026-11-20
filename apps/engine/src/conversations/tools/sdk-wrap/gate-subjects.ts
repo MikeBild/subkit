@@ -1,4 +1,5 @@
 import { parseFileId } from "../../../api/files-schemas.ts";
+import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import type { Executor } from "../../../db/client.ts";
 import { resolvedFromRow } from "../../../files/resolver.ts";
 import { findReadyFileByHash, listExecutionDataFileSizes } from "../../../files/service.ts";
@@ -9,6 +10,7 @@ import { buildPendingOutputForTool } from "../../tool-policies.ts";
 import type { ToolContext } from "../index.ts";
 import { formatPackagePlanTitle } from "../package-portability.ts";
 import { decodeWorkflowInputFile, WorkflowInputFileSchema } from "../workflow-file-input.ts";
+import { taskGateCard } from "./task-gate-card.ts";
 
 const GATE_BODY_EXCERPT_CHARS = 280;
 
@@ -284,6 +286,7 @@ export async function prepareGate(
   tenantId: string,
   db: Executor,
   locale?: ToolContext["locale"],
+  principal?: ResolvedPrincipal | null,
 ): Promise<PreparedGate> {
   const transfer = tool === "run_workflow" ? await executionDataTransfer(args, tenantId, db) : null;
   if (transfer) {
@@ -297,7 +300,9 @@ export async function prepareGate(
     };
   }
   const card = await resolveGateSubjects(tool, args, tenantId, db, locale);
-  const base = buildPendingOutputForTool(tool, args);
+  const base =
+    (await taskGateCard(tool, args, tenantId, db, principal)) ??
+    buildPendingOutputForTool(tool, args);
   if (!card) return { args, pending_output: base };
   const { review_digest, review_digests, ...shown } = card;
   return {

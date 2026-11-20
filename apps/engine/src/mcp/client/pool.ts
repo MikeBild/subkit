@@ -16,7 +16,9 @@ import { withMcpCredentialObserver } from "./credential-observation.ts";
 import {
   capManifest,
   hashManifest,
+  listAllRemoteTools,
   PER_SERVER_MANIFEST_BYTE_CAP,
+  parseRemoteManifest,
   type RemoteToolDescriptor,
 } from "./manifest.ts";
 import {
@@ -297,12 +299,16 @@ export async function getTenantMcpTools(
     requestSource?: RequestSource;
     actor_id?: string | null;
     actor_type?: AuditActorType;
+    connector_ids?: readonly string[];
   },
 ): Promise<TenantMcpToolSet[]> {
   const environment = opts?.environment ?? MCP_CREDENTIAL_ENVIRONMENT;
   const requestSource: RequestSource = opts?.requestSource ?? "chat";
   const bucket = tenantBucket(tenant_id);
-  const servers = await listConnectableMcpConnectorsForTenant(db, tenant_id);
+  const only = opts?.connector_ids;
+  const servers = (await listConnectableMcpConnectorsForTenant(db, tenant_id)).filter(
+    (row) => !only || only.includes(row.id),
+  );
   const now = Date.now();
   const out: TenantMcpToolSet[] = [];
 
@@ -367,6 +373,7 @@ export async function connectServerById(
 }
 
 export interface InvokeRemoteToolInput {
+  before_call?: (tool: RemoteToolDescriptor | null) => Promise<void>;
   on_dispatch?: () => void;
   on_credential_use?: (snapshot: CredentialUseSnapshot) => Promise<void>;
   db: Db;
@@ -404,6 +411,56 @@ function classifyCallFailure(
       : "remote_error";
   }
   return "transport";
+}
+
+export async function pooledToolDescriptors(args: {
+  db: Db;
+  tenant_id: string;
+  connector_id: string;
+  environment?: "dev" | "prod";
+  requestSource?: RequestSource;
+  fresh?: boolean;
+}): Promise<RemoteToolDescriptor[] | null> {
+  const pooled = tenantBucket(args.tenant_id).clients.get(args.connector_id);
+  if (pooled && !args.fresh) return pooled.tools;
+  if (pooled) {
+    try {
+      const raw =
+        pooled.capabilities && !pooled.capabilities.tools
+          ? []
+          : await listAllRemoteTools(
+              args.tenant_id,
+              pooled.slug,
+              pooled.connector_id,
+              pooled.client,
+            );
+      const tools = capManifest(
+        args.tenant_id,
+        pooled.slug,
+        pooled.connector_id,
+        parseRemoteManifest(raw).tools,
+      );
+      pooled.tools = tools;
+      pooled.manifest_hash = hashManifest(tools);
+      return tools;
+    } catch {
+      return null;
+    }
+  }
+  const backoff = tenantBucket(args.tenant_id).backoff.get(args.connector_id);
+  if (backoff && backoff.backoff_until > Date.now()) return null;
+  const servers = await listConnectableMcpConnectorsForTenant(args.db, args.tenant_id);
+  const row = servers.find((server) => server.id === args.connector_id);
+  if (!row) return null;
+  const outcome = await connectClient(
+    args.db,
+    args.tenant_id,
+    row,
+    args.environment ?? MCP_CREDENTIAL_ENVIRONMENT,
+    args.requestSource ?? "api",
+    { actor_id: null },
+  );
+  return outcome.pooled?.tools ?? null;
 }
 
 export function invokeRemoteTool(args: InvokeRemoteToolInput): Promise<InvokeRemoteToolResult> {
@@ -453,6 +510,15 @@ async function invokeRemoteToolWithContext(
       bytes: 0,
       failure: "remote_error",
     };
+  }
+
+  if (args.before_call) {
+    const call = args.call;
+    await args.before_call(
+      call.operation === "call_tool"
+        ? (pooled.tools.find((tool) => tool.name === call.tool) ?? null)
+        : null,
+    );
   }
 
   const started = Date.now();

@@ -2,6 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { classifyMcpToolSideEffect } from "@shared/side-effects.ts";
 import { connectServerById } from "../../mcp/client/pool.ts";
 import { getMcpConnector, MCP_CREDENTIAL_ENVIRONMENT } from "../../mcp/client/registry.ts";
+import { mcpToolDescriptorPin } from "../../workflows/mcp-boundary.ts";
 import { IdParam } from "../common-schemas.ts";
 import { defineOperation, reject } from "./index.ts";
 
@@ -23,6 +24,22 @@ const InspectResponse = z
         description: z.string().optional(),
         input_schema: z.record(z.string(), z.unknown()).nullable(),
         claims: z.enum(["read", "write"]).optional(),
+        boundary_descriptor: z
+          .object({
+            input_schema_digest: z.string(),
+            annotations: z
+              .object({
+                readOnlyHint: z.boolean().optional(),
+                destructiveHint: z.boolean().optional(),
+                idempotentHint: z.boolean().optional(),
+                openWorldHint: z.boolean().optional(),
+              })
+              .strict(),
+          })
+          .openapi({
+            description:
+              "The exact value for `mcp.boundary.descriptor` on a step that calls this tool.",
+          }),
       }),
     ),
     capabilities: z
@@ -32,6 +49,11 @@ const InspectResponse = z
     server_version: z.record(z.string(), z.unknown()).nullable(),
   })
   .openapi("ConnectorMcpInspectResponse");
+
+export function boundaryDescriptorOf(tool: Parameters<typeof mcpToolDescriptorPin>[0]) {
+  const pin = mcpToolDescriptorPin(tool);
+  return { input_schema_digest: pin.input_schema_digest, annotations: pin.annotations };
+}
 
 export const inspectMcpConnectorOperation = defineOperation<
   { id: string },
@@ -77,6 +99,7 @@ export const inspectMcpConnectorOperation = defineOperation<
         ...(t.description !== undefined ? { description: t.description } : {}),
         input_schema: t.inputSchema ?? null,
         ...(t.annotations ? { claims: classifyMcpToolSideEffect(t.annotations) } : {}),
+        boundary_descriptor: boundaryDescriptorOf(t),
       })),
       capabilities: set.capabilities,
       instructions: set.instructions,

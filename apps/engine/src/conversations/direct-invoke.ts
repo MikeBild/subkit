@@ -11,6 +11,8 @@ import { createDraftSnapshot } from "./draft-checkpoints.ts";
 import { listElicitationsForConversation } from "./elicitations.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "./persistence/index.ts";
 import { PendingElicitationBlockedError } from "./service/shared.ts";
+import { assertTaskRunWriter } from "./service/task-run-access.ts";
+import { withTaskRunMarker } from "./service/task-run-marker.ts";
 import { computeLineDiff } from "./text-line-diff.ts";
 import { describeToolExecutionFailure } from "./tool-execution-failure.ts";
 import { getTool, type ToolContext, type ToolResult } from "./tools/index.ts";
@@ -108,6 +110,14 @@ async function driveDirectTool(
   if (!convRow) {
     throw new DirectInvokeError("conversation_not_found", "conversation not found", 404);
   }
+  const taskRun = await assertTaskRunWriter(p.db, p);
+  if (taskRun) {
+    throw new DirectInvokeError(
+      "tool_not_available_in_task_run",
+      `tool ${p.tool} is not available in a task run conversation`,
+      409,
+    );
+  }
 
   const pending = (await listElicitationsForConversation(p.tenant_id, p.conversation_id, p.db))
     .filter((elicitation) => elicitation.status === "pending")
@@ -179,8 +189,8 @@ async function driveDirectTool(
     getDraft: () => draft,
     setDraft: async (next) => {
       await assertConversationTurn(signal);
-      draft = next;
-      await appendSnapshot(p.tenant_id, p.conversation_id, next, p.db);
+      draft = withTaskRunMarker(next, taskRun);
+      await appendSnapshot(p.tenant_id, p.conversation_id, draft, p.db);
     },
     onLog: (level, message) => {
       logs.push({ level, message, ts: new Date().toISOString() });

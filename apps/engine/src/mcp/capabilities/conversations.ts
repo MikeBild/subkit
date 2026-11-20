@@ -11,6 +11,8 @@ import {
   stageElicitationAnswer,
 } from "../../conversations/public/elicitation.ts";
 import {
+  assertTaskRunTurn,
+  canReadTaskRun,
   getConversation,
   withReservedConversationTurn,
 } from "../../conversations/public/lifecycle.ts";
@@ -463,6 +465,13 @@ export async function handleConversationTool(
     if (name === "conversation_append") {
       const parsed = AppendArgs.safeParse(args);
       if (!parsed.success) return errorText("conversation_id and message are required");
+      await assertTaskRunTurn(db, {
+        tenant_id: principal.tenant_id,
+        conversation_id: parsed.data.conversation_id,
+        actor_id: principal.id,
+        principal,
+        permission_mode,
+      });
       return await withReservedConversationTurn(
         db,
         principal.tenant_id,
@@ -499,6 +508,13 @@ export async function handleConversationTool(
       if (!parsed.success) {
         return errorText("conversation_id and elicitation_id are required");
       }
+      await assertTaskRunTurn(db, {
+        tenant_id: principal.tenant_id,
+        conversation_id: parsed.data.conversation_id,
+        actor_id: principal.id,
+        principal,
+        permission_mode,
+      });
       const refusal = await refuseApprovalElicitation(db, principal, parsed.data);
       if (refusal) return refusal;
       return await withReservedConversationTurn(
@@ -589,6 +605,8 @@ async function conversationGet(
     permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
   } = {},
 ): Promise<HandleConversationToolResult> {
+  if (!(await canReadTaskRun(db, { tenant_id: principal.tenant_id, conversation_id, principal })))
+    return errorText("conversation not found");
   const detail = await getConversation(principal.tenant_id, conversation_id, db);
   if (!detail) return errorText("conversation not found");
 

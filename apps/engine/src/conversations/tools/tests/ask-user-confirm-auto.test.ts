@@ -9,6 +9,7 @@ interface MinimalCtx {
   db: unknown;
   getDraft: () => unknown;
   setDraft: (d: unknown) => Promise<void>;
+  task_run?: unknown;
 }
 
 function ctx(over: Partial<MinimalCtx> = {}): MinimalCtx {
@@ -90,6 +91,35 @@ describe("ask_user_confirm — permission_mode=auto auto-resolve", () => {
       reachedPausePath = true;
     }
     expect(reachedPausePath).toBe(true);
+  });
+
+  test("a plain question inside a task run is asked, never skipped", async () => {
+    const marker = {
+      task_id: "00000000-0000-4000-8000-000000000001",
+      task_run_id: "00000000-0000-4000-8000-000000000002",
+      environment: "dev",
+      workflow_ids: [],
+      connector_ids: [],
+      web_search: false,
+    };
+    const contexts = [
+      ctx({ permission_mode: "auto", task_run: marker }),
+      ctx({ permission_mode: "auto", getDraft: () => ({ session: { task_run: marker } }) }),
+    ];
+    for (const context of contexts) {
+      let result: Awaited<ReturnType<typeof askUserConfirmTool.execute>> | null = null;
+      let reachedPausePath = false;
+      try {
+        result = await askUserConfirmTool.execute(context as never, {
+          question: "Is this summary right?",
+          kind: "generic",
+        });
+      } catch {
+        reachedPausePath = true;
+      }
+      expect((result?.data as { auto_skipped?: boolean } | undefined)?.auto_skipped).not.toBe(true);
+      expect(reachedPausePath).toBe(true);
+    }
   });
 
   test("ask mode keeps the manual confirm path even for non-destructive actions", async () => {

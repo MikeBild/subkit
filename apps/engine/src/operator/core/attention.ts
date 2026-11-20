@@ -18,6 +18,7 @@ export const ATTENTION_SOURCES = [
   "budget",
   "ai_access",
   "risk",
+  "tasks",
 ] as const;
 export type AttentionSource = (typeof ATTENTION_SOURCES)[number];
 export type AttentionSourceState = "answered" | "failed" | "not_permitted";
@@ -57,6 +58,11 @@ export const ATTENTION_REASONS = [
   "budget_critical",
   "ai_access_missing",
   "risk_critical",
+  "task_run_failed",
+  "task_result_ready",
+  "task_grant_required",
+  "task_grant_expiring",
+  "task_owner_unavailable",
 ] as const;
 export type AttentionReason = (typeof ATTENTION_REASONS)[number];
 
@@ -67,6 +73,7 @@ export const ATTENTION_SUBJECT_KINDS = [
   "connection",
   "secret",
   "settings",
+  "task",
 ] as const;
 
 export interface AttentionAction {

@@ -41,6 +41,7 @@ import { runRiskSignalEdges } from "./risk-signal-edges-runner.ts";
 import { recordScheduleAdmission } from "./schedule-admission-state.ts";
 import { logScheduleFireFailure } from "./schedule-fire-failure.ts";
 import { runSkillCandidateAnalysisSweep } from "./skill-candidate-analyze-runner.ts";
+import { runTaskSweep } from "./task-sweep.ts";
 import { runTenantErasureSweep } from "./tenant-erasure-runner.ts";
 import { runToolApprovalsCleanup } from "./tool-approvals-cleanup-runner.ts";
 import { fireEverySchedule, runWorkflowCronSweep } from "./workflow-schedule-sweep.ts";
@@ -325,6 +326,18 @@ export class SchedulerReconciler {
             ...errorFields(err),
           });
         }),
+      ),
+      this.runProducerPass("task", () =>
+        retryTransient(() => runTaskSweep(this.opts.db), { label: "task_schedules" }).catch(
+          (err) => {
+            logger.error({
+              module: "scheduler",
+              action: "task_sweep_failed",
+              msg: "scheduler task pass failed",
+              ...errorFields(err),
+            });
+          },
+        ),
       ),
       this.runProducerPass("catalog", () =>
         retryTransient(() => this.reconcileCatalogDescribe(), {

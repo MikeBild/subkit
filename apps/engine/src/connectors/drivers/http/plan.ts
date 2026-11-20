@@ -9,9 +9,9 @@ import {
   deriveAppliedAuthMethod,
   resolveRespectRobots,
 } from "../../core/http-request.ts";
-import { scrubUrl } from "../../egress.ts";
 import { assertEgressAllowedResolved, assertRobotsAllowed } from "../../egress-guard.ts";
 import { requestUsedStoredCredential } from "../../reauth.ts";
+import { connectorMaskedQueryKeys, recordedUrl } from "../../recorded-url.ts";
 import { connectorHeaderPolicy, requestHeaderViolations } from "../../request-header-policy.ts";
 import { scraperUserAgent } from "../../scraper-user-agent.ts";
 import type { ConnectorView } from "../../types.ts";
@@ -117,11 +117,12 @@ export async function buildRequestPlan(
       await assertRobotsAllowed(url, { tenant_id: p.tenant_id, exec: p.db, userAgent });
     }
   }
+  const loggedUrl = recordedUrl(url, connectorMaskedQueryKeys(p.connector.config, credential));
   log.connector.request.planned({
     connector_id: p.connector.id,
     auth_type: p.connector.auth_type,
     url_host: url.host,
-    url: p.redact_log_url ? p.redact_log_url(scrubUrl(url)) : scrubUrl(url),
+    url: p.redact_log_url ? p.redact_log_url(loggedUrl) : loggedUrl,
     has_credential: credential !== null,
     oauth2_refreshed: oauth2Refreshed,
   });

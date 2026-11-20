@@ -29,6 +29,10 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "this conversation already saved a workflow and stays bound to it; nothing else can be prepared here. Tell the user that the next part needs a new conversation and name the workflow slug to ask for there. Do not retry.",
   input_schema_violation:
     "the preview input did not match the workflow's input_schema. Read input_schema from this error (or from inspect_workflow_draft), supply every required field with its declared type and no other fields, then retry dry_run_workflow once. Never invent identifiers the user did not give; ask for them instead.",
+  task_invalid:
+    "the task was not saved because fields are missing or not valid. Read details.issues, correct exactly those fields and call save_task once more; ask the person when a value is theirs to decide, and never invent a goal, a done-when or a schedule.",
+  task_tool_unavailable_in_run:
+    "tasks cannot be started, stopped or saved from inside a task run, so nothing changed. Continue the work of this run with its bound tools and tell the person to open a normal chat for the task change; do not retry here.",
   workflow_archived:
     "this workflow is archived, so nothing ran. Look for its current replacement with find_workflow and run that one; do not restore the archived workflow unless the user asks.",
   structured_input_required:

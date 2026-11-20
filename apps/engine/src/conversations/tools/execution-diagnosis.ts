@@ -1,4 +1,5 @@
 import type { Db } from "../../db/client.ts";
+import { scrubRecordedUrls } from "../../execution/recorded-url.ts";
 import { HELD_PREVIEW_WARNING_CODE } from "../../execution/types.ts";
 import {
   findExecutionSummary,
@@ -123,8 +124,8 @@ export async function buildExecutionDiagnosis(
       credential_snapshots: row.credential_snapshots ?? [],
       ...(previewValue !== undefined ? { output_preview: truncatedPreview.data } : {}),
       ...(scope ? { scope_at_step: scope } : {}),
-      ...(row.error !== null ? { error: row.error } : {}),
-      ...(row.request_meta !== null ? { request_meta: row.request_meta } : {}),
+      ...(row.error !== null ? { error: scrubRecordedUrls(row.error) } : {}),
+      ...(row.request_meta !== null ? { request_meta: scrubRecordedUrls(row.request_meta) } : {}),
     };
   });
 

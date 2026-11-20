@@ -15,7 +15,7 @@ Alles steht auf der Seite **Nutzung**. Ganz oben fasst ein Satz den Zeitraum zus
 ### Was du brauchst
 
 - Zum Ansehen: `stats:read`. Standardmäßig hat das nur die Rolle Admin.
-- Für **Person** und **Unterhaltung** unter **Aufschlüsseln nach**: `stats:read:all`. Ohne dieses Recht siehst du diese Tabs nicht.
+- Für **Person**, **Unterhaltung** und **Aufgabe** unter **Aufschlüsseln nach**: `stats:read:all`. Ohne dieses Recht siehst du diese Tabs nicht.
 - Zum Ändern von Kontingent und Preisen: `settings:write`. Die Rolle Admin hat beide Rechte.
 
 ### Den Zeitraum wählen
@@ -88,7 +88,7 @@ Fehlen Preise, zeigt das Diagramm die Token-Menge statt der Kosten.
 
 ### Aufschlüsseln nach
 
-Unter **Aufschlüsseln nach** wählst du **Workflow**, **Person**, **Modell** oder **Unterhaltung**.
+Unter **Aufschlüsseln nach** wählst du **Workflow**, **Person**, **Modell**, **Unterhaltung** oder **Aufgabe**.
 Jede Zeile zeigt **Kosten**, **KI-Aufrufe**, **Anteil** und **Trend**.
 Je nach Tab kommt eine Spalte dazu: **Läufe** bei Workflow, **Fehlerquote** bei Modell, **Zuletzt** bei Unterhaltung.
 
@@ -100,6 +100,8 @@ Die letzte Zeile sammelt, was keiner Zeile zuzuordnen ist:
 - **Ohne Unterhaltung (Läufe, Wissen, Prüfungen …)**
 
 So ergeben alle Zeilen zusammen die Summe oben.
+
+**Aufgabe** zeigt, was jede Aufgabe gekostet hat: die KI-Aufrufe ihrer Läufe, auch die Runden, in denen du selbst in einen Lauf geschrieben hast. Zwei Dinge stehen nicht in der Zeile einer Aufgabe. KI-Aufrufe in den Workflow-Läufen, die eine Aufgabe gestartet hat, zählen beim Workflow, unter **Workflow**. Und wurde die Unterhaltung eines Laufs gelöscht, lassen sich seine Aufrufe der Aufgabe nicht mehr zuordnen. Wie du eine Aufgabe günstig hältst, steht im Kapitel „Ein Ziel als Aufgabe übergeben“.
 
 ### Details öffnen
 
@@ -135,6 +137,7 @@ Was beim Verbrauch passiert:
 - Ab 75 % erscheint ein Hinweis.
 - Ab 100 % pausieren Chat, das Entwerfen von Workflows und Korrekturen bis zum Monatsersten.
 - Freigegebene Workflows laufen weiter. Was schon im Betrieb ist, bleibt also nicht stehen.
+- Ein Lauf einer Aufgabe wartet. Er schlägt nicht fehl und arbeitet von selbst weiter, sobald wieder Kontingent frei ist.
 - Anfragen, die SubKit wegen des Kontingents abweist, zählen nicht zum Verbrauch.
 
 Ohne Kontingent sind KI-Aufrufe unbegrenzt.
@@ -176,7 +179,7 @@ Klappe **Technische Angaben** am Ende der Seite auf. Dort stehen:
 | Was du siehst | Was du tust |
 | --- | --- |
 | **Keine Rechte** statt der Seite | Bitte eine Person mit Admin-Rolle um `stats:read`. |
-| **Person** und **Unterhaltung** fehlen | Dir fehlt `stats:read:all`. Bitte eine Person mit Admin-Rolle darum. |
+| **Person**, **Unterhaltung** und **Aufgabe** fehlen | Dir fehlt `stats:read:all`. Bitte eine Person mit Admin-Rolle darum. |
 | **mind.** vor den Kosten | Für manche Modelle fehlt ein Preis. Hinterleg ihn über **Preis hinterlegen**. |
 | **Kosten unbekannt** | Für keines der genutzten Modelle ist ein Preis hinterlegt. Hinterleg die Preise. |
 | „Frag eine Person mit Admin-Rolle.“ statt **Kontingent anpassen** | Dir fehlt `settings:write`. Bitte eine Person mit Admin-Rolle, das Kontingent zu ändern. |
@@ -192,7 +195,7 @@ Dieselben Zahlen holst du mit `sk stats llm` oder über die HTTP-API mit `GET /v
 sk stats llm --bucket day --from <from> --to <to> --group-by workflow
 ```
 
-- `group_by` schlüsselt nach `model`, `flow`, `user`, `workflow`, `conversation` oder `execution` auf. Höchstens zwei Werte zugleich.
+- `group_by` schlüsselt nach `model`, `flow`, `user`, `workflow`, `conversation`, `execution` oder `task` auf. Höchstens zwei Werte zugleich.
 - `result=` filtert nach Ergebnis: `success`, `quota_exhausted`, `context_too_large` oder `error`.
 - `workflow_id=` zeigt nur die Aufrufe eines Workflows.
-- Aufschlüsselungen nach `user` oder `conversation` brauchen `stats:read:all`. Das gilt nicht, wenn `user_id` deine eigene Kennung ist.
+- Aufschlüsselungen nach `user`, `conversation` oder `task` brauchen `stats:read:all`. Das gilt nicht, wenn `user_id` deine eigene Kennung ist.

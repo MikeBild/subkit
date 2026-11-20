@@ -35,6 +35,7 @@ export const CATALOG_KINDS = [
   "knowledge_source",
   "skill",
   "file",
+  "task",
 ] as const;
 
 export type CatalogKind = (typeof CATALOG_KINDS)[number];
@@ -74,7 +75,7 @@ export const CategorySchema = CategoryFilterSchema.refine(
   `\`${PLATFORM_CATEGORY}\` is reserved for the engine's own guidance`,
 ).openapi("CatalogCategory", {
   description:
-    "The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills and files of a tenant; `GET /v1/categories` lists it.",
+    "The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills, files and tasks of a tenant; `GET /v1/categories` lists it.",
 });
 
 export const DescriptionSchema = z

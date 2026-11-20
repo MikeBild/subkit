@@ -1,4 +1,7 @@
 import { z } from "@hono/zod-openapi";
+import type { Executor } from "../../db/client.ts";
+import { writeEvent } from "../../db/events.ts";
+import { logger } from "../../logging/logger.ts";
 import {
   ConnectorAuthFailedPayloadSchema,
   ConnectorHealthChangedPayloadSchema,
@@ -67,6 +70,101 @@ const ConversationCommitted = z.object({
   conversation_id: z.string().uuid(),
   workflow_id: z.string().uuid(),
 });
+
+const TaskRunReasonCode = z.string().regex(/^[a-z0-9_.:-]{1,200}$/);
+
+const TaskRunStarted = z.object({
+  task_run_id: z.string().uuid(),
+  task_id: z.string().uuid(),
+  trigger: z.enum(["manual", "once", "cron"]),
+  environment: z.enum(["dev", "prod"]),
+});
+
+const TaskRunWaiting = z.object({
+  task_run_id: z.string().uuid(),
+  task_id: z.string().uuid(),
+  trigger: z.enum(["manual", "once", "cron"]),
+  waiting_reason: z.enum([
+    "question",
+    "approval",
+    "no_progress",
+    "budget",
+    "question_expired",
+    "ai_access",
+    "turn_stopped",
+  ]),
+});
+
+const TaskRunResultReady = z.object({
+  task_run_id: z.string().uuid(),
+  task_id: z.string().uuid(),
+  trigger: z.enum(["manual", "once", "cron"]),
+  turns_used: z.number().int().nonnegative(),
+});
+
+const TaskRunCompleted = z.object({
+  task_run_id: z.string().uuid(),
+  task_id: z.string().uuid(),
+  trigger: z.enum(["manual", "once", "cron"]),
+  turns_used: z.number().int().nonnegative(),
+  duration_ms: z.number().int().nonnegative(),
+});
+
+const TaskRunFailed = z.object({
+  task_run_id: z.string().uuid(),
+  task_id: z.string().uuid(),
+  trigger: z.enum(["manual", "once", "cron"]),
+  failure_code: TaskRunReasonCode.nullable(),
+});
+
+const TASK_RUN_EVENT_SCHEMAS = {
+  "task_run.started": TaskRunStarted,
+  "task_run.waiting": TaskRunWaiting,
+  "task_run.result_ready": TaskRunResultReady,
+  "task_run.completed": TaskRunCompleted,
+  "task_run.failed": TaskRunFailed,
+} as const;
+
+export type TaskRunEventType = keyof typeof TASK_RUN_EVENT_SCHEMAS;
+
+export type TaskRunEventPayload<T extends TaskRunEventType> = z.input<
+  (typeof TASK_RUN_EVENT_SCHEMAS)[T]
+>;
+
+export async function emitTaskRunEvent<T extends TaskRunEventType>(
+  tx: Executor,
+  tenant_id: string,
+  type: T,
+  payload: TaskRunEventPayload<T>,
+): Promise<boolean> {
+  const schema: z.ZodTypeAny = TASK_RUN_EVENT_SCHEMAS[type];
+  const candidate: Record<string, unknown> = { ...payload };
+  if (
+    type === "task_run.failed" &&
+    !TaskRunReasonCode.nullable().safeParse(candidate.failure_code).success
+  ) {
+    candidate.failure_code = null;
+  }
+  const parsed = schema.safeParse(candidate);
+  if (!parsed.success) {
+    logger.warn({
+      module: "webhooks.events",
+      action: "task_run_event.skipped",
+      msg: "task run event failed its catalog schema and was not emitted",
+      tenant_id,
+      event_type: type,
+      invalid_fields: parsed.error.issues.map((issue) => issue.path.join(".")),
+    });
+    return false;
+  }
+  await writeEvent(tx, {
+    tenant_id,
+    channel: "notification.emitted",
+    type,
+    payload: parsed.data as Record<string, unknown>,
+  });
+  return true;
+}
 
 type ActionablePredicate = (payload: unknown) => boolean;
 
@@ -256,6 +354,67 @@ export const EVENT_CATALOG = {
     },
     actionable: NOT_ACTIONABLE,
     resource: pointsAt("conversation", "conversation_id"),
+  },
+  "task_run.started": {
+    name: "task_run.started",
+    schema: TaskRunStarted,
+    example: {
+      task_run_id: "00000000-0000-4000-8000-000000000009",
+      task_id: "00000000-0000-4000-8000-00000000000a",
+      trigger: "cron",
+      environment: "prod",
+    },
+    actionable: NOT_ACTIONABLE,
+    resource: pointsAt("task_run", "task_run_id"),
+  },
+  "task_run.waiting": {
+    name: "task_run.waiting",
+    schema: TaskRunWaiting,
+    example: {
+      task_run_id: "00000000-0000-4000-8000-000000000009",
+      task_id: "00000000-0000-4000-8000-00000000000a",
+      trigger: "cron",
+      waiting_reason: "question",
+    },
+    actionable: ACTIONABLE,
+    resource: pointsAt("task_run", "task_run_id"),
+  },
+  "task_run.result_ready": {
+    name: "task_run.result_ready",
+    schema: TaskRunResultReady,
+    example: {
+      task_run_id: "00000000-0000-4000-8000-000000000009",
+      task_id: "00000000-0000-4000-8000-00000000000a",
+      trigger: "cron",
+      turns_used: 6,
+    },
+    actionable: ACTIONABLE,
+    resource: pointsAt("task_run", "task_run_id"),
+  },
+  "task_run.completed": {
+    name: "task_run.completed",
+    schema: TaskRunCompleted,
+    example: {
+      task_run_id: "00000000-0000-4000-8000-000000000009",
+      task_id: "00000000-0000-4000-8000-00000000000a",
+      trigger: "manual",
+      turns_used: 6,
+      duration_ms: 184000,
+    },
+    actionable: NOT_ACTIONABLE,
+    resource: pointsAt("task_run", "task_run_id"),
+  },
+  "task_run.failed": {
+    name: "task_run.failed",
+    schema: TaskRunFailed,
+    example: {
+      task_run_id: "00000000-0000-4000-8000-000000000009",
+      task_id: "00000000-0000-4000-8000-00000000000a",
+      trigger: "cron",
+      failure_code: "turn_interrupted",
+    },
+    actionable: ACTIONABLE,
+    resource: pointsAt("task_run", "task_run_id"),
   },
 } as const satisfies Record<string, EventCatalogEntry>;
 

@@ -4,6 +4,7 @@ import type {
   GateOutcome,
   TimeoutPhase,
 } from "../conversations/types.ts";
+import type { TaskAdmissionReason, TaskRunTrigger } from "../tasks/types.ts";
 import type { ConfirmReason, ToolPolicyMode } from "../tools/types.ts";
 
 export const DB_TRANSIENT_RETRY_LABELS = new Set<string>([
@@ -11,6 +12,7 @@ export const DB_TRANSIENT_RETRY_LABELS = new Set<string>([
   "docs_auto_refresh",
   "knowledge_auto_refresh",
   "workflow_schedules",
+  "task_schedules",
   "drift_scan",
   "connector_reauth_scan",
   "endpoint_contract_scan",
@@ -62,6 +64,7 @@ export function boundedLabel(allowed: ReadonlySet<string>, value: string): strin
 export const TOOL_POLICY_RULES = allowlist<ConfirmReason>({
   inline_credential: true,
   connector_trust: true,
+  authority_covered: true,
   never_gate: true,
   permission_mode: true,
   conversation_override: true,
@@ -120,4 +123,39 @@ export const LLM_TIMEOUT_PHASES = allowlist<TimeoutPhase>({
   first_chunk: true,
   step: true,
   chunk: true,
+});
+
+export type TaskRunOutcome = "started" | "completed" | "failed" | "aborted";
+
+export type TaskSweepClaimResult = "claimed" | "held" | "skipped" | "failed";
+
+export const TASK_RUN_OUTCOME_LABELS = allowlist<TaskRunOutcome>({
+  started: true,
+  completed: true,
+  failed: true,
+  aborted: true,
+});
+
+export const TASK_RUN_TRIGGER_LABELS = allowlist<TaskRunTrigger>({
+  manual: true,
+  once: true,
+  cron: true,
+});
+
+export const TASK_SWEEP_CLAIM_RESULT_LABELS = allowlist<TaskSweepClaimResult>({
+  claimed: true,
+  held: true,
+  skipped: true,
+  failed: true,
+});
+
+export const TASK_ADMISSION_REASON_LABELS = allowlist<TaskAdmissionReason>({
+  grant_required: true,
+  grant_expired: true,
+  grant_exhausted: true,
+  grant_fingerprint_mismatch: true,
+  owner_unavailable: true,
+  ai_access_missing: true,
+  previous_run_active: true,
+  paused: true,
 });

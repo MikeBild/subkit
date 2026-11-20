@@ -281,9 +281,9 @@ export async function assertRobotsAllowed(
       module: "egress_guard",
       action: "robots_disallowed",
       tenant_id: ctx.tenant_id,
-      url: parsed.toString(),
+      url: `${parsed.origin}${parsed.pathname}`,
       user_agent: ctx.userAgent,
     });
-    throw new RobotsDisallowedError(parsed.toString(), ctx.userAgent);
+    throw new RobotsDisallowedError(`${parsed.origin}${parsed.pathname}`, ctx.userAgent);
   }
 }

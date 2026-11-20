@@ -132,6 +132,28 @@
   { "name": "schedule:delete", "description": "Delete a schedule", "resource_type": "schedule" },
 
   {
+    "name": "task:read",
+    "description": "Read tasks, their standing permissions and the preview of what a permission would allow",
+    "resource_type": "task"
+  },
+  { "name": "task:write", "description": "Create or update tasks", "resource_type": "task" },
+  {
+    "name": "task:run",
+    "description": "Start a task run and confirm its result",
+    "resource_type": "task"
+  },
+  { "name": "task:delete", "description": "Delete a task", "resource_type": "task" },
+  { "name": "task:pause", "description": "Pause a task", "resource_type": "task" },
+  { "name": "task:resume", "description": "Resume a paused task", "resource_type": "task" },
+  {
+    "name": "task:grant",
+    "description": "Grant or revoke the standing permission that lets a task run on its own",
+    "resource_type": "task"
+  },
+  { "name": "task_run:read", "description": "Read task runs", "resource_type": "task_run" },
+  { "name": "task_run:abort", "description": "Stop a task run", "resource_type": "task_run" },
+
+  {
     "name": "subscription:read",
     "description": "Read outbound subscription definitions",
     "resource_type": "subscription"

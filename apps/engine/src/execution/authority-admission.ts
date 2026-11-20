@@ -5,6 +5,7 @@ import { loadConnectorSystem } from "../connectors/system.ts";
 import { CatalogVocabularyBusyError, lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Db, Executor } from "../db/client.ts";
 import {
+  executionSteps,
   executions,
   workflowExecutionAuthorities,
   workflows,
@@ -29,6 +30,7 @@ import {
   previewWorkflowAuthority,
   sameBoundaryReplacement,
 } from "../workflows/execution-authorities.ts";
+import { assertMcpBoundary, McpToolCallSchema } from "../workflows/mcp-boundary.ts";
 import { assertOutboxMessage } from "../workflows/outbox-delivery-boundary.ts";
 import { assertReadPath } from "../workflows/read-path-boundary.ts";
 import { assertReadQuery, assertReportDelivery } from "../workflows/report-delivery-boundary.ts";
@@ -53,7 +55,9 @@ import {
   credentialWithinBoundary,
   findAuthorizedEffect,
   governingExecutionCanDispatch,
+  mcpDispatchWithinBoundary,
   referenceWithinBoundary,
+  toolCallsWithinCeiling,
 } from "./core/authority-admission.ts";
 import { resolveLiveSuccessor } from "./live-successor.ts";
 import { resolveDefinition } from "./resolve-definition.ts";
@@ -86,6 +90,32 @@ const requestSnapshotSchema = z
         : snapshot.credential_revision !== null,
     "credential snapshot identities must be complete",
   );
+
+const mcpDispatchSchema = z
+  .object({
+    operation: z.enum(["call_tool", "read_resource", "get_prompt"]),
+    call: McpToolCallSchema.optional(),
+  })
+  .strict();
+export type McpDispatchSnapshot = z.infer<typeof mcpDispatchSchema>;
+
+async function startedToolCalls(
+  db: Db,
+  tenant_id: string,
+  execution_id: string,
+  step_id: string,
+): Promise<{ exact: number; iterations: number }> {
+  const [row] = await db
+    .select({
+      exact: sql<number>`count(*) filter (where ${executionSteps.step_key} = ${step_id})::int`,
+      iterations: sql<number>`count(*) filter (where starts_with(${executionSteps.step_key}, ${`${step_id}[`}))::int`,
+    })
+    .from(executionSteps)
+    .where(
+      and(eq(executionSteps.tenant_id, tenant_id), eq(executionSteps.execution_id, execution_id)),
+    );
+  return { exact: row?.exact ?? 0, iterations: row?.iterations ?? 0 };
+}
 
 const admissionSchema = z
   .object({
@@ -210,7 +240,7 @@ export async function admitAuthorizedWorkflowExecution(
         const normalized = JsonValueSchema.parse(
           normalizeWorkflowRunInput(input.input, definition.input_schema) ?? null,
         );
-        assertExecutionPrivacySupported(input.request_source, definition.execution_privacy);
+        assertExecutionPrivacySupported(input.request_source, definition.execution_privacy, caller);
         assertCallerMatches(
           caller,
           input.tenant_id,
@@ -342,8 +372,14 @@ export async function assertExecutionAuthorityCurrent(
       "execution_authority_unavailable",
       "Transactional email requires its reviewed recurring authority",
     );
+  const mcpDispatch = (snapshot as { mcp_dispatch?: unknown } | undefined)?.mcp_dispatch;
   if (execution.tool_approval_id)
-    return assertToolApprovalDispatch(db, tenant_id, execution_id, snapshot);
+    return assertToolApprovalDispatch(
+      db,
+      tenant_id,
+      execution_id,
+      mcpDispatch === undefined ? snapshot : undefined,
+    );
   let authorityId = execution.execution_authority_id;
   let path: string[] = [];
   const governing = [execution];
@@ -426,8 +462,9 @@ export async function assertExecutionAuthorityCurrent(
       outbox_source: outboxSource,
       principal_id: _principal,
       referenced_authorities: referencedAuthorities,
+      mcp_dispatch: _mcpDispatch,
       ...authoritySnapshot
-    } = snapshot;
+    } = snapshot as RequestAuthoritySnapshot & { mcp_dispatch?: unknown };
     const parsed = requestSnapshotSchema.safeParse(authoritySnapshot);
     const manifest = WorkflowEffectManifestSchema.safeParse(boundary.effect_manifest);
     const effect =
@@ -444,6 +481,45 @@ export async function assertExecutionAuthorityCurrent(
         fail(
           "execution_authority_changed",
           "a placeholder of the request reads a connector outside its approved boundary",
+        );
+    }
+    const toolDispatch =
+      mcpDispatch === undefined ? undefined : mcpDispatchSchema.safeParse(mcpDispatch);
+    const reviewedCall = mcpDispatchWithinBoundary(
+      effect.driver,
+      effect.mcp !== undefined,
+      toolDispatch === undefined
+        ? null
+        : toolDispatch.success
+          ? {
+              operation: toolDispatch.data.operation,
+              has_call: toolDispatch.data.call !== undefined,
+            }
+          : "malformed",
+    );
+    if (reviewedCall === "refused")
+      fail("execution_authority_changed", "the tool call is outside its approved boundary");
+    if (
+      reviewedCall === "tool_call" &&
+      effect.mcp &&
+      toolDispatch?.success &&
+      toolDispatch.data.call
+    ) {
+      assertMcpBoundary(effect.mcp, toolDispatch.data.call);
+      if (effect.mcp.effect === "write" && snapshot.request_max_attempts !== 1)
+        fail(
+          "execution_authority_changed",
+          "a tool call approved as a write may be attempted only once",
+        );
+      if (
+        !toolCallsWithinCeiling(
+          await startedToolCalls(db, tenant_id, execution_id, effect.step_id),
+          effect.mcp.max_calls,
+        )
+      )
+        fail(
+          "execution_authority_changed",
+          "the step started more tool calls than its approved ceiling",
         );
     }
     if (effect.report_delivery) assertReportDelivery(effect.report_delivery, snapshot.request);
@@ -536,7 +612,21 @@ export async function assertExecutionAuthorityCurrent(
           db,
         )
       : null;
-    if (parsed.data.credential_id !== null || (system && system.connector.auth_type !== "none")) {
+    if (effect.driver === "mcp") {
+      const metadata = await system?.getAuthorityMetadata();
+      if (
+        !metadata ||
+        parsed.data.credential_id !== null ||
+        workflowJsonDigest(metadata.binding) !== effect.credential_binding_digest
+      )
+        fail(
+          "execution_authority_changed",
+          "the connector's credential is outside its approved boundary",
+        );
+    } else if (
+      parsed.data.credential_id !== null ||
+      (system && system.connector.auth_type !== "none")
+    ) {
       const metadata = await system?.getAuthorityMetadata();
       if (
         !credentialWithinBoundary(

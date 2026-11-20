@@ -11,6 +11,7 @@ import {
   respondElicitation,
 } from "../conversations/public/elicitation.ts";
 import {
+  assertTaskRunTurn,
   registerConversationAbort,
   unregisterConversationAbort,
 } from "../conversations/public/lifecycle.ts";
@@ -241,8 +242,9 @@ export async function routeChatInteraction(
     return { status: "ignored" };
   }
 
-  const turnAbortCtrl = await registerConversationAbort(tenant_id, conversation_id, db);
   const principal = await resolveChatPrincipal(db, tenant_id, user_id);
+  await assertTaskRunTurn(db, { tenant_id, conversation_id, actor_id: user_id, principal });
+  const turnAbortCtrl = await registerConversationAbort(tenant_id, conversation_id, db);
   try {
     await withConversationTurnLock(tenant_id, conversation_id, () =>
       respondElicitation(

@@ -1,5 +1,5 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { useRouterState } from "@tanstack/react-router";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
 import {
   CircleExclamationPoint,
@@ -14,7 +14,7 @@ import { apiCall } from "@/api/call";
 import { ApiError } from "@/api/client";
 import { useActorDirectory } from "@/app/actor-directory";
 import { actorKey } from "@/app/actor-directory-model";
-import { absolute, chatNewHref } from "@/app/links";
+import { absolute, chatNewHref, routerTarget, taskHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
 import {
@@ -42,6 +42,7 @@ import { tableColumns } from "@/components/cockpit/table-columns";
 import { ForbiddenState } from "@/components/failure-state";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { taskKeys } from "@/lib/task-keys";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { usePromptCacheFlows } from "@/pages/operations-bar";
 import {
@@ -86,6 +87,7 @@ import {
   type BreakdownRemainder,
   type BreakdownRow,
   breakdown,
+  breakdownDims,
   budgetForecast,
   budgetPercent,
   budgetPressure,
@@ -122,6 +124,7 @@ const DIM_LABEL: Record<BreakdownDim, TranslationKey> = {
   person: "usage.axis.person",
   model: "usage.axis.model",
   conversation: "usage.axis.conversation",
+  task: "usage.axis.task",
 };
 
 const REMAINDER_LABEL: Record<BreakdownDim, TranslationKey> = {
@@ -129,6 +132,7 @@ const REMAINDER_LABEL: Record<BreakdownDim, TranslationKey> = {
   person: "usage.remainder.person",
   model: "usage.remainder.model",
   conversation: "usage.remainder.conversation",
+  task: "usage.remainder.task",
 };
 
 const FRESH_ORIGINS: readonly (keyof typeof ORIGIN_HELP)[] = [
@@ -198,11 +202,12 @@ export function UsagePage() {
     );
   };
 
+  const dims = useMemo(() => breakdownDims(session.permissions), [session.permissions]);
   const acceptDim = useCallback(
-    (value: string): value is BreakdownDim =>
-      isBreakdownDim(value) && (canAll || (value !== "person" && value !== "conversation")),
-    [canAll],
+    (value: string): value is BreakdownDim => isBreakdownDim(value) && dims.includes(value),
+    [dims],
   );
+  const navigate = useNavigate();
   const [by, setBy] = useSearchParamState<BreakdownDim>("by", "workflow", acceptDim);
   const searchStr = useRouterState({ select: (state) => state.location.searchStr });
   const [sheet, setSheet] = useState<UsageSheet | null>(sheetFromLocation);
@@ -245,6 +250,9 @@ export function UsagePage() {
     previous,
     "conversation",
   );
+  const wantTasks = allowed && by === "task" && dims.includes("task");
+  const taskNow = useLlmQuery(wantTasks, bounds, "task");
+  const taskBefore = useLlmQuery(wantTasks, previous, "task");
   const lastSeven = useLlmQuery(allowed, seven);
   const promptCache = usePromptCacheFlows(bounds, allowed);
   const status = useQuery({
@@ -375,6 +383,26 @@ export function UsagePage() {
     [modelGroups],
   );
   const conversationGroups = useMemo(() => llmGroups(conversationNow.data), [conversationNow.data]);
+  const taskIds = useMemo(
+    () => [...new Set(llmGroups(taskNow.data).flatMap((group) => group.key.task ?? []))].sort(),
+    [taskNow.data],
+  );
+  const taskLookups = useQueries({
+    queries: taskIds.map((id) => ({
+      queryKey: taskKeys.detail(id),
+      enabled: wantTasks,
+      retry: false,
+      queryFn: () => apiCall("get", "/v1/tasks/{id}", { path: { id } }),
+    })),
+  });
+  const taskName = (id: string): string => {
+    const lookup = taskLookups[taskIds.indexOf(id)];
+    const failed =
+      lookup?.error instanceof ApiError ? lookup.error.status : lookup?.error ? 0 : null;
+    const named = workflowNameLookup(lookup?.data, failed);
+    if (named.kind === "named") return named.name;
+    return named.kind === "pending" ? "…" : t("usage.taskGone");
+  };
 
   const costTrend = trendOf(
     usage?.cost?.amount ?? (usage && usage.calls === 0 ? 0 : null),
@@ -839,6 +867,7 @@ export function UsagePage() {
     person: { now: personNow, before: personBefore },
     model: { now: modelNow, before: modelBefore },
     conversation: { now: conversationNow, before: conversationBefore },
+    task: { now: taskNow, before: taskBefore },
   } as const;
   const active = dimQueries[by];
   const table: TableRow[] = (() => {
@@ -858,6 +887,7 @@ export function UsagePage() {
     if (by === "workflow") return workflowName(row.key);
     if (by === "person") return personName(row.key);
     if (by === "model") return row.group.modelName ?? row.key;
+    if (by === "task") return taskName(row.key);
     return (
       row.group.conversation?.title ??
       t("usage.untitledConversation", {
@@ -873,6 +903,7 @@ export function UsagePage() {
   const extra = (row: BreakdownRow): string => {
     if (by === "workflow") return format.count(runCounts.get(row.key) ?? 0);
     if (by === "model") return format.percent(row.calls > 0 ? row.failedCalls / row.calls : null);
+    if (by === "task") return "";
     return format.dateLabel(row.group.conversation?.updatedAt ?? "");
   };
   const columns: CockpitColumn<TableRow>[] = (() => {
@@ -992,9 +1023,6 @@ export function UsagePage() {
     return list;
   })();
 
-  const dims = (["workflow", "person", "model", "conversation"] as const).filter(
-    (dim) => canAll || (dim !== "person" && dim !== "conversation"),
-  );
   const breakdownSection = (
     <div id="usage-breakdown" className="scroll-mt-4">
       <Section label={t("usage.breakdown.title")} testId="usage-breakdown">
@@ -1018,8 +1046,8 @@ export function UsagePage() {
           canOpen={(item) => item.kind === "row"}
           onOpen={(item) => {
             if (item.kind !== "row") return;
-            const kind = by === "person" ? "person" : by;
-            openSheet({ kind, id: item.row.key });
+            if (by === "task") void navigate(routerTarget(absolute(taskHref(item.row.key))));
+            else openSheet({ kind: by, id: item.row.key });
           }}
           rowLabel={(item) =>
             item.kind === "row" ? t("usage.openDetails", { name: rowName(item.row) }) : ""

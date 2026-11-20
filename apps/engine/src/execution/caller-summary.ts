@@ -11,6 +11,7 @@ const CALLER_VERIFICATION_METHODS = [
   "mcp_oauth",
   "token_exchange",
   "external_bearer",
+  "task_run",
 ] as const;
 
 export const ExecutionCallerSchema = z

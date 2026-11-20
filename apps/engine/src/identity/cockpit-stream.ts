@@ -1,5 +1,5 @@
-import { and, eq, inArray, or, type SQL } from "drizzle-orm";
-import { events } from "../db/schema/index.ts";
+import { and, eq, inArray, notInArray, or, type SQL, sql } from "drizzle-orm";
+import { events, tasks } from "../db/schema/index.ts";
 import {
   type OutboxChannel,
   RESOURCE_CHANGE_TYPES,
@@ -10,12 +10,20 @@ interface StreamFamily {
   permission: string;
   channel: OutboxChannel;
   types?: readonly string[];
+  owner_scoped?: "task";
+}
+
+export interface CockpitStreamViewer {
+  task_owner_id: string | null;
 }
 
 const RESOURCE_TYPES_BY_PERMISSION = {
   workflow: RESOURCE_CHANGE_TYPES.filter((type) => type.startsWith("workflow.authority_")),
   schedule: RESOURCE_CHANGE_TYPES.filter((type) => type === "workflow.automation_changed"),
   connector: RESOURCE_CHANGE_TYPES.filter((type) => type.startsWith("connector.")),
+  task: RESOURCE_CHANGE_TYPES.filter(
+    (type) => type.startsWith("task.") || type.startsWith("task_run."),
+  ),
 };
 
 const LIST_CHANGE_FAMILIES = [
@@ -57,6 +65,12 @@ export const COCKPIT_STREAM_FAMILIES: readonly StreamFamily[] = [
     channel: "resource.lifecycle",
     types: RESOURCE_TYPES_BY_PERMISSION.connector,
   },
+  {
+    permission: "task:read",
+    channel: "resource.lifecycle",
+    types: RESOURCE_TYPES_BY_PERMISSION.task,
+    owner_scoped: "task",
+  },
   ...LIST_CHANGE_FAMILIES.map(({ permission, type }) => ({
     permission,
     channel: "resource.lifecycle" as const,
@@ -76,6 +90,9 @@ const COCKPIT_STREAM_ID_KEYS = [
   "hook_id",
   "authority_id",
   "knowledge_source_id",
+  "task_id",
+  "task_run_id",
+  "task_grant_id",
 ] as const;
 
 const ID_SHAPE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -91,16 +108,29 @@ export function projectCockpitPayload(payload: unknown): Record<string, string> 
   return out;
 }
 
+function ownTaskEvent(owner_id: string): SQL {
+  return sql`exists (select 1 from ${tasks} where ${tasks.tenant_id} = ${events.tenant_id} and ${tasks.id}::text = ${events.payload} ->> 'task_id' and ${tasks.owner_id} = ${owner_id}::uuid)`;
+}
+
+function familyCond(family: StreamFamily, viewer: CockpitStreamViewer | undefined) {
+  const channel = eq(events.channel, family.channel);
+  const own = viewer && viewer.task_owner_id !== null ? [ownTaskEvent(viewer.task_owner_id)] : [];
+  if (family.types) return and(channel, inArray(events.type, [...family.types]), ...own);
+  if (family.channel !== "resource.lifecycle" || viewer?.task_owner_id === null) return channel;
+  return and(channel, or(notInArray(events.type, [...RESOURCE_TYPES_BY_PERMISSION.task]), ...own));
+}
+
 export function cockpitStreamConds(
   tenant_id: string,
   permissions: ReadonlySet<string>,
+  viewer?: CockpitStreamViewer,
 ): SQL[] | null {
-  const admitted = COCKPIT_STREAM_FAMILIES.filter((family) =>
-    permissions.has(family.permission),
+  const admitted = COCKPIT_STREAM_FAMILIES.filter(
+    (family) => permissions.has(family.permission) && (!family.owner_scoped || viewer),
   ).map((family) =>
-    family.types
-      ? and(eq(events.channel, family.channel), inArray(events.type, [...family.types]))
-      : eq(events.channel, family.channel),
+    family.owner_scoped
+      ? familyCond(family, viewer)
+      : familyCond(family, family.types ? undefined : viewer),
   );
   if (admitted.length === 0) return null;
   const families = or(...admitted);

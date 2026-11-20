@@ -3,6 +3,7 @@ import { catalogsPhase, categoryPhase, inspectPhase, listPhase } from "./fast-pa
 import { resumePhase } from "./fast-path/resume.ts";
 import { runPhase } from "./fast-path/run.ts";
 import type { FastPathHit, FastPathParams } from "./fast-path/types.ts";
+import { readTaskRunScope } from "./service/task-run-access.ts";
 
 export {
   categoryListLanguage,
@@ -33,7 +34,10 @@ function takeRoute(
 }
 
 export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null> {
-  for (const route of decideTurn(p.user_message)) {
+  const routes = decideTurn(p.user_message);
+  if (routes.length === 0) return null;
+  if (await readTaskRunScope(p.db, p.tenant_id, p.conversation_id)) return null;
+  for (const route of routes) {
     const outcome = await takeRoute(p, route);
     if (outcome !== "fall_through") return outcome;
   }

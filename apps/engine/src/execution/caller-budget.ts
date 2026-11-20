@@ -3,7 +3,7 @@ import type { AppBudgetToday } from "../api/app-schemas.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { auditLog, callerBudgetUnits, executions, workflowVersions } from "../db/schema/index.ts";
-import { eraseProductCaller } from "../identity/product-erasure.ts";
+import { type ErasureFollowUp, eraseProductCaller } from "../identity/product-erasure.ts";
 import { logger } from "../logging/logger.ts";
 import { executableDefinition } from "../workflows/stored-definition.ts";
 import type { CallerDailyLimit, WorkflowDef } from "../workflows/types.ts";
@@ -517,6 +517,7 @@ export async function markBillableStep(
 
 interface GuardSettlement {
   attach?: { key: string; usage: { usedToday: number; dailyLimit: number } };
+  after_commit?: ErasureFollowUp;
 }
 
 export async function settleExecutionGuards(
@@ -606,7 +607,7 @@ export async function settleExecutionGuards(
     }
   }
   if (params.status === "succeeded" && def.caller_erasure === "on_success") {
-    await eraseProductCaller(tx, caller.data, {
+    settlement.after_commit = await eraseProductCaller(tx, caller.data, {
       kind: "workflow",
       execution_id: params.execution_id,
       now,

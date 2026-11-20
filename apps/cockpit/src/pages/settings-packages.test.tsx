@@ -103,7 +103,15 @@ function usage(category: string, counts: Partial<CategoryUsage["counts"]> = {}):
   return {
     category,
     total: Object.values(counts).reduce((sum, value) => sum + (value ?? 0), 0),
-    counts: { workflow: 0, connector: 0, knowledge_source: 0, skill: 0, file: 0, ...counts },
+    counts: {
+      workflow: 0,
+      connector: 0,
+      knowledge_source: 0,
+      skill: 0,
+      file: 0,
+      task: 0,
+      ...counts,
+    },
     purpose: category === "billing" ? "Invoices and payment runs" : null,
     aliases: [],
   };

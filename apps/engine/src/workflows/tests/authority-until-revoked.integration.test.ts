@@ -50,7 +50,7 @@ const steps = [
   },
 ];
 
-async function fixture(max_runs: number | null = 3) {
+async function fixture(max_runs: number | null = 3, timeLimited = true) {
   const slug = `authority-until-revoked-${++counter}`;
   const [tenant] = await ctx.db.insert(tenants).values({ slug, display_name: slug }).returning();
   if (!tenant) throw new Error("missing tenant fixture");
@@ -126,7 +126,7 @@ async function fixture(max_runs: number | null = 3) {
       expected_manifest_digest: preview.digest,
       execution_environment: "dev",
       valid_from: from.toISOString(),
-      valid_until: until.toISOString(),
+      valid_until: timeLimited ? until.toISOString() : null,
       max_runs,
     },
     context,
@@ -157,7 +157,7 @@ async function authoritiesOf(workflow_id: string) {
     .orderBy(workflowExecutionAuthorities.created_at);
 }
 
-test("a time-limited approval becomes open-ended with the same boundary and no run stops", async () => {
+test("an approval limited by time and run count becomes open-ended and no run stops", async () => {
   const f = await fixture(3);
   const before = await admitAuthorizedWorkflowExecution(f.run, ctx.db);
   expect(before.execution_authority_id).toBe(f.grant.id);
@@ -177,7 +177,7 @@ test("a time-limited approval becomes open-ended with the same boundary and no r
     approved_manifest: f.grant.approved_manifest,
     valid_from: f.grant.valid_from,
     valid_until: null,
-    max_runs: 3,
+    max_runs: null,
     reserved_runs: 1,
     inherited_from: null,
     revoked_at: null,
@@ -193,9 +193,8 @@ test("a time-limited approval becomes open-ended with the same boundary and no r
     ctx.db,
   );
   expect(pinned.execution_authority_id).toBe(successor.id);
-  await expect(admitAuthorizedWorkflowExecution(f.run, ctx.db)).rejects.toMatchObject({
-    code: "execution_authority_unavailable",
-  });
+  const beyond = await admitAuthorizedWorkflowExecution(f.run, ctx.db);
+  expect(beyond.execution_authority_id).toBe(successor.id);
   const audit = await ctx.db
     .select()
     .from(auditLog)
@@ -212,11 +211,75 @@ test("a time-limited approval becomes open-ended with the same boundary and no r
     metadata: {
       replaced_authority_id: f.grant.id,
       previous_valid_until: f.until.toISOString(),
+      previous_max_runs: 3,
       valid_until: null,
-      max_runs: 3,
+      max_runs: null,
       effect_manifest_digest: f.digest,
     },
   });
+});
+
+test("an approval limited only by time keeps no run limit when it becomes open-ended", async () => {
+  const f = await fixture(null);
+  const successor = await makeWorkflowAuthorityUntilRevoked(
+    f.workflow_id,
+    f.grant.id,
+    { expected_manifest_digest: f.digest },
+    f.context,
+  );
+  expect(successor.id).not.toBe(f.grant.id);
+  expect(successor).toMatchObject({ valid_until: null, max_runs: null, revoked_at: null });
+  const after = await admitAuthorizedWorkflowExecution(f.run, ctx.db);
+  expect(after.execution_authority_id).toBe(successor.id);
+});
+
+test("an approval limited only by run count loses the limit and running work continues", async () => {
+  const f = await fixture(2, false);
+  expect(f.grant).toMatchObject({ valid_until: null, max_runs: 2 });
+  const before = await admitAuthorizedWorkflowExecution(f.run, ctx.db);
+  const successor = await makeWorkflowAuthorityUntilRevoked(
+    f.workflow_id,
+    f.grant.id,
+    { expected_manifest_digest: f.digest },
+    f.context,
+  );
+  expect(successor.id).not.toBe(f.grant.id);
+  expect(successor).toMatchObject({
+    valid_from: f.grant.valid_from,
+    valid_until: null,
+    max_runs: null,
+    reserved_runs: 1,
+    revoked_at: null,
+  });
+  await assertExecutionAuthorityCurrent(ctx.db, f.tenant_id, before.execution_id);
+  for (let run = 0; run < 3; run++) {
+    const next = await admitAuthorizedWorkflowExecution(f.run, ctx.db);
+    expect(next.execution_authority_id).toBe(successor.id);
+  }
+  const again = await makeWorkflowAuthorityUntilRevoked(
+    f.workflow_id,
+    f.grant.id,
+    { expected_manifest_digest: f.digest },
+    f.context,
+  );
+  expect(again.id).toBe(successor.id);
+  const [audit] = await ctx.db
+    .select()
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.tenant_id, f.tenant_id),
+        eq(auditLog.action, "workflow.authority_expiry_removed"),
+      ),
+    );
+  expect(audit?.metadata).toMatchObject({
+    replaced_authority_id: f.grant.id,
+    previous_valid_until: null,
+    previous_max_runs: 2,
+    valid_until: null,
+    max_runs: null,
+  });
+  expect(await authoritiesOf(f.workflow_id)).toHaveLength(2);
 });
 
 test("runs admitted while the approval is replaced are never refused", async () => {
@@ -272,6 +335,54 @@ test("retries and parallel requests create one open-ended approval", async () =>
   expect(audit).toHaveLength(1);
 });
 
+test("a retry on an approval converted while the run limit was still kept returns its successor", async () => {
+  const f = await fixture(3, true);
+  const [previous] = await authoritiesOf(f.workflow_id);
+  if (!previous) throw new Error("missing authority fixture");
+  const [legacy] = await ctx.db
+    .insert(workflowExecutionAuthorities)
+    .values({
+      tenant_id: f.tenant_id,
+      workflow_id: f.workflow_id,
+      workflow_version_id: previous.workflow_version_id,
+      effect_manifest_digest: previous.effect_manifest_digest,
+      effect_manifest: previous.effect_manifest,
+      execution_environment: previous.execution_environment,
+      target_constraints: previous.target_constraints,
+      valid_from: previous.valid_from,
+      valid_until: null,
+      max_runs: previous.max_runs,
+      reserved_runs: previous.reserved_runs,
+      created_by: previous.created_by,
+      approved_manifest: previous.approved_manifest ?? previous.effect_manifest,
+    })
+    .returning();
+  if (!legacy) throw new Error("missing legacy successor fixture");
+  await ctx.db
+    .update(workflowExecutionAuthorities)
+    .set({
+      revoked_at: await databaseNow(ctx.db),
+      revoked_by: previous.created_by,
+      superseded_by: legacy.id,
+    })
+    .where(eq(workflowExecutionAuthorities.id, previous.id));
+  const body = { expected_manifest_digest: f.digest };
+  const retried = await makeWorkflowAuthorityUntilRevoked(
+    f.workflow_id,
+    previous.id,
+    body,
+    f.context,
+  );
+  expect(retried.id).toBe(legacy.id);
+  expect(retried.max_runs).toBe(3);
+  expect(await authoritiesOf(f.workflow_id)).toHaveLength(2);
+  const lifted = await makeWorkflowAuthorityUntilRevoked(f.workflow_id, legacy.id, body, f.context);
+  expect(lifted.id).not.toBe(legacy.id);
+  expect(lifted.valid_until).toBeNull();
+  expect(lifted.max_runs).toBeNull();
+  expect(await authoritiesOf(f.workflow_id)).toHaveLength(3);
+});
+
 test("only a person who may grant can remove the expiry", async () => {
   const f = await fixture();
   const body = { expected_manifest_digest: f.digest };
@@ -304,7 +415,7 @@ test("only a person who may grant can remove the expiry", async () => {
   expect(await authoritiesOf(f.workflow_id)).toHaveLength(1);
 });
 
-test("a stale review, a revoked or an expired approval is not replaced", async () => {
+test("a stale review, a revoked, a used-up or a not yet valid approval is not replaced", async () => {
   const stale = await fixture();
   await expect(
     makeWorkflowAuthorityUntilRevoked(
@@ -333,8 +444,42 @@ test("a stale review, a revoked or an expired approval is not replaced", async (
       exhausted.context,
     ),
   ).rejects.toMatchObject({ code: "authority_not_live" });
+  const used = await fixture(1, false);
+  await admitAuthorizedWorkflowExecution(used.run, ctx.db);
+  await expect(
+    makeWorkflowAuthorityUntilRevoked(
+      used.workflow_id,
+      used.grant.id,
+      { expected_manifest_digest: used.digest },
+      used.context,
+    ),
+  ).rejects.toMatchObject({ code: "authority_not_live" });
+  const early = await fixture(null);
+  const later = await grantWorkflowAuthority(
+    early.workflow_id,
+    {
+      workflow_version_id: early.version_id,
+      expected_manifest_digest: early.digest,
+      execution_environment: "dev",
+      valid_from: new Date(early.until.getTime() - 30 * 60_000).toISOString(),
+      valid_until: new Date(early.until.getTime() + 60 * 60_000).toISOString(),
+      max_runs: null,
+    },
+    early.context,
+  );
+  expect(later.id).not.toBe(early.grant.id);
+  await expect(
+    makeWorkflowAuthorityUntilRevoked(
+      early.workflow_id,
+      later.id,
+      { expected_manifest_digest: early.digest },
+      early.context,
+    ),
+  ).rejects.toMatchObject({ code: "authority_not_live" });
   expect(await authoritiesOf(stale.workflow_id)).toHaveLength(1);
   expect(await authoritiesOf(exhausted.workflow_id)).toHaveLength(1);
+  expect(await authoritiesOf(used.workflow_id)).toHaveLength(1);
+  expect(await authoritiesOf(early.workflow_id)).toHaveLength(2);
 });
 
 test("a run of a version whose approval moved to a newer version still stops", async () => {

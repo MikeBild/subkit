@@ -27,6 +27,7 @@ const SOURCES: AttentionV1["sources"] = {
   budget: "answered",
   ai_access: "answered",
   risk: "answered",
+  tasks: "answered",
 };
 
 function attention(items: AttentionItem[] = []): AttentionV1 {

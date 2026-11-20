@@ -5,6 +5,7 @@ import {
   compileWorkflowEffectManifest,
   type ResolvedEffectBinding,
 } from "../core/effect-manifest.ts";
+import { mcpBoundary, mcpBoundaryTarget } from "../mcp-boundary.ts";
 import { GMAIL_SEND_TARGET } from "../report-delivery-boundary.ts";
 import { WorkflowDefSchema } from "../types.ts";
 
@@ -286,4 +287,75 @@ test("an unrelated root issue does not invalidate an otherwise valid outbox sour
   });
   const result = compileWorkflowEffectManifest({ ...input, definition });
   expect(result.manifest.issues).toEqual([{ step_id: "unrelated", code: "missing_binding" }]);
+});
+
+test("a tool call stated as a read is never an outbox source", () => {
+  const definition = WorkflowDefSchema.parse({
+    name: "Outbox from a tool",
+    execution_privacy: "sensitive",
+    steps: [
+      {
+        id: "next_mail",
+        kind: "request",
+        connector_id: connector,
+        mcp: {
+          operation: "call_tool",
+          tool: "next_mail",
+          boundary: {
+            effect: "read",
+            variables: {},
+            max_calls: 1,
+            descriptor: { input_schema_digest: "d".repeat(64) },
+          },
+        },
+      },
+      {
+        id: "send_email",
+        kind: "request",
+        connector_id: connector,
+        method: "POST",
+        url: GMAIL_SEND_TARGET,
+        max_retries: 0,
+        outbox_delivery: profile,
+        body: { raw: "${scope.compose.data.raw}" },
+      },
+    ],
+  });
+  const source = definition.steps[0];
+  if (source?.kind !== "request") throw new Error("missing source step");
+  const tool = mcpBoundary(source, "https://tools.example.test/mcp");
+  if (!tool) throw new Error("tool boundary did not compile");
+  const bindings: ResolvedEffectBinding[] = definition.steps.map((step) => ({
+    tenant_id: tenant,
+    step_id: step.id,
+    connector_id: connector,
+    driver: step.id === "next_mail" ? "mcp" : "http",
+    environment: "dev",
+    request_digest: workflowJsonDigest(step),
+    target: step.id === "next_mail" ? mcpBoundaryTarget(tool) : GMAIL_SEND_TARGET,
+    configuration_digest: "a".repeat(64),
+    credential_binding_digest: "b".repeat(64),
+    rewrites_target: false,
+    ...(step.id === "next_mail" ? { mcp: tool } : {}),
+    ...(step.kind === "request" && step.outbox_delivery
+      ? { outbox_delivery: step.outbox_delivery }
+      : {}),
+  }));
+  const compiled = compileWorkflowEffectManifest({
+    tenant_id: tenant,
+    workflow_id: workflow,
+    workflow_version_id: version,
+    execution_environment: "dev",
+    execution_options_digest: "c".repeat(64),
+    definition,
+    bindings,
+  });
+  expect(compiled.manifest.effects.find((effect) => effect.step_id === "next_mail")?.effect).toBe(
+    "read",
+  );
+  expect(compiled.manifest.issues).toContainEqual({
+    step_id: "send_email",
+    code: "binding_mismatch",
+  });
+  expect(compiled.eligible_for_repeated_runs).toBe(false);
 });

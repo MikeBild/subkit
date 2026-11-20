@@ -9,6 +9,8 @@ import { appendSnapshot } from "../../conversations/draft.ts";
 import {
   conversationElicitations,
   conversations,
+  webhooksInbound,
+  workflowExecutionAuthorities,
   workflows,
   workflowsSchedules,
 } from "../../db/schema/index.ts";
@@ -294,4 +296,204 @@ test("reviewed activation, bounded grant and schedule commit together", async ()
     .from(workflowsSchedules)
     .where(eq(workflowsSchedules.id, finalized.result.schedule_id ?? ""));
   expect(schedule).toMatchObject({ cron: "0 9 * * 1", paused: false });
+});
+
+interface WebhookTrigger {
+  kind: "webhook";
+  source: string;
+  events: string[];
+  verify: "none";
+}
+
+async function pendingSave(slug: string, trigger?: WebhookTrigger, targetWorkflowId?: string) {
+  const [conversation] = await srv.db
+    .insert(conversations)
+    .values({
+      tenant_id: srv.tenantId,
+      owner_id: srv.userId,
+      status: "awaiting_input",
+      ...(targetWorkflowId ? { target_workflow_id: targetWorkflowId } : {}),
+    })
+    .returning({ id: conversations.id });
+  if (!conversation) throw new Error("conversation fixture missing");
+  await appendSnapshot(
+    srv.tenantId,
+    conversation.id,
+    withLatestPreview(
+      withWorkflowInspection({
+        ...createEmptyDraftDocument("workflow_authoring"),
+        workflow: {
+          name: slug,
+          slug,
+          ...(trigger ? { trigger } : {}),
+          steps: [{ id: "result", kind: "transform", expression: "return { ok: true };" }],
+        },
+      }),
+      { ok: true, summary: "synthetic held preview" },
+    ),
+    srv.db,
+  );
+  const [elicitation] = await srv.db
+    .insert(conversationElicitations)
+    .values({
+      tenant_id: srv.tenantId,
+      conversation_id: conversation.id,
+      tool_name: "ask_user_confirm",
+      summary: "Save and activate the reviewed draft",
+      input: { question: "Save and activate?", commit_intent: { kind: "save_workflow_draft" } },
+      status: "pending",
+    })
+    .returning({ id: conversationElicitations.id });
+  if (!elicitation) throw new Error("elicitation fixture missing");
+  return {
+    path: `/v1/conversations/${conversation.id}/workflow-reviews`,
+    elicitation_id: elicitation.id,
+  };
+}
+
+interface PreparedReview {
+  receipt_id: string;
+  snapshot_digest: string;
+  actions: { grant: { valid_until: string | null; max_runs: number | null } | null };
+  suggested_actions: {
+    grant: { valid_from: string; valid_until: string | null; max_runs: number | null } | null;
+  };
+}
+
+test("an approval until revoked is granted through the chat review", async () => {
+  const review = await pendingSave("reviewed-open-ended-sample");
+  const headers = await browserSessionHeaders(srv, srv.userId);
+  const body = JSON.stringify({
+    elicitation_id: review.elicitation_id,
+    activate: true,
+    grant: {
+      environment: "prod",
+      valid_from: new Date(getTestNow() - 60_000).toISOString(),
+      valid_until: null,
+      max_runs: null,
+    },
+    schedule: null,
+  });
+  const preparedResponse = await fetch(`${srv.baseUrl}${review.path}`, {
+    method: "POST",
+    headers,
+    body,
+  });
+  expect(preparedResponse.status, await preparedResponse.clone().text()).toBe(201);
+  const prepared = (await preparedResponse.json()) as PreparedReview;
+  expect(prepared.actions.grant).toMatchObject({ valid_until: null, max_runs: null });
+  const stale = await fetch(`${srv.baseUrl}${review.path}/${prepared.receipt_id}/finalize`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ expected_snapshot_digest: "0".repeat(64) }),
+  });
+  expect(stale.status).toBe(409);
+  const { "x-subkit-csrf": _csrf, ...withoutCsrf } = headers;
+  const unproven = await fetch(`${srv.baseUrl}${review.path}/${prepared.receipt_id}/finalize`, {
+    method: "POST",
+    headers: withoutCsrf,
+    body: JSON.stringify({ expected_snapshot_digest: prepared.snapshot_digest }),
+  });
+  expect(unproven.status).toBe(403);
+  expect(((await unproven.json()) as { code: string }).code).toBe("csrf_rejected");
+  expect(
+    await srv.db
+      .select({ id: workflows.id })
+      .from(workflows)
+      .where(
+        and(
+          eq(workflows.tenant_id, srv.tenantId),
+          eq(workflows.slug, "reviewed-open-ended-sample"),
+        ),
+      ),
+  ).toHaveLength(0);
+  const finalizedResponse = await fetch(
+    `${srv.baseUrl}${review.path}/${prepared.receipt_id}/finalize`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ expected_snapshot_digest: prepared.snapshot_digest }),
+    },
+  );
+  expect(finalizedResponse.status, await finalizedResponse.clone().text()).toBe(200);
+  const finalized = (await finalizedResponse.json()) as {
+    result: { workflow_id: string; authority_id: string | null; granted: boolean };
+  };
+  expect(finalized.result.granted).toBe(true);
+  const [authority] = await srv.db
+    .select()
+    .from(workflowExecutionAuthorities)
+    .where(
+      and(
+        eq(workflowExecutionAuthorities.tenant_id, srv.tenantId),
+        eq(workflowExecutionAuthorities.id, finalized.result.authority_id ?? ""),
+      ),
+    );
+  expect(authority).toMatchObject({
+    workflow_id: finalized.result.workflow_id,
+    execution_environment: "prod",
+    valid_until: null,
+    max_runs: null,
+    revoked_at: null,
+  });
+});
+
+test("a webhook-triggered draft is suggested as automatic work, not as one manual run", async () => {
+  const headers = await browserSessionHeaders(srv, srv.userId);
+  const suggestion = async (slug: string, trigger?: WebhookTrigger, targetWorkflowId?: string) => {
+    const review = await pendingSave(slug, trigger, targetWorkflowId);
+    const response = await fetch(`${srv.baseUrl}${review.path}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        elicitation_id: review.elicitation_id,
+        activate: false,
+        grant: null,
+        schedule: null,
+      }),
+    });
+    expect(response.status, await response.clone().text()).toBe(201);
+    const grant = ((await response.json()) as PreparedReview).suggested_actions.grant;
+    if (!grant?.valid_until) throw new Error("suggested grant missing");
+    return {
+      days: (Date.parse(grant.valid_until) - Date.parse(grant.valid_from)) / 86_400_000,
+      max_runs: grant.max_runs,
+    };
+  };
+  expect(await suggestion("reviewed-manual-sample")).toEqual({ days: 1, max_runs: 1 });
+  expect(
+    await suggestion("reviewed-webhook-sample", {
+      kind: "webhook",
+      source: "generic",
+      events: [],
+      verify: "none",
+    }),
+  ).toEqual({ days: 30, max_runs: 100 });
+  const [saved] = await srv.db
+    .insert(workflows)
+    .values({
+      tenant_id: srv.tenantId,
+      name: "Reviewed hooked sample",
+      slug: "reviewed-hooked-sample",
+      lifecycle: "draft",
+    })
+    .returning({ id: workflows.id });
+  if (!saved) throw new Error("saved workflow fixture missing");
+  expect(await suggestion("reviewed-hooked-sample", undefined, saved.id)).toEqual({
+    days: 1,
+    max_runs: 1,
+  });
+  await srv.db.insert(webhooksInbound).values({
+    tenant_id: srv.tenantId,
+    workflow_id: saved.id,
+    slug: "reviewed-hooked-sample-hook",
+    verifier: "standard",
+    secret_ciphertext: Buffer.alloc(1),
+    secret_iv: Buffer.alloc(1),
+    secret_auth_tag: Buffer.alloc(1),
+    active: true,
+  });
+  const hooked = await suggestion("reviewed-hooked-sample", undefined, saved.id);
+  expect(hooked.days).toBe(30);
+  expect(hooked.max_runs).toBeGreaterThanOrEqual(100);
 });
