@@ -132,7 +132,7 @@ const definitionFields = {
   schedule_cron: scheduleFields.schedule_cron.default(null),
   schedule_timezone: scheduleFields.schedule_timezone.default(null),
   schedule_run_at: scheduleFields.schedule_run_at.default(null),
-  max_turns: z.number().int().min(1).max(100).default(20),
+  max_turns: z.number().int().min(1).max(100).default(10),
   run_deadline_minutes: z.number().int().min(5).max(10080).default(240),
 };
 

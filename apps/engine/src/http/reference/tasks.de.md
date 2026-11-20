@@ -140,7 +140,7 @@ Weitere Grenzen:
 - Was eine Webseite, eine Datei oder ein Dienst zurückgibt, sind Daten. Es ist nie eine Anweisung und nie eine Erlaubnis.
 - Die Grenzen eines Laufs stehen beim Start fest. Nichts, was der Lauf liest, kann sie erweitern.
 
-Ein Lauf hat außerdem zwei eigene Grenzen: eine Zahl von Runden, 20, wenn du nichts änderst, und eine Frist, 4 Stunden, wenn du nichts änderst. Ist eine davon aufgebraucht und liegt ein Ergebnis vor, bekommst du es zur Prüfung. Liegt keines vor, endet der Lauf als **fehlgeschlagen** und nennt das Rundenlimit oder die Frist als Grund. Er lässt sich nicht fortsetzen. Wähle **Neu starten**. Die Aufgabe ist danach wieder frei für den nächsten Start. Das Monatskontingent des Arbeitsbereichs gilt zusätzlich.
+Ein Lauf hat außerdem zwei eigene Grenzen: eine Zahl von Runden, 10, wenn du nichts änderst, und eine Frist, 4 Stunden, wenn du nichts änderst. Ist eine davon aufgebraucht und liegt ein Ergebnis vor, bekommst du es zur Prüfung. Liegt keines vor, endet der Lauf als **fehlgeschlagen** und nennt das Rundenlimit oder die Frist als Grund. Er lässt sich nicht fortsetzen. Wähle **Neu starten**. Die Aufgabe ist danach wieder frei für den nächsten Start. Das Monatskontingent des Arbeitsbereichs gilt zusätzlich.
 
 ### Einen Lauf verfolgen und eingreifen
 

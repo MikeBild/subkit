@@ -30084,7 +30084,7 @@ export interface components {
              * @default null
              */
             schedule_run_at?: string | null;
-            /** @default 20 */
+            /** @default 10 */
             max_turns?: number;
             /** @default 240 */
             run_deadline_minutes?: number;
@@ -30115,7 +30115,7 @@ export interface components {
              * @default null
              */
             schedule_run_at?: string | null;
-            /** @default 20 */
+            /** @default 10 */
             max_turns?: number;
             /** @default 240 */
             run_deadline_minutes?: number;

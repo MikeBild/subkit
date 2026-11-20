@@ -140,7 +140,7 @@ Further limits:
 - What a web page, a file or a service returns is data. It is never an instruction and never a permission.
 - The limits of a run are fixed when it starts. Nothing the run reads can widen them.
 
-A run also has two budgets of its own: a number of rounds, 20 unless you change it, and a time limit, 4 hours unless you change it. When one is used up and a result exists, you get it for review. When there is none, the run ends as **failed** and names the round limit or the time limit as the reason. It cannot be continued. Select **Start again**. The task is then free for its next start. The monthly token budget of the workspace applies as well.
+A run also has two budgets of its own: a number of rounds, 10 unless you change it, and a time limit, 4 hours unless you change it. When one is used up and a result exists, you get it for review. When there is none, the run ends as **failed** and names the round limit or the time limit as the reason. It cannot be continued. Select **Start again**. The task is then free for its next start. The monthly token budget of the workspace applies as well.
 
 ### Follow a run and step in
 

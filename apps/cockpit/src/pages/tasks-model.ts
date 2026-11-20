@@ -631,7 +631,7 @@ export function emptyDraft(zone: string, seed: Partial<TaskDraft> = {}): TaskDra
     webSearch: false,
     environment: "prod",
     schedule: scheduleDraft(null, zone),
-    maxTurns: 20,
+    maxTurns: 10,
     deadlineMinutes: 240,
     ...seed,
   };

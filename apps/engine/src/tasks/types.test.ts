@@ -304,7 +304,7 @@ describe("task input and view", () => {
       schedule_cron: null,
       schedule_timezone: null,
       schedule_run_at: null,
-      max_turns: 20,
+      max_turns: 10,
       run_deadline_minutes: 240,
     });
   });
