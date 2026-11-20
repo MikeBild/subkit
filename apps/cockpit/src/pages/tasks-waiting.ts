@@ -35,6 +35,22 @@ export function waitingView(reason: string | null | undefined): WaitingView {
     : WAITING.question;
 }
 
+const LIMIT_LINES = {
+  turn_limit_reached: "tasks.strip.limit.turns",
+  deadline_exceeded: "tasks.strip.limit.deadline",
+} as const satisfies Partial<Record<NonNullable<Run["failure_code"]>, TranslationKey>>;
+
+export type RunLimitCode = keyof typeof LIMIT_LINES;
+
+export const RUN_LIMIT_CODES = Object.keys(LIMIT_LINES) as RunLimitCode[];
+
+export function limitEndedLine(
+  run: { state: string; failure_code?: string | null } | null | undefined,
+): TranslationKey | null {
+  const code = run?.state === "failed" ? run.failure_code : null;
+  return code && Object.hasOwn(LIMIT_LINES, code) ? LIMIT_LINES[code as RunLimitCode] : null;
+}
+
 type Glance = { state: string; waiting_reason?: string | null };
 
 export function waitingParty(run: Glance | null | undefined): WaitingParty | null {

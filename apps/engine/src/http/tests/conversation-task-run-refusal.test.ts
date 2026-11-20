@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { setConfigKey } from "../../config/loader.ts";
 import { listElicitationsForConversation } from "../../conversations/elicitations.ts";
 import {
   assertTaskRunWriter,
@@ -10,15 +11,18 @@ import {
 } from "../../conversations/public/lifecycle.ts";
 import { createConversation } from "../../conversations/service.ts";
 import {
+  auditLog,
   conversationElicitations,
   conversations,
   conversationTurns,
+  toolApprovals,
   users,
 } from "../../db/schema/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { seedConnector } from "../../test-helpers/seed.ts";
+import { mintApprovalGrantUrl } from "../../tools/approval-portal.ts";
 import { browserSessionHeaders, createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 const nextUuid = createDeterministicUuidFactory(0x7a5c05);
@@ -52,6 +56,7 @@ beforeAll(async () => {
   process.env.MASTER_KEY = originalMasterKey ?? "a".repeat(64);
   resetMockProvider();
   srv = await createHttpTestServer("conv-task-run-refusal");
+  await setConfigKey("server.public_base_url", srv.baseUrl, { force: true });
   owner_id = await seedUser("owner", "member");
   other_id = await seedUser("other", "member");
   ownerHeaders = await browserSessionHeaders(srv, owner_id);
@@ -241,12 +246,13 @@ describe("who may cancel, hide or approve in a run conversation", () => {
     ).not.toBeNull();
   }, 60_000);
 
-  test("held changes of a run can be released only by the owner, an admin is refused like in the answer route", async () => {
+  test("held changes of a run can be released by the owner or an admin, nobody else", async () => {
     const connector = await seedConnector(srv.db, {
       tenant_id: srv.tenantId,
       slug: "approval-api",
     });
     const admin = await seedUser("approver-admin", "admin");
+    const inactiveAdmin = await seedUser("approver-admin-gone", "admin", "disabled");
     for (const marked of [true, false]) {
       const conversation_id = marked
         ? await runConversation([connector.id])
@@ -274,14 +280,12 @@ describe("who may cancel, hide or approve in a run conversation", () => {
       expect(await decide(other_id)).toBe(!marked);
       expect(await decide(null)).toBe(!marked);
       expect(await decide(owner_id)).toBe(true);
-      expect(await decide(admin)).toBe(!marked);
-      expect(
-        await taskRunApprovalRefusal(srv.db, {
-          tenant_id: srv.tenantId,
-          approval_id,
-          user_id: admin,
-        }),
-      ).toBe(marked ? "owner_only" : null);
+      expect(await decide(admin)).toBe(true);
+      expect(await decide(inactiveAdmin)).toBe(!marked);
+      for (const user_id of [other_id, inactiveAdmin, null])
+        expect(
+          await taskRunApprovalRefusal(srv.db, { tenant_id: srv.tenantId, approval_id, user_id }),
+        ).toBe(marked ? "owner_or_admin" : null);
       if (!pending) throw new Error("expected a pending question");
       await srv.db
         .update(conversationElicitations)
@@ -305,4 +309,171 @@ describe("who may cancel, hide or approve in a run conversation", () => {
       }),
     ).toBe(false);
   }, 180_000);
+});
+
+describe("an admin decides the held changes of someone else's run over HTTP", () => {
+  let sequence = 0;
+
+  async function held() {
+    const connector = await seedConnector(srv.db, {
+      tenant_id: srv.tenantId,
+      slug: `held-api-${++sequence}`,
+    });
+    const conversation_id = await runConversation([connector.id]);
+    getMockProvider().setConversePlan(conversation_id, [
+      {
+        tool: "call_connector",
+        args: { connector_id: connector.id, method: "POST", path: "/things", body: {} },
+      },
+    ]);
+    const asked = await post(ownerHeaders, `/v1/conversations/${conversation_id}/messages`, {
+      message: "Send it.",
+    });
+    await asked.text();
+    const [pending] = (
+      await listElicitationsForConversation(srv.tenantId, conversation_id, srv.db)
+    ).filter((row) => row.status === "pending");
+    const approval_id = (
+      pending?.input as { commit_intent?: { payload?: { approval_id?: string } } } | undefined
+    )?.commit_intent?.payload?.approval_id;
+    if (!pending || !approval_id) throw new Error("expected an approval-backed question");
+    getMockProvider().setConversePlan(conversation_id, [{ text: "Sent." }]);
+    return { conversation_id, elicitation_id: pending.id, approval_id };
+  }
+
+  async function approval(approval_id: string) {
+    const [row] = await srv.db
+      .select()
+      .from(toolApprovals)
+      .where(and(eq(toolApprovals.tenant_id, srv.tenantId), eq(toolApprovals.id, approval_id)));
+    if (!row) throw new Error("missing approval");
+    return row;
+  }
+
+  async function actorOf(approval_id: string, action: string) {
+    const [entry] = await srv.db
+      .select({ actor_id: auditLog.actor_id, result: auditLog.result })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, srv.tenantId),
+          eq(auditLog.resource_id, approval_id),
+          eq(auditLog.action, action),
+        ),
+      );
+    return entry ?? null;
+  }
+
+  async function portal(approval_id: string, cookie: string) {
+    const minted = await mintApprovalGrantUrl({
+      db: srv.db,
+      approval: { id: approval_id, tenant_id: srv.tenantId },
+    });
+    if (!minted.ok) throw new Error(minted.error);
+    const grant = new URL(minted.url).searchParams.get("grant") ?? "";
+    const headers = { cookie, "accept-language": "en" };
+    const page = await fetch(minted.url, { headers });
+    const html = await page.text();
+    const csrf_token = /name="csrf_token" value="([^"]+)"/.exec(html)?.[1] ?? "";
+    const submit = async (decision: "approve" | "decline") => {
+      const res = await fetch(`${srv.baseUrl}/v1/tool-approvals/decide`, {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ grant, decision, csrf_token }).toString(),
+      });
+      return await res.text();
+    };
+    return { html, csrf_token, submit };
+  }
+
+  test("the answer route releases them for an admin, refuses a member and records who decided", async () => {
+    const admin = await seedUser("answer-admin", "admin");
+    const adminHeaders = await browserSessionHeaders(srv, admin);
+    const approved = await held();
+    const path = `/v1/conversations/${approved.conversation_id}/elicitations/${approved.elicitation_id}/respond`;
+    const refused = await post(otherHeaders, path, { output: { confirmed: true } });
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toMatchObject(FORBIDDEN);
+    expect((await approval(approved.approval_id)).granted_at).toBeNull();
+
+    const released = await post(adminHeaders, path, { output: { confirmed: true } });
+    expect(released.status).toBe(200);
+    await released.text();
+    const granted = await approval(approved.approval_id);
+    expect(granted.granted_by_user_id).toBe(admin);
+    expect(granted.granted_via).toBe("chat");
+    expect(granted.consumed_at).not.toBeNull();
+    expect(granted.principal_id).toBe(owner_id);
+    expect(await actorOf(approved.approval_id, "approval.granted")).toEqual({
+      actor_id: admin,
+      result: "success",
+    });
+    expect(await actorOf(approved.approval_id, "approval.approved")).toEqual({
+      actor_id: owner_id,
+      result: "success",
+    });
+
+    const declined = await held();
+    const no = await post(
+      adminHeaders,
+      `/v1/conversations/${declined.conversation_id}/elicitations/${declined.elicitation_id}/respond`,
+      { output: { confirmed: false } },
+    );
+    expect(no.status).toBe(200);
+    await no.text();
+    const dead = await approval(declined.approval_id);
+    expect(dead.declined_at).not.toBeNull();
+    expect(dead.consumed_at).toBeNull();
+    expect(await actorOf(declined.approval_id, "approval.declined")).toEqual({
+      actor_id: admin,
+      result: "success",
+    });
+    expect(await actorOf(declined.approval_id, "approval.approved")).toBeNull();
+  }, 240_000);
+
+  test("the approval portal shows the decision to an admin and refuses a member on GET and POST", async () => {
+    const admin = await seedUser("portal-admin", "admin");
+    const adminCookie = (await browserSessionHeaders(srv, admin)).cookie as string;
+    const sentence = "Only the owner of the task or an admin can give this approval.";
+
+    const first = await held();
+    const stranger = await portal(first.approval_id, otherHeaders.cookie as string);
+    expect(stranger.html).toContain(sentence);
+    expect(stranger.csrf_token).toBe("");
+    const allowed = await portal(first.approval_id, adminCookie);
+    expect(allowed.html).not.toContain(sentence);
+    expect(allowed.csrf_token).not.toBe("");
+    const demoted = await seedUser("portal-demoted", "admin");
+    const untouched = await held();
+    const opened = await portal(
+      untouched.approval_id,
+      (await browserSessionHeaders(srv, demoted)).cookie as string,
+    );
+    expect(opened.csrf_token).not.toBe("");
+    await srv.db
+      .update(users)
+      .set({ role_id: await builtinRoleId(srv.db, "member") })
+      .where(and(eq(users.tenant_id, srv.tenantId), eq(users.id, demoted)));
+    for (const decision of ["approve", "decline"] as const)
+      expect(await opened.submit(decision)).toContain(sentence);
+    expect((await approval(untouched.approval_id)).granted_at).toBeNull();
+    expect((await approval(untouched.approval_id)).declined_at).toBeNull();
+
+    await allowed.submit("approve");
+    const granted = await approval(first.approval_id);
+    expect(granted.granted_by_user_id).toBe(admin);
+    expect(granted.granted_via).toBe("portal");
+    expect(await actorOf(first.approval_id, "approval.granted")).toEqual({
+      actor_id: admin,
+      result: "success",
+    });
+
+    const second = await held();
+    await (await portal(second.approval_id, adminCookie)).submit("decline");
+    expect((await approval(second.approval_id)).declined_at).not.toBeNull();
+    expect(await actorOf(second.approval_id, "approval.declined")).toEqual({
+      actor_id: admin,
+      result: "success",
+    });
+  }, 240_000);
 });

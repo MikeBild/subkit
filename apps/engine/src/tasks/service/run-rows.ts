@@ -234,6 +234,23 @@ export async function writeRun(
   return row;
 }
 
+export function runEndedAtItsLimit(
+  failure_code: "turn_limit_reached" | "deadline_exceeded",
+  at: Date,
+): { set: Partial<typeof taskRuns.$inferInsert>; audit: TaskRunAudit } {
+  return {
+    set: {
+      state: "failed",
+      failure_code,
+      waiting_reason: null,
+      next_check_at: null,
+      sleep_reason: null,
+      ended_at: at,
+    },
+    audit: { action: AuditAction.TASK_RUN_FAILED, actor: SYSTEM_ACTOR, result: "error" },
+  };
+}
+
 export async function lockRun(
   tx: Executor,
   scope: TaskScope,

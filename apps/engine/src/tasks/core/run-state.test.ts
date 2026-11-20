@@ -13,6 +13,7 @@ import {
   type TaskRunObservation,
   type TaskRunProgress,
   taskRunIsOpen,
+  taskRunLimitCode,
   taskRunLimitReached,
 } from "./run-state.ts";
 
@@ -28,6 +29,7 @@ function playbook(overrides: Partial<TaskPlaybookFacts> = {}): TaskPlaybookFacts
     intact: true,
     result_confirmed: false,
     awaiting_result_confirmation: false,
+    progress_marks: [],
     ...overrides,
   };
 }
@@ -44,6 +46,7 @@ function observation(overrides: Partial<TaskRunObservation> = {}): TaskRunObserv
     turn_failure: null,
     turn_interrupted: false,
     human_input_since_last_turn: false,
+    progress_marks: ["ready:1", "result:b"],
     result_confirmed_by: null,
     result_rejected: false,
     ...overrides,
@@ -55,6 +58,7 @@ function run(overrides: Partial<TaskRunProgress> = {}): TaskRunProgress {
     turns_used: 4,
     no_progress_count: 0,
     last_playbook_revision: 2,
+    progress_marks: ["ready:1"],
     last_seen_turn_seq: 3,
     rejected_playbook_revision: null,
     deadline_at: at(60_000),
@@ -88,6 +92,7 @@ const settled = (state: TaskRunDecision["state"], extra: Partial<TaskRunDecision
 });
 
 const failure = (code: string, retry_at: Date | null = null) => ({ code, retry_at });
+const idle = { progress_marks: ["ready:1"] };
 const noisy: Partial<TaskRunObservation> = {
   pending_elicitation: "question",
   requested_check_at: at(5000),
@@ -113,6 +118,7 @@ describe("decideTaskRunState", () => {
       turns_used: 5,
       no_progress_count: 0,
       last_playbook_revision: 3,
+      progress_marks: ["ready:1", "result:b"],
       last_seen_turn_seq: 3,
       turn_seen: true,
     });
@@ -133,7 +139,7 @@ describe("decideTaskRunState", () => {
       const stale = decide(
         {
           turn_seq,
-          playbook: playbook({ revision: 2 }),
+          ...idle,
           turn_failure: { code: "llm_provider_unavailable", retry_at: null },
           turn_interrupted: true,
         },
@@ -324,19 +330,33 @@ describe("decideTaskRunState", () => {
     );
   });
 
-  test("the turn limit and the deadline stop a run that would otherwise sleep", () => {
+  test("the turn limit and the deadline end a run that would otherwise sleep, each under its own code", () => {
     const sleepy = {
       turn_failure: failure("rate_limited", at(9000)),
       requested_check_at: at(5000),
     };
-    const waiting = settled("waiting", { waiting_reason: "no_progress" });
-    expect(outcome(decide(sleepy, { turns_used: 19 }))).toEqual(waiting);
-    expect(outcome(decide(sleepy, { turns_used: 25 }))).toEqual(waiting);
-    expect(outcome(decide(sleepy, { deadline_at: NOW }))).toEqual(waiting);
-    expect(outcome(decide(sleepy, { deadline_at: at(-1) }))).toEqual(waiting);
+    const turns = settled("failed", { failure_code: "turn_limit_reached" });
+    const deadline = settled("failed", { failure_code: "deadline_exceeded" });
+    expect(outcome(decide(sleepy, { turns_used: 19 }))).toEqual(turns);
+    expect(outcome(decide(sleepy, { turns_used: 25 }))).toEqual(turns);
+    expect(outcome(decide(sleepy, { deadline_at: NOW }))).toEqual(deadline);
+    expect(outcome(decide(sleepy, { deadline_at: at(-1) }))).toEqual(deadline);
+    expect(outcome(decide(sleepy, { turns_used: 19, deadline_at: at(-1) }))).toEqual(turns);
     expect(decide(sleepy, { turns_used: 18 }).state).toBe("sleeping");
     expect(decide(sleepy, { deadline_at: at(1) }).state).toBe("sleeping");
-    expect(outcome(decide({}, { turns_used: 0 }, { max_turns: 1 }))).toEqual(waiting);
+    expect(outcome(decide({}, { turns_used: 0 }, { max_turns: 1 }))).toEqual(turns);
+    expect(outcome(decide({ ...idle }, { turns_used: 19, no_progress_count: 5 }))).toEqual(turns);
+  });
+
+  test("a delivered result, a question and an approval come before the limit", () => {
+    const spent = { turns_used: 25, deadline_at: at(-1) };
+    expect(
+      outcome(decide({ playbook: playbook({ awaiting_result_confirmation: true }) }, spent)),
+    ).toEqual(settled("result_ready"));
+    for (const kind of ["question", "approval"] as const)
+      expect(outcome(decide({ pending_elicitation: kind }, spent))).toEqual(
+        settled("waiting", { waiting_reason: kind }),
+      );
   });
 
   test("provider throttling sleeps until the retry time, never past the deadline", () => {
@@ -365,20 +385,24 @@ describe("decideTaskRunState", () => {
     expect(decide({ requested_check_at: at(90_000) }).next_check_at).toEqual(at(60_000));
   });
 
+  test("a scheduled check is a reason to wait, so it resets the stall counter; a past one does not", () => {
+    const stalled = { no_progress_count: 1 };
+    expect(decide({ ...idle, requested_check_at: at(5000) }, stalled).no_progress_count).toBe(0);
+    expect(decide({ ...idle, requested_check_at: NOW }, stalled).no_progress_count).toBe(2);
+    expect(decide({ ...idle, requested_check_at: at(-1) }, stalled).no_progress_count).toBe(2);
+  });
+
   test("a check time at or before now counts as no request", () => {
     expect(decide({ requested_check_at: NOW }).state).toBe("running");
     expect(decide({ requested_check_at: at(-5000) }).state).toBe("running");
-    expect(
-      decide(
-        { requested_check_at: at(-5000), playbook: playbook({ revision: 2 }) },
-        { no_progress_count: 5 },
-      ).state,
-    ).toBe("waiting");
+    expect(decide({ requested_check_at: at(-5000), ...idle }, { no_progress_count: 5 }).state).toBe(
+      "waiting",
+    );
     expect(decide({ requested_check_at: at(1) }).state).toBe("sleeping");
   });
 
-  test("two turns in a row without a playbook change wait for the person", () => {
-    const same = { playbook: playbook({ revision: 2 }) };
+  test("two turns in a row without real progress wait for the person", () => {
+    const same = idle;
     expect(TASK_NO_PROGRESS_LIMIT).toBe(2);
     expect(decide(same, { no_progress_count: 0 })).toMatchObject({
       state: "running",
@@ -396,22 +420,57 @@ describe("decideTaskRunState", () => {
     });
   });
 
-  test("a playbook change or a fresh answer resets the stall counter", () => {
+  test("something new or a fresh answer resets the stall counter", () => {
     expect(decide({}, { no_progress_count: 1 })).toMatchObject({
       state: "running",
       no_progress_count: 0,
       last_playbook_revision: 3,
+      progress_marks: ["ready:1", "result:b"],
     });
     expect(
-      decide(
-        { playbook: playbook({ revision: 2 }), human_input_since_last_turn: true },
-        { no_progress_count: 1 },
-      ),
+      decide({ ...idle, human_input_since_last_turn: true }, { no_progress_count: 1 }),
     ).toMatchObject({ state: "running", no_progress_count: 0 });
   });
 
+  test("a new playbook revision alone is not progress, and neither is something seen before", () => {
+    const seen = { progress_marks: ["ready:1", "result:a", "call:c"] };
+    const repeats: string[][] = [
+      [],
+      ["ready:1"],
+      ["call:c", "result:a"],
+      ["result:a", "result:a", "ready:1", "call:c"],
+    ];
+    for (const progress_marks of repeats)
+      expect(
+        decide(
+          { playbook: playbook({ revision: 43 }), progress_marks },
+          { ...seen, no_progress_count: 1 },
+        ),
+      ).toMatchObject({
+        state: "waiting",
+        waiting_reason: "no_progress",
+        no_progress_count: 2,
+        last_playbook_revision: 43,
+        progress_marks: seen.progress_marks,
+      });
+    expect(
+      decide(
+        { progress_marks: ["result:a", "result:z", "result:z"] },
+        { ...seen, no_progress_count: 1 },
+      ),
+    ).toMatchObject({
+      state: "running",
+      no_progress_count: 0,
+      progress_marks: ["ready:1", "result:a", "call:c", "result:z"],
+    });
+    expect(decide({ progress_marks: ["ready:1"] }, { progress_marks: [] })).toMatchObject({
+      no_progress_count: 0,
+      progress_marks: ["ready:1"],
+    });
+  });
+
   test("an observation without a turn counts nothing", () => {
-    const same = { playbook: playbook({ revision: 2 }), turn_id: null };
+    const same = { ...idle, turn_id: null };
     expect(decide(same, { no_progress_count: 1 })).toMatchObject({
       state: "running",
       turns_used: 4,
@@ -425,7 +484,7 @@ describe("decideTaskRunState", () => {
   });
 
   test("a turn a person drives does not use up the turn limit but still shows a stall", () => {
-    const person = { turn_driver: "person" as const, playbook: playbook({ revision: 2 }) };
+    const person = { turn_driver: "person" as const, ...idle };
     expect(decide(person, { turns_used: 19 })).toMatchObject({
       state: "running",
       turns_used: 19,
@@ -459,6 +518,7 @@ describe("normalizeFailureCode", () => {
       "owner_unavailable",
       "budget_exhausted",
       "deadline_exceeded",
+      "turn_limit_reached",
     ]);
   });
 
@@ -492,17 +552,19 @@ describe("decideTaskRunResume and taskRunLimitReached", () => {
   });
 
   test("a run out of turns or past its deadline does not resume", () => {
-    const refused = { resume: false, waiting_reason: "no_progress" } as const;
-    expect(decideTaskRunResume(state("waiting", { turns_used: 20 }), LIMITS, NOW)).toEqual(refused);
-    expect(decideTaskRunResume(state("sleeping", { turns_used: 21 }), LIMITS, NOW)).toEqual(
-      refused,
-    );
+    const turns = { resume: false, failure_code: "turn_limit_reached" } as const;
+    const deadline = { resume: false, failure_code: "deadline_exceeded" } as const;
+    expect(decideTaskRunResume(state("waiting", { turns_used: 20 }), LIMITS, NOW)).toEqual(turns);
+    expect(decideTaskRunResume(state("sleeping", { turns_used: 21 }), LIMITS, NOW)).toEqual(turns);
     expect(decideTaskRunResume(state("sleeping", { deadline_at: NOW }), LIMITS, NOW)).toEqual(
-      refused,
+      deadline,
     );
     expect(decideTaskRunResume(state("waiting", { deadline_at: at(-1) }), LIMITS, NOW)).toEqual(
-      refused,
+      deadline,
     );
+    expect(
+      decideTaskRunResume(state("waiting", { turns_used: 20, deadline_at: at(-1) }), LIMITS, NOW),
+    ).toEqual(turns);
     expect(
       decideTaskRunResume(state("waiting", { turns_used: 19, deadline_at: at(1) }), LIMITS, NOW)
         .resume,
@@ -513,6 +575,13 @@ describe("decideTaskRunResume and taskRunLimitReached", () => {
     expect(taskRunLimitReached({ turns_used: 19, deadline_at: at(1) }, LIMITS, NOW)).toBe(false);
     expect(taskRunLimitReached({ turns_used: 20, deadline_at: at(1) }, LIMITS, NOW)).toBe(true);
     expect(taskRunLimitReached({ turns_used: 0, deadline_at: NOW }, LIMITS, NOW)).toBe(true);
+    expect(taskRunLimitCode({ turns_used: 19, deadline_at: at(1) }, LIMITS, NOW)).toBeNull();
+    expect(taskRunLimitCode({ turns_used: 20, deadline_at: at(1) }, LIMITS, NOW)).toBe(
+      "turn_limit_reached",
+    );
+    expect(taskRunLimitCode({ turns_used: 0, deadline_at: NOW }, LIMITS, NOW)).toBe(
+      "deadline_exceeded",
+    );
   });
 });
 

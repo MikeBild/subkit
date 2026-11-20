@@ -22,7 +22,7 @@ export interface ChatApproval {
   taskAction?: TaskAction;
   subjects?: string[];
   transferBytes?: number;
-  ownerOnly?: boolean;
+  decidedByOthers?: boolean;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -42,6 +42,7 @@ export function withWorkflowName(
 export function chatApproval(
   detail: ConversationDetail | undefined,
   viewerId?: string | null,
+  viewerIsAdmin = false,
 ): ChatApproval | null {
   const pending = detail?.resume_summary?.pending_approval;
   if (pending?.tool_name !== "ask_user_confirm" || !pending.tool_call_id) return null;
@@ -61,9 +62,10 @@ export function chatApproval(
       ? call.tool
       : undefined;
   const taskAction = taskActionOf(gatedTool, call.input);
-  const ownerOnly =
+  const decidedByOthers =
     pending.prompt?.approval_backed === true &&
     viewerId !== undefined &&
+    !viewerIsAdmin &&
     runMarker(detail?.draft) !== null &&
     detail?.conversation.owner_id !== viewerId;
   return {
@@ -78,7 +80,7 @@ export function chatApproval(
     ...(connectorCall ? { connectorCall } : {}),
     ...(gatedTool ? { gatedTool } : {}),
     ...(taskAction ? { taskAction } : {}),
-    ...(ownerOnly ? { ownerOnly } : {}),
+    ...(decidedByOthers ? { decidedByOthers } : {}),
     ...(pending.prompt?.subjects?.length ? { subjects: pending.prompt.subjects } : {}),
     ...(pending.prompt?.transfer_bytes ? { transferBytes: pending.prompt.transfer_bytes } : {}),
     savesInactiveWorkflow: intent.kind === "save_workflow_draft",

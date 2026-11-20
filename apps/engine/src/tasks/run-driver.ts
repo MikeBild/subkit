@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import {
   getTaskRunCheck,
@@ -22,12 +22,14 @@ import {
   conversationElicitations,
   conversationMessages,
   conversations,
+  conversationToolCalls,
   conversationTurns,
   taskRuns,
   tasks,
 } from "../db/schema/index.ts";
 import { errorFields, logger } from "../logging/logger.ts";
-import { type TaskRunObservation, taskRunIsOpen } from "./core/run-state.ts";
+import { type TaskRunToolCall, taskRunCallMarks } from "./core/progress.ts";
+import { type TaskRunObservation, taskRunIsOpen, taskRunLimitReached } from "./core/run-state.ts";
 import type { TaskRunSource } from "./service/run-rows.ts";
 import {
   type RunObservationResult,
@@ -43,12 +45,15 @@ import {
   taskServiceDeps,
 } from "./service/shared.ts";
 
-export const TASK_RUN_CONTINUATION_MESSAGE =
-  "Continue working on the task. Update the playbook, ask when you need a decision, and set the next check when you have to wait.";
-
 export const TASK_TURN_JOB_FAILURE_LIMIT = 3;
-export const TASK_RUN_REJECTION_NOTICE =
-  "The person rejected the result. It is not done yet: find out what is missing, work on it, and update the playbook before you offer the result again.";
+
+export {
+  TASK_RUN_CONTINUATION_MESSAGE,
+  TASK_RUN_LANGUAGE_INSTRUCTIONS,
+  TASK_RUN_REJECTION_NOTICE,
+  taskRunTurnKind,
+  taskRunTurnPrompt,
+} from "./core/turn-prompt.ts";
 
 const PROVIDER_THROTTLE_FALLBACK_MS = 60_000;
 const FINISHED_TURN_STATES = ["completed", "failed", "cancelled"] as const;
@@ -248,6 +253,27 @@ async function resultDecision(
   return { confirmed_by: null, rejected: answer === "declined" && decision.in_turn === true };
 }
 
+async function taskRunToolCalls(
+  db: Executor,
+  tenant_id: string,
+  conversation_id: string,
+): Promise<TaskRunToolCall[]> {
+  return await db
+    .select({
+      id: conversationToolCalls.id,
+      tool: conversationToolCalls.tool,
+      outcome: conversationToolCalls.outcome,
+    })
+    .from(conversationToolCalls)
+    .where(
+      and(
+        eq(conversationToolCalls.tenant_id, tenant_id),
+        eq(conversationToolCalls.conversation_id, conversation_id),
+      ),
+    )
+    .orderBy(asc(conversationToolCalls.created_at), asc(conversationToolCalls.id));
+}
+
 function requestedCheck(draft: unknown): Date | null {
   const check = getTaskRunCheck(draft);
   if (!check) return null;
@@ -277,6 +303,7 @@ export async function buildTaskRunObservation(
     playbook: null,
     requested_check_at: null,
     turn_seq: null,
+    progress_marks: [],
     result_confirmed_by: null,
     result_rejected: false,
   };
@@ -293,19 +320,24 @@ export async function buildTaskRunObservation(
   const decision = person
     ? await resultDecision(db, { ...scope, goal: task.goal, turn_id: turn.id })
     : { confirmed_by: null, rejected: false };
+  const playbook = await readTaskRunPlaybook(
+    {
+      ...scope,
+      principal: taskRunPrincipal(task, owner, run),
+      goal: task.goal,
+      locale: task.locale,
+    },
+    db,
+  );
   return {
     ...base,
     conversation_status: conversation.status,
     pending_elicitation: await openQuestion(db, run.tenant_id, conversation_id),
-    playbook: await readTaskRunPlaybook(
-      {
-        ...scope,
-        principal: taskRunPrincipal(task, owner, run),
-        goal: task.goal,
-        locale: task.locale,
-      },
-      db,
-    ),
+    playbook,
+    progress_marks: [
+      ...(playbook?.progress_marks ?? []),
+      ...taskRunCallMarks(await taskRunToolCalls(db, run.tenant_id, conversation_id)),
+    ],
     requested_check_at: requestedCheck(conversation.draft),
     turn_seq: turn.id
       ? await conversationTurnSeq(db, run.tenant_id, conversation_id, turn.id)
@@ -511,6 +543,19 @@ export async function advanceTaskRun(
     const resumed = await resumeTaskRun({ ...p, source: "scheduler" }, db, overrides);
     if (resumed.resumed) await enqueueNext(db, ref, overrides);
     return resumed.resumed ? "resumed" : "idle";
+  }
+  if (run.waiting_reason === "no_progress") {
+    if (!taskRunLimitReached(run, { max_turns: loaded.task.max_turns }, p.now)) return "idle";
+    await observeTaskRun(
+      db,
+      {
+        ...p,
+        turn: { id: null, driver: "task", failure: null, interrupted: false },
+        source: "scheduler",
+      },
+      overrides,
+    );
+    return "observed";
   }
   if (run.waiting_reason !== "question" && run.waiting_reason !== "approval") return "idle";
   const pending = await openQuestion(db, run.tenant_id, conversation_id);

@@ -41,7 +41,7 @@ A task is a goal with limits that SubKit works towards on its own. For a run of 
 
 Before every background round, SubKit checks again that the owner is still active, the run is still open, the task is neither paused nor archived, and the standing permission of the run has not been revoked. If one of these fails, the round does not run.
 
-A person who writes into a run does not widen it. The owner and admins can write; the same limits apply to their rounds, and the run cannot be switched to a mode that stops asking. Writes that a run holds back are released by the owner only, because they were prepared in the owner’s name. A result is confirmed or sent back by a person signed in to the Cockpit in the browser, not with an API key, in `sk` or from an AI client.
+A person who writes into a run does not widen it. The owner and admins can write; the same limits apply to their rounds, and the run cannot be switched to a mode that stops asking. Writes that a run holds back are released by the owner or an admin. They are carried out with the permissions of the run, not with those of the admin, and the audit trail names the person who decided. A result is confirmed or sent back by a person signed in to the Cockpit in the browser, not with an API key, in `sk` or from an AI client.
 
 In the audit trail, background work of a run is recorded as the system with the scheduler or the queue as its source. Approvals, confirmations and stops name the person who acted. The entries hold identifiers, states and reason codes, never the goal text or an answer.
 

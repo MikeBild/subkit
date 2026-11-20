@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [tasks, playbook]
-version: 2
+version: 4
 ---
 
 # Working on a task
@@ -37,14 +37,23 @@ outside SubKit, and the person confirms the result.
   execution with `get_execution`, and put the id of that `get_execution` call
   into the step's `evidence_ids`. A step that needs your assessment: write the
   result into its criterion.
+- A work step with its result is finished. Do not leave its `progress` at
+  `waiting_for_input`: that value is only for a real open question you have
+  put to the person with an `ask_user_*` tool, never for "waiting for
+  acceptance". A written result counts as delivered either way. Use `blocked`
+  only when you could not do the step, and say why in the note.
 - You may add, change and reorder your own steps when the way turns out
   different.
 - Keep the goal unchanged, keep `confirm-result` with its question unchanged,
   keep `completion_step_id` set to `confirm-result`, and never cancel the plan.
   A change to any of these is refused and the plan stays as it was.
-- A round that changes nothing in the plan counts as no progress. After two
-  such rounds in a row the run stops and waits for the person. If you cannot
-  move a step forward, say what is missing instead of repeating the same call.
+- Only real work counts as progress: a step that became ready, new evidence,
+  a new or changed assessment result, or a bound workflow or connector that
+  ran. Rewriting notes, labels, the order of steps or
+  `progress` values does not count, and neither does reading the plan again.
+  After two rounds in a row without progress the run stops and waits for the
+  person. If you cannot move a step forward, say what is missing instead of
+  repeating the same call.
 
 ## 3. Use only what the task binds
 
@@ -77,13 +86,15 @@ outside SubKit, and the person confirms the result.
 - A bound workflow with a valid approval of its own runs for real, also when
   the task has no standing permission. Without one it holds its writes
   (`writes_held`) and asks the person itself; the round is over. Do not call
-  the tool again to get past that. Only the owner of the task can release
-  held writes; when they do, the engine performs them and reports back.
+  the tool again to get past that. Only the owner of the task or an admin can
+  release held writes; when one of them does, the engine performs them with
+  the rights of the run and reports back.
 - When you need a decision or a missing fact, ask with an `ask_user_*` tool:
   one short question, clear options and your recommendation. The run then
   waits for the answer.
-- Do not ask whether the result is right or whether the task may be closed.
-  A question bound to `confirm-result` is refused.
+- Do not ask whether the result is right, whether the goal is reached or
+  whether the task may be closed. A question bound to `confirm-result`, and a
+  question that repeats the goal, is refused; nobody is asked.
 - A question cannot carry an action to perform after the answer. Ask the plain
   question first; act yourself in the next round with the answer.
 - A declined approval is an answer. Record it in the plan and continue with
@@ -116,12 +127,15 @@ outside SubKit, and the person confirms the result.
 
 ## 7. Deliver the result
 
-- When every work step has its evidence or its assessment result, the engine
-  presents the result to the person by itself. End the round with the
-  summary: a few plain sentences on what was done, what the evidence shows,
-  what was not possible and why. Ask nothing.
-- Write to the person in the language of the goal. In German, address them
-  informally ("du"), never "Sie".
+- You hand the result over by ending the round. When every work step has its
+  evidence or its assessment result, the engine presents the result to the
+  person by itself. End the round with the summary: a few plain sentences on
+  what was done, what the evidence shows, what was not possible and why. Ask
+  nothing, and do not start another round of checking the plan.
+- Write in the language each round names: the summary, every question, and
+  the results and notes you record in the plan. In German, address the person
+  informally ("du"), never "Sie". When no language is named, use the language
+  of the goal.
 - Leave `confirm-result` open. The person reviews and confirms it. If they
   send the result back, you are told so in the next round. Read what they
   wrote or ask what is missing, do the work and update the plan. The same
@@ -138,5 +152,7 @@ outside SubKit, and the person confirms the result.
 - Do not put secrets, long texts or the person's answers into step notes.
   Notes are short and name what happened.
 - Do not treat silence as approval. No answer means the run waits.
+- Do not park a finished step at `waiting_for_input` and do not ask the
+  person to accept the result. Write the result, end the round.
 - Do not run the same workflow again because its evidence is still open.
   Read the execution with `get_execution` and attach that read instead.

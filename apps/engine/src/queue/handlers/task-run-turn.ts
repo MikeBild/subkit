@@ -267,11 +267,7 @@ async function driveTurn(
           conversation_id,
           actor_id: task.owner_id,
           principal,
-          message:
-            run.rejected_playbook_revision !== null &&
-            run.rejected_playbook_revision === run.last_playbook_revision
-              ? `${driver.TASK_RUN_CONTINUATION_MESSAGE}\n${driver.TASK_RUN_REJECTION_NOTICE}`
-              : driver.TASK_RUN_CONTINUATION_MESSAGE,
+          message: driver.taskRunTurnPrompt(task.locale, driver.taskRunTurnKind(run)),
           origin: TASK_RUN_CONTINUATION_ORIGIN,
         },
         db,

@@ -30161,7 +30161,7 @@ export interface components {
             last_playbook_revision: number;
             trace_id: string;
             /** @enum {string|null} */
-            failure_code: "turn_failed" | "turn_interrupted" | "start_failed" | "playbook_tampered" | "playbook_cancelled" | "conversation_closed" | "task_changed" | "task_archived" | "owner_unavailable" | "budget_exhausted" | "deadline_exceeded" | null;
+            failure_code: "turn_failed" | "turn_interrupted" | "start_failed" | "playbook_tampered" | "playbook_cancelled" | "conversation_closed" | "task_changed" | "task_archived" | "owner_unavailable" | "budget_exhausted" | "deadline_exceeded" | "turn_limit_reached" | null;
             /** Format: date-time */
             result_ready_at: string | null;
             /** Format: date-time */
@@ -30230,7 +30230,7 @@ export interface components {
             last_playbook_revision: number;
             trace_id: string;
             /** @enum {string|null} */
-            failure_code: "turn_failed" | "turn_interrupted" | "start_failed" | "playbook_tampered" | "playbook_cancelled" | "conversation_closed" | "task_changed" | "task_archived" | "owner_unavailable" | "budget_exhausted" | "deadline_exceeded" | null;
+            failure_code: "turn_failed" | "turn_interrupted" | "start_failed" | "playbook_tampered" | "playbook_cancelled" | "conversation_closed" | "task_changed" | "task_archived" | "owner_unavailable" | "budget_exhausted" | "deadline_exceeded" | "turn_limit_reached" | null;
             /** Format: date-time */
             result_ready_at: string | null;
             /** Format: date-time */

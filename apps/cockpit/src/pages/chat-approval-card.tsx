@@ -67,7 +67,7 @@ export function ChatApprovalCard({
         }
         line={line}
         secondary={
-          approval.ownerOnly ? null : (
+          approval.decidedByOthers ? null : (
             <Button
               variant="outline"
               disabled={busy || expired}
@@ -79,9 +79,12 @@ export function ChatApprovalCard({
           )
         }
         action={
-          approval.ownerOnly ? (
-            <p className="text-sm text-muted-foreground" data-testid={`${testId}-owner-only`}>
-              {t("chat.taskRun.ownerOnly")}
+          approval.decidedByOthers ? (
+            <p
+              className="text-sm text-muted-foreground"
+              data-testid={`${testId}-decided-by-others`}
+            >
+              {t("chat.taskRun.decidedByOthers")}
             </p>
           ) : (
             <Button

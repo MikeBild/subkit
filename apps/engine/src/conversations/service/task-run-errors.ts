@@ -29,13 +29,24 @@ export class TaskRunLockedError extends HttpError {
   }
 }
 
-export class TaskRunApprovalOwnerOnlyError extends HttpError {
+export class TaskRunApprovalForbiddenError extends HttpError {
   constructor() {
     super(
       403,
       "task_run_approval_owner_only",
-      "Only the owner of this task can decide this: the held changes were prepared in the owner's name. Nothing was changed. Ask the owner to answer, or abort the run.",
+      "Only the owner of this task or an admin can decide this. Nothing was changed. Ask one of them to answer, or abort the run.",
     );
-    this.name = "TaskRunApprovalOwnerOnlyError";
+    this.name = "TaskRunApprovalForbiddenError";
+  }
+}
+
+export class TaskRunApprovalUnavailableError extends HttpError {
+  constructor() {
+    super(
+      409,
+      "task_run_approval_unavailable",
+      "These held changes can no longer be released with the rights of the run: the owner is unavailable, the task is paused or the run ended. Nothing was changed. Abort the run or start it again.",
+    );
+    this.name = "TaskRunApprovalUnavailableError";
   }
 }

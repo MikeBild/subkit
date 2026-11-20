@@ -39,8 +39,8 @@ export function useChatQuestions(data: ConversationDetail | undefined) {
     seenQuestionId.current = openQuestionId;
     void queryClient.invalidateQueries({ queryKey: ["conversations"] });
   }, [openQuestionId, queryClient]);
-  const viewerId = useSession().principal.id;
-  const askedDecision = chatApproval(data, viewerId);
+  const viewer = useSession().principal;
+  const askedDecision = chatApproval(data, viewer.id, viewer.role_name === "admin");
   const taskName = useTaskActionName(askedDecision?.taskAction ?? null);
   const pendingDecision = askedDecision?.taskAction
     ? { ...askedDecision, taskAction: withTaskName(askedDecision.taskAction, taskName) }

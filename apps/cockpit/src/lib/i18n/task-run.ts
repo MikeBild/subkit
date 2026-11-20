@@ -18,7 +18,7 @@ export const taskRunEn = {
   "chat.taskRun.abort.failed": "The run could not be stopped, try again.",
   "chat.taskRun.unavailable": "This run cannot be loaded right now.",
   "chat.taskRun.scope": "Messages stay within what the task allows.",
-  "chat.taskRun.ownerOnly": "Only the owner of the task can give this approval.",
+  "chat.taskRun.decidedByOthers": "Only the owner of the task or an admin can give this approval.",
   "chat.taskRun.confirm.label": "Review result",
   "chat.taskRun.confirm.question": "Does the result meet the goal “{goal}”?",
   "chat.taskRun.confirm.notYet": "Comes up once the steps before it are finished.",
@@ -51,7 +51,8 @@ export const taskRunDe: Record<keyof typeof taskRunEn, string> = {
   "chat.taskRun.abort.failed": "Der Lauf ließ sich nicht abbrechen, versuch es erneut.",
   "chat.taskRun.unavailable": "Dieser Lauf lässt sich gerade nicht laden.",
   "chat.taskRun.scope": "Nachrichten bleiben innerhalb dessen, was die Aufgabe erlaubt.",
-  "chat.taskRun.ownerOnly": "Nur die Besitzerin der Aufgabe kann diese Freigabe erteilen.",
+  "chat.taskRun.decidedByOthers":
+    "Nur die Besitzerin der Aufgabe oder ein Administrator kann diese Freigabe erteilen.",
   "chat.taskRun.confirm.label": "Ergebnis prüfen",
   "chat.taskRun.confirm.question": "Passt das Ergebnis zum Ziel „{goal}“?",
   "chat.taskRun.confirm.notYet": "Kommt dran, sobald die Schritte davor fertig sind.",

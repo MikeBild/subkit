@@ -10,6 +10,7 @@ import {
 } from "../db/schema/index.ts";
 import { can } from "../rbac/evaluator.ts";
 import { now } from "../utils/clock.ts";
+import { getTaskRunMarker } from "./core/draft.ts";
 import {
   type PlaybookDocument,
   PlaybookDocumentSchema,
@@ -41,6 +42,7 @@ export async function readPlaybook(
       playbook: conversations.playbook,
       revision: conversations.playbook_revision,
       mode: conversations.playbook_mode,
+      draft: conversations.draft,
     })
     .from(conversations)
     .where(
@@ -82,7 +84,13 @@ export async function readPlaybook(
     }
     evidence.set(step.id, items);
   }
-  return projectPlaybook(parsed.data, row?.revision ?? 0, evidence, scope.locale);
+  return projectPlaybook(
+    parsed.data,
+    row?.revision ?? 0,
+    evidence,
+    scope.locale,
+    getTaskRunMarker(row?.draft) === null ? "conversation" : "task_run",
+  );
 }
 
 export async function updatePlaybook(

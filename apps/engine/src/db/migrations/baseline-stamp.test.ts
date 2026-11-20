@@ -65,6 +65,7 @@ describe("baseline over the squashed migration chain", () => {
       "0005_hosted_workspace_model_key",
       "0006_drop_hosted_budget_reservations",
       "0007_tasks",
+      "0008_task_run_progress_marks",
     ]);
     expect(baseline.idx).toBe(0);
   });

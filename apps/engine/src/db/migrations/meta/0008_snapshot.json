@@ -1,6 +1,6 @@
 {
-  "id": "b35f0e4f-0d7f-4370-9672-9efdf5dd8cc5",
-  "prevId": "e4b782a1-f353-4ae0-8b36-3606f1f7a9c4",
+  "id": "2577383f-7583-426c-b0d2-d343e6fd89fb",
+  "prevId": "b35f0e4f-0d7f-4370-9672-9efdf5dd8cc5",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -17212,6 +17212,13 @@
           "notNull": true,
           "default": 0
         },
+        "progress_marks": {
+          "name": "progress_marks",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
         "trace_id": {
           "name": "trace_id",
           "type": "text",
@@ -17464,6 +17471,10 @@
         "task_runs_counters_check": {
           "name": "task_runs_counters_check",
           "value": "\"task_runs\".\"task_revision\" >= 1 AND \"task_runs\".\"turns_used\" >= 0 AND \"task_runs\".\"no_progress_count\" >= 0 AND \"task_runs\".\"last_playbook_revision\" >= 0"
+        },
+        "task_runs_progress_marks_check": {
+          "name": "task_runs_progress_marks_check",
+          "value": "jsonb_typeof(\"task_runs\".\"progress_marks\") = 'array'"
         }
       },
       "isRLSEnabled": false

@@ -126,6 +126,7 @@ export const taskRuns = pgTable(
     budget_wait_tokens: integer("budget_wait_tokens"),
     rejected_playbook_revision: integer("rejected_playbook_revision"),
     last_playbook_revision: integer("last_playbook_revision").notNull().default(0),
+    progress_marks: jsonb("progress_marks").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     trace_id: text("trace_id").notNull(),
     failure_code: text("failure_code"),
     result_ready_at: timestamp("result_ready_at", { withTimezone: true }),
@@ -170,6 +171,7 @@ export const taskRuns = pgTable(
       "task_runs_counters_check",
       sql`${t.task_revision} >= 1 AND ${t.turns_used} >= 0 AND ${t.no_progress_count} >= 0 AND ${t.last_playbook_revision} >= 0`,
     ),
+    check("task_runs_progress_marks_check", sql`jsonb_typeof(${t.progress_marks}) = 'array'`),
   ],
 );
 

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { type PlaybookPlan, PlaybookPlanSchema } from "../../conversations/public/authoring.ts";
+import { workflowJsonDigest } from "../../workflows/canonical-json.ts";
 import {
   instantiateTaskPlan,
   TASK_PLAN_TEMPLATE_MAX_STEPS,
@@ -205,7 +206,7 @@ describe("taskPlaybookFacts", () => {
   const view = (statuses: Record<string, string>, status = "in_progress") => ({
     status,
     revision: 4,
-    steps: Object.entries(statuses).map(([id, value]) => ({ id, status: value })),
+    steps: Object.entries(statuses).map(([id, value]) => ({ id, status: value, evidence: [] })),
   });
   const open = { a: "open", b: "open", [TASK_RESULT_STEP_ID]: "open" };
 
@@ -216,6 +217,7 @@ describe("taskPlaybookFacts", () => {
       intact: true,
       result_confirmed: false,
       awaiting_result_confirmation: false,
+      progress_marks: [],
     });
   });
 
@@ -286,5 +288,86 @@ describe("taskPlaybookFacts", () => {
 
   test("a different task goal makes the stored plan foreign", () => {
     expect(taskPlaybookFacts(view(open), stored, "Another goal").intact).toBe(false);
+  });
+});
+
+describe("the progress marks of the facts", () => {
+  const digest = (text: string) => workflowJsonDigest(text);
+  const viewStep = (
+    id: string,
+    status: string,
+    evidence: Array<{ id: string; freshness: string }> = [],
+  ) => ({ id, status, evidence });
+  const planStep = (id: string, result?: string | null) => ({
+    id,
+    criterion:
+      result === undefined
+        ? id === TASK_RESULT_STEP_ID
+          ? { kind: "human_confirmation", question: GOAL }
+          : { kind: "execution_succeeded" }
+        : { kind: "assessment", result },
+  });
+  const marks = (
+    steps: ReturnType<typeof viewStep>[],
+    plan: ReturnType<typeof planStep>[],
+  ): string[] =>
+    taskPlaybookFacts(
+      { status: "in_progress", revision: 2, steps },
+      { goal: GOAL, completion_step_id: TASK_RESULT_STEP_ID, steps: plan },
+      GOAL,
+    ).progress_marks;
+
+  test("an untouched plan carries no mark", () => {
+    expect(
+      marks(
+        [viewStep("a", "open"), viewStep(TASK_RESULT_STEP_ID, "blocked")],
+        [planStep("a", null), planStep(TASK_RESULT_STEP_ID)],
+      ),
+    ).toEqual([]);
+  });
+
+  test("ready work steps are counted, fresh evidence is named, written results by their content", () => {
+    expect(
+      marks(
+        [
+          viewStep("a", "verified", [
+            { id: "call-1", freshness: "fresh" },
+            { id: "call-2", freshness: "stale" },
+            { id: "call-3", freshness: "unavailable" },
+          ]),
+          viewStep("b", "in_progress", [{ id: "call-4", freshness: "fresh" }]),
+          viewStep("c", "assessment_ready"),
+          viewStep("d", "waiting_for_input"),
+          viewStep(TASK_RESULT_STEP_ID, "verified"),
+        ],
+        [
+          planStep("a"),
+          planStep("b", null),
+          planStep("c", "Done."),
+          planStep("d", ""),
+          planStep(TASK_RESULT_STEP_ID),
+        ],
+      ),
+    ).toEqual([
+      "ready:1",
+      "ready:2",
+      "evidence:call-1",
+      "evidence:call-4",
+      `result:${digest("Done.")}`,
+      `result:${digest("")}`,
+    ]);
+  });
+
+  test("notes, labels, the order of steps and their ids leave the marks of the same work alone", () => {
+    const of = (ids: [string, string]) =>
+      marks(
+        [
+          viewStep(ids[0], "assessment_ready", [{ id: "call-1", freshness: "fresh" }]),
+          viewStep(ids[1], "open"),
+        ],
+        [planStep(ids[0], "Done."), planStep(ids[1], null)],
+      );
+    expect(of(["a", "b"])).toEqual(of(["renamed", "other"]));
+    expect(of(["a", "b"])).toEqual(["ready:1", "evidence:call-1", `result:${digest("Done.")}`]);
   });
 });

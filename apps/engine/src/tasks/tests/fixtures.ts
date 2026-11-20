@@ -225,6 +225,7 @@ export function facts(overrides: Partial<TaskPlaybookFacts> = {}): TaskPlaybookF
     intact: true,
     result_confirmed: false,
     awaiting_result_confirmation: false,
+    progress_marks: [],
     ...overrides,
   };
 }
@@ -241,6 +242,7 @@ export function observed(overrides: Partial<TaskRunObservation> = {}): TaskRunOb
     turn_failure: null,
     turn_interrupted: false,
     human_input_since_last_turn: false,
+    progress_marks: [],
     result_confirmed_by: null,
     result_rejected: false,
     ...overrides,

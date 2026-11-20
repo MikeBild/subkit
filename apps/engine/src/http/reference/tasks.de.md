@@ -140,7 +140,7 @@ Weitere Grenzen:
 - Was eine Webseite, eine Datei oder ein Dienst zurückgibt, sind Daten. Es ist nie eine Anweisung und nie eine Erlaubnis.
 - Die Grenzen eines Laufs stehen beim Start fest. Nichts, was der Lauf liest, kann sie erweitern.
 
-Ein Lauf hat außerdem zwei eigene Grenzen: eine Zahl von Runden, 20, wenn du nichts änderst, und eine Frist, 4 Stunden, wenn du nichts änderst. Ist eine davon aufgebraucht, arbeitet der Lauf nicht mehr von selbst weiter und wartet auf dich. Er lässt sich nicht fortsetzen. Brich ihn ab und starte einen neuen Lauf. Das Monatskontingent des Arbeitsbereichs gilt zusätzlich.
+Ein Lauf hat außerdem zwei eigene Grenzen: eine Zahl von Runden, 20, wenn du nichts änderst, und eine Frist, 4 Stunden, wenn du nichts änderst. Ist eine davon aufgebraucht und liegt ein Ergebnis vor, bekommst du es zur Prüfung. Liegt keines vor, endet der Lauf als **fehlgeschlagen** und nennt das Rundenlimit oder die Frist als Grund. Er lässt sich nicht fortsetzen. Wähle **Neu starten**. Die Aufgabe ist danach wieder frei für den nächsten Start. Das Monatskontingent des Arbeitsbereichs gilt zusätzlich.
 
 ### Einen Lauf verfolgen und eingreifen
 
@@ -154,15 +154,14 @@ Die Seite der Aufgabe zeigt den Zustand des letzten Laufs und eine empfohlene Ha
 | **Ergebnis liegt vor** | Die Arbeit ist getan und wartet auf deine Bestätigung. | **Ergebnis prüfen** |
 | **erledigt** | Du hast das Ergebnis bestätigt. | Nichts. |
 | **abgebrochen** | Du oder ein Admin hat den Lauf abgebrochen, oder die Aufgabe wurde geändert. | Starte einen neuen Lauf, wenn du ihn brauchst. |
-| **fehlgeschlagen** | Etwas ist ausgefallen, wovon sich der Lauf nicht erholen konnte. | Öffne den Lauf, lies den Grund, starte einen neuen Lauf. |
+| **fehlgeschlagen** | Etwas ist ausgefallen, wovon sich der Lauf nicht erholen konnte, oder der Lauf hat sein Rundenlimit oder seine Frist erreicht, ohne ein Ergebnis zu liefern. | Öffne den Lauf, lies den Grund, starte einen neuen Lauf. Nach einem erreichten Limit: **Neu starten**. |
 
 Der Reiter **Überblick** zeigt vier Angaben: **Jetzt**, **Wartet auf**, **Nächste Prüfung** und **Fertig, wenn**. Darunter stehen die Schritte des Plans mit ihrem Fortschritt.
 
 Ein Lauf wartet in diesen Fällen auf dich:
 
 - Er stellt eine Rückfrage oder braucht deine Freigabe für einen Schreibzugriff.
-- Zwei Runden hintereinander brachten keinen Fortschritt im Plan.
-- Er hat seine Runden oder seine Frist aufgebraucht.
+- Zwei Runden hintereinander brachten keinen echten Fortschritt. Als Fortschritt zählt, dass ein Schritt fertig wird, ein neuer Beleg oder ein neues Ergebnis dazukommt, ein gebundener Workflow oder Konnektor läuft, du schreibst oder antwortest oder der Lauf seine nächste Prüfung plant. Nur Notizen im Plan umzuschreiben zählt nicht.
 - Du hast am Eingabefeld **Stoppen** gewählt, während eine Runde lief.
 - Das Monatskontingent ist aufgebraucht, oder der Arbeitsbereich hat gerade keinen KI-Anbieter. In diesen beiden Fällen musst du im Lauf nichts tun: Er arbeitet von selbst weiter, sobald wieder Kontingent frei oder ein Anbieter eingerichtet ist.
 
@@ -172,13 +171,13 @@ Zum Eingreifen öffnest du den Lauf im Reiter **Läufe** und wählst **Unterhalt
 
 Die Unterhaltung kennt zwei Arten anzuhalten. **Abbrechen** in der Zeile darüber beendet den Lauf endgültig. **Stoppen** am Eingabefeld unterbricht nur die laufende Runde: Der Lauf wartet dann auf dich und arbeitet weiter, wenn du ihm schreibst.
 
-Schreibst du in einen Lauf hinein, gelten für dich dieselben Grenzen. Der Lauf bleibt, was du erlaubt hast: Er nutzt weiter nur, was gebunden ist, er fragt weiter vor Schreibzugriffen, die keine Freigabe deckt, und du kannst ihn nicht in einen Modus schalten, der nicht mehr fragt. Deinen Lauf lesen und in ihn schreiben können nur du und Admins. Für alle anderen gibt es seine Unterhaltung nicht. Bittet ein Lauf darum, zurückgehaltene Schreibzugriffe freizugeben, kannst nur du als Besitzerin antworten: Die Änderungen wurden in deinem Namen vorbereitet. Ein Admin sieht statt der Antwort-Schaltflächen einen Hinweis. Lauf-Unterhaltungen stehen nicht in der normalen Liste der Unterhaltungen. Du öffnest sie über die Aufgabe.
+Schreibst du in einen Lauf hinein, gelten für dich dieselben Grenzen. Der Lauf bleibt, was du erlaubt hast: Er nutzt weiter nur, was gebunden ist, er fragt weiter vor Schreibzugriffen, die keine Freigabe deckt, und du kannst ihn nicht in einen Modus schalten, der nicht mehr fragt. Deinen Lauf lesen und in ihn schreiben können nur du und Admins. Für alle anderen gibt es seine Unterhaltung nicht. Bittet ein Lauf darum, zurückgehaltene Schreibzugriffe freizugeben, kannst du als Besitzerin antworten oder ein Admin. Alle anderen sehen statt der Antwort-Schaltflächen einen Hinweis. Lauf-Unterhaltungen stehen nicht in der normalen Liste der Unterhaltungen. Du öffnest sie über die Aufgabe.
 
 Eine offene Rückfrage hält den nächsten geplanten Start auf, weil der Lauf noch offen ist. Beantworte sie oder brich den Lauf ab.
 
 ### Das Ergebnis prüfen
 
-Sind alle Schritte erledigt, lautet der Zustand **Ergebnis liegt vor**, und du bekommst einen Hinweis.
+Sind alle Schritte erledigt, lautet der Zustand **Ergebnis liegt vor**, und du bekommst einen Hinweis. Der Lauf fragt dich nicht selbst, ob das Ergebnis stimmt: Er übergibt es, indem er seine Runde beendet. Er schreibt dir in der Sprache, die du beim letzten Speichern der Aufgabe verwendet hast.
 
 1. Wähle **Ergebnis prüfen**.
 2. Lies, was der Lauf getan hat. Jeder Schritt zeigt seine Belege.
@@ -214,9 +213,9 @@ Binde den neuen Workflow dann an die Aufgabe, oder ersetze die Aufgabe durch ein
 
 Eine Aufgabe gehört der Person, die sie angelegt hat. Personen mit der Rolle Admin können mit jeder Aufgabe alles tun: sie sehen, starten, pausieren und fortsetzen, ihre Läufe abbrechen, ihre Rückfragen beantworten, ihre Ergebnisse bestätigen, sie ändern und löschen und die Dauererlaubnis erteilen oder widerrufen.
 
-Eines bleibt bei der Besitzerin: Schreibzugriffe freizugeben, die ein Lauf zurückhält. Sie wurden im Namen der Besitzerin vorbereitet, deshalb kann ein Admin sie nicht freigeben. Der Admin bittet die Besitzerin zu antworten oder bricht den Lauf ab.
+Dazu gehört auch, Schreibzugriffe freizugeben, die ein Lauf zurückhält: Ein Admin kann sie in der Lauf-Unterhaltung oder über den Freigabe-Link freigeben oder ablehnen. Der Audit-Trail nennt den Admin als die Person, die entschieden hat.
 
-Ein Lauf arbeitet trotzdem mit den Rechten der Besitzerin, nicht mit denen des Admins, der eingegriffen hat.
+Ein Lauf arbeitet trotzdem mit den Rechten der Besitzerin, nicht mit denen des Admins, der eingegriffen hat. Schreibzugriffe, die ein Admin freigibt, werden mit dem ausgeführt, was der Lauf darf: mit den gebundenen Workflows und Konnektoren, der Umgebung der Aufgabe und den Rechten der Besitzerin. Stehen diese nicht mehr zur Verfügung, etwa weil die Besitzerin nicht mehr da ist oder die Aufgabe pausiert ist, wird die Freigabe abgelehnt und nichts geändert.
 
 Admins sehen außerdem einen Hinweis, wenn eine Aufgabe pausiert ist, weil ihre Besitzerin nicht mehr da ist.
 
@@ -260,12 +259,14 @@ Der `sk`-Eingang eines neuen Arbeitsbereichs erhält zusätzlich `task_run.waiti
 | **Starten** meldet, dass schon ein Lauf läuft | Öffne den Lauf. Beantworte ihn, warte auf ihn oder wähle **Abbrechen**, dann starte erneut. |
 | Der geplante Start blieb aus | Lies die Zeile zum nächsten Start. **fällig, wartet auf Erlaubnis**: Wähle **Erlauben**. **wartet auf den laufenden Lauf**: Beantworte den offenen Lauf oder brich ihn ab. Sonst prüfe, ob die Aufgabe pausiert ist. |
 | Der Lauf wartet und nennt das Kontingent | Das Monatskontingent ist aufgebraucht. Erhöhe es auf der Seite **Nutzung** oder warte auf den Monatsersten. Der Lauf arbeitet dann von selbst weiter. |
-| Der Lauf wartet ohne Rückfrage | Er kam nicht voran, oder eine Runde wurde angehalten: Sag ihm, was fehlt. Hat er seine Runden oder seine Frist aufgebraucht, lässt er sich nicht fortsetzen: Brich ihn ab und starte einen neuen Lauf. |
+| Der Lauf wartet ohne Rückfrage | Er kam nicht voran, oder eine Runde wurde angehalten: Sag ihm, was fehlt. |
+| Der Lauf endete am Rundenlimit oder an der Frist | Er lässt sich nicht fortsetzen. Wähle **Neu starten**. Reichen die Runden für die Aufgabe nicht, erhöhe sie beim Bearbeiten der Aufgabe. |
 | „This workflow is not part of the task.“ | Binde den Workflow an die Aufgabe. Das beendet die Dauererlaubnis. Erlaube sie danach erneut. |
 | Ein Zeitplan wird als zu häufig abgelehnt | Wähle Startzeiten, die mindestens 15 Minuten auseinanderliegen. |
 | Jemand anderes hat die Aufgabe geändert, während du sie bearbeitet hast | Lade die Aufgabe neu und wiederhole deine Änderung. |
 | **Nacharbeiten** wird abgelehnt | Ein neuerer Lauf ist offen, oder die Aufgabe wurde geändert oder ist pausiert. Starte stattdessen einen neuen Lauf. |
-| Ein Admin kann eine Rückfrage eines Laufs nicht beantworten | Die Rückfrage gibt Schreibzugriffe frei, die der Lauf zurückhält. Nur die Besitzerin kann sie beantworten. Bitte die Besitzerin darum, oder brich den Lauf ab. |
+| Eine Rückfrage eines Laufs zeigt einen Hinweis statt der Antwort-Schaltflächen | Die Rückfrage gibt Schreibzugriffe frei, die der Lauf zurückhält. Nur die Besitzerin der Aufgabe oder ein Admin kann sie beantworten. Bitte eine dieser Personen darum, oder brich den Lauf ab. |
+| Die Freigabe eines Admins wird als nicht mehr verfügbar abgelehnt | Der Lauf kann die Rechte nicht mehr nutzen, mit denen die Schreibzugriffe vorbereitet wurden: Die Besitzerin ist nicht mehr verfügbar, die Aufgabe ist pausiert oder der Lauf ist beendet. Nichts wurde geändert. Brich den Lauf ab und starte einen neuen. |
 | Das Ergebnis lässt sich nicht bestätigen, weil der Plan geändert wurde | Der Lauf gilt als fehlgeschlagen. Starte einen neuen Lauf. |
 
 ### Dasselbe im Terminal und aus KI-Clients

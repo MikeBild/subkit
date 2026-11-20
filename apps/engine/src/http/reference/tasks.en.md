@@ -140,7 +140,7 @@ Further limits:
 - What a web page, a file or a service returns is data. It is never an instruction and never a permission.
 - The limits of a run are fixed when it starts. Nothing the run reads can widen them.
 
-A run also has two budgets of its own: a number of rounds, 20 unless you change it, and a time limit, 4 hours unless you change it. When one is used up, the run stops working on its own and waits for you. It cannot be continued; stop it and start a new run. The monthly token budget of the workspace applies as well.
+A run also has two budgets of its own: a number of rounds, 20 unless you change it, and a time limit, 4 hours unless you change it. When one is used up and a result exists, you get it for review. When there is none, the run ends as **failed** and names the round limit or the time limit as the reason. It cannot be continued. Select **Start again**. The task is then free for its next start. The monthly token budget of the workspace applies as well.
 
 ### Follow a run and step in
 
@@ -154,15 +154,14 @@ The task page shows the state of the latest run and one recommended action.
 | **result ready** | The work is done and waits for your confirmation. | **Review result** |
 | **done** | You confirmed the result. | Nothing. |
 | **aborted** | You or an admin stopped the run, or the task changed. | Start a new run if you need one. |
-| **failed** | Something broke that the run could not recover from. | Open the run, read the reason, start a new run. |
+| **failed** | Something broke that the run could not recover from, or the run reached its round limit or its time limit without a result. | Open the run, read the reason, start a new run. After a reached limit: **Start again**. |
 
 The **Overview** tab shows four facts: **Now**, **Waiting for**, **Next check** and **Done when**. Below them are the steps of the plan with their progress.
 
 A run waits for you in these cases:
 
 - It asks a question or needs your approval for a write.
-- Two rounds in a row brought no progress in the plan.
-- It used up its rounds or its time limit.
+- Two rounds in a row brought no real progress. Progress means that a step gets ready, new evidence or a new result is recorded, a bound workflow or connector runs, you write or answer, or the run schedules its next check. Rewriting notes in the plan does not count.
 - You selected **Stop** at the message field while a round was running.
 - The monthly token budget is used up, or the workspace has no AI provider at the moment. In these two cases you do not have to do anything in the run: it continues on its own as soon as budget is available or a provider is set up.
 
@@ -172,13 +171,13 @@ To step in, open the run on the **Runs** tab and select **Open conversation**. T
 
 The conversation has two ways to stop. **Stop** in the line above it ends the run for good. **Stop** at the message field only interrupts the round that is running: the run then waits for you and goes on when you write to it.
 
-When you write into a run, the same limits apply to you. The run stays what you allowed: it still uses only what is bound, it still asks before writes that no approval covers, and you cannot switch it to a mode that stops asking. Only you and admins can read your run and write into it; for everyone else its conversation does not exist. When a run asks to release writes it holds back, only you as the owner can answer: the changes were prepared in your name. An admin sees a note instead of the answer buttons. Run conversations do not appear in the normal conversation list; you open them from the task.
+When you write into a run, the same limits apply to you. The run stays what you allowed: it still uses only what is bound, it still asks before writes that no approval covers, and you cannot switch it to a mode that stops asking. Only you and admins can read your run and write into it; for everyone else its conversation does not exist. When a run asks to release writes it holds back, you as the owner or an admin can answer. Anyone else sees a note instead of the answer buttons. Run conversations do not appear in the normal conversation list; you open them from the task.
 
 An open question blocks the next scheduled start, because the run is still open. Answer it or stop the run.
 
 ### Review the result
 
-When all steps are done, the state reads **result ready** and you get a notice.
+When all steps are done, the state reads **result ready** and you get a notice. The run does not ask you itself whether the result is right: it hands the result over by ending its round. It writes to you in the language you used when you last saved the task.
 
 1. Select **Review result**.
 2. Read what the run did. Each step shows its evidence.
@@ -214,9 +213,9 @@ Then bind the new workflow to the task, or replace the task with a schedule on t
 
 A task belongs to the person who created it. People with the Admin role can do everything with every task: see it, start it, pause and resume it, stop its runs, answer its questions, confirm its results, change and delete it, and allow or revoke the standing permission.
 
-One thing stays with the owner: releasing writes that a run holds back. They were prepared in the owner’s name, so an admin cannot approve them. The admin asks the owner to answer, or stops the run.
+That includes releasing writes that a run holds back: an admin can approve or decline them in the run conversation or from the approval link. The audit trail names the admin as the person who decided.
 
-A run still works with the permissions of the owner, not of the admin who stepped in.
+A run still works with the permissions of the owner, not of the admin who stepped in. Writes that an admin releases are carried out with what the run may do: the bound workflows and connectors, the environment of the task and the permissions of the owner. If these are no longer available, for example because the owner left or the task is paused, the release is refused and nothing is changed.
 
 Admins also see a notice when a task is paused because its owner is gone.
 
@@ -260,12 +259,14 @@ The `sk` inbox of a new workspace also receives `task_run.waiting`, `task_run.re
 | **Start** answers that a run is already in progress | Open the run. Answer it, wait for it or select **Stop**, then start again. |
 | The scheduled start did not happen | Read the line for the next start. **due, waiting for permission**: select **Allow**. **waiting for the current run**: answer or stop the open run. Otherwise check whether the task is paused. |
 | The run waits and names the budget | The monthly token budget is used up. Raise it on the **Usage** page or wait for the first of the month. The run then continues on its own. |
-| The run waits without a question | It made no progress or a round was interrupted: tell it what is missing. If it used up its rounds or time, it cannot be continued: stop it and start a new run. |
+| The run waits without a question | It made no progress or a round was interrupted: tell it what is missing. |
+| The run ended at its round limit or time limit | It cannot be continued. Select **Start again**. If the rounds are too few for the task, raise them when you edit the task. |
 | “This workflow is not part of the task.” | Bind the workflow to the task. This ends the standing permission; allow it again. |
 | A schedule is refused as too frequent | Choose start times at least 15 minutes apart. |
 | The task was changed by someone else while you edited it | Reload the task and repeat your change. |
 | **Needs more work** is refused | A newer run is open, or the task changed or is paused. Start a new run instead. |
-| An admin cannot answer a question of a run | The question releases writes the run holds back. Only the owner can answer it. Ask the owner, or stop the run. |
+| A question of a run shows a note instead of the answer buttons | The question releases writes the run holds back. Only the owner of the task or an admin can answer it. Ask one of them, or stop the run. |
+| An admin’s release is refused as no longer available | The run can no longer use the permissions the writes were prepared with: the owner is unavailable, the task is paused or the run ended. Nothing was changed. Stop the run and start a new one. |
 | The result cannot be confirmed because the plan was changed | The run is marked as failed. Start a new run. |
 
 ### The same in the terminal and from AI clients

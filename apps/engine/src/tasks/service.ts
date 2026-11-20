@@ -13,7 +13,7 @@ import { taskFingerprint } from "./core/fingerprint.ts";
 import { taskPlanTemplateIssue } from "./core/plan-instance.ts";
 import { decideTaskRunResume } from "./core/run-state.ts";
 import { taskScheduleChanged, taskScheduleIssue } from "./core/schedule.ts";
-import { closeOpenRun, findOpenRun, writeRun } from "./service/run-rows.ts";
+import { closeOpenRun, findOpenRun, runEndedAtItsLimit, writeRun } from "./service/run-rows.ts";
 import {
   actorOf,
   grantActor,
@@ -439,26 +439,17 @@ export async function resumeTask(
     if (open?.state !== "sleeping" || open.sleep_reason !== "paused")
       return { task: rowToTask(row), run: open ? rowToTaskRun(open) : null, enqueue: false };
     const decision = decideTaskRunResume(open, { max_turns: row.max_turns }, at);
+    const ended = decision.resume ? null : runEndedAtItsLimit(decision.failure_code, at);
     const run = await writeRun(
       tx,
       deps,
       open,
-      decision.resume
-        ? { state: "running", sleep_reason: null, next_check_at: null }
-        : {
-            state: "waiting",
-            waiting_reason: decision.waiting_reason,
-            sleep_reason: null,
-            next_check_at: null,
-          },
+      ended ? ended.set : { state: "running", sleep_reason: null, next_check_at: null },
       {
         at,
         effects,
         audits: [
-          {
-            action: decision.resume ? AuditAction.TASK_RUN_RESUMED : AuditAction.TASK_RUN_WAITING,
-            actor: SYSTEM_ACTOR,
-          },
+          ended ? ended.audit : { action: AuditAction.TASK_RUN_RESUMED, actor: SYSTEM_ACTOR },
         ],
       },
     );

@@ -10,6 +10,7 @@ export const TASK_RUN_FAILURE_CODES = [
   "owner_unavailable",
   "budget_exhausted",
   "deadline_exceeded",
+  "turn_limit_reached",
 ] as const;
 
 export type TaskRunFailureCode = (typeof TASK_RUN_FAILURE_CODES)[number];

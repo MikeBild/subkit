@@ -278,6 +278,42 @@ describe("playbook scenario projections with resolved evidence", () => {
     expect(view.summary).not.toBe(result);
   });
 
+  test("a delivered assessment parked at waiting_for_input stays held in a chat and counts as delivered in a task run", () => {
+    const result = "In Berlin sind es 3,8 °C bei leichtem Wind aus Westen.";
+    const doc = document("Wetter zusammenfassen", [
+      step(
+        "work",
+        { kind: "assessment", description: "Zusammenfassung", result },
+        { progress: "waiting_for_input", evidence_ids: [] },
+      ),
+      step(
+        "refused",
+        { kind: "assessment", description: "Versand", result },
+        { progress: "blocked", evidence_ids: [] },
+      ),
+      step(
+        "after",
+        { kind: "assessment", description: "Folgeschritt", result },
+        { depends_on: ["work"], evidence_ids: [] },
+      ),
+    ]);
+    const statuses = (handOver?: "conversation" | "task_run") =>
+      projectPlaybook(doc, 3, new Map(), "de", handOver).steps.map((item) => item.status);
+    expect(statuses()).toEqual(["waiting_for_input", "blocked", "blocked"]);
+    expect(statuses("conversation")).toEqual(["waiting_for_input", "blocked", "blocked"]);
+    expect(statuses("task_run")).toEqual(["assessment_ready", "blocked", "assessment_ready"]);
+    const open = document("Wetter zusammenfassen", [
+      step(
+        "work",
+        { kind: "assessment", description: "Zusammenfassung", result: null },
+        { progress: "waiting_for_input", evidence_ids: [] },
+      ),
+    ]);
+    expect(projectPlaybook(open, 3, new Map(), "de", "task_run").steps[0]?.status).toBe(
+      "waiting_for_input",
+    );
+  });
+
   test("assessed steps with an open next action are not prepared", () => {
     const result = "Die Betriebsumgebung ist noch nicht fachlich festgelegt worden.";
     const view = project(

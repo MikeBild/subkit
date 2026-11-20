@@ -303,20 +303,10 @@ async function withdrawRunQuestions(
   },
 ): Promise<void> {
   try {
-    const closed = params.state === "failed" || params.state === "aborted";
-    const [task] = closed
-      ? []
-      : await db
-          .select({ goal: tasks.goal })
-          .from(tasks)
-          .where(and(eq(tasks.tenant_id, params.tenant_id), eq(tasks.id, params.task_id)))
-          .limit(1);
     await cancelOpenTaskRunQuestions(db, {
       tenant_id: params.tenant_id,
       conversation_id: params.conversation_id,
-      reason: params.state === "result_ready" ? "task_run_result_ready" : "task_run_ended",
-      keep_approvals: params.state === "result_ready",
-      result_question: task?.goal ?? null,
+      outcome: params.state === "result_ready" ? "result_ready" : "ended",
     });
   } catch (error) {
     logger.warn({

@@ -5,10 +5,13 @@ import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations, conversationToolCalls, users } from "../../db/schema/index.ts";
+import { withContext } from "../../logging/context.ts";
 import { log } from "../../logging/logger.ts";
+import { rehydrateApprovalRequester } from "../../tools/approval-requester.ts";
 import type { AnswerActor } from "../answer-actor.ts";
 import { decidedByAuditActor, decidedByFor } from "../decided-by.ts";
 import type { ElicitationBridge } from "../elicitation-bridge.ts";
+import type { ElicitationRecord } from "../elicitations.ts";
 import {
   ElicitationActorMismatchError,
   ElicitationAnswerActorUnavailableError,
@@ -23,7 +26,7 @@ import {
   normalizeConfirmOutput,
 } from "../tools/ask-user/interpret-confirm.ts";
 import { conversationTurnId, markConversationTurnFailed } from "../turns.ts";
-import type { ConversationPermissionMode } from "../types.ts";
+import type { ConversationPermissionMode, TaskRunMarker } from "../types.ts";
 import { getConversation } from "./get.ts";
 import {
   ConversationNotFoundError,
@@ -39,6 +42,7 @@ import {
   assertTaskRunPermissionMode,
   assertTaskRunWriter,
   requireTaskRunPrincipal,
+  TaskRunApprovalUnavailableError,
 } from "./task-run-access.ts";
 
 export interface RespondElicitationParams {
@@ -110,7 +114,6 @@ async function driveElicitation(
 ): Promise<ConversationTurnOutcome> {
   const taskRun = await assertTaskRunWriter(exec, p);
   assertTaskRunPermissionMode(taskRun, p.permission_mode);
-  const principal = taskRun ? requireTaskRunPrincipal(p.principal, taskRun) : p.principal;
   if (p.require_same_actor) {
     const detail = await getConversation(p.tenant_id, p.conversation_id, exec);
     if (!detail) throw new ConversationNotFoundError(p.conversation_id);
@@ -119,12 +122,45 @@ async function driveElicitation(
     }
   }
 
-  const { getElicitation, resolveElicitation } = await import("../elicitations.ts");
+  const { getElicitation } = await import("../elicitations.ts");
   const pendingRow = await getElicitation(p.tenant_id, p.elicitation_id, exec);
   if (!pendingRow || pendingRow.conversation_id !== p.conversation_id)
     throw new ElicitationNotFoundError(p.elicitation_id);
-  if (pendingRow.status === "pending")
-    await assertTaskRunApprovalDecider(exec, p, pendingRow.input);
+  const decider =
+    pendingRow.status === "pending"
+      ? await assertTaskRunApprovalDecider(exec, p, pendingRow.input)
+      : null;
+  const state: SettleState = { taskRun, pendingRow, run_as: null };
+  if (decider && !decider.decided_by_owner) {
+    const requester = await rehydrateApprovalRequester(exec, {
+      tenant_id: p.tenant_id,
+      approval_id: decider.approval_id,
+    });
+    if (requester?.id !== decider.owner_id) throw new TaskRunApprovalUnavailableError();
+    state.run_as = requester;
+  }
+  return decider?.trace_id
+    ? await withContext({ audit_trace_id: decider.trace_id }, () =>
+        settleElicitation(p, exec, state),
+      )
+    : await settleElicitation(p, exec, state);
+}
+
+interface SettleState {
+  taskRun: TaskRunMarker | null;
+  pendingRow: ElicitationRecord;
+  run_as: ResolvedPrincipal | null;
+}
+
+async function settleElicitation(
+  p: RespondElicitationParams,
+  exec: Db,
+  { taskRun, pendingRow, run_as }: SettleState,
+): Promise<ConversationTurnOutcome> {
+  const { resolveElicitation } = await import("../elicitations.ts");
+  const acting = run_as ?? p.principal;
+  const principal = taskRun ? requireTaskRunPrincipal(acting, taskRun) : acting;
+  const run_actor_id = run_as ? run_as.id : p.actor_id;
   if (p.answer_actor.kind === "human" && p.answer_actor.via === "portal") {
     const [answerUser] = await exec
       .select({ id: users.id })
@@ -261,7 +297,7 @@ async function driveElicitation(
   const autoPersist = await applyElicitationOutcome({
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
-    actor_id: p.actor_id,
+    actor_id: run_actor_id,
     answer_actor: p.answer_actor,
     ...(principal !== undefined ? { principal } : {}),
     ...(p.surface ? { surface: p.surface } : {}),
@@ -353,7 +389,7 @@ async function driveElicitation(
     db: exec,
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
-    actor_id: p.actor_id,
+    actor_id: run_actor_id,
     ...(principal ? { principal } : {}),
     connector_id: conv.conversation.target_connector_id,
     workflow_id: conv.conversation.target_workflow_id,

@@ -2,7 +2,13 @@ import type { components } from "@cli-core/engine-api/openapi";
 import type { TranslationKey } from "@/lib/i18n";
 import { UNCATEGORIZED } from "@/lib/workflow-category";
 import { auditActionLabel } from "@/pages/audit-model";
-import { type WaitingAction, waitingStateKey, waitingView, waitsForPerson } from "./tasks-waiting";
+import {
+  limitEndedLine,
+  type WaitingAction,
+  waitingStateKey,
+  waitingView,
+  waitsForPerson,
+} from "./tasks-waiting";
 
 export type Task = components["schemas"]["Task"];
 export type TaskView = components["schemas"]["TaskView"];
@@ -160,7 +166,7 @@ export function usageExcludesWorkflowCalls(usage: TaskUsage): boolean {
   );
 }
 
-export type TaskAction = WaitingAction | "review" | "allow" | "resume" | "view";
+export type TaskAction = WaitingAction | "review" | "allow" | "resume" | "view" | "restart";
 
 export type TaskStatusKind =
   | "paused"
@@ -191,6 +197,7 @@ const ACTION_KEYS: Record<TaskAction, TranslationKey> = {
   allow: "tasks.action.allow",
   resume: "tasks.action.resume",
   view: "tasks.action.view",
+  restart: "tasks.action.restart",
 };
 
 export function actionKey(action: TaskAction): TranslationKey {
@@ -202,7 +209,7 @@ export function taskStatus(input: {
     Task,
     "paused_at" | "paused_reason" | "schedule_cron" | "schedule_run_at" | "last_claimed_at"
   >;
-  run: Pick<TaskRun, "state" | "waiting_reason"> | null;
+  run: (Pick<TaskRun, "state" | "waiting_reason"> & { failure_code?: string | null }) | null;
   grantLive: boolean | null;
 }): TaskStatus {
   const { task, run, grantLive } = input;
@@ -232,8 +239,12 @@ export function taskStatus(input: {
       line: "tasks.strip.result_ready",
       action: "review",
     };
-  if (run?.state === "failed")
-    return { kind: "failed", tone: "error", line: "tasks.strip.failed", action: "view" };
+  if (run?.state === "failed") {
+    const limit = limitEndedLine(run);
+    return limit
+      ? { kind: "failed", tone: "error", line: limit, action: "restart" }
+      : { kind: "failed", tone: "error", line: "tasks.strip.failed", action: "view" };
+  }
   if (run?.state === "running")
     return { kind: "running", tone: "info", line: "tasks.strip.running", action: null };
   if (run?.state === "sleeping")
@@ -861,6 +872,7 @@ const FAILURE_KEYS: Record<NonNullable<TaskRun["failure_code"]>, TranslationKey>
   owner_unavailable: "tasks.failure.owner_unavailable",
   budget_exhausted: "tasks.failure.budget_exhausted",
   deadline_exceeded: "tasks.failure.deadline_exceeded",
+  turn_limit_reached: "tasks.failure.turn_limit_reached",
 };
 
 export function failureKey(code: TaskRun["failure_code"]): TranslationKey | null {

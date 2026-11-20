@@ -70,6 +70,11 @@ const PAUSED_WORDS: Record<NonNullable<Task["paused_reason"]>, string> = {
   owner_unavailable: "paused, the owner is unavailable",
 };
 
+const LIMIT_WORDS: Partial<Record<NonNullable<TaskRun["failure_code"]>, string>> = {
+  turn_limit_reached: "it reached its round limit and ended; start the task again",
+  deadline_exceeded: "it reached its time limit and ended; start the task again",
+};
+
 export function taskCockpitUrl(client: Pick<EngineClient, "base">, taskId: string): string {
   return cockpitUrl(client, `tasks/${encodeURIComponent(taskId)}`);
 }
@@ -103,7 +108,8 @@ export function taskListRow(task: Task): Record<string, unknown> {
 export function runDetail(run: TaskRun): string {
   if (run.state === "waiting" && run.waiting_reason) return WAITING_WORDS[run.waiting_reason];
   if (run.state === "sleeping" && run.next_check_at) return `next check ${run.next_check_at}`;
-  if (run.state === "failed" && run.failure_code) return run.failure_code;
+  if (run.state === "failed" && run.failure_code)
+    return LIMIT_WORDS[run.failure_code] ?? run.failure_code;
   return "";
 }
 

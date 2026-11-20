@@ -1,8 +1,9 @@
+import { asksForTheTaskRunResult, TASK_RUN_RESULT_STEP_ID } from "../../core/task-run-result.ts";
 import { PlaybookDocumentSchema, PlaybookPlanSchema } from "../../playbook-contract.ts";
 import { readConversationPlaybookDocument } from "../../service/tool-state.ts";
 import type { ToolContext, ToolResult } from "../index.ts";
 
-export const TASK_RUN_CONFIRM_STEP_ID = "confirm-result";
+export const TASK_RUN_CONFIRM_STEP_ID = TASK_RUN_RESULT_STEP_ID;
 
 const MAY_CHANGE =
   "You may add, change and reorder your own steps. Keep the goal, keep the step `confirm-result` with its human_confirmation question unchanged, keep completion_step_id set to `confirm-result`, and keep cancelled false.";
@@ -63,4 +64,22 @@ export async function taskRunPlaybookRefusal(
       "completion_step_id must stay `confirm-result`.",
     );
   return null;
+}
+
+export async function taskRunAsksForTheResult(
+  ctx: Pick<ToolContext, "db" | "tenant_id" | "conversation_id">,
+  args: Record<string, unknown>,
+): Promise<boolean> {
+  if (asksForTheTaskRunResult(args, { goal: null, result_question: null })) return true;
+  if (!ctx.conversation_id) return false;
+  const stored = PlaybookDocumentSchema.safeParse(
+    await readConversationPlaybookDocument(ctx.db, ctx),
+  );
+  if (!stored.success) return false;
+  const confirm = stored.data.plan.steps.find((step) => step.id === TASK_RUN_CONFIRM_STEP_ID);
+  return asksForTheTaskRunResult(args, {
+    goal: stored.data.plan.goal,
+    result_question:
+      confirm?.criterion.kind === "human_confirmation" ? confirm.criterion.question : null,
+  });
 }

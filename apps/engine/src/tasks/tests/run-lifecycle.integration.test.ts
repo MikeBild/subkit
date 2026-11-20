@@ -134,7 +134,7 @@ describe("tasks/service runs follow their task", () => {
     const resumed = await resumeTask(scope, ctx.db, deps);
     expect(resumed).toMatchObject({
       enqueue: false,
-      run: { state: "waiting", waiting_reason: "no_progress" },
+      run: { state: "failed", failure_code: "turn_limit_reached", waiting_reason: null },
     });
     expect(seen.enqueued).toEqual([]);
   });

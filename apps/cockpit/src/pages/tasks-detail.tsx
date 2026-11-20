@@ -379,7 +379,10 @@ function stripAction(
     allow(): void;
     resume(): void;
     view(): void;
+    start(): void;
     resuming: boolean;
+    starting: boolean;
+    startBlocked: boolean;
   },
 ): ActionSpec | undefined {
   if (!status.action) return undefined;
@@ -413,6 +416,10 @@ function stripAction(
     return permissions.includes("task:grant")
       ? { label, variant: "primary", onClick: act.allow, testId }
       : undefined;
+  if (status.action === "restart")
+    return act.startBlocked
+      ? undefined
+      : { label, variant: "primary", onClick: act.start, pending: act.starting, testId };
   if (status.action === "resume")
     return permissions.includes("task:resume")
       ? { label, variant: "primary", onClick: act.resume, pending: act.resuming, testId }
@@ -453,7 +460,11 @@ export function TaskDetail({
     latest?.conversation_id ?? null,
     permissions.includes("conversation:read"),
   );
-  const status = taskStatus({ task, run: latest, grantLive });
+  const status = taskStatus({
+    task,
+    run: latest ? { ...latest, failure_code: latestRecord?.failure_code ?? null } : null,
+    grantLive,
+  });
   const nextUp = startView(task, now);
   const refresh = () => refreshTask(client, task.id);
   const failed = () => toast.error(t("common.actionFailed"));
@@ -611,11 +622,21 @@ export function TaskDetail({
   ];
 
   const more =
-    status.kind === "sleeping" && latest?.next_check_at
-      ? dateTime(latest.next_check_at)
-      : status.kind === "scheduled"
-        ? rhythmWords(task, t, LOCALE_TAGS[locale], dateTime)
-        : undefined;
+    status.kind === "sleeping" && latest?.next_check_at ? (
+      dateTime(latest.next_check_at)
+    ) : status.kind === "scheduled" ? (
+      rhythmWords(task, t, LOCALE_TAGS[locale], dateTime)
+    ) : status.action === "restart" &&
+      latest?.conversation_id &&
+      permissions.includes("conversation:read") ? (
+      <a
+        className="underline underline-offset-4"
+        href={absolute(conversationHref(latest.conversation_id))}
+        data-testid="task-strip-conversation"
+      >
+        {t("tasks.run.open")}
+      </a>
+    ) : undefined;
 
   return (
     <DetailPage
@@ -648,7 +669,10 @@ export function TaskDetail({
           allow: () => setGranting(true),
           resume: () => resume.mutate(),
           view: () => setShownRun(latest ? latest.id : ""),
+          start: () => start.mutate(),
           resuming: resume.isPending,
+          starting: start.isPending,
+          startBlocked: Boolean(startBlocked),
         }),
       }}
       tabs={tabs}

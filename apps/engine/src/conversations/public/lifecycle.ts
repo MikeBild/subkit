@@ -32,6 +32,7 @@ export {
   assertTaskRunTurn,
   assertTaskRunWriter,
   canWriteTaskRun,
+  inTaskRunApprovalTrace,
   mayDecideTaskRunApproval,
   type TaskRunApprovalRefusal,
   TaskRunLockedError,
@@ -39,6 +40,7 @@ export {
   TaskRunWriteForbiddenError,
   type TaskRunWriter,
   taskRunApprovalRefusal,
+  taskRunApprovalTrace,
 } from "../service/task-run-access.ts";
 export { canReadTaskRun, taskRunListReader } from "../service/task-run-read.ts";
 export { isConversationTitleOpening, refreshConversationTitle } from "../title.ts";

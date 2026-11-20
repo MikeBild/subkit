@@ -2,6 +2,7 @@ import { afterAll, beforeAll } from "bun:test";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { humanConfirmationContextFingerprint } from "../../conversations/playbook-evidence.ts";
 import type { PlaybookPlan } from "../../conversations/public/authoring.ts";
 import { respondElicitation } from "../../conversations/public/elicitation.ts";
 import {
@@ -235,6 +236,35 @@ export async function pendingElicitation(w: Workspace, conversation_id: string) 
     );
   if (!row) throw new Error("no pending elicitation");
   return row;
+}
+
+export const KEEPS_QUESTIONS: Partial<TaskRunTurnHandlerDeps> = {
+  service: { cancelRunQuestions: async () => undefined },
+};
+
+export async function leftoverGoalQuestion(w: Workspace, conversation_id: string): Promise<void> {
+  const pending = await pendingElicitation(w, conversation_id);
+  const [conversation] = await db
+    .select({ playbook: conversations.playbook, draft: conversations.draft })
+    .from(conversations)
+    .where(and(eq(conversations.tenant_id, w.tenant_id), eq(conversations.id, conversation_id)));
+  await db
+    .update(conversationElicitations)
+    .set({
+      summary: GOAL,
+      input: { ...(pending.input as object), question: GOAL },
+      playbook_context_fingerprint: humanConfirmationContextFingerprint(
+        conversation?.playbook,
+        GOAL,
+        conversation?.draft,
+      ),
+    })
+    .where(
+      and(
+        eq(conversationElicitations.tenant_id, w.tenant_id),
+        eq(conversationElicitations.id, pending.id),
+      ),
+    );
 }
 
 export async function answerAsPerson(

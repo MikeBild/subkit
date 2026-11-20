@@ -187,6 +187,7 @@ const REASON_KEYS: Record<string, TranslationKey> = {
   task_archived: "audit.reason.taskRemoved",
   task_deleted: "audit.reason.taskRemoved",
   deadline_exceeded: "audit.reason.taskDeadline",
+  turn_limit_reached: "audit.reason.taskTurnLimit",
   check_requested: "audit.reason.taskCheckRequested",
   provider_throttled: "audit.reason.taskProviderThrottled",
   wake: "audit.reason.taskWake",

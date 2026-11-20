@@ -315,7 +315,7 @@ describe("questions inside a background turn", () => {
     });
   }, 180_000);
 
-  test("an offered result keeps its own question and open approvals; an ended run keeps nothing", async () => {
+  test("an offered result keeps open approvals only, also not a question that repeats the goal; an ended run keeps nothing", async () => {
     const w = await workspace();
     const run = await startedRun(w, await ownedTask(w));
     const ask = async (tool_name: string, input: Record<string, unknown>) => {
@@ -335,27 +335,13 @@ describe("questions inside a background turn", () => {
     });
     await ask("ask_user_text", { question: "Which list?" });
     const scope = { tenant_id: w.tenant_id, conversation_id: run.conversation_id };
-    expect(
-      await cancelOpenTaskRunQuestions(db, {
-        ...scope,
-        reason: "task_run_result_ready",
-        keep_approvals: true,
-        result_question: GOAL,
-      }),
-    ).toBe(1);
+    expect(await cancelOpenTaskRunQuestions(db, { ...scope, outcome: "result_ready" })).toBe(2);
     expect((await elicitationsOf(w, run)).map((row) => [row.tool_name, row.status])).toEqual([
-      ["ask_user_confirm", "pending"],
+      ["ask_user_confirm", "cancelled"],
       ["ask_user_confirm", "pending"],
       ["ask_user_text", "cancelled"],
     ]);
-    expect(
-      await cancelOpenTaskRunQuestions(db, {
-        ...scope,
-        reason: "task_run_ended",
-        keep_approvals: false,
-        result_question: null,
-      }),
-    ).toBe(2);
+    expect(await cancelOpenTaskRunQuestions(db, { ...scope, outcome: "ended" })).toBe(1);
     expect((await elicitationsOf(w, run)).map((row) => row.status)).toEqual([
       "cancelled",
       "cancelled",

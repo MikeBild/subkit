@@ -167,6 +167,7 @@ describe("tasks/service observing runs", () => {
       intact: true,
       result_confirmed: false,
       awaiting_result_confirmation: false,
+      progress_marks: [],
     });
     expect((await read("Another goal"))?.intact).toBe(false);
   });
@@ -264,8 +265,8 @@ describe("tasks/service observing runs", () => {
     const { deps } = recordingDeps();
     const run = await started(w, task, deps);
     const observe = observer(w, run.id, deps);
-    const same = { playbook: facts({ revision: 1 }) };
-    expect((await observe({ playbook: facts({ revision: 1 }) })).run).toMatchObject({
+    const same = { playbook: facts({ revision: 1 }), progress_marks: ["result:a"] };
+    expect((await observe(same)).run).toMatchObject({
       state: "running",
       turns_used: 1,
       no_progress_count: 0,
@@ -279,8 +280,9 @@ describe("tasks/service observing runs", () => {
     expect(answered.run).toMatchObject({ state: "running", turns_used: 2, no_progress_count: 0 });
     const last = await observe(same);
     expect(last.run).toMatchObject({
-      state: "waiting",
-      waiting_reason: "no_progress",
+      state: "failed",
+      failure_code: "turn_limit_reached",
+      waiting_reason: null,
       turns_used: 3,
     });
     const refused = await resumeTaskRun(
@@ -288,10 +290,10 @@ describe("tasks/service observing runs", () => {
       ctx.db,
       deps,
     );
-    expect(refused).toMatchObject({ resumed: false, run: { state: "waiting" } });
+    expect(refused).toMatchObject({ resumed: false, run: { state: "failed" } });
   });
 
-  test("a sleeping run past its deadline wakes into waiting, and a wake keeps the stall counter", async () => {
+  test("a sleeping run past its deadline ends at the deadline, and a wake keeps the stall counter", async () => {
     const w = await workspace();
     const task = await ownedTask(w);
     const { deps } = recordingDeps();
@@ -299,19 +301,27 @@ describe("tasks/service observing runs", () => {
     const observe = observer(w, run.id, deps);
     const far = new Date(NOW.getTime() + 10 * 86_400_000);
     const same = { playbook: facts({ revision: 0 }) };
-    const slept = await observe({ ...same, requested_check_at: far });
+    expect((await observe(same)).run).toMatchObject({ state: "running", no_progress_count: 1 });
+    const retry = { code: "llm_provider_limited", retry_at: far };
+    const slept = await observe({ ...same, turn_failure: retry });
     expect(slept.run).toMatchObject({
       state: "sleeping",
+      sleep_reason: "provider_throttled",
       next_check_at: run.deadline_at,
-      no_progress_count: 1,
+      no_progress_count: 2,
     });
     const woken = await resumeTaskRun(
       { tenant_id: w.tenant_id, task_run_id: run.id },
       ctx.db,
       deps,
     );
-    expect(woken).toMatchObject({ resumed: true, run: { state: "running", no_progress_count: 1 } });
-    await observe({ ...same, requested_check_at: far });
+    expect(woken).toMatchObject({ resumed: true, run: { state: "running", no_progress_count: 2 } });
+    const checked = await observe({ ...same, requested_check_at: far });
+    expect(checked.run).toMatchObject({
+      state: "sleeping",
+      sleep_reason: "check_requested",
+      no_progress_count: 0,
+    });
     const late = { ...deps, now: () => new Date(run.deadline_at) };
     const expired = await resumeTaskRun(
       { tenant_id: w.tenant_id, task_run_id: run.id },
@@ -320,7 +330,16 @@ describe("tasks/service observing runs", () => {
     );
     expect(expired).toMatchObject({
       resumed: false,
-      run: { state: "waiting", waiting_reason: "no_progress", next_check_at: null },
+      run: {
+        state: "failed",
+        failure_code: "deadline_exceeded",
+        waiting_reason: null,
+        sleep_reason: null,
+        next_check_at: null,
+      },
+    });
+    expect((await auditRows(w.tenant_id, run.id)).at(-1)).toMatchObject({
+      action: "task_run.failed",
     });
   });
 

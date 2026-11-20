@@ -4,6 +4,7 @@ import { cockpitInstallationIdFromPath, signLoginState } from "../../auth/index.
 import { getConfig } from "../../config/loader.ts";
 import { completeApprovalBackedElicitation } from "../../conversations/public/authoring.ts";
 import {
+  inTaskRunApprovalTrace,
   type TaskRunApprovalRefusal,
   taskRunApprovalRefusal,
 } from "../../conversations/public/lifecycle.ts";
@@ -127,12 +128,12 @@ async function redirectToSignIn(
 }
 
 function taskRunRefusalCopy(refusal: TaskRunApprovalRefusal, locale: string): string {
-  if (refusal === "owner_only")
+  if (refusal === "owner_or_admin")
     return locale === "de"
-      ? "Nur die Besitzerin der Aufgabe kann diese Freigabe erteilen."
-      : "Only the owner of the task can give this approval.";
+      ? "Nur die Besitzerin der Aufgabe oder ein Administrator kann diese Freigabe erteilen."
+      : "Only the owner of the task or an admin can give this approval.";
   return locale === "de"
-    ? "Nur die Person, die das angefragt hat, oder ein Admin kann das entscheiden."
+    ? "Nur die Person, die das angefragt hat, oder ein Administrator kann das entscheiden."
     : "Only the person who asked for this or an admin can decide this.";
 }
 
@@ -299,22 +300,22 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.body(html, status, HTML_HEADERS);
     }
 
-    const result =
-      decision === "approve"
-        ? await grantApproval({
-            db,
-            approval_id: view.approval_id,
-            tenant_id: view.tenant_id,
-            granted_by_user_id,
-            via: "portal",
-          })
-        : await declineApproval({
-            db,
-            approval_id: view.approval_id,
-            tenant_id: view.tenant_id,
-            granted_by_user_id,
-            via: "portal",
-          });
+    const inRunTrace = <T>(work: () => Promise<T>): Promise<T> =>
+      inTaskRunApprovalTrace(
+        db,
+        { tenant_id: view.tenant_id, approval_id: view.approval_id },
+        work,
+      );
+    const decided = {
+      db,
+      approval_id: view.approval_id,
+      tenant_id: view.tenant_id,
+      granted_by_user_id,
+      via: "portal" as const,
+    };
+    const result = await inRunTrace(() =>
+      decision === "approve" ? grantApproval(decided) : declineApproval(decided),
+    );
 
     if (!result.ok) {
       logger.warn({
@@ -339,16 +340,18 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.body(html, status, HTML_HEADERS);
     }
 
-    const completion = await completeApprovalBackedElicitation(
-      {
-        tenant_id: view.tenant_id,
-        approval_id: view.approval_id,
-        decision,
-        approver_user_id: granted_by_user_id,
-        resume: (resume) =>
-          enqueueApprovalElicitationResume(resume, db, c.get("boss") ?? getBoss()),
-      },
-      db,
+    const completion = await inRunTrace(() =>
+      completeApprovalBackedElicitation(
+        {
+          tenant_id: view.tenant_id,
+          approval_id: view.approval_id,
+          decision,
+          approver_user_id: granted_by_user_id,
+          resume: (resume) =>
+            enqueueApprovalElicitationResume(resume, db, c.get("boss") ?? getBoss()),
+        },
+        db,
+      ),
     );
 
     logger.info({

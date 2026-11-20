@@ -39,6 +39,7 @@ import {
   auditTaskRun,
   findOpenRun,
   lockRun,
+  runEndedAtItsLimit,
   type TaskRunAudit,
   type TaskRunEndReason,
   type TaskRunSource,
@@ -715,13 +716,14 @@ async function reopenRejectedResult(
     { max_turns: task.max_turns },
     at,
   );
+  const ended = decision.resume ? null : runEndedAtItsLimit(decision.failure_code, at);
   const reopened = await writeRun(
     tx,
     deps,
     run,
     {
-      state: decision.resume ? "running" : "waiting",
-      waiting_reason: decision.resume ? null : decision.waiting_reason,
+      state: "running",
+      waiting_reason: null,
       no_progress_count: 0,
       result_ready_at: null,
       ended_at: null,
@@ -729,6 +731,7 @@ async function reopenRejectedResult(
       last_seen_turn_seq: Math.max(run.last_seen_turn_seq, p.turn_seq ?? 0),
       rejected_playbook_revision: run.last_playbook_revision,
       turn_job_failures: 0,
+      ...ended?.set,
     },
     {
       at,
@@ -736,7 +739,7 @@ async function reopenRejectedResult(
       source: p.source,
       audits: [
         {
-          action: decision.resume ? AuditAction.TASK_RUN_RESUMED : AuditAction.TASK_RUN_WAITING,
+          ...(ended ? ended.audit : { action: AuditAction.TASK_RUN_RESUMED }),
           actor: p.actor,
           ...(p.reason_code ? { reason_code: p.reason_code } : {}),
         },
@@ -821,6 +824,7 @@ export async function recordRunObservation(
         turns_used: decision.turns_used,
         no_progress_count: decision.no_progress_count,
         last_playbook_revision: decision.last_playbook_revision,
+        progress_marks: decision.progress_marks,
         last_seen_turn_id: decided.turn_seen
           ? (observation.turn_id ?? run.last_seen_turn_id)
           : run.last_seen_turn_id,
@@ -907,8 +911,7 @@ export async function resumeTaskRun(
       return { run: rowToTaskRun(run), resumed: false };
     const at = deps.now();
     const decision = decideTaskRunResume(run, { max_turns: task.max_turns }, at);
-    if (!decision.resume && run.state === "waiting" && run.waiting_reason === "no_progress")
-      return { run: rowToTaskRun(run), resumed: false };
+    const ended = decision.resume ? null : runEndedAtItsLimit(decision.failure_code, at);
     const updated = await writeRun(
       tx,
       deps,
@@ -921,21 +924,13 @@ export async function resumeTaskRun(
             sleep_reason: null,
             no_progress_count: decision.no_progress_count,
           }
-        : {
-            state: "waiting",
-            waiting_reason: decision.waiting_reason,
-            next_check_at: null,
-            sleep_reason: null,
-          },
+        : runEndedAtItsLimit(decision.failure_code, at).set,
       {
         at,
         effects,
         source: p.source,
         audits: [
-          {
-            action: decision.resume ? AuditAction.TASK_RUN_RESUMED : AuditAction.TASK_RUN_WAITING,
-            actor: SYSTEM_ACTOR,
-          },
+          ended ? ended.audit : { action: AuditAction.TASK_RUN_RESUMED, actor: SYSTEM_ACTOR },
         ],
       },
     );

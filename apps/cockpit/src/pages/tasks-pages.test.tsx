@@ -228,6 +228,28 @@ describe("task detail", () => {
     expect(strip(await detail({}, null))).toEqual([]);
   });
 
+  test("a run ended at its round limit offers a new start and its conversation, never to continue", async () => {
+    const ended = run({ state: "failed", failure_code: "turn_limit_reached" });
+    const markup = await detail({}, ended);
+    expect([...strip(markup), ...(has(markup, "task-strip-restart") ? ["restart"] : [])]).toEqual([
+      "restart",
+    ]);
+    expect(markup).toContain("Der Lauf hat sein Rundenlimit erreicht und wurde beendet.");
+    expect(count(markup, ">Neu starten<")).toBe(1);
+    expect(markup).not.toContain(">Fortsetzen<");
+    expect(has(markup, "task-strip-conversation")).toBe(true);
+    expect(markup).toContain(`/chat/${CONVERSATION_ID}"`);
+    const english = await detail({}, ended, { locale: "en" });
+    expect(english).toContain("The run reached its round limit and has ended.");
+    expect(count(english, ">Start again<")).toBe(1);
+    expect(
+      has(
+        await detail({}, ended, { permissions: without("conversation:read") }),
+        "task-strip-conversation",
+      ),
+    ).toBe(false);
+  });
+
   test("every action exists once: start in the header, the rest in the menu or the strip", async () => {
     const markup = await detail({}, run({ state: "waiting", waiting_reason: "question" }));
     expect(count(markup, "<h1")).toBe(1);

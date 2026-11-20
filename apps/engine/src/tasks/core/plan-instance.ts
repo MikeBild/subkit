@@ -1,4 +1,5 @@
 import type { PlaybookPlan } from "../../conversations/public/authoring.ts";
+import { taskPlaybookProgressMarks } from "./progress.ts";
 
 export const TASK_RESULT_STEP_ID = "confirm-result";
 export const TASK_PLAN_TEMPLATE_MAX_STEPS = 19;
@@ -73,16 +74,34 @@ export interface TaskPlaybookFacts {
   intact: boolean;
   result_confirmed: boolean;
   awaiting_result_confirmation: boolean;
+  progress_marks: string[];
 }
 
 export interface TaskStoredPlan {
   goal: string;
   completion_step_id: string | null;
-  steps: ReadonlyArray<{ id: string; criterion: { kind: string; question?: string } }>;
+  steps: ReadonlyArray<{
+    id: string;
+    criterion: { kind: string; question?: string; result?: string | null };
+  }>;
+}
+
+export interface TaskPlaybookViewFacts {
+  status: string;
+  revision: number;
+  steps: ReadonlyArray<{
+    id: string;
+    status: string;
+    evidence: ReadonlyArray<{ id: string; freshness: string }>;
+  }>;
+}
+
+function stepIsReady(step: { status: string }): boolean {
+  return step.status === "verified" || step.status === "assessment_ready";
 }
 
 export function taskPlaybookFacts(
-  view: { status: string; revision: number; steps: ReadonlyArray<{ id: string; status: string }> },
+  view: TaskPlaybookViewFacts,
   plan: TaskStoredPlan,
   goal: string,
 ): TaskPlaybookFacts {
@@ -101,8 +120,15 @@ export function taskPlaybookFacts(
       confirmation !== undefined,
     result_confirmed,
     awaiting_result_confirmation:
-      confirmation !== undefined &&
-      !result_confirmed &&
-      work.every((step) => step.status === "verified" || step.status === "assessment_ready"),
+      confirmation !== undefined && !result_confirmed && work.every(stepIsReady),
+    progress_marks: taskPlaybookProgressMarks({
+      ready_steps: work.filter(stepIsReady).length,
+      fresh_evidence_ids: view.steps.flatMap((step) =>
+        step.evidence.filter((item) => item.freshness === "fresh").map((item) => item.id),
+      ),
+      results: plan.steps.flatMap((step) =>
+        typeof step.criterion.result === "string" ? [step.criterion.result] : [],
+      ),
+    }),
   };
 }

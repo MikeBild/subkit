@@ -1,3 +1,4 @@
+import { type PlaybookHandOver, stepHoldsDeliveredResult } from "./core/task-run-result.ts";
 import type {
   PlaybookDocument,
   PlaybookEvidence,
@@ -34,6 +35,7 @@ export function projectPlaybook(
   revision: number,
   evidenceMap: PlaybookEvidenceMap,
   locale: "de" | "en" = "de",
+  handOver: PlaybookHandOver = "conversation",
 ): PlaybookView {
   const en = locale === "en";
   const verified = new Set<string>();
@@ -52,10 +54,9 @@ export function projectPlaybook(
     if (unavailable) inaccessible.add(step.id);
     const stale = resolutions.some((item) => item.evidence.freshness === "stale");
     const delivered = step.criterion.kind === "assessment" && step.criterion.result !== null;
-    const heldByModel = step.progress === "blocked" || step.progress === "waiting_for_input";
     const status = !dependenciesMet
       ? "blocked"
-      : delivered && !heldByModel
+      : delivered && !stepHoldsDeliveredResult(step.progress, handOver)
         ? "assessment_ready"
         : !assessment && accepted
           ? "verified"

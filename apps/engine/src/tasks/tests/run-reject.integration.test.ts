@@ -130,7 +130,7 @@ describe("tasks/service result rejection", () => {
     expect(await auditRows(w.tenant_id, run.id)).toHaveLength(before);
   });
 
-  test("a run past its turn limit waits for the person instead of running on", async () => {
+  test("a rejected result with no turn left ends the run at its turn limit", async () => {
     const w = await workspace();
     const { deps } = recordingDeps();
     const task = await ownedTask(w, taskInput({ max_turns: 1 }));
@@ -153,9 +153,14 @@ describe("tasks/service result rejection", () => {
       deps,
     );
     expect(rejected.enqueue).toBe(false);
-    expect(rejected.run).toMatchObject({ state: "waiting", waiting_reason: "no_progress" });
+    expect(rejected.run).toMatchObject({
+      state: "failed",
+      failure_code: "turn_limit_reached",
+      waiting_reason: null,
+    });
+    expect(rejected.run.ended_at).not.toBeNull();
     const [last] = (await auditRows(w.tenant_id, run.id)).slice(-1);
-    expect(last).toMatchObject({ action: "task_run.waiting", actor_id: w.owner.id });
+    expect(last).toMatchObject({ action: "task_run.failed", actor_id: w.owner.id });
     expect(last?.metadata).toMatchObject({ reason_code: "result_rejected" });
   });
 });

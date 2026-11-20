@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CATALOGS, translate } from "@/lib/i18n";
+import { CATALOGS, type TranslationKey, translate } from "@/lib/i18n";
 import { auditActionLabel } from "./audit-model";
 import { run, task } from "./tasks-fixtures";
 import {
@@ -133,6 +133,7 @@ describe("the one recommended action", () => {
       "resume",
     );
     expect(status({}, { state: "failed" }).action).toBe("view");
+    expect(status({}, { state: "failed", failure_code: "turn_failed" }).action).toBe("view");
     for (const state of ["running", "sleeping", "completed", "aborted"] as const)
       expect(status({}, { state }).action).toBeNull();
     expect(status({}, null).action).toBeNull();
@@ -471,7 +472,10 @@ describe("overview, runs and history words", () => {
     expect(failureKey(null)).toBeNull();
     expect(failureKey("deadline_exceeded")).toBe("tasks.failure.deadline_exceeded");
     const failures = Object.keys(CATALOGS.en).filter((key) => key.startsWith("tasks.failure."));
-    expect(failures).toHaveLength(11);
+    expect(failures).toHaveLength(12);
+    expect(translate("de", failureKey("turn_limit_reached") as TranslationKey)).toBe(
+      "Der Lauf hat alle Runden verbraucht, ohne ein Ergebnis zu liefern.",
+    );
   });
 });
 

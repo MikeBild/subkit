@@ -1,6 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { conversationToolCalls } from "../../db/schema/index.ts";
+import { type TaskRunQuestionOutcome, taskRunQuestionStaysOpen } from "../core/task-run-result.ts";
 import {
   listElicitationsForConversation,
   resolveElicitationAndReactivate,
@@ -15,35 +16,23 @@ const CANCEL_NOTES: Readonly<Record<TaskRunQuestionCancelReason, string>> = {
     "the question was withdrawn because the run ended; nobody answered it and nothing ran.",
 };
 
-function fieldsOf(input: unknown): { commit_intent?: unknown; question?: unknown } {
-  return typeof input === "object" && input !== null ? input : {};
-}
-
-function staysOpen(
-  elicitation: { tool_name: string; input: unknown },
-  p: { keep_approvals: boolean; result_question: string | null },
-): boolean {
-  const input = fieldsOf(elicitation.input);
-  if (input.commit_intent !== undefined) return p.keep_approvals;
-  return (
-    p.result_question !== null &&
-    elicitation.tool_name === "ask_user_confirm" &&
-    input.question === p.result_question
-  );
-}
+const CANCEL_REASONS: Readonly<Record<TaskRunQuestionOutcome, TaskRunQuestionCancelReason>> = {
+  result_ready: "task_run_result_ready",
+  ended: "task_run_ended",
+};
 
 export async function cancelOpenTaskRunQuestions(
   db: Db,
   p: {
     tenant_id: string;
     conversation_id: string;
-    reason: TaskRunQuestionCancelReason;
-    keep_approvals: boolean;
-    result_question: string | null;
+    outcome: TaskRunQuestionOutcome;
   },
 ): Promise<number> {
+  const reason = CANCEL_REASONS[p.outcome];
   const open = (await listElicitationsForConversation(p.tenant_id, p.conversation_id, db)).filter(
-    (elicitation) => elicitation.status === "pending" && !staysOpen(elicitation, p),
+    (elicitation) =>
+      elicitation.status === "pending" && !taskRunQuestionStaysOpen(elicitation.input, p.outcome),
   );
   const cancelled: string[] = [];
   for (const elicitation of open) {
@@ -54,7 +43,7 @@ export async function cancelOpenTaskRunQuestions(
         id: elicitation.id,
         output: null,
         decided_by: null,
-        reason: p.reason,
+        reason,
         status: "cancelled",
       },
       db,
@@ -66,7 +55,7 @@ export async function cancelOpenTaskRunQuestions(
     await db
       .update(conversationToolCalls)
       .set({
-        output: { ok: false, abandoned: true, reason: p.reason, note: CANCEL_NOTES[p.reason] },
+        output: { ok: false, abandoned: true, reason, note: CANCEL_NOTES[reason] },
         outcome: "denied",
       })
       .where(

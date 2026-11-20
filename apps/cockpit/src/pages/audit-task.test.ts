@@ -83,7 +83,7 @@ const TASK = "018f4b4a-6d33-7b3a-9c2d-aaaaaaaaaaaa";
 describe("what the engine can record about tasks has a word in both languages", () => {
   test("the vocabularies are read (a moved file must not turn this into a vacuous pass)", () => {
     expect(ENGINE_ACTIONS).toHaveLength(18);
-    expect(REASON_CODES.failure).toHaveLength(11);
+    expect(REASON_CODES.failure).toHaveLength(12);
     expect(REASON_CODES.waiting).toHaveLength(7);
     expect(REASON_CODES.paused).toHaveLength(3);
     expect(REASON_CODES.admission).toHaveLength(8);

@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
-import { readPlaybook } from "../../conversations/public/authoring.ts";
 import { answerElicitationAsPerson } from "../../conversations/public/elicitation.ts";
 import {
   registerConversationAbort,
@@ -19,6 +18,7 @@ import {
   settleTaskRunResultConfirmation,
   TASK_RUN_CONTINUATION_MESSAGE,
   TASK_RUN_REJECTION_NOTICE,
+  taskRunTurnPrompt,
 } from "../../tasks/run-driver.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { TASK_RUN_TURN_QUEUE } from "../queues.ts";
@@ -32,6 +32,8 @@ import {
   deliveredPlan,
   GOAL,
   jobOf,
+  KEEPS_QUESTIONS,
+  leftoverGoalQuestion,
   ownedTask,
   person,
   queuedJobs,
@@ -87,28 +89,20 @@ describe("task.run-turn drives a run turn by turn", () => {
         tool: "update_playbook",
         args: { expected_revision: 1, plan: await deliveredPlan(w, run.conversation_id) },
       },
-      { tool: "ask_user_confirm", args: { question: GOAL, destructive: true } },
-      { text: "never reached" },
+      { text: "The numbers are collected." },
     ]);
     expect(await workQueuedTurn()).toBe(true);
     const ready = await runRow(w, run.id);
     expect(ready).toMatchObject({ state: "result_ready", turns_used: 2, last_seen_turn_seq: 2 });
     expect(await queuedJobs(run.id)).toHaveLength(0);
 
-    script(run.conversation_id, [
-      {
-        tool: "update_playbook",
-        args: { expected_revision: 2, plan: await storedPlan(w, run.conversation_id) },
-      },
-      { text: "Glad it fits." },
-    ]);
-    await answerAsPerson(w, run.conversation_id, w.owner, { confirmed: true });
+    await completeTaskRun({ tenant_id: w.tenant_id, principal: w.owner, task_run_id: run.id }, db);
     const done = await runRow(w, run.id);
     expect(done).toMatchObject({
       state: "completed",
       completed_by: w.owner.id,
       turns_used: 2,
-      last_seen_turn_seq: 3,
+      last_seen_turn_seq: 2,
     });
     const audit = await auditOf(w.tenant_id, run.id);
     expect(audit.map((row) => row.action)).toEqual([
@@ -154,8 +148,9 @@ describe("task.run-turn drives a run turn by turn", () => {
         ),
       );
     expect(messages.map((row) => row.content)).toEqual([
-      { text: TASK_RUN_CONTINUATION_MESSAGE, origin: "task_run_continuation" },
+      { text: taskRunTurnPrompt("de", "continue"), origin: "task_run_continuation" },
     ]);
+    expect(taskRunTurnPrompt("de", "continue")).toStartWith(`${TASK_RUN_CONTINUATION_MESSAGE}\n`);
   }, 180_000);
 
   test("a second enqueue is a no-op while a job waits, while it runs and while a turn is held", async () => {
@@ -213,14 +208,15 @@ describe("task.run-turn drives a run turn by turn", () => {
         tool: "update_playbook",
         args: { expected_revision: 1, plan: await deliveredPlan(w, run.conversation_id) },
       },
-      { tool: "ask_user_confirm", args: { question: GOAL, destructive: true } },
+      { tool: "ask_user_confirm", args: { question: "Is the report fine?", destructive: true } },
     ]);
-    await workQueuedTurn();
+    await workQueuedTurn(KEEPS_QUESTIONS);
+    await leftoverGoalQuestion(w, run.conversation_id);
     expect((await runRow(w, run.id)).state).toBe("result_ready");
     return { w, run };
   }
 
-  test("a person who answers no reopens the run and it continues working", async () => {
+  test("a no to a goal question left over from an earlier version reopens the run and it continues working", async () => {
     const { w, run } = await readyRun();
     script(run.conversation_id, [{ text: "Understood, I look again." }]);
     await answerAsPerson(w, run.conversation_id, w.owner, { confirmed: false });
@@ -238,8 +234,9 @@ describe("task.run-turn drives a run turn by turn", () => {
     ]);
     script(run.conversation_id, [{ text: "I still think it is done." }]);
     expect(await workQueuedTurn()).toBe(true);
-    expect(await lastUserMessage(w, run)).toBe(
-      `${TASK_RUN_CONTINUATION_MESSAGE}\n${TASK_RUN_REJECTION_NOTICE}`,
+    expect(await lastUserMessage(w, run)).toBe(taskRunTurnPrompt("de", "after_rejection"));
+    expect(taskRunTurnPrompt("de", "after_rejection")).toStartWith(
+      `${TASK_RUN_CONTINUATION_MESSAGE}\n${TASK_RUN_REJECTION_NOTICE}\n`,
     );
     expect(await runRow(w, run.id)).toMatchObject({ state: "running", no_progress_count: 1 });
     const reworked = await deliveredPlan(w, run.conversation_id);
@@ -310,7 +307,22 @@ describe("task.run-turn drives a run turn by turn", () => {
     expect(approvals).toEqual([]);
   }, 180_000);
 
-  test("an answer relayed over a credential does not confirm the result", async () => {
+  test("a leftover goal question confirmed in the conversation completes the run; relayed over a credential it does not", async () => {
+    const chat = await readyRun();
+    script(chat.run.conversation_id, [
+      {
+        tool: "update_playbook",
+        args: { expected_revision: 2, plan: await storedPlan(chat.w, chat.run.conversation_id) },
+      },
+      { text: "Glad it fits." },
+    ]);
+    await answerAsPerson(chat.w, chat.run.conversation_id, chat.w.owner, { confirmed: true });
+    expect(await runRow(chat.w, chat.run.id)).toMatchObject({
+      state: "completed",
+      completed_by: chat.w.owner.id,
+      turns_used: 1,
+    });
+
     const { w, run } = await readyRun();
     script(run.conversation_id, [
       {
@@ -323,7 +335,7 @@ describe("task.run-turn drives a run turn by turn", () => {
     expect(await runRow(w, run.id)).toMatchObject({ state: "result_ready", completed_by: null });
   }, 180_000);
 
-  test("a result decided outside the chat answers the open question without a model turn", async () => {
+  test("a result decided outside the chat needs no model turn: confirming withdraws a leftover question, sending back answers it", async () => {
     type Target = { w: Workspace; run: StartedRun };
     const turnsOf = async (target: Target) =>
       (
@@ -378,22 +390,9 @@ describe("task.run-turn drives a run turn by turn", () => {
       },
       db,
     );
-    expect(await settle(confirmed, true)).toBe(true);
     expect(await settle(confirmed, true)).toBe(false);
-    expect(await decision(confirmed)).toMatchObject({
-      status: "resolved",
-      output: { confirmed: true },
-      decided_by: confirmed.w.owner.id,
-      decided_by_kind: "user",
-    });
+    expect(await decision(confirmed)).toMatchObject({ status: "cancelled", decided_by: null });
     expect((await runRow(confirmed.w, confirmed.run.id)).state).toBe("completed");
-    const panel = await readPlaybook(db, {
-      tenant_id: confirmed.w.tenant_id,
-      conversation_id: confirmed.run.conversation_id,
-      principal: confirmed.w.owner,
-    });
-    expect(panel?.status).toBe("completed");
-    expect(panel?.steps.find((step) => step.id === "confirm-result")?.status).toBe("verified");
     expect(await turnsOf(confirmed)).toBe(turns);
     expect(getMockProvider().calls.length).toBe(calls);
 

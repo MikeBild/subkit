@@ -109,7 +109,13 @@ describe("sk tasks words", () => {
     ).toBe("next check 2026-11-19T14:30:00.000Z");
     expect(runDetail(taskRun({ state: "failed" }))).toBe("");
     expect(runDetail(taskRun({ state: "failed", failure_code: "deadline_exceeded" }))).toBe(
-      "deadline_exceeded",
+      "it reached its time limit and ended; start the task again",
+    );
+    expect(runDetail(taskRun({ state: "failed", failure_code: "turn_limit_reached" }))).toBe(
+      "it reached its round limit and ended; start the task again",
+    );
+    expect(runDetail(taskRun({ state: "failed", failure_code: "turn_failed" }))).toBe(
+      "turn_failed",
     );
   });
 

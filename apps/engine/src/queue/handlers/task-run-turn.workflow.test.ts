@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { getTool } from "../../conversations/tools/index.ts";
 import { taskRunToolRefusal } from "../../conversations/tools/sdk-wrap/task-run-guard.ts";
-import { conversationElicitations, workflows, workflowVersions } from "../../db/schema/index.ts";
+import {
+  conversationElicitations,
+  conversationToolCalls,
+  workflows,
+  workflowVersions,
+} from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { enqueueTaskRunTurn } from "./task-run-turn.ts";
@@ -12,6 +17,7 @@ import {
   db,
   jobOf,
   ownedTask,
+  person,
   runRow,
   script,
   startedRun,
@@ -117,10 +123,28 @@ describe("bound workflows in a task run", () => {
       waiting_reason: "approval",
       turns_used: 1,
     });
+    const calls = await db
+      .select({
+        id: conversationToolCalls.id,
+        tool: conversationToolCalls.tool,
+        outcome: conversationToolCalls.outcome,
+      })
+      .from(conversationToolCalls)
+      .where(
+        and(
+          eq(conversationToolCalls.tenant_id, w.tenant_id),
+          eq(conversationToolCalls.conversation_id, run.conversation_id),
+        ),
+      );
+    const ran = calls.find((call) => call.tool === `wf_${first.slug}`);
+    expect(ran?.outcome).toBe("pending");
+    expect((await runRow(w, run.id)).progress_marks).toEqual([]);
 
     await expect(
-      answerAsPerson(w, run.conversation_id, w.admin, { confirmed: true }),
-    ).rejects.toMatchObject({ status: 403, code: "task_run_approval_owner_only" });
+      answerAsPerson(w, run.conversation_id, await person(w.tenant_id, "member"), {
+        confirmed: true,
+      }),
+    ).rejects.toMatchObject({ status: 403, code: "task_run_write_forbidden" });
     const [still] = await db
       .select({ status: conversationElicitations.status })
       .from(conversationElicitations)
