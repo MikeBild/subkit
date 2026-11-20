@@ -31,6 +31,7 @@ import {
   SummaryLine,
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
+import { reportFailure } from "@/lib/action-failure";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
@@ -492,7 +493,7 @@ function useNotificationDelete(
       onDeleted();
     },
     onError: () =>
-      toast.error(
+      reportFailure(
         t(
           kind === "rules" ? "notifications.ruleDeleteFailed" : "notifications.channelDeleteFailed",
         ),
@@ -538,7 +539,7 @@ function RuleSheet({
       toast.success(t(next.active ? "notifications.ruleResumed" : "notifications.rulePaused"));
       onClose();
     },
-    onError: () => toast.error(t("common.actionFailed")),
+    onError: (failure) => reportFailure(t("common.actionFailed"), failure),
   });
   return (
     <>
@@ -655,10 +656,11 @@ function ChannelSheet({
       onClose();
     },
     onError: (error) =>
-      toast.error(
+      reportFailure(
         t("notifications.resumeFailed", {
           reason: error instanceof ApiError ? error.message : t("resource.loadFailedDescription"),
         }),
+        error,
       ),
   });
   const delivery = channel ? deliveryState(channel, now) : null;
@@ -823,6 +825,7 @@ function RuleDialog({
       error={
         save.error ? t(rule ? "notifications.saveFailed" : "notifications.createFailed") : null
       }
+      failure={save.error}
       testId="notifications-rule-dialog"
     >
       <FieldGroup>
@@ -969,6 +972,7 @@ function CreateChannelDialog({
       }}
       onSubmit={() => create.mutate()}
       error={create.error ? t("notifications.createFailed") : null}
+      failure={create.error}
       testId="notifications-channel-dialog"
     >
       <FieldGroup>

@@ -1,10 +1,12 @@
 import type { components } from "@cli-core/engine-api/openapi";
-import { reviewFromUrl } from "@/app/links";
+import { reviewFromUrl, workflowAutomationHref, workflowHref } from "@/app/links";
 import { growthLine } from "@/lib/authority-growth";
 import { causeClassKey } from "@/lib/cause-class";
 import { CONNECTOR_STRIP_KEYS } from "@/lib/connector-strip";
+import { type EngineSentence, engineSentence } from "@/lib/engine-sentence";
 import { CATALOGS, type PluralKey, pluralKey, type TranslationKey } from "@/lib/i18n";
 import { clipAtWord } from "@/lib/presentation";
+import { autoPauseRemedy } from "@/lib/schedule-occurrences";
 import {
   opensReviewSheet as coreOpensReviewSheet,
   reviewAccess as coreReviewAccess,
@@ -99,6 +101,7 @@ const REASON_KEYS = {
   version_awaiting_approval: "overview.reason.version_awaiting_approval",
   version_needs_repair: "overview.reason.version_needs_repair",
   approval_expiring: "overview.reason.approval_expiring",
+  schedule_auto_paused: "overview.reason.schedule_auto_paused",
   scheduler_stale: "overview.reason.scheduler_stale",
   failing: "overview.reason.failing",
   patch_proposed: "overview.reason.patch_proposed",
@@ -196,6 +199,15 @@ export function sinceLabel(since: string | null, now: number, t: Translate): str
   return counted(Math.floor(days / 30), "overview.since.month", "overview.since.months", t);
 }
 
+const DAY_MS = 86_400_000;
+
+export function expiryDays(deadline: string | null, now: number): number | null {
+  if (!deadline) return null;
+  const end = Date.parse(deadline);
+  if (Number.isNaN(end)) return null;
+  return Math.max(0, Math.ceil((end - now) / DAY_MS));
+}
+
 export function attentionSentence(
   item: AttentionItem,
   t: Translate,
@@ -220,13 +232,40 @@ export function attentionSentence(
       if (item.reason === "execution_authority_required" && item.repair?.step_id)
         return { lead: heldRepairSentence(item, subject, t), machine: null, since };
       const hook = item.trigger?.kind === "inbound_hook" ? item.trigger.name : null;
-      if (!hook) return { lead: t(reasonKey, { subject }), machine: null, since };
+      const held = hook
+        ? t(
+            item.reason === "execution_authority_required"
+              ? "overview.reason.execution_authority_requiredHook"
+              : "overview.reason.execution_authority_unavailableHook",
+            { subject, hook },
+          )
+        : t(reasonKey, { subject });
+      const detail = attentionDetail(item, t);
+      return {
+        lead: detail ? t("overview.withCause", { sentence: held, cause: detail.text }) : held,
+        machine: null,
+        since,
+      };
+    }
+    case "approval_expiring":
+    case "task_grant_expiring": {
+      const days = expiryDays(item.deadline, now);
+      if (days === null) return { lead: t(reasonKey, { subject }), machine: null, since };
+      const task = item.reason === "task_grant_expiring";
       return {
         lead: t(
-          item.reason === "execution_authority_required"
-            ? "overview.reason.execution_authority_requiredHook"
-            : "overview.reason.execution_authority_unavailableHook",
-          { subject, hook },
+          days === 0
+            ? task
+              ? "overview.expiry.grantToday"
+              : "overview.expiry.approvalToday"
+            : days === 1
+              ? task
+                ? "overview.expiry.grantTomorrow"
+                : "overview.expiry.approvalTomorrow"
+              : task
+                ? "overview.expiry.grantDays"
+                : "overview.expiry.approvalDays",
+          { subject, count: days },
         ),
         machine: null,
         since,
@@ -384,6 +423,21 @@ export function entryActions(item: AttentionItem): {
   return coreEntryActions(item);
 }
 
+export function signsInFromRow(action: AttentionAction, item: AttentionItem): boolean {
+  if (item.reason === "approval_expiring" || item.reason === "task_grant_expiring") return false;
+  const kind = item.subject?.kind;
+  if (kind !== "connector" && kind !== "connection") return false;
+  return action.verb === "reauth" || action.verb === "renew";
+}
+
+export function attentionTarget(action: AttentionAction, item: AttentionItem): string {
+  if (item.reason !== "schedule_auto_paused" || item.subject?.kind !== "workflow")
+    return action.href;
+  return autoPauseRemedy({ failure_class: item.detail ?? "" }) === "renew_approval"
+    ? workflowAutomationHref(item.subject.id)
+    : `${workflowHref(item.subject.id)}?tab=schedule`;
+}
+
 export function actionLabelKey(action: AttentionAction, item: AttentionItem): TranslationKey {
   switch (action.verb) {
     case "review":
@@ -405,7 +459,11 @@ export function actionLabelKey(action: AttentionAction, item: AttentionItem): Tr
           : item.repair?.remedy_kind === "patch"
             ? "diagnosis.repair"
             : "overview.action.fix";
-      if (item.reason === "approval_expiring") return "overview.action.extend";
+      if (item.reason === "approval_expiring") return "overview.action.renewApproval";
+      if (item.reason === "schedule_auto_paused")
+        return autoPauseRemedy({ failure_class: item.detail ?? "" }) === "renew_approval"
+          ? "scheduleAutoPause.renew"
+          : "scheduleAutoPause.resume";
       if (item.reason === "secret_prepared") return "overview.action.openSettings";
       if (item.reason === "budget_critical") return "overview.action.openUsage";
       if (item.reason === "ai_access_missing") return "overview.action.setUp";
@@ -417,6 +475,8 @@ export function actionLabelKey(action: AttentionAction, item: AttentionItem): Tr
     case "reauth":
       return "overview.action.reauth";
     case "renew":
+      if (item.reason === "approval_expiring" || item.reason === "task_grant_expiring")
+        return "overview.action.renewApproval";
       return item.subject?.kind === "task" ? "overview.action.extend" : "overview.action.renew";
     case "open_runs":
       return "overview.action.openRuns";
@@ -535,6 +595,7 @@ const SHORT_REASON_KEYS = {
   execution_authority_unavailable: "overview.short.execution_authority_unavailable",
   version_awaiting_approval: "overview.short.version_awaiting_approval",
   approval_expiring: "overview.short.approval_expiring",
+  schedule_auto_paused: "overview.short.schedule_auto_paused",
   scheduler_stale: "overview.short.scheduler_stale",
   needs_reauth: "overview.short.needs_reauth",
   needs_update: "overview.short.needs_update",
@@ -570,6 +631,7 @@ const STATE_OF_REASON: Record<AttentionItem["reason"], { state: string; label: T
   version_awaiting_approval: { state: "pending", label: "workflowStrip.state.grant" },
   version_needs_repair: { state: "needs_attention", label: "automation.state.repair" },
   approval_expiring: { state: "expiring", label: "workflowStrip.state.expiring" },
+  schedule_auto_paused: { state: "needs_attention", label: "overview.state.autoPaused" },
   scheduler_stale: { state: "degraded", label: "overview.state.stale" },
   failing: { state: "failed", label: "workflowStrip.state.failing" },
   patch_proposed: { state: "proposed", label: "workflowStrip.state.repairPrepared" },
@@ -591,14 +653,30 @@ const STATE_OF_REASON: Record<AttentionItem["reason"], { state: string; label: T
   task_result_ready: { state: "pending", label: "overview.state.taskResult" },
   task_grant_required: { state: "pending", label: "overview.state.taskAllow" },
   task_grant_expiring: { state: "expiring", label: "overview.state.taskExpiring" },
-  task_owner_unavailable: { state: "needs_attention", label: "overview.state.taskPaused" },
+  task_owner_unavailable: { state: "needs_attention", label: "overview.state.autoPaused" },
 };
 
 interface AttentionRow {
   name: string;
   reason: string;
   machine: string | null;
+  waitingOn: string | null;
   badge: { state: string; label: TranslationKey };
+}
+
+export function waitingOnName(
+  attention: Pick<Attention, "items"> | undefined,
+  subjectId: string | null | undefined,
+): string | null {
+  if (!attention || !subjectId) return null;
+  const item = attention.items.find(
+    (entry) => entry.subject?.id === subjectId && entry.waiting_on?.name,
+  );
+  return item?.waiting_on?.name ?? null;
+}
+
+export function waitingOnLine(name: string, t: Translate): string {
+  return t("overview.waitingOn", { name });
 }
 
 export function attentionRow(item: AttentionItem, t: Translate): AttentionRow {
@@ -641,6 +719,21 @@ export function attentionRow(item: AttentionItem, t: Translate): AttentionRow {
     name: `${name}${version}`,
     reason: short,
     machine: key ? null : item.reason,
+    waitingOn: item.waiting_on?.name ? waitingOnLine(item.waiting_on.name, t) : null,
     badge,
   };
+}
+
+export function attentionDetail(
+  item: { reason: string; cause_class?: string | null; detail?: string | null },
+  t: Translate,
+): EngineSentence | null {
+  if (!item.detail?.trim()) return null;
+  return engineSentence({ hold: item.reason, cause_class: item.cause_class, text: item.detail }, t);
+}
+
+export function attentionEnvironment(
+  item: Pick<AttentionItem, "approval" | "subject">,
+): "dev" | "prod" | null {
+  return item.approval?.environment ?? item.subject?.environment ?? null;
 }

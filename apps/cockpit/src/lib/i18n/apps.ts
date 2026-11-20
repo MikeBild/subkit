@@ -161,7 +161,7 @@ export const appsDe: Record<keyof typeof appsEn, string> = {
   "apps.readiness.attention": "Braucht Aufmerksamkeit",
   "apps.readiness.notConfigured": "Nicht eingerichtet",
   "apps.environment.dev": "Test",
-  "apps.environment.prod": "Produktion",
+  "apps.environment.prod": "Echtbetrieb",
   "apps.summary.one": "1 App",
   "apps.summary.other": "{count} Apps",
   "apps.help":

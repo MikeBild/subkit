@@ -15,12 +15,12 @@ import {
 
 describe("authoring modes", () => {
   test("the default is the engine's own default, offered once", () => {
-    const create = readFileSync(
-      resolve(import.meta.dir, "../../../engine/src/conversations/service/create.ts"),
+    const fallback = readFileSync(
+      resolve(import.meta.dir, "../../../engine/src/conversations/service/default-mode.ts"),
       "utf8",
     );
-    expect(create).toContain(
-      `normalizePermissionMode(p.permission_mode) ?? "${DEFAULT_AUTHORING_MODE}"`,
+    expect(fallback).toContain(
+      `export const FALLBACK_CHAT_MODE = "${DEFAULT_AUTHORING_MODE}" as const;`,
     );
     expect(AUTHORING_MODES.filter((mode) => mode === DEFAULT_AUTHORING_MODE)).toHaveLength(1);
     const suffix = modeSuffixKey(DEFAULT_AUTHORING_MODE);
@@ -32,8 +32,8 @@ describe("authoring modes", () => {
 
   test("the pill reads a short name, and every option explains itself", () => {
     expect(AUTHORING_MODES.map((mode) => translate("de", modeLabelKey(mode)))).toEqual([
-      "Autonom",
-      "Fragt vorher",
+      "Fragen",
+      "Automatisch",
       "Nur planen",
     ]);
     const lines = AUTHORING_MODES.map((mode) => translate("de", modeDescriptionKey(mode)));

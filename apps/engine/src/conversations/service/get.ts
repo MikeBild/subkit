@@ -10,6 +10,7 @@ import {
 } from "../../db/schema/index.ts";
 import { stripFileSentinelsForDisplay } from "../../files/sentinel.ts";
 import { loadDraft } from "../draft.ts";
+import { type ToolCallPolicyView, toolCallPolicyView } from "../instruction-cover/view.ts";
 import { readPlaybook } from "../playbook.ts";
 import { resolvedChoiceAnswer, resolvedTextAnswer } from "../prose-question-answer.ts";
 import { buildResumeSummary, shouldShowResumeSummary } from "../resume.ts";
@@ -45,6 +46,11 @@ function approvedCallOutcome(
 
 function historySafeToolPayload(tool: string, value: unknown): unknown {
   return tool === "inspect_playbook" || tool === "update_playbook" ? { redacted: true } : value;
+}
+
+function policyField(confirmation_data: unknown): { policy?: ToolCallPolicyView } {
+  const policy = toolCallPolicyView(confirmation_data);
+  return policy ? { policy } : {};
 }
 
 export async function getConversation(
@@ -284,6 +290,7 @@ export async function getConversation(
         created_at: c.created_at.toISOString(),
         parent_message_id: c.parent_message_id,
         confirmation_state: c.confirmation_state,
+        ...policyField(c.confirmation_data),
         approved_at: c.approved_at ? c.approved_at.toISOString() : null,
         outcome: confirmedRuns.has(c.id)
           ? (confirmedRuns.get(c.id)?.outcome as ConversationToolCallRecord["outcome"])

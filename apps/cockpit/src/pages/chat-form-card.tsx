@@ -4,6 +4,7 @@ import {
   ChatCard,
   Checkbox,
   ContextHelp,
+  ErrorNotice,
   Field,
   FieldDescription,
   FieldLabel,
@@ -222,9 +223,7 @@ export function ChatFormCard({
       })}
       {expired && <p className="text-sm text-muted-foreground">{t("chat.decision.expired")}</p>}
       {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {t("chat.decision.failed")}
-        </p>
+        <ErrorNotice title={t("chat.decision.failed")} body={t("chat.decision.failedBody")} />
       )}
     </ChatCard>
   );

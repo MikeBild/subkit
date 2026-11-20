@@ -3,7 +3,6 @@ import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { toast } from "sonner";
 import {
   dryRunPatchCandidate,
   getPatchCandidatePreview,
@@ -14,10 +13,11 @@ import {
 import { absolute, runHref } from "@/app/links";
 import { ChangeSummary } from "@/components/cockpit/change-summary";
 import { DiffCard } from "@/components/cockpit/diff-card";
-import { ActionMenu, type ActionMenuItem } from "@/components/cockpit/patterns";
+import { ActionMenu, type ActionMenuItem, DataState } from "@/components/cockpit/patterns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { reportFailure } from "@/lib/action-failure";
 import { diagnosisCauseKey } from "@/lib/gate-diagnosis";
 import { pluralKey, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -399,7 +399,13 @@ function SkillEvidenceList({
       {evidence.isPending ? (
         <p className="text-sm text-muted-foreground">{t("decisions.detail.evidenceLoading")}</p>
       ) : evidence.error ? (
-        <p className="text-sm text-destructive">{t("decisions.detail.evidenceFailed")}</p>
+        <DataState
+          state="error"
+          line={t("decisions.detail.evidenceFailed")}
+          error={evidence.error}
+          onRetry={() => void evidence.refetch()}
+          testId={`${testId}-evidence-failed`}
+        />
       ) : (evidence.data?.items.length ?? 0) === 0 ? (
         <p className="text-sm text-muted-foreground">{t("decisions.detail.evidenceEmpty")}</p>
       ) : (
@@ -531,7 +537,7 @@ export function DecisionCard({
   const opening = useMutation({
     mutationFn: () => getSkillCandidate(item.id),
     onSuccess: setProposal,
-    onError: () => toast.error(t("common.actionFailed")),
+    onError: (failure) => reportFailure(t("common.actionFailed"), failure),
   });
   const rejectItem: ActionMenuItem = {
     label: t(secondaryAction?.labelKey ?? "decisions.reject"),
@@ -737,9 +743,13 @@ export function DecisionCard({
                   {t("decisions.diffLoading")}
                 </p>
               ) : preview.error || !preview.data ? (
-                <p className="text-sm text-destructive" data-testid={`${testId}-diff-error`}>
-                  {t("decisions.diffFailed")}
-                </p>
+                <DataState
+                  state="error"
+                  line={t("decisions.diffFailed")}
+                  error={preview.error ?? undefined}
+                  onRetry={() => void preview.refetch()}
+                  testId={`${testId}-diff-error`}
+                />
               ) : (
                 <DiffCard
                   testId={`${testId}-diff`}

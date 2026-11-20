@@ -6,6 +6,7 @@ import { ApiError } from "@/api/client";
 import { absolute, auditHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { Button, ConfirmDialog, ContextHelp } from "@/components/cockpit/patterns";
+import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 import {
   isStillRestarting,
@@ -100,7 +101,7 @@ export function SettingsRestartDialog({
   const { t } = useI18n();
   const client = useQueryClient();
   const [restarting, setRestarting] = useState(false);
-  const setError = (message: string) => toast.error(message);
+  const setError = (message: string) => reportFailure(message);
 
   async function restart(): Promise<void> {
     let accepted: RestartAccepted;
@@ -122,20 +123,13 @@ export function SettingsRestartDialog({
         if (verdict === "waiting") continue;
         await client.invalidateQueries({ queryKey: ["admin", "settings"] });
         await client.invalidateQueries({ queryKey: RESTART_STATUS_QUERY_KEY });
-        const notify = verdict === "restarted" ? toast.success : toast.error;
-        notify(
-          t(
-            verdict === "restarted"
-              ? "settings.restartNow.done"
-              : "settings.restartNow.notActivated",
-          ),
-          {
-            action: {
-              label: t("settings.restartNow.auditLink"),
-              onClick: () => window.location.assign(auditLink),
-            },
-          },
-        );
+        const audit = {
+          label: t("settings.restartNow.auditLink"),
+          onClick: () => window.location.assign(auditLink),
+        };
+        if (verdict === "restarted")
+          toast.success(t("settings.restartNow.done"), { action: audit });
+        else reportFailure(t("settings.restartNow.notActivated"), undefined, { action: audit });
         return;
       }
       setError(t("settings.restartNow.notConfirmed"));

@@ -158,10 +158,16 @@ export function classifyPersistedFailure(failure: PersistedFailure): PersistedFa
       ? failure.status
       : "failed";
   const reason = typeof err.reason === "string" ? { reason: err.reason } : {};
-  const classification = classifyFailure({
-    status,
-    error: error_code ? { code: error_code, message, ...reason } : null,
-  });
+  const recorded = PREVIEW_CLASSIFICATIONS.find(
+    (known) => known !== "ok" && known === err.error_class,
+  );
+  const classification =
+    recorded && status === "failed"
+      ? recorded
+      : classifyFailure({
+          status,
+          error: error_code ? { code: error_code, message, ...reason } : null,
+        });
   return { classification, error_code, message, guidance };
 }
 

@@ -20,6 +20,7 @@ export function sampleConfigLeaf(leaf: ConfigLeaf, salt: number): unknown {
         `https://example.test/${tag}`,
         tag.padEnd(32, "x").slice(0, 32),
         "00:00",
+        "1.2.3",
         "1",
         "0",
         "",

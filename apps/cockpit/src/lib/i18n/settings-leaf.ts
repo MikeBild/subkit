@@ -5,6 +5,8 @@ export const settingsLeafEn = {
   "settings.leaf.server.public_base_url": "Public base URL",
   "settings.leaf.server.root_redirect_to_cockpit": "Redirect root to Cockpit",
   "settings.leaf.server.restart_supervised": "Supervisor present",
+  "settings.leaf.server.desktop_min_version": "Minimum desktop app version",
+  "settings.leaf.server.desktop_dev_callback": "Accept desktop development builds",
   "settings.leaf.database.url": "Database connection",
   "settings.leaf.llm.provider": "Primary provider",
   "settings.leaf.server.hosted_rate_limit.tenant_per_month":
@@ -215,6 +217,8 @@ export const settingsLeafDe: Record<keyof typeof settingsLeafEn, string> = {
   "settings.leaf.server.public_base_url": "Öffentliche Basisadresse",
   "settings.leaf.server.root_redirect_to_cockpit": "Startseite zum Cockpit umleiten",
   "settings.leaf.server.restart_supervised": "Aufseher vorhanden",
+  "settings.leaf.server.desktop_min_version": "Mindestversion der Desktop-App",
+  "settings.leaf.server.desktop_dev_callback": "Entwicklungs-Builds der Desktop-App annehmen",
   "settings.leaf.database.url": "Datenbankverbindung",
   "settings.leaf.llm.provider": "Primärer Anbieter",
   "settings.leaf.server.hosted_rate_limit.tenant_per_month":

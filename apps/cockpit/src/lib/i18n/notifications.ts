@@ -72,6 +72,10 @@ export const notificationsEn = {
   "notifications.event.patch.applied": "Fix applied",
   "notifications.event.apikey.rotated": "API key renewed",
   "notifications.event.conversation.committed": "Change from a conversation saved",
+  "notifications.event.schedule.auto_paused":
+    "Schedule paused automatically after repeated failures",
+  "notifications.event.workflow.approval_expiring": "Approval ends in 3 days",
+  "notifications.event.task.grant_expiring": "Standing permission ends in 3 days",
   "notifications.event.task_run.started": "Task started",
   "notifications.event.task_run.waiting": "Task waiting for you",
   "notifications.event.task_run.result_ready": "Task result ready",
@@ -182,6 +186,10 @@ export const notificationsDe: Record<keyof typeof notificationsEn, string> = {
   "notifications.event.patch.applied": "Korrektur übernommen",
   "notifications.event.apikey.rotated": "API-Schlüssel erneuert",
   "notifications.event.conversation.committed": "Änderung aus einer Unterhaltung gespeichert",
+  "notifications.event.schedule.auto_paused":
+    "Zeitplan nach wiederholten Fehlern automatisch pausiert",
+  "notifications.event.workflow.approval_expiring": "Freigabe endet in 3 Tagen",
+  "notifications.event.task.grant_expiring": "Dauererlaubnis endet in 3 Tagen",
   "notifications.event.task_run.started": "Aufgabe gestartet",
   "notifications.event.task_run.waiting": "Aufgabe wartet auf dich",
   "notifications.event.task_run.result_ready": "Ergebnis einer Aufgabe liegt vor",

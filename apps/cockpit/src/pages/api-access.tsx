@@ -37,6 +37,7 @@ import {
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { ForbiddenState } from "@/components/failure-state";
+import { reportFailure } from "@/lib/action-failure";
 import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import {
@@ -231,7 +232,7 @@ function KeysSection({
       if (result.old.rotating_out_at)
         toast.success(t("apiKeys.rotated", { date: dateTime(result.old.rotating_out_at) }));
     },
-    onError: () => toast.error(t("apiKeys.actionFailed")),
+    onError: (failure) => reportFailure(t("apiKeys.actionFailed"), failure),
   });
   const revoke = useMutation({
     mutationFn: (id: string) => apiCall("delete", "/v1/identity/api-keys/{id}", { path: { id } }),
@@ -241,7 +242,7 @@ function KeysSection({
       await refresh();
       toast.success(t("apiKeys.revoked"));
     },
-    onError: () => toast.error(t("apiKeys.actionFailed")),
+    onError: (failure) => reportFailure(t("apiKeys.actionFailed"), failure),
   });
 
   const nowMs = Date.now();
@@ -364,8 +365,9 @@ function KeysSection({
 
   return (
     <>
-      {total > 0 ? (
+      {total > 0 || query.isPending ? (
         <SummaryLine
+          loading={query.isPending}
           testId="api-access-total-keys"
           text={tn("apiAccess.total.keysSummary", total, { active: activeCount })}
           help={t("apiAccess.keysHelp")}
@@ -561,6 +563,7 @@ function CreateKeyDialog({
       }}
       onSubmit={() => issue.mutate()}
       error={issue.error ? t("apiKeys.actionFailed") : null}
+      failure={issue.error}
       testId="api-key-create-dialog"
     >
       <FieldGroup>
@@ -668,7 +671,7 @@ function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedCli
       await client.invalidateQueries({ queryKey: CLIENTS_QUERY });
       toast.success(t("connectedClients.revokedToast", { name }));
     },
-    onError: () => toast.error(t("connectedClients.revokeFailed")),
+    onError: (failure) => reportFailure(t("connectedClients.revokeFailed"), failure),
   });
 
   const columns = useMemo<CockpitColumn<ConnectedClientItem>[]>(() => {
@@ -806,8 +809,9 @@ function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedCli
 
   return (
     <>
-      {groups.granted.length > 0 ? (
+      {groups.granted.length > 0 || query.isPending ? (
         <SummaryLine
+          loading={query.isPending}
           testId="api-access-total-clients"
           text={countText(
             t,

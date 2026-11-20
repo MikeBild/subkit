@@ -31,6 +31,7 @@ import {
 } from "./chat-attachments";
 import { applyLiveCall, type LiveCall, reduceLiveCall } from "./chat-live-calls";
 import type { AuthoringMode } from "./chat-permission";
+import { LIVE_POLICY_KEY, livePolicy } from "./chat-policy";
 import { type ConversationSelection, pinSelectionForSend } from "./chat-selection";
 import {
   type ChatNavigation,
@@ -145,6 +146,11 @@ export function useChatTurn({
     }
     if (event.type === "text_delta" && typeof event.text === "string") {
       setStreamedText((currentText) => currentText + event.text);
+      return;
+    }
+    const ran = livePolicy(event);
+    if (ran) {
+      queryClient.setQueryData([LIVE_POLICY_KEY, ran.callId], ran.policy);
       return;
     }
     const live = reduceLiveCall(event);

@@ -22,7 +22,7 @@ You describe the task in your own words, the AI drafts a workflow from it, and a
 After that it runs in fixed steps, with only the approved permissions.
 Every run is recorded.
 
-You work in the Cockpit in the browser, with the `sk` command line, or from AI clients such as Claude Code over MCP; the Web Clipper also collects web pages into your inbox.
+You work in the Cockpit in the browser, as an installed app or in the SubKit Desktop program, with the `sk` command line, or from AI clients such as Claude Code over MCP; the Web Clipper also collects web pages into your inbox.
 
 ![Overview with key figures for runs, success rate, connector health and cost, the "Needs you" list with open decisions and the latest failed runs](/docs-images/intro-overview.en.webp?v=8dfed08b2c2d)
 
@@ -463,7 +463,7 @@ If the chat offers an approval, it opens the same dialog.
 | **Operations and external targets** | Which services and addresses the workflow reaches. Each service shows its provider's logo. |
 | **Validity** | How long the approval applies: **7 days**, **30 days** or **Until revoked**. **Until revoked** is preset. You get the same choice when you review a saved change in the chat. |
 
-**Starting from the chat.** In the chat mode **Asks first**, SubKit does not ask before a start when a valid approval covers exactly this run: the same version, the same environment and unchanged effects. The audit trail names the approval that covered the start. SubKit still asks in three cases: in the mode **Plan only**, when a run passes on data from an earlier run, and when you told the conversation to confirm every start.
+**Starting from the chat.** In the chat mode **Ask**, SubKit does not ask before a start when a valid approval covers exactly this run: the same version, the same environment and unchanged effects. The audit trail names the approval that covered the start. SubKit still asks in three cases: in the mode **Plan only**, when a run passes on data from an earlier run, and when you told the conversation to confirm every start.
 
 **When SubKit asks again without a new version.** An approval is tied to the connectors as they were reviewed. If a connector is signed in again or its configuration changes, the workflow needs a new review today, even though its steps are the same.
 
@@ -826,7 +826,7 @@ Writing always needs a person, in two places:
 
 - **Writes inside a workflow:** A workflow writes for real only after a person approves it in the Cockpit. Without approval the run is a dry run: writes are held back and nothing is sent.
   A new version needs no new approval as long as it touches no more systems, addresses or write permissions than the approved one. If it reaches further, SubKit asks again and names the difference.
-  In chat, the mode **Asks first** asks before every write unless there is an approval that covers exactly this run: the same version, the same environment, still valid and with unchanged effects. **Plan only** always asks. So does a run that passes on data from an earlier run, and a conversation you told to confirm every start.
+  In chat, the mode **Ask** asks before every write unless there is an approval that covers exactly this run: the same version, the same environment, still valid and with unchanged effects. **Plan only** always asks. So does a run that passes on data from an earlier run, and a conversation you told to confirm every start.
 - **Write tools in the client:** A write tool pauses and returns a link.
   Open it, sign in, check what will happen, and select **Allow once** or **Decline**.
   Only then can the client finish the call with `confirm_tool_call`.
@@ -1998,6 +1998,56 @@ This chapter is for anyone who works in the Cockpit every day and does not want 
 
 The app carries the workspace name. It uses the stored app icon or the SubKit icon and takes the color of the selected color palette.
 
+### Install in Chrome, Edge and Safari
+
+Your browser does the last step of the installation. It looks different in each browser.
+
+| Browser | How it works |
+| --- | --- |
+| Chrome and Edge on a computer | Select **Install app** in the Cockpit and confirm the browser’s dialog. |
+| Safari on a Mac | In Safari, open the “File” menu and choose “Add to Dock”. |
+| Safari on iPhone and iPad | In Safari, tap “Share” and then “Add to Home Screen”. |
+| Other browsers | You read “Installation unavailable”. Keep using the Cockpit in the browser, or open it in one of the browsers above. |
+
+The **User menu** also offers **Install SubKit** as long as the app is not installed on this device. The entry opens the same guide.
+
+Whether the app is installed is shown under **Settings › Your profile** at “Is SubKit installed on this device?”: **Installed** or **Not installed**, plus **Notifications on** or **Notifications off**.
+
+### Without a connection and after an update
+
+The app needs your server. It only keeps its program files, no data.
+
+- **Without a connection** the app shows the page “No connection to the server” with **Try again**. You see no data then, and the app does not collect input to send it later.
+- **After an update of the server** the notice “A new version is available” appears with **Reload**. Until then the open window keeps working with its previous state.
+- **With unsaved input**, **Reload** does not reload. You read “Save your input first; reloading would discard it.” Save and select **Reload** again.
+
+### Notifications, the number on the icon and links
+
+- **Notifications.** You get one notification per open item. The title says what happened, for example “A decision is waiting for you”. The text says what to do, for example “Review the change and decide.” More than three at once are folded into “New entries need you”.
+- **Click.** A click on the notification opens exactly this item in the app or brings the open window there.
+- **Open window.** When the app is visible, no notification of the operating system appears. The notice is shown in the app instead.
+- **Number on the icon.** The app icon carries the number of open items, at most 99. When nothing is open, it disappears. This only works where the browser and the operating system support it.
+- **Links.** Links with the scheme `web+subkit` open a page in the app, for example `web+subkit://tasks` or `web+subkit://chat/{id}`. An unknown target leads to the start page.
+
+“Notifications and quiet hours” describes how to decide when notifications arrive.
+
+### Web app or SubKit Desktop
+
+Besides the installed web app there is SubKit Desktop, a program of its own for macOS, Windows and Linux. Both show the same Cockpit of your server, and neither runs anything on your device.
+
+| | Installed web app | SubKit Desktop |
+| --- | --- | --- |
+| Installation | From the browser, one app per workspace | One program, one profile per server |
+| Devices | Computer and phone | Computer |
+| Notifications | Push through the browser | Notifications of the operating system while the program runs |
+| Quiet hours | Under **Settings › Setup** | In the settings of the program |
+| Icon in the menu bar or the notification area | No | Yes, with the number of open items |
+| Launch when you log in to your computer | No | Yes |
+| Share content from other apps | Yes | No |
+| Updates | Come with the server | The program’s own updates |
+
+More in “SubKit Desktop”.
+
 ### Use several workspaces as separate apps
 
 If you work in several workspaces, each one gets its own app.
@@ -2033,7 +2083,7 @@ The app name comes from the workspace name, not from the **Organization name** i
 ### Remove an installed app
 
 1. Open the regular Cockpit in the browser and switch to the app's workspace.
-2. Choose **Revoke installation** in the workspace menu and confirm. This signs the app out on all its devices.
+2. Choose **Revoke installation** in the workspace menu and confirm. This signs the installed web app out at once. Desktop devices stay signed in; you sign them out under **Settings** › **Your profile** › **Where are you signed in?**.
 3. Then remove the app from your device like any other app.
 
 If you install again later, the app gets a new address. Old links stop working.
@@ -2436,7 +2486,7 @@ The standing permission ends when:
 
 When it ends, the workflow approvals it created end with it, unless another task with its own standing permission uses the same workflow.
 
-Three days before the end, or when fewer than a tenth of the runs are left, a notice asks you to extend it.
+Seven days before the end, or when fewer than a tenth of the runs are left, a notice with **Renew** appears. Three days before the end the notification follows: SubKit sends the event `task.grant_expiring` once. More in “Keep an eye on schedules”.
 When it is gone, the scheduled starts are held and a notice says the task may no longer start on its own. Nothing is lost: allow again, and the held start runs shortly afterwards.
 
 In the list and on the task page, a start time that has passed reads as follows:
@@ -2619,6 +2669,832 @@ sk tasks delete <task-id>
 AI clients connected over MCP can find, read, start and stop tasks. Creating and changing a task needs the **Authoring** level. Questions of a run are answered and results are confirmed in the Cockpit. More in “Connect AI clients via MCP”.
 
 Over the HTTP API the same actions are under `/v1/tasks` and `/v1/task-runs`. They are listed in the API reference of your engine at `/openapi.json`.
+## Set SubKit up for yourself
+
+This chapter is for anyone who comes to the Cockpit for the first time or wants to change their defaults.
+Afterwards you have answered the step “How SubKit works for you” and know what each of the six answers sets and where you change it later.
+
+### What you need
+
+- An account in a workspace with the Administrator or Member role. The step only appears with the `settings:write` permission. Users with the User role never see it.
+- Two minutes. Every question has a recommended answer.
+
+### Answer the step “How SubKit works for you”
+
+The step appears once, after your first sign-in to a workspace.
+
+1. Read the question and choose an answer. Below each question, the line “Sets: …” says what the answer does. The recommended answer carries the addition **recommended**.
+2. Select **Continue** until all six questions are answered.
+3. Check the summary “This is what I will set up for you”. **Change** corrects a single answer.
+4. Select **Apply these**.
+
+**Not now** skips the step. SubKit then applies the recommended settings and does not ask again.
+
+### The six answers and what they set
+
+| Question | Choices | Sets |
+| --- | --- | --- |
+| “What should SubKit do for you first?” | **File invoices**, **Daily numbers by email**, **Summarize the week**, **List open tickets**, **Watch the pricing page**, **Unlock access after payment** or **Something else** with your own text | The first suggestion in chat and the first item of “First steps”. |
+| “Which services do you use for it?” | Gmail, Google Drive, Google Sheets, Slack, Jira, GitHub, Notion, HubSpot, Stripe or **Other service** | Which connectors “First steps” offers first. |
+| “Who approves what SubKit may do?” | **Me** (recommended) or **Someone else on the team** with an email address | Who gets approval notifications and whether an invitation is prepared. |
+| “How much should SubKit do on its own in chat?” | **Always ask**, **Ask only when unexpected** (recommended) or **Plan only at first** | The chat mode **Ask**, **Automatic** or **Plan only** for new conversations. |
+| “Where should new things run first?” | **Test first** (recommended) or **Straight to production** | The default environment for new workflows and tasks. |
+| “When may SubKit notify you?” | **Right away** (recommended), **Only during my working hours** or **Once a day as a summary** | Notifications and quiet hours. |
+
+The first two answers only change what the Cockpit suggests to you first. They connect no service and create no workflow. The other four change how SubKit works:
+
+- **Chat mode.** Every new conversation starts in this mode. In the conversation you can choose another one at any time. “Chat modes and rules” explains what the modes mean.
+- **Default environment.** A new task and the review of a new workflow start in this environment. You still choose the environment of a single workflow or task yourself.
+- **Approvals and notifications.** Both are described in “Notifications and quiet hours”.
+
+### Change answers later
+
+1. Open **Settings** and, in it, **Setup**.
+2. Select **Change** on the answer you want to change.
+3. Choose the new answer and then **Apply**. You read “Setting applied”.
+
+Each change applies right away to the setting named. Open conversations keep their mode; the new chat mode applies to the next new conversation.
+
+The overview of **Settings** shows your choice in one line, for example “Ask only when unexpected · Test first · Right away”.
+
+### Good to know
+
+- The answers belong to you, not to the workspace. Every person sets SubKit up for themselves.
+- The audit trail records every change as “Setup choices changed”.
+- The recommended values are: **Automatic**, **Test**, **Me** and **Right away**.
+- If you, as an administrator, name an address that is not in the workspace yet, SubKit prepares an invitation and sends no email. The invited person joins the workspace as a member; that is why “Role: Member” is shown next to the field. This role may approve.
+- If you name a person whose role may not approve, SubKit stores the choice and warns under **Settings** › **Setup**: “… cannot approve with the current role. Approval notifications stay with you until an administrator changes the role.”
+- If you name an unknown address without the Administrator role, it is stored but nobody is invited. As soon as an administrator invites or adds the address, SubKit links your choice by itself; the notifications go to the person once they have joined.
+- If you choose **Only during my working hours**, you enter your **Working days** besides **From** and **Until**. Monday to Friday are preset.
+
+### If something does not work
+
+| What you see | What to do |
+| --- | --- |
+| “The recommended settings were not saved” | Nothing was changed. **Continue without saving** lets you go on with the recommended settings. This browser remembers your choice; in another browser the step appears again. |
+| “The setting was not applied” | Your earlier choice still applies. Try again. |
+| “Your setup could not be loaded” | Select **Try again**. |
+| “Enter a valid email address, for example anna@example.com.” | Check the address of the person who should approve. |
+| “Choose at least one service.” | Choose a service or **Other service**. |
+| The step does not appear | You already answered it or skipped it with **Not now**, or you lack `settings:write`. Your answers are under **Settings › Setup**. |
+
+### The same over the HTTP API
+
+`GET /v1/identity/me/setup` reads your answers. The field `unset` names what you have not chosen yet, and `recommended` the recommended values.
+`PUT /v1/identity/me/setup` stores answers. Fields you leave out keep their value.
+
+```bash
+curl -s -X PUT "$SK_URL/v1/identity/me/setup" \
+  -H "Authorization: Bearer $SK_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"default_chat_mode":"ask","default_environment":"dev"}'
+```
+
+Every field is listed in “Reference: desktop app, rules, schedules and problem reports”.
+## Chat modes and rules
+
+This chapter is for anyone who works in chat and wants to know when SubKit asks before an action.
+Afterwards you can choose the mode of a conversation, read and answer a question card and save a recurring action as a rule.
+You also know exactly under which conditions something runs without a question, and where this check has its limits.
+
+### The three modes
+
+Above the message field, **Mode** sets how much SubKit does on its own in this conversation.
+
+| Mode | What it does |
+| --- | --- |
+| **Ask** | Asks before saving anything, before every action with an outside effect and before a live run that no approval covers. |
+| **Automatic** | Prepares drafts and runs what you explicitly ask for. Everything else asks. |
+| **Plan only** | Plans and proposes; asks like “Ask” before any step. |
+
+**What does this mean?** next to the selection shows two lists for the chosen mode: **Asks first** and **Without asking**.
+
+Three things apply in every mode:
+
+- A live run of a workflow needs an approval. “Your first workflow” describes how you give it.
+- Payments, deletions, publications, settings, new accounts and credentials always ask.
+- **Plan only** is an instruction to the model, not a gate of its own. The same gates apply as in **Ask**.
+
+You set the mode a new conversation starts with under **Settings › Setup**. In the selection, that mode carries the addition **(your default)**. More in “Set SubKit up for yourself”.
+
+### When something runs without a question
+
+In **Automatic** mode an action runs without a question only when all of the following conditions hold. If one is missing, the question card appears.
+
+1. **You are signed in in the browser.** The rule applies only to you in a Cockpit session: in the browser, in the installed app or in SubKit Desktop. With an API key, in the `sk` command line, from an AI client over MCP and in a task run, each of these actions asks.
+2. **It is a call to a connector.** The rule applies to calls that send, create or change something through a connector, and to saving a connector draft. Tools of external MCP servers and SQL statements always ask.
+3. **SubKit knows the effect, and it is ordinary.** SubKit assigns every operation an effect. Payment, deletion, publication, permissions or settings, new account and credentials always ask. So does every call with `DELETE` and every call that sets a header with credentials. When SubKit cannot tell what an operation does, it asks.
+4. **You asked for it in your own words.** Your latest message contains a request such as “Send …” or “Can you create …”. An information question such as “What would happen if …” is not a request. When the request carries a condition or a “not”, SubKit asks. The verb has to match the action: “create” does not cover sending.
+5. **The request is not in pasted text.** These do not count as your words: code blocks, quoted lines, forwarded emails, everything after a lead-in such as “Here is the email:” and pasted passages of 5 lines or 800 characters and more. What a web page, a file or a service returns is never a request.
+6. **You named the target.** Every recipient, every address and every target comes from your last three messages or from your answers to questions SubKit asked. If you gave a name, SubKit may have looked up the address for it in this conversation. You also have to have stated amounts, values, dates and times. SubKit reads dates and times in the time zone of the workspace.
+7. **The content is yours.** A text that goes out consists of your words, or SubKit showed it to you as a draft earlier in the conversation. With your words, SubKit may add a greeting, a closing and a few filler words: at most a quarter of the words and never more than three. A new link, a new address, a new number or a new “not” leads to the question. A text of more than 1,200 characters has to have been shown as a draft.
+8. **It is the first time for this request.** A request covers an action exactly once. A repeat of the same action asks.
+
+One special case: when the action only creates a draft at the service, SubKit does not check the content, because nothing goes out yet.
+
+When an action runs without a question, the conversation shows a line below it such as “Send to anna@example.com, because you asked for it”. **Show your words** shows the sentence SubKit relies on. The audit trail records each of these actions with the reason “The person asked for it in their own words” or “A rule the person saved covers it”.
+
+### The question card
+
+When SubKit asks, it shows a card titled **Wants to do this**.
+
+| Field | Meaning |
+| --- | --- |
+| **Action** | What happens: Send, Create, Change, Run or Save. |
+| **Target** | The operation at the service, for example `POST /v1/messages`. |
+| **Account** | The connector the action goes through. |
+| **Recipients** | Every address, link and handle the action reaches. |
+| **Content** | The full text as it would go out. |
+
+Below the fields the card says why SubKit asks, for example “You did not name this recipient.” Below that it reads: “Applies to exactly this action, once. A different recipient or content needs a new question.”
+
+1. Read the fields, above all **Recipients** and **Content**.
+2. Select **Allow once** if exactly this should happen. The action runs once.
+3. Select **Decline** if not. Nothing runs.
+
+Two things protect you from a slip:
+
+- **Typed text never gives an approval.** If you type “yes” into the message field while a card is open, SubKit asks “Did you mean: Allow once?”. Nothing ran. Confirm with the button or select **No, keep the card open**.
+- **A reply that changes the action runs nothing.** You then read “Your reply changes the action, so nothing ran”. Allow exactly what is shown, or select **Decline and rephrase** and send your changed request.
+
+### Save an action as a rule
+
+A rule allows exactly one recurring action without a question. You do not create it by hand: SubKit offers it when you have confirmed the same action with **Allow once** for the second time.
+
+1. Confirm the action as usual. Below the card, “Should this run without asking from now on?” appears with the **Scope** of the rule.
+2. Check the scope: action, target, account and recipients.
+3. Select **Save as rule**. Or select **No, keep asking**; SubKit then does not offer this rule again.
+
+A rule applies like this:
+
+| Property | What applies |
+| --- | --- |
+| Scope | Exactly this action through exactly this connector to exactly this operation. With recipients: only to the recipients named. Without recipients: only actions without a recipient. At most 20 recipients. |
+| Content | If the text was the same in both confirmations, the rule covers only exactly this text. If it differed, the rule covers only text you wrote yourself or saw as a draft. If the action carried no text, it covers only actions without text. |
+| Duration | 90 days from saving. After that the action asks again. |
+| Daily limit | 20 runs per day, counted in UTC. After that the action asks until the next day. |
+| Mode | Applies in **Ask** and **Automatic**, not in **Plan only**. |
+| Person | Applies only to you, signed in in the browser. Other people in the workspace have their own rules. |
+
+Payments, deletions, publications, settings, new accounts and credentials can never be saved as a rule.
+
+When an action runs because of a rule, the conversation reads “…, per your rule” with the link **Open rules**.
+
+### View and revoke rules
+
+1. Open **Settings** and, in it, **Rules**.
+2. **Active** lists your rules with scope, date and use, for example “Last used …” and “Approved by hand 2 times before”. **Offered** lists rules you have not decided on yet.
+3. Select **Revoke** on a rule and confirm.
+
+After the revocation SubKit asks again before carrying out this action. Anything already sent stays sent.
+
+When an action asks although a rule exists, the card names the reason:
+
+| What you read | Meaning |
+| --- | --- |
+| “Your rule for this action has expired. Renew it under Rules.” | The 90 days are over. |
+| “Your rule for this action has reached its limit for today.” | The action already ran 20 times today through this rule. |
+| “Your rule covers a different text than this one.” | The text differs from what the rule covers. |
+
+### Limits of this check
+
+The check is strict on purpose and asks when in doubt. It still is not an understanding of your request. You should know this:
+
+- **SubKit recognizes requests by words and sentence structure.** It knows German and English phrasings. An unusual phrasing or another language leads to the question, even if you meant it that way.
+- **SubKit reads the effect from the operation.** It concludes from the method, the path, the field names and the connector template whether something is a payment, a deletion or a publication. If an operation has a harmless name at the service and still triggers something like that, SubKit does not notice.
+- **SubKit checks what it sends, not what the service does with it.** If a service forwards a message to a list, SubKit only sees the address of the list.
+- **A few added words can change the tone.** The content stays yours, but the greeting, the closing and up to three words come from SubKit.
+- **A rule with changing text checks the origin, not the meaning.** It covers any text you wrote or saw as a draft, to the recipients named.
+- **Renewing is not possible on the Rules page yet.** The page shows neither the expiry date nor the daily limit and offers no renewal. An expired rule asks every time, and SubKit does not offer it again. It can only be renewed through the route `POST /v1/approval-rules/{id}/renew` from a browser session.
+- **The daily limit and the duration are fixed.** You cannot set them.
+
+### If something does not work
+
+| What you see | What to do |
+| --- | --- |
+| “This chat asks before every action with an outside effect.” | The conversation runs in **Ask** or **Plan only** mode. Select **Allow once** or set the mode to **Automatic**. |
+| “You did not ask for this action in your own words.” | Write the request as a sentence of its own, for example “Send the summary to anna@example.com”. |
+| “The request stands in pasted or quoted text, not in your own words.” | Write the request above or before the pasted text. |
+| “Your request came with a condition or a ‘not’, so SubKit asks.” | Check the card and select **Allow once**, or phrase it without a condition. |
+| “You did not name this recipient.” or “You did not name this target.” | Name the address or the target in your message. |
+| “The action contains a value you did not state.” | Check the value on the card. State it yourself next time. |
+| “The text is not yours and you have not seen it as a draft yet. Read it before it goes out.” | Read the **Content** on the card. Or ask for a draft first and then ask for it to be sent. |
+| “SubKit does not know what this operation does, so it asks.” | This operation always asks. Check the card and decide. |
+| “You asked for this once, and that already ran. A repeat asks again.” | If it should run once more, select **Allow once**. |
+| “Only you, signed in in the browser, can let an action run without this question.” | You work with an API key or from another client. Open the conversation in the Cockpit. |
+| “The rule was not saved. Nothing changed; SubKit keeps asking.” | Select **Save as rule** again. If it stays that way, check that you are signed in in the browser. |
+
+### The same over the HTTP API
+
+Rules belong to a person. A system account has none, and the routes answer it with `403 person_required`.
+
+| Route | Does |
+| --- | --- |
+| `GET /v1/approval-rules` | Lists your offered and active rules. `?state=` filters by `offered`, `active`, `dismissed` or `revoked`. |
+| `POST /v1/approval-rules/{id}/accept` | Stores an offered rule. Works only from a browser session. |
+| `POST /v1/approval-rules/{id}/dismiss` | Declines an offered rule. It is not offered again. |
+| `POST /v1/approval-rules/{id}/renew` | Renews an active rule for 90 days from now, also when it has already expired. Works only from a browser session. |
+| `DELETE /v1/approval-rules/{id}` | Revokes an active rule. |
+
+When the state of the rule does not fit the route, the engine answers `409 approval_rule_wrong_state`. Every field of a rule is listed in “Reference: desktop app, rules, schedules and problem reports”.
+## Find your way in the Cockpit
+
+This chapter is for anyone who works in the Cockpit every day.
+Afterwards you can show and hide the navigation and the side panel with the keyboard, read an error notice and tell whether something runs in test or in production.
+
+### The two panels
+
+The Cockpit has the navigation on the left and the side panel on the right. The page you work on sits between them.
+
+| Panel | Content | Shortcut |
+| --- | --- | --- |
+| Navigation, left | The areas of the Cockpit, for example **Chat**, **Inbox** and **Workflows**. | ⌘B, on Windows and Linux Ctrl+B |
+| **Side panel**, right | **Chat**, **Details** and **History** for what you are looking at. | ⌘J, on Windows and Linux Ctrl+J |
+
+1. Press ⌘B to shrink the navigation to a narrow icon rail. Press it again to open it.
+2. Press ⌘J or select **Open side panel** in the page header.
+3. Drag the edge of the side panel to change its width. With the keyboard, use the arrow keys once the edge has the focus.
+4. Press Esc inside the side panel to close it.
+
+The Cockpit remembers in this browser whether the side panel is open, how wide it is and which tab was selected. In a narrow window the side panel lies over the page instead of standing next to it.
+
+### The three tabs of the side panel
+
+| Tab | What it shows |
+| --- | --- |
+| **Chat** | A conversation next to the page. On an opened page it reads “The chat knows what you are looking at here.”, otherwise “Ask about anything in this workspace.” The chat pages themselves do not have this tab. |
+| **Details** | The sections **Status** and **Technical** for what you opened: IDs, versions, times and environment. |
+| **History** | The audit log entries for this one object. **Show everything in the audit log** opens the whole list. |
+
+Good to know:
+
+- Technical details live on the **Details** tab and no longer on the page. The page stays with what you have to decide.
+- When you open a run next to a page, **Details** shows the status and the facts of that run.
+- **History** needs `audit:read`. Without the permission you read “Your role does not include the audit log.”
+- When nothing is open, it reads “No details here”. Open a workflow, a task or a connector.
+
+### Read an error notice
+
+When something goes wrong, the notice appears where it happened: in the card, in the dialog or above the list. Every notice has the same structure.
+
+| Part | What it says |
+| --- | --- |
+| Title | What happened. |
+| Text | What that means for you. When it has nothing of its own, you read “Nothing was changed.” |
+| One button | The one action that helps, for example **Try again**, **Sign in again**, **Review approval**, **Fix it in the chat** or **Ask an administrator**. |
+| **Technical details** | Collapsed. It holds **Code**, **HTTP status**, **Request ID** and **Time**. |
+
+1. Read the title and the text.
+2. Select the action offered.
+3. If it does not help, expand **Technical details** and select **Copy details** or **Report a bug**.
+
+When a list or a page cannot be loaded, it offers **Try again**. “Report a bug” describes how to report a problem.
+
+### Tell test from production
+
+SubKit separates two environments: **Test** and **Production**. A label with one of these two words appears wherever the environment decides about the effect:
+
+- on the items under **Needs you** on the **Overview**,
+- on the connectors of a workflow and in the connector catalog,
+- in the approval dialog and on the notice about an approval that ends,
+- in the technical details of a task.
+
+Read the label before you approve or renew something. An approval only ever applies to the environment named.
+
+### View Markdown documents
+
+Skills, knowledge sources, items in the **Inbox** and files that contain Markdown open in the same document view.
+
+1. Open the document.
+2. Under **View**, choose between **Rendered** and **Markdown**. **Rendered** shows the formatted text, **Markdown** the source for reading and copying.
+3. In longer documents, jump to a heading through **Contents**. The table of contents appears from three headings on when the column is wide enough.
+
+### If something does not work
+
+| What you see | What to do |
+| --- | --- |
+| ⌘J does not open the side panel | On Windows and Linux, use Ctrl+J, without Shift and Alt. Otherwise select **Open side panel** in the page header. |
+| The hint on the button names only ⌘J | The hint always shows the Mac shortcut. On Windows and Linux, Ctrl+J works. |
+| “The history could not be loaded. Nothing was changed.” | Open the tab again. If it stays that way, select **Show everything in the audit log**. |
+| The **Chat** tab is missing | You are on a chat page. There the conversation already is the page. |
+| “This could not be loaded” | Select **Try again**. |
+## Notifications and quiet hours
+
+This chapter is for anyone who wants to hear from SubKit when something waits for them, but not at any hour.
+Afterwards you can switch on notifications on a device, limit them to your working hours or to one delivery a day, and route approval notifications to another person.
+
+### What notifies you
+
+SubKit only reports what a person is needed for: something was stopped, something is failing or a decision is waiting.
+
+| Way | What you get | Delayed by quiet hours |
+| --- | --- | --- |
+| The **Needs you** list on the **Overview** | Every open item with cause and action. | Never. The list is always current. |
+| Push in the browser or in the installed web app | One notification per item. A click opens the item. | Yes, according to your choice in **Setup**. |
+| SubKit Desktop | A notification of the operating system and the number on the icon. | According to the quiet hours you set in the app. |
+| Subscriptions, webhooks and the `sk` inbox | Events for programs and for the terminal. | Never. |
+
+A notification says what happened and what to do. Names of workflows or connectors, content and approval buttons never appear in a browser push.
+
+### Switch on notifications on a device
+
+1. Open **Settings** and, in it, **Your profile**.
+2. Under “Do you want notifications on this device?”, switch on **Notify on this device**.
+3. Allow the notifications in your browser’s dialog.
+
+The setting applies to this browser only. Repeat it on every device where you want notifications.
+Above it, “Is SubKit installed on this device?” shows whether the app is installed and whether notifications are on. “Cockpit as an app” describes how to install.
+
+### Decide when SubKit notifies you
+
+1. Open **Settings** and, in it, **Setup**.
+2. Select **Change** on **Notifications**.
+3. Answer “When may SubKit notify you?” and select **Apply**.
+
+| Choice | What happens |
+| --- | --- |
+| **Right away** | Push arrives as soon as an item is new or changes. This is the default. |
+| **Only during my working hours** | You enter **From** and **Until**, preset to 08:00 and 18:00. Below that you choose your **Working days**; Monday to Friday are preset, and at least one day has to be chosen. Outside this time and on the other days SubKit holds push back until the next start. A period across midnight is possible and belongs to the day it starts on. |
+| **Once a day as a summary** | You enter **At**, preset to 08:00. SubKit delivers at most once a day, as soon as this time is reached. |
+
+What happens while push is held back:
+
+- Nothing that is still open gets lost. At the next delivery SubKit reports every new item that is still open then.
+- SubKit no longer reports what was settled in the meantime.
+- At the daily time and at the start of your working hours, more than one new item arrives as a single summary, such as “5 items need you” with “2 failing, 3 decisions”. It opens the newest item. A single new item arrives as the usual notification.
+- If nothing new is open at the daily time, no message is sent.
+- The **Needs you** list shows everything at once, whatever you choose here.
+
+Under **Settings › Notifications**, your choice appears as a line “From your setup: …” with **Open setup**.
+
+### Which time zone applies
+
+The times apply in the time zone of the workspace. It is set under **Settings › Workspace** at “Which time zone do you work in?”. Scheduled runs follow the same time zone.
+
+If you work in a different time zone than your team, you can store your own. The Cockpit has no field for it yet. It works over the HTTP API with the field `timezone`, see below.
+
+### Get urgent items despite quiet hours
+
+Two kinds of items count as critical:
+
+- A workflow in production was stopped.
+- A stored secret can no longer be read.
+
+By default these items wait for your next delivery too. With the setting `critical_breakthrough` they arrive at once, also outside working hours and before the daily delivery. In the Cockpit you switch it on in the same question with **Critical items may break through quiet hours**; the HTTP API works too, see below.
+
+### Route approval notifications to another person
+
+If another person on your team approves what SubKit may do, route the notifications about it to them.
+
+1. Open **Settings › Setup** and select **Change** on **Approvals**.
+2. Answer “Who approves what SubKit may do?” with **Someone else on the team** and enter the **Email address**.
+3. Select **Apply**. Below it you then read “Approval notifications go to …”.
+
+What applies then:
+
+- It affects the items that need an approval: a version waits for approval, a schedule waits for an approval, an approval or a standing permission ends soon or is missing.
+- These items no longer trigger a push for you. The other person gets it when they are an active member of the workspace and may give the approval themselves. If they may not, the push stays with you.
+- A prepared invitation carries the role **Member**. This role may approve.
+- The items stay in your **Needs you** list, with “Waiting for approval from …”. If the person may not give the approval, that line is missing and the item stays your decision.
+- If the person is not in the workspace yet, everything stays with you until they have joined.
+
+What you read below the choice:
+
+| What you read | Meaning |
+| --- | --- |
+| “… is in this workspace.” | The notifications go to this person. |
+| “An invitation for … is prepared and not accepted yet.” | The notifications stay with you until the person accepts the invitation. |
+| “… is not in this workspace yet. An administrator has to invite this address first.” | Ask an administrator for the invitation, or select **Open People** if you are one. As soon as the address is invited, your choice applies by itself; you do not have to make it again. |
+| “… cannot approve with the current role. Approval notifications stay with you until an administrator changes the role.” | Ask an administrator to give the person the role **Member** or **Administrator**, or name someone else. |
+| “Invitation prepared” | You are an administrator and named an unknown address. SubKit prepared an invitation and sent no email. Pass on the **Invitation link** yourself. It is shown only once. |
+
+### Limits
+
+- **The choice applies to push, not to the desktop app.** SubKit Desktop reads the list directly and follows the quiet hours you set in the app. More in “SubKit Desktop”.
+- **The summary only names the count per kind.** The **Needs you** list shows which items they are.
+- **`critical_breakthrough` and your own time zone have no interface.** Both can only be set over the HTTP API.
+- **A person without the right to approve gets no notifications.** If the person named is an active member but may not give the approval, the push stays with you, and **Settings** › **Setup** warns you. Your **Needs you** list then does not name the person, and the item stays your decision. Name a person who may approve.
+- **The Cockpit does not show whom an item waits for.** The API returns the field `waiting_on` for it.
+- **Messages already sent cannot be taken back.** When you switch to working hours, it applies from the next check on.
+
+### If something does not work
+
+| What you see | What to do |
+| --- | --- |
+| “Browser permission was denied. Allow notifications in your browser settings.” | Allow notifications for the Cockpit address in your browser settings. |
+| No push arrives although something is open | Check the line “From your setup” under **Settings › Notifications**. Outside working hours and before the daily time, SubKit holds push back. |
+| Push arrives at the wrong hour | Check the time zone of the workspace under **Settings › Workspace**. |
+| “Enter a time such as 08:00.” | Write the time with four digits and a colon. |
+| “The setting was not applied” | Nothing was changed. Your earlier choice still applies. Try again. |
+| The other person gets no approval notifications | Check that they are a member, have push switched on on their device and may approve. |
+
+### The same over the HTTP API
+
+`GET /v1/identity/me/setup` reads your choice, `PUT /v1/identity/me/setup` changes it. Fields you leave out keep their value.
+
+```bash
+curl -s -X PUT "$SK_URL/v1/identity/me/setup" \
+  -H "Authorization: Bearer $SK_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"notifications":{"mode":"working_hours","from":"08:00","to":"18:00","days":[1,2,3,4,5]},"timezone":"Europe/Berlin","critical_breakthrough":true}'
+```
+
+Every field is listed in “Reference: desktop app, rules, schedules and problem reports”.
+## Keep an eye on schedules
+
+This chapter is for anyone whose workflows or tasks run on a schedule.
+Afterwards you can read why a run failed, why a schedule waits or was paused, and what became of each scheduled time.
+You also know how to resume a schedule and how to renew an approval before it ends.
+
+### What you need
+
+- A workflow or a task with a schedule. “Your first workflow” and “Hand over a goal as a task” describe how to create one.
+- To read the history: `execution:read` for workflows, `task:read` for tasks.
+- To resume a schedule: `workflow:write`.
+
+### Read why a run failed
+
+A failed run shows a notice with three parts: what happened, one recommended action and the collapsed **Technical details**.
+
+1. Open the run through **Runs** or through the **Needs you** list on the **Overview**.
+2. Read the cause and select the recommended action.
+
+| Cause | Recommended action |
+| --- | --- |
+| **Sign-in rejected** | **Sign in again**: reconnect the connector. |
+| **Approval no longer matches**, **Refused before the start** | **Review approval**: check and renew the approval. |
+| **Timed out**, **Aborted**, **Connector unavailable**, **Provider rate limit reached**, **Not read completely**, **Error in the external system** | **Try again** |
+| **Token budget exhausted** | **Ask an administrator** |
+| **Connector missing**, **Unresolved placeholder**, **Answer in an unexpected shape**, **Message malformed**, **Not classified** | **Fix it in the chat**: the chat opens with the question about cause and fix. |
+
+For confidential workflows (`execution_privacy: sensitive`) SubKit stores no failure details. From this version on, such a run still keeps its cause and one fixed sentence that says what to do. Example: “The connected service rejected the sign-in. Reconnect the connector, then run again. Nothing was changed by this step.” When SubKit recognizes no cause, it stays at “Sensitive execution failed.” The engine writes these sentences in English. The Cockpit says them in your language where it knows the cause, the reason for a hold or the failure code: on the overview for held and failing workflows, for a refused rerun and in error notices. In the technical details of a run, over the HTTP API and in `sk` the engine’s English sentence remains. SubKit Desktop notifies in your language too.
+
+### Why a schedule waits
+
+A held schedule starts no run but loses nothing. As soon as you fix the reason, it goes on. The reason is shown on the workflow, on the **Overview** and in the **Schedule history**.
+
+| What you read | What to do |
+| --- | --- |
+| “Held: this version has no approval. Approve it and the schedule runs again.” | Open the workflow, review it and give the approval. |
+| “Held: the approval no longer applies. Renew it and the schedule runs again.” | The approval has expired, is used up or was revoked. Renew it. |
+| “Held: the run is missing input. Add it in the schedule.” | Enter the missing input in the schedule. |
+| “Held: the task has no standing permission. Give it and the schedule runs again.” | Open the task and select **Allow**. |
+| “Held: the standing permission has ended. Renew it and the schedule runs again.” | Open the task and select **Allow**. |
+
+### What happens after repeated failures
+
+When a scheduled workflow run fails several times in a row for the same reason, SubKit slows the schedule down and then pauses it.
+
+| Failures in a row | What SubKit does |
+| --- | --- |
+| 1 and 2 | Nothing. The next scheduled time runs as planned. |
+| 3 | Waits 2 minutes after the last failure before the next run starts. |
+| 4 | Waits 6 minutes after the last failure. |
+| 5 | Pauses the schedule. No run starts until you resume it. |
+
+- A failure is a scheduled run that failed or timed out. A run started by hand does not count.
+- A successful run, a stopped run or a failure with a different cause ends the streak.
+- Scheduled times that fall into a waiting period appear in the history as “Skipped: after repeated failures the schedule waits longer before it tries again.”
+- SubKit reports the pause exactly once: as the item “Paused after repeated failures” under **Needs you**, as a push notification and as the event `schedule.auto_paused`.
+- This applies to schedules of workflows. Schedules of tasks are not slowed down and not paused automatically.
+
+### Resume a paused schedule
+
+1. Open the workflow. At the top you read “‘…’ was paused automatically” with the number of runs and the time since which no run has started.
+2. Fix the cause. If it is the approval, the notice offers **Renew approval**. Renew the approval first.
+3. Select **Resume schedule**. You read “Schedule resumed”.
+
+After resuming, SubKit counts failures afresh. The pause changed nothing else: workflow, approval and schedule are as they were.
+
+### Read the schedule history
+
+The history shows what became of each scheduled time.
+
+1. Open the workflow or the task and select the **Schedule** tab.
+2. Under **Schedule history**, read the entries, newest first. **Show older** loads more.
+3. Select **Open the run** on an entry to see the run that belongs to it.
+
+| Entry | Meaning |
+| --- | --- |
+| “Ran on time.” | The run started at the scheduled time. |
+| “Started later than planned, because the engine was busy or not running.” | The run started more than 5 minutes after the scheduled time. |
+| “Ran once for several missed times instead of catching up on each.” | Several missed times became one run. |
+| “Skipped: this schedule does not run on weekends.” | The schedule excludes weekends. |
+| “Skipped: this day is excluded in the schedule.” | The day is among the exceptions of the schedule. |
+| “Skipped: the previous run was still going.” | A task only ever has one open run. |
+| “Not started: the schedule paused itself after the same failure repeated.” | Resume the schedule as described above. |
+| “Held: …” | The schedule waits for you. The reasons are in “Why a schedule waits”. |
+
+Good to know:
+
+- When the same reason repeats, SubKit merges the scheduled times into one entry. “Stands for 12 scheduled times” names the number.
+- The history goes back 90 days. SubKit deletes older entries.
+- A schedule that runs more often than once a minute writes no entry for runs on time.
+
+### Renew an approval before it ends
+
+A workflow approval and the standing permission of a task can have an end date. SubKit announces the end in two stages: a notice in the overview 7 days before, with push also on your devices, and a notification through channels and rules 3 days before.
+
+| When | What happens |
+| --- | --- |
+| 7 days before: notice | A notice such as “The approval ends in 5 days” with **Renew** appears on the workflow or the task. An item appears under **Needs you**, and with push switched on the notice also reaches your devices. |
+| 3 days before: notification | SubKit sends the event `workflow.approval_expiring` or `task.grant_expiring` once to subscriptions, webhooks and the `sk` inbox. |
+| Fewer than a tenth of the runs left | For an approval with a run limit, the item under **Needs you** appears as well. |
+
+1. Select **Renew** in the notice or on the item under **Needs you**.
+2. For a workflow the approval dialog opens, for a task the standing-permission dialog. Check what it lists and choose the new validity.
+3. Confirm.
+
+**Renew** extends nothing by itself. Only your confirmation in the dialog gives the new approval.
+
+The event is sent only when the end would change something: the workflow has an active schedule in this environment or, in production, an active inbound webhook, and no longer-running approval covers the same version. For a task, a schedule or a one-time start that has not happened yet must be pending.
+
+### Stop a running run
+
+1. Open the running run.
+2. Select **Stop this run** and confirm with **Stop run**.
+
+The run ends right away. The schedule stays active. Steps that already reached an external system may have been carried out.
+
+### Limits
+
+- **The thresholds are fixed.** The waiting periods, the pause after five failures, the 90 days of history and the announcement periods cannot be set.
+- **Missing input pauses nothing.** A schedule that lacks input is held and shows up on the **Overview**, but does not count as a failure.
+- **The cause of the pause is coarse for confidential workflows.** For them SubKit counts all failures without a recognized cause as the same cause.
+- **Some reasons for tasks have no text of their own.** When the standing permission is used up, no longer fits the changed task, the owner is missing, the AI provider is missing or the task is paused, the history only reads “Held until you act.” The task page shows the exact reason.
+- **The `sk` inbox of existing workspaces does not get the new events by itself.** Add them to the stored rule with `sk notifications rules`.
+
+### If something does not work
+
+| What you see | What to do |
+| --- | --- |
+| “The schedule could not be resumed and stays paused.” | Check that you have `workflow:write` and try again. |
+| The schedule pauses again shortly after resuming | The cause still exists. Open the latest run, read the cause and fix it first. |
+| “The schedule history could not be loaded” | Select **Try again**. |
+| “No scheduled time has come up yet.” | The schedule is new or paused. Entries appear only once a scheduled time was due. |
+| The **Schedule** tab is missing on the workflow | You lack `execution:read`. Ask an administrator for it. |
+| In the German Cockpit a notice names the cause in English, marked “Wortlaut der Engine” | The Cockpit does not know this code yet and therefore shows the engine’s sentence. The action next to it is translated. |
+
+### The same in the terminal and over the HTTP API
+
+With the `sk` command line:
+
+```bash
+sk schedules list
+sk schedules pause <schedule-id>
+sk schedules resume <schedule-id>
+```
+
+`sk schedules resume` also resumes an automatically paused schedule and counts failures afresh. There is no `sk` command for the history.
+
+| Route | Does |
+| --- | --- |
+| `GET /v1/workflows/{id}/schedule-occurrences` | Reads the history of a workflow, newest first. Needs `workflow:read`. |
+| `GET /v1/tasks/{id}/schedule-occurrences` | Reads the history of a task. Needs `task:read`, and you must be allowed to see the task. |
+| `PUT /v1/schedules/{id}` with `{"paused": false}` | Resumes a schedule. Needs `workflow:write`. |
+| `POST /v1/executions/{id}/cancel` | Stops a running run. |
+
+The response fields, the events and the reasons are listed in “Reference: desktop app, rules, schedules and problem reports”.
+## SubKit Desktop
+
+This chapter is for anyone who wants to keep an eye on SubKit all day without keeping a browser tab open.
+Afterwards you have connected SubKit Desktop to your server, signed in and set up notifications, quiet hours and the launch at login.
+
+### What SubKit Desktop is and is not
+
+SubKit Desktop is a window onto your server’s Cockpit. It brings three things a browser tab does not have: an icon in the menu bar or the notification area with the number of open items, notifications of the operating system and the launch when you log in to your computer.
+
+| SubKit Desktop does | SubKit Desktop does not |
+| --- | --- |
+| Show your server’s Cockpit, with the same permissions as in the browser. | Run workflows or tasks on your computer. Everything runs on the server. |
+| Report what needs you, also when the window is closed. | Work without a connection to the server. It keeps no data locally. |
+| Remember several servers as profiles. | Store an API key or a password. The sign-in is a session as in the browser. |
+| Open outside links in your system’s browser. | Load other websites in its window. |
+
+The table in “Cockpit as an app” shows how it differs from the installed web app.
+
+### What you need
+
+- A SubKit server of version 11.2.0 or later. Older servers do not offer the app’s sign-in.
+- The address of the server, for example `subkit.example.com`. It has to be reachable over `https://`; only `localhost` may use `http://`.
+- An account you can sign in to the Cockpit with in the browser.
+- SubKit Desktop itself. There is no installer to download yet: the app for macOS, Windows and Linux is available with the public release of SubKit. Until then you use the Cockpit in the browser or as an installed web app; that works today (“Installed Cockpit sessions”).
+
+### Connect to a server
+
+1. Start SubKit Desktop. You see “Connect to SubKit”.
+2. Enter the address of your server under **Server address** and select **Check server**.
+3. Read the result. With “Found SubKit …. You can sign in.” everything fits.
+
+The app checks whether a SubKit server answers at the address and whether the versions fit together: the server has to be new enough for the app, and the app new enough for the server.
+
+### Sign in in the browser
+
+The sign-in happens in your browser, not in the app. That way you use the sign-in you already know, and the app never sees your password.
+
+1. Select **Sign in in the browser**. Your browser opens, and the app shows “Your browser is open. Sign in there and you’ll continue here automatically.”
+2. Sign in to the Cockpit in the browser if you are not signed in there yet.
+3. Read the page “Sign in to SubKit Desktop”. It names your computer, the workspace and the account, for example “SubKit Desktop on MacBook-Anna is asking to sign in to Brennwerk.” and “Signed in as anna@example.com”.
+4. Select **Sign in**. Continue only if you just started this sign-in yourself in the app on this device.
+5. The browser hands back to the app. The app shows “Finishing sign-in…” and then opens the Cockpit.
+
+With **Cancel** on the page in the browser or **Cancel sign-in** in the app, nothing happens: no profile and no device is created.
+The page in the browser is valid for 10 minutes. After that, start the sign-in again in the app.
+
+### Devices and signing out
+
+Every computer on which you sign in with SubKit Desktop is a device of its own with its own session. The server lists it under the name of the computer. When you sign in again on the same computer, it stays the same device.
+
+- **Sign out** in the **User menu** of the Cockpit ends the session of this device. Your session in the browser and other devices stay signed in.
+- **Remove** in the list **Your servers** deletes the local session and the profile. Nothing changes on the server.
+- **Revoking a device** signs it out from outside, for example after a loss. Within a few seconds the app then shows “This device was signed out in SubKit. Sign in again to reconnect it.”
+
+You see your devices in the Cockpit under **Settings** › **Your profile** › **Where are you signed in?**. The list shows the installed web app and every desktop device with its kind, name, the day it signed in and its last use. The device you are sitting at carries the mark **This device**.
+
+1. Open the Cockpit in the browser and there **Settings** › **Your profile**.
+2. Select **Revoke** at the device.
+3. Confirm. The dialog names the device and says what happens: it is signed out at once and no longer receives notifications; other devices stay signed in.
+
+In the app itself and in the installed web app you see the same list, but there you can only sign out **This device** with **Sign out**. You revoke another device in the browser.
+
+**Revoke installation** in the workspace menu only concerns the installed web app. The dialog says so: desktop devices stay signed in.
+
+### How long you stay signed in
+
+| Rule | Value |
+| --- | --- |
+| Without use | 30 days. Any use of the app, also in the background at the tray icon, starts the period again. |
+| At most | 90 days since the sign-in, even with daily use. After that you sign in again in the browser. |
+| After a revocation or **Sign out** | Ended at once. |
+
+When the session expires you read “Your session expired. Sign in again; your settings are kept.” Shorter periods apply to the browser and the installed web app: 8 hours without use, 24 hours at most.
+
+### Icon, notifications and quiet hours
+
+When you close the window, SubKit Desktop keeps running. The icon in the menu bar or the notification area shows the number of open items.
+
+| Entry in the icon’s menu | What it does |
+| --- | --- |
+| **Open SubKit** | Brings the window to the front. |
+| **Needs you (3)** | Opens the list of open items. When nothing is open, it reads “Nothing needs you right now”. |
+| **Pause notifications for 1 hour** | Holds notifications back for an hour. **Resume notifications** ends the pause. |
+| **Launch at login** | Starts SubKit Desktop with your computer, without opening a window. |
+| **Check for updates** | Looks for a new version of the app. |
+| **Report a problem…** | Opens the dialog from “Report a bug”. |
+| **Quit SubKit** | Quits the app. No notifications arrive after that. |
+
+A notification says what happened and what to do, for example “‘Daily report’ is waiting for your decision” and “Review the change and decide.” Unlike the push in the browser, it names the item. A click opens exactly this item in the window.
+
+- A new item is reported within about a second, after a minute at the latest.
+- When several items arrive at once, the app shows at most three notifications. You see the rest in the number on the icon.
+- What is already open when the app starts is not reported again.
+
+You set quiet hours in the app:
+
+1. Open **Settings…** in the app menu or press ⌘, (on Windows and Linux Ctrl+,).
+2. Switch on **Quiet hours** and enter **From** and **To**. The presets are 22:00 and 07:00.
+3. If you like, switch on **Launch when you log in to your computer** and choose German, English or **Same as system** under **Language**.
+
+During quiet hours and during a pause SubKit keeps counting but shows no notifications. Quiet hours follow the clock of your computer.
+
+### Several servers
+
+If you work with several SubKit servers, each one gets its own profile with its own session.
+
+1. In the **Servers** menu, select **Add server…** or press ⌘N.
+2. Connect and sign in as above.
+3. Switch between the profiles through the **Servers** menu or with **Open** in the list **Your servers**.
+
+### Updates
+
+Whether your app updates itself depends on how it was built. If **Settings** reads “Automatic updates are not enabled in this build.”, new versions come with the public release of SubKit; there is no download today.
+
+When updates are enabled, the app checks at start and every six hours after that.
+
+| What you read | What happens |
+| --- | --- |
+| “You’re on the latest version, ….” | Nothing to do. |
+| “Version … is available. The download starts shortly.” | The app downloads the update in the background. |
+| “Version … is downloaded. Restart SubKit to install it.” | Select **Restart now**. With **Later**, the update is installed the next time you quit. |
+| “The update could not be verified and was not installed. …” | Your version stays as it is. Try again later. |
+
+When the server requires a newer app, you read “The server requires at least version … of the app and you have ….” while connecting. Update SubKit Desktop then.
+
+### Limits
+
+- **Notifications only arrive while the app runs.** After **Quit SubKit** it reports nothing. For notifications without a running app, use the push of the web app.
+- **What was new during quiet hours or a pause is not reported later.** You see it in the number on the icon and in the **Needs you** list.
+- **The quiet hours of the app are its own.** The choice under **Settings › Setup** in the Cockpit applies to push in the browser, not to the app.
+- **The app reports the items of the opened profile.** Other servers report only once you switch to them.
+- **Only macOS has been exercised so far.** Links, the launch at login, the icon in the notification area and the number on the icon are built for Windows and Linux but not yet tested there end to end.
+- **A screenshot for a problem report can contain secrets shown openly.** More in “Report a bug”.
+
+### If something does not work
+
+| What you see | What to do |
+| --- | --- |
+| “The server can’t be reached. Check the address and your internet connection.” | Check the address and whether you can reach the server in the browser. |
+| “No SubKit server answers at this address. Check the address.” | Enter the address of the server, without `/cockpit` at the end. |
+| “The address must start with https:// …” | Use the `https` address of your server. |
+| “This server runs SubKit …. The app needs at least …. Ask your administrator to update the server.” | The server is too old for the app. Pass the message on to the person who runs it. |
+| “The server requires at least version … of the app and you have ….” | Update SubKit Desktop. |
+| “This server doesn’t offer the sign-in this app needs. …” | Update SubKit Desktop or ask the person who runs the server to check it. |
+| The browser shows “This sign-in attempt expired or was already used. Please sign in again.” | Start the sign-in again in the app. |
+| “The sign-in expired. Start it again.” | At most one minute may pass between **Sign in** in the browser and the return to the app. Start the sign-in again. |
+| “The server rejected the sign-in. Start it again.” | Start again. If it stays that way, check that your account is active in the workspace. |
+| “The browser couldn’t be opened. Try again.” | Check that a default browser is set up on your system. |
+| Nothing happens in the app after **Sign in** in the browser | Allow the browser to open SubKit when it asks. If the app is no longer running, start it and begin again. |
+| “Your session expired. Sign in again; your settings are kept.” | Select **Sign in**. Profile, quiet hours and language are kept. |
+| “SubKit can’t be reached right now. The app keeps trying, and you can retry yourself.” | Wait or check your connection. The icon shows “No connection to the server”. |
+| No notifications arrive | Check whether a pause or quiet hours are active and whether your operating system allows notifications for SubKit. |
+## Report a bug
+
+This chapter is for anyone who notices something in the Cockpit or in SubKit Desktop.
+Afterwards you can send a bug report with diagnostics and know what is sent, what is removed before and who can read the report.
+
+### Where a report goes
+
+A report does not leave your SubKit server. It lands as an item in the **Inbox** of your workspace, in the category `feedback`. Nobody outside gets it automatically, not even the maker of SubKit.
+
+Every person in your workspace who may see the **Inbox** (`intake:read`) can read it. These are administrators and members, not users with the User role.
+
+### Send a report
+
+1. Select **Report a bug** in the page header, next to the side panel toggle. **Report a bug…** in the **User menu** and **Report a bug** in the **Technical details** of an error notice open the same dialog.
+2. Under **Kind of feedback**, choose **Bug**, **Idea** or **Other**.
+3. Describe what you were trying to do and what happened instead.
+4. If needed, use **Attach a file** to add up to 3 files of 2 MB each: PNG, JPG, PDF, TXT or JSON.
+5. Leave **Attach diagnostic report** switched on or switch it off. **View** shows exactly what goes along.
+6. Check text and files for private information and select **Send feedback**.
+
+The dialog tells you two things before you send: next to **Attach a file** it says that images and PDFs are sent as they are. Above **Send feedback** it says that the report is stored in the **Inbox** of your workspace, who reads it there, and that your text is sent as you wrote it except for secrets and file paths.
+
+You then read “Thanks for your feedback”. When you open the dialog from an error notice, error, cause, code, request ID and time are already filled in.
+
+When sending fails, your draft is kept: the kind, the text and the choice about the diagnostic report. You choose files and the screenshot again.
+
+### What is sent
+
+| Part | Content |
+| --- | --- |
+| What you enter | The kind of feedback and your text. |
+| Files | What you attach yourself. |
+| Diagnostic report, when switched on | **App** (Browser, Desktop app or Installed web app), **App version**, **Operating system**, **Server version**, **Connection status**, **Page** and the **Last 10 errors** with code and time. |
+| Screenshot, only in SubKit Desktop and only when you tick it | A picture of the Cockpit window. |
+
+Of the **Page**, only the path is sent, without parameters. Content of your workflows, runs or conversations is not sent unless you write it into the text or attach it.
+
+### What is removed before storing
+
+The Cockpit cleans the diagnostic report before sending, and the server cleans the whole report once more before it stores it.
+
+| What | Where | Replaced by |
+| --- | --- | --- |
+| Credentials in headers such as `Authorization` and `Cookie`, tokens after `Bearer`, `Basic` or `Token`, named secrets such as `password`, `api_key`, `client_secret`, and strings that look like a secret | Text, diagnostic report, text files, file names | `[removed]` |
+| Parameters, fragment and user information in addresses | Text, diagnostic report, text files, file names | The address stays without these parts. |
+| Absolute file paths | Text, diagnostic report, text files, file names | `[path]` |
+| Email addresses | Diagnostic report, text files, file names | `[email]` |
+
+Under “Removed before storing”, the stored item names how many places were removed.
+
+### The screenshot in SubKit Desktop
+
+In SubKit Desktop the dialog also offers a **Window screenshot**. The browser and the installed web app do not have it.
+
+1. Select **Report a problem…** in the app menu, in the **Help** menu or on the icon in the menu bar. The app takes the picture before the dialog appears, so that the dialog is not in it.
+2. Look at the picture in the dialog.
+3. Tick **Attach this picture of the window** only when nothing confidential is visible. The box is never ticked in advance.
+
+Password and secret fields are hidden in the picture. Anything shown openly in the window, such as a newly created API key, stays visible.
+
+When the app is not signed in, **Report a problem…** opens the **Diagnostics** dialog instead, with **Copy diagnostics** and **Save as file…**. The data contains the app version, operating system, server version and the last 10 errors. Add it to your message to the person who runs your server.
+
+### Limits
+
+- **Email addresses in your text stay.** That is deliberate: your text is yours and is sent as you wrote it. The server removes only secrets and file paths from it. It removes email addresses from the diagnostic report, from text files and from file names.
+- **Pictures and PDFs are not cleaned.** That includes the screenshot. The dialog says so next to **Attach a file**. Look at them before you send.
+- **No separate readers for feedback.** The category `feedback` has the same readers as the rest of the **Inbox**: administrators and members. A report for administrators only is not provided.
+- **The title of the item is English.** It starts with “Bug report:”, “Idea:” or “Feedback:”, followed by the first line of your text.
+- **Two different markers.** In the German diagnostic report the Cockpit writes `[entfernt]`, the server `[removed]`, `[email]` and `[path]`.
+- **Five reports in ten minutes.** After that the dialog asks you to wait a few minutes.
+- **Only from the Cockpit.** No report can be sent with an API key or from the `sk` command line.
+
+### If something does not work
+
+| What you see | What to do |
+| --- | --- |
+| “Feedback not sent” with “Your draft is saved and was not discarded. …” | Try again right away. |
+| “You sent several reports in a short time. …” | Wait a few minutes and then send. |
+| “The server did not accept an attached file. …” | Remove the file. PNG, JPG, PDF, TXT and JSON of at most 2 MB are allowed. |
+| “No more than 3 files.” or “No more than 2 MB per file.” | Choose fewer or smaller files. |
+| “This file could not be read. …” | Choose the file again or pick another one. |
+| The screenshot is missing in SubKit Desktop | The window was hidden, or the picture was too large. Send without a picture or attach your own. |
+
+### The same over the HTTP API
+
+`POST /v1/feedback` accepts a report. The route only works with a browser session and needs no permission of its own. It answers `201` with the fields `id` and `intake_item_id`.
+
+Every field, limit and error code is listed in “Reference: desktop app, rules, schedules and problem reports”.
 ## Cockpit branding
 
 Branding makes the signed-in Cockpit show your name, your logo and a matching color palette instead of the SubKit look. You need it when your team should recognize the Cockpit as its own tool. Afterwards everyone signed in to your workspace sees the same look; login, email and other clients stay with SubKit.
@@ -2663,10 +3539,10 @@ You can install your workspace's Cockpit as a web app on a phone or computer. It
 
 From a signed-in browser session you create the installation with `POST /v1/cockpit/installations` and an empty JSON object. If one already exists, SubKit reuses it. The request needs the usual browser CSRF token. The response contains the installation address and its manifest address, and the installation gets its own browser session. Your session in the normal Cockpit (root Cockpit) stays active.
 
-There is exactly one installation per active workspace and owner on the current host; another workspace gets its own.
+There is exactly one web app installation per active workspace and owner on the current host; another workspace gets its own. Every computer with SubKit Desktop is, in addition, an installation of its own of the kind `desktop`. It is created when the app signs in, not through this route; more in “Operate the desktop sign-in”.
 
-- `GET /v1/cockpit/installations` reads this owner's current installation without issuing a session.
-- `DELETE /v1/cockpit/installations/{id}` revokes the installation. The normal Cockpit offers this revocation.
+- `GET /v1/cockpit/installations` reads this owner's current installation without issuing a session. Under `installations`, the answer also lists every installation with `kind` (`browser` or `desktop`), `device_label`, `created_at`, `last_used_at` and `current`. The session of an installed app gets the list too; `installation` is then `null`.
+- `DELETE /v1/cockpit/installations/{id}` revokes exactly that installation. The normal Cockpit offers the revocation of the web app in the workspace menu and that of every device under **Settings** › **Your profile** › **Where are you signed in?**. From inside an installed app only that app itself can be signed out.
 
 ### Session and sign-out
 
@@ -2683,13 +3559,23 @@ This is how an app session ends:
 
 ### App name and icon
 
-The app manifest is only available when signed in and has its own ID, scope and start address. It uses the workspace's saved name, the palette and an optional square app icon. The uploaded icon must be square and at least 512 pixels per edge; the branding byte and pixel limits apply. SubKit generates 192 and 512 pixel PNGs from it.
+The app manifest is only available when signed in and has its own ID, scope and start address. It uses the workspace's saved name, the palette and an optional square app icon. The uploaded icon must be square and at least 512 pixels per edge; the branding byte and pixel limits apply. SubKit generates 192 and 512 pixel PNGs from it. Without a custom icon, the manifest also ships the SubKit mark as a maskable and as a monochrome icon.
+
+The manifest also carries three shortcuts (Chat, Tasks, Inbox) and registers the app for links with the `web+subkit` scheme, for example `web+subkit://tasks` or `web+subkit://chat/{id}`. Such a link opens the matching page in the app; unknown targets lead to the start page. If the app is already running, another launch brings the open window to the front.
 
 Name, icon and manifest responses are private and never stored in an HTTP cache. Signed-out entry pages stay neutral. The browser or operating system may still keep an installed app's name and icon after sign-out.
 
+### Without a connection and after an update
+
+The app's service worker is a background script whose scope is exactly the installation path. It keeps the Cockpit's program files (the files under `/cockpit/assets/`, which are the same for every workspace), separately per installation and per server build. It never caches pages, API responses, workspace icons or private drafts, and it does not queue writes for later.
+
+If the server cannot be reached, the app shows the page “No connection to the server” with “Try again” instead of a browser error. You do not see data without a connection.
+
+After a server update the app detects the new build and offers “Reload”. Until then the open window keeps running on its previous build; unsaved input is not lost. On sign-out the app empties its cache and ends push on this device. If the installation is revoked, the app also removes its service worker the next time it is opened.
+
 ### Sharing and files
 
-The app's service worker is a background script with its own scope. It accepts a bounded amount of content that you send through “Share” from other apps, and it shows neutral push messages. It does not cache pages, API responses or private drafts, and it does not queue writes for later.
+The service worker accepts a bounded amount of content that you send through “Share” from other apps.
 
 Shared files and text stay in volatile memory until you explicitly confirm the import. Even then nothing happens on its own: uploading or collecting does not admit the source to knowledge, create a skill, call a model or start a workflow. Sources keep their original references. Local files and clipboard text are stored as a source artifact.
 
@@ -2699,7 +3585,9 @@ If the sign-in or the worker's volatile receipt is lost, share the content again
 
 You turn on push separately for each app and device. On the explicit preparation step, SubKit creates an encrypted VAPID key pair for your tenant, which the server uses to sign web push messages. Subscriptions are stored encrypted and bound to the installation and its owner.
 
-A message arrives within about a minute when an item that needs attention is new or changes. Unchanged items do not notify again. The message contains only a generic SubKit hint and opens or focuses the app's start page. It never contains branding, private content or approval actions.
+A message arrives within about a minute when an item that needs attention is new or changes. Unchanged items do not notify again. The app shows one notification per item: the title says what happened (something was stopped, something is failing, a decision is waiting), the text says what to do. A click opens the item in the app or brings the open window there. It never contains names of workflows or connectors, branding, private content or approval actions. More than three items at once are folded into one generic hint.
+
+The app icon carries the number of open items where the browser and operating system support it. When nothing is open any more, the number disappears.
 
 When push ends:
 
@@ -2708,11 +3596,11 @@ When push ends:
 - Push also ends when the owner is deactivated, the workspace is switched or deleted, and after 30 days without app use.
 - Inactive or deleted owners and workspaces receive no new messages.
 
-There are three limits to know. Neutral messages already sent may still arrive after sign-out. The browser's notification permission may apply to all apps on the same origin (scheme, host and port of the address) and is not revoked automatically on sign-out. Path-bound sessions do not create their own origin, so browser storage and local permissions are not separated.
+There are three limits to know. Messages already sent may still arrive after sign-out. The browser's notification permission may apply to all apps on the same origin (scheme, host and port of the address) and is not revoked automatically on sign-out. Path-bound sessions do not create their own origin, so browser storage and local permissions are not separated.
 
 ### Push in the normal browser Cockpit
 
-The normal Cockpit at `/cockpit/` can also receive these neutral notifications without an installation. The bell opens the same opt-in. When you turn push on, the browser asks for its permission. SubKit then registers the push-only worker at `/cockpit/sw.js` and binds the subscription to you and your workspace.
+The normal Cockpit at `/cockpit/` can also receive these notifications without an installation. The bell opens the same opt-in. When you turn push on, the browser asks for its permission. SubKit then registers the push-only worker at `/cockpit/sw.js` and binds the subscription to you and your workspace.
 
 The same push routes accept a normal Cockpit session with a CSRF token. SubKit refuses API keys and bearer tokens, meaning credentials sent in the `Authorization` header. Installation paths never fall back to this session.
 
@@ -3166,6 +4054,173 @@ The default lane runs up to two workers in parallel; hooks have a separate lane.
 Per engine process, global and per-tenant queue limits apply across both lanes.
 On Linux an RSS watchdog polls memory use regularly.
 It is not a kernel-enforced memory ceiling.
+## Operate the desktop sign-in
+
+This chapter is for anyone who runs a SubKit server and wants to offer SubKit Desktop to their team.
+Afterwards you know what your server tells the app, which two settings you can set, how the sign-in works and how to revoke a device.
+“SubKit Desktop” describes how people use the app.
+
+### What you need
+
+- An engine of version 11.2.0 or later. The update runs the migrations for the app’s sign-in.
+- An address with `https://`. The app only connects over `https`; it allows `http` for `localhost` alone.
+- A working way to sign in to the Cockpit in the browser. The app uses exactly this sign-in and no API key.
+- The app itself. There are no ready-made installers and no download today: SubKit Desktop is available with the public release of SubKit. Whoever has access to the repository builds the app for macOS (dmg and zip), Windows (installer) and Linux (AppImage and deb) themselves; signing and distributing is then part of it. What you need for that is listed below. The Cockpit as an installed web app works today.
+
+### What the server tells the app
+
+Before every connection the app reads `GET /.well-known/service-descriptor.json`. The section `clients.desktop` tells it whether and how it can sign in.
+
+```json
+{
+  "version": "<version>",
+  "clients": {
+    "desktop": {
+      "min_version": "0.1.0",
+      "login": {
+        "start": "/v1/identity/desktop-login/start",
+        "session": "/v1/identity/desktop-session",
+        "callback": "subkit://callback",
+        "callbacks": ["subkit://callback"],
+        "code_challenge_methods": ["S256"]
+      },
+      "feedback_path": "/cockpit?feedback=1"
+    }
+  }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `version` | The version of the engine. The app requires at least 11.2.0. |
+| `clients.desktop.min_version` | The oldest app version this server accepts. An older app asks for an update instead of signing in. |
+| `clients.desktop.login.start` | The address the app opens in the browser. |
+| `clients.desktop.login.session` | The address where the app exchanges its code for a session. |
+| `clients.desktop.login.callback` | The target the browser hands back to after the confirmation. |
+| `clients.desktop.login.callbacks` | Every target this server accepts. An app whose target is missing does not sign in. |
+| `clients.desktop.login.code_challenge_methods` | The accepted methods. There is only `S256`. |
+| `clients.desktop.feedback_path` | The Cockpit address that opens the “Report a bug” dialog. |
+
+When `clients.desktop` is missing, the app reports the server as too old. When `login` is missing in it, the app reports that the server does not offer the sign-in it needs.
+
+### The two settings
+
+Both are in the Cockpit under **Settings** and apply to the whole engine, without a restart.
+
+| Setting | Shown in the Cockpit as | Default | Effect |
+| --- | --- | --- | --- |
+| `server.desktop_min_version` | **Minimum desktop app version** | `0.1.0` | Published as `clients.desktop.min_version`. Format: three numbers such as `1.4.0`. |
+| `server.desktop_dev_callback` | **Accept desktop development builds** | `false` | Also accepts `subkit-dev://callback` as a target. Outside `NODE_ENV=production` this applies without the setting. |
+
+This is how you raise the minimum version:
+
+1. Distribute the new app to your team first.
+2. Set `server.desktop_min_version` to that version.
+3. People with an older app read “The server requires at least version … of the app and you have ….” the next time they connect.
+
+The app and the engine both enforce the minimum version. The app checks the published value when it connects. The engine checks the version the app names at sign-in as `app_version`, in three places:
+
+| Place | Answer for an older app or without `app_version` |
+| --- | --- |
+| `GET /v1/identity/desktop-login/start` | `426` with a page “SubKit Desktop is out of date” that names the minimum version, and the header `X-SubKit-Error: desktop_app_outdated`. No sign-in is started. |
+| Confirmation page, when shown and when submitted | The same page with `426`. No code is issued. |
+| `POST /v1/identity/desktop-session` | `426` with the code `desktop_app_outdated`. The sign-in code is not consumed. The app shows “This version of the app is too old for this server. …” |
+
+A pre-release such as `1.4.0-beta.1` counts as older than `1.4.0`. The check applies to new sign-ins: an older app that is already signed in keeps its session until it expires or you revoke the device. The app names its version itself; the limit keeps honest older apps out and does not replace access control.
+
+Leave `server.desktop_dev_callback` switched off in production. Development builds are called “SubKit Dev”, use the scheme `subkit-dev://` and are meant only for developing the app.
+
+### How the sign-in works
+
+1. The app opens `GET /v1/identity/desktop-login/start` in the browser with a PKCE challenge (`S256`), a `state`, the ID and name of the device, and its version as `app_version`.
+2. The engine redirects to the confirmation page. If the person is not signed in in the browser, they sign in as usual first.
+3. The page names the device, the workspace and the account. The person selects **Sign in** or **Cancel**.
+4. With **Sign in**, the browser hands back to `subkit://callback` with a code. With **Cancel**, it hands back `error=access_denied`.
+5. The app exchanges the code for a session with `POST /v1/identity/desktop-session`, its `code_verifier` and its `app_version`. The answer sets an HttpOnly cookie for `/cockpit/i/{installationId}/` and never contains an API key.
+
+What applies:
+
+| Rule | Value |
+| --- | --- |
+| Validity of the confirmation page | 10 minutes |
+| Validity of the code | 60 seconds, usable once. Any attempt consumes it. |
+| Binding of the code | To the challenge, the workspace, the person and the device. A new code for the same device invalidates older ones. |
+| Limit per address | 30 calls per minute for the start, 30 for the confirmation, 10 for the exchange. After that `429` with `Retry-After`. |
+| Exchange from a web page | Refused with `403 cross_origin_rejected`. Only the app itself can exchange. |
+| Confirmation from another site | Refused with `403 csrf_rejected`. |
+
+The engine counts the limits in the database. They apply across all engine processes together and survive a restart.
+
+### How long a desktop session lasts
+
+| Rule | Desktop device | Browser and installed web app |
+| --- | --- | --- |
+| Without use | 30 days. Any request of the app, also the open event stream, starts the period again. | 8 hours |
+| At most since the sign-in | 90 days | 24 hours |
+| Revoking the device, **Sign out**, a deactivated person | Ended at once | Ended at once |
+
+The cookie of the desktop session lasts 90 days; whether the session still holds is decided by the engine on every request. After it expires the engine answers `401`, and the app asks for a new sign-in in the browser. The periods are fixed and not a setting. Approvals that require a live session of the person also accept the desktop session within these periods.
+
+### View and revoke devices
+
+Every computer is an installation of its own of the kind `desktop` with its own session. The same device ID reuses its installation; a new computer gets a new one.
+
+The Cockpit shows a person’s devices under **Settings** › **Your profile** › **Where are you signed in?** and revokes them there after a question that names the device and the consequence. You can use the same routes directly. They accept a session of the Cockpit, with its CSRF token, and no API key. A person sees and revokes only their own devices with them:
+
+| Route | Does |
+| --- | --- |
+| `GET /v1/cockpit/installations` | Lists up to 50 of your own installations under `installations`, with `id`, `kind` (`browser` or `desktop`), `device_label`, `created_at`, `last_used_at` (the last request a session of this installation made, else `null`) and `current` (`true` for the installation the request comes from). |
+| `DELETE /v1/cockpit/installations/{installationId}` | Revokes the installation. Answers `204`. The session of the normal Cockpit in the browser revokes any of your installations; the session of an installation only itself, otherwise `403 own_installation_only`. |
+
+What the revocation does:
+
+- All sessions of the device end, and its push ends.
+- The engine checks the session of open event streams every three seconds. The app therefore learns of the revocation within a few seconds and signs out locally.
+- Later requests with the old cookie get `403 installation_revoked`. An expired session gets `401 installation_session_required` instead; the profile then stays in the app, and the person signs in again.
+- When the person signs in again on the computer, a new installation is created.
+
+**Revoke installation** in the workspace menu only revokes the installed web app. The dialog says so: desktop devices stay signed in and are signed out under **Settings** › **Your profile**. Each installation is revoked on its own; there is no revocation of all devices at once.
+
+When a person is deactivated, the exchange refuses with `403 user_inactive`.
+
+### Build and distribute the app
+
+There is no public download until the public release of SubKit; this section is for those who have access to the repository. The app lives there under `apps/desktop`. A build for distribution is made there with `bun run package`. The repository does not bring the following; you supply it yourself:
+
+| For | What you provide |
+| --- | --- |
+| Signing for macOS | A Developer ID certificate and the credentials for notarization. |
+| Signing for Windows | A code signing certificate. |
+| Updates | A place where you publish versions over `https`, and the decision to enable updates (`SUBKIT_DESKTOP_UPDATES=1` when building). |
+
+Without enabled updates the app shows “Automatic updates are not enabled in this build.” An unsigned app cannot update itself on macOS. None of these values belongs in the repository. The details are in the README file under `apps/desktop`.
+
+### What the audit trail records
+
+| Action | When |
+| --- | --- |
+| `desktop_login.code_issued` | The person confirmed the device in the browser. |
+| `desktop_login.denied` | The person cancelled (`declined_by_user`), or the exchange failed, for example `replayed`, `expired`, `invalid_verifier`, `state_mismatch` or `user_inactive`. |
+| `desktop_login.completed` | The app received its session. |
+| `cockpit_installation.created` | A new device was created, with `kind`, device ID and name. |
+| `cockpit_installation.revoked` | A device was revoked, with the number of sessions ended. |
+| `session.revoked` | Per session ended, with the reason `installation_revoked`. |
+
+An exchange with an unknown code only appears in the engine log, not in the audit trail. The Cockpit so far shows the three `desktop_login.*` actions with their technical name.
+
+### If something does not work
+
+| What you see | What to do |
+| --- | --- |
+| The app reports the server as too old | Check `version` in the service descriptor. The app needs 11.2.0 or later and the section `clients.desktop`. |
+| The app reports that the server does not offer the sign-in it needs | The app is a development build and your server does not accept `subkit-dev://callback`, or `login` is missing in the descriptor. |
+| `400 invalid_redirect_uri` at the start | The app’s target is not in `callbacks`. Use a production build or switch on `server.desktop_dev_callback`. |
+| `401 invalid_grant` at the exchange | The code is unknown, used, expired or does not match the `code_verifier`. The person starts the sign-in again. |
+| `429` during the sign-in | Too many attempts from one address. Wait for the time in `Retry-After`. |
+| The browser does not return to the app | The system does not know the scheme `subkit://`. Install the app again so that it registers it. |
+| `401 browser_session_required` when listing devices | The route accepts only a session of the Cockpit and no API key. |
+| `403 own_installation_only` when revoking | The request comes from an installation and names another one. Revoke the other device in the browser. |
+| `426 desktop_app_outdated` at sign-in | The app is older than `server.desktop_min_version` or names no version. Update the app. |
 ## License
 
 Apache License 2.0 (`Apache-2.0`). The full text is in the `LICENSE` file of every release.
@@ -3187,6 +4242,230 @@ texts of all bundled packages, the embedded embedding model and the Bun runtime.
 The corresponding source of the GPL and LGPL components is available on request for at least
 three years (written offer in the notices). Request it through the [contact form](https://subkit.mikebild.dev/kontakt). Once the SubKit repository is public, it will also
 be linked there.
+## Reference: desktop app, rules, schedules and problem reports
+
+This page lists what version 11.2.0 added to the HTTP API, the events, the audit trail and the settings.
+It is for developers and operators who build on these parts. The task-oriented chapters are “SubKit Desktop”, “Chat modes and rules”, “Keep an eye on schedules”, “Notifications and quiet hours”, “Set SubKit up for yourself” and “Report a bug”.
+The complete, machine-readable description of every route is at `/openapi.json` on your engine.
+
+### Routes
+
+| Route | Who may call it | Does |
+| --- | --- | --- |
+| `GET /v1/workflows/{id}/schedule-occurrences` | `workflow:read` | Schedule history of a workflow, newest first. |
+| `GET /v1/tasks/{id}/schedule-occurrences` | `task:read`, and the task must be visible to you | Schedule history of a task, newest first. |
+| `GET /v1/identity/me/setup` | A person | Reads your setup choices, with recommended values where unset. |
+| `PUT /v1/identity/me/setup` | A person | Stores setup choices. Fields left out keep their value. |
+| `GET /v1/approval-rules` | A person | Lists your offered and active approval rules. |
+| `POST /v1/approval-rules/{id}/accept` | A person in a browser session | Stores an offered rule. |
+| `POST /v1/approval-rules/{id}/dismiss` | A person | Declines an offered rule. |
+| `POST /v1/approval-rules/{id}/renew` | A person in a browser session | Renews an active rule for 90 days from now. |
+| `DELETE /v1/approval-rules/{id}` | A person | Revokes an active rule. |
+| `POST /v1/feedback` | A person in a browser session | Files a report in the workspace inbox. |
+| `GET /v1/identity/desktop-login/start` | Nobody signed in; opened by the app in the browser | Starts a desktop sign-in and redirects to the confirmation page. |
+| `GET` and `POST /v1/identity/desktop-login/confirm` | The person in the browser | Shows the confirmation page and takes the decision. Not part of `/openapi.json`. |
+| `POST /v1/identity/desktop-session` | The desktop app, without a cookie | Exchanges the sign-in code for a Cockpit session. |
+| `GET /v1/cockpit/installations` | A session of the Cockpit: browser, installed web app or desktop device | Returns `installations` with every installation of the person. `installation` names the installed web app and is filled for the session of the normal Cockpit only. |
+| `POST /v1/cockpit/installations` | The session of the normal Cockpit | The answer now carries `kind`. |
+| `DELETE /v1/cockpit/installations/{installationId}` | The session of the normal Cockpit for any of your installations; the session of an installation only for itself | Revokes a web app or a desktop device. |
+
+“A person” means a user account, not a system account. A system account gets `403 person_required`. Routes that need a browser session answer other callers with `403 human_confirmation_required`.
+
+### Schedule history
+
+Query parameters of both routes: `limit` (default 50, at most 200) and `before` (a time in ISO 8601). The answer is `{items, next_before}`. Pass `next_before` as `before` to read older entries.
+
+| Field | Meaning |
+| --- | --- |
+| `id` | ID of the entry. |
+| `workflow_id`, `task_id`, `schedule_id` | What the entry belongs to. |
+| `due_at` | The scheduled time. |
+| `last_due_at` | The last scheduled time the entry stands for, when several were merged. |
+| `started_at` | When the run started, if one started. |
+| `state` | `ran`, `ran_late`, `skipped` or `held`. |
+| `reason_code` | Why, see the next table. Empty for a run on time. |
+| `skipped_count` | How many further scheduled times the entry stands for. |
+| `execution_id`, `task_run_id` | The run that belongs to the entry. |
+| `created_at`, `updated_at` | When the entry was written and last changed. |
+
+| `reason_code` | `state` | Meaning |
+| --- | --- | --- |
+| `late_start` | `ran_late` | Started more than 5 minutes after the scheduled time. |
+| `merged_missed` | `ran_late` | One run for several missed times. |
+| `calendar_weekend` | `skipped` | The schedule excludes weekends. |
+| `calendar_skip_date` | `skipped` | The day is excluded in the schedule. |
+| `failure_backoff` | `skipped` | Waiting period after repeated failures. |
+| `previous_run_active` | `skipped` | The previous run of the task was still open. |
+| `repeated_failures` | `held` | The schedule paused itself. |
+| `input_required` | `held` | The schedule lacks required input. |
+| `execution_authority_required` | `held` | No approval covers the current version. |
+| `execution_authority_unavailable` | `held` | The approval expired, is used up or was revoked. |
+| `grant_required`, `grant_expired`, `grant_exhausted`, `grant_fingerprint_mismatch` | `held` | The standing permission of the task is missing, ended, used up or no longer fits the task. |
+| `owner_unavailable`, `ai_access_missing`, `paused` | `held` | The owner of the task is unavailable, the workspace has no AI provider, or the task is paused. |
+
+Entries are kept for 90 days. A schedule entry returned by the schedule routes now carries `auto_pause`: `null`, or `{paused_reason, failure_class, consecutive_failures, since}` while the schedule is paused after repeated failures.
+
+A run now names the cause of a failure as `outcome.cause_class` in `GET /v1/executions/{id}` and as `failure.cause_class` in the list, also for confidential workflows. Values include `auth_failed`, `authority_mismatch`, `connector_missing`, `connector_unavailable`, `budget_exhausted`, `rate_limited`, `timeout`, `placeholder_unresolved`, `schema_mismatch`, `incomplete_read` and `payload_invalid`.
+
+### Setup choices
+
+| Field | Values | Sets |
+| --- | --- | --- |
+| `default_chat_mode` | `ask`, `auto`, `plan` | The mode a new conversation starts in. Recommended: `auto`. |
+| `default_environment` | `dev`, `prod` | The environment for new tasks and for the review of new workflows. Recommended: `dev`. |
+| `approver` | `{"kind":"self"}` or `{"kind":"teammate","email":"…"}` | Who gets approval notifications. Recommended: `self`. |
+| `notifications` | `{"mode":"immediately"}`, `{"mode":"working_hours","from":"HH:MM","to":"HH:MM","days":[1,2,3,4,5]}` or `{"mode":"daily_digest","at":"HH:MM"}` | When push is delivered. Recommended: `immediately`. `days` names the working days as weekdays from `1` (Monday) to `7` (Sunday), each at most once; without the field, Monday to Friday applies. |
+| `timezone` | An IANA time zone, or `null` for the time zone of the workspace | The zone the times above are read in. |
+| `critical_breakthrough` | `true`, `false` | Whether critical items are pushed at once despite held push. Default `false`. |
+| `first_job` | Text of at most 120 characters, or `null` | The first suggestion in the Cockpit. |
+| `services` | Up to 50 connector slugs | Which connectors the Cockpit offers first. |
+
+The answer adds `unset` (which of chat mode, environment, approver and notifications are not chosen yet), `recommended`, `updated_at` and, for a teammate, `approver.user_id`, `approver.invitation` with `member`, `pending` or `needs_admin`, `approver.can_approve` and `approver.missing_permissions`. `can_approve` is `true` when the person’s role holds `conversation:approve`, `task:grant` and `workflow:write`; the member role holds all three. With `false`, `missing_permissions` names the missing permissions, and approval notifications stay with the person who asks. While the person does not exist in the workspace, `can_approve` is `null`. When an administrator names an unknown address, the answer carries `invitation` with `invite_id`, `plaintext_token` and `expires_at` exactly once; the invitation carries the member role, and no email is sent. When someone without the right to invite named an address (`needs_admin`), the engine links the choice by itself as soon as an administrator invites or adds that address. `PUT` answers `409 approver_already_known` when the address already belongs to a person who cannot be invited again.
+
+### Approval rules
+
+| Field | Meaning |
+| --- | --- |
+| `id` | ID of the rule. |
+| `state` | `offered`, `active`, `dismissed` or `revoked`. Only `active` rules apply. |
+| `tool`, `verb` | The tool and the kind of action: `send`, `create`, `update`, `run`, `save` or `other`. |
+| `connector`, `account` | The connector the rule is limited to. |
+| `operation`, `target` | The one operation the rule is limited to, for example `POST /v1/messages/send`. |
+| `recipients` | The only recipients the rule covers. Empty: actions without a recipient. |
+| `content_class` | `no_content`: only actions without text. `same_content`: only the exact text that was approved. `person_given`: only text the person wrote or saw as a draft. |
+| `expires_at`, `expired` | When the rule stops applying, and whether that time has passed. |
+| `daily_limit`, `uses_today` | Runs allowed per day in UTC, and runs today. |
+| `approvals_count`, `use_count` | How often the person approved this action by hand, and how often the rule let it run. |
+| `offered_at`, `decided_at`, `revoked_at`, `last_used_at`, `created_at` | Times. |
+
+A route that does not fit the state of the rule answers `409 approval_rule_wrong_state`.
+
+A tool call in a conversation carries `policy` when the chat rule looked at it: `ran_without_asking`, `rule` (`user_instruction` or `standing_rule`), `bound_action` (`verb`, `effect_class`, `target`, `account`, `recipients`, `content_summary`, `content`), `because` (`quote`, `message_id`), `rule_id`, `ask_reason`, `ask_detail` and `rule_offer`.
+
+| `ask_reason` | Meaning |
+| --- | --- |
+| `mode` | The conversation asks before every action with an outside effect. |
+| `no_browser_session` | The caller is not a person signed in in the browser. |
+| `tool_not_coverable`, `effect_class_never`, `effect_unknown` | The kind of action always asks, or its effect is unknown. |
+| `no_user_message`, `no_quote`, `quote_too_short`, `quote_too_long`, `quote_not_in_user_words`, `not_a_request`, `verb_mismatch` | The person did not ask for this action in their own words. |
+| `quote_in_pasted_text` | The request stands in pasted or quoted text. |
+| `conditional_or_negated` | The request carries a condition or a negation. |
+| `recipient_not_named`, `target_not_named`, `value_not_said`, `date_not_said`, `header_not_requested` | The action contains something the person did not state. |
+| `content_not_given` | The text is not the person’s and was not shown as a draft. |
+| `already_used` | The request already covered this action once. |
+| `rule_expired`, `rule_daily_limit`, `rule_content` | A rule exists but does not apply. |
+| `undecidable` | The check could not be completed, so the action asks. |
+
+### Problem reports
+
+Body of `POST /v1/feedback`:
+
+| Field | Limits |
+| --- | --- |
+| `kind` | `bug`, `idea` or `other`. |
+| `message` | 1 to 5,000 characters. |
+| `client_request_id` | Optional UUID. Sending the same ID again does not file the report twice. |
+| `diagnostics` | Optional: `app_version`, `platform`, `server_version`, `connection` (up to 200 characters each), `client_kind` (`browser`, `desktop` or `pwa`), `route` (up to 2,000 characters) and `recent_errors` (up to 10 entries with `code` and `at`). |
+| `attachments` | Up to 3 entries with `filename` and `content_base64`, 2 MB each: PNG, JPG, PDF, TXT or JSON. |
+| `screenshot_png_base64` | Optional PNG of at most 4 MB. |
+
+The answer is `201` with `id` and `intake_item_id`. Errors: `409 report_id_taken`, `413 attachment_too_large` or `screenshot_too_large`, `422 attachment_invalid`, `attachment_type`, `attachment_rejected` or `screenshot_invalid`, and `429 rate_limit_exceeded` after 5 reports in 10 minutes per person.
+
+### Desktop sign-in and installations
+
+Query parameters of `GET /v1/identity/desktop-login/start`:
+
+| Parameter | Format |
+| --- | --- |
+| `code_challenge` | 43 characters, base64url. |
+| `code_challenge_method` | `S256`. |
+| `state` | 16 to 128 characters. |
+| `device_id` | A UUID the app creates once per server profile. |
+| `device_label` | 1 to 64 characters without control characters. |
+| `redirect_uri` | Optional: `subkit://callback` or, where accepted, `subkit-dev://callback`. |
+| `app_version` | The version of the app such as `1.4.0`, also with a pre-release tag such as `1.4.0-beta.1`. Without it, or below `server.desktop_min_version`, the engine answers `426`. |
+
+Body of `POST /v1/identity/desktop-session`: `code` (43 characters), `code_verifier` (43 to 128 characters), `app_version` and optionally `state`. The answer is `200` with `installation_id`, `cockpit_path` and `created`, and it sets the session cookie.
+
+| Answer | Meaning |
+| --- | --- |
+| `400 invalid_redirect_uri` | The target is not accepted by this server. |
+| `401 invalid_grant` | The code is unknown, used, expired or does not match the verifier or the state. |
+| `403 cross_origin_rejected` | The exchange was called from a web page. |
+| `403 csrf_rejected` | The confirmation came from another site or with an invalid token. |
+| `403 user_inactive` | The account is deactivated. |
+| `403 tenant_unavailable` | The workspace is unavailable. |
+| `426 desktop_app_outdated` | The app is older than `server.desktop_min_version` or names no `app_version`. At the start and on the confirmation page the answer is a page with the header `X-SubKit-Error: desktop_app_outdated`, at the exchange JSON. The sign-in code is not consumed. |
+| `429 rate_limit_exceeded` | Too many calls from one address; see `Retry-After`. |
+
+Each entry of `installations` in `GET /v1/cockpit/installations` has `id`, `kind` (`browser` or `desktop`), `device_label` (`null` for the installed web app), `created_at`, `last_used_at` (the last request a session of this installation made, or `null`) and `current` (`true` for the installation the request comes from). A request with the cookie of a revoked installation answers `403 installation_revoked`. `DELETE` from the session of an installation for another installation answers `403 own_installation_only`.
+
+The session of a desktop device lasts 30 days without use and at most 90 days since the sign-in; that of the browser and the installed web app 8 hours without use and at most 24 hours. A revocation ends any of them at once.
+
+### Event stream of the Cockpit
+
+`GET /v1/cockpit/events/stream` sends these frames and fields besides the changes:
+
+| Frame or field | Meaning |
+| --- | --- |
+| `hello` | First frame with `cursor`, `version` and `heartbeat_ms`. Carries `delivery` while notifications for the person are held back. |
+| `ping` | Heartbeat every `heartbeat_ms`. Carries `delivery` like `hello`; a `ping` without the field means announcing is allowed again. |
+| `delivery` on a change | `held`: do not announce. `critical_only`: announce only critical items. The list of what needs you and its counter are updated all the same. |
+| `server.shutdown` | Last frame when the engine stops. The client shows the state “offline” without an error notice and reconnects with a growing delay. |
+
+The Cockpit announces nothing from the stream; it only updates its lists. SubKit Desktop announces new items as a system notification and follows `delivery`: it reports held items as soon as a frame without `delivery` arrives. When several schedules pause at once, SubKit Desktop and the web push notification fold them into one message, for example “3 schedules were paused”; the push carries `summary.schedules_paused` for that.
+
+The fields of `clients.desktop` in `/.well-known/service-descriptor.json` are described in “Operate the desktop sign-in”.
+
+### Events and attention items
+
+Three event types are new. All three can be used in subscriptions and webhooks, and the `sk` inbox of a new workspace receives them.
+
+| Event | Sent when | Fields |
+| --- | --- | --- |
+| `schedule.auto_paused` | A workflow schedule paused itself after five failures in a row. Sent once. | `severity`, `workflow_id`, `workflow_name`, `schedule_id`, `environment`, `paused_reason`, `failure_class`, `consecutive_failures`, `paused_at`, `remedy` |
+| `workflow.approval_expiring` | An approval that a schedule or an inbound webhook depends on ends within 3 days. Sent once per approval. | `workflow_id`, `workflow_name`, `authority_id`, `environment`, `valid_until`, `remedy` |
+| `task.grant_expiring` | The standing permission of a scheduled task ends within 3 days. Sent once per permission. | `task_id`, `task_name`, `grant_id`, `environment`, `valid_until`, `remedy` |
+
+`remedy` names what helps as `{kind, href}`: `resume` for a paused schedule, `renew` for an approval.
+
+Changes to the attention list at `GET /v1/attention`:
+
+- New reason `schedule_auto_paused`, class `stopped`, with `counts.consecutive_failures`.
+- The reasons `approval_expiring` and `task_grant_expiring` now appear 7 days before the end, and the first action of an expiring workflow approval is `renew`.
+- `subject.environment` names `dev` or `prod` for connectors.
+- `waiting_on` with `user_id` and `name` is set when you named another person as approver.
+
+Changes to the Cockpit event stream at `/v1/cockpit/events/stream`:
+
+- `hello` carries `heartbeat_ms`.
+- Events about a connector, a workflow or a task carry `attention_id` with the item they are about.
+- `session.ended` with `status` and `code` is the last event when the session of an installation ends.
+
+### Audit actions
+
+| Action | Written when |
+| --- | --- |
+| `user.setup_updated` | A person changed their setup choices. |
+| `tool_approval_rule.created` | A person stored an offered rule. |
+| `tool_approval_rule.dismissed` | A person declined an offered rule. |
+| `tool_approval_rule.revoked` | A person revoked a rule. |
+| `tool_approval_rule.renewed` | A person renewed a rule. |
+| `feedback.submitted` | A report was filed. The entry points at the inbox item. |
+| `desktop_login.code_issued` | A person confirmed a desktop device in the browser. |
+| `desktop_login.denied` | A desktop sign-in was cancelled or its exchange failed. |
+| `desktop_login.completed` | The desktop app received its session. |
+
+An action that ran in chat without a question is written as `tool_policy.confirmation_skipped` with the reason `user_instruction` or `standing_rule`. The entry names the verb, the effect, the target, the account, the recipients, a short summary of the content and, for the person’s own words, the quote. A schedule that paused itself is written as `schedule.paused` with the reason `repeated_failures` and the actor `system`.
+
+### Settings
+
+| Setting | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `server.desktop_min_version` | Version such as `1.4.0` | `0.1.0` | Oldest SubKit Desktop version this engine accepts. Published as `clients.desktop.min_version` and enforced by the engine at the desktop sign-in (`426 desktop_app_outdated`). |
+| `server.desktop_dev_callback` | `true` or `false` | `false` | Also accept `subkit-dev://callback` as a sign-in target, for development builds. |
+
+Both also appear in the generated settings reference. The thresholds for schedules, rules and notices are fixed and have no setting: backoff from 3 failures, pause at 5, history for 90 days, rules for 90 days with 20 runs a day, before an approval ends a notice in the overview 7 days before, with push also on devices, and a notification through channels and rules 3 days before.
 
 <!-- Source: coding-agents.md -->
 
@@ -5672,6 +6951,8 @@ HTTP server
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `server.desktop_dev_callback` | boolean | `false` | global | no | no | Also accept subkit-dev://callback as a sign-in target, for development builds of SubKit Desktop. Outside NODE_ENV=production it is accepted without this setting. |
+| `server.desktop_min_version` | string | `"0.1.0"` | global | no | no | Oldest SubKit Desktop version this engine accepts. Published as clients.desktop.min_version in /.well-known/service-descriptor.json; an older app asks for an update instead of signing in. |
 | `server.hosted_rate_limit.global_per_minute` | number | `0` | global | no | no | Operator request ceiling across hosted ingress per minute; zero denies hosted ingress |
 | `server.hosted_rate_limit.peer_per_minute` | number | `0` | global | no | no | Operator request ceiling per verified connection peer and minute; zero denies hosted ingress |
 | `server.hosted_rate_limit.principal_per_minute` | number | `0` | global | no | no | Operator request ceiling per authenticated principal and tenant per minute; zero denies hosted requests |

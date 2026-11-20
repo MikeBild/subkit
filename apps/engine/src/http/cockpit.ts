@@ -1,10 +1,17 @@
 import { createHash } from "node:crypto";
-import { readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { logger } from "../logging/logger.ts";
+import {
+  COCKPIT_BROWSER_WORKER,
+  COCKPIT_INSTALLATION_WORKER,
+  COCKPIT_WORKER_CORE,
+  cockpitInstallationWorkerScript,
+  joinWorkerSources,
+} from "./cockpit-worker.ts";
 import type { AppEnv } from "./openapi.ts";
 import {
   NEGOTIATED_VARY,
@@ -111,6 +118,8 @@ export function cockpitCsp(inlineScriptHashes: readonly string[] = []): string {
     "img-src 'self' data: blob:",
     "font-src 'self'",
     "connect-src 'self'",
+    "worker-src 'self'",
+    "manifest-src 'self'",
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'self'",
@@ -162,6 +171,35 @@ const bundledCockpitAsset = cockpitAssetReader(bundledCockpitFile);
 
 export function cachedCockpitAsset(relativePath: string): Asset | null {
   return bundledCockpitAsset(relativePath);
+}
+
+function bundledCockpitAssetPaths(): string[] {
+  const found = new Set(
+    Object.keys(EMBEDDED_COCKPIT).filter((path) => path.startsWith(HASHED_ASSET_PREFIX)),
+  );
+  try {
+    for (const name of readdirSync(join(COCKPIT_DIR, HASHED_ASSET_PREFIX)))
+      found.add(`${HASHED_ASSET_PREFIX}${name}`);
+  } catch {}
+  return [...found].sort();
+}
+
+let installationWorker: string | null | undefined;
+
+export function cockpitInstallationWorker(): string | null {
+  if (installationWorker !== undefined) return installationWorker;
+  const shell = bundledCockpitAsset("index.html");
+  const core = bundledCockpitAsset(COCKPIT_WORKER_CORE);
+  const worker = bundledCockpitAsset(COCKPIT_INSTALLATION_WORKER);
+  installationWorker =
+    shell && core && worker
+      ? cockpitInstallationWorkerScript({
+          shell: shell.body,
+          assetPaths: bundledCockpitAssetPaths(),
+          sources: [core.body, worker.body],
+        })
+      : null;
+  return installationWorker;
 }
 
 export function cockpitSecurityHeaders(csp: string) {
@@ -229,9 +267,11 @@ export function registerCockpitRoutesWith(app: OpenAPIHono<AppEnv>, files: Cockp
   };
 
   app.on(["GET", "HEAD"], `${COCKPIT_PREFIX}/sw.js`, (c) => {
-    const worker = asset("browser-worker.js");
-    if (!worker) return cockpitBundleMissing(c);
-    return new Response(c.req.method === "HEAD" ? null : worker.body, {
+    const core = asset(COCKPIT_WORKER_CORE);
+    const worker = asset(COCKPIT_BROWSER_WORKER);
+    if (!core || !worker) return cockpitBundleMissing(c);
+    const script = `${joinWorkerSources([core.body, worker.body])}\n`;
+    return new Response(c.req.method === "HEAD" ? null : script, {
       status: 200,
       headers: {
         ...securityHeaders,

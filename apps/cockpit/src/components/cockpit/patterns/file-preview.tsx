@@ -52,18 +52,6 @@ export const PREVIEW_COMPONENTS = {
   h6: loweredHeading(6),
 };
 
-export function MarkdownDocument({ text, testId }: { text: string; testId?: string }) {
-  return (
-    <article
-      data-slot="markdown-document"
-      data-testid={testId}
-      className="min-w-0 overflow-x-auto rounded-lg border p-5 text-sm [overflow-wrap:anywhere]"
-    >
-      <Streamdown components={PREVIEW_COMPONENTS}>{text}</Streamdown>
-    </article>
-  );
-}
-
 export function FilePreview({
   name,
   mimeType,
@@ -96,11 +84,11 @@ export function FilePreview({
       data-testid={testId}
       className="flex min-w-0 flex-col gap-2"
     >
-      {body}
       <figcaption className="truncate text-xs text-muted-foreground">
         {name}
         {bytes !== undefined ? ` · ${formatBytes(bytes, LOCALE_TAGS[locale])}` : ""}
       </figcaption>
+      {body}
     </figure>
   );
 

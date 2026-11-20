@@ -52,6 +52,15 @@ function scheduleEntry(row: ScheduleRow, wf: WorkflowView | null | undefined, he
     timezone: row.timezone,
     execution_mode: row.execution_mode,
     paused: row.paused,
+    auto_pause:
+      row.paused && row.paused_reason && row.paused_at
+        ? {
+            paused_reason: row.paused_reason,
+            failure_class: row.paused_failure_class ?? "unclassified",
+            consecutive_failures: row.paused_failure_count ?? 1,
+            since: row.paused_at.toISOString(),
+          }
+        : null,
     input: row.input ?? null,
     created_at: row.created_at.toISOString(),
   };

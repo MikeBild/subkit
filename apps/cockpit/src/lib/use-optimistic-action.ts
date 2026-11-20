@@ -1,5 +1,5 @@
 import { type QueryKey, useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 
 interface OptimisticAction<TVars, TResult, TData> {
@@ -29,7 +29,7 @@ export function useOptimisticAction<TVars, TResult, TData>(
     },
     onError: (error, _vars, context) => {
       client.setQueryData(action.queryKey, context?.previous);
-      toast.error(action.errorMessage?.(error) ?? t("platform.actionFailed"));
+      reportFailure(action.errorMessage?.(error) ?? t("platform.actionFailed"), error);
     },
     onSuccess: (result, vars) => {
       const stated = action.fromResult?.(result, vars);

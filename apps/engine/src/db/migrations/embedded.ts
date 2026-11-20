@@ -26,6 +26,11 @@ import sql0005HostedWorkspaceModelKey from "./0005_hosted_workspace_model_key.sq
 import sql0006DropHostedBudgetReservations from "./0006_drop_hosted_budget_reservations.sql" with { type: "text" };
 import sql0007Tasks from "./0007_tasks.sql" with { type: "text" };
 import sql0008TaskRunProgressMarks from "./0008_task_run_progress_marks.sql" with { type: "text" };
+import sql0009ScheduleBackoffOccurrences from "./0009_schedule_backoff_occurrences.sql" with { type: "text" };
+import sql0010DesktopLogin from "./0010_desktop_login.sql" with { type: "text" };
+import sql0011SetupAndApprovalRules from "./0011_setup_and_approval_rules.sql" with { type: "text" };
+import sql0012RuleLimitsAndQuietHours from "./0012_rule_limits_and_quiet_hours.sql" with { type: "text" };
+import sql0013RuleExpiryAndGentleAutoPause from "./0013_rule_expiry_and_gentle_auto_pause.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -59,6 +64,11 @@ const SQL_BY_TAG: Record<string, string> = {
   "0006_drop_hosted_budget_reservations": sql0006DropHostedBudgetReservations,
   "0007_tasks": sql0007Tasks,
   "0008_task_run_progress_marks": sql0008TaskRunProgressMarks,
+  "0009_schedule_backoff_occurrences": sql0009ScheduleBackoffOccurrences,
+  "0010_desktop_login": sql0010DesktopLogin,
+  "0011_setup_and_approval_rules": sql0011SetupAndApprovalRules,
+  "0012_rule_limits_and_quiet_hours": sql0012RuleLimitsAndQuietHours,
+  "0013_rule_expiry_and_gentle_auto_pause": sql0013RuleExpiryAndGentleAutoPause,
 };
 
 const journal = journalMeta as unknown as Journal;

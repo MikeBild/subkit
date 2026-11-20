@@ -1,6 +1,5 @@
 import { Bell, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
 import { type CockpitInstallation, createCockpitInstallation } from "@/api/cockpit-installations";
 import { type AttentionFresh, useAttentionFresh } from "@/app/attention-seen";
 import { cockpitApiHref, installationId } from "@/app/installation-context";
@@ -9,6 +8,8 @@ import { AttentionDot } from "@/app/live-indicator";
 import { useSession } from "@/app/session";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { Button, FormDialog, Switch } from "@/components/cockpit/patterns";
+import { currentInstallGuide } from "@/features/pwa/install-guide";
+import { reportFailure } from "@/lib/action-failure";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 
@@ -25,6 +26,13 @@ export function installationDialogMode(
 ): InstallationDialogMode {
   if (currentInstallationId || !installation) return { kind: "install" };
   return { kind: "open", href: installation.start_url };
+}
+
+export function desktopHintShown(
+  mode: InstallationDialogMode,
+  currentInstallationId: string | null,
+): boolean {
+  return mode.kind === "install" && currentInstallationId === null;
 }
 
 interface NotificationDialogInput {
@@ -81,6 +89,7 @@ export function InstallationDialog({
   const [creating, setCreating] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
   const appName = tenantName;
+  const guide = currentInstallGuide();
   const appIcon = cockpitApiHref(
     session.branding?.app_icon_urls.icon_512 ?? "/cockpit/app-icon-192.png",
   );
@@ -112,7 +121,7 @@ export function InstallationDialog({
       const installation = await createCockpitInstallation();
       window.location.assign(`${installation.start_url}?install=1`);
     } catch {
-      toast.error(t("common.actionFailed"));
+      reportFailure(t("common.actionFailed"));
     } finally {
       setCreating(false);
     }
@@ -147,6 +156,11 @@ export function InstallationDialog({
                 : "installation.notificationsAfterInstall",
           )}
         </p>
+        {desktopHintShown(mode, installationId()) ? (
+          <p className="text-xs text-muted-foreground" data-testid="installation-desktop-hint">
+            {t("installation.desktopLater")}
+          </p>
+        ) : null}
       </FormDialog>
       <FormDialog
         open={unavailable}
@@ -154,11 +168,13 @@ export function InstallationDialog({
           setUnavailable(next);
           if (!next) onOpenChange(false);
         }}
-        title={t("installation.unavailableTitle")}
+        title={t(guide.title)}
         cancelLabel={t("common.close")}
         testId="installation-unavailable-dialog"
       >
-        <p className="text-sm text-muted-foreground">{t("installation.unavailable")}</p>
+        <p className="text-sm text-muted-foreground" data-testid="installation-guide">
+          {t(guide.body)}
+        </p>
       </FormDialog>
     </>
   );
@@ -180,7 +196,7 @@ export function useDeviceNotifications(active: boolean) {
   useEffect(() => {
     if (!active) return;
     setPermission(notificationPermission());
-    void refreshPushSubscription().catch(() => toast.error(t("common.actionFailed")));
+    void refreshPushSubscription().catch(() => reportFailure(t("common.actionFailed")));
   }, [active, refreshPushSubscription, t]);
   const state = notificationDialogState({
     installed: available,
@@ -196,7 +212,7 @@ export function useDeviceNotifications(active: boolean) {
       if (checked) await enablePush();
       else await disablePush();
     } catch {
-      toast.error(t("common.actionFailed"));
+      reportFailure(t("common.actionFailed"));
     } finally {
       setPermission(notificationPermission());
       setPending(false);
@@ -360,7 +376,7 @@ export function InstallationInputActions({
         )
         .catch((error: unknown) => {
           if (error instanceof DOMException && error.name === "AbortError") return;
-          toast.error(t("installation.importFailed"));
+          reportFailure(t("installation.importFailed"), error);
         });
       return;
     }

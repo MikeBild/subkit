@@ -6,7 +6,7 @@ import {
 } from "../../auth/index.ts";
 import {
   createOrReuseCockpitInstallation,
-  getActiveCockpitInstallation,
+  listActiveCockpitInstallations,
   revokeCockpitInstallation,
 } from "../../identity/index.ts";
 import { requireAuth } from "../middleware/auth.ts";
@@ -14,17 +14,40 @@ import type { AppEnv } from "../openapi.ts";
 
 const InstallationFailure = z.object({ code: z.string(), message: z.string().optional() });
 const EmptyBody = z.object({}).strict();
+const InstallationKind = z.enum(["browser", "desktop"]);
 const InstallationResponse = z.object({
   id: z.string().uuid(),
+  kind: InstallationKind,
   start_url: z.string(),
   manifest_url: z.string(),
   created: z.boolean(),
 });
+const InstallationListItem = z
+  .object({
+    id: z.string().uuid(),
+    kind: InstallationKind,
+    device_label: z
+      .string()
+      .nullable()
+      .describe("Name the desktop device gave itself; null for the installed web app."),
+    created_at: z.string().datetime(),
+    last_used_at: z
+      .string()
+      .datetime()
+      .nullable()
+      .describe("Last request a session of this installation made; null when it was never used."),
+    current: z
+      .boolean()
+      .describe("True for the installation the asking session itself belongs to."),
+  })
+  .openapi("CockpitInstallationListItem");
 const currentInstallationRoute = createRoute({
   method: "get",
   path: "/v1/cockpit/installations",
   tags: ["cockpit"],
-  summary: "Read the current browser owner's active workspace installation",
+  summary: "Read the current browser owner's active workspace installations",
+  description:
+    "Answers a browser session and the session of an installed app or desktop device alike. `installation` names the installed web app and is filled for the plain browser session only; `installations` lists every active installation of the person and marks the asking one with `current`.",
   security: [{ browserSession: [] }],
   responses: {
     200: {
@@ -33,12 +56,17 @@ const currentInstallationRoute = createRoute({
         "application/json": {
           schema: z.object({
             installation: InstallationResponse.omit({ created: true }).nullable(),
+            installations: z
+              .array(InstallationListItem)
+              .describe(
+                "Every active installation of the signed-in person in this workspace: the installed web app and each desktop device. Each one is revoked on its own.",
+              ),
           }),
         },
       },
     },
     401: {
-      description: "Root browser session required",
+      description: "Browser session required",
       content: { "application/json": { schema: InstallationFailure } },
     },
   },
@@ -73,39 +101,67 @@ const revokeInstallationRoute = createRoute({
   method: "delete",
   path: "/v1/cockpit/installations/{installationId}",
   tags: ["cockpit"],
-  summary: "Revoke the current browser user's Cockpit installation",
+  summary:
+    "Revoke one of the current browser user's Cockpit installations, web app or desktop device",
+  description:
+    "Ends every session of that one installation at once and stops its notifications. Other installations of the person stay signed in. A plain browser session may revoke any of the person's installations; the session of an installation may revoke only itself.",
   request: { params: z.object({ installationId: z.string().uuid() }) },
   responses: {
     204: { description: "Cockpit installation revoked" },
-    404: { description: "Installation not found" },
+    401: {
+      description: "Browser session required",
+      content: { "application/json": { schema: InstallationFailure } },
+    },
+    403: {
+      description: "The session of an installation may revoke only its own installation",
+      content: { "application/json": { schema: InstallationFailure } },
+    },
+    404: {
+      description: "Installation not found",
+      content: { "application/json": { schema: InstallationFailure } },
+    },
   },
 });
+
+const REVOCATION_TARGET = /\/([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})\/?$/i;
+
+export function revocationTarget(path: string): string | null {
+  return REVOCATION_TARGET.exec(path)?.[1]?.toLowerCase() ?? null;
+}
 
 export function registerCockpitInstallationRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(currentInstallationRoute, async (c) => {
     const principal = requireAuth(c);
     const session = await browserSessionForPrincipal(c.req.raw, principal);
-    if (
-      principal.provider !== "browser_session" ||
-      principal.kind !== "user" ||
-      !session ||
-      session.installation_id
-    )
+    if (principal.provider !== "browser_session" || principal.kind !== "user" || !session)
       return c.json({ code: "browser_session_required" }, 401);
-    const installation = await getActiveCockpitInstallation(
+    const currentId = session.installation_id ?? null;
+    const installations = await listActiveCockpitInstallations(
       c.get("db"),
       principal.tenant_id,
       principal.id,
     );
+    const installation = currentId
+      ? undefined
+      : installations.find((candidate) => candidate.kind === "browser");
     return c.json(
       {
         installation: installation
           ? {
               id: installation.id,
+              kind: installation.kind,
               start_url: `/cockpit/i/${installation.id}/`,
               manifest_url: `/cockpit/i/${installation.id}/manifest.webmanifest`,
             }
           : null,
+        installations: installations.map((candidate) => ({
+          id: candidate.id,
+          kind: candidate.kind,
+          device_label: candidate.device_label,
+          created_at: candidate.created_at.toISOString(),
+          last_used_at: candidate.last_used_at ? candidate.last_used_at.toISOString() : null,
+          current: candidate.id === currentId,
+        })),
       },
       200,
       { "cache-control": "private, no-store", vary: "Cookie" },
@@ -149,6 +205,7 @@ export function registerCockpitInstallationRoutes(app: OpenAPIHono<AppEnv>): voi
     return c.json(
       {
         id: installation.id,
+        kind: installation.kind,
         start_url: `/cockpit/i/${installation.id}/`,
         manifest_url: `/cockpit/i/${installation.id}/manifest.webmanifest`,
         created,
@@ -161,17 +218,22 @@ export function registerCockpitInstallationRoutes(app: OpenAPIHono<AppEnv>): voi
   app.openapi(revokeInstallationRoute, async (c) => {
     const principal = requireAuth(c);
     const session = await browserSessionForPrincipal(c.req.raw, principal);
-    if (
-      principal.provider !== "browser_session" ||
-      principal.kind !== "user" ||
-      !session ||
-      session.installation_id
-    ) {
+    if (principal.provider !== "browser_session" || principal.kind !== "user" || !session) {
       return c.json({ code: "browser_session_required" }, 401);
     }
+    const target = revocationTarget(c.req.path);
+    if (!target) return c.json({ code: "not_found" }, 404);
+    if (session.installation_id && session.installation_id !== target)
+      return c.json(
+        {
+          code: "own_installation_only",
+          message: "an installed app can sign out only itself; use the browser for other devices",
+        },
+        403,
+      );
     const revoked = await revokeCockpitInstallation(
       c.get("db"),
-      c.req.valid("param").installationId,
+      target,
       principal.tenant_id,
       principal.id,
     );

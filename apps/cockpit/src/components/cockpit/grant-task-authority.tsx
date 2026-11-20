@@ -6,7 +6,14 @@ import { ApiError } from "@/api/client";
 import { cockpitApiHref } from "@/app/installation-context";
 import { useConnectorNames } from "@/components/cockpit/connector-names";
 import { GrantLimitField } from "@/components/cockpit/grant-limit-field";
-import { Button, Chip, DataState, Field, FormDialog } from "@/components/cockpit/patterns";
+import {
+  Button,
+  Chip,
+  DataState,
+  dialogFailure,
+  Field,
+  FormDialog,
+} from "@/components/cockpit/patterns";
 import {
   blockedRows,
   type GrantOutcomeRow,
@@ -232,14 +239,14 @@ export function GrantTaskAuthority({
           : sessionExpired
             ? t("taskGrant.sessionExpired")
             : grant.error
-              ? t("taskGrant.failed")
+              ? dialogFailure(t("taskGrant.failed"), grant.error)
               : null
       }
       actions={sessionExpired ? <TaskGrantSignIn testId="task-grant-sign-in" /> : undefined}
       {...(reviewed?.grantable && !sessionExpired
         ? {
             submit: {
-              label: t(grant.isPending ? "taskGrant.allowing" : "taskGrant.allow"),
+              label: t("taskGrant.allow"),
               pending: grant.isPending,
               disabled: busy,
               testId: "task-grant-confirm",

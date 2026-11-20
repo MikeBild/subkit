@@ -28,7 +28,10 @@ export async function inspectAutomationReview(
   db: Db,
   tenant_id: string,
   workflow_id: string,
-  options: { inbound_hooks?: { refusal_reasons: boolean } } = {},
+  options: {
+    inbound_hooks?: { refusal_reasons: boolean };
+    personal_default?: "dev" | "prod" | null;
+  } = {},
 ) {
   const workflow = await getWorkflow(tenant_id, workflow_id, db);
   if (!workflow) return null;
@@ -52,7 +55,13 @@ export async function inspectAutomationReview(
       review: await reviewFor(row.execution_mode),
     })),
   );
-  const saved_change = await savedChangeReview(db, tenant_id, workflow, reviewFor);
+  const saved_change = await savedChangeReview(
+    db,
+    tenant_id,
+    workflow,
+    reviewFor,
+    options.personal_default ?? null,
+  );
   if (!options.inbound_hooks) return { workflow_id, schedules, saved_change };
   const clock = await db.execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
   const now = clock.rows[0]?.now;
@@ -79,6 +88,7 @@ async function savedChangeReview(
   tenant_id: string,
   workflow: { id: string; current_version_id?: string | null; draft_version_id?: string | null },
   reviewFor: (environment: "dev" | "prod") => Promise<EnvironmentReview>,
+  personal_default: "dev" | "prod" | null,
 ) {
   const workflow_version_id = pendingSavedChange(workflow);
   if (!workflow_version_id) return null;
@@ -86,6 +96,7 @@ async function savedChangeReview(
   try {
     resolved = await resolveWorkflowReviewEnvironment(db, tenant_id, workflow.id, {
       version_id: workflow_version_id,
+      personal_default,
     });
   } catch {
     return null;

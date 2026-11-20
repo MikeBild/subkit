@@ -16,6 +16,7 @@ import {
 import { routerTarget } from "@/app/links";
 import { useSession } from "@/app/session";
 import { MessageResponse } from "@/components/ai-elements/message";
+import { ErrorNotice } from "@/components/cockpit/patterns";
 import { ActionButton } from "@/components/cockpit/patterns/action-button";
 import { CodeBlock } from "@/components/cockpit/patterns/code-block";
 import { FilterBar } from "@/components/cockpit/patterns/filter-bar";
@@ -71,14 +72,25 @@ function useDocsBundle() {
   });
 }
 
-function LoadFailed() {
+function LoadFailed({ onRetry, error }: { onRetry?: () => void; error?: unknown }) {
   const { t } = useI18n();
   return (
-    <FamilyState
-      state="error"
+    <ErrorNotice
       title={t("docs.loadFailed")}
-      description={t("resource.loadFailedDescription")}
-      data-testid="docs-load-failed"
+      body={t("resource.loadFailedDescription")}
+      error={error ?? undefined}
+      remedy={
+        onRetry
+          ? {
+              label: t("pattern.retry"),
+              variant: "primary",
+              size: "sm",
+              onClick: onRetry,
+              testId: "docs-load-retry",
+            }
+          : undefined
+      }
+      testId="docs-load-failed"
     />
   );
 }
@@ -108,6 +120,7 @@ export function DocsIndexPage() {
       bundle={docs.data ?? null}
       pending={docs.isPending}
       failed={docs.isError}
+      onRetry={() => void docs.refetch()}
       version={session.version}
       query={searchValue(search, "q")}
       onQuery={(query) =>
@@ -262,6 +275,7 @@ export function DocsIndexView({
   bundle,
   pending = false,
   failed = false,
+  onRetry,
   version,
   query,
   onQuery,
@@ -269,6 +283,7 @@ export function DocsIndexView({
   bundle: DocsBundle | null;
   pending?: boolean;
   failed?: boolean;
+  onRetry?(): void;
   version: string | null | undefined;
   query: string;
   onQuery(query: string): void;
@@ -280,7 +295,7 @@ export function DocsIndexView({
     [bundle, locale, rows, query],
   );
   let body: ReactNode;
-  if (failed) body = <LoadFailed />;
+  if (failed) body = <LoadFailed onRetry={onRetry} />;
   else if (pending || !bundle) body = <DocsIndexSkeleton />;
   else if (rows.length === 0)
     body = <FamilyState state="empty" title={t("docs.empty")} data-testid="docs-empty" />;
@@ -528,7 +543,7 @@ export function DocsArticlePage() {
     <ReadingScroll testId="docs-scroll">
       {docs.isError ? (
         <div className={cn(READING_MEASURE, "pt-6")}>
-          <LoadFailed />
+          <LoadFailed onRetry={() => void docs.refetch()} error={docs.error} />
         </div>
       ) : (
         <Loadable loading={!docs.data} skeleton={<ReadingSkeleton />} testId="docs-article-loading">

@@ -33,6 +33,7 @@ export function ChipFilter({
   allValue = "all",
   onChange,
   options,
+  loading,
   testId,
 }: {
   label: string;
@@ -41,11 +42,15 @@ export function ChipFilter({
   allValue?: string;
   onChange(value: string): void;
   options: readonly ChipFilterOption[];
+  loading?: boolean;
   testId?: string;
 }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
-  if (options.length < 2) return null;
+  if (options.length < 2)
+    return loading ? (
+      <div aria-hidden="true" data-slot="chip-filter-reserve" className="h-9 pointer-coarse:h-11" />
+    ) : null;
   const { shown, hidden } = visibleChipOptions(options, value, expanded);
   const chip = (option: ChipFilterOption) => {
     const selected = option.value === value;

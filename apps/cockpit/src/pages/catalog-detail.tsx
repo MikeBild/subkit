@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { apiCall } from "@/api/call";
 import { navigationItem } from "@/app/navigation";
 import { ConnectorPage } from "@/components/cockpit/connector-page";
-import { BackLink, Skeleton } from "@/components/cockpit/patterns";
+import { BackLink, DetailPageLoading } from "@/components/cockpit/patterns";
+import { workflowSchedulesQuery } from "@/components/cockpit/schedule-auto-pause";
 import { WorkflowPage } from "@/components/cockpit/workflow-page";
 import { ForbiddenState, LoadFailed, queryView } from "@/components/failure-state";
 import { useI18n } from "@/lib/i18n-context";
@@ -21,6 +22,21 @@ const PERMISSIONS: Record<DetailResource, { read: string; write: string }> = {
   workflows: { read: "workflow:read", write: "workflow:write" },
   connectors: { read: "connector:read", write: "connector:write" },
 };
+
+function WorkflowWithSchedules({
+  id,
+  back,
+  children,
+}: {
+  id: string;
+  back: { to: string; label: string };
+  children: ReactNode;
+}) {
+  const schedules = useQuery({ ...workflowSchedulesQuery(id), retry: false });
+  if (schedules.isLoading)
+    return <DetailPageLoading testId="detail-workflows-loading" back={back} purpose />;
+  return children;
+}
 
 export function CatalogDetailPage({
   resource,
@@ -60,12 +76,7 @@ export function CatalogDetailPage({
     );
   const view = queryView(query, () => false);
   if (view === "loading")
-    return (
-      <div className="grid gap-4 p-6">
-        <Skeleton className="h-12 w-80" />
-        <Skeleton className="h-96 w-full" />
-      </div>
-    );
+    return <DetailPageLoading testId={`detail-${resource}-loading`} back={back} purpose />;
   if (view === "error" || !record)
     return (
       <div className="grid gap-4 p-6">
@@ -73,13 +84,21 @@ export function CatalogDetailPage({
         <LoadFailed
           title={t("detail.loadFailed")}
           onRetry={() => void query.refetch()}
+          error={query.error}
           testId="detail-load-failed"
         />
       </div>
     );
   if (resource === "workflows")
     return (
-      <WorkflowPage id={id} record={record} title={recordTitle(record)} permissions={permissions} />
+      <WorkflowWithSchedules back={back} id={id}>
+        <WorkflowPage
+          id={id}
+          record={record}
+          title={recordTitle(record)}
+          permissions={permissions}
+        />
+      </WorkflowWithSchedules>
     );
   return (
     <ConnectorPage

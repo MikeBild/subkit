@@ -8,6 +8,7 @@ export const SELF_INTROSPECTION_ROUTES = Object.freeze([
   "identity-memberships",
   "identity-owned-tenant",
   "identity-cli-session",
+  "identity-desktop-login",
   "identity-providers",
   "identity-onboarding",
   "identity-workspace",

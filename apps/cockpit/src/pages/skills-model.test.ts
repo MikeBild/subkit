@@ -10,6 +10,7 @@ import {
   skillScopePhraseKey,
   skillsListView,
   skillsLoadState,
+  skillsSummaryState,
   skillTemplateFromSearch,
   skillTemplateKeys,
   skillTemplates,
@@ -64,6 +65,17 @@ const done = { isPending: false, error: null, failureReason: null };
 const loading = { isPending: true, error: null, failureReason: null };
 const broken = { isPending: false, error: new Error("boom"), failureReason: null };
 const retrying = { isPending: true, error: null, failureReason: new Error("boom") };
+
+describe("the summary line above the list", () => {
+  test("a failed read drops the skeleton instead of keeping it while the engine is retried", () => {
+    expect(skillsSummaryState({ pending: true, failed: false, summary: false })).toBe("loading");
+    expect(skillsSummaryState({ pending: false, failed: true, summary: false })).toBe("hidden");
+    expect(skillsSummaryState({ pending: true, failed: true, summary: false })).toBe("hidden");
+    expect(skillsSummaryState({ pending: false, failed: true, summary: true })).toBe("shown");
+    expect(skillsSummaryState({ pending: false, failed: false, summary: true })).toBe("shown");
+    expect(skillsSummaryState({ pending: false, failed: false, summary: false })).toBe("hidden");
+  });
+});
 
 describe("skillsLoadState", () => {
   test("waits while either the skills or the proposals are loading", () => {

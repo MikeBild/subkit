@@ -1,6 +1,6 @@
 import { Upload } from "lucide-react";
 import { type DragEvent, useId, useState } from "react";
-import { toast } from "sonner";
+import { reportFailure } from "@/lib/action-failure";
 import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
@@ -37,13 +37,13 @@ export function FileDrop({
     for (const file of files) {
       const refusal = fileRefusal(file, { accept, maxBytes });
       if (refusal === "size" && maxBytes !== undefined)
-        toast.error(
+        reportFailure(
           t("platform.file.tooLarge", {
             name: file.name,
             max: formatBytes(maxBytes, LOCALE_TAGS[locale]),
           }),
         );
-      else if (refusal === "type") toast.error(t("platform.file.wrongType", { name: file.name }));
+      else if (refusal === "type") reportFailure(t("platform.file.wrongType", { name: file.name }));
       else taken.push(file);
     }
     if (taken.length > 0) onFiles(taken);

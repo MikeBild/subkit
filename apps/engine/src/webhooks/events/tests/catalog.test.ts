@@ -28,6 +28,9 @@ describe("events catalog", () => {
       "patch.applied",
       "apikey.rotated",
       "conversation.committed",
+      "schedule.auto_paused",
+      "workflow.approval_expiring",
+      "task.grant_expiring",
       "task_run.started",
       "task_run.waiting",
       "task_run.result_ready",
@@ -131,6 +134,7 @@ describe("event classification", () => {
       "conversation",
       "execution",
       "patch_candidate",
+      "task",
       "task_run",
       "workflow",
     ]);

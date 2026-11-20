@@ -6,6 +6,8 @@ import { withIsolatedContext } from "../logging/context.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import { recordTaskSweepClaim } from "../observability/task-metrics.ts";
 import type { TaskServiceDeps } from "../tasks/index.ts";
+import { cronDueWindow, onceDueWindow } from "./occurrence-window.ts";
+import { type OccurrenceEntry, recordScheduleOccurrence } from "./schedule-occurrences.ts";
 import {
   acquireSweepPage,
   completeSweepEpoch,
@@ -57,19 +59,35 @@ async function startDue(
   };
   const trigger = api.taskTriggerFor(schedule);
   if (!trigger) return false;
-  if (!api.isTaskDue(schedule, api.taskScheduleClock(row), now)) return false;
+  const clock = api.taskScheduleClock(row);
+  if (!api.isTaskDue(schedule, clock, now)) return false;
   const outcome = await api.startScheduledTaskRun(
     { tenant_id, task_id: row.id, trigger, now },
     db,
     deps,
   );
+  const anchor = clock.last_claimed_at ?? clock.anchor;
+  const note = (entry: OccurrenceEntry) =>
+    recordScheduleOccurrence(db, { tenant_id, task_id: row.id }, entry, (after) => {
+      if (row.schedule_run_at) return onceDueWindow(row.schedule_run_at, after, now);
+      if (!row.schedule_cron) return null;
+      const from = after && after.getTime() > anchor.getTime() ? after : anchor;
+      return cronDueWindow(row.schedule_cron, row.schedule_timezone ?? "UTC", from, now);
+    });
   if (outcome.admitted) {
     recordTaskSweepClaim({ result: "claimed" });
+    await note({ state: "ran", reason_code: null, started_at: now, task_run_id: outcome.run.id });
     return true;
   }
   if ("run" in outcome) recordTaskSweepClaim({ result: "failed" });
   else if (outcome.reason === "not_due") recordTaskSweepClaim({ result: "skipped" });
-  else if (outcome.changed) recordTaskSweepClaim({ result: "held" });
+  else {
+    if (outcome.changed) recordTaskSweepClaim({ result: "held" });
+    await note({
+      state: outcome.reason === "previous_run_active" ? "skipped" : "held",
+      reason_code: outcome.reason,
+    });
+  }
   return false;
 }
 

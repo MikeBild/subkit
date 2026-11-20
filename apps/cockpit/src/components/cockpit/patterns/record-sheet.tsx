@@ -1,9 +1,18 @@
 import { ChevronLeft, XIcon } from "lucide-react";
-import { type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  useContext,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useI18n } from "@/lib/i18n-context";
+import { ActionFailureHost } from "./action-failure";
 import { useInspectorDock } from "./responsive-workspace";
 import { Loadable, RowsSkeleton, Skeleton } from "./skeleton";
 
@@ -31,6 +40,12 @@ function SheetBodySkeleton() {
       <RowsSkeleton count={3} />
     </div>
   );
+}
+
+const SheetDockedContext = createContext(false);
+
+export function useSheetDocked(): boolean {
+  return useContext(SheetDockedContext);
 }
 
 interface RecordSheetProps {
@@ -108,6 +123,7 @@ function RecordBody({
         skeleton={<SheetBodySkeleton />}
         className="flex flex-col gap-6 p-4 pt-0"
       >
+        <ActionFailureHost />
         {children}
       </Loadable>
     </>
@@ -207,7 +223,7 @@ function DockableRecordSheet(props: RecordSheetProps) {
       </SheetContent>
       {open && host
         ? createPortal(
-            <>
+            <SheetDockedContext.Provider value={docked}>
               <RecordBody {...props} titleId={titleId} />
               <IconButton
                 variant="ghost"
@@ -219,7 +235,7 @@ function DockableRecordSheet(props: RecordSheetProps) {
               >
                 <XIcon />
               </IconButton>
-            </>,
+            </SheetDockedContext.Provider>,
             host,
           )
         : null}

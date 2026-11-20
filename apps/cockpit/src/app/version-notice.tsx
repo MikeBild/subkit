@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
+import { reloadIntoUpdate, useWaitingUpdate } from "@/features/pwa/worker-update";
 import { useI18n } from "@/lib/i18n-context";
 import { useLiveStatus } from "./live-events";
 import { useSession } from "./session";
@@ -33,10 +34,16 @@ export function VersionNotice() {
   const { serverVersion } = useLiveStatus();
   const { t } = useI18n();
   const shown = useRef<string | null>(null);
+  const waitingUpdate = useWaitingUpdate();
 
   useEffect(() => {
-    if (!isNewVersion(session.version, serverVersion) || shown.current === serverVersion) return;
-    shown.current = serverVersion;
+    const fresh = isNewVersion(session.version, serverVersion)
+      ? serverVersion
+      : waitingUpdate
+        ? "update"
+        : null;
+    if (fresh === null || shown.current === fresh) return;
+    shown.current = fresh;
     const show = () =>
       toast(t("platform.newVersion"), {
         id: VERSION_TOAST_ID,
@@ -49,12 +56,12 @@ export function VersionNotice() {
               setTimeout(show, 0);
               return;
             }
-            window.location.reload();
+            void reloadIntoUpdate();
           },
         },
       });
     show();
-  }, [serverVersion, session.version, t]);
+  }, [serverVersion, session.version, t, waitingUpdate]);
 
   return null;
 }

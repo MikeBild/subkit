@@ -165,6 +165,28 @@
   /* cockpit-ui:end theme-map */
 }
 
+@theme inline {
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.75rem;
+  --text-3xl: 2rem;
+  --text-3xl--line-height: 2.5rem;
+}
+
+:root {
+  --sk-radius-control: 8px;
+  --sk-radius-panel: 12px;
+  --sk-radius-dialog: 16px;
+  --sk-panel-border: color-mix(in oklab, var(--border) 70%, transparent);
+  --sk-rail-width: 3.5rem;
+  --sk-side-panel-min: 320px;
+  --sk-side-panel-max: 560px;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -435,4 +457,9 @@
   [contenteditable="true"] {
     font-size: max(1rem, 1em);
   }
+}
+
+[data-cockpit-ui] :is([data-slot="sidebar-container"], [data-slot="sidebar-inset"] > header),
+[data-cockpit-ui] :is([data-testid="workspace-inspector"], [data-slot="side-panel"]) {
+  border-color: var(--sk-panel-border);
 }

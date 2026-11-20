@@ -84,7 +84,15 @@ export function WorkflowInputOutput({
   );
   if (!draftDefinition && query.isPending) return <DataState state="loading" />;
   if (!draftDefinition && (query.error || !query.data))
-    return <DataState state="error" line={t("input.loadFailed")} testId="workflow-io-failed" />;
+    return (
+      <DataState
+        state="error"
+        line={t("input.loadFailed")}
+        error={query.error ?? undefined}
+        onRetry={() => void query.refetch()}
+        testId="workflow-io-failed"
+      />
+    );
   const note = "text-sm text-muted-foreground";
   return (
     <div className="flex flex-col gap-6" data-testid="workflow-io">

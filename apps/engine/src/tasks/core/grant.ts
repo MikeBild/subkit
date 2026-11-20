@@ -1,8 +1,8 @@
 import {
   AUTHORITY_EXTEND_BELOW_RUN_SHARE,
-  AUTHORITY_EXTEND_WITHIN_DAYS,
+  expiryStage,
 } from "../../workflows/authority-extension.ts";
-import { DAY_MS, remainingRuns } from "../../workflows/core/authority.ts";
+import { remainingRuns } from "../../workflows/core/authority.ts";
 
 export interface TaskGrantFacts {
   fingerprint: string;
@@ -52,9 +52,7 @@ export function isTaskGrantExpiringSoon(
   now: Date,
 ): boolean {
   if (taskGrantStatus(grant, taskFingerprint, now) !== "live") return false;
-  const endsSoon =
-    grant.valid_until !== null &&
-    grant.valid_until.getTime() - now.getTime() <= AUTHORITY_EXTEND_WITHIN_DAYS * DAY_MS;
+  const endsSoon = expiryStage(grant.valid_until, now) !== "none";
   const remaining = remainingRuns(grant);
   const runsLow =
     grant.max_runs !== null &&

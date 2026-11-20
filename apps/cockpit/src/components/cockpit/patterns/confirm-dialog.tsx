@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import type { Locale, TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
+import { ActionFailureHost } from "./action-failure";
 import {
   DIALOG_DESCRIPTION,
   DIALOG_FOOT,
@@ -97,6 +98,7 @@ export function ConfirmDialog({
               ))}
             </ul>
           ) : null}
+          <ActionFailureHost className="mt-2" />
         </div>
         <AlertDialogFooter className={DIALOG_FOOT}>
           <AlertDialogCancel variant="ghost" disabled={working} data-testid={`${testId}-cancel`}>

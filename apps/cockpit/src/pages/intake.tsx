@@ -74,6 +74,7 @@ import {
 import { AssistantIcon } from "@/components/cockpit/service-icon";
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { ForbiddenState } from "@/components/failure-state";
+import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useSearchParamState, writeSearchParam } from "@/lib/use-search-param-state";
@@ -338,12 +339,13 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
       await invalidateIntake(queryClient);
     },
     onError: (error) =>
-      toast.error(
+      reportFailure(
         t(
           error instanceof ApiError && error.status === 409
             ? "intake.proposal.confirmConflict"
             : "common.actionFailed",
         ),
+        error,
       ),
   });
   if (!canRead)
@@ -538,7 +540,7 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
                   t(deleted === 1 ? "intake.deleteSuccess" : "intake.deleteSelectedSuccess"),
                 );
               if (failedIds.size > 0)
-                toast.error(t(conflict ? "intake.deleteConflict" : "common.actionFailed"));
+                reportFailure(t(conflict ? "intake.deleteConflict" : "common.actionFailed"));
             } finally {
               setDeletePending(false);
             }

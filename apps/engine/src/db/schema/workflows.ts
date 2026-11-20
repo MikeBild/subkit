@@ -115,6 +115,7 @@ export const workflowExecutionAuthorities = pgTable(
     inherited_from: uuid("inherited_from"),
     superseded_by: uuid("superseded_by"),
     approved_manifest: jsonb("approved_manifest").$type<Record<string, unknown>>(),
+    expiry_notified_at: timestamp("expiry_notified_at", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("workflow_authorities_tenant_id_key").on(t.tenant_id, t.id),
@@ -261,7 +262,18 @@ export const workflowsSchedules = pgTable(
       issues: { path: string; message: string }[];
     }>(),
     last_enqueued_at: timestamp("last_enqueued_at", { withTimezone: true }),
+    paused_at: timestamp("paused_at", { withTimezone: true }),
+    paused_reason: text("paused_reason").$type<"repeated_failures">(),
+    paused_failure_class: text("paused_failure_class"),
+    paused_failure_count: integer("paused_failure_count"),
+    failures_reset_at: timestamp("failures_reset_at", { withTimezone: true }),
     ...timestamps,
   },
-  (t) => [uniqueIndex("workflows_schedules_tenant_workflow_uidx").on(t.tenant_id, t.workflow_id)],
+  (t) => [
+    uniqueIndex("workflows_schedules_tenant_workflow_uidx").on(t.tenant_id, t.workflow_id),
+    check(
+      "workflows_schedules_auto_pause_check",
+      sql`(${t.paused_reason} IS NULL AND ${t.paused_at} IS NULL AND ${t.paused_failure_class} IS NULL AND ${t.paused_failure_count} IS NULL) OR (${t.paused} AND ${t.paused_at} IS NOT NULL AND ${t.paused_reason} = 'repeated_failures' AND char_length(${t.paused_failure_class}) BETWEEN 1 AND 200 AND ${t.paused_failure_count} >= 1)`,
+    ),
+  ],
 );

@@ -1,0 +1,494 @@
+name: desktop-release
+
+on:
+  workflow_run:
+    workflows: [release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Published release tag to build SubKit Desktop for; leave empty only for a dry run of the selected branch"
+        required: false
+      unsigned_dry_run:
+        description: "Build unsigned and publish nothing"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: desktop-release-${{ inputs.tag || github.event.workflow_run.head_branch || github.ref_name }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  preflight:
+    if: ${{ github.event_name == 'workflow_dispatch' || (vars.DESKTOP_RELEASE_AUTO == 'true' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      ref: ${{ steps.requested.outputs.ref }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+      dry_run: ${{ steps.resolve.outputs.dry_run }}
+      windows_signing: ${{ steps.resolve.outputs.windows_signing }}
+    env:
+      REQUESTED_TAG: ${{ inputs.tag || github.event.workflow_run.head_branch }}
+      EXPECTED_COMMIT: ${{ github.event.workflow_run.head_sha }}
+      UNSIGNED_DRY_RUN: ${{ inputs.unsigned_dry_run }}
+      WINDOWS_SIGNING: ${{ vars.DESKTOP_WINDOWS_SIGNING || 'certificate' }}
+    steps:
+      - name: Validate requested tag
+        id: requested
+        run: |
+          set -euo pipefail
+          if [ -z "$REQUESTED_TAG" ] && [ "$UNSIGNED_DRY_RUN" = "true" ]; then
+            echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          else
+            [[ "$REQUESTED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::invalid release tag; only an unsigned dry run may leave it empty" >&2; exit 1; }
+            echo "ref=refs/tags/$REQUESTED_TAG" >> "$GITHUB_OUTPUT"
+          fi
+          case "$WINDOWS_SIGNING" in certificate|cloud) ;; *) echo "::error::DESKTOP_WINDOWS_SIGNING must be certificate or cloud" >&2; exit 1 ;; esac
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.requested.outputs.ref }}
+          persist-credentials: false
+
+      - name: Resolve version
+        id: resolve
+        run: |
+          set -euo pipefail
+          COMMIT=$(git rev-parse HEAD)
+          if [ -n "$EXPECTED_COMMIT" ]; then
+            [ "$COMMIT" = "$EXPECTED_COMMIT" ] || { echo "::error::release tag differs from the released commit" >&2; exit 1; }
+          fi
+          VERSION=$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version')
+          DESKTOP_VERSION=$(node -p 'JSON.parse(require("node:fs").readFileSync("apps/desktop/package.json", "utf8")).version')
+          if [ -n "$REQUESTED_TAG" ]; then
+            [ "$REQUESTED_TAG" = "v$VERSION" ] || { echo "::error::release tag differs from package version" >&2; exit 1; }
+          fi
+          [ "$DESKTOP_VERSION" = "$VERSION" ] || { echo "::error::apps/desktop/package.json is at $DESKTOP_VERSION, the release at $VERSION" >&2; exit 1; }
+          if [ "$UNSIGNED_DRY_RUN" = "true" ]; then DRY_RUN=true; else DRY_RUN=false; fi
+          {
+            echo "tag=$REQUESTED_TAG"
+            echo "version=$VERSION"
+            echo "dry_run=$DRY_RUN"
+            echo "windows_signing=$WINDOWS_SIGNING"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Require signing secrets
+        if: ${{ steps.resolve.outputs.dry_run != 'true' }}
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          WIN_CLOUD_SIGN_ENV: ${{ secrets.WIN_CLOUD_SIGN_ENV }}
+          WIN_CLOUD_SIGN_TOOL: ${{ vars.DESKTOP_WIN_CLOUD_SIGN_TOOL }}
+          WIN_CLOUD_SIGN_ARGS: ${{ vars.DESKTOP_WIN_CLOUD_SIGN_ARGS }}
+          WIN_PUBLISHER_NAME: ${{ vars.DESKTOP_WIN_PUBLISHER_NAME }}
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          required="CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER RELEASE_SIGNING_KEY"
+          if [ "$WINDOWS_SIGNING" = "cloud" ]; then
+            required="$required WIN_CLOUD_SIGN_ENV WIN_CLOUD_SIGN_TOOL WIN_CLOUD_SIGN_ARGS WIN_PUBLISHER_NAME"
+          else
+            required="$required WIN_CSC_LINK WIN_CSC_KEY_PASSWORD"
+          fi
+          missing=""
+          for name in $required; do
+            [ -n "${!name:-}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::SubKit Desktop is not released: these signing values are not set in the repository settings:$missing. See apps/desktop/RELEASING.md. Nothing was built or published." >&2
+            exit 1
+          fi
+
+      - name: Require the published release without desktop artifacts
+        if: ${{ steps.resolve.outputs.dry_run != 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          release=$(gh release view "$REQUESTED_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets) || { echo "::error::no release exists for $REQUESTED_TAG; this workflow never creates one" >&2; exit 1; }
+          [ "$(jq -r '.isDraft' <<<"$release")" = "false" ] || { echo "::error::the release of $REQUESTED_TAG is still a draft" >&2; exit 1; }
+          existing=$(jq -r '[.assets[].name | select(test("^(subkit-desktop-|latest(-mac|-linux)?\\.yml$|SHA256SUMS-desktop)"))] | join(" ")' <<<"$release")
+          [ -z "$existing" ] || { echo "::error::the release of $REQUESTED_TAG already carries desktop artifacts: $existing" >&2; exit 1; }
+
+  macos:
+    needs: preflight
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ needs.preflight.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.preflight.outputs.ref }}
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+        with:
+          bun-version: 1.4.5
+
+      - name: Install the app toolchain and the runtime distribution
+        working-directory: apps/desktop
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          node node_modules/electron/install.js
+
+      - name: Build, sign and notarize
+        if: ${{ needs.preflight.outputs.dry_run != 'true' }}
+        working-directory: apps/desktop
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          SUBKIT_DESKTOP_UPDATES: "1"
+        run: |
+          set -euo pipefail
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY_P8 APPLE_API_KEY_ID APPLE_API_ISSUER; do
+            [ -n "${!name:-}" ] || { echo "::error::missing macOS signing value $name" >&2; exit 1; }
+          done
+          key="$RUNNER_TEMP/notarization-key.p8"
+          trap 'rm -f "$key"' EXIT
+          (umask 077 && printf '%s\n' "$APPLE_API_KEY_P8" > "$key")
+          export APPLE_API_KEY="$key"
+          bun run scripts/build.ts --production
+          bun run scripts/notices.ts
+          bunx electron-builder --config electron-builder.yml --mac --publish never
+
+      - name: Build unsigned dry run
+        if: ${{ needs.preflight.outputs.dry_run == 'true' }}
+        working-directory: apps/desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          SUBKIT_DESKTOP_UPDATES: "0"
+        run: |
+          set -euo pipefail
+          bun run scripts/build.ts --production
+          bun run scripts/notices.ts
+          bunx electron-builder --config electron-builder.yml --mac --publish never -c.mac.notarize=false
+
+      - name: Verify signature, Gatekeeper and notarization ticket
+        if: ${{ needs.preflight.outputs.dry_run != 'true' }}
+        working-directory: apps/desktop
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          verify_app() {
+            local app="$1"
+            test -d "$app"
+            codesign --verify --deep --strict --verbose=2 "$app"
+            local details
+            details=$(codesign --display --verbose=4 "$app" 2>&1)
+            grep -q "^Authority=Developer ID Application: " <<<"$details" || { echo "::error::$app is not signed with a Developer ID Application certificate" >&2; exit 1; }
+            grep -Eq "^CodeDirectory .*flags=.*runtime" <<<"$details" || { echo "::error::$app is not signed with the hardened runtime" >&2; exit 1; }
+            spctl -a -t exec -vv "$app"
+            xcrun stapler validate "$app"
+          }
+          zips=(release/subkit-desktop-"$VERSION"-mac-*.zip)
+          dmgs=(release/subkit-desktop-"$VERSION"-mac-*.dmg)
+          [ "${#zips[@]}" -eq 2 ] && [ "${#dmgs[@]}" -eq 2 ] || { echo "::error::expected an arm64 and an x64 zip and dmg" >&2; exit 1; }
+          for zip in "${zips[@]}"; do
+            unpacked=$(mktemp -d)
+            ditto -x -k "$zip" "$unpacked"
+            verify_app "$unpacked/SubKit.app"
+            test -s "$unpacked/SubKit.app/Contents/Resources/THIRD_PARTY_NOTICES.txt"
+            test -s "$unpacked/SubKit.app/Contents/Resources/LICENSES.chromium.html"
+            rm -rf "$unpacked"
+          done
+          for dmg in "${dmgs[@]}"; do
+            mount=$(mktemp -d)
+            hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount"
+            verify_app "$mount/SubKit.app"
+            hdiutil detach "$mount"
+          done
+
+      - name: Stage artifacts
+        working-directory: apps/desktop
+        run: |
+          set -euo pipefail
+          mkdir -p staged
+          cp release/subkit-desktop-"$VERSION"-mac-* release/latest-mac.yml staged/
+          cp dist/THIRD_PARTY_NOTICES.txt "staged/subkit-desktop-$VERSION-mac-THIRD_PARTY_NOTICES.txt"
+          bun run scripts/verify-feed.ts staged "$VERSION" latest-mac.yml
+          ls -l staged
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: desktop-macos
+          retention-days: 7
+          if-no-files-found: error
+          path: apps/desktop/staged/
+
+  windows:
+    needs: preflight
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      VERSION: ${{ needs.preflight.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.preflight.outputs.ref }}
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+        with:
+          bun-version: 1.4.5
+
+      - name: Install the app toolchain and the runtime distribution
+        working-directory: apps/desktop
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          node node_modules/electron/install.js
+
+      - name: Build and sign with the certificate
+        if: ${{ needs.preflight.outputs.dry_run != 'true' && needs.preflight.outputs.windows_signing == 'certificate' }}
+        working-directory: apps/desktop
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          SUBKIT_DESKTOP_UPDATES: "1"
+        run: |
+          set -euo pipefail
+          for name in WIN_CSC_LINK WIN_CSC_KEY_PASSWORD; do
+            [ -n "${!name:-}" ] || { echo "::error::missing Windows signing value $name" >&2; exit 1; }
+          done
+          bun run scripts/build.ts --production
+          bun run scripts/notices.ts
+          bunx electron-builder --config electron-builder.yml --win --publish never
+
+      - name: "Alternative, off by default: build and sign with a cloud signing service"
+        if: ${{ needs.preflight.outputs.dry_run != 'true' && needs.preflight.outputs.windows_signing == 'cloud' }}
+        working-directory: apps/desktop
+        env:
+          SUBKIT_DESKTOP_WIN_SIGNING: cloud
+          WIN_CLOUD_SIGN_ENV: ${{ secrets.WIN_CLOUD_SIGN_ENV }}
+          WIN_CLOUD_SIGN_TOOL: ${{ vars.DESKTOP_WIN_CLOUD_SIGN_TOOL }}
+          WIN_CLOUD_SIGN_ARGS: ${{ vars.DESKTOP_WIN_CLOUD_SIGN_ARGS }}
+          WIN_PUBLISHER_NAME: ${{ vars.DESKTOP_WIN_PUBLISHER_NAME }}
+          SUBKIT_DESKTOP_UPDATES: "1"
+        run: |
+          set -euo pipefail
+          for name in WIN_CLOUD_SIGN_ENV WIN_CLOUD_SIGN_TOOL WIN_CLOUD_SIGN_ARGS WIN_PUBLISHER_NAME; do
+            [ -n "${!name:-}" ] || { echo "::error::missing Windows cloud signing value $name" >&2; exit 1; }
+          done
+          bun run scripts/build.ts --production
+          bun run scripts/notices.ts
+          bunx electron-builder --config electron-builder.yml --win --publish never \
+            "-c.win.signtoolOptions.sign=scripts/win-cloud-sign.cjs" \
+            "-c.win.signtoolOptions.publisherName=$WIN_PUBLISHER_NAME"
+
+      - name: Build unsigned dry run
+        if: ${{ needs.preflight.outputs.dry_run == 'true' }}
+        working-directory: apps/desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          SUBKIT_DESKTOP_UPDATES: "0"
+        run: |
+          set -euo pipefail
+          bun run scripts/build.ts --production
+          bun run scripts/notices.ts
+          bunx electron-builder --config electron-builder.yml --win --publish never
+
+      - name: Verify Authenticode signatures
+        if: ${{ needs.preflight.outputs.dry_run != 'true' }}
+        working-directory: apps/desktop
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName | Select-Object -Last 1
+          if (-not $signtool) { throw "signtool.exe was not found on the runner" }
+          $files = @("release\subkit-desktop-$env:VERSION-win-x64.exe", "release\win-unpacked\SubKit.exe")
+          foreach ($file in $files) {
+            if (-not (Test-Path $file)) { throw "$file is missing" }
+            & $signtool.FullName verify /pa /all /v $file
+            if ($LASTEXITCODE -ne 0) { throw "signtool could not verify $file" }
+            $signature = Get-AuthenticodeSignature $file
+            if ($signature.Status -ne "Valid") { throw "$file has signature status $($signature.Status)" }
+            if (-not $signature.TimeStamperCertificate) { throw "$file carries no trusted timestamp" }
+          }
+          $feed = Get-Content "release\win-unpacked\resources\app-update.yml" -Raw
+          if ($feed -notmatch "(?m)^publisherName:") { throw "app-update.yml names no publisher, so updates would not be verified" }
+
+      - name: Stage artifacts
+        working-directory: apps/desktop
+        run: |
+          set -euo pipefail
+          mkdir -p staged
+          cp release/subkit-desktop-"$VERSION"-win-* release/latest.yml staged/
+          cp dist/THIRD_PARTY_NOTICES.txt "staged/subkit-desktop-$VERSION-win-THIRD_PARTY_NOTICES.txt"
+          bun run scripts/verify-feed.ts staged "$VERSION" latest.yml
+          ls -l staged
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: desktop-windows
+          retention-days: 7
+          if-no-files-found: error
+          path: apps/desktop/staged/
+
+  linux:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      VERSION: ${{ needs.preflight.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.preflight.outputs.ref }}
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+        with:
+          bun-version: 1.4.5
+
+      - name: Install the app toolchain and the runtime distribution
+        working-directory: apps/desktop
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          node node_modules/electron/install.js
+
+      - name: Build for a release with signed checksums
+        if: ${{ needs.preflight.outputs.dry_run != 'true' }}
+        working-directory: apps/desktop
+        env:
+          SUBKIT_DESKTOP_SIGNED_RELEASE: "1"
+          SUBKIT_DESKTOP_UPDATES: "1"
+        run: |
+          set -euo pipefail
+          bun run scripts/build.ts --production
+          bun run scripts/notices.ts
+          bunx electron-builder --config electron-builder.yml --linux --publish never
+
+      - name: Build unsigned dry run
+        if: ${{ needs.preflight.outputs.dry_run == 'true' }}
+        working-directory: apps/desktop
+        env:
+          SUBKIT_DESKTOP_UPDATES: "0"
+        run: |
+          set -euo pipefail
+          bun run scripts/build.ts --production
+          bun run scripts/notices.ts
+          bunx electron-builder --config electron-builder.yml --linux --publish never
+
+      - name: Stage artifacts
+        working-directory: apps/desktop
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          images=(release/subkit-desktop-"$VERSION"-linux-*.AppImage)
+          packages=(release/subkit-desktop-"$VERSION"-linux-*.deb)
+          [ "${#images[@]}" -eq 1 ] && [ "${#packages[@]}" -eq 1 ] || { echo "::error::expected one AppImage and one deb" >&2; exit 1; }
+          mkdir -p staged
+          cp release/subkit-desktop-"$VERSION"-linux-* release/latest-linux.yml staged/
+          cp dist/THIRD_PARTY_NOTICES.txt "staged/subkit-desktop-$VERSION-linux-THIRD_PARTY_NOTICES.txt"
+          bun run scripts/verify-feed.ts staged "$VERSION" latest-linux.yml
+          ls -l staged
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: desktop-linux
+          retention-days: 7
+          if-no-files-found: error
+          path: apps/desktop/staged/
+
+  publish:
+    needs: [preflight, macos, windows, linux]
+    if: ${{ needs.preflight.outputs.dry_run != 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: read
+    env:
+      TAG: ${{ needs.preflight.outputs.tag }}
+      VERSION: ${{ needs.preflight.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.preflight.outputs.ref }}
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+        with:
+          bun-version: 1.4.5
+
+      - name: Collect the artifacts of this run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          download="$RUNNER_TEMP/desktop-artifacts"
+          assets="$RUNNER_TEMP/desktop-assets"
+          rm -rf "$download" "$assets"
+          mkdir -p "$download" "$assets"
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --dir "$download"
+          for name in desktop-macos desktop-windows desktop-linux; do
+            test -d "$download/$name"
+            for file in "$download/$name"/*; do
+              test -f "$file"
+              test ! -e "$assets/$(basename "$file")"
+              cp "$file" "$assets/"
+            done
+          done
+          echo "ASSETS_DIR=$assets" >> "$GITHUB_ENV"
+
+      - name: Verify the update feeds against the artifacts
+        run: bun run apps/desktop/scripts/verify-feed.ts "$ASSETS_DIR" "$VERSION"
+
+      - name: Write and sign desktop checksums
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${RELEASE_SIGNING_KEY:-}"
+          (cd "$ASSETS_DIR" && sha256sum subkit-desktop-* latest*.yml > SHA256SUMS-desktop && cat SHA256SUMS-desktop)
+          key=$(mktemp)
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$RELEASE_SIGNING_KEY" > "$key"
+          openssl pkeyutl -sign -inkey "$key" -rawin -in "$ASSETS_DIR/SHA256SUMS-desktop" -out "$ASSETS_DIR/SHA256SUMS-desktop.sig"
+
+      - name: Verify signature against the updater trust root
+        run: |
+          bun -e 'import { verify } from "node:crypto"; import { readFileSync } from "node:fs"; import { RELEASE_PUBLIC_KEY } from "./packages/cli-core/src/release-public-key.ts"; const dir = process.env.ASSETS_DIR; if (!dir || !verify(null, readFileSync(`${dir}/SHA256SUMS-desktop`), RELEASE_PUBLIC_KEY, readFileSync(`${dir}/SHA256SUMS-desktop.sig`))) throw new Error("desktop checksum signature does not match the updater public key");'
+
+      - name: Add the artifacts to the existing release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')" = "false" ] || { echo "::error::no published release exists for $TAG; this workflow never creates one" >&2; exit 1; }
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" "$ASSETS_DIR"/subkit-desktop-* "$ASSETS_DIR/SHA256SUMS-desktop" "$ASSETS_DIR/SHA256SUMS-desktop.sig"
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" "$ASSETS_DIR"/latest*.yml
+
+      - name: Download and verify the published desktop artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          download="$RUNNER_TEMP/desktop-published"
+          rm -rf "$download"
+          mkdir -p "$download"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$download" --pattern 'subkit-desktop-*' --pattern 'latest*.yml' --pattern 'SHA256SUMS-desktop*'
+          (cd "$download" && sha256sum --strict --check SHA256SUMS-desktop)
+          RELEASE_DOWNLOAD_DIR="$download" bun -e 'import { verify } from "node:crypto"; import { readFileSync } from "node:fs"; import { RELEASE_PUBLIC_KEY } from "./packages/cli-core/src/release-public-key.ts"; const dir = process.env.RELEASE_DOWNLOAD_DIR; if (!dir || !verify(null, readFileSync(`${dir}/SHA256SUMS-desktop`), RELEASE_PUBLIC_KEY, readFileSync(`${dir}/SHA256SUMS-desktop.sig`))) throw new Error("downloaded desktop checksum signature does not match the updater public key");'
+          bun run apps/desktop/scripts/verify-feed.ts "$download" "$VERSION"

@@ -67,6 +67,7 @@ import type { ChatText } from "@/pages/chat-text";
 import { dedupeBackground, groupMessageParts } from "@/pages/chat-transcript";
 import { actionLabel, backgroundLabel, didNotRun, NO_SAVED_PREVIEWS, textFromPart } from "./labels";
 import { AttachmentChip, PatchProposalDiff, ResultLink } from "./parts";
+import { ToolPolicyNote } from "./policy";
 
 export function ChatMessage({
   conversationId,
@@ -492,6 +493,11 @@ export function ChatMessage({
                   <ToolOutput output={tool.output} errorText={tool.errorText} />
                 </ToolContent>
               </Tool>
+              <ToolPolicyNote
+                conversationId={conversationId}
+                toolCallId={tool.toolCallId}
+                testId={`chat-message-${messageIndex}-tool-${partIndex}-policy`}
+              />
               {resultLink ? (
                 <ResultLink
                   link={resultLink}

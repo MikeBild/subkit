@@ -86,7 +86,7 @@ export function ChatComposerArea({
             </span>
           </div>
         )}
-        <div className="mb-2 flex flex-wrap items-center gap-1.5" data-testid="chat-pills">
+        <div className="mb-2 flex min-h-6 flex-wrap items-center gap-1.5" data-testid="chat-pills">
           {runScope && !conversationFailed ? (
             <p className="text-xs text-muted-foreground" data-testid="chat-task-run-scope">
               {runScope}
@@ -142,7 +142,10 @@ export function ChatComposerArea({
             restoreRef={restoreComposer}
           />
         </PromptInputProvider>
-        <div className="mt-2 flex flex-wrap items-center gap-1.5" data-testid="chat-usage-pills">
+        <div
+          className="mt-2 flex min-h-6 flex-wrap items-center gap-1.5"
+          data-testid="chat-usage-pills"
+        >
           <UsagePills usage={usage} budget={budget} />
         </div>
       </div>

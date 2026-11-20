@@ -31,6 +31,7 @@ import {
   DataState,
   DetailPage,
   type DetailStrip,
+  dialogFailure,
   FactList,
   FilePreview,
   MarkdownDocument,
@@ -41,8 +42,10 @@ import {
   type TimelineTone,
 } from "@/components/cockpit/patterns";
 import { ForbiddenState } from "@/components/failure-state";
+import { reportFailure } from "@/lib/action-failure";
 import { pluralKey, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { documentUnderTitle } from "@/pages/knowledge-sources-model";
 import {
   CATEGORIES_KEY,
   CLIPS_KEY,
@@ -131,7 +134,7 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
     onSuccess: async () => {
       await invalidateIntake(queryClient);
     },
-    onError: () => toast.error(t("common.actionFailed")),
+    onError: (failure) => reportFailure(t("common.actionFailed"), failure),
   });
   const remove = useMutation({
     mutationFn: ({ itemId, version }: { itemId: string; version: number }) =>
@@ -143,12 +146,13 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
       toast.success(t("intake.deleteSuccess"));
     },
     onError: (error) =>
-      toast.error(
+      reportFailure(
         t(
           error instanceof ApiError && error.status === 409
             ? "intake.deleteConflict"
             : "common.actionFailed",
         ),
+        error,
       ),
   });
   const categoryValues = useMemo(
@@ -380,6 +384,36 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
             <ActionMenu alwaysMenu items={menuItems} testId="intake-detail-actions" />
           ) : undefined
         }
+        technical={
+          clip ? (
+            <FactList
+              testId="intake-detail-session"
+              items={[
+                ...(session
+                  ? [
+                      { label: t("intake.session.agent"), value: session.agent },
+                      {
+                        label: t("intake.session.id"),
+                        value: sessionLabel(session.session_id, t),
+                      },
+                      ...(sessionPlace(session)
+                        ? [
+                            {
+                              label: t("intake.session.place"),
+                              value: sessionPlace(session),
+                            },
+                          ]
+                        : []),
+                    ]
+                  : []),
+                {
+                  label: t("intake.fact.id"),
+                  value: <span className="font-mono text-xs">{clip.id}</span>,
+                },
+              ]}
+            />
+          ) : undefined
+        }
         strip={strip}
         tabs={
           clip
@@ -407,34 +441,6 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
                             </span>
                           }
                           aside={onward}
-                        />
-                      }
-                      technical={
-                        <FactList
-                          testId="intake-detail-session"
-                          items={[
-                            ...(session
-                              ? [
-                                  { label: t("intake.session.agent"), value: session.agent },
-                                  {
-                                    label: t("intake.session.id"),
-                                    value: sessionLabel(session.session_id, t),
-                                  },
-                                  ...(sessionPlace(session)
-                                    ? [
-                                        {
-                                          label: t("intake.session.place"),
-                                          value: sessionPlace(session),
-                                        },
-                                      ]
-                                    : []),
-                                ]
-                              : []),
-                            {
-                              label: t("intake.fact.id"),
-                              value: <span className="font-mono text-xs">{clip.id}</span>,
-                            },
-                          ]}
                         />
                       }
                       more={
@@ -518,7 +524,11 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
                           {t("intake.notKnowledge")}
                         </p>
                       ) : null}
-                      <MarkdownDocument text={clip.body} testId="intake-current-body" />
+                      <MarkdownDocument
+                        text={documentUnderTitle(clip.body, clip.title)}
+                        source={clip.body}
+                        testId="intake-current-body"
+                      />
                     </TabBody>
                   ),
                 },
@@ -613,7 +623,7 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
             write.error instanceof ApiError && write.error.status === 409
               ? t("intake.editConflict")
               : write.isError
-                ? t("common.actionFailed")
+                ? dialogFailure(t("common.actionFailed"), write.error)
                 : null
           }
           conflict={write.error instanceof ApiError && write.error.status === 409}

@@ -20,6 +20,7 @@ import {
 
 import { RerunAction, RunDetail } from "./runs-detail";
 import { RunsList } from "./runs-list";
+import { isStoppableRun, StopRunAction } from "./runs-stop";
 
 export { RunStepIdentityFacts } from "./runs-detail";
 export { formatRunDuration, RUN_STATUSES, requestSourceLabel, runDurationMs, runName };
@@ -50,6 +51,7 @@ export function RunOverlays() {
     run.source_kind === "saved" &&
     Boolean(run.workflow_id) &&
     Boolean(run.workflow_version_id);
+  const canStop = session.permissions.includes("execution:abort");
   const auditLinks = run ? runCauseLinks(run.id, session.permissions, t) : [];
   const title = !overlay.runId
     ? t("runs.all")
@@ -77,7 +79,9 @@ export function RunOverlays() {
       }
       titleTestId={overlay.runId ? "run-detail-title" : "runs-sheet-title"}
       action={
-        overlay.runId && run && canRerun ? (
+        overlay.runId && run && canStop && isStoppableRun(run.status) ? (
+          <StopRunAction runId={run.id} workflowName={runName(run, t)} />
+        ) : overlay.runId && run && canRerun ? (
           <RerunAction run={run} onStarted={(id) => show({ list: overlay.list, runId: id })} />
         ) : undefined
       }

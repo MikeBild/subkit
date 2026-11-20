@@ -47,6 +47,22 @@ export function nextCronOccurrence(cron: string, after: Date, tz?: string): Date
   }
 }
 
+export function previousCronOccurrence(cron: string, atOrBefore: Date, tz?: string): Date | null {
+  const trimmed = cron.trim();
+  if (trimmed.startsWith(EVERY_PREFIX)) return null;
+  try {
+    return CronExpressionParser.parse(trimmed, {
+      currentDate: new Date(atOrBefore.getTime() + 1),
+      strict: false,
+      ...(tz ? { tz } : {}),
+    })
+      .prev()
+      .toDate();
+  } catch {
+    return null;
+  }
+}
+
 export function isCronDue(cron: string, lastFiredAt: Date | null, now: Date, tz?: string): boolean {
   const trimmed = cron.trim();
   if (trimmed.startsWith("every:")) {

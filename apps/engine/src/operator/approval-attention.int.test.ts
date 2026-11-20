@@ -300,7 +300,7 @@ describe("an approval that is about to end", () => {
       since: null,
     });
     expect(item?.actions[0]).toMatchObject({
-      verb: "open",
+      verb: "renew",
       href: `/cockpit/workflows/${wf.workflow_id}#workflow-automation`,
     });
   });

@@ -65,6 +65,7 @@ import {
   formatBytes,
   GroupingTabs,
   IconTile,
+  MarkdownDocument,
   OnboardingFrame,
   Page,
   PageHeader,
@@ -73,6 +74,7 @@ import {
   TabBody,
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
+import { reportFailure } from "@/lib/action-failure";
 import { LOCALE_TAGS, pluralKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useInfiniteList } from "@/lib/use-infinite-list";
@@ -86,6 +88,7 @@ import {
   fileUsageParts,
   hasEarlierVersions,
 } from "@/pages/file-versions-model";
+import { documentUnderTitle } from "@/pages/knowledge-sources-model";
 
 type StoredFile = components["schemas"]["File"];
 type ListedFile = components["schemas"]["FileListItem"];
@@ -306,8 +309,9 @@ export function FilesPage() {
               testId="files-page-drop"
             />
           ) : null}
-          {items.length > 0 || !unfiltered ? (
+          {query.isPending || items.length > 0 || !unfiltered ? (
             <CatalogSummary
+              loading={query.isPending}
               testId="files-summary"
               kind="file"
               text={
@@ -348,6 +352,7 @@ export function FilesPage() {
                   usage={categoryFilter.usage}
                   value={categoryFilter.value}
                   onChange={categoryFilter.setValue}
+                  loading={categoryFilter.loading}
                 />
               </>
             }
@@ -754,7 +759,7 @@ export function FilePage() {
       setDeleting(false);
       void navigate({ to: "/files" });
     },
-    onError: () => toast.error(t("common.actionFailed")),
+    onError: (failure) => reportFailure(t("common.actionFailed"), failure),
   });
 
   const usage = usageQuery.data;
@@ -876,11 +881,43 @@ export function FilePage() {
         badge={file ? <CatalogCategoryChip category={recordCategory(file)} /> : undefined}
         purpose={file ? <CatalogPurpose record={file} /> : undefined}
         loading={fileQuery.isPending}
+        loadingPurpose
         action={download}
         menu={
           menuItems.length > 0 ? (
             <ActionMenu alwaysMenu items={menuItems} testId="file-menu" />
           ) : null
+        }
+        technical={
+          file ? (
+            <>
+              <div className="flex flex-col gap-2" data-testid="file-reference">
+                <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                  {t("files.reference")}
+                  <ContextHelp label={t("files.reference")} testId="file-reference-help">
+                    {t("files.referenceHelp")}
+                  </ContextHelp>
+                </span>
+                <CopyField
+                  labelled
+                  value={fileReference(file)}
+                  label={t("files.reference")}
+                  testId="file-reference-value"
+                />
+              </div>
+              <FactList
+                testId="file-technical"
+                items={[
+                  { label: t("files.fact.id"), value: <Mono>{file.id}</Mono> },
+                  { label: t("files.fact.format"), value: file.content_type ?? "—" },
+                  {
+                    label: t("files.fact.checksum"),
+                    value: file.sha256 ? <Mono>{file.sha256}</Mono> : "—",
+                  },
+                ]}
+              />
+            </>
+          ) : undefined
         }
         tabs={
           file
@@ -898,48 +935,32 @@ export function FilePage() {
                         when: dateTime(file.created_at),
                         name: uploader,
                       })}
-                      technical={
-                        <>
-                          <div className="flex flex-col gap-2" data-testid="file-reference">
-                            <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-                              {t("files.reference")}
-                              <ContextHelp
-                                label={t("files.reference")}
-                                testId="file-reference-help"
-                              >
-                                {t("files.referenceHelp")}
-                              </ContextHelp>
-                            </span>
-                            <CopyField
-                              labelled
-                              value={fileReference(file)}
-                              label={t("files.reference")}
-                              testId="file-reference-value"
-                            />
-                          </div>
-                          <FactList
-                            testId="file-technical"
-                            items={[
-                              { label: t("files.fact.id"), value: <Mono>{file.id}</Mono> },
-                              { label: t("files.fact.format"), value: file.content_type ?? "—" },
-                              {
-                                label: t("files.fact.checksum"),
-                                value: file.sha256 ? <Mono>{file.sha256}</Mono> : "—",
-                              },
-                            ]}
-                          />
-                        </>
-                      }
                     >
                       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_220px]">
-                        <FilePreview
-                          name={file.filename}
-                          mimeType={file.content_type}
-                          size={typeof file.size_bytes === "number" ? file.size_bytes : undefined}
-                          url={textual ? undefined : contentPath}
-                          text={textual ? (textQuery.data ?? undefined) : undefined}
-                          testId="file-preview"
-                        />
+                        {textual && textQuery.isError ? (
+                          <DataState
+                            state="error"
+                            line={t("files.previewFailed")}
+                            error={textQuery.error}
+                            onRetry={() => void textQuery.refetch()}
+                            testId="file-preview-failed"
+                          />
+                        ) : kind === "markdown" && typeof textQuery.data === "string" ? (
+                          <MarkdownDocument
+                            text={documentUnderTitle(textQuery.data, file.filename)}
+                            source={textQuery.data}
+                            testId="file-preview"
+                          />
+                        ) : (
+                          <FilePreview
+                            name={file.filename}
+                            mimeType={file.content_type}
+                            size={typeof file.size_bytes === "number" ? file.size_bytes : undefined}
+                            url={textual ? undefined : contentPath}
+                            text={textual ? (textQuery.data ?? undefined) : undefined}
+                            testId="file-preview"
+                          />
+                        )}
                         <FactList
                           testId="file-facts"
                           layout="stacked"

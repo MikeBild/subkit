@@ -190,6 +190,9 @@ stateDiagram-v2
 
 - **Fixed steps, not a free-running agent.** A workflow is built from eight step kinds: request, transform, call, wait, wait for event, branch, parallel and loop.
 - **Tasks: a goal with limits.** Where the way to a result differs from case to case, a task takes a goal, a plan and the workflows and connectors it may use. It asks a person before anything that writes, it cannot author workflows, and it starts on its own only with a standing permission that ends when the task changes. What proves itself in a task becomes a workflow.
+- **A desktop app that runs nothing locally.** SubKit Desktop is a window onto your server's Cockpit with a menu bar icon, native notifications and launch at login. It signs in through the browser, every computer is a device of its own that can be revoked, and no API key or workflow ever lives on the machine. The Cockpit can also be installed as a web app.
+- **Chat asks unless you asked.** In Automatic mode an action runs without a question only when you asked for it in your own words, named the target and wrote or saw the content; payments, deletions, publications, settings, new accounts and credentials always ask.
+- **Schedules explain themselves.** A schedule that fails five times in a row for the same reason pauses and says so once; a schedule history shows what became of every scheduled time.
 - **Code runs in a sandbox.** Code in transform steps runs in a QuickJS sandbox, not in the engine process itself.
 - **One contract for every door.** The HTTP API is described in OpenAPI 3.1 at `/openapi.json`, and the engine describes itself to AI clients at `/llms.txt`.
 - **Built with** TypeScript on Bun, Hono, Drizzle, PostgreSQL with pg-boss, Zod, React and the Model Context Protocol SDK.

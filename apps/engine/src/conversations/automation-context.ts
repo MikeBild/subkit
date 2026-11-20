@@ -1,5 +1,6 @@
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
+import { personalDefaultEnvironment } from "../identity/setup-preferences.ts";
 import { can } from "../rbac/evaluator.ts";
 import { inspectAutomationReview } from "./automation-review.ts";
 
@@ -21,6 +22,7 @@ export async function renderAutomationContext(
   const allowed = async (permission: "inbound_hook:read" | "audit:read") =>
     (await can(db, { tenant_id, principal, permission, quiet: true })).allow;
   const review = await inspectAutomationReview(db, tenant_id, workflow_id, {
+    personal_default: await personalDefaultEnvironment(db, tenant_id, principal),
     ...((await allowed("inbound_hook:read"))
       ? { inbound_hooks: { refusal_reasons: await allowed("audit:read") } }
       : {}),

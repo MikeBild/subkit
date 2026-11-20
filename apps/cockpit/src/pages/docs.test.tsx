@@ -205,7 +205,9 @@ describe("docs pages", () => {
       <DocsArticleView bundle={DOCS} slug="web-clipper" version={VERSION} />,
     );
     expect(html).toContain('data-header-rhythm="reading"');
-    expect(html).toMatch(/data-header-rhythm="reading"[^>]*class="flex flex-col pt-10 pb-6"/);
+    expect(html).toMatch(
+      /data-header-rhythm="reading"[^>]*class="@container flex flex-col pt-10 pb-6"/,
+    );
     expect(html).toMatch(/<div class="mb-6"><a[^>]*data-testid="detail-back"/);
     expect(html).toMatch(/data-testid="page-eyebrow" class="[^"]*mb-2/);
     expect(html).toMatch(

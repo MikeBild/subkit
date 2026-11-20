@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -10,22 +10,32 @@ import {
 } from "@/components/ui/dialog";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
+import { ActionFailureHost, failureRemedyAction } from "./action-failure";
 import {
   DIALOG_BODY,
   DIALOG_DESCRIPTION,
-  DIALOG_ERROR,
   DIALOG_FOOT,
   DIALOG_FRAME,
   DIALOG_HEAD,
+  DIALOG_NOTICE,
   DIALOG_TITLE,
   DialogBack,
+  type DialogError,
   type DialogSize,
   DialogTitleRow,
+  dialogErrorCause,
+  dialogErrorText,
   dialogWidthClass,
   FILLED_DESTRUCTIVE,
 } from "./dialog-frame";
+import { ErrorNotice } from "./error-notice";
 
-export { type DialogSize, dialogWidthClass } from "./dialog-frame";
+export {
+  type DialogError,
+  type DialogSize,
+  dialogFailure,
+  dialogWidthClass,
+} from "./dialog-frame";
 
 export function FormDialog({
   open,
@@ -35,6 +45,7 @@ export function FormDialog({
   submit,
   onSubmit,
   error,
+  failure,
   back,
   step,
   actions,
@@ -52,7 +63,7 @@ export function FormDialog({
   open: boolean;
   onOpenChange(open: boolean): void;
   title: string;
-  description?: string;
+  description?: ReactNode;
   submit?: {
     label: ReactNode;
     pending?: boolean;
@@ -62,7 +73,8 @@ export function FormDialog({
     hint?: string;
   };
   onSubmit?(): void | Promise<void>;
-  error?: string | null;
+  error?: DialogError;
+  failure?: unknown;
   back?: { label: string; onClick(): void; testId?: string };
   step?: string;
   actions?: ReactNode;
@@ -79,6 +91,13 @@ export function FormDialog({
 }) {
   const { t } = useI18n();
   const pending = Boolean(submit?.pending);
+  const opener = useRef<HTMLElement | null>(null);
+  const wasOpen = useRef(false);
+  if (open && !wasOpen.current && typeof document !== "undefined")
+    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  wasOpen.current = open;
+  const errorText = dialogErrorText(error);
+  const cause = dialogErrorCause(error, failure);
   const [shownHint, setShownHint] = useState<string | null>(null);
   const pointHint = (target: EventTarget) =>
     setShownHint(
@@ -95,6 +114,12 @@ export function FormDialog({
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           (event.currentTarget as HTMLElement | null)?.focus();
+        }}
+        onCloseAutoFocus={(event) => {
+          const target = opener.current;
+          if (trigger || !target?.isConnected || target === document.body) return;
+          event.preventDefault();
+          target.focus({ preventScroll: true });
         }}
         aria-describedby={undefined}
         data-testid={testId}
@@ -142,11 +167,32 @@ export function FormDialog({
           </div>
           <div className={DIALOG_BODY} data-slot="dialog-body">
             {children}
+            <ActionFailureHost className="mt-2" />
           </div>
-          {error ? (
-            <p role="alert" className={DIALOG_ERROR} data-testid={`${testId}-error`}>
-              {error}
-            </p>
+          {errorText ? (
+            <div className={DIALOG_NOTICE}>
+              <ErrorNotice
+                title={errorText}
+                error={cause ?? undefined}
+                tone={cause ? "error" : "warn"}
+                testId={`${testId}-error`}
+                remedy={
+                  cause
+                    ? failureRemedyAction(
+                        {
+                          title: errorText,
+                          error: cause,
+                          testId: `${testId}-error-remedy`,
+                          ...(submit && onSubmit && !submit.disabled
+                            ? { retry: () => void onSubmit() }
+                            : {}),
+                        },
+                        t,
+                      )
+                    : undefined
+                }
+              />
+            </div>
           ) : null}
           <DialogFooter
             className={cn(

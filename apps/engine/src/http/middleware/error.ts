@@ -3,6 +3,7 @@ import type { Context, MiddlewareHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { DescriptionAcceptanceError } from "../../api/catalog-metadata.ts";
 import { HostedChatOwnershipRequired } from "../../chat/hosted-ownership.ts";
+import { connectorConfigIssues } from "../../connectors/config-schemas.ts";
 import {
   describeTurnFailure,
   timeoutPhaseOf,
@@ -241,6 +242,15 @@ export function mapKnownErrorResponse(c: Context<AppEnv>, err: unknown): Respons
     return envelope(c, 409, err, CONVERSATION_TURN_ABORT_MESSAGES[err] ?? err);
   if (err instanceof ElicitationNotFoundError || err instanceof ConversationNotFoundError)
     return envelope(c, 404, "not_found", "Conversation or question not found.");
+  const configIssues = connectorConfigIssues(err);
+  if (configIssues)
+    return envelope(
+      c,
+      400,
+      "connector_config_invalid",
+      [(err as Error).message, ...configIssues.slice(0, 5)].join(" — "),
+      { details: { issues: configIssues } },
+    );
   if (err instanceof HttpError) {
     if (err.status >= 500) captureToRing(c, err, err.status, err.code, "http");
     if (err instanceof UnauthorizedError && err.wwwAuthenticate) {

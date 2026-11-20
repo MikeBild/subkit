@@ -1,0 +1,19 @@
+extends: ./electron-builder.base.yml
+appId: dev.mikebild.subkit.desktop
+productName: SubKit
+artifactName: subkit-desktop-${version}-${os}-${arch}.${ext}
+protocols:
+  name: SubKit
+  schemes:
+    - subkit
+linux:
+  mimeTypes:
+    - x-scheme-handler/subkit
+mac:
+  notarize: true
+publish:
+  provider: github
+  owner: MikeBild
+  repo: subkit
+  releaseType: release
+  publishAutoUpdate: true

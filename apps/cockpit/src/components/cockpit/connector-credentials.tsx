@@ -9,12 +9,17 @@ import {
   ActionMenu,
   Button,
   ConfirmDialog,
+  DataState,
+  type DialogError,
+  dialogFailure,
+  ErrorNotice,
   FactList,
   RecordSheet,
   SectionHeading,
   StatusBadge,
   TechnicalDetails,
 } from "@/components/cockpit/patterns";
+import { reportFailure } from "@/lib/action-failure";
 import { type ConnectorAuthState, needsRenewal } from "@/lib/connector-auth-state";
 import { useI18n } from "@/lib/i18n-context";
 import { type ConnectionItem, connectionStateKey } from "@/pages/connections-model";
@@ -69,7 +74,7 @@ function CredentialSheet({
   const [secret, setSecret] = useState("");
   const [typedHeader, setHeader] = useState<string | null>(null);
   const [chosen, setChosen] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DialogError>(null);
   const header = typedHeader ?? headerNames[0] ?? "";
   const connections = useConnections(open && choosesConnection);
   const items = connections.data?.items ?? [];
@@ -91,7 +96,7 @@ function CredentialSheet({
       toast.success(t("connectorPage.credentials.replaced"));
       close();
     },
-    onError: () => setError(t("connectorCredentials.saveFailed")),
+    onError: (failure) => setError(dialogFailure(t("connectorCredentials.saveFailed"), failure)),
   });
   const submit = () => {
     if (choosesConnection) {
@@ -171,13 +176,23 @@ function CredentialSheet({
           />
         ) : null}
         {error ? (
-          <p
-            className="text-sm text-destructive"
-            role="alert"
-            data-testid="connector-credential-error"
-          >
-            {error}
-          </p>
+          <ErrorNotice
+            title={typeof error === "string" ? error : error.text}
+            error={typeof error === "string" ? undefined : error.cause}
+            tone={typeof error === "string" ? "warn" : "error"}
+            remedy={
+              typeof error === "string"
+                ? undefined
+                : {
+                    label: t("pattern.retry"),
+                    variant: "primary",
+                    size: "sm",
+                    onClick: submit,
+                    testId: "connector-credential-error-retry",
+                  }
+            }
+            testId="connector-credential-error"
+          />
         ) : null}
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={close} data-testid="connector-credential-cancel">
@@ -303,11 +318,13 @@ export function ConnectorCredentials({
           </Button>
         ) : null}
       </div>
-      {hint && state !== "unproven" ? (
-        <p className="text-xs text-muted-foreground" data-testid="connector-credential-hint">
-          {t(hint, { name: current?.connection?.name ?? "" })}
-        </p>
-      ) : null}
+      <p
+        className="min-h-4 text-xs text-muted-foreground"
+        data-testid={hint && state !== "unproven" ? "connector-credential-hint" : undefined}
+        data-slot="connector-credential-hint"
+      >
+        {hint && state !== "unproven" ? t(hint, { name: current?.connection?.name ?? "" }) : null}
+      </p>
       {missingScopes.length > 0 ? (
         <p className="text-xs text-muted-foreground" data-testid="connector-missing-scopes">
           {t(
@@ -367,24 +384,19 @@ export function ConnectorAccounts({
       await client.invalidateQueries({ queryKey: ["connector-credential", connectorId] });
       toast.success(t("connections.disconnected", { name }));
     },
-    onError: () => toast.error(t("common.actionFailed")),
+    onError: (failure) => reportFailure(t("common.actionFailed"), failure),
   });
   return (
     <section className="flex flex-col gap-2" data-testid="connector-account-connections">
       <SectionHeading>{t("connectorPage.accounts")}</SectionHeading>
       {query.error ? (
-        <p className="text-sm text-muted-foreground">
-          {t("connections.loadFailed")}{" "}
-          <Button
-            variant="link"
-            size="sm"
-            className="h-auto p-0"
-            onClick={() => void query.refetch()}
-            data-testid="connector-accounts-retry"
-          >
-            {t("session.retry")}
-          </Button>
-        </p>
+        <DataState
+          state="error"
+          line={t("connections.loadFailed")}
+          error={query.error}
+          onRetry={() => void query.refetch()}
+          testId="connector-accounts"
+        />
       ) : query.isPending ? null : rows.length === 0 ? (
         <div
           className="flex flex-wrap items-center gap-3 rounded-lg border border-dashed px-3 py-2.5 text-sm"

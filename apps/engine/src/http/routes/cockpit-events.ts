@@ -3,10 +3,17 @@ import type { ResolvedPrincipal } from "../../auth/index.ts";
 import type { Db } from "../../db/client.ts";
 import {
   COCKPIT_STREAM_FAMILIES,
+  cockpitEventTouchesAttention,
   cockpitStreamConds,
   cockpitStreamFallbackConds,
-  projectCockpitPayload,
+  projectCockpitEvent,
 } from "../../identity/index.ts";
+import {
+  personalDelivery,
+  type StreamDeliveryHint,
+  streamDeliveryHint,
+} from "../../notifications/index.ts";
+import { invalidateTenantState } from "../../operator/index.ts";
 import { can, hasBuiltinAdminRole } from "../../rbac/index.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
@@ -28,6 +35,37 @@ async function cockpitStreamPermissions(
 }
 
 const HEARTBEAT_MS = 25_000;
+const DELIVERY_HINT_MS = 30_000;
+
+export function streamDeliveryReader(
+  read: (at: Date) => Promise<StreamDeliveryHint>,
+  clock: () => number = Date.now,
+): () => Promise<StreamDeliveryHint> {
+  let cached: { until: number; value: Promise<StreamDeliveryHint> } | null = null;
+  return () => {
+    const at = clock();
+    if (!cached || cached.until <= at)
+      cached = { until: at + DELIVERY_HINT_MS, value: read(new Date(at)).catch(() => null) };
+    return cached.value;
+  };
+}
+
+export async function projectForViewer(
+  row: { type: string; payload: unknown },
+  hint: () => Promise<StreamDeliveryHint>,
+): Promise<Record<string, string>> {
+  const projected = projectCockpitEvent(row);
+  if (!cockpitEventTouchesAttention(row.type)) return projected;
+  const delivery = await hint();
+  return delivery ? { ...projected, delivery } : projected;
+}
+
+export async function viewerDeliveryState(
+  hint: () => Promise<StreamDeliveryHint>,
+): Promise<Record<string, string>> {
+  const delivery = await hint();
+  return delivery ? { delivery } : {};
+}
 
 export function registerCockpitEventRoutes(app: OpenAPIHono<AppEnv>): void {
   app.get("/v1/cockpit/events/stream", async (c) => {
@@ -38,13 +76,25 @@ export function registerCockpitEventRoutes(app: OpenAPIHono<AppEnv>): void {
     const conds = cockpitStreamConds(tenantId, permissions, {
       task_owner_id: hasBuiltinAdminRole(principal) ? null : principal.id,
     });
+    const hint = streamDeliveryReader(async (at) =>
+      principal.kind === "user"
+        ? streamDeliveryHint(
+            await personalDelivery(db, { tenant_id: tenantId, user_id: principal.id }, at),
+          )
+        : null,
+    );
     return streamOutboxTail(c, {
       db,
       replay: "tail",
       conds: () => conds ?? cockpitStreamFallbackConds(tenantId),
-      project: (row) => projectCockpitPayload(row.payload),
-      hello: { version: OPENAPI_INFO.version },
+      project: (row) => projectForViewer(row, hint),
+      hello: { version: OPENAPI_INFO.version, heartbeat_ms: HEARTBEAT_MS },
+      viewerState: () => viewerDeliveryState(hint),
       heartbeatMs: HEARTBEAT_MS,
+      onRows: (rows) => {
+        if (rows.some((row) => cockpitEventTouchesAttention(row.type)))
+          invalidateTenantState(tenantId);
+      },
     });
   });
 }

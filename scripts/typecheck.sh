@@ -47,4 +47,6 @@ if [ "$#" -gt 0 ]; then
 else
   tsc --noEmit
   tsc -p apps/cockpit/tsconfig.json
+  [ -d apps/desktop/node_modules/electron ] || bun install --frozen-lockfile --cwd apps/desktop
+  tsc --noEmit -p apps/desktop/tsconfig.json
 fi

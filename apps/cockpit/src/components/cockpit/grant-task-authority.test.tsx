@@ -254,9 +254,11 @@ isolated("a failed allow keeps the dialog open and names the next step", async (
     dialog,
     async (stage) => {
       await stage.click("task-grant-confirm");
-      expect(stage.text("task-grant-dialog-error")).toBe(
+      expect(stage.text("task-grant-dialog-error")).toContain(
         "Die Dauererlaubnis konnte nicht gespeichert werden, versuche es noch einmal.",
       );
+      expect(stage.has("task-grant-dialog-error-remedy")).toBe(true);
+      expect(stage.has("task-grant-dialog-error-technical-toggle")).toBe(true);
       expect(stage.has("task-grant-confirm")).toBe(true);
     },
   );
@@ -271,7 +273,7 @@ isolated("an expired session offers to sign in instead of allowing", async () =>
     dialog,
     async (stage) => {
       await stage.click("task-grant-confirm");
-      expect(stage.text("task-grant-dialog-error")).toBe(
+      expect(stage.text("task-grant-dialog-error")).toContain(
         "Deine Sitzung ist abgelaufen, melde dich an und erlaube dann noch einmal.",
       );
       expect(stage.has("task-grant-sign-in")).toBe(true);

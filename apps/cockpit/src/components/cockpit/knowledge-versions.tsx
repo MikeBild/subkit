@@ -18,6 +18,7 @@ import {
   StatusBadge,
   Timeline,
 } from "@/components/cockpit/patterns";
+import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import {
@@ -179,7 +180,7 @@ function KnowledgeVersionSheet({
       void client.invalidateQueries({ queryKey: ["catalog"] });
       onClose();
     },
-    onError: () => toast.error(t("common.actionFailed")),
+    onError: (failure) => reportFailure(t("common.actionFailed"), failure),
   });
 
   const why = version ? versionWhy(version.note, directory, t) : null;

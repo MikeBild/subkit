@@ -46,6 +46,17 @@ export const ScheduleEntry = z
     timezone: z.string(),
     execution_mode: z.enum(["dev", "prod"]),
     paused: z.boolean(),
+    auto_pause: z
+      .object({
+        paused_reason: z.literal("repeated_failures"),
+        failure_class: z.string(),
+        consecutive_failures: z.number().int().positive(),
+        since: z.string().datetime(),
+      })
+      .nullable()
+      .describe(
+        "Set when the engine paused this schedule itself after the same failure repeated; null for a schedule a person paused or one that runs. Resuming (paused: false) clears it and starts counting failures afresh.",
+      ),
     input: z
       .unknown()
       .nullable()

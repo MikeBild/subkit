@@ -71,11 +71,11 @@ Bietet dir der Chat eine Freigabe an, öffnet sie denselben Dialog.
 
 | Feld | Was es festlegt |
 | --- | --- |
-| **Umgebung** | Wo die Läufe erlaubt sind, zum Beispiel **Produktion**. |
+| **Umgebung** | Wo die Läufe erlaubt sind, zum Beispiel **Echtbetrieb**. |
 | **Operationen und externe Ziele** | Welche Dienste und Adressen der Workflow erreicht. Jeder Dienst trägt das Logo seines Anbieters. |
 | **Gültigkeit** | Wie lange die Freigabe gilt: **7 Tage**, **30 Tage** oder **Bis auf Widerruf**. **Bis auf Widerruf** ist vorausgewählt. Dieselbe Wahl hast du, wenn du im Chat eine gespeicherte Änderung prüfst. |
 
-**Start aus dem Chat.** Im Chat-Modus **Fragt vorher** fragt SubKit vor einem Start nicht, wenn eine gültige Freigabe genau diesen Lauf deckt: dieselbe Version, dieselbe Umgebung und unveränderte Wirkung. Der Audit-Trail nennt die Freigabe, die den Start gedeckt hat. In drei Fällen fragt SubKit weiterhin: im Modus **Nur planen**, wenn ein Lauf Daten aus einem früheren Lauf weitergibt, und wenn du der Unterhaltung gesagt hast, jeden Start zu bestätigen.
+**Start aus dem Chat.** Im Chat-Modus **Fragen** fragt SubKit vor einem Start nicht, wenn eine gültige Freigabe genau diesen Lauf deckt: dieselbe Version, dieselbe Umgebung und unveränderte Wirkung. Der Audit-Trail nennt die Freigabe, die den Start gedeckt hat. In drei Fällen fragt SubKit weiterhin: im Modus **Nur planen**, wenn ein Lauf Daten aus einem früheren Lauf weitergibt, und wenn du der Unterhaltung gesagt hast, jeden Start zu bestätigen.
 
 **Wenn SubKit ohne neue Version erneut fragt.** Eine Freigabe gilt für die Konnektoren, wie sie geprüft wurden. Wird ein Konnektor neu angemeldet oder ändert sich seine Konfiguration, braucht der Workflow heute eine neue Prüfung, auch wenn seine Schritte gleich geblieben sind.
 

@@ -33,7 +33,40 @@ const PUSH_TTL_SECONDS = 4 * 60 * 60;
 const BROWSER_PUSH_ROWS_PER_USER = 10;
 export const COCKPIT_PUSH_IDLE_MAX_MS = 30 * 24 * 60 * 60 * 1000;
 const PUSH_ENDPOINT_HOSTS = new Set(["fcm.googleapis.com", "updates.push.services.mozilla.com"]);
-const ATTENTION_PUSH_PAYLOAD = JSON.stringify({ type: "attention" });
+const NEUTRAL_PUSH_PAYLOAD = JSON.stringify({ type: "attention" });
+const PUSH_PAYLOAD_TARGET_MAX = 8;
+const PUSH_PAYLOAD_BYTES_MAX = 2800;
+
+export interface CockpitPushTarget {
+  id: string;
+  class: string;
+  severity: string;
+  href: string | null;
+}
+
+export interface CockpitPushSummary {
+  schedules_paused?: number;
+  total?: number;
+  by_class?: Partial<Record<string, number>>;
+}
+
+export function cockpitPushPayload(
+  targets: readonly CockpitPushTarget[] = [],
+  omitted = 0,
+  summary?: CockpitPushSummary,
+): string {
+  const render = (items: readonly CockpitPushTarget[]) =>
+    JSON.stringify({
+      type: "attention",
+      items,
+      more: targets.length - items.length + omitted,
+      ...(summary ? { summary } : {}),
+    });
+  let items = targets.slice(0, PUSH_PAYLOAD_TARGET_MAX);
+  while (items.length > 0 && Buffer.byteLength(render(items), "utf8") > PUSH_PAYLOAD_BYTES_MAX)
+    items = items.slice(0, -1);
+  return render(items);
+}
 
 interface CockpitPushSubscriptionInput {
   endpoint: string;
@@ -666,6 +699,7 @@ export interface CockpitPushAudienceRow {
   user_id: string;
   device_sha256: string | null;
   notified_attention_keys: string[] | null;
+  notified_at?: Date | null;
 }
 
 function audienceSelection(
@@ -691,6 +725,7 @@ function audienceSelection(
       iv: cockpitPushSubscriptions.iv,
       auth_tag: cockpitPushSubscriptions.auth_tag,
       notified_attention_keys: cockpitPushSubscriptions.notified_attention_keys,
+      notified_at: cockpitPushSubscriptions.notified_at,
     })
     .from(cockpitPushSubscriptions)
     .innerJoin(sessions, eq(sessions.id, cockpitPushSubscriptions.session_id))
@@ -734,6 +769,7 @@ export async function listCockpitPushAudience(
     user_id: row.user_id,
     device_sha256: row.device_sha256,
     notified_attention_keys: row.notified_attention_keys,
+    notified_at: row.notified_at,
   }));
 }
 
@@ -795,6 +831,7 @@ export async function sendCockpitPushNotifications(input: {
   tenant_id: string;
   installation_id?: string;
   subscription_ids?: string[];
+  payloads?: ReadonlyMap<string, string>;
   subject: string;
   now?: Date;
   send?: typeof webpush.sendNotification;
@@ -855,7 +892,8 @@ export async function sendCockpitPushNotifications(input: {
         tenant_id: input.tenant_id,
         exec: input.db,
       });
-      await (input.send ?? webpush.sendNotification)(subscription, ATTENTION_PUSH_PAYLOAD, {
+      const payload = input.payloads?.get(row.id) ?? NEUTRAL_PUSH_PAYLOAD;
+      await (input.send ?? webpush.sendNotification)(subscription, payload, {
         vapidDetails: {
           subject: input.subject,
           publicKey: vapid.publicKey,

@@ -22,6 +22,7 @@ import {
   resolveExecutionCallerActor,
   resolveExecutionCallerOrigin,
 } from "./caller-origin.ts";
+import type { PreviewClassification } from "./core/classify.ts";
 import type { RefusedConnector } from "./core/outcome.ts";
 import {
   type ExecutionOutcome,
@@ -284,7 +285,19 @@ interface ExecutionFailureDetail {
   step_id: string | null;
   error_code: string;
   error_message: string;
+  error_class?: PreviewClassification;
   connector?: RefusedConnector;
+}
+
+function protectedFailure(failure: ExecutionFailureDetail): ExecutionFailureDetail {
+  const safe = sensitiveFailure(failure.error_code, failure.error_message);
+  return {
+    step_id: failure.step_id,
+    error_code: safe.code,
+    error_message: safe.message,
+    ...(safe.error_class ? { error_class: safe.error_class } : {}),
+    ...(failure.connector ? { connector: failure.connector } : {}),
+  };
 }
 
 export type { RefusedConnector } from "./core/outcome.ts";
@@ -397,13 +410,7 @@ async function applyFinalization(
       .where(and(eq(executions.tenant_id, tenant_id), eq(executions.id, execution_id)))
       .limit(1);
     if (isSensitivePayload(persisted?.input)) {
-      failure = failure
-        ? {
-            step_id: failure.step_id,
-            error_code: sensitiveFailure(failure.error_code).code,
-            error_message: sensitiveFailure().message,
-          }
-        : null;
+      failure = failure ? protectedFailure(failure) : null;
       result_sha256 = null;
     }
     const row = await terminalizeExecutionRow(tx, {
@@ -598,7 +605,7 @@ export async function finalizeStepRow(
       result = {
         ...result,
         request_meta: sensitiveRequestMeta(result.request_meta),
-        error: result.error ? sensitiveFailure(result.error.code) : null,
+        error: result.error ? sensitiveFailure(result.error.code, result.error.message) : null,
       };
       options = {
         ...options,

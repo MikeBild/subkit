@@ -55,6 +55,9 @@ describe("every source, as an admin reads it", () => {
     expect(spare?.used_by).toEqual([]);
     expect(items.has(`connection:${unusedConnectionId}`)).toBe(false);
     expect(items.get(`connector:${brokenConnectorId}`)?.actions[0]?.verb).toBe("reauth");
+    expect(["dev", "prod"]).toContain(
+      items.get(`connector:${brokenConnectorId}`)?.subject?.environment ?? "",
+    );
     expect(items.get(`workflow:${wf.held}`)?.reason).toBe("execution_authority_required");
     expect(Object.values(attention.sources).every((state) => state === "answered")).toBe(true);
     expect(attention.status?.next_run_at).toBeNull();

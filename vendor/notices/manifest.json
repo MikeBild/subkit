@@ -296,5 +296,17 @@
     "license": "MPL-2.0",
     "statement": "Covered Software under the Mozilla Public License 2.0, distributed unmodified. Source Code Form: https://registry.npmjs.org/web-push/-/web-push-4.0.0.tgz (npm package web-push@4.0.0) and https://github.com/web-push-libs/web-push.",
     "qualification": "MPL-2.0 source availability for the unmodified upstream package. Legal distribution approval remains separate."
+  },
+  {
+    "name": "lazy-val",
+    "version": "1.0.5",
+    "qualification": "The package ships no license text. Canonical MIT text from the SPDX License List with the holder named by the package.json author field (Vladimir Krivosheev); the declared license is MIT. Bundled into the SubKit Desktop main process through electron-updater. Legal distribution approval remains separate.",
+    "files": [
+      {
+        "path": "lazy-val__MIT.txt",
+        "source": "https://spdx.org/licenses/MIT.html",
+        "sha256": "ed9ae27d39f5579fb949a718315673e499f11c69e62e3266fecc8f1a0275282e"
+      }
+    ]
   }
 ]

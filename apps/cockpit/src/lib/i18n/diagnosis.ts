@@ -14,7 +14,7 @@ export const diagnosisEn = {
   "error.title": "This page could not be shown",
   "error.description":
     "Something in this view failed while rendering. Nothing was changed — try again, or go back to the overview.",
-  "error.detail": "Technical detail",
+  "error.detail": "Technical details",
   "severity.critical": "Critical",
   "severity.warning": "Warning",
   "cause.ok": "No error",
@@ -42,6 +42,10 @@ export const diagnosisEn = {
   "remedy.reconnect": "Sign in again",
   "remedy.grant": "Review approval",
   "remedy.openRun": "Investigate run",
+  "remedy.retry": "Try again",
+  "remedy.failurePrompt":
+    "This failed: “{failure}” (code {code}). What went wrong, and how do I fix it?",
+  "remedy.admin": "Ask an administrator",
   "refusal.reason.not_json_raw": "The request does not carry the message as its “raw” field",
   "refusal.reason.not_base64url": "The message is not correctly encoded as Base64url",
   "refusal.reason.not_utf8": "The message is not correctly encoded as UTF-8",
@@ -128,7 +132,7 @@ export const diagnosisDe: Record<keyof typeof diagnosisEn, string> = {
   "error.title": "Diese Seite ließ sich nicht anzeigen",
   "error.description":
     "Beim Aufbau dieser Ansicht ist etwas schiefgegangen. Geändert wurde nichts — versuch es erneut oder geh zurück zur Übersicht.",
-  "error.detail": "Technische Einzelheit",
+  "error.detail": "Technische Angaben",
   "severity.critical": "Kritisch",
   "severity.warning": "Warnung",
   "cause.ok": "Kein Fehler",
@@ -156,6 +160,10 @@ export const diagnosisDe: Record<keyof typeof diagnosisEn, string> = {
   "remedy.reconnect": "Neu anmelden",
   "remedy.grant": "Freigabe prüfen",
   "remedy.openRun": "Lauf untersuchen",
+  "remedy.retry": "Erneut versuchen",
+  "remedy.failurePrompt":
+    "Das ist fehlgeschlagen: „{failure}“ (Code {code}). Woran lag es, und wie behebe ich das?",
+  "remedy.admin": "Administrator fragen",
   "refusal.reason.not_json_raw": "Die Anfrage enthält die Nachricht nicht im Feld „raw“",
   "refusal.reason.not_base64url": "Die Nachricht ist nicht korrekt als Base64url kodiert",
   "refusal.reason.not_utf8": "Die Nachricht ist nicht korrekt als UTF-8 kodiert",
@@ -193,7 +201,7 @@ export const diagnosisDe: Record<keyof typeof diagnosisEn, string> = {
   "diagnosis.remedy.prepare":
     "Ein Probelauf — der alles zurückhält, was er senden würde — zeigt, was dieser Schritt sendet, damit es freigegeben werden kann.",
   "diagnosis.remedy.reconnect": "Verbinde den Konnektor in dieser Umgebung erneut.",
-  "diagnosis.appliesToEnvironment": "Gilt für {environment}.",
+  "diagnosis.appliesToEnvironment": "Gilt für den {environment}.",
   "diagnosis.remedy.author": "Das muss im Workflow selbst geändert werden.",
   "diagnosis.repair": "Automatisch korrigieren",
   "diagnosis.repairRejected":

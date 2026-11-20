@@ -16,8 +16,9 @@ import { WorkspaceChangedPage } from "@/components/cockpit/patterns/workspace-ch
 import { BootstrapErrorPage, LoginRedirect, SessionExpiredPage } from "@/components/failure-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n-context";
-import { cockpitApiHref, installationId } from "./installation-context";
+import { installationId } from "./installation-context";
 import { InstallationProvider } from "./installation-provider";
+import { loginHref } from "./login-href";
 
 const SessionContext = createContext<Bootstrap | null>(null);
 
@@ -152,12 +153,4 @@ export function SessionSkeleton({ label }: { label: string }) {
   );
 }
 
-export function loginHref(
-  location: Pick<Location, "pathname" | "search"> = window.location,
-): string {
-  const returnTo = `${location.pathname}${location.search}`;
-  return cockpitApiHref(
-    `/v1/identity/cockpit-login?return_to=${encodeURIComponent(returnTo)}`,
-    location.pathname,
-  );
-}
+export { loginHref };

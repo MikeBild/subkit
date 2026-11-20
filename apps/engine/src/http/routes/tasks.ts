@@ -1,5 +1,6 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { toHonoRoute } from "../../api/operations/hono.ts";
+import { listTaskScheduleOccurrencesOperation } from "../../api/operations/schedule-occurrences.ts";
 import {
   grantTaskAuthorityOperation,
   listTaskGrantsOperation,
@@ -35,6 +36,7 @@ export function registerTaskRoutes(app: OpenAPIHono<AppEnv>): void {
   toHonoRoute(app, pauseTaskOperation);
   toHonoRoute(app, resumeTaskOperation);
   toHonoRoute(app, getTaskUsageOperation);
+  toHonoRoute(app, listTaskScheduleOccurrencesOperation);
   toHonoRoute(app, startTaskRunOperation);
   toHonoRoute(app, listTaskRunsOperation);
   toHonoRoute(app, getTaskRunOperation);

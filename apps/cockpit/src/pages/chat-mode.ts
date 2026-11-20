@@ -1,7 +1,7 @@
 import type { TranslationKey } from "@/lib/i18n";
 import type { AuthoringMode } from "./chat-permission";
 
-export const AUTHORING_MODES: readonly AuthoringMode[] = ["auto", "ask", "plan"];
+export const AUTHORING_MODES: readonly AuthoringMode[] = ["ask", "auto", "plan"];
 
 export const DEFAULT_AUTHORING_MODE: AuthoringMode = "auto";
 

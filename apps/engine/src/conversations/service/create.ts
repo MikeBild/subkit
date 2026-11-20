@@ -27,6 +27,7 @@ import type {
   LatestExecutionSummary,
   TaskRunMarker,
 } from "../types.ts";
+import { defaultChatModeFor } from "./default-mode.ts";
 import { normalizePermissionMode, rowToRecord } from "./shared.ts";
 
 export interface CreateConversationParams {
@@ -155,7 +156,13 @@ export async function createConversation(
       code: "task_run_marker_invalid",
     });
   const memory = typeof p.memory === "string" ? p.memory : null;
-  const initialPermissionMode = normalizePermissionMode(p.permission_mode) ?? "auto";
+  const initialPermissionMode =
+    normalizePermissionMode(p.permission_mode) ??
+    (await defaultChatModeFor(exec, {
+      tenant_id: p.tenant_id,
+      principal: p.principal,
+      unattended: taskRun !== null,
+    }));
   const focus = p.focus_execution ?? null;
   const references = await canonicalReferences(p, focus, exec);
   const initialDraft: DraftDocument = focus

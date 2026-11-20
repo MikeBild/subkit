@@ -480,6 +480,7 @@ describe("browser tab push", () => {
         user_id: foreign.userId,
         device_sha256: null,
         notified_attention_keys: null,
+        notified_at: null,
       },
     ]);
   });

@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { workerSource } from "@/features/pwa/worker-fixture";
 import { CATALOGS } from "@/lib/i18n";
 import { LOCALE_COOKIE } from "@/lib/preference-cookie";
 
-const workers = ["browser-worker.js", "installation-worker.js"].map((name) => ({
+const workers = (["browser-worker.js", "installation-worker.js"] as const).map((name) => ({
   name,
-  source: readFileSync(new URL(`../../public/${name}`, import.meta.url), "utf8"),
+  source: workerSource(name),
 }));
 
 describe("worker notification text", () => {

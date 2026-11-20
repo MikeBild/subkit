@@ -252,6 +252,7 @@ export interface TableErrorState {
   title: string;
   description: string;
   retryLabel: string;
+  cause?: unknown;
   onRetry(): void;
 }
 
@@ -679,14 +680,10 @@ export function DataTable<TData extends RowData>({
     <DataState
       state="error"
       line={error.title}
+      error={error.cause}
       testId={`${collectionId}-error`}
       action={
-        <Button
-          variant="outline"
-          size="sm"
-          data-testid={`${collectionId}-retry`}
-          onClick={error.onRetry}
-        >
+        <Button size="sm" data-testid={`${collectionId}-retry`} onClick={error.onRetry}>
           {error.retryLabel}
         </Button>
       }

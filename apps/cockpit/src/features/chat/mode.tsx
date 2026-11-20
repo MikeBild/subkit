@@ -1,4 +1,5 @@
 import { Info } from "lucide-react";
+import { useSetup } from "@/api/setup";
 import { absolute, usageHref } from "@/app/links";
 import { IconButton } from "@/components/cockpit/icon-button";
 import {
@@ -13,13 +14,8 @@ import {
 } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
-import {
-  AUTHORING_MODES,
-  modeDescriptionKey,
-  modeGates,
-  modeLabelKey,
-  modeSuffixKey,
-} from "@/pages/chat-mode";
+import { personalModeSuffixKey } from "@/pages/chat-default-mode";
+import { AUTHORING_MODES, modeDescriptionKey, modeGates, modeLabelKey } from "@/pages/chat-mode";
 import type { AuthoringMode } from "@/pages/chat-permission";
 import { costPill, tokenPill } from "@/pages/chat-session";
 import type { ConversationUsage } from "./labels";
@@ -62,6 +58,7 @@ export function ModePill({
   onChange: (mode: AuthoringMode) => void;
 }) {
   const { t } = useI18n();
+  const setup = useSetup().data;
   return (
     <div className="flex items-center gap-0.5" data-testid="chat-permission">
       {editable && mode ? (
@@ -83,7 +80,7 @@ export function ModePill({
           </SelectTrigger>
           <SelectContent position="popper" align="start" className="w-72">
             {AUTHORING_MODES.map((option) => {
-              const suffix = modeSuffixKey(option);
+              const suffix = personalModeSuffixKey(option, setup);
               return (
                 <SelectItem
                   key={option}

@@ -5,6 +5,7 @@ import { auditHref } from "@/app/links";
 import { statusTone } from "@/components/cockpit/patterns/status-badge";
 import { causeClassLabel } from "@/lib/cause-class";
 import { shortIdentifier } from "@/lib/core/identifier";
+import { engineSentence } from "@/lib/engine-sentence";
 import {
   formatRelativeTime,
   LOCALE_TAGS,
@@ -420,10 +421,11 @@ export function rerunFailureText(
   const known = code ? RERUN_REFUSALS[code] : undefined;
   if (known) return t(known);
   if (code?.startsWith("execution_authority")) return t("runs.rerun.refused.authority");
-  const message = error?.message?.trim();
-  return message
-    ? `${t("runs.rerun.failed")} ${t("common.engineWording", { text: message })}`
-    : t("runs.rerun.failed");
+  const sentence = engineSentence({ code, text: error?.message }, t);
+  if (!sentence) return t("runs.rerun.failed");
+  return sentence.source === "cockpit"
+    ? `${t("runs.rerun.failed")} ${sentence.text}`
+    : `${t("runs.rerun.failed")} ${t("common.engineWording", { text: sentence.text })}`;
 }
 
 export function latestFailedRun<T extends { status: string }>(runs: readonly T[]): T | null {

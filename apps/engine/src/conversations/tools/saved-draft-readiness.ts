@@ -1,3 +1,4 @@
+import { personalDefaultEnvironment } from "../../identity/setup-preferences.ts";
 import { inspectAutomationReview } from "../automation-review.ts";
 import type { ToolContext } from "./index.ts";
 
@@ -12,12 +13,14 @@ interface SavedDraftReadiness {
 }
 
 export async function savedDraftReadiness(
-  ctx: Pick<ToolContext, "db" | "tenant_id">,
+  ctx: Pick<ToolContext, "db" | "tenant_id"> & Partial<Pick<ToolContext, "principal">>,
   workflow_id: string,
 ): Promise<SavedDraftReadiness | null> {
   let review: Awaited<ReturnType<typeof inspectAutomationReview>>;
   try {
-    review = await inspectAutomationReview(ctx.db, ctx.tenant_id, workflow_id);
+    review = await inspectAutomationReview(ctx.db, ctx.tenant_id, workflow_id, {
+      personal_default: await personalDefaultEnvironment(ctx.db, ctx.tenant_id, ctx.principal),
+    });
   } catch {
     return null;
   }

@@ -38,9 +38,10 @@ import { useInfiniteList } from "@/lib/use-infinite-list";
 import { cn } from "@/lib/utils";
 import { conversationRefreshInterval, waitsForPerson } from "./chat-approval";
 import { addAttachments, type PendingAttachment, takeAttachmentFiles } from "./chat-attachments";
+import { useNewChatMode } from "./chat-default-mode";
 import { conversationFailureKind, retryConversationRead } from "./chat-load-failure";
 import { useChatLookups } from "./chat-lookups";
-import { DEFAULT_AUTHORING_MODE, modeLabelKey } from "./chat-mode";
+import { modeLabelKey } from "./chat-mode";
 import { type AuthoringMode, storedAuthoringMode } from "./chat-permission";
 import {
   type PlaybookAction,
@@ -66,7 +67,7 @@ export function ChatPage() {
     selectionFromPath(initialPrompt),
   );
   const [showHidden, setShowHidden] = useState(false);
-  const [newPermissionMode, setNewPermissionMode] = useState<AuthoringMode>(DEFAULT_AUTHORING_MODE);
+  const [newPermissionMode, setNewPermissionMode, resetNewPermissionMode] = useNewChatMode();
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [preview, setPreview] = useState<AttachmentPreview | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -250,7 +251,7 @@ export function ChatPage() {
   const startNew = () => {
     setSelection({ kind: "new" });
     turn.navigate("startNew", true);
-    setNewPermissionMode(DEFAULT_AUTHORING_MODE);
+    resetNewPermissionMode();
     setChatPath(null);
     setListOpen(false);
   };

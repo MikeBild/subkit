@@ -11,6 +11,8 @@ import { connectorService, useConnectorRecords } from "@/components/cockpit/conn
 import { SelectField, TextField } from "@/components/cockpit/form-field";
 import {
   DataState,
+  type DialogError,
+  dialogFailure,
   FactList,
   RowsSkeleton,
   SearchInput,
@@ -19,6 +21,7 @@ import {
   TemplateGrid,
 } from "@/components/cockpit/patterns";
 import { ServiceIcon } from "@/components/cockpit/service-icon";
+import { reportFailure } from "@/lib/action-failure";
 import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
 import { LOCALE_TAGS, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -200,7 +203,7 @@ export function SolutionGallery({
 export function useSolutionFlow(
   active: boolean,
   done: () => void,
-  fail: (error: string) => void,
+  fail: (error: DialogError) => void,
   refusal: (failure: unknown) => string,
 ): TemplateFlow {
   const { t, locale } = useI18n();
@@ -272,7 +275,7 @@ export function useSolutionFlow(
       void navigate({ to: `${workflowHref(draft.workflow_id)}?tab=overview` });
     },
     onError: (failure) => {
-      fail(refusal(failure));
+      fail(dialogFailure(refusal(failure), failure));
       void client.invalidateQueries({ queryKey: SOLUTIONS_KEY });
       void client.invalidateQueries({ queryKey: ["connectors"] });
     },
@@ -455,7 +458,7 @@ export function useConnectorFinish(): (
         }
         toast.success(t("create.connector.connected", { name: connector.display_name }));
       } catch (failure) {
-        toast.error(signInFailure(failure, t));
+        reportFailure(signInFailure(failure, t), failure);
       }
       void navigate({ to: page });
       return;

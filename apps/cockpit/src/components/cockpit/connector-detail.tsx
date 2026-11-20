@@ -2,7 +2,6 @@ import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Hand, RefreshCw, Workflow, Wrench } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import { apiCall } from "@/api/call";
 import { absolute, chatNewHref, workflowAutomationHref, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
@@ -29,6 +28,7 @@ import {
 } from "@/components/cockpit/patterns";
 import { ServiceIcon } from "@/components/cockpit/service-icon";
 import { MISSING } from "@/components/cockpit/table-columns";
+import { reportFailure } from "@/lib/action-failure";
 import { humanize } from "@/lib/effect-label";
 import { formatRelativeTime, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -456,7 +456,7 @@ export function ConnectorMcpTools({
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["catalog-detail", "connectors", connectorId] });
     },
-    onError: () => toast.error(t("connectorDetail.tools.saveFailed")),
+    onError: (failure) => reportFailure(t("connectorDetail.tools.saveFailed"), failure),
   });
   const listed: ToolRow[] = inspect.data
     ? inspect.data.tools.map((tool) => ({

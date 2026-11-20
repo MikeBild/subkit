@@ -130,3 +130,106 @@ test("a gated action lists what it concerns", () => {
     "approval-subjects",
   );
 });
+
+test("a bound action shows exactly what would run, why it asks and that it counts once", () => {
+  const bound: ChatApproval = {
+    ...approval,
+    externalTool: undefined,
+    connectorCall: { connector: "Gmail", method: "POST", target: "/v1/messages/send" },
+    binding: {
+      action: {
+        verb: "send",
+        effect_class: "ordinary",
+        target: "POST /v1/messages/send",
+        account: "Gmail",
+        recipients: ["bob@firma.de"],
+        content_summary: "Betreff: Wochenzahlen",
+      },
+      askReason: "recipient_not_named",
+      askDetail: null,
+      because: null,
+    },
+  };
+  const de = render(bound, "de");
+  for (const part of ["verb", "target", "account", "recipients", "content"])
+    expect(de).toContain(`data-testid="approval-binding-${part}"`);
+  expect(de).toContain("bob@firma.de");
+  expect(de).toContain("Du hast diesen Empfänger nicht genannt.");
+  expect(de).toContain(
+    "Gilt genau für diese Aktion, einmal. Ein anderer Empfänger oder Inhalt braucht eine neue Frage.",
+  );
+  expect(de).toContain("Einmal erlauben");
+  expect(de).toContain("Ablehnen");
+  const quoted = render(
+    {
+      ...bound,
+      binding: { ...bound.binding!, askReason: "mode", because: "Schick Bob die Zahlen" },
+    },
+    "de",
+  );
+  expect(quoted).toContain("Weil du gesagt hast: „Schick Bob die Zahlen“");
+  expect(quoted).not.toContain("approval-ask-reason");
+  expect(render(approval, "de")).not.toContain("approval-binding");
+  expect(de).not.toContain("approval-content");
+});
+
+test("a drafted text is shown in full, scrollable, with the reason and what was added", () => {
+  const text = `Hallo Bob,\n\n${"Die Zahlen der Woche stehen im Anhang. ".repeat(40)}\n\nViele Grüße`;
+  const drafted: ChatApproval = {
+    ...approval,
+    externalTool: undefined,
+    connectorCall: { connector: "Gmail", method: "POST", target: "/v1/messages/send" },
+    binding: {
+      action: {
+        verb: "send",
+        effect_class: "ordinary",
+        target: "POST /v1/messages/send",
+        account: "Gmail",
+        recipients: ["bob@firma.de"],
+        content_summary: "Hallo Bob, Die Zahlen …",
+        content: text,
+      },
+      askReason: "content_not_given",
+      askDetail: "adds the link https://example.com/q3",
+      because: null,
+    },
+  };
+  const de = render(drafted, "de");
+  expect(de).toContain('data-testid="approval-content"');
+  expect(de).toContain("Vollständiger Text");
+  expect(de).toContain("Viele Grüße</pre>");
+  expect(de).toContain("overflow-auto");
+  expect(de).toContain("Vollständig, 1.585 Zeichen. Scrolle im Kasten, um alles zu lesen.");
+  expect(de).not.toContain('data-testid="approval-binding-content"');
+  expect(de).toContain(
+    "Der Text stammt nicht von dir und du hast ihn noch nicht als Entwurf gesehen. Lies ihn, bevor er rausgeht.",
+  );
+  expect(de).toContain("Wortlaut der Engine: adds the link https://example.com/q3");
+  const en = render(drafted, "en");
+  expect(en).toContain("Full text");
+  expect(en).toContain("Complete, 1,585 characters. Scroll inside the box to read all of it.");
+  const short = render(
+    {
+      ...drafted,
+      binding: {
+        ...drafted.binding!,
+        action: { ...drafted.binding!.action, content: "Kurz und gut." },
+      },
+    },
+    "de",
+  );
+  expect(short).toContain("Vollständig, 13 Zeichen.");
+  expect(short).not.toContain("Scrolle im Kasten");
+  const capped = render(
+    {
+      ...drafted,
+      binding: {
+        ...drafted.binding!,
+        action: { ...drafted.binding!.action, content: `${"a".repeat(7999)}…` },
+      },
+    },
+    "de",
+  );
+  expect(capped).toContain('data-truncated="true"');
+  expect(capped).toMatch(/Das sind seine ersten 8\.?000 Zeichen/);
+});

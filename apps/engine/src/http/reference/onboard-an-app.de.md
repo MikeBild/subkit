@@ -147,7 +147,7 @@ Eine Person mit Schreibrecht gibt jeden Produkt-Workflow einmal pro Umgebung fre
 
 1. Öffne im Cockpit **Workflows** und klicke auf den Workflow.
 2. Wähle **Freigeben** in der Statuszeile oder auf dem Tab **Freigaben**. Der Dialog **<Workflow> v<n> freigeben** öffnet sich.
-3. Prüfe, ob **Umgebung** (**Produktion** oder **Test**) zur `execution_environment` des Produkts passt.
+3. Prüfe, ob **Umgebung** (**Echtbetrieb** oder **Test**) zur `execution_environment` des Produkts passt.
 4. Prüfe Konnektoren, Adressen und Lese- oder Schreibzugriff.
 5. Wähle unter **Gültigkeit** **7 Tage**, **30 Tage** oder **Bis auf Widerruf**. **Bis auf Widerruf** ist vorausgewählt und setzt weder eine Laufgrenze noch ein Ablaufdatum. Dieselbe Wahl erscheint, wenn du im Chat eine gespeicherte Änderung prüfst.
 6. Wähle **Freigeben**. Die Freigabe startet keinen Lauf.

@@ -125,6 +125,8 @@ const LogSection = z
 
 const optionalUrl = z.union([z.literal(""), z.string().url()]);
 
+export const DESKTOP_MIN_VERSION_DEFAULT = "0.1.0";
+
 const ServerSection = z
   .object({
     hosted_rate_limit: z
@@ -218,6 +220,21 @@ const ServerSection = z
       .default(false)
       .describe(
         "Redirect a browser's GET / (Accept: text/html) to /cockpit with a non-cacheable temporary redirect. Other clients keep the Markdown entry point. Disabled by default.",
+      )
+      .meta(global()),
+    desktop_min_version: z
+      .string()
+      .regex(/^\d+\.\d+\.\d+$/, "must be a plain semantic version such as 0.1.0")
+      .default(DESKTOP_MIN_VERSION_DEFAULT)
+      .describe(
+        "Oldest SubKit Desktop version this engine accepts. Published as clients.desktop.min_version in /.well-known/service-descriptor.json; an older app asks for an update instead of signing in.",
+      )
+      .meta(global()),
+    desktop_dev_callback: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Also accept subkit-dev://callback as a sign-in target, for development builds of SubKit Desktop. Outside NODE_ENV=production it is accepted without this setting.",
       )
       .meta(global()),
     restart_supervised: z

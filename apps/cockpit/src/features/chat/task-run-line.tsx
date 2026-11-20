@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
 import { apiCall } from "@/api/call";
 import { ApiError } from "@/api/client";
 import { absolute, taskHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { Button, Skeleton, StatusBadge } from "@/components/cockpit/patterns";
+import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 import { taskKeys } from "@/lib/task-keys";
 import type { ConversationPlaybook } from "@/pages/chat-playbook";
@@ -181,7 +181,7 @@ export function TaskRunLine({
     },
     onError: (error) => {
       if (!(error instanceof ApiError && error.status === 409))
-        toast.error(t("chat.taskRun.abort.failed"));
+        reportFailure(t("chat.taskRun.abort.failed"), error);
     },
   });
   const name = task.data?.name?.trim() || t("chat.taskRun.unnamed");

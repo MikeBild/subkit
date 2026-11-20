@@ -209,3 +209,12 @@ export function validateConnectorConfigOrThrow(
     details: issues.map((i) => `${i.path}: ${i.message}`),
   });
 }
+
+export function connectorConfigIssues(err: unknown): string[] | null {
+  if (!(err instanceof Error)) return null;
+  const tagged = err as Error & { code?: unknown; details?: unknown };
+  if (tagged.code !== "connector_config_invalid") return null;
+  return Array.isArray(tagged.details)
+    ? tagged.details.filter((detail): detail is string => typeof detail === "string")
+    : [];
+}

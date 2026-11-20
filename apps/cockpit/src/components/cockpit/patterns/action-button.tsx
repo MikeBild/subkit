@@ -14,6 +14,7 @@ const VARIANT = {
 export interface ActionSpec {
   label: ReactNode;
   variant?: ActionVariant;
+  size?: "default" | "sm";
   onClick?(): void;
   href?: string;
   pending?: boolean;
@@ -83,7 +84,7 @@ export function renderAction(action: ReactNode | ActionSpec): ReactNode {
   if (!isSpec(action)) return action;
   if (action.href)
     return (
-      <Button variant={VARIANT[action.variant ?? "outline"]} asChild>
+      <Button variant={VARIANT[action.variant ?? "outline"]} size={action.size} asChild>
         <a href={action.href} data-testid={action.testId} {...action.data}>
           {action.label}
         </a>
@@ -92,6 +93,7 @@ export function renderAction(action: ReactNode | ActionSpec): ReactNode {
   return (
     <ActionButton
       variant={action.variant}
+      size={action.size}
       pending={action.pending}
       disabled={action.disabled}
       onClick={action.onClick}

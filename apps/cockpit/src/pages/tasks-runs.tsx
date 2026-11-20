@@ -10,6 +10,8 @@ import {
   type CockpitColumn,
   DataState,
   DataTable,
+  type DialogError,
+  dialogFailure,
   type Fact,
   FactList,
   FormDialog,
@@ -254,7 +256,7 @@ export function TaskReviewDialog({
 }) {
   const { t } = useI18n();
   const client = useQueryClient();
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DialogError>(null);
   const decide = useMutation({
     mutationFn: (decision: "accept" | "reject") =>
       decision === "accept" ? completeTaskRun(run.id) : rejectTaskRun(run.id),
@@ -268,7 +270,12 @@ export function TaskReviewDialog({
       onOpenChange(false);
     },
     onError: async (failure) => {
-      setError(t(resultErrorKey(failure instanceof ApiError ? failure.code : null)));
+      setError(
+        dialogFailure(
+          t(resultErrorKey(failure instanceof ApiError ? failure.code : null)),
+          failure,
+        ),
+      );
       await refreshTask(client, task.id);
     },
   });

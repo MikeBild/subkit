@@ -8,6 +8,11 @@ import {
   ConnectorOauthCallbackFailedPayloadSchema,
   ConnectorOauthCallbackPayloadSchema,
 } from "../../pubsub/index.ts";
+import {
+  ScheduleAutoPausedPayloadSchema,
+  TaskGrantExpiringPayloadSchema,
+  WorkflowApprovalExpiringPayloadSchema,
+} from "./schedule-events.ts";
 
 const ExecutionSucceeded = z.object({
   execution_id: z.string().uuid(),
@@ -354,6 +359,60 @@ export const EVENT_CATALOG = {
     },
     actionable: NOT_ACTIONABLE,
     resource: pointsAt("conversation", "conversation_id"),
+  },
+  "schedule.auto_paused": {
+    name: "schedule.auto_paused",
+    schema: ScheduleAutoPausedPayloadSchema,
+    example: {
+      severity: "error",
+      workflow_id: "00000000-0000-4000-8000-000000000002",
+      workflow_name: "Mail outbox",
+      schedule_id: "00000000-0000-4000-8000-000000000009",
+      environment: "prod",
+      paused_reason: "repeated_failures",
+      failure_class: "sensitive_execution_failure",
+      consecutive_failures: 5,
+      paused_at: "2026-11-20T08:00:00.000Z",
+      remedy: {
+        kind: "resume",
+        href: "/cockpit/workflows/00000000-0000-4000-8000-000000000002#workflow-automation",
+      },
+    },
+    actionable: ACTIONABLE,
+    resource: pointsAt("workflow", "workflow_id"),
+  },
+  "workflow.approval_expiring": {
+    name: "workflow.approval_expiring",
+    schema: WorkflowApprovalExpiringPayloadSchema,
+    example: {
+      severity: "warn",
+      workflow_id: "00000000-0000-4000-8000-000000000002",
+      workflow_name: "Mail outbox",
+      authority_id: "00000000-0000-4000-8000-00000000000a",
+      environment: "prod",
+      valid_until: "2026-11-23T08:00:00.000Z",
+      remedy: {
+        kind: "renew",
+        href: "/cockpit/workflows/00000000-0000-4000-8000-000000000002#workflow-automation",
+      },
+    },
+    actionable: ACTIONABLE,
+    resource: pointsAt("workflow", "workflow_id"),
+  },
+  "task.grant_expiring": {
+    name: "task.grant_expiring",
+    schema: TaskGrantExpiringPayloadSchema,
+    example: {
+      severity: "warn",
+      task_id: "00000000-0000-4000-8000-00000000000b",
+      task_name: "Weekly report",
+      grant_id: "00000000-0000-4000-8000-00000000000c",
+      environment: "prod",
+      valid_until: "2026-11-23T08:00:00.000Z",
+      remedy: { kind: "renew", href: "/cockpit/tasks/00000000-0000-4000-8000-00000000000b" },
+    },
+    actionable: ACTIONABLE,
+    resource: pointsAt("task", "task_id"),
   },
   "task_run.started": {
     name: "task_run.started",

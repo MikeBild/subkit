@@ -9,6 +9,7 @@ import { useActorDirectory } from "@/app/actor-directory";
 import { actorDirectoryName } from "@/app/actor-directory-model";
 import { absolute, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
+import { technicalFactsPlace } from "@/app/side-panel-model";
 import { useNameIndex } from "@/app/use-decisions";
 import { connectorService, useConnectorRecords } from "@/components/cockpit/connector-names";
 import {
@@ -21,15 +22,22 @@ import {
   RecordSheet,
   RowsSkeleton,
   Section,
+  SideDetails,
+  SideOverlayLayer,
+  SideSection,
+  SideStatus,
   StatusBadge,
   StatusStrip,
   SummaryLine,
   statusTone,
   TechnicalDetails,
+  useSheetDocked,
+  useSideDetailsAvailable,
 } from "@/components/cockpit/patterns";
 import { RefusalReasonLine } from "@/components/cockpit/refusal-reason";
 import { MISSING } from "@/components/cockpit/table-columns";
 import { useCurrentVersionDag } from "@/components/cockpit/workflow-versions";
+import { reportFailure } from "@/lib/action-failure";
 import { connectorAuthState } from "@/lib/connector-auth-state";
 import { pluralKey, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -110,7 +118,8 @@ export function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: 
       await queryClient.invalidateQueries({ queryKey: ["runs"] });
       onStarted(result.execution_id);
     },
-    onError: (error) => toast.error(rerunFailureText(error instanceof ApiError ? error : null, t)),
+    onError: (error) =>
+      reportFailure(rerunFailureText(error instanceof ApiError ? error : null, t), error),
   });
   const running = isLive(run.status);
   const disabled = running || unavailable || detail.isPending;
@@ -139,6 +148,12 @@ export function RunDetail({ run }: { run: Execution; onShowRun(id: string): void
   const session = useSession();
   const directory = useActorDirectory(true);
   const [openStep, setOpenStep] = useState<number | null>(null);
+  const docked = useSheetDocked();
+  const side =
+    technicalFactsPlace({
+      sidePanel: useSideDetailsAvailable(),
+      presentation: docked ? "docked" : "modal",
+    }) === "details";
   const detail = useQuery({
     queryKey: ["run", run.id],
     queryFn: () => apiCall("get", "/v1/executions/{id}", { path: { id: run.id } }),
@@ -283,6 +298,26 @@ export function RunDetail({ run }: { run: Execution; onShowRun(id: string): void
   const step = openStep === null ? null : (stepItems[openStep] ?? null);
   return (
     <div className="flex min-w-0 flex-col gap-6" data-testid="run-detail-body">
+      {side ? (
+        <SideOverlayLayer>
+          <SideStatus
+            testId="side-run-status"
+            tone={
+              failed || held
+                ? held || verdict.tone !== "critical"
+                  ? "warn"
+                  : "error"
+                : isLive(current.status)
+                  ? "info"
+                  : "ok"
+            }
+            line={[verdict.label, sentence?.plain ?? null].filter(Boolean).join(" · ")}
+            more={[current.started_at ? dateTime(current.started_at) : null, duration]
+              .filter(Boolean)
+              .join(" · ")}
+          />
+        </SideOverlayLayer>
+      ) : null}
       {(failed || held) && sentence ? (
         <div data-testid="run-detail-cause">
           <StatusStrip
@@ -475,27 +510,64 @@ export function RunDetail({ run }: { run: Execution; onShowRun(id: string): void
                 testId="run-detail-why-facts"
               />
             </CollapsibleSection>
-            <TechnicalDetails testId="run-detail-technical">
-              <FactList items={facts} testId="run-detail-facts" />
-              {errorEvidence && failing ? (
-                <Copyable>
-                  <CodeBlock
-                    label={t("runs.detail.errorOfStep", { step: failing.step_key })}
-                    code={hideTechnicalIdentifiers(errorEvidence, t("tool.referenceHiddenInline"))}
-                    testId="run-detail-error"
-                  />
-                </Copyable>
-              ) : null}
-              {payload ? (
-                <Copyable>
-                  <CodeBlock
-                    label={payloadLabel}
-                    code={hideTechnicalIdentifiers(payload.text, t("tool.referenceHiddenInline"))}
-                    testId="run-detail-result"
-                  />
-                </Copyable>
-              ) : null}
-            </TechnicalDetails>
+            {side ? (
+              <SideOverlayLayer>
+                <SideDetails>
+                  <SideSection title={t("sidePanel.details.technical")} testId="side-run-technical">
+                    <FactList items={facts} testId="run-detail-facts" />
+                    {errorEvidence && failing ? (
+                      <Copyable>
+                        <CodeBlock
+                          label={t("runs.detail.errorOfStep", { step: failing.step_key })}
+                          code={hideTechnicalIdentifiers(
+                            errorEvidence,
+                            t("tool.referenceHiddenInline"),
+                          )}
+                          testId="run-detail-error"
+                        />
+                      </Copyable>
+                    ) : null}
+                    {payload ? (
+                      <Copyable>
+                        <CodeBlock
+                          label={payloadLabel}
+                          code={hideTechnicalIdentifiers(
+                            payload.text,
+                            t("tool.referenceHiddenInline"),
+                          )}
+                          testId="run-detail-result"
+                        />
+                      </Copyable>
+                    ) : null}
+                  </SideSection>
+                </SideDetails>
+              </SideOverlayLayer>
+            ) : (
+              <TechnicalDetails testId="run-detail-technical">
+                <FactList items={facts} testId="run-detail-facts" />
+                {errorEvidence && failing ? (
+                  <Copyable>
+                    <CodeBlock
+                      label={t("runs.detail.errorOfStep", { step: failing.step_key })}
+                      code={hideTechnicalIdentifiers(
+                        errorEvidence,
+                        t("tool.referenceHiddenInline"),
+                      )}
+                      testId="run-detail-error"
+                    />
+                  </Copyable>
+                ) : null}
+                {payload ? (
+                  <Copyable>
+                    <CodeBlock
+                      label={payloadLabel}
+                      code={hideTechnicalIdentifiers(payload.text, t("tool.referenceHiddenInline"))}
+                      testId="run-detail-result"
+                    />
+                  </Copyable>
+                ) : null}
+              </TechnicalDetails>
+            )}
           </div>
         </>
       )}

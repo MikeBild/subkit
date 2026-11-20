@@ -3,7 +3,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import {
   browserSessionForPrincipal,
-  SESSION_SLIDING_TTL_MS,
+  sessionSlidingMsSql,
   verifyBrowserCsrf,
 } from "../auth/browser-session.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
@@ -188,7 +188,7 @@ export async function lockLiveSession(
         eq(sessions.user_id, session.user_id),
         isNull(sessions.revoked_at),
         sql`coalesce(${sessions.absolute_expires_at}, ${sessions.expires_at}) > clock_timestamp()`,
-        sql`coalesce(${sessions.last_seen_at}, ${sessions.created_at}) > clock_timestamp() - (${SESSION_SLIDING_TTL_MS} * interval '1 millisecond')`,
+        sql`coalesce(${sessions.last_seen_at}, ${sessions.created_at}) > clock_timestamp() - (${sessionSlidingMsSql()} * interval '1 millisecond')`,
       ),
     )
     .for("share")

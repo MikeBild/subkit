@@ -63,7 +63,9 @@ function sensitiveRunResult(
   checks: OutputChecks,
   runResult: RunResult,
 ): RunResult {
-  runResult.error = runResult.error ? sensitiveFailure(runResult.error.code) : null;
+  runResult.error = runResult.error
+    ? sensitiveFailure(runResult.error.code, runResult.error.message)
+    : null;
   runResult.steps = runResult.steps.map(({ held_request: _heldRequest, ...step }) => ({
     ...step,
     output_preview: null,

@@ -44,6 +44,16 @@ test("preserves attributed notice text and explicitly limits the claim", async (
   expect(await renderRuntimeNotices(path, "runtime-version", "runtime-revision")).toBe(output);
 });
 
+test("names Bun by default and another runtime on request", async () => {
+  const { path } = await fixture();
+  expect(await renderRuntimeNotices(path, "runtime-version", "runtime-revision")).toContain(
+    "Bun runtime-version (runtime-revision)",
+  );
+  expect(
+    await renderRuntimeNotices(path, "runtime-version", "runtime-revision", "Electron"),
+  ).toContain("Electron runtime-version (runtime-revision)");
+});
+
 test("rejects a different runtime version or revision", async () => {
   const { path } = await fixture();
   await expect(renderRuntimeNotices(path, "other", "runtime-revision")).rejects.toThrow(

@@ -108,7 +108,7 @@ Die Dauererlaubnis endet, wenn:
 
 Endet sie, enden auch die Workflow-Freigaben, die sie angelegt hat. Das gilt nicht, wenn eine andere Aufgabe mit eigener Dauererlaubnis denselben Workflow nutzt.
 
-Drei Tage vor dem Ende, oder wenn weniger als ein Zehntel der Läufe übrig ist, bittet dich ein Hinweis, sie zu verlängern.
+Sieben Tage vor dem Ende, oder wenn weniger als ein Zehntel der Läufe übrig ist, erscheint ein Hinweis mit **Erneuern**. Drei Tage vor dem Ende folgt die Benachrichtigung: SubKit sendet einmal das Ereignis `task.grant_expiring`. Mehr in „Zeitpläne im Blick behalten“.
 Ist sie weg, werden die geplanten Starts gehalten, und ein Hinweis sagt, dass die Aufgabe nicht mehr alleine starten darf. Es geht nichts verloren: Erlaube erneut, und der gehaltene Start läuft kurz danach.
 
 In der Liste und auf der Seite der Aufgabe steht bei einer Startzeit, die schon vorbei ist:

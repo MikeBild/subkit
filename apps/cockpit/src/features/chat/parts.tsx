@@ -7,6 +7,7 @@ import { DiffCard } from "@/components/cockpit/diff-card";
 import { IconButton } from "@/components/cockpit/icon-button";
 import {
   buttonVariants,
+  DataState,
   FilePreview,
   formatBytes,
   previewKind,
@@ -69,9 +70,13 @@ export function PatchProposalDiff({
     );
   if (preview.error || !preview.data)
     return (
-      <p className="text-sm text-destructive" data-testid={`${testId}-error`}>
-        {t("decisions.diffFailed")}
-      </p>
+      <DataState
+        state="error"
+        line={t("decisions.diffFailed")}
+        error={preview.error ?? undefined}
+        onRetry={() => void preview.refetch()}
+        testId={`${testId}-error`}
+      />
     );
   return (
     <DiffCard

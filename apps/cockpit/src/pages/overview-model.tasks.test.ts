@@ -88,8 +88,8 @@ const CASES: ReadonlyArray<{
     entry: task("task_grant_expiring", "renew", "task:grant"),
     de: "Die Aufgabe „Rechnungen nachfassen“ verliert bald die Dauererlaubnis.",
     en: "The task “Rechnungen nachfassen” will soon lose its standing permission.",
-    actionDe: "Verlängern",
-    actionEn: "Extend",
+    actionDe: "Erneuern",
+    actionEn: "Renew",
     shortDe: "Die Dauererlaubnis endet bald",
     badgeDe: "Erlaubnis läuft ab",
   },
@@ -106,12 +106,12 @@ const CASES: ReadonlyArray<{
     entry: task("task_owner_unavailable", "open", "task:resume", {
       detail: "owner_unavailable",
     }),
-    de: "Die Aufgabe „Rechnungen nachfassen“ ist pausiert, weil die Person dahinter nicht mehr dabei ist.",
-    en: "The task “Rechnungen nachfassen” is paused because the person it belongs to has left.",
+    de: "Die Aufgabe „Rechnungen nachfassen“ wurde automatisch pausiert, weil die Person dahinter nicht mehr dabei ist.",
+    en: "The task “Rechnungen nachfassen” was paused automatically because the person it belongs to has left.",
     actionDe: "Fortsetzen",
     actionEn: "Resume",
-    shortDe: "Pausiert, die Person fehlt",
-    badgeDe: "Pausiert",
+    shortDe: "Automatisch pausiert, die Person fehlt",
+    badgeDe: "Automatisch pausiert",
   },
 ];
 

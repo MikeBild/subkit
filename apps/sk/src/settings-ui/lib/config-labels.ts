@@ -4,6 +4,8 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
 
   "server.port": "HTTP port",
   "server.root_redirect_to_cockpit": "Redirect root to Cockpit",
+  "server.desktop_min_version": "Minimum desktop app version",
+  "server.desktop_dev_callback": "Accept desktop development builds",
   "server.hosted_rate_limit.tenant_per_month": "Hosted requests per tenant and UTC month",
   "server.hosted_rate_limit.principal_per_minute": "Hosted requests per principal and minute",
   "server.hosted_rate_limit.peer_per_minute": "Hosted requests per peer and minute",

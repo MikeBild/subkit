@@ -329,7 +329,7 @@ describe("cockpitStreamConds", () => {
       s.some((f) => f.event === "hello"),
     );
     expect(mine.filter((f) => f.event === "task_run.changed").map((f) => f.data)).toEqual([
-      { task_id: own, task_run_id: RUN },
+      { task_id: own, task_run_id: RUN, attention_id: `task:${own}` },
     ]);
     const admins = await frames(
       await openStream(adminPrincipal(tenantA), { "last-event-id": String(before) }),

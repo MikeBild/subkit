@@ -44,7 +44,7 @@ export const operationsEn = {
   "operations.link.open_connectors": "Show connectors",
   "operations.link.open_connector": "Open connector",
   "operations.link.open_scans": "Show scan log",
-  "operations.cause.held_for_review": "{name}: automatic runs are held until you review them",
+  "operations.cause.held_for_review": "{name}: automatic runs are on hold until you review them",
   "operations.cause.failing": "{name} keeps failing on its schedule",
   "operations.cause.needs_reauth": "Connector {name} needs to be signed in again",
   "operations.cause.needs_update": "Connector {name} calls an endpoint that is deprecated or gone",
@@ -83,7 +83,7 @@ export const operationsEn = {
   "operational.freshness.forbidden": "Restricted",
   "operational.core.blocked": "Blocked",
   "operational.core.blocked.tooltip":
-    "Scheduled workflows whose last start was held for run review. Open the workflow to inspect effects and finite authority.",
+    "Scheduled workflows whose last start was put on hold for run review. Open the workflow to inspect effects and finite authority.",
   "operational.core.blocked.open": "Open blocked decisions",
   "operational.core.failing": "Failing",
   "operational.core.failing.tooltip":
@@ -227,7 +227,8 @@ export const operationsDe: Record<keyof typeof operationsEn, string> = {
   "operations.link.open_connectors": "Konnektoren ansehen",
   "operations.link.open_connector": "Konnektor öffnen",
   "operations.link.open_scans": "Scan-Protokoll ansehen",
-  "operations.cause.held_for_review": "{name}: Automatische Läufe warten auf deine Freigabe",
+  "operations.cause.held_for_review":
+    "{name}: Automatische Läufe sind angehalten, bis du sie freigibst",
   "operations.cause.failing": "{name} scheitert bei seinen geplanten Läufen",
   "operations.cause.needs_reauth": "Konnektor {name} braucht eine neue Anmeldung",
   "operations.cause.needs_update":

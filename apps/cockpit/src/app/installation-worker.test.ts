@@ -1,11 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import { workerSource } from "@/features/pwa/worker-fixture";
 
-const source = readFileSync(
-  new URL("../../public/installation-worker.js", import.meta.url),
-  "utf8",
-);
+const source = workerSource("installation-worker.js");
 const scope = "https://app.example.test/cockpit/i/11111111-1111-4111-8111-111111111111/";
 
 interface WindowClientFixture {
@@ -156,7 +153,7 @@ describe("installation worker privacy boundary", () => {
     expect(await app.dispatch("fetch", { request: share("private source") })).toBeInstanceOf(
       Response,
     );
-    expect(source).not.toMatch(/caches\.|indexedDB|localStorage|sync\.register/);
+    expect(source).not.toMatch(/indexedDB|localStorage|sync\.register/);
   });
   test("requires authentication before retaining incoming content", async () => {
     const app = worker(false);

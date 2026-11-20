@@ -8,6 +8,7 @@ import {
 import { toast } from "sonner";
 import { apiCall } from "@/api/call";
 import { apiRequest } from "@/api/client";
+import { reportFailure } from "@/lib/action-failure";
 import { carryOverChoice } from "@/lib/automation-state";
 import { useI18n } from "@/lib/i18n-context";
 import type { WorkflowAuthorityPreview } from "@/lib/workflow-authorities";
@@ -105,7 +106,7 @@ export function useAuthorityCarryOver({
       });
     },
     onSuccess: () => toast.success(t("authority.adopted")),
-    onError: () => toast.error(t("authority.adoptFailed")),
+    onError: (failure) => reportFailure(t("authority.adoptFailed"), failure),
     onSettled: async () => {
       await invalidateWorkflowAutomation(client, workflowId);
       await Promise.all(

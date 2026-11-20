@@ -180,7 +180,12 @@ async function settleElicitation(
     pendingRow?.tool_name === "ask_user_confirm" ? normalizeConfirmOutput(p.output) : p.output;
   if (pendingRow && pendingRow.status === "pending") {
     const { validateElicitationAnswer } = await import("../tools/ask-user/validate-answer.ts");
-    const verdict = validateElicitationAnswer(pendingRow.tool_name, pendingRow.input, output);
+    const verdict = validateElicitationAnswer(
+      pendingRow.tool_name,
+      pendingRow.input,
+      output,
+      p.resolution_status === "cancelled" ? null : p.reason,
+    );
     if (!verdict.ok) {
       throw new ElicitationValidationError(p.elicitation_id, verdict.field_errors, {
         id: pendingRow.id,

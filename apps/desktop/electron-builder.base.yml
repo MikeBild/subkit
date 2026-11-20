@@ -1,0 +1,70 @@
+copyright: Copyright 2026 Mike Bild
+directories:
+  output: release
+  buildResources: assets
+files:
+  - dist/main.cjs
+  - dist/preload-connect.cjs
+  - dist/preload-cockpit.cjs
+  - dist/connect/**
+  - dist/assets/**
+  - package.json
+  - "!node_modules"
+extraResources:
+  - from: ../../LICENSE
+    to: LICENSE
+  - from: dist/THIRD_PARTY_NOTICES.txt
+    to: THIRD_PARTY_NOTICES.txt
+asar: true
+npmRebuild: false
+nodeGypRebuild: false
+buildDependenciesFromSource: false
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  loadBrowserProcessSpecificV8Snapshot: false
+  grantFileProtocolExtraPrivileges: false
+mac:
+  category: public.app-category.productivity
+  icon: assets/icon.png
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: assets/entitlements.mac.plist
+  entitlementsInherit: assets/entitlements.mac.plist
+  notarize: false
+  extraResources:
+    - from: dist/LICENSES.chromium.html
+      to: LICENSES.chromium.html
+    - from: dist/LICENSE.electron.txt
+      to: LICENSE.electron.txt
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+    - target: zip
+      arch:
+        - arm64
+        - x64
+win:
+  icon: assets/icon.png
+  verifyUpdateCodeSignature: true
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: true
+  perMachine: false
+  deleteAppDataOnUninstall: false
+linux:
+  icon: assets/icon.png
+  category: Office
+  executableName: subkit-desktop
+  target:
+    - AppImage
+    - deb

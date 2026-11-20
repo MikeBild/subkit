@@ -114,6 +114,12 @@ export async function pauseForConfirmation(
     ...(saveVerification ? { verification: saveVerification } : {}),
     ...confirmationMetadataForTool(inner.name, rawArgs),
     ...(pendingOutput ? { pending_output: pendingOutput } : {}),
+    ...(call.policyRecord
+      ? {
+          bound_action: call.policyRecord.bound_action,
+          ask_reason: call.policyRecord.ask_reason,
+        }
+      : {}),
     ...(policyCommitIntent ? { commit_intent: policyCommitIntent } : {}),
     ...(policyApprovalUrl ? { approval_url: policyApprovalUrl } : {}),
     ...(hasConnectorDeleteDependents

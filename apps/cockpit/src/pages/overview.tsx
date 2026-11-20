@@ -11,11 +11,13 @@ import {
   rejectPatchCandidate,
   rejectSkillCandidate,
 } from "@/api/decisions";
+import { useSetup } from "@/api/setup";
 import { markAttentionSeen } from "@/app/attention-seen";
 import {
   absolute,
   attentionHref,
   auditHref,
+  chatNewHref,
   connectorHref,
   conversationHref,
   reviewFromUrl,
@@ -29,6 +31,7 @@ import { hideAttentionEntry, restoreAttentionEntry, useAttention } from "@/app/u
 import { useReviewDecisions } from "@/app/use-decisions";
 import { AutomationGrant } from "@/components/cockpit/automation-grant";
 import { DecisionCard } from "@/components/cockpit/decision-card";
+import { EnvironmentChip } from "@/components/cockpit/environment-chip";
 import { InboundHookReviewCard } from "@/components/cockpit/inbound-hook-review-card";
 import {
   ActionButton,
@@ -44,12 +47,15 @@ import {
   StartChecklist,
   StatusBadge,
   SummaryLine,
+  SummaryParts,
 } from "@/components/cockpit/patterns";
 import { RecordTable } from "@/components/cockpit/record-table";
 import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
 import { ScheduleReviewCard } from "@/components/cockpit/schedule-review-card";
 import { tableColumns } from "@/components/cockpit/table-columns";
+import { WaitingOnLine } from "@/components/cockpit/waiting-on";
 import { ForbiddenState } from "@/components/failure-state";
+import { reportFailure } from "@/lib/action-failure";
 import { causeClassLabel } from "@/lib/cause-class";
 import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
 import type { TranslationKey } from "@/lib/i18n";
@@ -72,8 +78,11 @@ import {
   type AttentionAction,
   type AttentionItem,
   actionLabelKey,
+  attentionDetail,
+  attentionEnvironment,
   attentionRow,
   attentionSentence,
+  attentionTarget,
   entryActions,
   opensReviewSheet,
   overviewView,
@@ -82,15 +91,40 @@ import {
   reviewNavigation,
   reviewSettles,
   reviewTarget,
+  signsInFromRow,
   sinceLabel,
   sourceLabel,
 } from "./overview-model";
 import { startSteps } from "./overview-start-steps";
 import { isExecutionRecord, latestFailedRun, runName } from "./runs-model";
+import { personalStartSteps } from "./setup-model";
 
 type ExecutionListItem = components["schemas"]["ExecutionListItem"];
 
 const KPI_IDS = ["runs", "successRate", "connectorHealth", "budget"] as const;
+
+function AttentionEnvironment({ item, index }: { item: AttentionItem; index: number }) {
+  const environment = attentionEnvironment(item);
+  return environment ? (
+    <EnvironmentChip environment={environment} testId={`attention-item-${index}-environment`} />
+  ) : null;
+}
+
+function AttentionDetail({ item }: { item: AttentionItem }) {
+  const { t } = useI18n();
+  const detail = attentionDetail(item, t);
+  if (!detail) return null;
+  return detail.source === "engine" ? (
+    <EngineWording text={detail.text} testId="attention-review-detail" />
+  ) : (
+    <span
+      className="mt-1 block text-xs font-normal text-muted-foreground"
+      data-testid="attention-review-detail"
+    >
+      {detail.text}
+    </span>
+  );
+}
 
 function subjectHref(item: AttentionItem): string | null {
   if (!item.subject) return null;
@@ -135,7 +169,7 @@ function CompletingVerb({
       else if (primary) void navigate(routerTarget(primary.href));
     },
     onError: (failure) => {
-      toast.error(signInFailure(failure, t));
+      reportFailure(signInFailure(failure, t), failure);
       if (primary) void navigate(routerTarget(primary.href));
     },
   });
@@ -176,7 +210,7 @@ function CompletingVerb({
         {t("overview.action.check")}
       </ActionButton>
     );
-  if ((primary.verb === "reauth" || primary.verb === "renew") && item.subject)
+  if (signsInFromRow(primary, item))
     return (
       <ActionButton
         size="sm"
@@ -203,7 +237,7 @@ function CompletingVerb({
   return (
     <ActionButton
       size="sm"
-      onClick={() => void navigate(routerTarget(primary.href))}
+      onClick={() => void navigate(routerTarget(attentionTarget(primary, item)))}
       testId={testId}
       data={data}
     >
@@ -237,7 +271,12 @@ function NeedsYou({
         "name",
         (item) => attentionRow(item, t).name,
         t("overview.column.entry"),
-        (item) => <span className="font-medium">{attentionRow(item, t).name}</span>,
+        (item, index) => (
+          <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
+            {attentionRow(item, t).name}
+            <AttentionEnvironment item={item} index={index} />
+          </span>
+        ),
         { width: "w-[28%]" },
       ),
       column.custom(
@@ -247,12 +286,20 @@ function NeedsYou({
         (item, index) => {
           const row = attentionRow(item, t);
           return (
-            <span className="text-muted-foreground" data-testid={`attention-item-${index}-text`}>
-              {row.reason}
-              {row.machine ? (
-                <code className="ml-1 font-mono text-xs" data-machine-value="true">
-                  {row.machine}
-                </code>
+            <span className="grid gap-0.5">
+              <span className="text-muted-foreground" data-testid={`attention-item-${index}-text`}>
+                {row.reason}
+                {row.machine ? (
+                  <code className="ml-1 font-mono text-xs" data-machine-value="true">
+                    {row.machine}
+                  </code>
+                ) : null}
+              </span>
+              {item.waiting_on?.name ? (
+                <WaitingOnLine
+                  name={item.waiting_on.name}
+                  testId={`attention-item-${index}-waiting-on`}
+                />
               ) : null}
             </span>
           );
@@ -313,6 +360,7 @@ function NeedsYou({
 function StartSteps() {
   const { t } = useI18n();
   const session = useSession();
+  const setup = useSetup().data;
   const update = useSessionUpdate();
   const hide = useMutation({
     mutationFn: () => apiCall("patch", "/v1/identity/me", { body: { start_steps_hidden: true } }),
@@ -326,17 +374,24 @@ function StartSteps() {
         ...current,
         start_steps: { ...current.start_steps, hidden: false },
       }));
-      toast.error(t("common.actionFailed"));
+      reportFailure(t("common.actionFailed"));
     },
   });
   return (
     <StartChecklist
-      steps={startSteps(session).map((step) => ({
-        title: t(step.title),
-        line: t(step.line),
-        href: step.href,
-        done: step.done,
-      }))}
+      steps={personalStartSteps(
+        startSteps(session).map((step) => ({
+          id: step.id,
+          title: t(step.title),
+          line: t(step.line),
+          href: step.href,
+          done: step.done,
+        })),
+        setup,
+        t,
+        (prompt) =>
+          session.permissions.includes("conversation:write") ? chatNewHref({ prompt }) : null,
+      )}
       hidden={session.start_steps.hidden}
       onHide={() => hide.mutate()}
     />
@@ -407,7 +462,11 @@ function LastFailures() {
         pending={query.isPending}
         error={
           query.error
-            ? { line: t("runs.detail.loadFailed"), onRetry: () => void query.refetch() }
+            ? {
+                line: t("runs.detail.loadFailed"),
+                cause: query.error,
+                onRetry: () => void query.refetch(),
+              }
             : null
         }
         getRowId={(run) => run.id}
@@ -537,7 +596,17 @@ export function OverviewPage() {
       <div className="flex flex-col gap-8">
         <div className="flex flex-col gap-3">
           <SummaryLine
-            text={summary ?? ""}
+            text={
+              <SummaryParts
+                parts={[
+                  summary,
+                  repairRequired && repairRequired > 0 ? (
+                    <RepairRequiredHint key="repair" count={repairRequired} />
+                  ) : null,
+                ]}
+              />
+            }
+            helpLabel={summary ?? undefined}
             help={summary && operations.allowed ? t("overview.countHelp") : undefined}
             testId="overview-summary"
             aside={
@@ -567,7 +636,6 @@ export function OverviewPage() {
               onRetry={operations.retry}
             />
           ) : null}
-          <RepairRequiredHint count={repairRequired} />
         </div>
         {unread.length > 0 ? (
           <DataState
@@ -603,7 +671,7 @@ export function OverviewPage() {
             )}
           </Section>
         </div>
-        {canRuns ? (
+        {canRuns && !attention.query.isPending ? (
           <div data-action-scope="list">
             <Section label={t("overview.lastFailures")} testId="overview-failures-section">
               <LastFailures />
@@ -678,7 +746,7 @@ function ReviewSheet({
       {item && item.subject?.kind !== "workflow" ? (
         <SummaryLine text={attentionRow(item, t).reason} testId="attention-review-reason" />
       ) : null}
-      {item?.detail ? <EngineWording text={item.detail} testId="attention-review-detail" /> : null}
+      {item ? <AttentionDetail item={item} /> : null}
       {id ? (
         <ReviewBody key={id} id={id} item={item} onClose={onClose} actionsSlot={actionsSlot} />
       ) : null}
@@ -780,7 +848,7 @@ function ReviewBody({
     },
     onError: (error) => {
       restoreAttentionEntry(id);
-      toast.error(t(decisionFailureKey(error)));
+      reportFailure(t(decisionFailureKey(error)), error);
       void queryClient.invalidateQueries({ queryKey: ["decisions"] });
       void queryClient.invalidateQueries({ queryKey: ["attention"] });
       void queryClient.invalidateQueries({ queryKey: ["patch-candidate"] });

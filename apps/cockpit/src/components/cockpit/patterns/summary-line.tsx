@@ -4,7 +4,11 @@ import { cn } from "@/lib/utils";
 import { ContextHelp } from "./context-help";
 import { Skeleton } from "./skeleton";
 
-const LINE = "flex flex-wrap items-center gap-2 text-sm text-muted-foreground";
+const LINE = "flex min-h-5.5 flex-wrap items-center gap-2 text-sm text-muted-foreground";
+const SPLIT =
+  "grid gap-2 text-sm text-muted-foreground @4xl:grid-cols-[minmax(0,1fr)_auto] @4xl:items-center";
+const SPLIT_TEXT = "flex min-h-7 min-w-0 items-center gap-2 @4xl:min-h-10";
+const SPLIT_ASIDE = "flex min-w-0 max-w-full items-center justify-self-end gap-2";
 
 export function SummaryLine({
   text,
@@ -23,24 +27,13 @@ export function SummaryLine({
 }) {
   const id = testId ?? "summary-line";
   const phase = useLoadingPhase(Boolean(loading));
-  if (phase !== "content")
-    return (
-      <div
-        data-slot="summary-line"
-        data-testid={testId}
-        data-loading-phase={phase}
-        role="status"
-        aria-busy="true"
-        className={cn(LINE, phase === "reserve" ? "invisible" : "sk-fade-in")}
-      >
-        <span className="flex h-5 w-72 max-w-full items-center">
-          <Skeleton className="h-4 w-full" />
-        </span>
-        {aside ? <span className="ml-auto flex items-center gap-2">{aside}</span> : null}
-      </div>
-    );
-  return (
-    <div data-slot="summary-line" data-testid={testId} className={LINE}>
+  const busy = phase !== "content";
+  const lead = busy ? (
+    <span className="flex h-5 w-72 max-w-full items-center">
+      <Skeleton className="h-4 w-full" />
+    </span>
+  ) : (
+    <>
       <span className="min-w-0" data-slot="summary-line-text">
         {text}
       </span>
@@ -52,9 +45,31 @@ export function SummaryLine({
           {help}
         </ContextHelp>
       ) : null}
-      {aside ? (
-        <span className="ml-auto flex min-w-0 max-w-full items-center gap-2">{aside}</span>
-      ) : null}
+    </>
+  );
+  const state = busy
+    ? ({ "data-loading-phase": phase, role: "status", "aria-busy": true } as const)
+    : {};
+  const hidden = busy ? (phase === "reserve" ? "invisible" : "sk-fade-in") : null;
+  if (aside)
+    return (
+      <div className="@container" data-slot="summary-line" data-testid={testId} {...state}>
+        <div className={SPLIT} data-slot="summary-line-split">
+          <span className={cn(SPLIT_TEXT, hidden)}>{lead}</span>
+          <span className={SPLIT_ASIDE} data-slot="summary-line-aside">
+            {aside}
+          </span>
+        </div>
+      </div>
+    );
+  return (
+    <div
+      data-slot="summary-line"
+      data-testid={testId}
+      className={cn(LINE, help ? "min-h-7" : null, hidden)}
+      {...state}
+    >
+      {lead}
     </div>
   );
 }

@@ -1,19 +1,21 @@
 import type { components } from "@cli-core/engine-api/openapi";
 import { approvalChoice } from "@shared/approval-choice.ts";
-
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { type ApiResponse, apiCall } from "@/api/call";
 import { ApiError } from "@/api/client";
+import { useDefaultEnvironment } from "@/api/setup";
 import { cockpitApiHref } from "@/app/installation-context";
 import { absolute, chatNewHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { useConnectorNames, useConnectorServices } from "@/components/cockpit/connector-names";
+import { EnvironmentChip } from "@/components/cockpit/environment-chip";
 import { GrantBoundaryProposals } from "@/components/cockpit/grant-boundary-proposals";
 import { GrantEffectReview } from "@/components/cockpit/grant-effect-review";
 import { GrantEnvironmentDecision } from "@/components/cockpit/grant-environment";
 import { GrantLimitField } from "@/components/cockpit/grant-limit-field";
+import { GrantLoadFailed } from "@/components/cockpit/grant-load-failed";
 import {
   GrantRemedyAction,
   GrantScopeWarnings,
@@ -27,7 +29,6 @@ import {
   CodeBlock,
   CollapsibleSection,
   ContextHelp,
-  DataState,
   FactList,
   Field,
   FieldError,
@@ -39,6 +40,7 @@ import {
 } from "@/components/cockpit/patterns";
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { reportFailure } from "@/lib/action-failure";
 import { authorityIssues, authorityProblems } from "@/lib/authority-issues";
 import { proposalStepIds, proposalsModel, readBoundaryProposals } from "@/lib/authority-proposals";
 import { authorityReviewModel, replacedVersion, reviewTitle } from "@/lib/authority-review-model";
@@ -120,7 +122,7 @@ export function GrantWorkflowAuthority({
     if (!state) return false;
     const message = t(`chat.liveTest.${state}`);
     if (state === "succeeded") toast.success(message);
-    else if (state === "failed") toast.error(message);
+    else if (state === "failed") reportFailure(message);
     else toast.info(message);
     return true;
   }
@@ -129,7 +131,8 @@ export function GrantWorkflowAuthority({
   const session = useSession();
   const connectorNames = useConnectorNames(open);
   const connectorServices = useConnectorServices(open);
-  const [environment, setEnvironment] = useState<"dev" | "prod">("dev");
+  const defaultEnvironment = useDefaultEnvironment();
+  const [environment, setEnvironment] = useState<"dev" | "prod">(defaultEnvironment);
   const [limit, setLimit] = useState<GrantLimit>(DEFAULT_GRANT_LIMIT);
   const [reviewVersionId, setReviewVersionId] = useState(versionId);
   const [writeChecked, setWriteChecked] = useState(false);
@@ -617,7 +620,7 @@ export function GrantWorkflowAuthority({
     setSample(null);
     setRunAfter(false);
     setLimit(DEFAULT_GRANT_LIMIT);
-    const opening = initialEnvironment ?? "dev";
+    const opening = initialEnvironment ?? defaultEnvironment;
     setEnvironment(opening);
     startReview(opening, undefined, undefined, false);
   }
@@ -644,26 +647,25 @@ export function GrantWorkflowAuthority({
         cancelTestId="authority-grant-cancel"
         title={t(title.key, title.values)}
         description={
-          existing
-            ? t("authority.existing.description")
-            : unsupported
-              ? t("authority.adjustDescription")
-              : [
-                  ...(blocked
-                    ? []
-                    : [
-                        t(
-                          environment === "prod" ? "authority.production" : "authority.development",
-                        ),
-                      ]),
-                  ...(replaced !== null
-                    ? [t("authority.review.replaces", { version: `v${replaced}` })]
-                    : []),
-                ].join(" · ")
+          existing ? (
+            t("authority.existing.description")
+          ) : unsupported ? (
+            t("authority.adjustDescription")
+          ) : (
+            <span className="inline-flex flex-wrap items-center gap-2">
+              {blocked ? null : (
+                <EnvironmentChip environment={environment} testId="authority-dialog-environment" />
+              )}
+              {replaced !== null
+                ? t("authority.review.replaces", { version: `v${replaced}` })
+                : null}
+            </span>
+          )
         }
         hint={review && !unsupported ? primaryHint : undefined}
         cancelHint={t("authority.review.help.cancel")}
         error={failure}
+        failure={sessionExpired ? undefined : actionError}
         trigger={
           openRequest === undefined || withTrigger ? (
             <Button
@@ -692,7 +694,7 @@ export function GrantWorkflowAuthority({
           : confirmable
             ? {
                 submit: {
-                  label: t(grant.isPending ? "authority.granting" : "authority.review.approve"),
+                  label: t("authority.review.approve"),
                   pending: grant.isPending,
                   disabled:
                     busy ||
@@ -1098,11 +1100,13 @@ export function GrantWorkflowAuthority({
           </Section>
         )}
         {prepare.error && sampleRefused === null && (
-          <DataState
-            state="error"
-            line={t("authority.loadFailed")}
-            testId="authority-load-failed"
-            className="py-0"
+          <GrantLoadFailed
+            onRetry={() => {
+              const last = prepare.variables;
+              grant.reset();
+              if (last) startReview(last.env, last.version, last.input, last.pinned, last.trial);
+              else startReview(environment);
+            }}
           />
         )}
         {review && (

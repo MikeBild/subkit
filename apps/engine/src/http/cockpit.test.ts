@@ -32,6 +32,7 @@ const fixtureFiles: Record<string, Uint8Array> = {
   "favicon.svg": readFileSync(new URL("favicon.svg", cockpitPublic)),
   "app-icon-192.png": readFileSync(new URL("app-icon-192.png", cockpitPublic)),
   "app-icon-512.png": readFileSync(new URL("app-icon-512.png", cockpitPublic)),
+  "worker-notify.js": readFileSync(new URL("worker-notify.js", cockpitPublic)),
   "browser-worker.js": readFileSync(new URL("browser-worker.js", cockpitPublic)),
   "installation-worker.js": readFileSync(new URL("installation-worker.js", cockpitPublic)),
 };
@@ -66,6 +67,27 @@ describe("cockpit browser boundary", () => {
       "script-src 'unsafe-inline'",
     );
     expect(html).toContain("SubKit Cockpit");
+  });
+
+  test("lets the app load its own worker and manifest and nothing from elsewhere", async () => {
+    const app = createOpenApiApp();
+    registerCockpitRoutes(app);
+    const policy = (await app.request("http://subkit.test/cockpit/")).headers.get(
+      "content-security-policy",
+    );
+    const directives = new Map(
+      (policy ?? "").split("; ").map((directive) => {
+        const [name = "", ...sources] = directive.split(" ");
+        return [name, sources.join(" ")] as const;
+      }),
+    );
+    expect(directives.get("worker-src")).toBe("'self'");
+    expect(directives.get("manifest-src")).toBe("'self'");
+    expect(directives.get("connect-src")).toBe("'self'");
+    expect(directives.get("frame-ancestors")).toBe("'none'");
+    expect(directives.get("default-src")).toBe("'self'");
+    expect(policy).not.toContain("*");
+    expect(policy).not.toContain("https:");
   });
 
   test("returns immutable assets and supports conditional requests", async () => {
@@ -129,10 +151,8 @@ describe("cockpit browser boundary", () => {
     const app = createOpenApiApp();
     registerCockpitRoutes(app);
     const shell = await app.request("http://subkit.test/cockpit/");
-    const source = readFileSync(
-      new URL("../../../cockpit/public/browser-worker.js", import.meta.url),
-      "utf8",
-    );
+    const read = (name: string) => readFileSync(new URL(name, cockpitPublic), "utf8").trimEnd();
+    const source = `${read("worker-notify.js")}\n${read("browser-worker.js")}\n`;
 
     const worker = await app.request("http://subkit.test/cockpit/sw.js");
     expect(worker.status).toBe(200);
@@ -145,6 +165,7 @@ describe("cockpit browser boundary", () => {
       shell.headers.get("content-security-policy"),
     );
     expect(await worker.text()).toBe(source);
+    expect(source).not.toMatch(/caches\.|fetch\(|COCKPIT_BUILD/);
 
     const head = await app.request("http://subkit.test/cockpit/sw.js", { method: "HEAD" });
     expect(head.status).toBe(200);

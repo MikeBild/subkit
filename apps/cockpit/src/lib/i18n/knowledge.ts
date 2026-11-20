@@ -79,6 +79,8 @@ export const knowledgeEn = {
   "knowledge.strip.version": "v{version} · changed {when}",
   "knowledge.strip.active": "Active · read {when}",
   "knowledge.strip.error": "Could not be read",
+  "knowledge.errorPrompt":
+    "The source “{name}” could not be read. What went wrong, and how do I fix it?",
   "knowledge.strip.inactive": "Switched off · chat and workflows do not use it",
   "knowledge.strip.processing": "Being read",
   "knowledge.summary.one": "1 source",
@@ -127,6 +129,7 @@ export const knowledgeEn = {
   "knowledge.onboarding.starter.prices": "Price list",
   "files.title": "Files",
   "files.tab.preview": "Preview",
+  "files.previewFailed": "The preview could not be loaded",
   "files.tab.usage": "Usage",
   "files.upload": "Upload",
   "files.uploadTitle": "Upload files",
@@ -309,6 +312,8 @@ export const knowledgeDe: Record<keyof typeof knowledgeEn, string> = {
   "knowledge.strip.version": "v{version} · geändert {when}",
   "knowledge.strip.active": "Aktiv · eingelesen {when}",
   "knowledge.strip.error": "Konnte nicht eingelesen werden",
+  "knowledge.errorPrompt":
+    "Die Quelle „{name}“ konnte nicht eingelesen werden. Woran lag es, und wie behebe ich das?",
   "knowledge.strip.inactive": "Ausgeschaltet · Chat und Workflows nutzen sie nicht",
   "knowledge.strip.processing": "Wird eingelesen",
   "knowledge.summary.one": "1 Quelle",
@@ -357,6 +362,7 @@ export const knowledgeDe: Record<keyof typeof knowledgeEn, string> = {
   "knowledge.onboarding.starter.prices": "Preisliste",
   "files.title": "Dateien",
   "files.tab.preview": "Vorschau",
+  "files.previewFailed": "Die Vorschau ließ sich nicht laden",
   "files.tab.usage": "Verwendung",
   "files.upload": "Hochladen",
   "files.uploadTitle": "Dateien hochladen",

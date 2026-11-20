@@ -31,6 +31,7 @@ import type {
   AttentionReason,
   AttentionSource,
 } from "./attention.ts";
+import { heldCauseClass, heldDetail } from "./core/held-detail.ts";
 import { readFailureStreaks } from "./failure-streaks.ts";
 import {
   collectFailureGroups,
@@ -406,7 +407,7 @@ function workflowItem(fact: WorkflowFacts): Candidate {
       });
   } else if (approval) {
     actions.push({
-      verb: "open",
+      verb: approval.kind === "expiring" ? "renew" : "open",
       href: attentionHref.automation(fact.id),
       primary: true,
       permission: "workflow:write",
@@ -448,7 +449,7 @@ function workflowItem(fact: WorkflowFacts): Candidate {
           }
         : {}),
       ...(repair ? { repair } : {}),
-      cause_class: lead?.cause_class ?? null,
+      cause_class: fact.held ? heldCauseClass(fact.held.reason_code) : (lead?.cause_class ?? null),
       counts,
       since: approval
         ? approval.since
@@ -458,7 +459,7 @@ function workflowItem(fact: WorkflowFacts): Candidate {
             fact.patches?.oldest.toISOString(),
           ]),
       deadline: approval?.deadline ?? null,
-      detail: lead?.cause ?? null,
+      detail: fact.held ? heldDetail(fact.held.reason_code) : (lead?.cause ?? null),
       actions,
     },
   };
@@ -475,6 +476,7 @@ const readConnectors: TenantReader = async (db, tenantId) => {
     .select({
       id: connectors.id,
       name: connectors.display_name,
+      env: connectors.environment,
       health_state: connectors.health_state,
       needs_reauth: connectors.needs_reauth,
       health_reason: connectors.health_reason,
@@ -489,7 +491,6 @@ const readConnectors: TenantReader = async (db, tenantId) => {
     const reason = row.needs_reauth
       ? "needs_reauth"
       : (CONNECTOR_REASON[row.health_state] ?? "unhealthy");
-    const reauth = reason === "needs_reauth";
     return {
       source: "connectors",
       resource: { type: "connector", id: row.id },
@@ -498,7 +499,7 @@ const readConnectors: TenantReader = async (db, tenantId) => {
         class: "failing",
         severity: "urgent",
         kind: "connector",
-        subject: { kind: "connector", id: row.id, name: row.name },
+        subject: { kind: "connector", id: row.id, name: row.name, environment: row.env },
         reason,
         trigger: null,
         cause_class: null,
@@ -508,10 +509,10 @@ const readConnectors: TenantReader = async (db, tenantId) => {
         detail: row.health_reason ?? (reason === "unhealthy" ? row.health_state : null),
         actions: [
           {
-            verb: reauth ? "reauth" : "open",
+            verb: reason === "needs_reauth" ? "reauth" : "open",
             href: attentionHref.connector(row.id),
             primary: true,
-            permission: reauth ? "connector:oauth" : "connector:read",
+            permission: reason === "needs_reauth" ? "connector:oauth" : "connector:read",
           },
         ],
       },

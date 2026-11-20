@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { toast } from "sonner";
 import {
   getCurrentCockpitInstallation,
   revokeCockpitInstallation,
@@ -10,6 +9,7 @@ import { listMemberships, switchMembership } from "@/api/memberships";
 import { broadcastTenantSwitch } from "@/api/tenant-context";
 import { absolute } from "@/app/links";
 import { useSession } from "@/app/session";
+import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 import { BrandingWordmark } from "./branding";
 import { InstallationDialog } from "./installation-dialogs";
@@ -46,7 +46,7 @@ export function WorkspaceSwitcher({ attention }: { attention?: ReactNode }) {
   });
   const revoke = useMutation({
     mutationFn: (id: string) => revokeCockpitInstallation(id),
-    onError: () => toast.error(t("common.actionFailed")),
+    onError: (failure) => reportFailure(t("common.actionFailed"), failure),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["cockpit-installation"] });
       setRevoking(false);

@@ -66,6 +66,11 @@ describe("baseline over the squashed migration chain", () => {
       "0006_drop_hosted_budget_reservations",
       "0007_tasks",
       "0008_task_run_progress_marks",
+      "0009_schedule_backoff_occurrences",
+      "0010_desktop_login",
+      "0011_setup_and_approval_rules",
+      "0012_rule_limits_and_quiet_hours",
+      "0013_rule_expiry_and_gentle_auto_pause",
     ]);
     expect(baseline.idx).toBe(0);
   });

@@ -20,6 +20,7 @@ import { enqueueGateDiagnosis } from "../queue/handlers/workflow-repair.ts";
 import { enqueueHostedWork } from "../queue/hosted-work.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queue/queues.ts";
 import { getObjectStore } from "../storage/object-store.ts";
+import { runApprovalExpiryNotices } from "./approval-expiry-notice-runner.ts";
 import { runTenantCadenceSweep } from "./cadence-sweep.ts";
 import { runCatalogDescribeSweep } from "./catalog-describe-runner.ts";
 import { runChatDedupCleanup } from "./chat-dedup-cleanup-runner.ts";
@@ -40,6 +41,7 @@ import { runDocsRefreshSweep, runKnowledgeRefreshSweep } from "./refresh-produce
 import { runRiskSignalEdges } from "./risk-signal-edges-runner.ts";
 import { recordScheduleAdmission } from "./schedule-admission-state.ts";
 import { logScheduleFireFailure } from "./schedule-fire-failure.ts";
+import { runScheduleOccurrenceRetention } from "./schedule-occurrences.ts";
 import { runSkillCandidateAnalysisSweep } from "./skill-candidate-analyze-runner.ts";
 import { runTaskSweep } from "./task-sweep.ts";
 import { runTenantErasureSweep } from "./tenant-erasure-runner.ts";
@@ -128,6 +130,7 @@ export class SchedulerReconciler {
   private lastConversationTitleSweepAt: Date | null = null;
 
   private lastNotificationInboxRetentionAt: Date | null = null;
+  private lastScheduleHousekeepingAt: Date | null = null;
 
   private lastToolApprovalsCleanupAt: Date | null = null;
 
@@ -424,6 +427,16 @@ export class SchedulerReconciler {
           ...errorFields(err),
         });
       });
+      await retryTransient(() => this.reconcileScheduleHousekeeping(), {
+        label: "schedule_housekeeping",
+      }).catch((err) => {
+        logger.error({
+          module: "scheduler",
+          action: "schedule_housekeeping_failed",
+          msg: "scheduler approval-expiry notice and occurrence retention pass failed",
+          ...errorFields(err),
+        });
+      });
       await retryTransient(() => this.reconcileToolApprovalsCleanup(), {
         label: "tool_approvals_cleanup",
       }).catch((err) => {
@@ -664,6 +677,16 @@ export class SchedulerReconciler {
     await runNotificationInboxRetention(now, this.opts.db);
   }
 
+  async reconcileScheduleHousekeeping(now: Date = new Date()): Promise<void> {
+    if (this.lastScheduleHousekeepingAt !== null) {
+      const elapsed = now.getTime() - this.lastScheduleHousekeepingAt.getTime();
+      if (elapsed < NOTIFICATION_INBOX_RETENTION_CADENCE_MS) return;
+    }
+    this.lastScheduleHousekeepingAt = now;
+    await runApprovalExpiryNotices(now, this.opts.db);
+    await runScheduleOccurrenceRetention(now, this.opts.db);
+  }
+
   async reconcileToolApprovalsCleanup(now: Date = new Date()): Promise<void> {
     if (this.lastToolApprovalsCleanupAt !== null) {
       const elapsed = now.getTime() - this.lastToolApprovalsCleanupAt.getTime();
@@ -806,7 +829,7 @@ export class SchedulerReconciler {
       occurrence_after: Date;
       claimed_at: Date;
     },
-  ): Promise<void> {
+  ): Promise<{ execution_id: string }> {
     return withContext(
       {
         audit_origin_source: "scheduler",
@@ -827,7 +850,7 @@ export class SchedulerReconciler {
       occurrence_after: Date;
       claimed_at: Date;
     },
-  ): Promise<void> {
+  ): Promise<{ execution_id: string }> {
     const admitted = await admitSystemWorkflowExecution(
       {
         tenant_id: payload.tenant_id,
@@ -890,6 +913,7 @@ export class SchedulerReconciler {
       schedule_key: key,
       execution_id,
     });
+    return { execution_id };
   }
 
   async reconcileKnowledgeAutoRefresh(): Promise<void> {

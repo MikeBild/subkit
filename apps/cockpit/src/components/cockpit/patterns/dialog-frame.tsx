@@ -21,7 +21,27 @@ export const DIALOG_TITLE =
 export const DIALOG_DESCRIPTION = "text-sm text-muted-foreground";
 export const DIALOG_BODY =
   "grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)] content-start gap-4 overflow-auto overflow-x-hidden px-6 pb-6 max-sm:px-4 max-sm:pb-5 [&_[data-slot=segmented-control]]:flex [&_[data-slot=segmented-control]]:w-full [&_[data-slot=segmented-control]>*]:flex-1";
-export const DIALOG_ERROR = "flex-none px-6 pb-4 text-sm text-destructive max-sm:px-4 max-sm:pb-3";
+export interface DialogFailure {
+  text: string;
+  cause: unknown;
+}
+
+export type DialogError = string | DialogFailure | null;
+
+export function dialogFailure(text: string, cause: unknown): DialogFailure {
+  return { text, cause };
+}
+
+export function dialogErrorText(error: DialogError | undefined): string | null {
+  if (!error) return null;
+  return typeof error === "string" ? error : error.text;
+}
+
+export function dialogErrorCause(error: DialogError | undefined, failure?: unknown): unknown {
+  if (failure !== undefined && failure !== null) return failure;
+  return error && typeof error !== "string" ? error.cause : undefined;
+}
+export const DIALOG_NOTICE = "flex-none px-6 pb-4 max-sm:px-4 max-sm:pb-3";
 export const DIALOG_FOOT =
   "m-0 flex flex-none flex-row flex-wrap justify-end gap-2 rounded-none border-t bg-transparent px-6 py-4 max-sm:px-4 max-sm:py-3 sm:flex-row sm:justify-end";
 

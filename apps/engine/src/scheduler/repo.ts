@@ -34,6 +34,11 @@ export interface ScheduleRow {
   input_error: typeof workflowsSchedules.$inferSelect.input_error;
   input: unknown;
   last_enqueued_at: Date | null;
+  paused_at: Date | null;
+  paused_reason: "repeated_failures" | null;
+  paused_failure_class: string | null;
+  paused_failure_count: number | null;
+  failures_reset_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -182,6 +187,11 @@ export async function createScheduleLocked(
         cron: input.cron,
         timezone: input.timezone ?? "UTC",
         paused: input.paused ?? false,
+        paused_at: null,
+        paused_reason: null,
+        paused_failure_class: null,
+        paused_failure_count: null,
+        failures_reset_at: new Date(),
         execution_mode: input.execution_mode ?? "prod",
         input: scheduleInput as never,
         input_error: null,
@@ -299,7 +309,14 @@ async function updateScheduleLocked(
   if (patch.cron !== undefined) set.cron = patch.cron;
   if (patch.timezone !== undefined) set.timezone = patch.timezone;
   if (patch.execution_mode !== undefined) set.execution_mode = patch.execution_mode;
-  if (patch.paused !== undefined) set.paused = patch.paused;
+  if (patch.paused !== undefined) {
+    set.paused = patch.paused;
+    set.paused_at = null;
+    set.paused_reason = null;
+    set.paused_failure_class = null;
+    set.paused_failure_count = null;
+    if (existing.paused && !patch.paused) set.failures_reset_at = new Date();
+  }
   if (patch.input !== undefined) set.input = patch.input;
   const rows = await db
     .update(workflowsSchedules)

@@ -13,11 +13,13 @@ import {
   routerTarget,
   WORKFLOW_AUTOMATION_ANCHOR,
 } from "@/app/links";
+import { ApprovalExpiryNote } from "@/components/cockpit/approval-expiry-note";
 import { useConnectorRecords } from "@/components/cockpit/connector-names";
 import { GrantWorkflowAuthority } from "@/components/cockpit/grant-workflow-authority";
 import { OPENS_APPROVAL } from "@/components/cockpit/opens-approval";
-import { type ActionSpec, StatusStrip } from "@/components/cockpit/patterns";
+import { type ActionSpec, SideStatus, StatusStrip } from "@/components/cockpit/patterns";
 import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
+import { WaitingOnApprover } from "@/components/cockpit/waiting-on";
 import {
   type WorkflowDiagnosis,
   WorkflowGateDiagnosis,
@@ -420,6 +422,7 @@ export function WorkflowStatus({
   waitingConnector,
   permissions,
   noSteps = false,
+  autoPaused = false,
   onOffersApproval,
 }: {
   automation: WorkflowAutomation;
@@ -435,6 +438,7 @@ export function WorkflowStatus({
   waitingConnector: WaitingConnector | null;
   permissions: readonly string[];
   noSteps?: boolean;
+  autoPaused?: boolean;
   onOffersApproval?: (offers: boolean) => void;
 }) {
   const { t, locale } = useI18n();
@@ -506,6 +510,7 @@ export function WorkflowStatus({
     repair?.detail.kind === "patch" ? fixerKey(repair.detail.evidence.fixer) : null;
   const repairDescription = repairFixer ? t(repairFixer) : repair?.summary;
   const blocked = Math.max(1, automation.diagnosis?.diagnoses.length ?? 0);
+  const noticed = autoPaused && strip.kind === "paused";
   const line = ((): string | null => {
     switch (strip.kind) {
       case "loading":
@@ -517,6 +522,7 @@ export function WorkflowStatus({
       case "disabled":
         return t("workflowStrip.line.disabled");
       case "paused":
+        if (noticed) return null;
         return state?.primaryAction === null
           ? t("automation.hookOff")
           : t("workflowStrip.line.paused");
@@ -588,7 +594,7 @@ export function WorkflowStatus({
   ];
   const action = ((): ActionSpec | null => {
     const a = strip.action;
-    if (!a) return null;
+    if (!a || noticed) return null;
     const label = t(stripActionKey(a));
     const base = { label, variant: "outline" as const, testId: "workflow-automation-action" };
     switch (a.kind) {
@@ -673,9 +679,31 @@ export function WorkflowStatus({
             </>
           }
           help={help.length > 0 ? help.join(" ") : undefined}
+          aside={
+            <>
+              <WaitingOnApprover
+                subjectId={automation.workflowId}
+                permissions={permissions}
+                testId="workflow-strip-waiting-on"
+              />
+              {state?.state === "approved" && !disabled ? (
+                <ApprovalExpiryNote
+                  validUntil={state.facts.untilRevoked ? null : state.facts.validUntil}
+                  environment={state.environment}
+                  onRenew={automation.canWrite && target ? automation.openGrant : undefined}
+                  testId="workflow-expiry-strip"
+                />
+              ) : null}
+            </>
+          }
           action={action ?? undefined}
         />
       </div>
+      <SideStatus
+        tone={strip.tone}
+        loading={strip.kind === "loading"}
+        line={[t(STRIP_STATE_KEYS[strip.kind]), line].filter(Boolean).join(" · ")}
+      />
       {state && !invalid && !disabled ? (
         <WorkflowGateDiagnosis
           workflowId={automation.workflowId}

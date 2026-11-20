@@ -5,6 +5,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
+import type { CockpitInstallationKind } from "../db/schema/cockpit-installations.ts";
 import { cockpitInstallations } from "../db/schema/cockpit-installations.ts";
 import { sessions } from "../db/schema/index.ts";
 import {
@@ -12,16 +13,22 @@ import {
   endCockpitPushForSessions,
   SelfServiceIdentityError,
 } from "../identity/index.ts";
-import { SESSION_ABSOLUTE_TTL_MS, SESSION_SLIDING_TTL_MS } from "./browser-session-validity.ts";
+import { SESSION_ABSOLUTE_TTL_MS, sessionLifetime } from "./browser-session-validity.ts";
 import type { ResolvedPrincipal } from "./types.ts";
 
 export {
   type BrowserSessionDenyReason,
   type BrowserSessionValidityRow,
   browserSessionDenyReason,
+  DESKTOP_SESSION_ABSOLUTE_TTL_MS,
+  DESKTOP_SESSION_SLIDING_TTL_MS,
   liveBrowserSessionWhere,
   SESSION_ABSOLUTE_TTL_MS,
   SESSION_SLIDING_TTL_MS,
+  type SessionLifetime,
+  sessionLifetime,
+  sessionSlidingMs,
+  sessionSlidingMsSql,
 } from "./browser-session-validity.ts";
 
 export const BROWSER_SESSION_COOKIE = "subkit_session";
@@ -76,11 +83,14 @@ export function browserSessionSecret(): Uint8Array {
   );
 }
 
-export async function signBrowserSession(payload: BrowserSessionPayload): Promise<string> {
+export async function signBrowserSession(
+  payload: BrowserSessionPayload,
+  absoluteMs: number = SESSION_ABSOLUTE_TTL_MS,
+): Promise<string> {
   return new jose.SignJWT({ ...payload })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime(Math.floor((Date.now() + SESSION_ABSOLUTE_TTL_MS) / 1000))
+    .setExpirationTime(Math.floor((Date.now() + absoluteMs) / 1000))
     .sign(browserSessionSecret());
 }
 
@@ -294,10 +304,11 @@ export async function issueBrowserSession(opts: {
   }
   const now = new Date();
   const tokenHash = createHash("sha256").update(randomBytes(32)).digest("hex");
+  let lifetime = sessionLifetime(null);
   const session = await opts.db.transaction(async (tx) => {
     if (opts.installationId) {
       const locked = await tx.execute(
-        sql`select ${cockpitInstallations.id}
+        sql`select ${cockpitInstallations.id}, ${cockpitInstallations.kind} as kind
             from ${cockpitInstallations}
             where ${cockpitInstallations.id} = ${opts.installationId}
               and ${cockpitInstallations.tenant_id} = ${opts.tenantId}
@@ -305,7 +316,9 @@ export async function issueBrowserSession(opts: {
               and ${cockpitInstallations.revoked_at} is null
             for update`,
       );
-      if (locked.rows.length === 0) return null;
+      const [installation] = locked.rows;
+      if (!installation) return null;
+      lifetime = sessionLifetime(installation.kind as CockpitInstallationKind);
     }
     const rows = await tx
       .insert(sessions)
@@ -314,8 +327,8 @@ export async function issueBrowserSession(opts: {
         user_id: opts.userId,
         auth_identity_id: opts.authIdentityId ?? null,
         installation_id: opts.installationId ?? null,
-        expires_at: new Date(now.getTime() + SESSION_SLIDING_TTL_MS),
-        absolute_expires_at: new Date(now.getTime() + SESSION_ABSOLUTE_TTL_MS),
+        expires_at: new Date(now.getTime() + lifetime.sliding_ms),
+        absolute_expires_at: new Date(now.getTime() + lifetime.absolute_ms),
         last_seen_at: now,
         token_sha256: tokenHash,
       })
@@ -328,12 +341,15 @@ export async function issueBrowserSession(opts: {
       headers: { "content-type": "application/json" },
     });
   }
-  const jwt = await signBrowserSession({
-    session_id: session.id,
-    user_id: opts.userId,
-    tenant_id: opts.tenantId,
-    ...(opts.installationId ? { installation_id: opts.installationId } : {}),
-  });
+  const jwt = await signBrowserSession(
+    {
+      session_id: session.id,
+      user_id: opts.userId,
+      tenant_id: opts.tenantId,
+      ...(opts.installationId ? { installation_id: opts.installationId } : {}),
+    },
+    lifetime.absolute_ms,
+  );
   await auditAwait(
     {
       tenant_id: opts.tenantId,
@@ -364,7 +380,11 @@ export async function issueBrowserSession(opts: {
     status: 302,
     headers: {
       location: opts.redirectTo,
-      "set-cookie": browserSessionCookie(jwt, undefined, opts.installationId),
+      "set-cookie": browserSessionCookie(
+        jwt,
+        Math.floor(lifetime.absolute_ms / 1000),
+        opts.installationId,
+      ),
       "cache-control": "no-store",
     },
   });

@@ -19,6 +19,7 @@ import {
   StatusBadge,
   Timeline,
 } from "@/components/cockpit/patterns";
+import { reportFailure } from "@/lib/action-failure";
 import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useSearchParamState } from "@/lib/use-search-param-state";
@@ -174,10 +175,11 @@ function FileVersionSheet({
       onClose();
     },
     onError: (error) =>
-      toast.error(
+      reportFailure(
         error instanceof ApiError && error.code === "duplicate_content"
           ? t("files.duplicate")
           : t("common.actionFailed"),
+        error,
       ),
   });
   const uploader = version ? fileVersionUploader(version, directory, t) : "";

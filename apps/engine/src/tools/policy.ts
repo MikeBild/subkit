@@ -93,6 +93,8 @@ export interface PolicyDecideInput {
   readonly overrides?: ToolPolicies;
   readonly connector_trust?: boolean;
   readonly authority_covered?: boolean;
+  readonly instruction_covered?: boolean;
+  readonly rule_covered?: boolean;
   readonly prior_approval?: boolean;
   readonly execution_data_transfer?: boolean;
   readonly task_run?: boolean;
@@ -107,6 +109,8 @@ export function policyDecide(input: PolicyDecideInput): PolicyDecision {
     permission_mode: input.permission_mode ?? null,
     ...(input.connector_trust ? { connector_trust: true } : {}),
     ...(input.authority_covered ? { authority_covered: true } : {}),
+    ...(input.instruction_covered ? { instruction_covered: true } : {}),
+    ...(input.rule_covered ? { rule_covered: true } : {}),
     ...(input.execution_data_transfer ? { execution_data_transfer: true } : {}),
     ...(input.task_run ? { task_run: true } : {}),
   });

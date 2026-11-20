@@ -7,6 +7,7 @@ import { useLiveQueryOptions } from "@/app/live-events";
 import { ListTable } from "@/components/cockpit/list-table";
 import { Button, type CockpitColumn, ContextHelp, Section } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
+import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { settingLabel } from "@/pages/settings-model";
@@ -37,7 +38,7 @@ export function PreparedChanges({ canDecide }: { canDecide: boolean }) {
     onSuccess: async (outcome) => {
       const failed = outcome.bindings.filter((b) => b.outcome === "failed");
       if (failed.length > 0) {
-        toast.error(
+        reportFailure(
           t("prepared.approvedButNotBound", {
             paths: failed.map((b) => b.path).join(", "),
           }),
@@ -52,7 +53,7 @@ export function PreparedChanges({ canDecide }: { canDecide: boolean }) {
       await refresh();
       await client.invalidateQueries({ queryKey: ["admin", "settings"] });
     },
-    onError: () => toast.error(t("prepared.decisionFailed")),
+    onError: (failure) => reportFailure(t("prepared.decisionFailed"), failure),
   });
   const reject = useMutation({
     mutationFn: (change: PreparedChange) =>
@@ -66,7 +67,7 @@ export function PreparedChanges({ canDecide }: { canDecide: boolean }) {
       );
       await refresh();
     },
-    onError: () => toast.error(t("prepared.decisionFailed")),
+    onError: (failure) => reportFailure(t("prepared.decisionFailed"), failure),
   });
 
   const columns = useMemo<CockpitColumn<PreparedChange>[]>(() => {

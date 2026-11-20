@@ -7,6 +7,7 @@ import {
   browserSessionDenyReason,
   browserSessionFromRequest,
   expireBrowserSession,
+  sessionLifetime,
 } from "../browser-session.ts";
 import type { AuthProvider, ResolvedPrincipal } from "../types.ts";
 
@@ -44,6 +45,7 @@ export function createBrowserSessionProvider(opts: BrowserSessionProviderOptions
         log.auth.denied({ provider: "browser_session", reason: "installation_mismatch" });
         return null;
       }
+      let lifetime = sessionLifetime(null);
       if (row.installation_id) {
         const [installation] = await db
           .select({
@@ -51,6 +53,7 @@ export function createBrowserSessionProvider(opts: BrowserSessionProviderOptions
             tenant_id: cockpitInstallations.tenant_id,
             owner_user_id: cockpitInstallations.owner_user_id,
             revoked_at: cockpitInstallations.revoked_at,
+            kind: cockpitInstallations.kind,
           })
           .from(cockpitInstallations)
           .where(
@@ -69,9 +72,10 @@ export function createBrowserSessionProvider(opts: BrowserSessionProviderOptions
           log.auth.denied({ provider: "browser_session", reason: "installation_not_active" });
           return null;
         }
+        lifetime = sessionLifetime(installation.kind);
       }
 
-      const denyReason = browserSessionDenyReason(row, new Date());
+      const denyReason = browserSessionDenyReason(row, new Date(), lifetime.sliding_ms);
 
       if (denyReason) {
         if (denyReason !== "revoked") {

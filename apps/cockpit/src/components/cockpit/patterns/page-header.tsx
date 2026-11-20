@@ -3,6 +3,8 @@ import { ChevronLeft } from "lucide-react";
 import type { ReactNode } from "react";
 import { absolute } from "@/app/links";
 import { usePageFrameTrigger } from "@/app/shell-header";
+import { SidePanelToggle, useSidePanelAvailable } from "@/app/side-panel";
+import { FeedbackButton } from "@/features/feedback/feedback-entry";
 import { useArrived, useLoadingPhase } from "@/lib/use-loading-phase";
 import { cn } from "@/lib/utils";
 import { type ActionSpec, renderAction } from "./action-button";
@@ -19,6 +21,8 @@ export function PageHeader({
   secondary,
   menu,
   loading,
+  loadingPurpose,
+  purposeLines = 1,
   testId,
   rhythm = "compact",
 }: {
@@ -31,10 +35,13 @@ export function PageHeader({
   secondary?: ReactNode;
   menu?: ReactNode;
   loading?: boolean;
+  loadingPurpose?: boolean;
+  purposeLines?: 1 | 2;
   testId?: string;
   rhythm?: "compact" | "reading";
 }) {
-  usePageFrameTrigger();
+  const pageOwned = usePageFrameTrigger();
+  const panelToggle = useSidePanelAvailable() && pageOwned;
   const phase = useLoadingPhase(Boolean(loading));
   const arrived = useArrived(phase);
   const actions = secondary || menu || action;
@@ -48,7 +55,7 @@ export function PageHeader({
       data-header-rhythm={rhythm}
       data-loading-phase={loadingRow ? phase : undefined}
       aria-busy={loadingRow ? true : undefined}
-      className={reading ? "flex flex-col pt-10 pb-6" : "flex flex-col gap-1 pt-6 pb-4"}
+      className={cn("@container flex flex-col", reading ? "pt-10 pb-6" : "gap-1 pt-6 pb-4")}
     >
       {back && reading ? (
         <div className="mb-6">
@@ -69,7 +76,7 @@ export function PageHeader({
       {loadingRow ? (
         <div
           className={cn(
-            "flex flex-wrap items-center gap-2",
+            "flex min-h-9 flex-wrap items-center gap-x-2 gap-y-1",
             phase === "reserve" ? "[&>[data-slot=skeleton]]:invisible" : "sk-fade-in",
           )}
           data-testid="page-title-row"
@@ -78,12 +85,23 @@ export function PageHeader({
           {title ? <h1 className="sr-only">{title}</h1> : null}
           <Skeleton className="h-7 w-56 max-w-[60%]" />
           <Skeleton className="h-5 w-16 rounded-full" />
-          <Skeleton className="h-9 w-full sm:ml-auto sm:h-8 sm:w-28" />
+          <Skeleton className="h-9 w-full sm:ml-auto sm:w-28" />
+          {loadingPurpose ? (
+            <span
+              className={cn(
+                "flex basis-full items-start pt-0.5",
+                purposeLines === 2 ? "h-10" : "h-5",
+              )}
+              data-slot="page-purpose-loading"
+            >
+              <Skeleton className="h-3.5 w-2/3 max-w-xl" />
+            </span>
+          ) : null}
         </div>
       ) : (
         <div
           className={cn(
-            "grid gap-x-4 gap-y-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center",
+            "grid gap-x-4 gap-y-1 @2xl:grid-cols-[minmax(0,1fr)_auto] @2xl:items-center",
             arrived && "sk-fade-in",
           )}
           data-slot="page-header-grid"
@@ -101,20 +119,33 @@ export function PageHeader({
             </h1>
             {badge}
           </div>
-          {actions ? (
+          {actions || panelToggle ? (
             <div
               data-slot="page-actions"
-              className="order-last mt-2 flex w-full flex-wrap items-center gap-2 sm:order-none sm:mt-0 sm:w-auto sm:flex-nowrap sm:justify-end max-sm:[&>*:not([data-size^=icon])]:flex-1"
+              className="order-last mt-2 flex min-h-8 w-full flex-wrap items-center gap-2 @2xl:order-none @2xl:mt-0 @2xl:w-auto @2xl:flex-nowrap @2xl:justify-end max-sm:[&>*:not([data-size^=icon])]:flex-1"
             >
               {secondary}
               {renderAction(action)}
               {menu}
+              {panelToggle ? (
+                <>
+                  <FeedbackButton
+                    className="shrink-0 @max-2xl:ml-auto"
+                    labelClassName="@max-3xl:sr-only"
+                  />
+                  <SidePanelToggle className="shrink-0" />
+                </>
+              ) : null}
             </div>
           ) : null}
           {purpose ? (
             <p
               data-slot="page-purpose"
-              className="max-w-3xl text-sm text-muted-foreground sm:col-span-2"
+              data-purpose-lines={purposeLines}
+              className={cn(
+                "max-w-3xl text-sm text-muted-foreground @2xl:col-span-2",
+                purposeLines === 2 && "line-clamp-2 min-h-10",
+              )}
             >
               {purpose}
             </p>

@@ -84,7 +84,7 @@ function candidateOf(task: TaskRow, finding: Finding): Candidate {
       class: finding.class,
       severity: finding.severity,
       kind: "task",
-      subject: { kind: "task", id: task.id, name: task.name },
+      subject: { kind: "task", id: task.id, name: task.name, environment: task.environment },
       reason: finding.reason,
       trigger: null,
       cause_class: null,

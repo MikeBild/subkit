@@ -94,7 +94,11 @@ export function ConversationsAbout({ target }: { target: ConversationsAboutTarge
         pending={query.isPending}
         error={
           query.error
-            ? { line: t("catalog.conversations.failed"), onRetry: () => void query.refetch() }
+            ? {
+                line: t("catalog.conversations.failed"),
+                cause: query.error,
+                onRetry: () => void query.refetch(),
+              }
             : null
         }
         onOpen={(row) => void navigate({ to: conversationHref(row.id) })}

@@ -65,7 +65,9 @@ const Input = z
     environment: z
       .enum(["dev", "prod"])
       .optional()
-      .describe("Where bound workflows run. Required to create."),
+      .describe(
+        "Where bound workflows run. Left out on create: the person's default environment from their setup.",
+      ),
     schedule_cron: z
       .string()
       .trim()

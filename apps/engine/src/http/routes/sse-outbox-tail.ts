@@ -8,6 +8,7 @@ import {
   readOutboxOldest,
 } from "../../webhooks/index.ts";
 import type { AppEnv } from "../openapi.ts";
+import { shutdownFrame, streamShutdownSignal } from "../stream-shutdown.ts";
 import { streamTenantSSE as streamSSE } from "../tenant-stream.ts";
 
 interface OutboxTailOptions {
@@ -16,9 +17,12 @@ interface OutboxTailOptions {
   replay: "recent" | "all" | "tail";
   replayLimit?: number;
   closeAfter?: (row: { type: string; payload: unknown }) => boolean;
-  project?: (row: { type: string; payload: unknown }) => unknown;
+  project?: (row: { type: string; payload: unknown }) => unknown | Promise<unknown>;
   hello?: Record<string, unknown>;
+  viewerState?: () => Promise<Record<string, unknown>>;
   heartbeatMs?: number;
+  onRows?: (rows: readonly { type: string }[]) => void;
+  shutdown?: AbortSignal;
 }
 
 const OUTBOX_REPLAY_CAP = 1_000;
@@ -54,7 +58,7 @@ export function streamOutboxTail(c: Context<AppEnv>, opts: OutboxTailOptions): R
     let done = false;
     let lastWrite = Date.now();
     const write = async (row: { id: number; type: string; payload: unknown }) => {
-      const payload = opts.project ? opts.project(row) : row.payload;
+      const payload = opts.project ? await opts.project(row) : row.payload;
       await stream.writeSSE({
         id: String(row.id),
         event: row.type,
@@ -69,6 +73,7 @@ export function streamOutboxTail(c: Context<AppEnv>, opts: OutboxTailOptions): R
     if (Number.isFinite(lastEventId) && lastEventId !== null && lastEventId >= 0) {
       const replay = await readOutboxAfter(db, opts.conds(), lastEventId, OUTBOX_REPLAY_CAP);
       truncated = replay.length >= OUTBOX_REPLAY_CAP;
+      if (replay.length > 0) opts.onRows?.(replay);
       for (const row of replay) {
         await write(row);
         cursor = row.id;
@@ -93,24 +98,38 @@ export function streamOutboxTail(c: Context<AppEnv>, opts: OutboxTailOptions): R
 
     await stream.writeSSE({
       event: "hello",
-      data: JSON.stringify(opts.hello ? { cursor, ...opts.hello, truncated } : { cursor }),
+      data: JSON.stringify(
+        opts.hello
+          ? { cursor, ...opts.hello, ...((await opts.viewerState?.()) ?? {}), truncated }
+          : { cursor },
+      ),
     });
     lastWrite = Date.now();
+    let lastState = lastWrite;
 
-    const signal = c.req.raw.signal;
+    const shutdown = opts.shutdown ?? streamShutdownSignal();
+    const signal = AbortSignal.any([c.req.raw.signal, shutdown]);
     while (!signal.aborted && !done) {
       const newRows = await readOutboxAfter(db, opts.conds(), cursor, 200);
+      if (newRows.length > 0) opts.onRows?.(newRows);
       for (const row of newRows) {
         await write(row);
         cursor = row.id;
         if (done) break;
       }
       if (done) break;
-      if (opts.heartbeatMs && Date.now() - lastWrite >= opts.heartbeatMs) {
-        await stream.writeSSE({ event: "ping", data: "{}" });
+      const quietSince = opts.viewerState ? lastState : lastWrite;
+      if (opts.heartbeatMs && Date.now() - quietSince >= opts.heartbeatMs) {
+        await stream.writeSSE({
+          event: "ping",
+          data: JSON.stringify((await opts.viewerState?.()) ?? {}),
+        });
         lastWrite = Date.now();
+        lastState = lastWrite;
       }
       await pauseUnlessAborted(signal, OUTBOX_POLL_MS);
     }
+    if (shutdown.aborted && !c.req.raw.signal.aborted && !done)
+      await stream.writeSSE(shutdownFrame()).catch(() => {});
   });
 }

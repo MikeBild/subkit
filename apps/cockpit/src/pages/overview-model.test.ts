@@ -4,10 +4,14 @@ import { type TranslationKey, translate } from "@/lib/i18n";
 import {
   type AttentionItem,
   actionLabelKey,
+  attentionEnvironment,
   attentionRow,
   attentionSentence,
+  attentionTarget,
+  expiryDays,
   SUBJECT_NAME_MAX,
   sentenceText,
+  signsInFromRow,
   sinceLabel,
 } from "./overview-model";
 import { daysAgo, de, item, NOW, W } from "./overview-model-fixtures.ts";
@@ -290,12 +294,59 @@ describe("the sentence", () => {
       actions: [open],
     });
     expect(de(actionLabelKey(open, waiting))).toBe("Freigeben");
-    expect(de(actionLabelKey(open, ending))).toBe("Verlängern");
-    expect(en(actionLabelKey(open, ending))).toBe("Extend");
+    expect(de(actionLabelKey(open, ending))).toBe("Erneuern");
+    expect(en(actionLabelKey(open, ending))).toBe("Renew");
     expect(sentenceText(attentionSentence(ending, de, NOW))).toBe(
       "Der Workflow „Monatsbericht“ ist nur noch kurz freigegeben: Die Freigabe läuft bald ab oder ist fast aufgebraucht — seit 3 Tagen.",
     );
     expect(routerPath(open.href)).toBe(workflowAutomationHref(W));
+  });
+
+  test("an approval with an end date says in how many days it ends and offers renewing", () => {
+    const renew = {
+      verb: "renew" as const,
+      href: `/cockpit/workflows/${W}#workflow-automation`,
+      primary: true,
+      permission: "workflow:write",
+    };
+    const inDays = (days: number) =>
+      item({
+        class: "decide",
+        severity: "notice",
+        reason: "approval_expiring",
+        since: null,
+        deadline: new Date(NOW + days * 86_400_000).toISOString(),
+        actions: [renew],
+      });
+    expect(expiryDays(null, NOW)).toBeNull();
+    expect(expiryDays(new Date(NOW - 1000).toISOString(), NOW)).toBe(0);
+    expect(attentionSentence(inDays(5), de, NOW).lead).toBe(
+      "Der Workflow „Monatsbericht“: Die Freigabe läuft in 5 Tagen ab",
+    );
+    expect(attentionSentence(inDays(1), de, NOW).lead).toBe(
+      "Der Workflow „Monatsbericht“: Die Freigabe läuft morgen ab",
+    );
+    expect(attentionSentence(inDays(7), en, NOW).lead).toBe(
+      "The workflow “Monatsbericht”: the approval ends in 7 days",
+    );
+    expect(de(actionLabelKey(renew, inDays(5)))).toBe("Erneuern");
+    expect(en(actionLabelKey(renew, inDays(5)))).toBe("Renew");
+  });
+
+  test("a held workflow shows the hold reason in the person's language, not the engine's English", () => {
+    const held = item({
+      class: "stopped",
+      reason: "execution_authority_unavailable",
+      cause_class: "authority_mismatch",
+      since: null,
+      detail:
+        "The approval has expired, is used up or was revoked, so scheduled runs wait. Renew the approval to start them again. Nothing has run since the hold.",
+    });
+    expect(attentionSentence(held, de, NOW).lead).toEndWith(
+      ": Die Freigabe ist abgelaufen, aufgebraucht oder widerrufen, deshalb warten automatische Starts. Erneuere die Freigabe, dann laufen sie wieder. Seit dem Anhalten ist nichts gelaufen.",
+    );
+    expect(attentionSentence(held, de, NOW).lead).not.toContain("The approval");
+    expect(attentionSentence(held, en, NOW).lead).toContain("so automatic starts wait");
   });
 
   test("every reason the engine names has its own words, in both languages", () => {
@@ -476,5 +527,64 @@ describe("the sentence", () => {
     expect(sinceLabel(at(20 * 86_400_000), NOW, de)).toBe("seit 2 Wochen");
     expect(sinceLabel(at(90 * 86_400_000), NOW, de)).toBe("seit 3 Monaten");
     expect(sinceLabel(at(5 * 3_600_000), NOW, en)).toBe("for 5 hours");
+  });
+});
+
+describe("the primary action of an expiry or a paused schedule", () => {
+  const renew = { verb: "renew", href: `/workflows/${W}#workflow-automation`, primary: true };
+  const open = { ...renew, verb: "open" };
+  const act = (verb: object) => ({ ...verb, permission: "workflow:write" }) as never;
+
+  test("an approval or task permission that expires soon says Erneuern and never signs in", () => {
+    for (const reason of ["approval_expiring", "task_grant_expiring"] as const) {
+      const entry = item({ reason, actions: [act(renew)] });
+      expect(de(actionLabelKey(act(renew), entry))).toBe("Erneuern");
+      expect(signsInFromRow(act(renew), entry)).toBe(false);
+      expect(attentionTarget(act(renew), entry)).toBe(renew.href);
+    }
+    const held = item({ reason: "approval_expiring" });
+    expect(de(actionLabelKey(act(open), held))).toBe("Erneuern");
+  });
+
+  test("only a connector or a linked account signs in from the row", () => {
+    const connector = item({
+      kind: "connector",
+      reason: "needs_reauth",
+      subject: { kind: "connector", id: "c1", name: "HubSpot CRM", environment: "prod" },
+    });
+    expect(signsInFromRow(act({ ...renew, verb: "reauth" }), connector)).toBe(true);
+    expect(signsInFromRow(act(open), connector)).toBe(false);
+    expect(signsInFromRow(act({ ...renew, verb: "reauth" }), item())).toBe(false);
+  });
+
+  test("workflow, schedule and task rows name their environment like connector rows do", () => {
+    const workflow = item({
+      subject: { kind: "workflow", id: W, name: "Monatsbericht", environment: "prod" },
+    });
+    expect(attentionEnvironment(workflow)).toBe("prod");
+    const task = item({
+      kind: "task",
+      reason: "task_run_failed",
+      subject: { kind: "task", id: "t1", name: "Tagesbericht", environment: "dev" },
+    });
+    expect(attentionEnvironment(task)).toBe("dev");
+    const approved = item({
+      approval: { version: 3, environment: "prod" },
+      subject: { kind: "workflow", id: W, name: "Monatsbericht", environment: "dev" },
+    });
+    expect(attentionEnvironment(approved)).toBe("prod");
+    expect(attentionEnvironment(item())).toBeNull();
+  });
+
+  test("a schedule paused after repeated failures leads to its schedule and offers to resume", () => {
+    const paused = item({ reason: "schedule_auto_paused", detail: "upstream_unavailable" });
+    expect(de(actionLabelKey(act(open), paused))).toBe("Zeitplan fortsetzen");
+    expect(attentionTarget(act(open), paused)).toBe(`/workflows/${W}?tab=schedule`);
+  });
+
+  test("a schedule paused over its approval leads to the approval and offers to renew it", () => {
+    const paused = item({ reason: "schedule_auto_paused", detail: "authority_mismatch" });
+    expect(de(actionLabelKey(act(open), paused))).toBe("Freigabe erneuern");
+    expect(attentionTarget(act(open), paused)).toBe(`/workflows/${W}#workflow-automation`);
   });
 });

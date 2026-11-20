@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { personalDefaultEnvironment } from "../../identity/setup-preferences.ts";
 import { can } from "../../rbac/evaluator.ts";
 import {
   assessVersionEnvironments,
@@ -53,6 +54,7 @@ export async function buildAutomationReview(ctx: ToolContext, workflow_id: strin
       ? (await can(ctx.db, { tenant_id: ctx.tenant_id, principal, permission, quiet: true })).allow
       : permission !== "audit:read";
   const inspected = await inspectAutomationReview(ctx.db, ctx.tenant_id, workflow_id, {
+    personal_default: await personalDefaultEnvironment(ctx.db, ctx.tenant_id, principal),
     ...((await allowed("inbound_hook:read"))
       ? { inbound_hooks: { refusal_reasons: await allowed("audit:read") } }
       : {}),

@@ -19,6 +19,7 @@ import {
   StatusBadge,
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
+import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import {
@@ -107,10 +108,11 @@ function GrantSheet({ grant, onClose }: { grant: GrantItem | null; onClose(): vo
       toast.success(t("access.grantRevoked"));
     },
     onError: (error) =>
-      toast.error(
+      reportFailure(
         t("access.revokeFailed", {
           reason: error instanceof ApiError ? error.message : t("resource.loadFailedDescription"),
         }),
+        error,
       ),
   });
   const permission = grant ? permissionLabel(grant.permission, t) : null;

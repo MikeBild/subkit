@@ -24,6 +24,8 @@ import { SelectField, TextField } from "@/components/cockpit/form-field";
 import {
   ActionButton,
   ChoiceCards,
+  type DialogError,
+  dialogFailure,
   FactList,
   Field,
   FieldLabel,
@@ -70,7 +72,7 @@ export function CreateChoiceDialog({
     setPicked(initialTemplate);
     setStep("template-detail");
   }, [open, initialTemplate]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DialogError>(null);
   const done = () => onOpenChange(false);
   const refuse = (failure: unknown) => createRefusal(failure, t("create.workflow.taken"), t);
   const manual = useManualWorkflow(open, done, setError);
@@ -296,7 +298,7 @@ const TRIGGER_CARDS: readonly {
 function useManualWorkflow(
   active: boolean,
   done: () => void,
-  fail: (error: string) => void,
+  fail: (error: DialogError) => void,
 ): ManualForm {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -342,7 +344,8 @@ function useManualWorkflow(
       await client.invalidateQueries({ queryKey: ["catalog"] });
       void navigate({ to: `${workflowHref(draft.workflow_id)}?tab=overview` });
     },
-    onError: (failure) => fail(createRefusal(failure, t("create.workflow.taken"), t)),
+    onError: (failure) =>
+      fail(dialogFailure(createRefusal(failure, t("create.workflow.taken"), t), failure)),
   });
   const blocks = (categories.data?.categories ?? []).filter(
     (entry) => entry.category !== UNCATEGORIZED,

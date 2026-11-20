@@ -8,6 +8,7 @@ import { useLiveQueryOptions } from "@/app/live-events";
 import { SelectField, TextField } from "@/components/cockpit/form-field";
 import {
   ActionButton,
+  ActionFailureHost,
   ActionMenu,
   ConfirmDialog,
   DataState,
@@ -16,6 +17,7 @@ import {
   SchemaForm,
   SegmentedControl,
 } from "@/components/cockpit/patterns";
+import { reportFailure } from "@/lib/action-failure";
 import { invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import { cronWords } from "@/lib/cron-words";
 import { LOCALE_TAGS } from "@/lib/i18n";
@@ -122,6 +124,7 @@ function ScheduleDialog({
         save.mutate({ cron: rhythmToCron(value), input: built.input });
       }}
       error={error}
+      failure={error === t("schedule.saveFailed") ? save.error : undefined}
       testId="schedule-dialog"
     >
       <FactList
@@ -229,7 +232,8 @@ export function WorkflowScheduleSection({
       toast.success(t(paused ? "schedule.paused" : "schedule.resumed"));
       await refresh();
     },
-    onError: () => toast.error(t("common.actionFailed")),
+    onError: (failure) =>
+      reportFailure(t("common.actionFailed"), failure, { scope: "workflow-schedule" }),
   });
   const remove = useMutation({
     mutationFn: () => apiCall("delete", "/v1/schedules/{id}", { path: { id: schedule?.id ?? "" } }),
@@ -239,7 +243,7 @@ export function WorkflowScheduleSection({
       setDeleting(false);
       await refresh();
     },
-    onError: () => toast.error(t("common.actionFailed")),
+    onError: (failure) => reportFailure(t("common.actionFailed"), failure),
   });
   if (query.isPending) return <DataState state="loading" />;
   if (query.error)
@@ -301,6 +305,7 @@ export function WorkflowScheduleSection({
   const words = cronWords(schedule.cron, t, LOCALE_TAGS[locale]);
   return (
     <div className="flex flex-col gap-3" data-testid="workflow-schedule">
+      <ActionFailureHost level="page" scope="workflow-schedule" />
       <div className="flex flex-wrap items-start gap-2">
         <div className="min-w-0 flex-1">
           <FactList

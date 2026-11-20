@@ -13,6 +13,7 @@ import {
 } from "@/components/cockpit/catalog-metadata-model";
 import { SelectField, TextField } from "@/components/cockpit/form-field";
 import { FormDialog, MarkdownEditor } from "@/components/cockpit/patterns";
+import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 import { humanizeCategory } from "@/lib/workflow-category";
 
@@ -79,7 +80,7 @@ export function MetadataDialog({
         client.invalidateQueries({ queryKey: ["catalog-categories"] }),
       ]);
     },
-    onError: () => toast.error(t("detail.saveFailed")),
+    onError: (failure) => reportFailure(t("detail.saveFailed"), failure),
   });
   return (
     <FormDialog

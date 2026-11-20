@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const PKG = join(REPO, "package.json");
+const DESKTOP_PKG = join(REPO, "apps/desktop/package.json");
 
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
@@ -62,6 +63,20 @@ const replaced = pkgText.replace(
 if (replaced === pkgText) die(`could not locate "version": "${current}" in package.json`);
 writeFileSync(PKG, replaced);
 console.log(`bump: package.json ${current} → ${next}`);
+
+{
+  const desktopText = readFileSync(DESKTOP_PKG, "utf8");
+  const desktop = (JSON.parse(desktopText) as { version: string }).version;
+  parseVersion(desktop);
+  const desktopReplaced = desktopText.replace(
+    new RegExp(`("version":\\s*")${desktop.replace(/\./g, "\\.")}(")`),
+    `$1${next}$2`,
+  );
+  if (desktop !== next && desktopReplaced === desktopText)
+    die(`could not locate "version": "${desktop}" in apps/desktop/package.json`);
+  writeFileSync(DESKTOP_PKG, desktopReplaced);
+  console.log(`bump: apps/desktop/package.json ${desktop} → ${next}`);
+}
 
 {
   const composePath = join(REPO, "docker-compose.yml");

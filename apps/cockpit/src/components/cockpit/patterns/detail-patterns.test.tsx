@@ -28,14 +28,14 @@ describe("detail header", () => {
       />,
     );
     expect(html).toContain('data-slot="page-header-grid"');
-    expect(html).toContain("sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center");
+    expect(html).toContain("@2xl:grid-cols-[minmax(0,1fr)_auto] @2xl:items-center");
     const row = html.indexOf('data-slot="page-title-row"');
     const actions = html.indexOf('data-slot="page-actions"');
     const purpose = html.indexOf('data-slot="page-purpose"');
     expect(row).toBeLessThan(actions);
     expect(actions).toBeLessThan(purpose);
     expect(html).toContain("order-last");
-    expect(html).toContain("sm:col-span-2");
+    expect(html).toContain("@2xl:col-span-2");
     expect(html.slice(row, actions)).toContain('data-x="chip"');
     expect(count(html, /<h1/g)).toBe(1);
   });

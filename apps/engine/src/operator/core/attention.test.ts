@@ -1,16 +1,33 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 import {
+  APPROVAL_NEEDED_REASONS,
   ATTENTION_REASONS,
   ATTENTION_SCHEMA_VERSION,
   ATTENTION_SOURCES,
   ATTENTION_SUBJECT_KINDS,
   type AttentionItem,
+  type AttentionReason,
   type AttentionV1,
   attentionAllClear,
   compareAttentionItems,
+  needsApproval,
   projectAttentionItems,
 } from "./attention.ts";
+
+test("exactly the approval reasons ask someone to approve", () => {
+  const approvals: AttentionReason[] = [
+    "execution_authority_required",
+    "version_awaiting_approval",
+    "approval_expiring",
+    "task_grant_required",
+    "task_grant_expiring",
+  ];
+  expect(ATTENTION_REASONS.filter((reason) => needsApproval({ reason }))).toEqual(approvals);
+  expect([...APPROVAL_NEEDED_REASONS].sort()).toEqual([...approvals].sort());
+  for (const reason of ["", "execution_authority_unavailable", "schedule_auto_paused", "approval"])
+    expect(needsApproval({ reason })).toBe(false);
+});
 
 test("attention schema publishes its stable sources, reasons, and subject kinds", () => {
   expect(ATTENTION_SCHEMA_VERSION).toBe("attention.v1");
@@ -37,6 +54,7 @@ test("attention schema publishes its stable sources, reasons, and subject kinds"
     "version_awaiting_approval",
     "version_needs_repair",
     "approval_expiring",
+    "schedule_auto_paused",
     "scheduler_stale",
     "failing",
     "patch_proposed",

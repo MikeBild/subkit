@@ -1,0 +1,14 @@
+extends: ./electron-builder.base.yml
+appId: dev.mikebild.subkit.desktop.dev
+productName: SubKit Dev
+directories:
+  output: release-dev
+  buildResources: assets
+protocols:
+  name: SubKit Dev
+  schemes:
+    - subkit-dev
+linux:
+  executableName: subkit-desktop-dev
+  mimeTypes:
+    - x-scheme-handler/subkit-dev

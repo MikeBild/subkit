@@ -15,6 +15,7 @@ import {
   rebindPushSubscriptionBinding,
   savePushSubscription,
 } from "@/api/cockpit-installations";
+import { announceLaunch } from "@/features/pwa/launch";
 import {
   browserPushRegistration,
   clearInstallationInput,
@@ -66,7 +67,9 @@ interface LaunchFileHandle {
 
 interface LaunchQueueWindow extends Window {
   launchQueue?: {
-    setConsumer(consumer: (params: { files?: readonly LaunchFileHandle[] }) => void): void;
+    setConsumer(
+      consumer: (params: { files?: readonly LaunchFileHandle[]; targetURL?: string }) => void,
+    ): void;
   };
 }
 
@@ -236,6 +239,10 @@ export function InstallationProvider({
     takeIncoming();
     const launchQueue = window as LaunchQueueWindow;
     launchQueue.launchQueue?.setConsumer((params) => {
+      if (!params.files?.length) {
+        announceLaunch(params.targetURL);
+        return;
+      }
       void incomingFromLaunchFiles(params.files ?? [])
         .then((value) => {
           if (active && generation.current === currentGeneration) stageIncoming(value);

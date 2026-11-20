@@ -158,6 +158,8 @@ const REASON_KEYS: Record<string, TranslationKey> = {
   manual_re_issue: "audit.reason.manualReissue",
   client_retired: "audit.reason.clientRetired",
   authority_covered: "audit.reason.authorityCovered",
+  user_instruction: "audit.reason.userInstruction",
+  standing_rule: "audit.reason.standingRule",
   question: "audit.reason.taskQuestion",
   approval: "audit.reason.taskApproval",
   no_progress: "audit.reason.taskNoProgress",
@@ -204,6 +206,7 @@ export function auditReasonLabel(
 }
 
 const RESOURCE_KEYS: Record<string, TranslationKey> = {
+  tool_approval_rule: "audit.resource.toolApprovalRule",
   task: "audit.resource.task",
   task_run: "audit.resource.taskRun",
   task_grant: "audit.resource.taskGrant",
@@ -263,6 +266,7 @@ const RESOURCE_KEYS: Record<string, TranslationKey> = {
   notification_rule: "audit.resource.notificationRule",
   notification_channel: "audit.resource.notificationChannel",
   cockpit_installation: "audit.resource.cockpitInstallation",
+  desktop_login_code: "audit.resource.desktopLoginCode",
   cockpit_push_key: "audit.resource.cockpitPushKey",
   cockpit_push_subscription: "audit.resource.cockpitPushSubscription",
   llm: "audit.resource.llm",
@@ -297,7 +301,7 @@ export function auditResourceLabel(resourceType: string, t: Translate): CatalogL
   return catalogLabel(resourceType, RESOURCE_KEYS[resourceType], t);
 }
 
-const ACTION_KEYS: Record<string, TranslationKey> = {
+export const ACTION_KEYS: Record<string, TranslationKey> = {
   "approval.requested": "audit.action.approvalRequested",
   "approval.granted": "audit.action.approvalGranted",
   "approval.approved": "audit.action.approvalApproved",
@@ -385,6 +389,15 @@ const ACTION_KEYS: Record<string, TranslationKey> = {
   "mcp_oauth.client_reactivated": "audit.action.oauthClientReactivated",
   "settings.changed": "audit.action.settingsChanged",
   "user.logged_in": "audit.action.userLoggedIn",
+  "desktop_login.code_issued": "audit.action.desktopLoginCodeIssued",
+  "desktop_login.denied": "audit.action.desktopLoginDenied",
+  "desktop_login.completed": "audit.action.desktopLoginCompleted",
+  "cockpit_installation.created": "audit.action.installationCreated",
+  "cockpit_installation.revoked": "audit.action.installationRevoked",
+  "cockpit_push.key_prepared": "audit.action.pushKeyPrepared",
+  "cockpit_push.subscription_upserted": "audit.action.pushSubscribed",
+  "cockpit_push.subscription_removed": "audit.action.pushUnsubscribed",
+  "user.logged_out": "audit.action.userLoggedOut",
   "webhook.inbound.received": "audit.action.webhookReceived",
   "webhook.inbound.denied": "audit.action.webhookDenied",
   "webhook.inbound.created": "audit.action.webhookCreated",
@@ -419,6 +432,11 @@ const ACTION_KEYS: Record<string, TranslationKey> = {
   "wait.completed": "audit.action.waitCompleted",
   "webhook.trigger.failed_verification": "audit.action.webhookVerificationFailed",
   "tool_policy.confirmation_skipped": "audit.action.toolPolicyConfirmationSkipped",
+  "tool_approval_rule.created": "audit.action.approvalRuleCreated",
+  "tool_approval_rule.dismissed": "audit.action.approvalRuleDismissed",
+  "tool_approval_rule.revoked": "audit.action.approvalRuleRevoked",
+  "tool_approval_rule.renewed": "audit.action.approvalRuleRenewed",
+  "user.setup_updated": "audit.action.userSetupUpdated",
   "task.created": "audit.action.taskCreated",
   "task.updated": "audit.action.taskUpdated",
   "task.deleted": "audit.action.taskDeleted",
@@ -436,6 +454,7 @@ const ACTION_KEYS: Record<string, TranslationKey> = {
   "task_run.failed": "audit.action.taskRunFailed",
   "task_run.abort_requested": "audit.action.taskRunAbortRequested",
   "task_run.aborted": "audit.action.taskRunAborted",
+  "feedback.submitted": "audit.action.feedbackSubmitted",
 };
 
 type AuditActionLabel = { kind: "named"; key: TranslationKey } | { kind: "machine"; value: string };

@@ -8,6 +8,7 @@ import {
 import { SelectField, TextField } from "@/components/cockpit/form-field";
 import {
   Button,
+  type DialogError,
   Field,
   FieldError,
   FieldLabel,
@@ -36,7 +37,7 @@ export function IntakeEditDialog({
   categories: string[];
   open: boolean;
   pending: boolean;
-  error: string | null;
+  error: DialogError;
   conflict: boolean;
   onReload(): void;
   onOpenChange(open: boolean): void;
@@ -226,6 +227,7 @@ export function IntakeNoteDialog({
         if (request) create.mutate(request);
       }}
       error={create.error ? t("intake.add.failed") : null}
+      failure={create.error}
       testId="intake-add-dialog"
     >
       <TextField

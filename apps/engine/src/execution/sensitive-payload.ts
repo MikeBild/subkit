@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
+import { classifyFailure, type PreviewClassification } from "./core/classify.ts";
 import type { RequestMeta, SensitiveOutputField } from "./types.ts";
 
 const SensitivePayloadSchema = z
@@ -59,6 +60,13 @@ const safeFailureCodes = new Set([
   "execution_boundary_mismatch",
   "execution_authority_required",
   "execution_authority_unavailable",
+  "execution_authentication_unavailable",
+  "connector_disabled",
+  "connector_not_found",
+  "connector_environment_mismatch",
+  "prepared_credential_unavailable",
+  "llm_quota_exhausted",
+  "llm_budget_exceeded",
   "authority_redirect_denied",
   "sensitive_resume_forbidden",
   "sensitive_execution_unsupported",
@@ -130,12 +138,48 @@ const SAFE_FAILURE_MESSAGES: Readonly<Record<string, string>> = {
   caller_saved_workflow_required: "This caller can only run a saved workflow version, not a draft.",
 };
 
-export function sensitiveFailure(code?: string) {
+const SAFE_CLASS_MESSAGES: Readonly<Partial<Record<PreviewClassification, string>>> = {
+  auth_failed:
+    "The connected service rejected the sign-in. Reconnect the connector, then run again. Nothing was changed by this step.",
+  authority_mismatch:
+    "The approval no longer covers what this run would do. Review and renew the approval, then run again.",
+  connector_missing:
+    "A connector this run needs does not exist in this environment. Add it, then run again.",
+  connector_unavailable:
+    "A connector this run needs is disabled or has no usable credential. Reconnect or enable it, then run again.",
+  budget_exhausted:
+    "The token allowance is used up. Raise the limit or wait for the month to roll over.",
+  rate_limited: "The service's rate limit stopped this run. Retry after the limit resets.",
+  timeout: "A step took longer than its time limit. Retry, or raise the limit.",
+  placeholder_unresolved:
+    "A step referred to a value that was not available. Check the workflow's inputs and earlier steps.",
+  schema_mismatch:
+    "The service answered in an unexpected shape. Check the step's data selector against the response.",
+  incomplete_read: "The run stopped before every page was read, so its result would be incomplete.",
+  payload_invalid:
+    "The message a step built is malformed and was not sent. Fix how the step builds it; the approval still fits.",
+};
+
+const PROTECTED_MESSAGE = "Sensitive execution failed.";
+
+export interface SensitiveFailure {
+  code: string;
+  message: string;
+  error_class?: PreviewClassification;
+}
+
+export function sensitiveFailure(code?: string, message?: string): SensitiveFailure {
   const safeCode = code && safeFailureCodes.has(code) ? code : "sensitive_execution_failure";
-  return {
-    code: safeCode,
-    message: SAFE_FAILURE_MESSAGES[safeCode] ?? "Sensitive execution failed.",
-  };
+  if (!code || safeCode === code)
+    return { code: safeCode, message: SAFE_FAILURE_MESSAGES[safeCode] ?? PROTECTED_MESSAGE };
+  const error_class = classifyFailure({
+    status: "failed",
+    error: { code, message: message ?? "" },
+  });
+  const classMessage = SAFE_CLASS_MESSAGES[error_class];
+  return classMessage
+    ? { code: safeCode, message: classMessage, error_class }
+    : { code: safeCode, message: PROTECTED_MESSAGE };
 }
 
 export function sensitiveRequestMeta(meta: RequestMeta | null | undefined): RequestMeta | null {

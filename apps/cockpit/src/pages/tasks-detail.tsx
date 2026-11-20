@@ -5,7 +5,9 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { ApiError } from "@/api/client";
 import { absolute, conversationHref, settingsHref, usageHref } from "@/app/links";
+import { ApprovalExpiryNote, useTaskGrantExpiry } from "@/components/cockpit/approval-expiry-note";
 import { CatalogCategoryChip } from "@/components/cockpit/catalog-metadata";
+import { EnvironmentChip } from "@/components/cockpit/environment-chip";
 import { GrantTaskAuthority } from "@/components/cockpit/grant-task-authority";
 import {
   ActionButton,
@@ -17,16 +19,19 @@ import {
   ContextHelp,
   DataState,
   DetailPage,
+  DetailPageLoading,
   FactList,
   KpiTile,
   type PageTab,
-  Skeleton,
   TabBody,
   Timeline,
 } from "@/components/cockpit/patterns";
+import { ScheduleHistory } from "@/components/cockpit/schedule-history";
 import { MISSING } from "@/components/cockpit/table-columns";
 import { TaskPermissions } from "@/components/cockpit/task-permissions";
+import { WaitingOnApprover } from "@/components/cockpit/waiting-on";
 import { ForbiddenState, LoadFailed, queryView } from "@/components/failure-state";
+import { reportFailure } from "@/lib/action-failure";
 import { cronWords } from "@/lib/cron-words";
 import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -168,7 +173,7 @@ function UsageTile({ taskId }: { taskId: string }) {
     <KpiTile
       dense
       label={
-        <span className="inline-flex items-center gap-1">
+        <span className="inline-flex min-h-7 items-center gap-1">
           {t("tasks.usage.label")}
           {usage && usageExcludesWorkflowCalls(usage) ? (
             <ContextHelp label={t("tasks.usage.label")} testId="task-usage-help">
@@ -187,10 +192,51 @@ function UsageTile({ taskId }: { taskId: string }) {
           ? t("tasks.usage.month", {
               value: usageWords(usageFigure(usage.current_month), t, format),
             })
-          : undefined
+          : query.isPending
+            ? "\u00a0"
+            : undefined
       }
       testId="task-tile-usage"
       detailTestId="task-tile-usage-month"
+    />
+  );
+}
+
+function TaskTechnicalFacts({ task }: { task: Task }) {
+  const { t } = useI18n();
+  return (
+    <FactList
+      testId="task-technical-facts"
+      items={[
+        {
+          label: t("tasks.technical.id"),
+          value: <span className="break-all font-mono text-xs">{task.id}</span>,
+        },
+        {
+          label: t("tasks.technical.environment"),
+          value: <EnvironmentChip environment={task.environment} testId="task-environment-chip" />,
+        },
+        { label: t("tasks.technical.revision"), value: String(task.revision) },
+        {
+          label: t("tasks.technical.fingerprint"),
+          value: <span className="break-all font-mono text-xs">{task.fingerprint}</span>,
+        },
+        {
+          label: t("tasks.technical.cron"),
+          value: task.schedule_cron ? (
+            <span className="font-mono text-xs">{task.schedule_cron}</span>
+          ) : (
+            MISSING
+          ),
+        },
+        {
+          label: t("tasks.technical.limits"),
+          value: t("tasks.technical.limitsValue", {
+            turns: task.max_turns,
+            minutes: task.run_deadline_minutes,
+          }),
+        },
+      ]}
     />
   );
 }
@@ -227,43 +273,8 @@ function OverviewTab({
         ? dateTime(start.at)
         : t(start.kind === "due" ? start.line : "tasks.overview.next.none");
   return (
-    <TabBody
-      testId="task-overview"
-      summary={task.goal}
-      technical={
-        <FactList
-          testId="task-technical-facts"
-          items={[
-            {
-              label: t("tasks.technical.id"),
-              value: <span className="break-all font-mono text-xs">{task.id}</span>,
-            },
-            { label: t("tasks.technical.environment"), value: task.environment },
-            { label: t("tasks.technical.revision"), value: String(task.revision) },
-            {
-              label: t("tasks.technical.fingerprint"),
-              value: <span className="break-all font-mono text-xs">{task.fingerprint}</span>,
-            },
-            {
-              label: t("tasks.technical.cron"),
-              value: task.schedule_cron ? (
-                <span className="font-mono text-xs">{task.schedule_cron}</span>
-              ) : (
-                MISSING
-              ),
-            },
-            {
-              label: t("tasks.technical.limits"),
-              value: t("tasks.technical.limitsValue", {
-                turns: task.max_turns,
-                minutes: task.run_deadline_minutes,
-              }),
-            },
-          ]}
-        />
-      }
-    >
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="task-tiles">
+    <TabBody testId="task-overview" summary={task.goal}>
+      <div className="grid grid-cols-2 gap-3 @3xl:grid-cols-4" data-testid="task-tiles">
         <KpiTile dense label={t("tasks.overview.now")} note={now} testId="task-tile-now" />
         <KpiTile
           dense
@@ -465,9 +476,10 @@ export function TaskDetail({
     run: latest ? { ...latest, failure_code: latestRecord?.failure_code ?? null } : null,
     grantLive,
   });
+  const expiry = useTaskGrantExpiry(task.id, grantLive === true);
   const nextUp = startView(task, now);
   const refresh = () => refreshTask(client, task.id);
-  const failed = () => toast.error(t("common.actionFailed"));
+  const failed = (failure: unknown) => reportFailure(t("common.actionFailed"), failure);
 
   const start = useMutation({
     mutationFn: () => startTaskRun(task.id),
@@ -476,7 +488,7 @@ export function TaskDetail({
       await refresh();
     },
     onError: (failure) =>
-      toast.error(t(startErrorKey(failure instanceof ApiError ? failure.code : null))),
+      reportFailure(t(startErrorKey(failure instanceof ApiError ? failure.code : null)), failure),
   });
   const pause = useMutation({
     mutationFn: () => pauseTask(task.id),
@@ -598,7 +610,12 @@ export function TaskDetail({
     {
       value: "schedule",
       label: t("tasks.tab.schedule"),
-      content: <ScheduleTab task={task} start={nextUp} />,
+      content: (
+        <>
+          <ScheduleTab task={task} start={nextUp} />
+          <ScheduleHistory subject={{ kind: "task", id: task.id }} />
+        </>
+      ),
     },
     {
       value: "permissions",
@@ -664,6 +681,22 @@ export function TaskDetail({
             ? t("tasks.strip.waiting.quoted", { question })
             : t(status.line),
         more,
+        loading: expiry.loading,
+        aside: (
+          <>
+            <WaitingOnApprover
+              subjectId={task.id}
+              permissions={permissions}
+              testId="task-strip-waiting-on"
+            />
+            <ApprovalExpiryNote
+              validUntil={expiry.validUntil}
+              environment={expiry.environment}
+              onRenew={permissions.includes("task:grant") ? () => setGranting(true) : undefined}
+              testId="task-expiry-strip"
+            />
+          </>
+        ),
         action: stripAction(status, latest, permissions, t, {
           review: () => setReviewing(true),
           allow: () => setGranting(true),
@@ -675,6 +708,7 @@ export function TaskDetail({
           startBlocked: Boolean(startBlocked),
         }),
       }}
+      technical={<TaskTechnicalFacts task={task} />}
       tabs={tabs}
     >
       {permissions.includes("task:write") && editing ? (
@@ -747,10 +781,10 @@ export function TaskPage({ permissions }: { permissions: readonly string[] }) {
   const view = queryView(query, () => false);
   if (view === "loading")
     return (
-      <div className="grid gap-4 p-6" data-testid="detail-tasks-loading">
-        <Skeleton className="h-12 w-80" />
-        <Skeleton className="h-96 w-full" />
-      </div>
+      <DetailPageLoading
+        testId="detail-tasks-loading"
+        back={{ to: TASKS_PATH, label: t("nav.tasks") }}
+      />
     );
   if (view === "error" || !query.data)
     return (

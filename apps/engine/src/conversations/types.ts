@@ -2,6 +2,7 @@ import type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-re
 import type { AuthType, DriverName, Environment } from "../connectors/types.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
 import type { Citation } from "./citations.ts";
+import type { ToolCallPolicyView } from "./instruction-cover/view.ts";
 import type { ConversationReference } from "./references.ts";
 import type { ConnectorCallSubject, ExternalToolSubject } from "./resume.ts";
 import type { ResumeFormField } from "./resume-form.ts";
@@ -88,6 +89,7 @@ export interface ConversationToolCallRecord {
   confirmation_state: string | null;
   approved_at: string | null;
   outcome: ToolCallOutcome | null;
+  policy?: ToolCallPolicyView | null;
 }
 
 export type AuthoringMode =

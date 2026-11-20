@@ -5,7 +5,9 @@ import {
   type BrowserSessionPayload,
   browserSessionDenyReason,
   browserSessionForPrincipal,
+  browserSessionFromRequest,
   cockpitInstallationIdFromPath,
+  sessionLifetime,
 } from "../../auth/index.ts";
 import type { Db } from "../../db/client.ts";
 import { sessions, tenants, users } from "../../db/schema/identity.ts";
@@ -79,7 +81,11 @@ export async function resolveCockpitInstallationContext(
       ),
     )
     .limit(1);
-  if (!session || browserSessionDenyReason(session, new Date())) return null;
+  if (
+    !session ||
+    browserSessionDenyReason(session, new Date(), sessionLifetime(installation.kind).sliding_ms)
+  )
+    return null;
   return {
     installation_id: installation.id,
     tenant_id: installation.tenant_id,
@@ -139,6 +145,46 @@ export async function resolveCockpitPushContext(
   return await resolveCockpitBrowserPushContext(db, request, principal);
 }
 
+interface InstallationRefusal {
+  status: 401 | 403;
+  code: "installation_session_required" | "installation_revoked";
+  message: string;
+}
+
+export function cockpitInstallationRefusal(
+  installation: { tenant_id: string; owner_user_id: string; revoked_at: Date | null } | null,
+  cookie: Pick<BrowserSessionPayload, "tenant_id" | "user_id"> | null,
+): InstallationRefusal {
+  if (
+    cookie &&
+    installation?.revoked_at &&
+    installation.tenant_id === cookie.tenant_id &&
+    installation.owner_user_id === cookie.user_id
+  )
+    return {
+      status: 403,
+      code: "installation_revoked",
+      message: "this Cockpit installation was revoked",
+    };
+  return {
+    status: 401,
+    code: "installation_session_required",
+    message: "this Cockpit installation requires its own session",
+  };
+}
+
+export async function cockpitInstallationRefusalFor(
+  db: Db,
+  request: Request,
+): Promise<InstallationRefusal> {
+  const installationId = cockpitInstallationIdFromPath(new URL(request.url).pathname);
+  const cookie = installationId ? await browserSessionFromRequest(request) : null;
+  return cockpitInstallationRefusal(
+    cookie && installationId ? await getCockpitInstallation(db, installationId) : null,
+    cookie,
+  );
+}
+
 export function requireCockpitInstallation(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const installationId = cockpitInstallationIdFromPath(c.req.path);
@@ -163,13 +209,8 @@ export function requireCockpitInstallation(): MiddlewareHandler<AppEnv> {
           302,
         );
       }
-      return c.json(
-        {
-          code: "installation_session_required",
-          message: "this Cockpit installation requires its own session",
-        },
-        401,
-      );
+      const refusal = await cockpitInstallationRefusalFor(c.get("db"), c.req.raw);
+      return c.json({ code: refusal.code, message: refusal.message }, refusal.status);
     }
     if (APP_TENANT_SWITCH_PATHS.has(canonical)) {
       return c.json(

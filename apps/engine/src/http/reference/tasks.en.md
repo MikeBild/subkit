@@ -108,7 +108,7 @@ The standing permission ends when:
 
 When it ends, the workflow approvals it created end with it, unless another task with its own standing permission uses the same workflow.
 
-Three days before the end, or when fewer than a tenth of the runs are left, a notice asks you to extend it.
+Seven days before the end, or when fewer than a tenth of the runs are left, a notice with **Renew** appears. Three days before the end the notification follows: SubKit sends the event `task.grant_expiring` once. More in “Keep an eye on schedules”.
 When it is gone, the scheduled starts are held and a notice says the task may no longer start on its own. Nothing is lost: allow again, and the held start runs shortly afterwards.
 
 In the list and on the task page, a start time that has passed reads as follows:

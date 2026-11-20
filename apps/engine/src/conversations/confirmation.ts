@@ -64,6 +64,12 @@ function transcriptMarkerFor(state: ConfirmationState, tool: string | undefined)
   }
 }
 
+function keepingPolicyRecord(data: Record<string, unknown>) {
+  const kept = (key: string) =>
+    sql`CASE WHEN jsonb_exists(${conversationToolCalls.confirmation_data}, ${key}) THEN jsonb_build_object(${key}::text, ${conversationToolCalls.confirmation_data} -> ${key}) ELSE '{}'::jsonb END`;
+  return sql`${JSON.stringify(data)}::jsonb || ${kept("policy")} || ${kept("rule_offer")}`;
+}
+
 export async function recordTransition(
   db: Db,
   params: {
@@ -92,7 +98,7 @@ export async function recordTransition(
     .update(conversationToolCalls)
     .set({
       confirmation_state: params.to_state,
-      ...(params.data !== undefined ? { confirmation_data: params.data } : {}),
+      ...(params.data !== undefined ? { confirmation_data: keepingPolicyRecord(params.data) } : {}),
       interaction_log: sql`COALESCE(${conversationToolCalls.interaction_log}, '[]'::jsonb) || ${JSON.stringify(
         [entry],
       )}::jsonb`,

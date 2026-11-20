@@ -36,6 +36,19 @@ interface HelloFrame {
   truncated?: unknown;
 }
 
+export type LiveFrameKind = "hello" | "ping" | "shutdown" | "change";
+
+export const SERVER_SHUTDOWN_EVENT = "server.shutdown";
+
+export function liveFrameKind(event: string): LiveFrameKind {
+  if (event === "hello" || event === "ping") return event;
+  return event === SERVER_SHUTDOWN_EVENT ? "shutdown" : "change";
+}
+
+export function statusAfterStreamEnd(shutdown: boolean): LiveStatus {
+  return shutdown ? "offline" : "reconnecting";
+}
+
 function parseJson(data: string): unknown {
   try {
     return JSON.parse(data);
@@ -81,11 +94,17 @@ export function LiveEventsProvider({ children }: { children: ReactNode }) {
       if (disposed || controller) return;
       const current = new AbortController();
       controller = current;
+      let shutdown = false;
       void readSseStream(LIVE_STREAM_PATH, {
         signal: current.signal,
         lastEventId: lastEventId.current,
         onFrame: (frame) => {
-          if (frame.event === "hello") {
+          const kind = liveFrameKind(frame.event);
+          if (kind === "shutdown") {
+            shutdown = true;
+            return;
+          }
+          if (kind === "hello") {
             attempt = 0;
             setStatus("live");
             const hello = parseJson(frame.data) as HelloFrame | null;
@@ -98,12 +117,12 @@ export function LiveEventsProvider({ children }: { children: ReactNode }) {
             if (hello?.truncated === true) void queryClient.invalidateQueries();
             return;
           }
-          if (frame.event === "ping") return;
+          if (kind === "ping") return;
           if (frame.id) lastEventId.current = frame.id;
           schedule(keysForEvent(frame.event));
         },
       })
-        .then(() => retry(current))
+        .then(() => retry(current, shutdown))
         .catch((error: unknown) => {
           if (error instanceof SseHttpError && (error.status === 401 || error.status === 403)) {
             noticeSessionExpiry(error.status, error.code);
@@ -111,15 +130,15 @@ export function LiveEventsProvider({ children }: { children: ReactNode }) {
             setStatus("offline");
             return;
           }
-          retry(current);
+          retry(current, shutdown);
         });
     };
 
-    const retry = (ended: AbortController) => {
+    const retry = (ended: AbortController, shutdown = false) => {
       if (controller !== ended) return;
       controller = null;
       if (disposed) return;
-      setStatus("reconnecting");
+      setStatus(statusAfterStreamEnd(shutdown));
       retryTimer = setTimeout(connect, backoffDelay(attempt));
       attempt += 1;
     };

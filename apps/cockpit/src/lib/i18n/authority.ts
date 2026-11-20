@@ -52,7 +52,7 @@ export const authorityEn = {
   "authority.review.help.approve": "Activates and allows runs within these limits.",
   "authority.review.help.approveGrant": "Allows runs within these limits.",
   "authority.review.help.activateOnly": "Activates without allowing runs.",
-  "authority.review.help.activateOnlyPaused":
+  "authority.review.help.activateOnlyHeld":
     "Switches on without allowing runs; the schedule is on hold.",
   "authority.review.help.adopt": "The existing approval stays valid.",
   "authority.review.help.cancel": "Closes without changes.",
@@ -140,7 +140,8 @@ export const authorityEn = {
   "authority.environment": "Environment",
   "authority.production": "Production",
   "authority.development": "Test",
-  "authority.decision.words": "Test is for trying things out. Production is live operation.",
+  "authority.decision.words":
+    "Test is for trying things out. Production works with your real data.",
   "authority.decision.validFor": "Applies to {environment}.",
   "authority.decision.reason.schedule": "The schedule starts it there.",
   "authority.decision.reason.scheduleWhen": "The schedule starts it there, {when}.",
@@ -150,7 +151,7 @@ export const authorityEn = {
   "authority.decision.choice.label": "What should the approval be for?",
   "authority.decision.choice.dev": "Test: for trying it out. You start it yourself.",
   "authority.decision.choice.prod":
-    "Production: live operation. Needed when a schedule or a call from outside starts it.",
+    "Production: works with your real data. Needed when a schedule or a call from outside starts it.",
   "authority.decision.none.title": "Not possible yet",
   "authority.decision.unnamedConnector": "A connector",
   "authority.decision.block.connector_missing": "{connector} does not exist in {environment}.",
@@ -258,6 +259,7 @@ export const authorityEn = {
   "authority.digest": "Effect manifest digest",
   "authority.revokeFailed": "The authority could not be revoked.",
   "authority.loadFailed": "The authority history could not be loaded.",
+  "authority.prepareFailed": "The approval could not be loaded. Nothing was changed.",
   "authority.more": "Load older authorities",
   "authority.state.approved": "Approved",
   "authority.state.notYetValid": "Not yet valid",
@@ -475,7 +477,7 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.review.help.approve": "Aktiviert und erlaubt Läufe in diesen Grenzen.",
   "authority.review.help.approveGrant": "Erlaubt Läufe in diesen Grenzen.",
   "authority.review.help.activateOnly": "Aktiviert ohne Läufe.",
-  "authority.review.help.activateOnlyPaused":
+  "authority.review.help.activateOnlyHeld":
     "Schaltet ein, ohne Läufe zu erlauben; der Zeitplan ist angehalten.",
   "authority.review.help.adopt": "Bestehende Freigabe gilt weiter.",
   "authority.review.help.cancel": "Schließt ohne Änderung.",
@@ -563,10 +565,11 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.noStoredBinding": "Keine Bindung an eine Freigabe gespeichert",
   "authority.version": "Version",
   "authority.environment": "Umgebung",
-  "authority.production": "Produktion",
+  "authority.production": "Echtbetrieb",
   "authority.development": "Test",
-  "authority.decision.words": "Test ist zum Ausprobieren. Produktion ist der echte Betrieb.",
-  "authority.decision.validFor": "Gilt für {environment}.",
+  "authority.decision.words":
+    "Test ist zum Ausprobieren. Der Echtbetrieb arbeitet mit deinen echten Daten.",
+  "authority.decision.validFor": "Gilt für den {environment}.",
   "authority.decision.reason.schedule": "Der Zeitplan startet ihn dort.",
   "authority.decision.reason.scheduleWhen": "Der Zeitplan startet ihn dort, {when}.",
   "authority.decision.reason.inbound_hook": "Aufrufe von außen starten ihn dort.",
@@ -575,16 +578,16 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.decision.choice.label": "Wofür soll die Freigabe gelten?",
   "authority.decision.choice.dev": "Test: zum Ausprobieren. Du startest ihn selbst.",
   "authority.decision.choice.prod":
-    "Produktion: der echte Betrieb. Nötig, wenn ein Zeitplan oder ein Aufruf von außen ihn startet.",
+    "Echtbetrieb: arbeitet mit deinen echten Daten. Nötig, wenn ein Zeitplan oder ein Aufruf von außen ihn startet.",
   "authority.decision.none.title": "Noch nicht möglich",
   "authority.decision.unnamedConnector": "Ein Konnektor",
-  "authority.decision.block.connector_missing": "{connector} gibt es in {environment} nicht.",
+  "authority.decision.block.connector_missing": "{connector} gibt es im {environment} nicht.",
   "authority.decision.block.connector_without_sign_in":
-    "{connector} hat in {environment} keine Anmeldung.",
+    "{connector} hat im {environment} keine Anmeldung.",
   "authority.decision.block.connector_needs_sign_in_again":
-    "{connector} muss in {environment} neu angemeldet werden.",
+    "{connector} muss im {environment} neu angemeldet werden.",
   "authority.decision.block.connector_switched_off":
-    "{connector} ist in {environment} ausgeschaltet.",
+    "{connector} ist im {environment} ausgeschaltet.",
   "authority.window": "Gültig von — bis (Ortszeit)",
   "authority.requests": "Anfrageinhalte",
   "authority.growth.newConnector": "Neues Ziel: {name}",
@@ -687,6 +690,7 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.digest": "Prüfsumme des Wirkungsmanifests",
   "authority.revokeFailed": "Die Freigabe konnte nicht widerrufen werden.",
   "authority.loadFailed": "Der Freigabeverlauf konnte nicht geladen werden.",
+  "authority.prepareFailed": "Die Freigabe konnte nicht geladen werden. Nichts wurde geändert.",
   "authority.more": "Ältere Freigaben laden",
   "authority.state.approved": "Freigegeben",
   "authority.state.notYetValid": "Noch nicht gültig",

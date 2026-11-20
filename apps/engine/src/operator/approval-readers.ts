@@ -10,8 +10,8 @@ import {
 } from "../db/schema/index.ts";
 import { nextScheduleFire } from "../scheduler/next-fire.ts";
 import {
+  AUTHORITY_EXPIRY_ATTENTION_DAYS,
   AUTHORITY_EXTEND_BELOW_RUN_SHARE,
-  AUTHORITY_EXTEND_WITHIN_DAYS,
 } from "../workflows/authority-extension.ts";
 import { type BoundaryGrowth, BoundaryGrowthSchema } from "../workflows/authority-growth.ts";
 import { authorityLive, authorityNotExpired } from "../workflows/authority-live.ts";
@@ -41,7 +41,7 @@ function covering(now: Date, environment: SQL): SQL | undefined {
 }
 
 function approvalColumns(db: Db, now: Date, environment: SQL) {
-  const soon = new Date(now.getTime() + AUTHORITY_EXTEND_WITHIN_DAYS * DAY_MS);
+  const soon = new Date(now.getTime() + AUTHORITY_EXPIRY_ATTENTION_DAYS * DAY_MS);
   return {
     covered: sql<boolean>`EXISTS ${db
       .select({ one: sql`1` })
@@ -109,7 +109,7 @@ function factOf(row: TriggerRow, now: Date): ApprovalFact | null {
   if (row.comfortable) return null;
   const ends = row.ends === null ? null : new Date(row.ends);
   const byDate =
-    ends !== null && ends.getTime() - now.getTime() <= AUTHORITY_EXTEND_WITHIN_DAYS * DAY_MS;
+    ends !== null && ends.getTime() - now.getTime() <= AUTHORITY_EXPIRY_ATTENTION_DAYS * DAY_MS;
   return {
     ...base,
     kind: "expiring",

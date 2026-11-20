@@ -32,6 +32,9 @@ const DOT: Record<TimelineTone, string> = {
 const CARD =
   "flex min-w-0 flex-1 items-center gap-3 rounded-lg border bg-card px-3 py-2.5 text-left text-sm";
 
+const RAIL =
+  "relative before:absolute before:-top-2 before:bottom-0 before:left-[5px] before:w-0.5 before:bg-border first:before:top-1/2 last:before:bottom-1/2";
+
 function Entry({ item }: { item: TimelineItem }) {
   const body = (
     <>
@@ -74,7 +77,7 @@ function Entry({ item }: { item: TimelineItem }) {
     </>
   );
   return (
-    <li data-slot="timeline-item" data-testid={item.testId}>
+    <li data-slot="timeline-item" data-testid={item.testId} className={RAIL}>
       {item.onOpen ? (
         <button
           type="button"
@@ -110,7 +113,7 @@ export function Timeline({
                 {group.label}
               </div>
             ) : null}
-            <ol className="relative flex flex-col gap-2 before:absolute before:top-4 before:bottom-4 before:left-[5px] before:w-0.5 before:bg-border">
+            <ol className="flex flex-col gap-2">
               {group.items.map((item) => (
                 <Entry key={item.id} item={item} />
               ))}

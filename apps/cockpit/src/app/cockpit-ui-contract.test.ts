@@ -41,7 +41,20 @@ describe("cockpit-ui family contract", () => {
     let localCss = css;
     for (const name of regions) localCss = localCss.replace(region(css, name), "");
     const names = [...localCss.matchAll(/^\s*--([a-z0-9-]+):/gm)].map((match) => match[1]);
-    const allowed = new Set(["font-sans", "font-mono", "font-heading"]);
+    const allowed = new Set([
+      "font-sans",
+      "font-mono",
+      "font-heading",
+      "radius-sm",
+      "radius-md",
+      "radius-lg",
+      "radius-xl",
+      "radius-2xl",
+      "text-lg",
+      "text-lg--line-height",
+      "text-3xl",
+      "text-3xl--line-height",
+    ]);
     expect(names.filter((name) => name && !allowed.has(name) && !name.startsWith("sk-"))).toEqual(
       [],
     );

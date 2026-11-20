@@ -33,6 +33,12 @@ const AttentionItem = z
         kind: z.enum(ATTENTION_SUBJECT_KINDS),
         id: z.string(),
         name: z.string().nullable(),
+        environment: z
+          .enum(["dev", "prod"])
+          .optional()
+          .describe(
+            "The environment the subject runs in: the one a connector belongs to, and for a workflow, schedule or task the one its automatic starts use. Absent when the subject has none.",
+          ),
       })
       .nullable(),
     reason: z.enum(ATTENTION_REASONS),
@@ -108,6 +114,12 @@ const AttentionItem = z
       .string()
       .nullable()
       .describe("Residual engine wording, or null. Show it as the engine's wording."),
+    waiting_on: z
+      .object({ user_id: z.string().uuid(), name: z.string() })
+      .optional()
+      .describe(
+        "Present on an item that needs an approval when the viewer named someone else as their approver: the item waits for that person, who is notified instead of the viewer.",
+      ),
     actions: z.array(AttentionAction),
   })
   .openapi("AttentionItem");

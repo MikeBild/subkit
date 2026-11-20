@@ -1,9 +1,9 @@
 import type { components } from "@cli-core/engine-api/openapi";
 import { useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { apiCall } from "@/api/call";
 import { ApiError } from "@/api/client";
 import { useLiveQueryOptions } from "@/app/live-events";
+import { reportFailure } from "@/lib/action-failure";
 import { isAppUserEmail } from "@/lib/app-user";
 import type { TranslationKey } from "@/lib/i18n";
 import type { useI18n } from "@/lib/i18n-context";
@@ -114,5 +114,5 @@ export function personEmailFact(user: UserItem, t: Translate) {
 }
 
 export function refusalToast(error: unknown, t: Translate) {
-  toast.error(personRefusal(error instanceof ApiError ? error : null, t));
+  reportFailure(personRefusal(error instanceof ApiError ? error : null, t), error);
 }

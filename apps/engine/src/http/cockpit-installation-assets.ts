@@ -7,11 +7,14 @@ import {
   cachedCockpitAsset,
   cockpitBundleMissing,
   cockpitCsp,
+  cockpitInstallationWorker,
   cockpitSecurityHeaders,
   inlineScriptHashes,
 } from "./cockpit.ts";
+import { cockpitIconVariant, cockpitManifestIdentity } from "./cockpit-manifest.ts";
 import { resolveCockpitInstallationContext } from "./middleware/cockpit-installation.ts";
 import type { AppEnv } from "./openapi.ts";
+import { conversationLocale } from "./routes/conversations/locale.ts";
 
 const PRIVATE = {
   "cache-control": "private, no-store",
@@ -32,23 +35,17 @@ export function registerCockpitInstallationAssets(app: OpenAPIHono<AppEnv>): voi
     const base = `/cockpit/i/${context.installation_id}/`;
     const tenant = await getTenant(context.tenant_id, c.get("db"));
     const name = tenant?.display_name || "SubKit";
-    const icons = ([192, 512] as const).map((size) => ({
-      src: `${base}icon/${size}.png?revision=${branding.revision}`,
-      sizes: `${size}x${size}`,
-      type: "image/png",
-      purpose: "any",
-    }));
+    const locale = conversationLocale(c.req.header("cookie"), c.req.header("accept-language"));
     return c.json(
       {
-        id: base,
-        name,
-        short_name: name,
-        start_url: base,
-        scope: base,
-        display: "standalone",
-        background_color: "#ffffff",
-        theme_color: PALETTE_COLORS[branding.palette ?? "standard"],
-        icons,
+        ...cockpitManifestIdentity({
+          base,
+          name,
+          locale,
+          themeColor: PALETTE_COLORS[branding.palette ?? "standard"],
+          revision: branding.revision,
+          tenantIcon: branding.app_icon,
+        }),
         file_handlers: [
           {
             action: `${base}incoming/files`,
@@ -88,15 +85,18 @@ export function registerCockpitInstallationAssets(app: OpenAPIHono<AppEnv>): voi
       c.req.raw,
       c.get("principal"),
     );
-    const size =
-      c.req.param("size") === "192.png" ? 192 : c.req.param("size") === "512.png" ? 512 : null;
+    const variant = cockpitIconVariant(c.req.param("size"));
     const revision = Number(c.req.query("revision"));
-    if (!context || !size || !Number.isSafeInteger(revision) || revision < 0)
+    if (!context || !variant || !Number.isSafeInteger(revision) || revision < 0)
       return c.body(null, 404, PRIVATE);
     const branding = await getTenantBranding(context.tenant_id, c.get("db"));
     if (branding.revision !== revision) return c.body(null, 404, PRIVATE);
-    const icon = await getTenantBrandingAppIcon(context.tenant_id, revision, size, c.get("db"));
-    const fallback = cachedCockpitAsset(`app-icon-${size}.png`);
+    if (variant.purpose !== "any" && branding.app_icon) return c.body(null, 404, PRIVATE);
+    const icon =
+      variant.purpose === "any"
+        ? await getTenantBrandingAppIcon(context.tenant_id, revision, variant.size, c.get("db"))
+        : null;
+    const fallback = cachedCockpitAsset(variant.asset);
     const body = icon ?? fallback?.body;
     if (!body) return cockpitBundleMissing(c);
     return new Response(Buffer.from(body), {
@@ -106,9 +106,9 @@ export function registerCockpitInstallationAssets(app: OpenAPIHono<AppEnv>): voi
 
   app.get("/cockpit/i/:installationId/sw.js", (c) => {
     if (!cockpitInstallationIdFromPath(c.req.path)) return c.body(null, 404, PRIVATE);
-    const script = cachedCockpitAsset("installation-worker.js");
+    const script = cockpitInstallationWorker();
     if (!script) return cockpitBundleMissing(c);
-    return new Response(script.body, {
+    return new Response(script, {
       headers: {
         ...PRIVATE,
         "content-type": "application/javascript; charset=utf-8",

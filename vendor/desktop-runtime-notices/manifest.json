@@ -1,0 +1,56 @@
+{
+  "runtime": {
+    "version": "45.4.1",
+    "revision": "deaded07eebdfe9a3737884933b1acbe65971f64"
+  },
+  "scope": "Draft notices for the Electron runtime that SubKit Desktop is packaged with, taken from the pinned Electron release and the component revisions named in its DEPS file. This is not a complete native or transitive inventory. The full Chromium third-party credits are NOT vendored here: they ship unchanged inside every Electron distribution as LICENSES.chromium.html (5,598,206 bytes, SHA-256 214152f78cc0b611f63ff8faefcc6670c4605ffbff05f092bb671e6df80ce741 in the darwin-arm64 distribution of this release) and every SubKit Desktop package carries that file and the Electron LICENSE: next to the application binary on Windows and Linux, in the resources directory on macOS. Not covered and UNVERIFIED: the per-platform differences of LICENSES.chromium.html (darwin-x64, win32-x64, linux-x64), the configure options of the FFmpeg build that Electron ships as a separate shared library (its license entry and the written offer follow in the FFmpeg section, which the build reads from LICENSES.chromium.html of the distribution it packages), the notices of Node.js dependencies beyond the Node.js LICENSE file, the Squirrel.Windows and NSIS installer components that electron-builder adds on Windows, the AppImage runtime on Linux, source or relink delivery, and legal approval.",
+  "correspondingSource": "SubKit Desktop is the unmodified Electron 45.4.1 runtime (revision deaded07eebdfe9a3737884933b1acbe65971f64) with the SubKit Desktop application bundle in its resources directory. Electron is MIT-licensed and builds on Chromium 156.0.8078.100 and Node.js v24.22.3.\n\nSource of the runtime:\n- Electron: https://github.com/electron/electron/tree/deaded07eebdfe9a3737884933b1acbe65971f64\n- Chromium: https://chromium.googlesource.com/chromium/src/+/refs/tags/156.0.8078.100\n- Node.js: https://github.com/nodejs/node/tree/v24.22.3\n\nFFmpeg is delivered by Electron as its own shared library next to the application binary and is not linked into SubKit code; its revision is the one pinned by the Chromium DEPS file above. The FFmpeg section of these notices names its source and carries the written offer.",
+  "ffmpeg": {
+    "revision": "9db86ce5b5b454dfc96c435f9f0723012980c37f",
+    "statement": "Source of the FFmpeg library: https://chromium.googlesource.com/chromium/third_party/ffmpeg/+/9db86ce5b5b454dfc96c435f9f0723012980c37f is the revision pinned as ffmpeg_revision in the DEPS file of Chromium 156.0.8078.100 (https://chromium.googlesource.com/chromium/src/+/refs/tags/156.0.8078.100/DEPS). Electron builds the library from it with the build files of that Chromium release and of Electron at revision deaded07eebdfe9a3737884933b1acbe65971f64 (https://github.com/electron/electron/tree/deaded07eebdfe9a3737884933b1acbe65971f64).\n\nWritten offer: for at least three years after this release is distributed, the SubKit maintainers provide on request the complete corresponding source of the FFmpeg library in this package, for no more than the cost of physically performing the distribution. Send the request through the contact form at https://subkit.mikebild.dev/kontakt."
+  },
+  "files": [
+    {
+      "component": "electron",
+      "revision": "deaded07eebdfe9a3737884933b1acbe65971f64",
+      "path": "electron__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/electron/electron/deaded07eebdfe9a3737884933b1acbe65971f64/LICENSE",
+      "sha256": "5154e165bd6c2cc0cfbcd8916498c7abab0497923bafcd5cb07673fe8480087d"
+    },
+    {
+      "component": "chromium",
+      "revision": "156.0.8078.100",
+      "path": "chromium__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/chromium/chromium/156.0.8078.100/LICENSE",
+      "sha256": "368cca1106be99d39ecd32a38d8305585d802a475effb66380b91ffc9bcf709b"
+    },
+    {
+      "component": "node",
+      "revision": "v24.22.3",
+      "path": "node__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/nodejs/node/v24.22.3/LICENSE",
+      "sha256": "5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace"
+    },
+    {
+      "component": "squirrel-mac",
+      "revision": "fffea30e4a339a7f7d69a3391314b72548d209bd",
+      "path": "squirrel-mac__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/Squirrel/Squirrel.Mac/fffea30e4a339a7f7d69a3391314b72548d209bd/LICENSE",
+      "sha256": "f58f48614330755c5dde8672ed8fc49b1c2261718e7c1429112b5f00923d8ae4"
+    },
+    {
+      "component": "reactiveobjc",
+      "revision": "74ab5baccc6f7202c8ac69a8d1e152c29dc1ea76",
+      "path": "reactiveobjc__LICENSE.md.txt",
+      "source": "https://raw.githubusercontent.com/ReactiveCocoa/ReactiveObjC/74ab5baccc6f7202c8ac69a8d1e152c29dc1ea76/LICENSE.md",
+      "sha256": "095fec1a3d6ad029fe0661fa6092a272d50af016b1771992e0bba9b2a73e7763"
+    },
+    {
+      "component": "mantle",
+      "revision": "2a8e2123a3931038179ee06105c9e6ec336b12ea",
+      "path": "mantle__LICENSE.md.txt",
+      "source": "https://raw.githubusercontent.com/Mantle/Mantle/2a8e2123a3931038179ee06105c9e6ec336b12ea/LICENSE.md",
+      "sha256": "285eede6f638adc9c352be7d66134611e5ea95044095a84de9867fb864e66eab"
+    }
+  ]
+}

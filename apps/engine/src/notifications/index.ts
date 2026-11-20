@@ -3,4 +3,9 @@ export * from "./admin/channels.ts";
 export * from "./admin/deliveries.ts";
 export * from "./admin/inbox.ts";
 export * from "./admin/rules.ts";
+export {
+  personalDelivery,
+  type StreamDeliveryHint,
+  streamDeliveryHint,
+} from "./personal-schedule.ts";
 export * from "./service.ts";

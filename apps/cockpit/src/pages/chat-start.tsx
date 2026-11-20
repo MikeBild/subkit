@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { apiCall } from "@/api/call";
+import { useSetup } from "@/api/setup";
 import { useSession } from "@/app/session";
 import { useAttention } from "@/app/use-attention";
 import {
@@ -26,10 +27,12 @@ import { useI18n } from "@/lib/i18n-context";
 import { useWorkflowCategories } from "@/queries/mention-sources";
 import {
   chatStarters,
+  MAX_STARTERS,
   retryStarterQuery,
   type StarterIcon,
   starterGates,
 } from "./chat-start-model";
+import { firstJobStarter } from "./setup-model";
 
 const ICONS: Record<StarterIcon, ReactNode> = {
   failing: <Activity />,
@@ -47,6 +50,7 @@ export function ChatStart({ onPick }: { onPick(prompt: string): void }) {
   const { t, locale } = useI18n();
   const permissions = useSession().permissions;
   const gates = starterGates(permissions);
+  const setup = useSetup().data;
   const attention = useAttention(permissions);
   const catalog = useWorkflowCategories(gates.workflows);
   const solutions = useQuery({
@@ -101,12 +105,14 @@ export function ChatStart({ onPick }: { onPick(prompt: string): void }) {
     },
     t,
   );
+  const firstJob = firstJobStarter(setup, t);
+  const shown = firstJob ? [firstJob, ...starters].slice(0, MAX_STARTERS) : starters;
   return (
     <div className="grid w-full content-start gap-3" data-testid="chat-starters">
       <p className="text-sm text-muted-foreground">{t("chat.start.label")}</p>
       <ChoiceCards
         compact
-        items={starters.map((starter) => ({
+        items={shown.map((starter) => ({
           icon: ICONS[starter.icon],
           title: starter.title,
           line: starter.line,

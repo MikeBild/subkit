@@ -197,6 +197,7 @@ export const taskGrants = pgTable(
       .$type<string[]>()
       .notNull()
       .default(sql`'[]'::jsonb`),
+    expiry_notified_at: timestamp("expiry_notified_at", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("task_grants_tenant_id_key").on(t.tenant_id, t.id),

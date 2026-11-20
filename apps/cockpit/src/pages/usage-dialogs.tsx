@@ -152,6 +152,7 @@ export function BudgetDialog({
       }
       onSubmit={canWrite ? () => save.mutate() : undefined}
       error={save.isError ? t("usage.budget.saveFailed") : null}
+      failure={save.error}
     >
       <p className="text-sm" data-testid="usage-budget-state">
         {budget.budgetTokens !== null && budget.usedTokens !== null
@@ -251,6 +252,7 @@ export function PriceDialog({
       }}
       onSubmit={() => save.mutate()}
       error={save.isError ? t("usage.price.saveFailed") : null}
+      failure={save.error}
     >
       <TextField
         id="usage-price-input"
@@ -326,6 +328,7 @@ export function CurrencyDialog({
       }}
       onSubmit={() => save.mutate()}
       error={save.isError ? t("usage.currency.saveFailed") : null}
+      failure={save.error}
     >
       <SelectField
         id="usage-currency"
@@ -407,6 +410,7 @@ export function ExportDialog({
       }}
       onSubmit={() => run.mutate()}
       error={run.isError ? t("usage.export.failed") : null}
+      failure={run.error}
     >
       <p className="text-sm">
         {t(unit === "hour" ? "usage.export.descriptionHour" : "usage.export.description", {

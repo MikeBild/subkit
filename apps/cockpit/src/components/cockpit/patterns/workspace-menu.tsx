@@ -69,7 +69,12 @@ export function WorkspaceMenu({
             setOpenMobile(false);
         }}
       >
-        <SidebarMenuButton asChild size="lg" className="min-w-0 flex-1" tooltip={tenantName}>
+        <SidebarMenuButton
+          asChild
+          size="lg"
+          className="relative min-w-0 flex-1"
+          tooltip={tenantName}
+        >
           <Link to="/" data-testid="cockpit-home-link" aria-label={tenantName}>
             {wordmark ?? (
               <>

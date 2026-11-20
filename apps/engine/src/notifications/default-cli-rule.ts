@@ -3,7 +3,7 @@ import type { Executor } from "../db/client.ts";
 import { notificationRules } from "../db/schema/index.ts";
 
 export const DEFAULT_CLI_INBOX_EVENT_PATTERN =
-  "execution.failed,connector.oauth.callback_failed,connector.auth_failed,connector.health_changed,patch.proposed,task_run.waiting,task_run.result_ready,task_run.failed";
+  "execution.failed,connector.oauth.callback_failed,connector.auth_failed,connector.health_changed,patch.proposed,task_run.waiting,task_run.result_ready,task_run.failed,schedule.auto_paused,workflow.approval_expiring,task.grant_expiring";
 
 export async function seedDefaultCliNotificationRule(
   tx: Executor,

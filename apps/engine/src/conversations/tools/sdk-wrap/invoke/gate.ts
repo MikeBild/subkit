@@ -7,6 +7,7 @@ import {
   gateFailureData,
   policyEnvironmentOf,
 } from "../../../core/tool-invoke.ts";
+import { coverForCall, settleCover } from "../../../instruction-cover/invoke.ts";
 import { findPriorSaveWorkflowApproval } from "../../../persistence/save-workflow-approval.ts";
 import type { ToolResult } from "../../index.ts";
 import { resolveConversationPrincipal } from "../../permission-gate.ts";
@@ -70,6 +71,7 @@ export async function runGate(env: InvokeEnv, call: InvokeCall): Promise<GateOut
     preparedGate.args,
     toolPolicies,
   );
+  const cover = await coverForCall(env, principal, preparedGate.args);
   const gate = await runConfirmGate({
     tool: inner.name,
     category: inner.category,
@@ -78,6 +80,8 @@ export async function runGate(env: InvokeEnv, call: InvokeCall): Promise<GateOut
     overrides: toolPolicies,
     permission_mode: permissionMode,
     prior_approval: priorApproval,
+    ...(cover.instruction_covered ? { instruction_covered: true } : {}),
+    ...(cover.rule_covered ? { rule_covered: true } : {}),
     ...(preparedGate.execution_data_transfer ? { execution_data_transfer: true } : {}),
     ...(coverage.covered ? { authority_covered: true } : {}),
     ...(taskRunMarkerOf(ctx) ? { task_run: true } : {}),
@@ -126,6 +130,9 @@ export async function runGate(env: InvokeEnv, call: InvokeCall): Promise<GateOut
       },
     });
   }
+
+  const settled = await settleCover(env, call, cover, gate);
+  if (settled) return { done: settled };
 
   if (gate.kind === "duplicate_pending") {
     const dupOutput = duplicatePendingOutput(pendingElicitationBeforeGate);

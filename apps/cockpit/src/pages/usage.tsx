@@ -35,6 +35,7 @@ import {
   Section,
   SectionHeading,
   SegmentedControl,
+  Skeleton,
   SummaryLine,
   TileSkeleton,
 } from "@/components/cockpit/patterns";
@@ -326,6 +327,11 @@ export function UsagePage() {
     () => (usage && personNow.data ? breakdown(personNow.data, "user", usage).rows : null),
     [usage, personNow.data],
   );
+  const settling =
+    flowNow.isPending ||
+    [workflowNow, workflowBefore, runsNow, runsBefore, lastSeven, personNow, status].some(
+      (query) => query.isLoading,
+    );
   const hints = useMemo(
     () =>
       usage
@@ -670,73 +676,77 @@ export function UsagePage() {
   );
 
   const tiles = flowNow.isPending ? (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-      {[0, 1, 2, 3, 4].map((index) => (
-        <TileSkeleton key={index} />
-      ))}
+    <div className="@container">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        {[0, 1, 2, 3, 4].map((index) => (
+          <TileSkeleton key={index} />
+        ))}
+      </div>
     </div>
   ) : (
-    <section
-      aria-label={t("usage.kpi.label")}
-      className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
-      data-testid="usage-kpis"
-    >
-      <KpiTile
-        label={`${t("resource.usage.cost")} · ${period}`}
-        testId="usage-kpi-cost"
-        prefix={
-          usage?.cost && usage.cost.unpricedCalls > 0 ? t("overview.operations.atLeast") : null
-        }
-        value={
-          usage?.cost
-            ? format.money(usage.cost.amount)
-            : usage && usage.calls > 0
-              ? undefined
-              : format.money(0)
-        }
-        note={usage && usage.calls > 0 && !usage.cost ? t("usage.kpi.costUnknown") : undefined}
-        detail={
-          usage?.cost && usage.cost.unpricedCalls > 0 ? (
-            t("overview.operations.unpricedCalls", {
-              calls: format.count(usage.cost.unpricedCalls),
-            })
-          ) : (
-            <TrendText trend={costTrend} window={bounds.window} testId="usage-cost-trend" />
-          )
-        }
-      />
-      <KpiTile
-        label={`${t("usage.calls")} · ${period}`}
-        testId="usage-kpi-calls"
-        value={format.count(usage?.calls ?? 0)}
-        detail={
-          usage && usage.failedCalls > 0 ? (
-            <button
-              type="button"
-              className="relative underline underline-offset-2 hover:text-foreground pointer-coarse:after:absolute pointer-coarse:after:-inset-y-3.5 pointer-coarse:after:-inset-x-1"
-              onClick={() => openSheet({ kind: "failed" })}
-              data-testid="usage-failed-open"
-            >
-              {t("overview.operations.failedCount", { count: format.count(usage.failedCalls) })}
-            </button>
-          ) : (
-            <TrendText trend={callsTrend} window={bounds.window} />
-          )
-        }
-      />
-      {budgetTile}
-      <KpiTile
-        label={`${t("usage.kpi.saved")} · ${period}`}
-        testId="usage-kpi-cache"
-        value={format.money(usage?.cacheSavings ?? 0)}
-      />
-      <PromptCacheTile
-        read={promptCache.read}
-        pending={promptCache.pending}
-        period={period}
-        onRetry={promptCache.retry}
-      />
-    </section>
+    <div className="@container">
+      <section
+        aria-label={t("usage.kpi.label")}
+        className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
+        data-testid="usage-kpis"
+      >
+        <KpiTile
+          label={`${t("resource.usage.cost")} · ${period}`}
+          testId="usage-kpi-cost"
+          prefix={
+            usage?.cost && usage.cost.unpricedCalls > 0 ? t("overview.operations.atLeast") : null
+          }
+          value={
+            usage?.cost
+              ? format.money(usage.cost.amount)
+              : usage && usage.calls > 0
+                ? undefined
+                : format.money(0)
+          }
+          note={usage && usage.calls > 0 && !usage.cost ? t("usage.kpi.costUnknown") : undefined}
+          detail={
+            usage?.cost && usage.cost.unpricedCalls > 0 ? (
+              t("overview.operations.unpricedCalls", {
+                calls: format.count(usage.cost.unpricedCalls),
+              })
+            ) : (
+              <TrendText trend={costTrend} window={bounds.window} testId="usage-cost-trend" />
+            )
+          }
+        />
+        <KpiTile
+          label={`${t("usage.calls")} · ${period}`}
+          testId="usage-kpi-calls"
+          value={format.count(usage?.calls ?? 0)}
+          detail={
+            usage && usage.failedCalls > 0 ? (
+              <button
+                type="button"
+                className="relative underline underline-offset-2 hover:text-foreground pointer-coarse:after:absolute pointer-coarse:after:-inset-y-3.5 pointer-coarse:after:-inset-x-1"
+                onClick={() => openSheet({ kind: "failed" })}
+                data-testid="usage-failed-open"
+              >
+                {t("overview.operations.failedCount", { count: format.count(usage.failedCalls) })}
+              </button>
+            ) : (
+              <TrendText trend={callsTrend} window={bounds.window} />
+            )
+          }
+        />
+        {budgetTile}
+        <KpiTile
+          label={`${t("usage.kpi.saved")} · ${period}`}
+          testId="usage-kpi-cache"
+          value={format.money(usage?.cacheSavings ?? 0)}
+        />
+        <PromptCacheTile
+          read={promptCache.read}
+          pending={promptCache.pending}
+          period={period}
+          onRetry={promptCache.retry}
+        />
+      </section>
+    </div>
   );
 
   const hintText = (hint: UsageHint): string => {
@@ -1152,7 +1162,24 @@ export function UsagePage() {
           {summary}
           {tiles}
         </div>
-        {empty ? null : (
+        {empty ? null : settling ? (
+          <div
+            className="flex flex-col gap-8"
+            role="status"
+            aria-busy="true"
+            aria-label={t("common.loading")}
+            data-testid="usage-body-loading"
+          >
+            <div className="flex flex-col gap-3">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-28 w-full" />
+            </div>
+            <div className="flex flex-col gap-3">
+              <Skeleton className="h-8 w-48" />
+              <Skeleton className="h-80 w-full" />
+            </div>
+          </div>
+        ) : (
           <>
             {hintSection}
             {chartSection}

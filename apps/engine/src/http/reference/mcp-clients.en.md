@@ -140,7 +140,7 @@ Writing always needs a person, in two places:
 
 - **Writes inside a workflow:** A workflow writes for real only after a person approves it in the Cockpit. Without approval the run is a dry run: writes are held back and nothing is sent.
   A new version needs no new approval as long as it touches no more systems, addresses or write permissions than the approved one. If it reaches further, SubKit asks again and names the difference.
-  In chat, the mode **Asks first** asks before every write unless there is an approval that covers exactly this run: the same version, the same environment, still valid and with unchanged effects. **Plan only** always asks. So does a run that passes on data from an earlier run, and a conversation you told to confirm every start.
+  In chat, the mode **Ask** asks before every write unless there is an approval that covers exactly this run: the same version, the same environment, still valid and with unchanged effects. **Plan only** always asks. So does a run that passes on data from an earlier run, and a conversation you told to confirm every start.
 - **Write tools in the client:** A write tool pauses and returns a link.
   Open it, sign in, check what will happen, and select **Allow once** or **Decline**.
   Only then can the client finish the call with `confirm_tool_call`.

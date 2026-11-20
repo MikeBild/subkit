@@ -73,7 +73,8 @@ export const resourceEn = {
   "resource.noMatches": "No matching records",
   "resource.broaderSearch": "Try a broader search.",
   "resource.loadFailed": "Could not load {resource}",
-  "resource.loadFailedDescription": "Refresh the page or try again in a moment.",
+  "resource.loadFailedDescription":
+    "Nothing was changed. Refresh the page or try again in a moment.",
   "detail.loadFailed": "Could not load this record",
   "resource.workflows.summary.one": "1 workflow",
   "resource.workflows.summary.other": "{count} workflows",
@@ -218,7 +219,8 @@ export const resourceDe: Record<keyof typeof resourceEn, string> = {
   "resource.noMatches": "Keine passenden Datensätze",
   "resource.broaderSearch": "Versuch eine allgemeinere Suche.",
   "resource.loadFailed": "{resource} konnten nicht geladen werden",
-  "resource.loadFailedDescription": "Lad die Seite neu oder versuch es in Kürze erneut.",
+  "resource.loadFailedDescription":
+    "Es wurde nichts geändert. Lad die Seite neu oder versuch es in Kürze erneut.",
   "detail.loadFailed": "Dieser Datensatz konnte nicht geladen werden",
   "resource.workflows.summary.one": "1 Workflow",
   "resource.workflows.summary.other": "{count} Workflows",

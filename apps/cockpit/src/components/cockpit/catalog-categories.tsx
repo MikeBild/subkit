@@ -15,6 +15,7 @@ import {
   SummaryLine,
   SummaryParts,
 } from "@/components/cockpit/patterns";
+import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
@@ -113,8 +114,8 @@ export function CatalogCategories({ kind }: { kind: CatalogCategoryKind }) {
     onError: (error) => {
       if (error instanceof ApiError && error.status === 409) {
         setConflict(true);
-        toast.error(t("catalogCategories.conflict"));
-      } else toast.error(t("detail.saveFailed"));
+        reportFailure(t("catalogCategories.conflict"), error);
+      } else reportFailure(t("detail.saveFailed"), error);
     },
   });
   return (
@@ -305,7 +306,7 @@ export function CatalogCategories({ kind }: { kind: CatalogCategoryKind }) {
               onClick={async () => {
                 const refreshed = await query.refetch();
                 if (refreshed.error) {
-                  toast.error(t("detail.saveFailed"));
+                  reportFailure(t("detail.saveFailed"));
                   return;
                 }
                 const latest = refreshed.data?.categories.find(
@@ -371,11 +372,13 @@ export function CatalogSummary({
   kind,
   text,
   help,
+  loading,
   testId,
 }: {
   kind: CatalogKind;
   text: ReactNode;
   help?: string;
+  loading?: boolean;
   testId?: string;
 }) {
   const { t } = useI18n();
@@ -396,6 +399,7 @@ export function CatalogSummary({
         />
       }
       help={help}
+      loading={loading}
       testId={testId}
     />
   );

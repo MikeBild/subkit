@@ -64,6 +64,41 @@
       "when": 1795166365608,
       "tag": "0008_task_run_progress_marks",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795177899818,
+      "tag": "0009_schedule_backoff_occurrences",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795179203690,
+      "tag": "0010_desktop_login",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795184183341,
+      "tag": "0011_setup_and_approval_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795190673050,
+      "tag": "0012_rule_limits_and_quiet_hours",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795195385262,
+      "tag": "0013_rule_expiry_and_gentle_auto_pause",
+      "breakpoints": true
     }
   ]
 }

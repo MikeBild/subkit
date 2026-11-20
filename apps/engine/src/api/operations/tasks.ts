@@ -4,6 +4,7 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { ToolResult } from "../../conversations/tools/index.ts";
 import { HttpError } from "../../http/errors.ts";
 import { conversationLocale } from "../../http/routes/conversations/locale.ts";
+import { personalDefaultEnvironment, RECOMMENDED_SETUP } from "../../identity/setup-preferences.ts";
 import {
   countTasks,
   createTask,
@@ -14,8 +15,8 @@ import {
   pauseTask,
   resumeTask,
   type Task,
-  type TaskCreateInput,
   TaskCreateInputSchema,
+  type TaskCreateRequest,
   TaskLifecycleSchema,
   TaskRunSchema,
   TaskSchema,
@@ -339,7 +340,7 @@ export const getTaskOperation = defineOperation<TaskIdInput, TaskView>({
   },
 });
 
-export const createTaskOperation = defineOperation<TaskCreateInput, Task>({
+export const createTaskOperation = defineOperation<TaskCreateRequest, Task>({
   id: "task.create",
   summary: "Create a task owned by the calling person",
   permission: "task:write",
@@ -349,8 +350,17 @@ export const createTaskOperation = defineOperation<TaskCreateInput, Task>({
     const principal = taskPrincipal(scope);
     if (isRejection(principal)) return principal;
     try {
+      const environment =
+        input.environment ??
+        (await personalDefaultEnvironment(scope.db, scope.tenant_id, principal)) ??
+        RECOMMENDED_SETUP.default_environment;
       return await createTask(
-        { tenant_id: scope.tenant_id, principal, input, locale: taskLocale(scope) },
+        {
+          tenant_id: scope.tenant_id,
+          principal,
+          input: { ...input, environment },
+          locale: taskLocale(scope),
+        },
         scope.db,
       );
     } catch (error) {
@@ -365,7 +375,7 @@ export const createTaskOperation = defineOperation<TaskCreateInput, Task>({
     response: TaskSchema,
     success: { status: 201, description: "Created" },
     errors: { 400: TaskFailures[400], 403: TaskFailures[403] },
-    toInput: ({ json }) => json as TaskCreateInput,
+    toInput: ({ json }) => json as TaskCreateRequest,
     toBody: (task) => task,
   },
 });

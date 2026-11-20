@@ -16,6 +16,7 @@ import {
   Section,
   StatusBadge,
 } from "@/components/cockpit/patterns";
+import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 import { skillTargetName } from "@/lib/name-index";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
@@ -44,7 +45,7 @@ export function SkillProposalActions({
       toast.success(t("skills.accepted", { name: candidate.title }));
       onDecided();
     },
-    onError: () => toast.error(t("common.actionFailed")),
+    onError: (failure) => reportFailure(t("common.actionFailed"), failure),
   });
   const discard = useMutation({
     mutationFn: () => rejectSkillCandidate(candidate.id, t("skills.rejectReason")),
@@ -53,7 +54,7 @@ export function SkillProposalActions({
       setDiscarding(false);
       onDecided();
     },
-    onError: () => toast.error(t("common.actionFailed")),
+    onError: (failure) => reportFailure(t("common.actionFailed"), failure),
   });
   if (!permissions.includes("skill:write") || !candidate.reviewable || !candidate.review_digest)
     return null;

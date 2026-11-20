@@ -187,6 +187,51 @@ test("run summaries use the last persisted step duration", () => {
   expect(classifyRunResult(step, { ...run("failed"), steps }).duration_ms).toBe(37);
 });
 
+test("a failed run keeps the class it recorded instead of re-deriving it from the code", () => {
+  const error = { code: "connector_not_found", message: "gone", error_class: "rate_limited" };
+  for (const status of ["failed", "succeeded", "running", "cancelled", ""])
+    expect(classifyPersistedFailure({ status, error })).toEqual({
+      classification: "rate_limited",
+      error_code: "connector_not_found",
+      message: "gone",
+      guidance: null,
+    });
+  expect(
+    classifyPersistedFailure({ status: "failed", error: { error_class: "authority_mismatch" } }),
+  ).toEqual({
+    classification: "authority_mismatch",
+    error_code: null,
+    message: "",
+    guidance: null,
+  });
+});
+
+test("a recorded class never overrides a stopped run or an unknown class", () => {
+  const recorded = { code: "connector_not_found", message: "gone", error_class: "rate_limited" };
+  for (const [status, expected] of [
+    ["timed_out", "timeout"],
+    ["aborted", "aborted"],
+    ["skipped", "aborted"],
+  ] as const)
+    expect(classifyPersistedFailure({ status, error: recorded }).classification).toBe(expected);
+  for (const error_class of [
+    "ok",
+    "bogus",
+    "",
+    "RATE_LIMITED",
+    12,
+    null,
+    undefined,
+    ["rate_limited"],
+  ])
+    expect(
+      classifyPersistedFailure({
+        status: "failed",
+        error: { code: "connector_not_found", message: "gone", error_class },
+      }).classification,
+    ).toBe("connector_missing");
+});
+
 test("persisted errors reject callable records and ignore metadata without an error code", () => {
   const callable = Object.assign(() => undefined, {
     code: "connector_not_found",

@@ -18,6 +18,7 @@ import { CATALOG_CREATED_BY_FILTER } from "@/components/cockpit/catalog-origin-m
 import { connectorService } from "@/components/cockpit/connector-names";
 import { ConnectorOnboarding } from "@/components/cockpit/connector-onboarding";
 import { CreateAction } from "@/components/cockpit/create-choice";
+import { isConnectorEnvironment } from "@/components/cockpit/environment-chip";
 import { usePackageActions } from "@/components/cockpit/package-dialogs";
 import {
   ActionMenu,
@@ -319,6 +320,7 @@ function catalogColumns(
           name={stringField(row, "display_name") ?? ""}
           record={row}
           hideCategory={relations.hideCategory}
+          environment={isConnectorEnvironment(row.environment) ? row.environment : null}
           icon={
             <ServiceIcon
               tile="md"
@@ -619,8 +621,9 @@ export function CatalogPage({
         <ConnectorOnboarding canChat={permissions.includes("conversation:write")} />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
-          {rows.length > 0 || hasActiveFilters ? (
+          {query.isPending || rows.length > 0 || hasActiveFilters ? (
             <CatalogSummary
+              loading={query.isPending}
               text={catalogCountLine(t, resource, total)}
               kind={resource === "workflows" ? "workflow" : "connector"}
               testId="catalog-summary"
@@ -661,6 +664,7 @@ export function CatalogPage({
                   usage={categories}
                   value={state.category}
                   onChange={(category) => setState({ category })}
+                  loading={query.isPending}
                 />
               </>
             }

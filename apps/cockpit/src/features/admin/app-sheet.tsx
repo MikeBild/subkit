@@ -16,6 +16,7 @@ import {
   Section,
   StatusBadge,
 } from "@/components/cockpit/patterns";
+import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 import {
   APP_READINESS_LABEL,
@@ -479,7 +480,7 @@ export function AppSheet({ appId, onClose }: { appId: string | null; onClose(): 
                     t(outcome === "active" ? "apps.save.removed" : "apps.save.restartRequired"),
                   );
                 })
-                .catch((error) => toast.error(appSaveError(error, t)));
+                .catch((error) => reportFailure(appSaveError(error, t), error));
             }}
             testId="apps-remove-confirm"
           />

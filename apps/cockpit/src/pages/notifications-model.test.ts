@@ -87,6 +87,9 @@ describe("rules", () => {
       "Aufgabe wartet auf dich",
       "Ergebnis einer Aufgabe liegt vor",
       "Aufgabe fehlgeschlagen",
+      "Zeitplan nach wiederholten Fehlern automatisch pausiert",
+      "Freigabe endet in 3 Tagen",
+      "Dauererlaubnis endet in 3 Tagen",
     ]);
     expect(labels.every((label) => !label.machine)).toBe(true);
   });

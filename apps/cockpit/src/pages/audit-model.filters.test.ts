@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { type TranslationKey, translate } from "@/lib/i18n";
+import { UNNAMED_AUDIT_ACTIONS } from "@/pages/audit-action-backlog";
 import {
+  ACTION_KEYS,
+  auditActionLabel,
   auditActionsFromUrl,
   auditActorName,
   auditCountKey,
@@ -316,6 +319,61 @@ describe("the engine's audited resource types", () => {
       }
     });
   }
+});
+
+function engineAuditActions(): string[] {
+  const source = readFileSync(join(ENGINE_SRC, "audit/types.ts"), "utf8");
+  const start = source.indexOf("export const AuditAction");
+  const body = source.slice(start, source.indexOf("} as const", start));
+  return [...body.matchAll(/^\s+[A-Z0-9_]+:\s*"([a-z0-9_.:-]+)"/gm)]
+    .map((match) => match[1] ?? "")
+    .sort();
+}
+
+const ENGINE_AUDIT_ACTIONS = engineAuditActions();
+
+describe("the engine's audit actions", () => {
+  test("are read (a moved file must not turn this into a vacuous pass)", () => {
+    expect(ENGINE_AUDIT_ACTIONS.length).toBeGreaterThan(300);
+    expect(ENGINE_AUDIT_ACTIONS).toContain("desktop_login.completed");
+    expect(ENGINE_AUDIT_ACTIONS).toContain("session.issued");
+  });
+
+  test("every action has a name, except the recorded backlog of older actions", () => {
+    const unnamed = ENGINE_AUDIT_ACTIONS.filter((action) => !(action in ACTION_KEYS));
+    expect(unnamed).toEqual([...UNNAMED_AUDIT_ACTIONS]);
+  });
+
+  test("the backlog only shrinks: nothing in it is named, unknown or listed twice", () => {
+    expect(UNNAMED_AUDIT_ACTIONS.filter((action) => action in ACTION_KEYS)).toEqual([]);
+    expect(
+      UNNAMED_AUDIT_ACTIONS.filter((action) => !ENGINE_AUDIT_ACTIONS.includes(action)),
+    ).toEqual([]);
+    expect(new Set(UNNAMED_AUDIT_ACTIONS).size).toBe(UNNAMED_AUDIT_ACTIONS.length);
+  });
+
+  for (const locale of ["de", "en"] as const) {
+    test(`every named action has a ${locale} label that is not its machine name`, () => {
+      for (const [action, key] of Object.entries(ACTION_KEYS)) {
+        const text = translate(locale, key);
+        expect(text.length, action).toBeGreaterThan(2);
+        expect(text, action).not.toBe(action);
+      }
+    });
+  }
+
+  test("signing a desktop device in and out reads in plain words", () => {
+    const de = (action: string) => {
+      const label = auditActionLabel(action);
+      return label.kind === "named" ? translate("de", label.key) : null;
+    };
+    expect(de("desktop_login.code_issued")).toBe("Anmeldung der Desktop-App im Browser bestätigt");
+    expect(de("desktop_login.denied")).toBe("Anmeldung der Desktop-App abgelehnt");
+    expect(de("desktop_login.completed")).toBe("Desktop-App angemeldet");
+    expect(de("cockpit_installation.revoked")).toBe(
+      "Installierte App oder Desktop-Gerät abgemeldet",
+    );
+  });
 });
 
 describe("the additional details of one record", () => {

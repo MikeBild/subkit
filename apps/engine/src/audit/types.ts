@@ -23,6 +23,7 @@ export const AuditAction = {
   USER_LOGGED_OUT: "user.logged_out",
   USER_ROLE_CHANGED: "user.role_changed",
   USER_PROFILE_UPDATED: "user.profile_updated",
+  USER_SETUP_UPDATED: "user.setup_updated",
   USER_DELETED: "user.deleted",
   INVITE_REDEEMED: "user_invite.redeemed",
   INVITE_REVOKED: "user_invite.revoked",
@@ -33,6 +34,9 @@ export const AuditAction = {
 
   COCKPIT_INSTALLATION_CREATED: "cockpit_installation.created",
   COCKPIT_INSTALLATION_REVOKED: "cockpit_installation.revoked",
+  DESKTOP_LOGIN_CODE_ISSUED: "desktop_login.code_issued",
+  DESKTOP_LOGIN_DENIED: "desktop_login.denied",
+  DESKTOP_LOGIN_COMPLETED: "desktop_login.completed",
   COCKPIT_PUSH_KEY_PREPARED: "cockpit_push.key_prepared",
   COCKPIT_PUSH_SUBSCRIPTION_UPSERTED: "cockpit_push.subscription_upserted",
   COCKPIT_PUSH_SUBSCRIPTION_REMOVED: "cockpit_push.subscription_removed",
@@ -265,6 +269,8 @@ export const AuditAction = {
   INTAKE_PROPOSAL_CONFIRMED: "intake_proposal.confirmed",
   INTAKE_PROPOSAL_REJECTED: "intake_proposal.rejected",
 
+  FEEDBACK_SUBMITTED: "feedback.submitted",
+
   DISCOVERY_RUN_CREATED: "discovery.run_created",
   DISCOVERY_RUN_COMPLETED: "discovery.run_completed",
   DISCOVERY_RUN_FAILED: "discovery.run_failed",
@@ -323,6 +329,10 @@ export const AuditAction = {
   TOOL_POLICY_CONFIRMATION_SKIPPED: "tool_policy.confirmation_skipped",
   TOOL_POLICY_CONFIRM_COLLAPSED_MCP: "tool_policy.confirm_collapsed_mcp",
   TOOL_POLICY_CHANGED: "tool_policy.changed",
+  TOOL_APPROVAL_RULE_CREATED: "tool_approval_rule.created",
+  TOOL_APPROVAL_RULE_DISMISSED: "tool_approval_rule.dismissed",
+  TOOL_APPROVAL_RULE_REVOKED: "tool_approval_rule.revoked",
+  TOOL_APPROVAL_RULE_RENEWED: "tool_approval_rule.renewed",
 
   SETTINGS_CHANGED: "settings.changed",
   SETTINGS_REVISION_SAVED: "settings.revision_saved",

@@ -537,7 +537,7 @@
     },
     {
       "file": "apps/engine/src/execution/core/classify.ts",
-      "source_sha256": "f3073952620107ae3cc45e86676f716ce69b53cec74649e01869058ec22be80e",
+      "source_sha256": "e555b1bd0a552f17ebab081b1a546e4e08ecc8a2c07dfad0a043522a463bd187",
       "location": {
         "end": {
           "column": 97,
@@ -554,11 +554,11 @@
       "status": "Survived",
       "statusReason": "",
       "reason": "This literal is reached only after timed_out and aborted have selected their own preceding branches. For every remaining run status, original passes 'failed' and the mutation passes empty status to classifyFailure; neither matches aborted/skipped/timed_out, so both traverse the identical code/message classification path.",
-      "independent_review": "Independently reviewed by effect_manifest_contracts and root against the exact source and every downstream status discriminator, native string Set membership and message regex. The synthetic fallback is not reached by the preceding special status branches. Raw reports remain unchanged. Comparator mutant is explicitly not covered."
+      "independent_review": "Independently traced classifyRunResult through classifyStepResult into classifyFailure for every RunResult status other than succeeded, timed_out and aborted. The synthetic status is only compared against aborted, skipped and timed_out, and both 'failed' and the empty string miss all three; it is never returned or shown in the summary. Mutant replayed against 20,412 status/code/message/reason combinations through the consumers in dry-run-step.ts and dry-run-workflow/report.ts with no differences."
     },
     {
       "file": "apps/engine/src/execution/core/classify.ts",
-      "source_sha256": "f3073952620107ae3cc45e86676f716ce69b53cec74649e01869058ec22be80e",
+      "source_sha256": "e555b1bd0a552f17ebab081b1a546e4e08ecc8a2c07dfad0a043522a463bd187",
       "location": {
         "end": {
           "column": 22,
@@ -575,11 +575,11 @@
       "status": "Survived",
       "statusReason": "",
       "reason": "TRANSIENT_RUN_CODES is a native Set<string>. For a missing error code, Set.has(undefined) is false; for every present string, both sides evaluate the same membership predicate.",
-      "independent_review": "Independently reviewed by effect_manifest_contracts and root against the exact source and every downstream status discriminator, native string Set membership and message regex. The synthetic fallback is not reached by the preceding special status branches. Raw reports remain unchanged. Comparator mutant is explicitly not covered."
+      "independent_review": "Independently traced isTransientRunResult, which dry-run-step.ts uses to decide on a retry. TRANSIENT_RUN_CODES is a native Set of five string codes, so has(undefined) and has(null) are false exactly like the removed guard. Replayed with undefined, null, empty, non-string and every transient code across 7 statuses with no differences."
     },
     {
       "file": "apps/engine/src/execution/core/classify.ts",
-      "source_sha256": "f3073952620107ae3cc45e86676f716ce69b53cec74649e01869058ec22be80e",
+      "source_sha256": "e555b1bd0a552f17ebab081b1a546e4e08ecc8a2c07dfad0a043522a463bd187",
       "location": {
         "end": {
           "column": 40,
@@ -596,11 +596,11 @@
       "status": "Survived",
       "statusReason": "",
       "reason": "These are nullish fallbacks only. The sentinel is neither a recognized error code/prefix nor any rate-limit, placeholder, auth, timeout, or abort regex match; it therefore reaches the same driver_error default as the empty fallback.",
-      "independent_review": "Independently reviewed by effect_manifest_contracts and root against the exact source and every downstream status discriminator, native string Set membership and message regex. The synthetic fallback is not reached by the preceding special status branches. Raw reports remain unchanged. Comparator mutant is explicitly not covered."
+      "independent_review": "Independently traced classifyFailure for a missing error or error.code. The sentinel code matches none of the exact codes, the execution_authority_ and pagination_ prefixes, RATE_LIMIT_CODES or placeholder_unresolved, and the remaining checks read only the message, so the result is the same driver_error. Replayed directly and through classifyPersistedFailure and classifyRunFailure with nullish codes, no differences."
     },
     {
       "file": "apps/engine/src/execution/core/classify.ts",
-      "source_sha256": "f3073952620107ae3cc45e86676f716ce69b53cec74649e01869058ec22be80e",
+      "source_sha256": "e555b1bd0a552f17ebab081b1a546e4e08ecc8a2c07dfad0a043522a463bd187",
       "location": {
         "end": {
           "column": 47,
@@ -617,53 +617,11 @@
       "status": "Survived",
       "statusReason": "",
       "reason": "These are nullish fallbacks only. The sentinel is neither a recognized error code/prefix nor any rate-limit, placeholder, auth, timeout, or abort regex match; it therefore reaches the same driver_error default as the empty fallback.",
-      "independent_review": "Independently reviewed by effect_manifest_contracts and root against the exact source and every downstream status discriminator, native string Set membership and message regex. The synthetic fallback is not reached by the preceding special status branches. Raw reports remain unchanged. Comparator mutant is explicitly not covered."
+      "independent_review": "Independently traced the nullish message fallback in classifyFailure. Lowercased, the sentinel matches none of the rate-limit, placeholder, auth (including \\bauth\\b), timeout/exceeded or abort patterns, so the result equals that of the empty message, and the message never leaves the function. Replayed with undefined and null messages across all code branches, no differences."
     },
     {
       "file": "apps/engine/src/execution/core/classify.ts",
-      "source_sha256": "f3073952620107ae3cc45e86676f716ce69b53cec74649e01869058ec22be80e",
-      "location": {
-        "end": {
-          "column": 99,
-          "line": 157
-        },
-        "start": {
-          "column": 5,
-          "line": 157
-        }
-      },
-      "mutatorName": "ConditionalExpression",
-      "replacement": "true",
-      "original": "failure.status === \"timed_out\" || failure.status === \"aborted\" || failure.status === \"skipped\"",
-      "status": "Survived",
-      "statusReason": "",
-      "reason": "For timed_out/aborted/skipped, original and replacement pass the same status. Every other persisted status is mapped to failed by the original; classifyFailure maps any non-special status through the same failure-code/message decision tree, so failed and the mutant value have the same result.",
-      "independent_review": "Independently reviewed by effect_manifest_contracts and root against the exact source and every downstream status discriminator, native string Set membership and message regex. The synthetic fallback is not reached by the preceding special status branches. Raw reports remain unchanged. Comparator mutant is explicitly not covered."
-    },
-    {
-      "file": "apps/engine/src/execution/core/classify.ts",
-      "source_sha256": "f3073952620107ae3cc45e86676f716ce69b53cec74649e01869058ec22be80e",
-      "location": {
-        "end": {
-          "column": 17,
-          "line": 159
-        },
-        "start": {
-          "column": 9,
-          "line": 159
-        }
-      },
-      "mutatorName": "StringLiteral",
-      "replacement": "\"\"",
-      "original": "\"failed\"",
-      "status": "Survived",
-      "statusReason": "",
-      "reason": "For timed_out/aborted/skipped, original and replacement pass the same status. Every other persisted status is mapped to failed by the original; classifyFailure maps any non-special status through the same failure-code/message decision tree, so failed and the mutant value have the same result.",
-      "independent_review": "Independently reviewed by effect_manifest_contracts and root against the exact source and every downstream status discriminator, native string Set membership and message regex. The synthetic fallback is not reached by the preceding special status branches. Raw reports remain unchanged. Comparator mutant is explicitly not covered."
-    },
-    {
-      "file": "apps/engine/src/execution/core/classify.ts",
-      "source_sha256": "f3073952620107ae3cc45e86676f716ce69b53cec74649e01869058ec22be80e",
+      "source_sha256": "e555b1bd0a552f17ebab081b1a546e4e08ecc8a2c07dfad0a043522a463bd187",
       "location": {
         "end": {
           "column": 48,
@@ -680,7 +638,7 @@
       "status": "Survived",
       "statusReason": "",
       "reason": "The only consumer is reportRefusalReason, whose KNOWN_REFUSALS native Set<unknown> has only string members. Passing any non-string reason instead of omitting it leaves membership false; strings are passed unchanged.",
-      "independent_review": "Independently reviewed by effect_manifest_contracts and root against the exact source and every downstream status discriminator, native string Set membership and message regex. The synthetic fallback is not reached by the preceding special status branches. Raw reports remain unchanged. Comparator mutant is explicitly not covered."
+      "independent_review": "Independently traced classifyPersistedFailure, also reached through classifyRunFailure and failure-pattern.ts. The error object it builds is read only by reportRefusalReason for the code execution_authority_changed, where KNOWN_REFUSALS.has is false for any non-string value, and the object itself is never returned. Replayed with undefined, null, number, object, array and boolean reasons, no differences."
     },
     {
       "file": "apps/engine/src/execution/core/outcome.ts",
@@ -1797,14 +1755,14 @@
     },
     {
       "file": "apps/engine/src/tasks/core/grant.ts",
-      "source_sha256": "006d157c683c05b00ac5dcf8c6460bdadf9fb4c30eb2b7d517669b698fcab51e",
+      "source_sha256": "23b2ff452266ddff78edc910e4f44bcbf127b2f90068b4dee322d7803298011c",
       "location": {
         "start": {
-          "line": 60,
+          "line": 58,
           "column": 5
         },
         "end": {
-          "line": 61,
+          "line": 59,
           "column": 23
         }
       },
@@ -1813,19 +1771,19 @@
       "original": "grant.max_runs !== null &&\n    remaining !== null",
       "statusReason": "",
       "reason": "remainingRuns returns null exactly when max_runs is null, so the two guards are always both true or both false and || equals && here. When both are null the remaining conjunct is null < null * share, which JavaScript evaluates as 0 < 0, false, as in the original.",
-      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. It emulated the mutant against the real remainingRuns over a 14x14 grid of max_runs and reserved_runs (null, undefined, NaN, negatives, Infinity, strings) and found zero differences.",
+      "independent_review": "Independently traced isTaskGrantExpiringSoon (exported through tasks/index.ts) and remainingRuns in workflows/core/authority.ts, which returns null exactly when max_runs is null, so max_runs !== null and remaining !== null are always both true or both false. Dropping either guard or turning && into || lets a null max_runs reach null < null * 0.1, which is false. Replayed in Stryker's parenthesised form over 14x14 max_runs/reserved_runs values (null, undefined, NaN, negatives, Infinity, strings) x 3 valid_until values, no differences.",
       "status": "Survived"
     },
     {
       "file": "apps/engine/src/tasks/core/grant.ts",
-      "source_sha256": "006d157c683c05b00ac5dcf8c6460bdadf9fb4c30eb2b7d517669b698fcab51e",
+      "source_sha256": "23b2ff452266ddff78edc910e4f44bcbf127b2f90068b4dee322d7803298011c",
       "location": {
         "start": {
-          "line": 60,
+          "line": 58,
           "column": 5
         },
         "end": {
-          "line": 61,
+          "line": 59,
           "column": 23
         }
       },
@@ -1834,19 +1792,19 @@
       "original": "grant.max_runs !== null &&\n    remaining !== null",
       "statusReason": "",
       "reason": "Both guards only narrow types. For a null max_runs remainingRuns is null as well and the remaining conjunct null < null * share is 0 < 0, false, the same result the guards give. For a non-null max_runs both guards are already true.",
-      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. It emulated the mutant against the real remainingRuns over a 14x14 grid of max_runs and reserved_runs (null, undefined, NaN, negatives, Infinity, strings) and found zero differences.",
+      "independent_review": "Independently traced isTaskGrantExpiringSoon (exported through tasks/index.ts) and remainingRuns in workflows/core/authority.ts, which returns null exactly when max_runs is null, so max_runs !== null and remaining !== null are always both true or both false. Dropping either guard or turning && into || lets a null max_runs reach null < null * 0.1, which is false. Replayed in Stryker's parenthesised form over 14x14 max_runs/reserved_runs values (null, undefined, NaN, negatives, Infinity, strings) x 3 valid_until values, no differences.",
       "status": "Survived"
     },
     {
       "file": "apps/engine/src/tasks/core/grant.ts",
-      "source_sha256": "006d157c683c05b00ac5dcf8c6460bdadf9fb4c30eb2b7d517669b698fcab51e",
+      "source_sha256": "23b2ff452266ddff78edc910e4f44bcbf127b2f90068b4dee322d7803298011c",
       "location": {
         "start": {
-          "line": 61,
+          "line": 59,
           "column": 5
         },
         "end": {
-          "line": 61,
+          "line": 59,
           "column": 23
         }
       },
@@ -1855,19 +1813,19 @@
       "original": "remaining !== null",
       "statusReason": "",
       "reason": "The preceding conjunct grant.max_runs !== null already holds, and remainingRuns returns null only for a null max_runs, so remaining !== null is always true at this point.",
-      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. It emulated the mutant against the real remainingRuns over a 14x14 grid of max_runs and reserved_runs (null, undefined, NaN, negatives, Infinity, strings) and found zero differences.",
+      "independent_review": "Independently traced isTaskGrantExpiringSoon (exported through tasks/index.ts) and remainingRuns in workflows/core/authority.ts, which returns null exactly when max_runs is null, so max_runs !== null and remaining !== null are always both true or both false. Dropping either guard or turning && into || lets a null max_runs reach null < null * 0.1, which is false. Replayed in Stryker's parenthesised form over 14x14 max_runs/reserved_runs values (null, undefined, NaN, negatives, Infinity, strings) x 3 valid_until values, no differences.",
       "status": "Survived"
     },
     {
       "file": "apps/engine/src/tasks/core/grant.ts",
-      "source_sha256": "006d157c683c05b00ac5dcf8c6460bdadf9fb4c30eb2b7d517669b698fcab51e",
+      "source_sha256": "23b2ff452266ddff78edc910e4f44bcbf127b2f90068b4dee322d7803298011c",
       "location": {
         "start": {
-          "line": 60,
+          "line": 58,
           "column": 5
         },
         "end": {
-          "line": 60,
+          "line": 58,
           "column": 28
         }
       },
@@ -1876,7 +1834,7 @@
       "original": "grant.max_runs !== null",
       "statusReason": "",
       "reason": "With the guard removed a null max_runs still reaches remaining !== null, which is false because remainingRuns returns null exactly for a null max_runs. For a non-null max_runs the guard was true.",
-      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. It emulated the mutant against the real remainingRuns over a 14x14 grid of max_runs and reserved_runs (null, undefined, NaN, negatives, Infinity, strings) and found zero differences.",
+      "independent_review": "Independently traced isTaskGrantExpiringSoon (exported through tasks/index.ts) and remainingRuns in workflows/core/authority.ts, which returns null exactly when max_runs is null, so max_runs !== null and remaining !== null are always both true or both false. Dropping either guard or turning && into || lets a null max_runs reach null < null * 0.1, which is false. Replayed in Stryker's parenthesised form over 14x14 max_runs/reserved_runs values (null, undefined, NaN, negatives, Infinity, strings) x 3 valid_until values, no differences.",
       "status": "Survived"
     },
     {

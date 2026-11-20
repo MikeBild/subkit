@@ -1,0 +1,58 @@
+export const pwaEn = {
+  "pwa.install.menu": "Install SubKit",
+  "pwa.install.guideTitle": "Install SubKit as an app",
+  "pwa.install.guide.ios":
+    "In Safari, tap “Share” and then “Add to Home Screen”. SubKit then opens as its own app.",
+  "pwa.install.guide.safari":
+    "In Safari, open the “File” menu and choose “Add to Dock”. SubKit then opens as its own app.",
+  "pwa.notify.title.stopped": "Something is on hold",
+  "pwa.notify.title.failing": "Something is failing",
+  "pwa.notify.title.decide": "A decision is waiting for you",
+  "pwa.notify.step.review": "Review the change and decide.",
+  "pwa.notify.step.answer": "Answer so it can continue.",
+  "pwa.notify.step.reauth": "Sign the connection in again.",
+  "pwa.notify.step.renew": "Renew the approval.",
+  "pwa.notify.step.open_runs": "Look at the latest runs.",
+  "pwa.notify.step.chat": "Sort it out in the chat.",
+  "pwa.notify.step.open": "Open the item in SubKit.",
+  "pwa.notify.schedulesPaused": "{count} schedules were paused",
+  "pwa.notify.schedulesPaused.step": "See why, then resume them.",
+  "pwa.notify.summary.title": "{count} items need you",
+  "pwa.notify.summary.stopped": "{count} on hold",
+  "pwa.notify.summary.failing": "{count} failing",
+  "pwa.notify.summary.decide.one": "1 decision",
+  "pwa.notify.summary.decide.other": "{count} decisions",
+  "pwa.offline.title": "No connection to the server",
+  "pwa.offline.body": "SubKit cannot be reached right now. Check your connection and try again.",
+  "pwa.offline.retry": "Try again",
+} as const;
+
+export const pwaDe: Record<keyof typeof pwaEn, string> = {
+  "pwa.install.menu": "SubKit installieren",
+  "pwa.install.guideTitle": "SubKit als App installieren",
+  "pwa.install.guide.ios":
+    "Tippe in Safari auf „Teilen“ und dann auf „Zum Home-Bildschirm“. SubKit öffnet sich danach als eigene App.",
+  "pwa.install.guide.safari":
+    "Öffne in Safari das Menü „Ablage“ und wähle „Zum Dock hinzufügen“. SubKit öffnet sich danach als eigene App.",
+  "pwa.notify.title.stopped": "Ein Ablauf wurde angehalten",
+  "pwa.notify.title.failing": "Etwas schlägt fehl",
+  "pwa.notify.title.decide": "Eine Entscheidung wartet auf dich",
+  "pwa.notify.step.review": "Prüf die Änderung und entscheide.",
+  "pwa.notify.step.answer": "Antworte, damit es weitergeht.",
+  "pwa.notify.step.reauth": "Melde die Verbindung neu an.",
+  "pwa.notify.step.renew": "Erneuere die Freigabe.",
+  "pwa.notify.step.open_runs": "Sieh dir die letzten Läufe an.",
+  "pwa.notify.step.chat": "Klär es im Chat.",
+  "pwa.notify.step.open": "Öffne den Eintrag in SubKit.",
+  "pwa.notify.schedulesPaused": "{count} Zeitpläne wurden pausiert",
+  "pwa.notify.schedulesPaused.step": "Sieh dir an, warum, und setz sie fort.",
+  "pwa.notify.summary.title": "{count} Einträge brauchen dich",
+  "pwa.notify.summary.stopped": "{count} angehalten",
+  "pwa.notify.summary.failing": "{count} Fehler",
+  "pwa.notify.summary.decide.one": "1 Entscheidung",
+  "pwa.notify.summary.decide.other": "{count} Entscheidungen",
+  "pwa.offline.title": "Keine Verbindung zum Server",
+  "pwa.offline.body":
+    "SubKit ist gerade nicht erreichbar. Prüf deine Verbindung und versuch es noch einmal.",
+  "pwa.offline.retry": "Erneut versuchen",
+};

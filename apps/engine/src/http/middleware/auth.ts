@@ -13,6 +13,7 @@ import { withContext } from "../../logging/context.ts";
 import { buildServiceMetadata } from "../../observability/service-metadata.ts";
 import { HttpError, UnauthorizedError } from "../errors.ts";
 import type { AppEnv } from "../openapi.ts";
+import { cockpitInstallationRefusalFor } from "./cockpit-installation.ts";
 
 export function authMiddleware(registry: AuthProviderRegistry): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
@@ -93,6 +94,8 @@ export function authMiddleware(registry: AuthProviderRegistry): MiddlewareHandle
     }
     if (!hasBrowserSessionCookie(c.req.raw)) return next();
     await next();
+    const refusal = await cockpitInstallationRefusalFor(c.get("db"), c.req.raw);
+    if (refusal.code === "installation_revoked") return undefined;
     const clear = clearBrowserSessionCookieForRequest(c.req.raw);
     const cookieName = clear.slice(0, clear.indexOf("="));
     const written = c.res.headers.getSetCookie();

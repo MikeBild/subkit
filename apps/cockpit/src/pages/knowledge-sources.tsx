@@ -73,6 +73,7 @@ import {
 } from "@/components/cockpit/patterns";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
 import { ForbiddenState } from "@/components/failure-state";
+import { reportFailure } from "@/lib/action-failure";
 import { formatRelativeTime, LOCALE_TAGS, type Locale } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
@@ -326,8 +327,9 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
         <SourcesOnboarding canWrite={canWrite} onAdd={(mode, name) => setAdding({ mode, name })} />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
-          {rows.length > 0 || origin.active || q || categoryFilter.category ? (
+          {pending || rows.length > 0 || origin.active || q || categoryFilter.category ? (
             <CatalogSummary
+              loading={pending}
               text={knowledgeSummary(list.total ?? rows.length, list.first?.sections_total, t)}
               testId="knowledge-summary"
               kind="knowledge_source"
@@ -359,6 +361,7 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
                   usage={categoryFilter.usage}
                   value={categoryFilter.value}
                   onChange={categoryFilter.setValue}
+                  loading={categoryFilter.loading}
                 />
               </>
             }
@@ -508,10 +511,11 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
       );
     },
     onError: (error) =>
-      toast.error(
+      reportFailure(
         error instanceof ApiError && error.status === 422
           ? t("knowledge.add.unreadable")
           : t("common.actionFailed"),
+        error,
       ),
   });
   const setStatus = useOptimisticAction<"active" | "inactive", KnowledgeSource, KnowledgeSource>({
@@ -527,7 +531,7 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
       void client.invalidateQueries({ queryKey: ["catalog"] });
       void navigate({ to: "/knowledge" });
     },
-    onError: () => toast.error(t("common.actionFailed")),
+    onError: (failure) => reportFailure(t("common.actionFailed"), failure),
   });
 
   const back = { to: "/knowledge", label: t("nav.knowledgeSources") };
@@ -548,6 +552,28 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
           tone: "error",
           line: t("knowledge.strip.error"),
           help: source.last_error ?? undefined,
+          action:
+            primary === "refresh"
+              ? {
+                  label: t("remedy.retry"),
+                  variant: "outline",
+                  onClick: () => refresh.mutate(),
+                  pending: refresh.isPending,
+                  testId: "knowledge-error-retry",
+                }
+              : canChat
+                ? {
+                    label: t("remedy.chat"),
+                    variant: "outline",
+                    href: absolute(
+                      chatNewHref({
+                        prompt: t("knowledge.errorPrompt", { name: source.name }),
+                        references: [{ type: "knowledge_source", id: source.id }],
+                      }),
+                    ),
+                    testId: "knowledge-error-chat",
+                  }
+                : undefined,
         }
       : source.status === "processing"
         ? { tone: "warn", line: t("knowledge.strip.processing") }
@@ -637,6 +663,7 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
         badge={source ? <CatalogCategoryChip category={recordCategory(source)} /> : undefined}
         purpose={source ? <CatalogPurpose record={source} /> : undefined}
         loading={query.isPending}
+        loadingPurpose
         action={
           primary === "refresh" ? (
             <Button
@@ -656,6 +683,15 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
           menu.length > 0 ? <ActionMenu alwaysMenu items={menu} testId="detail-menu" /> : undefined
         }
         strip={strip ? { ...strip, testId: "knowledge-strip" } : null}
+        technical={
+          source ? (
+            <SourceTechnical
+              source={source}
+              kind={kind}
+              sections={sourceSections(chunks.data?.items ?? [])}
+            />
+          ) : undefined
+        }
         tabs={
           source
             ? [
@@ -767,38 +803,17 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
   );
 }
 
-function SourceContentTab({
+function SourceTechnical({
   source,
   kind,
   sections,
-  loading,
-  failed,
-  onRetry,
-  onOpenSection,
 }: {
   source: KnowledgeSource;
   kind: SourceKind;
   sections: SourceSection[];
-  loading: boolean;
-  failed: boolean;
-  onRetry(): void;
-  onOpenSection(key: string): void;
 }) {
   const { t, dateTime, locale } = useI18n();
-  const [filter, setFilter] = useState("");
-  const contents = useMemo(() => sections.map((section) => section.content), [sections]);
-  const endpoints = useMemo(() => openApiEndpoints(contents), [contents]);
-  const raw = useMemo(() => rawPreview(contents), [contents]);
-  const summary = [
-    endpoints
-      ? t(endpoints.length === 1 ? "knowledge.endpoints.one" : "knowledge.endpoints.other", {
-          count: endpoints.length,
-        })
-      : sectionsLine(t, source.chunk_count ?? 0),
-    sizeLabel(source.bytes_total, locale),
-    endpoints ? t("knowledge.kind.api") : t(KIND_KEYS[kind]),
-    ...(kind === "url" ? [rhythmLabel(t, source)] : []),
-  ].join(" · ");
+  const raw = useMemo(() => rawPreview(sections.map((section) => section.content)), [sections]);
   const technical: Fact[] = [
     ...(kind === "url" || kind === "discovered"
       ? [
@@ -820,6 +835,51 @@ function SourceContentTab({
       value: <span className="font-mono text-xs">{source.id}</span>,
     },
   ];
+  return (
+    <>
+      <FactList items={technical} testId="knowledge-technical" />
+      {raw.text ? (
+        <CodeBlock
+          code={raw.text}
+          label={raw.truncated ? t("knowledge.raw.truncated") : t("knowledge.raw.label")}
+          testId="knowledge-raw"
+        />
+      ) : null}
+    </>
+  );
+}
+
+function SourceContentTab({
+  source,
+  kind,
+  sections,
+  loading,
+  failed,
+  onRetry,
+  onOpenSection,
+}: {
+  source: KnowledgeSource;
+  kind: SourceKind;
+  sections: SourceSection[];
+  loading: boolean;
+  failed: boolean;
+  onRetry(): void;
+  onOpenSection(key: string): void;
+}) {
+  const { t, locale } = useI18n();
+  const [filter, setFilter] = useState("");
+  const contents = useMemo(() => sections.map((section) => section.content), [sections]);
+  const endpoints = useMemo(() => openApiEndpoints(contents), [contents]);
+  const summary = [
+    endpoints
+      ? t(endpoints.length === 1 ? "knowledge.endpoints.one" : "knowledge.endpoints.other", {
+          count: endpoints.length,
+        })
+      : sectionsLine(t, source.chunk_count ?? 0),
+    sizeLabel(source.bytes_total, locale),
+    endpoints ? t("knowledge.kind.api") : t(KIND_KEYS[kind]),
+    ...(kind === "url" ? [rhythmLabel(t, source)] : []),
+  ].join(" · ");
   const shown = endpoints?.filter((endpoint) => matchesEndpoint(endpoint, filter)) ?? [];
   const [only] = sections;
 
@@ -845,18 +905,6 @@ function SourceContentTab({
         ) : (
           summary
         )
-      }
-      technical={
-        <>
-          <FactList items={technical} testId="knowledge-technical" />
-          {raw.text ? (
-            <CodeBlock
-              code={raw.text}
-              label={raw.truncated ? t("knowledge.raw.truncated") : t("knowledge.raw.label")}
-              testId="knowledge-raw"
-            />
-          ) : null}
-        </>
       }
     >
       {loading ? (
@@ -891,6 +939,7 @@ function SourceContentTab({
       ) : sections.length === 1 && only ? (
         <MarkdownDocument
           text={documentUnderTitle(only.content, source.name)}
+          source={only.content}
           testId="knowledge-preview"
         />
       ) : (

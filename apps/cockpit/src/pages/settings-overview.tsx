@@ -4,9 +4,11 @@ import {
   Cable,
   ChevronLeft,
   ChevronRight,
+  ListChecks,
   type LucideIcon,
   Server,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   UserRound,
 } from "lucide-react";
@@ -26,6 +28,8 @@ import { ExpertLink } from "@/pages/settings-guided";
 
 const AREA_ICON: Readonly<Record<SettingAreaId, LucideIcon>> = {
   profile: UserRound,
+  setup: SlidersHorizontal,
+  rules: ListChecks,
   workspace: Building2,
   ai: Sparkles,
   access: ShieldCheck,
@@ -36,6 +40,8 @@ const AREA_ICON: Readonly<Record<SettingAreaId, LucideIcon>> = {
 
 const AREA_TITLE: Readonly<Record<SettingAreaId, TranslationKey>> = {
   profile: "settings.area.profile.title",
+  setup: "settings.area.setup.title",
+  rules: "settings.area.rules.title",
   workspace: "settings.area.workspace.title",
   ai: "settings.area.ai.title",
   access: "settings.area.access.title",
@@ -46,6 +52,8 @@ const AREA_TITLE: Readonly<Record<SettingAreaId, TranslationKey>> = {
 
 const AREA_PURPOSE: Readonly<Record<SettingAreaId, TranslationKey>> = {
   profile: "settings.area.profile.purpose",
+  setup: "settings.area.setup.purpose",
+  rules: "settings.area.rules.purpose",
   workspace: "settings.area.workspace.purpose",
   ai: "settings.area.ai.purpose",
   access: "settings.area.access.purpose",

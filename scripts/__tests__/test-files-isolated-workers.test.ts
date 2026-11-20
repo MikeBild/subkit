@@ -60,4 +60,18 @@ describe("test-files-isolated workers", () => {
     expect(await child.exited).toBe(0);
     expect(await new Response(child.stdout).text()).not.toContain("shard=");
   });
+
+  test("leaves out installed packages and build output", async () => {
+    fixtures();
+    for (const directory of ["node_modules/pkg", "dist", "release", "nested/node_modules/pkg"]) {
+      mkdirSync(path.join(fixture, directory), { recursive: true });
+      writeFileSync(path.join(fixture, directory, "foreign.spec.ts"), "");
+    }
+    const child = await run("1", "--list", "scripts/__tests__/test-files-isolated-worker-fixtures");
+    expect(await child.exited).toBe(0);
+    expect((await new Response(child.stdout).text()).trim().split("\n")).toEqual([
+      "scripts/__tests__/test-files-isolated-worker-fixtures/one.test.ts",
+      "scripts/__tests__/test-files-isolated-worker-fixtures/two.test.ts",
+    ]);
+  });
 });

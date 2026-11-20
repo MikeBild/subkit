@@ -12,12 +12,15 @@ import { connectorDe, connectorEn } from "./i18n/connector";
 import { createDe, createEn } from "./i18n/create";
 import { decisionsDe, decisionsEn } from "./i18n/decisions";
 import { diagnosisDe, diagnosisEn } from "./i18n/diagnosis";
+import { engineSentenceDe, engineSentenceEn } from "./i18n/engine-sentence";
+import { feedbackDe, feedbackEn } from "./i18n/feedback";
 import { intakeDe, intakeEn } from "./i18n/intake";
 import { knowledgeDe, knowledgeEn } from "./i18n/knowledge";
 import { notificationsDe, notificationsEn } from "./i18n/notifications";
 import { onboardingDe, onboardingEn } from "./i18n/onboarding";
 import { operationsDe, operationsEn } from "./i18n/operations";
 import { overviewDe, overviewEn } from "./i18n/overview";
+import { pwaDe, pwaEn } from "./i18n/pwa";
 import { resourceDe, resourceEn } from "./i18n/resource";
 import { runsDe, runsEn } from "./i18n/runs";
 import { settingsDe, settingsEn } from "./i18n/settings";
@@ -26,6 +29,7 @@ import { settingsHelpDe, settingsHelpEn } from "./i18n/settings-help";
 import { settingsLeafDe, settingsLeafEn } from "./i18n/settings-leaf";
 import { settingsPackagesDe, settingsPackagesEn } from "./i18n/settings-packages";
 import { settingsPersonalDe, settingsPersonalEn } from "./i18n/settings-personal";
+import { setupDe, setupEn } from "./i18n/setup";
 import { shellDe, shellEn } from "./i18n/shell";
 import { skillsDe, skillsEn } from "./i18n/skills";
 import { taskGrantDe, taskGrantEn } from "./i18n/task-grant";
@@ -59,12 +63,15 @@ const EN = {
   ...createEn,
   ...decisionsEn,
   ...diagnosisEn,
+  ...feedbackEn,
+  ...engineSentenceEn,
   ...intakeEn,
   ...knowledgeEn,
   ...notificationsEn,
   ...onboardingEn,
   ...operationsEn,
   ...overviewEn,
+  ...pwaEn,
   ...resourceEn,
   ...runsEn,
   ...settingsEn,
@@ -73,6 +80,7 @@ const EN = {
   ...settingsLeafEn,
   ...settingsPackagesEn,
   ...settingsPersonalEn,
+  ...setupEn,
   ...shellEn,
   ...skillsEn,
   ...taskGrantEn,
@@ -101,12 +109,15 @@ const DE: Record<TranslationKey, string> = {
   ...createDe,
   ...decisionsDe,
   ...diagnosisDe,
+  ...feedbackDe,
+  ...engineSentenceDe,
   ...intakeDe,
   ...knowledgeDe,
   ...notificationsDe,
   ...onboardingDe,
   ...operationsDe,
   ...overviewDe,
+  ...pwaDe,
   ...resourceDe,
   ...runsDe,
   ...settingsDe,
@@ -115,6 +126,7 @@ const DE: Record<TranslationKey, string> = {
   ...settingsLeafDe,
   ...settingsPackagesDe,
   ...settingsPersonalDe,
+  ...setupDe,
   ...shellDe,
   ...skillsDe,
   ...taskGrantDe,

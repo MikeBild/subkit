@@ -9,6 +9,7 @@ import {
   type HiddenEntries,
   NO_HIDDEN,
   settleHidden,
+  waitingOnName,
 } from "@/pages/overview-model";
 import { useLiveQueryOptions } from "./live-events";
 import { ATTENTION_READ_PERMISSIONS } from "./navigation";
@@ -71,4 +72,12 @@ export function useAttention(permissions: readonly string[]) {
     hidden: hiddenIds,
     badge: attentionBadge(query.data, hiddenIds),
   };
+}
+
+export function useWaitingOn(
+  subjectId: string | null | undefined,
+  permissions: readonly string[],
+): string | null {
+  const attention = useAttention(permissions);
+  return waitingOnName(attention.query.data, subjectId);
 }

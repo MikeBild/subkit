@@ -98,6 +98,18 @@ export function skillsLoadState(queries: readonly ListQueryState[]): {
   return { pending: !failed && queries.some((query) => query.isPending), failed };
 }
 
+export type SkillsSummaryState = "loading" | "shown" | "hidden";
+
+export function skillsSummaryState(input: {
+  pending: boolean;
+  failed: boolean;
+  summary: boolean;
+}): SkillsSummaryState {
+  if (input.failed) return input.summary ? "shown" : "hidden";
+  if (input.pending) return "loading";
+  return input.summary ? "shown" : "hidden";
+}
+
 export const SKILL_TEMPLATES = ["tone", "report", "errors", "company"] as const;
 
 export type SkillTemplate = (typeof SKILL_TEMPLATES)[number];

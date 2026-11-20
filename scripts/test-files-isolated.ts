@@ -54,6 +54,7 @@ const testPatterns = [
   "**/*.spec.js",
   "**/*.spec.jsx",
 ];
+const skippedDirectories = new Set(["node_modules", "dist", "release", "release-dev"]);
 
 if (targets.length === 0) {
   throw new Error(
@@ -108,6 +109,7 @@ for (const target of targets) {
   if (!stat.isDirectory()) throw new Error(`unsupported test target: ${target}`);
   for (const pattern of testPatterns) {
     for (const file of new Bun.Glob(pattern).scanSync({ cwd: absolute })) {
+      if (file.split(/[/\\]/).some((segment) => skippedDirectories.has(segment))) continue;
       tests.add(path.join(relative, file));
     }
   }

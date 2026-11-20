@@ -34,6 +34,7 @@ export const cockpitPushSubscriptions = pgTable(
     auth_tag: bytea("auth_tag").notNull(),
     notified_attention_keys: text("notified_attention_keys").array(),
     notified_at: timestamp("notified_at", { withTimezone: true }),
+    auto_pause_notified_at: timestamp("auto_pause_notified_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => [

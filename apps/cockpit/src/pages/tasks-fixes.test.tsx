@@ -7,6 +7,7 @@ import { KpiTile, SegmentedControl } from "@/components/cockpit/patterns";
 import { DIALOG_BODY } from "@/components/cockpit/patterns/dialog-frame";
 import { render, renderInRouter } from "@/components/cockpit/patterns/test-utils";
 import { ChatMessage } from "@/features/chat/message";
+import { fromSetup } from "./tasks-default-environment";
 import { TaskDetail } from "./tasks-detail";
 import { CONVERSATION_ID, latestRun, run, TASK_ID, task } from "./tasks-fixtures";
 import { TaskFormFields, TaskScheduleFields } from "./tasks-form";
@@ -155,15 +156,15 @@ describe("the overview at a glance", () => {
     const markup = await detail(null);
     const tiles = markup.match(/<div class="([^"]*)" data-testid="task-tiles"/)?.[1] ?? "";
     expect(tiles.split(" ")).toContain("grid-cols-2");
-    expect(tiles.split(" ")).toContain("lg:grid-cols-4");
+    expect(tiles.split(" ")).toContain("@3xl:grid-cols-4");
     for (const tile of ["now", "waiting", "next", "usage"]) {
       const box = markup.match(
         new RegExp(`<div class="([^"]*)" data-slot="kpi-tile" data-testid="task-tile-${tile}"`),
       )?.[1];
       expect(box?.split(" ")).toContain("min-h-0");
-      expect(box).not.toContain("min-h-32");
+      expect(box).not.toContain("min-h-35");
     }
-    expect(render(<KpiTile label="A" note="B" testId="k" />)).toContain("min-h-32");
+    expect(render(<KpiTile label="A" note="B" testId="k" />)).toContain("min-h-35");
   });
 });
 
@@ -183,6 +184,31 @@ describe("the form dialog fits every width", () => {
       />,
       cache(),
     );
+
+  test("a preselected environment says that it comes from the person's setup", async () => {
+    const form = (environmentFromSetup: boolean, locale: "de" | "en" = "de") =>
+      show(
+        <TaskFormFields
+          draft={{ ...emptyDraft("Europe/Berlin"), environment: "dev" }}
+          onChange={() => {}}
+          workflowOptions={[]}
+          connectorOptions={[]}
+          choosesEnvironment
+          environmentFromSetup={environmentFromSetup}
+        />,
+        cache(),
+        locale,
+      );
+    const shown = await form(true);
+    expect(shown).toContain('data-testid="task-form-environment-default"');
+    expect(shown).toContain("„Test“ ist aus deiner Einrichtung vorausgewählt.");
+    expect(shown).toContain("unter Einstellungen › Einrichtung.");
+    expect(await form(true, "en")).toContain("“Test” is preselected from your setup.");
+    expect(await form(false)).not.toContain("task-form-environment-default");
+    expect(fromSetup("dev", "dev")).toBe(true);
+    expect(fromSetup("dev", "prod")).toBe(false);
+    expect(fromSetup(null, "prod")).toBe(false);
+  });
 
   test("the body has one shrinking column and never scrolls sideways", () => {
     const classes = DIALOG_BODY.split(" ");

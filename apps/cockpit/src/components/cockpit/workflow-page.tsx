@@ -1,5 +1,5 @@
 import type { components } from "@cli-core/engine-api/openapi";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
@@ -26,6 +26,11 @@ import {
 import { recordCategory } from "@/components/cockpit/catalog-metadata-model";
 import { useConnectorRecords } from "@/components/cockpit/connector-names";
 import { ConversationsAbout } from "@/components/cockpit/conversations-about";
+import {
+  type ConnectorEnvironment,
+  EnvironmentChip,
+  isConnectorEnvironment,
+} from "@/components/cockpit/environment-chip";
 import { MetadataDialog } from "@/components/cockpit/metadata-dialog";
 import {
   ActionMenu,
@@ -43,6 +48,11 @@ import {
   TabBody,
 } from "@/components/cockpit/patterns";
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
+import {
+  ScheduleAutoPauseNotice,
+  workflowSchedulesQuery,
+} from "@/components/cockpit/schedule-auto-pause";
+import { ScheduleHistory } from "@/components/cockpit/schedule-history";
 import { ServiceIcon } from "@/components/cockpit/service-icon";
 import { MISSING } from "@/components/cockpit/table-columns";
 import { WorkflowDraftingContext } from "@/components/cockpit/workflow-drafting-context";
@@ -62,6 +72,7 @@ import {
   WorkflowTestRun,
 } from "@/components/cockpit/workflow-steps-list";
 import { useCurrentVersionDag, WorkflowVersions } from "@/components/cockpit/workflow-versions";
+import { reportFailure } from "@/lib/action-failure";
 import { cronWords } from "@/lib/cron-words";
 import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -222,6 +233,16 @@ function LastRunLine({
   );
 }
 
+function connectorEnvironment(
+  records: readonly { id: string }[],
+  id: string | null | undefined,
+): ConnectorEnvironment | null {
+  const environment = (
+    records.find((record) => record.id === id) as { environment?: unknown } | undefined
+  )?.environment;
+  return isConnectorEnvironment(environment) ? environment : null;
+}
+
 export function WorkflowPage({
   id,
   record,
@@ -239,6 +260,9 @@ export function WorkflowPage({
   const [offersApproval, setOffersApproval] = useState(false);
   const navigate = useNavigate();
   const client = useQueryClient();
+  const autoPaused = Boolean(
+    useQuery(workflowSchedulesQuery(id)).data?.schedules.some((entry) => entry.auto_pause),
+  );
   const canWrite = permissions.includes("workflow:write");
   const canRun = permissions.includes("workflow:run");
   const canChat = permissions.includes("conversation:write");
@@ -327,7 +351,7 @@ export function WorkflowPage({
       await client.invalidateQueries({ queryKey: ["catalog"] });
       void navigate({ to: "/workflows" });
     },
-    onError: () => toast.error(t("common.actionFailed")),
+    onError: (failure) => reportFailure(t("common.actionFailed"), failure),
   });
 
   const metadataActions = useCatalogMetadataActions({
@@ -406,7 +430,12 @@ export function WorkflowPage({
   ) : null;
   const services = new Map<
     string,
-    { label: string; href: string | null; service: ServiceIdentity }
+    {
+      label: string;
+      href: string | null;
+      service: ServiceIdentity;
+      environment: ConnectorEnvironment | null;
+    }
   >();
   const activeStepKinds = new Map<string, StepKindSource>();
   for (const view of steps.views) {
@@ -420,6 +449,7 @@ export function WorkflowPage({
       label: connector.name,
       href: connector.id ? absolute(connectorHref(connector.id)) : null,
       service: connector.service,
+      environment: connectorEnvironment(connectorRecords, connector.id),
     });
   }
   const overviewSummary = (
@@ -435,7 +465,6 @@ export function WorkflowPage({
         .join(" · ")}
       {[...services.values()].map((entry, index) => (
         <span key={entry.label} className="inline-flex items-center gap-1">
-          {index === 0 ? "· " : null}
           {entry.href ? (
             <a
               href={entry.href}
@@ -451,6 +480,12 @@ export function WorkflowPage({
               {entry.label}
             </span>
           )}
+          {entry.environment ? (
+            <EnvironmentChip
+              environment={entry.environment}
+              testId={`workflow-build-connector-${index}-environment`}
+            />
+          ) : null}
         </span>
       ))}
     </span>
@@ -518,19 +553,6 @@ export function WorkflowPage({
                   workflowId={id}
                   activeVersionId={versionId}
                   activeSteps={activeStepKinds}
-                />
-              ) : null}
-            </>
-          }
-          technical={
-            <>
-              <FactList items={technical} testId="workflow-technical-facts" />
-              {build.definition ? (
-                <CodeBlock
-                  label={t("workflowFlow.definition")}
-                  code={JSON.stringify(build.definition, null, 2)}
-                  lang="json"
-                  testId="workflow-technical-definition"
                 />
               ) : null}
             </>
@@ -618,6 +640,11 @@ export function WorkflowPage({
               />
             ),
           },
+          {
+            value: "schedule",
+            label: t("workflowPage.tab.schedule"),
+            content: <ScheduleHistory subject={{ kind: "workflow", id }} />,
+          },
         ]
       : []),
     {
@@ -636,25 +663,42 @@ export function WorkflowPage({
       purpose={<CatalogPurpose record={record} />}
       menu={menu.length > 0 ? <ActionMenu items={menu} testId="workflow-menu" /> : undefined}
       action={<RunWorkflowDialog {...runProps} openOnAnchor={WORKFLOW_RUN_ANCHOR} />}
+      technical={
+        <>
+          <FactList items={technical} testId="workflow-technical-facts" />
+          {build.definition ? (
+            <CodeBlock
+              label={t("workflowFlow.definition")}
+              code={JSON.stringify(build.definition, null, 2)}
+              lang="json"
+              testId="workflow-technical-definition"
+            />
+          ) : null}
+        </>
+      }
       tabs={tabs}
       status={
-        <WorkflowStatus
-          automation={automation}
-          workflow={workflow}
-          workflowName={title}
-          health={health}
-          disabled={disabled}
-          lastRun={
-            steps.lastRun ??
-            (lastExecutedAt
-              ? { status: "unknown", started_at: lastExecutedAt, created_at: lastExecutedAt }
-              : null)
-          }
-          waitingConnector={waitingConnector}
-          permissions={permissions}
-          noSteps={noSteps}
-          onOffersApproval={setOffersApproval}
-        />
+        <>
+          <ScheduleAutoPauseNotice workflowId={id} workflowName={title} canWrite={canWrite} />
+          <WorkflowStatus
+            automation={automation}
+            workflow={workflow}
+            workflowName={title}
+            health={health}
+            disabled={disabled}
+            lastRun={
+              steps.lastRun ??
+              (lastExecutedAt
+                ? { status: "unknown", started_at: lastExecutedAt, created_at: lastExecutedAt }
+                : null)
+            }
+            waitingConnector={waitingConnector}
+            autoPaused={autoPaused}
+            permissions={permissions}
+            noSteps={noSteps}
+            onOffersApproval={setOffersApproval}
+          />
+        </>
       }
     >
       {canWrite ? (

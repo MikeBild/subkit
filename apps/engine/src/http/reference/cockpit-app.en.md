@@ -30,6 +30,56 @@ This chapter is for anyone who works in the Cockpit every day and does not want 
 
 The app carries the workspace name. It uses the stored app icon or the SubKit icon and takes the color of the selected color palette.
 
+### Install in Chrome, Edge and Safari
+
+Your browser does the last step of the installation. It looks different in each browser.
+
+| Browser | How it works |
+| --- | --- |
+| Chrome and Edge on a computer | Select **Install app** in the Cockpit and confirm the browser’s dialog. |
+| Safari on a Mac | In Safari, open the “File” menu and choose “Add to Dock”. |
+| Safari on iPhone and iPad | In Safari, tap “Share” and then “Add to Home Screen”. |
+| Other browsers | You read “Installation unavailable”. Keep using the Cockpit in the browser, or open it in one of the browsers above. |
+
+The **User menu** also offers **Install SubKit** as long as the app is not installed on this device. The entry opens the same guide.
+
+Whether the app is installed is shown under **Settings › Your profile** at “Is SubKit installed on this device?”: **Installed** or **Not installed**, plus **Notifications on** or **Notifications off**.
+
+### Without a connection and after an update
+
+The app needs your server. It only keeps its program files, no data.
+
+- **Without a connection** the app shows the page “No connection to the server” with **Try again**. You see no data then, and the app does not collect input to send it later.
+- **After an update of the server** the notice “A new version is available” appears with **Reload**. Until then the open window keeps working with its previous state.
+- **With unsaved input**, **Reload** does not reload. You read “Save your input first; reloading would discard it.” Save and select **Reload** again.
+
+### Notifications, the number on the icon and links
+
+- **Notifications.** You get one notification per open item. The title says what happened, for example “A decision is waiting for you”. The text says what to do, for example “Review the change and decide.” More than three at once are folded into “New entries need you”.
+- **Click.** A click on the notification opens exactly this item in the app or brings the open window there.
+- **Open window.** When the app is visible, no notification of the operating system appears. The notice is shown in the app instead.
+- **Number on the icon.** The app icon carries the number of open items, at most 99. When nothing is open, it disappears. This only works where the browser and the operating system support it.
+- **Links.** Links with the scheme `web+subkit` open a page in the app, for example `web+subkit://tasks` or `web+subkit://chat/{id}`. An unknown target leads to the start page.
+
+“Notifications and quiet hours” describes how to decide when notifications arrive.
+
+### Web app or SubKit Desktop
+
+Besides the installed web app there is SubKit Desktop, a program of its own for macOS, Windows and Linux. Both show the same Cockpit of your server, and neither runs anything on your device.
+
+| | Installed web app | SubKit Desktop |
+| --- | --- | --- |
+| Installation | From the browser, one app per workspace | One program, one profile per server |
+| Devices | Computer and phone | Computer |
+| Notifications | Push through the browser | Notifications of the operating system while the program runs |
+| Quiet hours | Under **Settings › Setup** | In the settings of the program |
+| Icon in the menu bar or the notification area | No | Yes, with the number of open items |
+| Launch when you log in to your computer | No | Yes |
+| Share content from other apps | Yes | No |
+| Updates | Come with the server | The program’s own updates |
+
+More in “SubKit Desktop”.
+
 ### Use several workspaces as separate apps
 
 If you work in several workspaces, each one gets its own app.
@@ -65,7 +115,7 @@ The app name comes from the workspace name, not from the **Organization name** i
 ### Remove an installed app
 
 1. Open the regular Cockpit in the browser and switch to the app's workspace.
-2. Choose **Revoke installation** in the workspace menu and confirm. This signs the app out on all its devices.
+2. Choose **Revoke installation** in the workspace menu and confirm. This signs the installed web app out at once. Desktop devices stay signed in; you sign them out under **Settings** › **Your profile** › **Where are you signed in?**.
 3. Then remove the app from your device like any other app.
 
 If you install again later, the app gets a new address. Old links stop working.

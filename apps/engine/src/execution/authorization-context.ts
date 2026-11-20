@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { browserSessionDenyReason } from "../auth/browser-session.ts";
+import { browserSessionDenyReason, sessionSlidingMs } from "../auth/browser-session.ts";
 import { productSubjectDigest } from "../auth/identity-link.ts";
 import { clientLivenessRefusal } from "../auth/liveness.ts";
 import { resolvePrincipalFromApiKeyRow } from "../auth/providers/api-key-row.ts";
@@ -355,7 +355,11 @@ export async function rehydrateExecutionPrincipal(
       !session ||
       caller.principalKind !== "user" ||
       session.user_id !== caller.principalId ||
-      browserSessionDenyReason(session, now)
+      browserSessionDenyReason(
+        session,
+        now,
+        await sessionSlidingMs(db, caller.tenantId, session.installation_id),
+      )
     )
       refuse();
     principal = identity;

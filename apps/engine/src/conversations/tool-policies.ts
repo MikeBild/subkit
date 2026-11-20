@@ -12,6 +12,7 @@ import type { PermissionMode, ToolModeRule, ToolPolicies, ToolPolicyMode } from 
 import { workflowInputObjectKeys } from "../workflows/run-input.ts";
 import { getTaskRunMarker } from "./core/draft.ts";
 import { isDangerousTool } from "./dangerous-tools.ts";
+import { personCoverRule } from "./instruction-cover/policy.ts";
 import { TaskRunLockedError } from "./service/task-run-errors.ts";
 import { abortTaskRunCard, runTaskCard, saveTaskCard } from "./task-tool-cards.ts";
 
@@ -526,6 +527,8 @@ export function decideToolMode(args: {
   permission_mode?: PermissionMode | null;
   connector_trust?: boolean;
   authority_covered?: boolean;
+  instruction_covered?: boolean;
+  rule_covered?: boolean;
   execution_data_transfer?: boolean;
   task_run?: boolean;
 }): ToolModeDecision {
@@ -564,6 +567,16 @@ export function decideToolMode(args: {
   if (def?.neverGate && !overrides[tool]) {
     return { mode: "no_confirm", rule: "never_gate" };
   }
+
+  const personCovered = personCoverRule({
+    tool,
+    permission_mode: permission_mode ?? null,
+    instruction_covered: args.instruction_covered === true,
+    rule_covered: args.rule_covered === true,
+    task_run: args.task_run === true,
+    override: overrides[tool] ?? null,
+  });
+  if (personCovered) return { mode: "no_confirm", rule: personCovered };
 
   if (permission_mode === "yolo") {
     return { mode: "no_confirm", rule: "permission_mode" };

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { FAMILY_UI_VERSION } from "@/components/family-ui";
 import { cn } from "@/lib/utils";
+import { ActionFailureHost } from "./action-failure";
 import { ColumnToggleScope } from "./column-toggle-claim";
 
 export type PageKind = "list" | "detail" | "settings" | "workspace";
@@ -30,6 +31,7 @@ export function Page({
   surface,
   header,
   toolbar,
+  failureHost = true,
   children,
 }: {
   kind: PageKind;
@@ -38,6 +40,7 @@ export function Page({
   surface?: PageSurface;
   header: ReactNode;
   toolbar?: ReactNode;
+  failureHost?: boolean;
   children: ReactNode;
 }) {
   const column = pageColumn(kind);
@@ -64,6 +67,11 @@ export function Page({
             >
               {toolbar}
             </div>
+          </div>
+        ) : null}
+        {failureHost ? (
+          <div className={cn("shrink-0 empty:hidden", pad)} data-slot="page-failure">
+            <ActionFailureHost level="page" className={cn("pb-3", column)} />
           </div>
         ) : null}
         {scroll === "content" ? (

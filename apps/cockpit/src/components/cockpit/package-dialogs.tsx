@@ -11,7 +11,6 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
-import { toast } from "sonner";
 import { apiCall } from "@/api/call";
 import { ApiError } from "@/api/client";
 
@@ -36,6 +35,8 @@ import {
   Button,
   Chip,
   type CockpitColumn,
+  type DialogError,
+  dialogFailure,
   FileDrop,
   FormDialog,
   SearchInput,
@@ -45,6 +46,7 @@ import {
 import { Alert, AlertDescription, Checkbox } from "@/components/cockpit/patterns/controls";
 import { RecordTable } from "@/components/cockpit/record-table";
 import { bytes, MISSING, tableColumns } from "@/components/cockpit/table-columns";
+import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 import { humanizeCategory } from "@/lib/workflow-category";
 import {
@@ -184,7 +186,7 @@ function ExportDialogBody({
         anchor.click();
       }
     } catch {
-      toast.error(t("settings.packages.export.downloadFailed"));
+      reportFailure(t("settings.packages.export.downloadFailed"));
     } finally {
       setDownloading(false);
     }
@@ -224,6 +226,7 @@ function ExportDialogBody({
       }
       cancelLabel={result ? t("common.close") : undefined}
       error={run.isError ? t("settings.packages.export.failed") : null}
+      failure={run.error}
       testId="settings-packages-export"
     >
       {result ? (
@@ -455,7 +458,7 @@ function ImportDialogBody({
   const client = useQueryClient();
   const [stage, setStage] = useState<ImportStage>(null);
   const [result, setResult] = useState<PackageApplyResult | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<DialogError>(null);
   const preview = useMutation({
     mutationFn: (source: File | string) =>
       typeof source === "string" ? previewStoredPackage(source) : previewPackageFile(source),
@@ -465,7 +468,7 @@ function ImportDialogBody({
       setFailure(
         error instanceof ApiError && error.status === 413
           ? t("settings.packages.import.tooLarge")
-          : t("settings.packages.import.previewFailed"),
+          : dialogFailure(t("settings.packages.import.previewFailed"), error),
       ),
   });
   const apply = useMutation({
@@ -484,7 +487,7 @@ function ImportDialogBody({
         setStage({ preview: plan ? { ...value, plan } : value, changed: true });
         return;
       }
-      setFailure(t("settings.packages.import.applyFailed"));
+      setFailure(dialogFailure(t("settings.packages.import.applyFailed"), error));
     },
   });
   const reset = () => {

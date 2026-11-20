@@ -3,6 +3,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { ApiError, type Conversation, deleteConversation, renameConversation } from "@/api/client";
 import { ConfirmDialog, Field, FieldLabel, FormDialog, Input } from "@/components/cockpit/patterns";
+import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 
 export function useConversationDialogs({
@@ -27,10 +28,11 @@ export function useConversationDialogs({
       await queryClient.invalidateQueries({ queryKey: ["conversations"] });
     },
     onError: (error) =>
-      toast.error(
+      reportFailure(
         error instanceof ApiError && error.status === 409
           ? t("chat.delete.running")
           : t("common.actionFailed"),
+        error,
       ),
   });
   const rename = useMutation({

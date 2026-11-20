@@ -7,17 +7,27 @@ const limitInput = z
   .object({
     bucket_key: z.string().regex(/^[a-f0-9]{64}$/),
     max: z.number().int().min(1).max(1000000),
-    window: z.enum(["minute", "month"]).default("minute"),
+    window: z.enum(["minute", "ten_minutes", "month"]).default("minute"),
   })
   .strict();
 
+type RateWindow = "minute" | "ten_minutes" | "month";
+
 type AdmissionResult =
   | { allowed: true }
-  | { allowed: false; window: "minute" | "month"; retry_after_seconds: number };
+  | { allowed: false; window: RateWindow; retry_after_seconds: number };
 
 export function rateLimitBucketKey(
   secret: string,
-  scope: "global" | "peer" | "tenant" | "principal" | "tenant_month" | "admission",
+  scope:
+    | "global"
+    | "peer"
+    | "tenant"
+    | "principal"
+    | "tenant_month"
+    | "admission"
+    | "desktop_login"
+    | "feedback",
   identity: string,
 ): string {
   if (!secret) throw new Error("rate_limit_key_unavailable");
@@ -28,7 +38,7 @@ export function rateLimitBucketKey(
 
 class RateLimitDenied extends Error {
   constructor(
-    readonly window: "minute" | "month",
+    readonly window: RateWindow,
     readonly retryAfterSeconds: number,
   ) {
     super("rate_limit_exceeded");
@@ -51,11 +61,15 @@ export async function admitPersistentRateLimits(
         const windowStart =
           limit.window === "month"
             ? sql`date_trunc('month', ${databaseNow} AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`
-            : sql`date_trunc('minute', ${databaseNow})`;
+            : limit.window === "ten_minutes"
+              ? sql`to_timestamp(floor(extract(epoch FROM ${databaseNow}) / 600) * 600)`
+              : sql`date_trunc('minute', ${databaseNow})`;
         const expiry =
           limit.window === "month"
             ? sql`(${windowStart} AT TIME ZONE 'UTC' + interval '1 month') AT TIME ZONE 'UTC' + interval '3 minutes'`
-            : sql`${windowStart} + interval '3 minutes'`;
+            : limit.window === "ten_minutes"
+              ? sql`${windowStart} + interval '13 minutes'`
+              : sql`${windowStart} + interval '3 minutes'`;
         const result = await tx.execute<{ hits: number }>(sql`
           INSERT INTO subkit.http_rate_limit_buckets (bucket_key, window_started_at, hits, expires_at)
           VALUES (${limit.bucket_key}, ${windowStart}, 1, ${expiry})
@@ -68,7 +82,9 @@ export async function admitPersistentRateLimits(
           const end =
             limit.window === "month"
               ? sql`(${windowStart} AT TIME ZONE 'UTC' + interval '1 month') AT TIME ZONE 'UTC'`
-              : sql`${windowStart} + interval '1 minute'`;
+              : limit.window === "ten_minutes"
+                ? sql`${windowStart} + interval '10 minutes'`
+                : sql`${windowStart} + interval '1 minute'`;
           const retry = await tx.execute<{ retry_after_seconds: number }>(
             sql`SELECT greatest(1, ceil(extract(epoch FROM (${end} - ${databaseNow}))))::integer AS retry_after_seconds`,
           );

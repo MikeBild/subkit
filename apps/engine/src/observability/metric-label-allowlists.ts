@@ -65,6 +65,8 @@ export const TOOL_POLICY_RULES = allowlist<ConfirmReason>({
   inline_credential: true,
   connector_trust: true,
   authority_covered: true,
+  user_instruction: true,
+  standing_rule: true,
   never_gate: true,
   permission_mode: true,
   conversation_override: true,

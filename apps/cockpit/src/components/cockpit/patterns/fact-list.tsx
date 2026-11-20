@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useLoadingPhase } from "@/lib/use-loading-phase";
 import { cn } from "@/lib/utils";
 import { ContextHelp } from "./context-help";
+import { useInSidePanel } from "./side-details";
 import { Skeleton } from "./skeleton";
 
 export interface Fact {
@@ -28,6 +29,7 @@ export function FactList({
   testId?: string;
   layout?: "default" | "stacked";
 }) {
+  const inSidePanel = useInSidePanel();
   const phase = useLoadingPhase(loading !== undefined && loading !== false);
   if (phase !== "content") {
     const rows = typeof loading === "number" ? loading : items.length || 4;
@@ -53,7 +55,7 @@ export function FactList({
       </div>
     );
   }
-  const stacked = layout === "stacked";
+  const stacked = layout === "stacked" || inSidePanel;
   const single = items.length === 1;
   return (
     <dl

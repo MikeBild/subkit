@@ -4564,6 +4564,120 @@ export interface paths {
         };
         trace?: never;
     };
+    "/v1/identity/me/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the signed-in person's setup choices, with recommended values where unset */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Setup"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description person_required — only a person has setup choices */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /** Store the signed-in person's setup choices; fields left out keep their value. Naming a teammate who is not in the workspace prepares an invitation and sends no mail. */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["UpdateSetupBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Setup"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description person_required — only a person has setup choices */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description approver_already_known — the address belongs to a person who cannot be invited again */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/identity/workspace": {
         parameters: {
             query?: never;
@@ -6057,6 +6171,184 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/identity/desktop-login/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Start a SubKit Desktop sign-in in the system browser
+         * @description Opened by the desktop app in the system browser with a PKCE S256 challenge, a state and the device. The person signs in with the ordinary browser login and confirms the device; the browser is then sent to subkit://callback with a single-use code that lives for 60 seconds. A development build may name subkit-dev://callback as redirect_uri, which is accepted only outside production mode or with server.desktop_dev_callback. No other redirect target exists.
+         */
+        get: {
+            parameters: {
+                query: {
+                    code_challenge: string;
+                    code_challenge_method: "S256";
+                    state: string;
+                    device_id: string;
+                    device_label: string;
+                    redirect_uri?: "subkit://callback" | "subkit-dev://callback";
+                    /** @description Version of the desktop app that asks, for example 0.1.0. A version below server.desktop_min_version, or none at all, is refused with desktop_app_outdated. */
+                    app_version?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Redirect to the confirmation page */
+                302: {
+                    headers: {
+                        Location?: string;
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid sign-in request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The app is older than server.desktop_min_version or names no version; the page asks for an update and carries the code desktop_app_outdated in the X-SubKit-Error header */
+                426: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+                /** @description Too many sign-in starts */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/desktop-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange a desktop sign-in code for a Cockpit session
+         * @description Called by the desktop app's main process without a cookie. The code is single-use and bound to the PKCE challenge, the workspace, the person and the device; any attempt consumes it. The answer sets the HttpOnly Cockpit session cookie of the device's installation and never contains an API key.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        code: string;
+                        code_verifier: string;
+                        state?: string;
+                        /** @description Version of the desktop app that asks, for example 0.1.0. A version below server.desktop_min_version, or none at all, is refused with desktop_app_outdated. */
+                        app_version?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Desktop installation with its session cookie */
+                200: {
+                    headers: {
+                        "Set-Cookie"?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DesktopSessionResponse"];
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Code unknown, expired, already used or not matching the verifier */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Cross-origin browser request or unavailable workspace */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The app is older than server.desktop_min_version or names no version (code desktop_app_outdated); the code is not consumed */
+                426: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Too many exchanges */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Session could not be issued */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/identity/cockpit-login": {
         parameters: {
             query?: never;
@@ -6156,7 +6448,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read the current browser owner's active workspace installation */
+        /**
+         * Read the current browser owner's active workspace installations
+         * @description Answers a browser session and the session of an installed app or desktop device alike. `installation` names the installed web app and is filled for the plain browser session only; `installations` lists every active installation of the person and marks the asking one with `current`.
+         */
         get: {
             parameters: {
                 query?: never;
@@ -6176,13 +6471,17 @@ export interface paths {
                             installation: {
                                 /** Format: uuid */
                                 id: string;
+                                /** @enum {string} */
+                                kind: "browser" | "desktop";
                                 start_url: string;
                                 manifest_url: string;
                             } | null;
+                            /** @description Every active installation of the signed-in person in this workspace: the installed web app and each desktop device. Each one is revoked on its own. */
+                            installations: components["schemas"]["CockpitInstallationListItem"][];
                         };
                     };
                 };
-                /** @description Root browser session required */
+                /** @description Browser session required */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -6220,6 +6519,8 @@ export interface paths {
                         "application/json": {
                             /** Format: uuid */
                             id: string;
+                            /** @enum {string} */
+                            kind: "browser" | "desktop";
                             start_url: string;
                             manifest_url: string;
                             created: boolean;
@@ -6280,7 +6581,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Revoke the current browser user's Cockpit installation */
+        /**
+         * Revoke one of the current browser user's Cockpit installations, web app or desktop device
+         * @description Ends every session of that one installation at once and stops its notifications. Other installations of the person stay signed in. A plain browser session may revoke any of the person's installations; the session of an installation may revoke only itself.
+         */
         delete: {
             parameters: {
                 query?: never;
@@ -6299,12 +6603,41 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description Browser session required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message?: string;
+                        };
+                    };
+                };
+                /** @description The session of an installation may revoke only its own installation */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message?: string;
+                        };
+                    };
+                };
                 /** @description Installation not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message?: string;
+                        };
+                    };
                 };
             };
         };
@@ -8907,6 +9240,57 @@ export interface paths {
                 };
             };
         };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workflows/{id}/schedule-occurrences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Schedule history of a workflow, newest first: which due runs ran, ran late, were skipped or held, and why */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                    /** @description Only occurrences due before this instant; pass next_before to read on. */
+                    before?: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScheduleOccurrenceListResponse"];
+                    };
+                };
+                /** @description Workflow not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -13345,6 +13729,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/tasks/{id}/schedule-occurrences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Schedule history of a task, newest first: which due starts ran, ran late, were skipped or held, and why */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                    /** @description Only occurrences due before this instant; pass next_before to read on. */
+                    before?: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScheduleOccurrenceListResponse"];
+                    };
+                };
+                /** @description Task not found or not visible to the caller */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/tasks/{id}/runs": {
         parameters: {
             query?: never;
@@ -14618,6 +15053,94 @@ export interface paths {
                 };
                 /** @description Changed */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a bug report, an idea or other feedback to this workspace's intake
+         * @description The report is cleaned of secrets, tokens, authorization headers, query strings, absolute file paths and, inside the diagnostics, email addresses. It is then filed in the intake of this workspace under the category `feedback`. Nothing is sent anywhere else.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["SubmitFeedbackBody"];
+                };
+            };
+            responses: {
+                /** @description Filed */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SubmittedFeedback"];
+                    };
+                };
+                /** @description A signed-in person is required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Report id already used */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Attachment too large */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Attachment refused */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Too many reports */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -21473,6 +21996,359 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/approval-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the signed-in person's approval rules and open rule offers */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Only rules in this state. Omitted: offered and active rules. */
+                    state?: "observed" | "offered" | "active" | "dismissed" | "revoked";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ToolApprovalRuleListResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description person_required — only a person has approval rules */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/approval-rules/{id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Store an offered rule: from now on exactly this action on exactly this target runs without a confirmation */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ToolApprovalRule"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description A signed-in person is required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description approval_rule_wrong_state — the rule is not in the state this decision needs */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/approval-rules/{id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline an offered rule; it is not offered again */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ToolApprovalRule"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description A signed-in person is required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description approval_rule_wrong_state — the rule is not in the state this decision needs */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/approval-rules/{id}/renew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Renew an active rule: it applies for another 90 days from now, also when it had already expired */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ToolApprovalRule"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description A signed-in person is required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description approval_rule_wrong_state — the rule is not in the state this decision needs */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/approval-rules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke an active rule; the action asks again from the next time on */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ToolApprovalRule"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description A signed-in person is required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description approval_rule_wrong_state — the rule is not in the state this decision needs */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/notifications/channels": {
         parameters: {
             query?: never;
@@ -24779,6 +25655,114 @@ export interface components {
             display_name?: string;
             start_steps_hidden?: boolean;
         };
+        Setup: {
+            /**
+             * @description The mode a new conversation starts in when the client sends none.
+             * @enum {string}
+             */
+            default_chat_mode: "ask" | "auto" | "plan";
+            /**
+             * @description The environment new workflows, tasks and approval dialogs start with.
+             * @enum {string}
+             */
+            default_environment: "dev" | "prod";
+            approver: components["schemas"]["SetupApprover"];
+            notifications: components["schemas"]["SetupNotificationSchedule"];
+            /** @description The person's own time zone; null means the workspace time zone applies. */
+            timezone: string | null;
+            /** @description Whether critical items notify at once despite the schedule. Off unless chosen. */
+            critical_breakthrough: boolean;
+            first_job: string | null;
+            services: string[];
+            /** @description Choices the person has not made yet; their values are the recommended ones. */
+            unset: ("default_chat_mode" | "default_environment" | "approver" | "notifications")[];
+            recommended: {
+                /** @enum {string} */
+                default_chat_mode: "ask" | "auto" | "plan";
+                /** @enum {string} */
+                default_environment: "dev" | "prod";
+                approver: {
+                    /** @enum {string} */
+                    kind: "self";
+                };
+                notifications: components["schemas"]["SetupNotificationSchedule"];
+                critical_breakthrough: boolean;
+            };
+            /** @description Present once, right after this request prepared an invitation for the teammate. No mail was sent. */
+            invitation?: {
+                /** Format: uuid */
+                invite_id: string;
+                plaintext_token: string;
+                expires_at: string;
+            };
+            updated_at: string | null;
+        };
+        SetupApprover: {
+            /** @enum {string} */
+            kind: "self";
+        } | {
+            /** @enum {string} */
+            kind: "teammate";
+            email: string;
+            /**
+             * Format: uuid
+             * @description The teammate's person, once one exists.
+             */
+            user_id: string | null;
+            /**
+             * @description member: the teammate is in the workspace. pending: an invitation is prepared and not yet accepted. needs_admin: an administrator has to invite this address first.
+             * @enum {string}
+             */
+            invitation: "member" | "pending" | "needs_admin";
+            /** Format: uuid */
+            invite_id: string | null;
+            /** @description Whether the teammate's role may grant what is asked of an approver: conversation:approve, task:grant and workflow:write. false means approval notifications stay with the asking person until an administrator changes the role. null while the teammate is not a person in the workspace yet. */
+            can_approve: boolean | null;
+            /** @description The approver permissions the teammate's role lacks; empty when can_approve. */
+            missing_permissions: string[];
+        };
+        /** @description When notifications reach the person. working_hours holds them outside the window and on other weekdays and delivers one summary at the next start; daily_digest delivers one summary at the chosen time. Times are read in the personal time zone and follow its clock changes. The schedule applies to push notifications and to the announcement hint on the Cockpit event stream; the attention list, the shared CLI inbox, chat channels and outbound webhooks are never delayed. */
+        SetupNotificationSchedule: {
+            /** @enum {string} */
+            mode: "immediately";
+        } | {
+            /** @enum {string} */
+            mode: "working_hours";
+            /** @description Local time of day in the person's time zone, HH:MM. */
+            from: string;
+            /** @description Local time of day in the person's time zone, HH:MM. */
+            to: string;
+            /** @description Working days as ISO weekdays, 1 = Monday to 7 = Sunday. Monday to Friday when omitted. A window that crosses midnight belongs to the day it starts on. */
+            days?: number[];
+        } | {
+            /** @enum {string} */
+            mode: "daily_digest";
+            /** @description Local time of day in the person's time zone, HH:MM. */
+            at: string;
+        };
+        UpdateSetupBody: {
+            /** @enum {string} */
+            default_chat_mode?: "ask" | "auto" | "plan";
+            /** @enum {string} */
+            default_environment?: "dev" | "prod";
+            approver?: components["schemas"]["SetupApproverInput"];
+            notifications?: components["schemas"]["SetupNotificationSchedule"];
+            /** @description The person's time zone; null falls back to the workspace time zone. */
+            timezone?: string | null;
+            /** @description Opt in: a stopped production workflow and a stored secret that can no longer be read notify at once, also outside working hours and before the daily summary. */
+            critical_breakthrough?: boolean;
+            first_job?: string | null;
+            services?: string[];
+        };
+        SetupApproverInput: {
+            /** @enum {string} */
+            kind: "self";
+        } | {
+            /** @enum {string} */
+            kind: "teammate";
+            /** Format: email */
+            email: string;
+        };
         Workspace: {
             /** Format: uuid */
             id: string;
@@ -25009,6 +25993,14 @@ export interface components {
             /** Format: email */
             email: string;
         };
+        DesktopSessionResponse: {
+            /** Format: uuid */
+            installation_id: string;
+            /** @description Same-origin path the desktop window loads; the session cookie is scoped to it. */
+            cockpit_path: string;
+            /** @description False when this device already had an active installation. */
+            created: boolean;
+        };
         CockpitBootstrapResponse: {
             principal: {
                 id: string;
@@ -25088,6 +26080,23 @@ export interface components {
                     icon_512: string | null;
                 };
             };
+        };
+        CockpitInstallationListItem: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "browser" | "desktop";
+            /** @description Name the desktop device gave itself; null for the installed web app. */
+            device_label: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description Last request a session of this installation made; null when it was never used.
+             */
+            last_used_at: string | null;
+            /** @description True for the installation the asking session itself belongs to. */
+            current: boolean;
         };
         CockpitPushSubscriptionStatus: {
             subscribed: boolean;
@@ -27535,6 +28544,15 @@ export interface components {
             /** @enum {string} */
             execution_mode: "dev" | "prod";
             paused: boolean;
+            /** @description Set when the engine paused this schedule itself after the same failure repeated; null for a schedule a person paused or one that runs. Resuming (paused: false) clears it and starts counting failures afresh. */
+            auto_pause: {
+                /** @enum {string} */
+                paused_reason: "repeated_failures";
+                failure_class: string;
+                consecutive_failures: number;
+                /** Format: date-time */
+                since: string;
+            } | null;
             /** @description Persisted workflow input returned verbatim to workflow readers; credentials belong in connector credential storage. */
             input?: unknown;
             created_at: string;
@@ -27589,6 +28607,56 @@ export interface components {
         ScheduleDeleteResponse: {
             id: string;
             deleted: boolean;
+        };
+        ScheduleOccurrenceListResponse: {
+            items: components["schemas"]["ScheduleOccurrence"][];
+            /**
+             * Format: date-time
+             * @description Pass as before to read older occurrences; null when this page is the last.
+             */
+            next_before: string | null;
+        };
+        ScheduleOccurrence: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            workflow_id: string | null;
+            /** Format: uuid */
+            task_id: string | null;
+            /** Format: uuid */
+            schedule_id: string | null;
+            /**
+             * Format: date-time
+             * @description The first due time this row stands for.
+             */
+            due_at: string;
+            /**
+             * Format: date-time
+             * @description The newest due time this row stands for; equals due_at for a single occurrence.
+             */
+            last_due_at: string;
+            /**
+             * Format: date-time
+             * @description When the run started; null unless it ran.
+             */
+            started_at: string | null;
+            /**
+             * @description ran: started near its due time. ran_late: started late or stood in for missed occurrences. skipped: deliberately not started. held: could not start until a person acts.
+             * @enum {string}
+             */
+            state: "ran" | "ran_late" | "skipped" | "held";
+            /** @description Why: late_start, merged_missed, calendar_weekend, calendar_skip_date, failure_backoff, repeated_failures, input_required, execution_authority_required, execution_authority_unavailable, or a task admission reason such as grant_required, grant_expired, previous_run_active. Null for a run on time. */
+            reason_code: string | null;
+            /** @description Due occurrences without a run of their own: for skipped and held rows every occurrence the row stands for, for ran_late the earlier occurrences this run stood in for. */
+            skipped_count: number;
+            /** Format: uuid */
+            execution_id: string | null;
+            /** Format: uuid */
+            task_run_id: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
         };
         WorkflowSaveResponse: components["schemas"]["WorkflowDetail"] & {
             automation_readiness?: components["schemas"]["AutomationReadiness"];
@@ -30073,8 +31141,11 @@ export interface components {
             done_when: string;
             plan: components["schemas"]["TaskPlan"];
             bindings: components["schemas"]["TaskBindings"];
-            /** @enum {string} */
-            environment: "dev" | "prod";
+            /**
+             * @description Where bound workflows run. Left out: the calling person's default environment from their setup, or dev when they chose none.
+             * @enum {string}
+             */
+            environment?: "dev" | "prod";
             /** @default null */
             schedule_cron?: string | null;
             /** @default null */
@@ -30668,6 +31739,46 @@ export interface components {
         };
         RejectIntakeProposalBody: {
             expected_revision: number;
+        };
+        SubmittedFeedback: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            intake_item_id: string;
+        };
+        SubmitFeedbackBody: {
+            /**
+             * Format: uuid
+             * @description Send the same id again to retry a report without filing it twice.
+             */
+            client_request_id?: string;
+            /** @enum {string} */
+            kind: "bug" | "idea" | "other";
+            message: string;
+            diagnostics?: components["schemas"]["FeedbackDiagnostics"];
+            attachments?: {
+                filename: string;
+                /** @description PNG, JPG, PDF, TXT or JSON, at most 2 MB. */
+                content_base64: string;
+            }[];
+            /** @description A PNG of the application window, at most 4 MB. */
+            screenshot_png_base64?: string;
+        };
+        FeedbackDiagnostics: {
+            app_version?: string;
+            platform?: string;
+            /** @enum {string} */
+            client_kind?: "browser" | "desktop" | "pwa";
+            server_version?: string;
+            /** @description Connection state the client saw. */
+            connection?: string;
+            /** @description Route the report was sent from. */
+            route?: string;
+            recent_errors?: {
+                code: string;
+                /** Format: date-time */
+                at: string;
+            }[];
         };
         KnowledgeSourceVersionListResponse: {
             items: components["schemas"]["KnowledgeSourceVersion"][];
@@ -31357,7 +32468,57 @@ export interface components {
             approved_at: string | null;
             /** @enum {string|null} */
             outcome: "ok" | "error" | "denied" | "expired" | "pending" | null;
+            /** @description For an action with an effect: what exactly was bound, whether it ran without a confirmation and why, and whether a rule can be stored. */
+            policy?: {
+                /** @description True when the action ran without a confirmation card. */
+                ran_without_asking: boolean;
+                /**
+                 * @description Why no card was shown: the person's own words or a rule they created.
+                 * @enum {string|null}
+                 */
+                rule: "user_instruction" | "standing_rule" | null;
+                bound_action: components["schemas"]["BoundAction"];
+                because: {
+                    /** @description The person's own words that ask for this action. */
+                    quote: string;
+                    /** @description The message the words were taken from. */
+                    message_id: string | null;
+                } | null;
+                /** Format: uuid */
+                rule_id: string | null;
+                /** @description Why the action asked instead of running, as a stable code. */
+                ask_reason: string | null;
+                /** @description What exactly was missing, in plain words, when the action asked. */
+                ask_detail?: string | null;
+                rule_offer: components["schemas"]["ToolApprovalRuleOffer"];
+            } | null;
         };
+        BoundAction: {
+            /** @enum {string} */
+            verb: "send" | "create" | "update" | "run" | "save" | "other";
+            /** @enum {string} */
+            effect_class: "ordinary" | "payment" | "deletion" | "publication" | "permission_or_settings" | "account_creation" | "credential" | "unknown";
+            /** @description What the action acts on, e.g. `POST /v1/messages`. */
+            target: string | null;
+            /** @description The connector or account the action goes through. */
+            account: string | null;
+            /** @description Addresses, links and handles the action reaches. */
+            recipients: string[];
+            /** @description Shortened subject and text of the action. */
+            content_summary: string | null;
+            /** @description The full text the action would send or store, as drafted, for the card. */
+            content?: string | null;
+        };
+        /** @description Offered once after the same kind of action was approved again: the person can store it as a rule. */
+        ToolApprovalRuleOffer: {
+            /** Format: uuid */
+            rule_id: string;
+            tool: string;
+            verb: string;
+            target: string | null;
+            account: string | null;
+            recipients: string[];
+        } | null;
         ConversationPlaybook: {
             id: string;
             title: string;
@@ -32444,9 +33605,14 @@ export interface components {
                 kind: "workflow" | "conversation" | "connector" | "connection" | "secret" | "settings" | "task";
                 id: string;
                 name: string | null;
+                /**
+                 * @description The environment the subject runs in: the one a connector belongs to, and for a workflow, schedule or task the one its automatic starts use. Absent when the subject has none.
+                 * @enum {string}
+                 */
+                environment?: "dev" | "prod";
             } | null;
             /** @enum {string} */
-            reason: "awaiting_answer" | "execution_authority_required" | "execution_authority_unavailable" | "version_awaiting_approval" | "version_needs_repair" | "approval_expiring" | "scheduler_stale" | "failing" | "patch_proposed" | "needs_reauth" | "needs_update" | "degraded" | "unhealthy" | "refresh_refused" | "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | "secret_prepared" | "skills_proposed" | "intake_collected" | "budget_critical" | "ai_access_missing" | "risk_critical" | "task_run_failed" | "task_result_ready" | "task_grant_required" | "task_grant_expiring" | "task_owner_unavailable";
+            reason: "awaiting_answer" | "execution_authority_required" | "execution_authority_unavailable" | "version_awaiting_approval" | "version_needs_repair" | "approval_expiring" | "schedule_auto_paused" | "scheduler_stale" | "failing" | "patch_proposed" | "needs_reauth" | "needs_update" | "degraded" | "unhealthy" | "refresh_refused" | "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | "secret_prepared" | "skills_proposed" | "intake_collected" | "budget_critical" | "ai_access_missing" | "risk_critical" | "task_run_failed" | "task_result_ready" | "task_grant_required" | "task_grant_expiring" | "task_owner_unavailable";
             /** @description What starts the workflow. Null unless it is held or the item is about its approval. */
             trigger: {
                 /** @enum {string} */
@@ -32496,6 +33662,12 @@ export interface components {
             deadline: string | null;
             /** @description Residual engine wording, or null. Show it as the engine's wording. */
             detail: string | null;
+            /** @description Present on an item that needs an approval when the viewer named someone else as their approver: the item waits for that person, who is notified instead of the viewer. */
+            waiting_on?: {
+                /** Format: uuid */
+                user_id: string;
+                name: string;
+            };
             actions: components["schemas"]["AttentionAction"][];
         };
         AttentionAction: {
@@ -33004,6 +34176,52 @@ export interface components {
             next_retry_at: string | null;
             created_at: string;
         };
+        ToolApprovalRuleListResponse: {
+            items: components["schemas"]["ToolApprovalRule"][];
+        };
+        ToolApprovalRule: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description offered: waiting for the person's decision. active: matching actions run without a confirmation. dismissed and revoked rules never apply.
+             * @enum {string}
+             */
+            state: "observed" | "offered" | "active" | "dismissed" | "revoked";
+            tool: string;
+            verb: string;
+            /** @description The exact target the rule is limited to. */
+            target: string | null;
+            /** @description The connector or account the rule is limited to. */
+            account: string | null;
+            /** @description The connector the rule is limited to. */
+            connector: string | null;
+            /** @description The one operation the rule is limited to, e.g. `POST /v1/messages/send`. */
+            operation: string | null;
+            /**
+             * @description no_content: only actions that carry no text. same_content: only the exact text that was approved. person_given: only text the person wrote themselves or saw as a draft in the conversation.
+             * @enum {string}
+             */
+            content_class: "no_content" | "same_content" | "person_given";
+            /** @description When the rule stops applying unless it is renewed; set when the rule is stored. */
+            expires_at: string | null;
+            /** @description True when an active rule is past its expiry and asks again. */
+            expired: boolean;
+            /** @description How often per day (UTC) the rule lets an action run. */
+            daily_limit: number;
+            /** @description How often the rule let an action run today (UTC). */
+            uses_today: number;
+            /** @description The only recipients the rule covers. Empty: actions without a recipient. */
+            recipients: string[];
+            /** @description How often the person approved this exact action. */
+            approvals_count: number;
+            /** @description How often the rule let an action run. */
+            use_count: number;
+            offered_at: string | null;
+            decided_at: string | null;
+            revoked_at: string | null;
+            last_used_at: string | null;
+            created_at: string;
+        };
         NotificationChannelListResponse: {
             items: components["schemas"]["NotificationChannel"][];
         };
@@ -33160,7 +34378,7 @@ export interface components {
         };
         EmitEventBody: {
             /** @enum {string} */
-            type: "execution.succeeded" | "execution.failed" | "execution.refused" | "workflow.updated" | "connector.oauth.refreshed" | "connector.oauth.callback_succeeded" | "connector.oauth.callback_failed" | "connector.auth_failed" | "connector.health_changed" | "patch.proposed" | "patch.applied" | "apikey.rotated" | "conversation.committed" | "task_run.started" | "task_run.waiting" | "task_run.result_ready" | "task_run.completed" | "task_run.failed";
+            type: "execution.succeeded" | "execution.failed" | "execution.refused" | "workflow.updated" | "connector.oauth.refreshed" | "connector.oauth.callback_succeeded" | "connector.oauth.callback_failed" | "connector.auth_failed" | "connector.health_changed" | "patch.proposed" | "patch.applied" | "apikey.rotated" | "conversation.committed" | "schedule.auto_paused" | "workflow.approval_expiring" | "task.grant_expiring" | "task_run.started" | "task_run.waiting" | "task_run.result_ready" | "task_run.completed" | "task_run.failed";
             payload: {
                 [key: string]: unknown;
             };

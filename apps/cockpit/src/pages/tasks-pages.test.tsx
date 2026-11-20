@@ -310,7 +310,7 @@ describe("task detail", () => {
       "Ergebnis bestätigen",
     ])
       expect(markup).toContain(words);
-    expect(has(markup, "task-overview-technical-toggle")).toBe(true);
+    expect(has(markup, "detail-tasks-technical-toggle")).toBe(true);
     expect(markup).not.toContain("a".repeat(64));
     expect(markup).not.toContain(TASK_ID);
     expect(markup).not.toMatch(/>prod</);

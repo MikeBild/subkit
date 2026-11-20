@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
+import { ErrorNotice } from "./error-notice";
 
 export type DataStateKind = "loading" | "empty" | "error";
 
@@ -13,6 +14,7 @@ export function DataState({
   line,
   action,
   onRetry,
+  error,
   testId,
   className,
 }: {
@@ -20,6 +22,7 @@ export function DataState({
   line?: string;
   action?: ReactNode;
   onRetry?: () => void;
+  error?: unknown;
   testId?: string;
   className?: string;
 }) {
@@ -45,7 +48,6 @@ export function DataState({
     action ??
     (state === "error" && onRetry ? (
       <Button
-        variant="outline"
         size="sm"
         onClick={onRetry}
         data-slot="data-state-retry"
@@ -54,9 +56,20 @@ export function DataState({
         {t("pattern.retry")}
       </Button>
     ) : null);
+  if (state === "error")
+    return (
+      <ErrorNotice
+        title={line ?? t("error.loadFailed")}
+        titleSlot="data-state-line"
+        error={error}
+        testId={testId ?? "data-state"}
+        className={className}
+      >
+        {shown}
+      </ErrorNotice>
+    );
   return (
     <div
-      role={state === "error" ? "alert" : undefined}
       className={cn(
         "flex min-h-11 flex-wrap items-center gap-3 rounded-lg border border-dashed px-4 py-2.5 text-left",
         className,
@@ -67,13 +80,7 @@ export function DataState({
       data-family-state={state}
     >
       {line ? (
-        <p
-          className={cn(
-            "text-sm",
-            state === "error" ? "text-destructive" : "text-muted-foreground",
-          )}
-          data-slot="data-state-line"
-        >
+        <p className="text-sm text-muted-foreground" data-slot="data-state-line">
           {line}
         </p>
       ) : null}

@@ -15,13 +15,14 @@ export const STATUS_DOT: Record<StatusTone, string> = {
 };
 
 const STRIP =
-  "flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors duration-(--sk-dur-base) ease-(--sk-ease-standard)";
+  "flex min-h-12.5 flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors duration-(--sk-dur-base) ease-(--sk-ease-standard)";
 
 export function StatusStrip({
   tone,
   line,
   help,
   more,
+  aside,
   action,
   loading,
   testId,
@@ -30,6 +31,7 @@ export function StatusStrip({
   line: ReactNode;
   help?: ReactNode;
   more?: ReactNode;
+  aside?: ReactNode;
   action?: ReactNode | ActionSpec;
   loading?: boolean;
   testId?: string;
@@ -77,6 +79,14 @@ export function StatusStrip({
       {more ? (
         <span className="text-xs text-muted-foreground" data-slot="status-strip-more">
           {more}
+        </span>
+      ) : null}
+      {aside ? (
+        <span
+          className="flex min-w-0 flex-wrap items-center gap-2 empty:hidden"
+          data-slot="status-strip-aside"
+        >
+          {aside}
         </span>
       ) : null}
       {action ? (

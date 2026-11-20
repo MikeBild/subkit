@@ -23,6 +23,7 @@ import {
   TechnicalDetails,
 } from "@/components/cockpit/patterns";
 import { ServiceIcon } from "@/components/cockpit/service-icon";
+import { reportFailure } from "@/lib/action-failure";
 import { invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -739,10 +740,11 @@ export function StepSaveBar({
         setConflict(true);
         return;
       }
-      toast.error(
+      reportFailure(
         error instanceof ApiError && error.message
           ? t("stepEditor.refused", { reason: error.message })
           : t("common.actionFailed"),
+        error,
       );
     },
   });

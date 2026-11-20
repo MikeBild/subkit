@@ -137,7 +137,12 @@ const definitionFields = {
 };
 
 export const TaskCreateInputSchema = z
-  .object(definitionFields)
+  .object({
+    ...definitionFields,
+    environment: TaskEnvironmentSchema.optional().describe(
+      "Where bound workflows run. Left out: the calling person's default environment from their setup, or dev when they chose none.",
+    ),
+  })
   .strict()
   .refine(scheduleIsExclusive, SCHEDULE_EXCLUSIVE)
   .openapi("TaskCreateInput");
@@ -148,7 +153,8 @@ export const TaskUpdateInputSchema = z
   .refine(scheduleIsExclusive, SCHEDULE_EXCLUSIVE)
   .openapi("TaskUpdateInput");
 
-export type TaskCreateInput = z.infer<typeof TaskCreateInputSchema>;
+export type TaskCreateRequest = z.infer<typeof TaskCreateInputSchema>;
+export type TaskCreateInput = TaskCreateRequest & { environment: TaskEnvironment };
 export type TaskUpdateInput = z.infer<typeof TaskUpdateInputSchema>;
 
 export const TaskSchema = z

@@ -14,6 +14,8 @@ export type ToolModeRule =
   | "inline_credential"
   | "connector_trust"
   | "authority_covered"
+  | "user_instruction"
+  | "standing_rule"
   | "never_gate"
   | "permission_mode"
   | "conversation_override"

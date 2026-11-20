@@ -7,7 +7,7 @@ import {
   settingsViewFromUrl,
 } from "@/pages/settings-model";
 
-export const PERSONAL_AREA_IDS = ["profile", "workspace"] as const;
+export const PERSONAL_AREA_IDS = ["profile", "setup", "rules", "workspace"] as const;
 export type PersonalAreaId = (typeof PERSONAL_AREA_IDS)[number];
 
 export const ENGINE_AREA_IDS = [
@@ -111,7 +111,7 @@ export function workspaceAiEditable(access: SettingsAccess): boolean {
 export function visibleSettingAreas(access: SettingsAccess): SettingAreaId[] {
   const engine = engineSettingsAccess(access) !== "none";
   return SETTING_AREA_IDS.filter((area) => {
-    if (area === "profile") return true;
+    if (area === "profile" || area === "setup" || area === "rules") return true;
     if (area === "workspace") return administersWorkspace(access);
     if (area === "ai") return engine || workspaceAiEditable(access);
     if (area === "notifications") return engine || access.permissions.includes("notification:read");

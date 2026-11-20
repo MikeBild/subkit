@@ -86,7 +86,8 @@ export const tasksEn = {
   "tasks.stop.object": "run of “{name}”",
   "tasks.stop.verb": "Stop",
   "tasks.stop.dismiss": "Back",
-  "tasks.stop.consequence": "The run ends right away and cannot be resumed.",
+  "tasks.stop.consequence":
+    "The run ends right away. The schedule stays active. Steps that already reached an external system may have been carried out.",
   "tasks.stopped": "The run was stopped.",
   "tasks.action.answer": "Answer",
   "tasks.action.review": "Review result",
@@ -98,7 +99,8 @@ export const tasksEn = {
   "tasks.action.usage": "View usage",
   "tasks.action.aiAccess": "Set up AI access",
   "tasks.strip.paused": "This task is paused.",
-  "tasks.strip.pausedOwner": "This task is paused because its owner is not available.",
+  "tasks.strip.pausedOwner":
+    "This task was paused automatically because its owner is not available.",
   "tasks.strip.waiting.question": "The run is waiting for your answer.",
   "tasks.strip.waiting.approval": "The run is waiting for your go-ahead for one step.",
   "tasks.strip.waiting.no_progress": "The run is stuck and needs your help.",
@@ -261,9 +263,13 @@ export const tasksEn = {
   "tasks.form.webSearch.off": "Not allowed",
   "tasks.form.webSearch.on": "Allowed",
   "tasks.form.environment": "Where should it work?",
-  "tasks.form.environmentHelp": "Test is for trying things out. Live works with your real data.",
+  "tasks.form.environmentHelp":
+    "Test is for trying things out. Production works with your real data.",
+  "tasks.form.environmentPreselected": "Preselected from your setup.",
+  "tasks.form.environmentFromSetup":
+    "“{where}” is preselected from your setup. Change it for this task under “{more}”, the default under Settings › Setup.",
   "tasks.environment.dev": "Test",
-  "tasks.environment.prod": "Live",
+  "tasks.environment.prod": "Production",
   "tasks.form.deadline": "How long may one run take?",
   "tasks.form.effort": "How many work steps may one run take?",
   "tasks.duration.minutes.one": "{count} minute",
@@ -396,7 +402,8 @@ export const tasksDe: Record<keyof typeof tasksEn, string> = {
   "tasks.stop.object": "Lauf von „{name}“",
   "tasks.stop.verb": "Abbrechen",
   "tasks.stop.dismiss": "Zurück",
-  "tasks.stop.consequence": "Der Lauf endet sofort und lässt sich nicht fortsetzen.",
+  "tasks.stop.consequence":
+    "Der Lauf endet sofort. Der Zeitplan bleibt aktiv. Schritte, die ein Fremdsystem schon erreicht haben, können ausgeführt sein.",
   "tasks.stopped": "Der Lauf wurde abgebrochen.",
   "tasks.action.answer": "Antworten",
   "tasks.action.review": "Ergebnis prüfen",
@@ -409,7 +416,7 @@ export const tasksDe: Record<keyof typeof tasksEn, string> = {
   "tasks.action.aiAccess": "KI-Zugang einrichten",
   "tasks.strip.paused": "Die Aufgabe ist pausiert.",
   "tasks.strip.pausedOwner":
-    "Die Aufgabe ist pausiert, weil die Person, der sie gehört, nicht verfügbar ist.",
+    "Die Aufgabe wurde automatisch pausiert, weil die Person, der sie gehört, nicht verfügbar ist.",
   "tasks.strip.waiting.question": "Der Lauf wartet auf deine Antwort.",
   "tasks.strip.waiting.approval": "Der Lauf wartet auf dein Okay für einen Schritt.",
   "tasks.strip.waiting.no_progress": "Der Lauf kommt nicht weiter und braucht deine Hilfe.",
@@ -578,6 +585,9 @@ export const tasksDe: Record<keyof typeof tasksEn, string> = {
   "tasks.form.environment": "Wo soll sie arbeiten?",
   "tasks.form.environmentHelp":
     "Test ist zum Ausprobieren. Der Echtbetrieb arbeitet mit deinen echten Daten.",
+  "tasks.form.environmentPreselected": "Vorausgewählt aus deiner Einrichtung.",
+  "tasks.form.environmentFromSetup":
+    "„{where}“ ist aus deiner Einrichtung vorausgewählt. Für diese Aufgabe änderst du das unter „{more}“, die Vorgabe unter Einstellungen › Einrichtung.",
   "tasks.environment.dev": "Test",
   "tasks.environment.prod": "Echtbetrieb",
   "tasks.form.deadline": "Wie lange darf ein Lauf dauern?",

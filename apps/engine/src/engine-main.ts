@@ -27,6 +27,7 @@ import { OPENAPI_INFO } from "./http/openapi.ts";
 import { createApp } from "./http/server.ts";
 import type { HttpShutdown } from "./http/shutdown.ts";
 import { beginHttpShutdown, drainHttpBounded } from "./http/shutdown.ts";
+import { beginStreamShutdown } from "./http/stream-shutdown.ts";
 import { seedKnowledgeAtBoot } from "./knowledge/seed.ts";
 import { newTraceId, withContext } from "./logging/context.ts";
 import { errorFields, logger } from "./logging/logger.ts";
@@ -105,6 +106,7 @@ async function runServer(): Promise<void> {
       process.exit(shutdownExitCode("timeout"));
     }, SHUTDOWN_DRAIN_TIMEOUT_MS + 20_000);
     hardKill.unref?.();
+    beginStreamShutdown();
     const drained = lifetime.stop();
     const forceHttpClose = setTimeout(() => httpShutdown?.forceClose(), SHUTDOWN_DRAIN_TIMEOUT_MS);
     forceHttpClose.unref?.();

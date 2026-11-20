@@ -134,6 +134,40 @@ describe("GET /docs.json", () => {
     expect(Object.keys(JSON.parse(body)).sort()).toEqual(["locales", "pages", "sections"]);
   });
 
+  test("tells the desktop app its minimum version and where it signs in", async () => {
+    const descriptor = (await (
+      await buildApp().request("/.well-known/service-descriptor.json")
+    ).json()) as {
+      clients: {
+        desktop: { min_version: string; login: Record<string, unknown>; feedback_path: string };
+      };
+    };
+    expect(descriptor.clients.desktop.min_version).toBe("0.1.0");
+    expect(descriptor.clients.desktop.feedback_path).toBe("/cockpit?feedback=1");
+    expect(descriptor.clients.desktop.login).toEqual({
+      start: "/v1/identity/desktop-login/start",
+      session: "/v1/identity/desktop-session",
+      callback: "subkit://callback",
+      callbacks: ["subkit://callback", "subkit-dev://callback"],
+      code_challenge_methods: ["S256"],
+    });
+  });
+
+  test("a production engine lists only the production sign-in target", async () => {
+    const before = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      const descriptor = (await (
+        await buildApp().request("/.well-known/service-descriptor.json")
+      ).json()) as { clients: { desktop: { login: { callback: string; callbacks: string[] } } } };
+      expect(descriptor.clients.desktop.login.callback).toBe("subkit://callback");
+      expect(descriptor.clients.desktop.login.callbacks).toEqual(["subkit://callback"]);
+    } finally {
+      if (before === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = before;
+    }
+  });
+
   test("documents /docs.json in the OpenAPI spec and leaves /docs to the API reference", async () => {
     const app = buildApp();
     const spec = app.getOpenAPI31Document({

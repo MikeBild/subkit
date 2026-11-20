@@ -11,6 +11,7 @@ import {
   workflowReviewReceipts,
   workflows,
 } from "../db/schema/index.ts";
+import { personalDefaultEnvironment } from "../identity/setup-preferences.ts";
 import { can } from "../rbac/evaluator.ts";
 import { createScheduleLocked } from "../scheduler/repo.ts";
 import { inboundHookDeliveryRate } from "../scheduler/workflow-automation-view.ts";
@@ -273,6 +274,22 @@ export async function prepareWorkflowReview(
           : null),
     );
     const { valid_from, valid_until, max_runs } = suggestedBounds;
+    const personal = input.grant
+      ? null
+      : await personalDefaultEnvironment(tx, p.tenant_id, p.principal);
+    const devEligible =
+      personal === "dev" &&
+      (
+        await resolveWorkflowReviewManifest(
+          {
+            tenant_id: p.tenant_id,
+            workflow_id: saved?.id ?? null,
+            definition: saved_definition,
+            environment: "dev",
+          },
+          tx,
+        )
+      ).eligible_for_repeated_runs;
     const snapshot = {
       elicitation_id: elicitation.id,
       conversation_draft_id: draft?.id ?? null,
@@ -303,9 +320,11 @@ export async function prepareWorkflowReview(
       actions: { activate: input.activate, grant: input.grant, schedule: input.schedule },
       suggested_actions: {
         activate: false,
-        grant: manifest.eligible_for_repeated_runs
-          ? { environment: "prod", valid_from, valid_until, max_runs }
-          : null,
+        grant: devEligible
+          ? { environment: "dev" as const, valid_from, valid_until, max_runs }
+          : manifest.eligible_for_repeated_runs
+            ? { environment: "prod" as const, valid_from, valid_until, max_runs }
+            : null,
         schedule:
           trigger?.kind === "schedule" && typeof trigger.cron === "string"
             ? {

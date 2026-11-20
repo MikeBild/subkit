@@ -1,5 +1,6 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { toHonoRoute } from "../../api/operations/hono.ts";
+import { listWorkflowScheduleOccurrencesOperation } from "../../api/operations/schedule-occurrences.ts";
 import {
   createWorkflowOperation,
   deleteWorkflowOperation,
@@ -38,6 +39,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
   toHonoRoute(app, createScheduleOperation);
   toHonoRoute(app, updateScheduleOperation);
   toHonoRoute(app, deleteScheduleOperation);
+  toHonoRoute(app, listWorkflowScheduleOccurrencesOperation);
   toHonoRoute(app, createWorkflowOperation);
   toHonoRoute(app, validateWorkflowOperation);
   toHonoRoute(app, getWorkflowOperation);

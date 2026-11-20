@@ -26,6 +26,7 @@ import {
   taskGrantRows,
 } from "@/components/cockpit/task-grant-model";
 import { TaskGrantBlocked, TaskGrantRows } from "@/components/cockpit/task-grant-rows";
+import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 import { taskKeys } from "@/lib/task-keys";
 
@@ -79,7 +80,7 @@ export function TaskPermissions({
       setRevoking(false);
       toast.success(t("taskPermissions.revoked"));
     },
-    onError: () => toast.error(t("taskPermissions.revokeFailed")),
+    onError: (failure) => reportFailure(t("taskPermissions.revokeFailed"), failure),
     onSettled: () => {
       void client.invalidateQueries({ queryKey: taskKeys.grantsOf(taskId) });
       for (const queryKey of TASK_GRANT_INVALIDATES) void client.invalidateQueries({ queryKey });

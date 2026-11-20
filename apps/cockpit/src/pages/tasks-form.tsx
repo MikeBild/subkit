@@ -42,6 +42,7 @@ import {
   withCurrent,
 } from "@/pages/tasks-model";
 import { createTask, refreshTask, updateTask } from "@/pages/tasks-queries";
+import { fromSetup, useTaskEnvironmentDefault } from "./tasks-default-environment";
 
 type Translate = ReturnType<typeof useI18n>["t"];
 type TranslatePlural = ReturnType<typeof useI18n>["tn"];
@@ -194,12 +195,14 @@ export function TaskFormFields({
   workflowOptions,
   connectorOptions,
   choosesEnvironment,
+  environmentFromSetup = false,
 }: {
   draft: TaskDraft;
   onChange(change: Partial<TaskDraft>): void;
   workflowOptions: readonly { value: string; label: string }[];
   connectorOptions: readonly { value: string; label: string }[];
   choosesEnvironment: boolean;
+  environmentFromSetup?: boolean;
 }) {
   const { t, tn } = useI18n();
   return (
@@ -247,6 +250,14 @@ export function TaskFormFields({
           quiet
         />
       </fieldset>
+      {choosesEnvironment && environmentFromSetup ? (
+        <p className="text-sm text-muted-foreground" data-testid="task-form-environment-default">
+          {t("tasks.form.environmentFromSetup", {
+            where: t(`tasks.environment.${draft.environment}`),
+            more: t("tasks.form.more"),
+          })}
+        </p>
+      ) : null}
       <CollapsibleSection label={t("tasks.form.more")} testId="task-form-more">
         <div className="flex min-w-0 flex-col gap-4">
           <TextField
@@ -273,7 +284,11 @@ export function TaskFormFields({
           {choosesEnvironment ? (
             <ChoiceField<Task["environment"]>
               label={t("tasks.form.environment")}
-              description={t("tasks.form.environmentHelp")}
+              description={
+                environmentFromSetup
+                  ? `${t("tasks.form.environmentHelp")} ${t("tasks.form.environmentPreselected")}`
+                  : t("tasks.form.environmentHelp")
+              }
               value={draft.environment}
               onChange={(environment) => onChange({ environment })}
               options={[
@@ -348,6 +363,11 @@ export function TaskFormDialog({
     )
     .map((item) => ({ value: item.id, label: item.display_name }));
   const choosesEnvironment = bothEnvironments(bindable.connectors, task?.environment ?? null);
+  const preselected = useTaskEnvironmentDefault(
+    !task && !seed?.environment,
+    choosesEnvironment,
+    (environment) => set({ environment }),
+  );
 
   const built = taskBody(draft, task ?? null, Date.now());
   const warning =
@@ -381,6 +401,7 @@ export function TaskFormDialog({
         save.mutate(built.body);
       }}
       error={error}
+      failure={save.error}
       hint={warning ? t(warning) : undefined}
       size="wide"
       testId="task-form"
@@ -391,6 +412,7 @@ export function TaskFormDialog({
         workflowOptions={workflowOptions}
         connectorOptions={connectorOptions}
         choosesEnvironment={choosesEnvironment}
+        environmentFromSetup={fromSetup(preselected, draft.environment)}
       />
     </FormDialog>
   );

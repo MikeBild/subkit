@@ -1,6 +1,8 @@
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
+import { activeApprover } from "../identity/setup-preferences.ts";
 import { can, resourceAccess } from "../rbac/evaluator.ts";
+import { withExecutionEnvironments } from "./attention-environment.ts";
 import {
   type AttentionReaderOverrides,
   buildTenantFacts,
@@ -8,6 +10,7 @@ import {
   readOwnConversations,
   type TenantFacts,
 } from "./attention-readers.ts";
+import { withWaitingOn } from "./attention-waiting-on.ts";
 import {
   ATTENTION_SCHEMA_VERSION,
   ATTENTION_SOURCES,
@@ -15,8 +18,10 @@ import {
   type AttentionSource,
   type AttentionSourceState,
   type AttentionV1,
+  needsApproval,
   projectAttentionItems,
 } from "./core/attention.ts";
+import { withPausedSchedules } from "./schedule-pause-attention.ts";
 import {
   readTaskAttention,
   retargetRunConversations,
@@ -78,16 +83,19 @@ function tenantFacts(db: Db, tenantId: string, now: Date): Promise<TenantFacts> 
   const at = Date.now();
   const existing = cache.get(tenantId);
   if (existing && existing.until > at) return existing.value;
-  const value = buildTenantFacts(db, tenantId, now, {}).then(
-    (facts) => {
-      if (Object.values(facts.sources).includes("failed")) cache.delete(tenantId);
-      return facts;
-    },
-    (error) => {
-      cache.delete(tenantId);
-      throw error;
-    },
-  );
+  const value = buildTenantFacts(db, tenantId, now, {})
+    .then((facts) => withPausedSchedules(db, tenantId, facts))
+    .then((facts) => withExecutionEnvironments(db, tenantId, facts))
+    .then(
+      (facts) => {
+        if (Object.values(facts.sources).includes("failed")) cache.delete(tenantId);
+        return facts;
+      },
+      (error) => {
+        cache.delete(tenantId);
+        throw error;
+      },
+    );
   cache.set(tenantId, { until: at + CACHE_MS, value });
   return value;
 }
@@ -138,6 +146,8 @@ export async function buildAttention(
     ).then((entries) => new Map(entries)),
     opts.readers
       ? buildTenantFacts(db, tenantId, now, opts.readers)
+          .then((built) => withPausedSchedules(db, tenantId, built))
+          .then((built) => withExecutionEnvironments(db, tenantId, built))
       : tenantFacts(db, tenantId, now),
   ]);
   const permitted = (source: AttentionSource) => access.get(source)?.any === true;
@@ -185,7 +195,14 @@ export async function buildAttention(
   )
     ? (await gateFor({ permission: "inbound_hook:read" })).any
     : true;
-  const projectedItems = projectAttentionItems(items, mayReadHookNames);
+  const approver =
+    principal.kind === "user" && items.some(needsApproval)
+      ? await activeApprover(db, { tenant_id: tenantId, user_id: principal.id }).catch(() => null)
+      : null;
+  const projected = projectAttentionItems(items, mayReadHookNames);
+  const projectedItems = await withWaitingOn(db, tenantId, approver, projected).catch(
+    () => projected,
+  );
 
   return {
     schema_version: ATTENTION_SCHEMA_VERSION,

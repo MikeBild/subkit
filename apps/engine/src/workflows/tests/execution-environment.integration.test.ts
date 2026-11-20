@@ -198,3 +198,36 @@ test("another tenant's connector rows are never read", async () => {
     }),
   ).toEqual({ environment: "dev", source: "default" });
 });
+
+test("the person's default applies only where neither a trigger nor the bindings decide", async () => {
+  const tenant = await tenantFixture();
+  const open = await workflowFixture(tenant.id, []);
+  expect(
+    await resolveWorkflowReviewEnvironment(ctx.db, tenant.id, open.workflow.id, {
+      version_id: open.version.id,
+      personal_default: "prod",
+    }),
+  ).toEqual({ environment: "prod", source: "default" });
+  expect(
+    await resolveWorkflowReviewEnvironment(ctx.db, tenant.id, open.workflow.id, {
+      version_id: open.version.id,
+      personal_default: null,
+    }),
+  ).toEqual({ environment: "dev", source: "default" });
+  const bound = await connectorFixture(tenant.id, "crm-prod", "prod");
+  const fixed = await workflowFixture(tenant.id, [bound.id]);
+  expect(
+    await resolveWorkflowReviewEnvironment(ctx.db, tenant.id, fixed.workflow.id, {
+      version_id: fixed.version.id,
+      personal_default: "dev",
+    }),
+  ).toEqual({ environment: "prod", source: "bindings" });
+  await scheduleFixture(tenant.id, open.workflow.id, "dev");
+  expect(
+    await resolveWorkflowReviewEnvironment(ctx.db, tenant.id, open.workflow.id, {
+      version_id: open.version.id,
+      personal_default: "prod",
+    }),
+  ).toEqual({ environment: "dev", source: "schedule" });
+  expect(await workflowExecutionEnvironment(ctx.db, tenant.id, fixed.workflow.id)).toBe("dev");
+});

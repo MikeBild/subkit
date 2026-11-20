@@ -5,6 +5,7 @@ import {
   PlaybookViewSchema,
   ResumeFormFieldSchema,
 } from "../../../conversations/public/authoring.ts";
+import { ToolCallPolicySchema } from "../../../conversations/public/policy.ts";
 import { resolveEngineUrl } from "../../../llm/index.ts";
 
 export function buildRuntimeContextFromRequest(
@@ -138,6 +139,11 @@ const ConversationToolCallSchema = z
     confirmation_state: z.string().nullable(),
     approved_at: z.string().nullable(),
     outcome: z.enum(["ok", "error", "denied", "expired", "pending"]).nullable(),
+    policy: ToolCallPolicySchema.nullable()
+      .optional()
+      .describe(
+        "For an action with an effect: what exactly was bound, whether it ran without a confirmation and why, and whether a rule can be stored.",
+      ),
   })
   .openapi("ConversationToolCall");
 

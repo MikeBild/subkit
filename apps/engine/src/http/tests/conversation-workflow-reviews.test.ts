@@ -9,6 +9,7 @@ import { appendSnapshot } from "../../conversations/draft.ts";
 import {
   conversationElicitations,
   conversations,
+  userSetupPreferences,
   webhooksInbound,
   workflowExecutionAuthorities,
   workflows,
@@ -496,4 +497,35 @@ test("a webhook-triggered draft is suggested as automatic work, not as one manua
   const hooked = await suggestion("reviewed-hooked-sample", undefined, saved.id);
   expect(hooked.days).toBe(30);
   expect(hooked.max_runs).toBeGreaterThanOrEqual(100);
+});
+
+test("the suggested approval starts in the person's default environment", async () => {
+  const headers = await browserSessionHeaders(srv, srv.userId);
+  const suggested = async (slug: string) => {
+    const review = await pendingSave(slug);
+    const response = await fetch(`${srv.baseUrl}${review.path}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        elicitation_id: review.elicitation_id,
+        activate: false,
+        grant: null,
+        schedule: null,
+      }),
+    });
+    expect(response.status, await response.clone().text()).toBe(201);
+    const body = (await response.json()) as {
+      suggested_actions: { grant: { environment: string } | null };
+    };
+    return body.suggested_actions.grant?.environment;
+  };
+  expect(await suggested("reviewed-default-prod")).toBe("prod");
+  await srv.db
+    .insert(userSetupPreferences)
+    .values({ tenant_id: srv.tenantId, user_id: srv.userId, default_environment: "dev" });
+  try {
+    expect(await suggested("reviewed-default-dev")).toBe("dev");
+  } finally {
+    await srv.db.delete(userSetupPreferences).where(eq(userSetupPreferences.user_id, srv.userId));
+  }
 });

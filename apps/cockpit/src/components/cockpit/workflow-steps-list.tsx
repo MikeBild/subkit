@@ -412,23 +412,26 @@ function useStepPhrase(): (
 }
 
 const CARD =
-  "flex w-full min-w-0 flex-col justify-start gap-1.5 self-stretch rounded-lg border bg-card p-3 text-left transition-colors hover:border-foreground/20 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:min-w-[150px] lg:flex-1";
+  "flex w-full min-w-0 flex-col justify-start gap-1.5 self-stretch rounded-lg border bg-card p-3 text-left transition-colors hover:border-foreground/20 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring @3xl:min-w-[150px] @3xl:flex-1";
+
+const FLOW_TITLE =
+  "flex min-h-10 items-start gap-2 text-sm font-medium [&_svg]:mt-0.5 [&_svg]:size-4 [&_svg]:shrink-0";
 
 function FlowArrow() {
   return (
     <li
       aria-hidden="true"
-      className="flex shrink-0 items-center justify-center py-0.5 text-muted-foreground/50 lg:w-8 [&_svg]:size-4"
+      className="flex shrink-0 items-center justify-center py-0.5 text-muted-foreground/50 @3xl:w-8 [&_svg]:size-4"
     >
-      <ArrowDown className="lg:hidden" />
-      <ArrowRight className="hidden lg:block" />
+      <ArrowDown className="@3xl:hidden" />
+      <ArrowRight className="hidden @3xl:block" />
     </li>
   );
 }
 
 function FlowPlus({ label, onClick, testId }: { label: string; onClick(): void; testId: string }) {
   return (
-    <li className="flex shrink-0 items-center justify-center lg:w-8">
+    <li className="flex shrink-0 items-center justify-center @3xl:w-8">
       <button
         type="button"
         onClick={onClick}
@@ -485,9 +488,9 @@ export function WorkflowFlow({
     );
   const selected = open === null ? null : (steps.views[open] ?? null);
   return (
-    <div data-testid="workflow-steps">
+    <div className="@container" data-testid="workflow-steps">
       <ol
-        className="flex flex-col items-stretch gap-1 overflow-x-auto pb-1 lg:flex-row"
+        className="flex flex-col items-stretch gap-1 overflow-x-auto pb-1 @3xl:flex-row"
         data-slot="workflow-flow"
         data-testid="workflow-flow"
       >
@@ -499,7 +502,7 @@ export function WorkflowFlow({
             <span className="text-xs font-medium text-muted-foreground">
               {t("workflowFlow.trigger")}
             </span>
-            <span className="flex items-center gap-2 text-sm font-medium [&_svg]:size-4">
+            <span className={FLOW_TITLE}>
               <TriggerIcon aria-hidden="true" className="text-blue-600 dark:text-blue-400" />
               {trigger.label}
             </span>
@@ -556,7 +559,7 @@ export function WorkflowFlow({
                       />
                     </span>
                   </span>
-                  <span className="flex items-center gap-2 text-sm font-medium [&_svg]:size-4">
+                  <span className={FLOW_TITLE}>
                     {connector ? (
                       <ServiceIcon service={connector.service} />
                     ) : (
@@ -588,7 +591,7 @@ export function WorkflowFlow({
             <span className="text-xs font-medium text-muted-foreground">
               {t("workflowFlow.result")}
             </span>
-            <span className="flex items-center gap-2 text-sm font-medium [&_svg]:size-4">
+            <span className={FLOW_TITLE}>
               <Flag aria-hidden="true" className="text-emerald-600 dark:text-emerald-400" />
               {result}
             </span>

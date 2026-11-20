@@ -3,9 +3,11 @@ import { ApiError } from "@/api/client";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { ActionMenu, Button, StatusBadge, StatusStrip } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
+import { refusedApprovalReply } from "@/pages/chat-policy";
 import type { ChatTurn } from "@/pages/chat-turn";
 import { chatContextControlsTarget } from "@/pages/chat-workspace";
 import { ReadingColumn } from "./parts";
+import { RefusedReply } from "./policy";
 
 export function ConversationHead({
   headerText,
@@ -86,9 +88,15 @@ export function TurnErrors({
   const { send, sendError, turnFailure, failureCauseText, turnFailureMessage, retryTurn, decide } =
     turn;
   const blocked = sendError instanceof ApiError && sendError.code === "pending_elicitation_blocked";
+  const refusedReply = sendError instanceof ApiError && refusedApprovalReply(sendError) !== null;
   return (
     <>
-      {(send.error || turnFailure) && (
+      {refusedReply && questionOpen ? (
+        <ReadingColumn className="pb-3">
+          <RefusedReply turn={turn} busy={busy} />
+        </ReadingColumn>
+      ) : null}
+      {(send.error || turnFailure) && !refusedReply && (
         <ReadingColumn className="pb-3">
           <StatusStrip
             tone="error"

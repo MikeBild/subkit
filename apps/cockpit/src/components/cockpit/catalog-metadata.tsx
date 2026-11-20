@@ -3,6 +3,7 @@ import { Bot } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { apiCall } from "@/api/call";
+import { type ConnectorEnvironment, EnvironmentChip } from "@/components/cockpit/environment-chip";
 import { SelectField, TextAreaField, TextField } from "@/components/cockpit/form-field";
 import {
   type ActionMenuItem,
@@ -10,6 +11,7 @@ import {
   type FilterSelect,
   FormDialog,
 } from "@/components/cockpit/patterns";
+import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
@@ -68,7 +70,7 @@ export function useCatalogMetadataActions({
         client.invalidateQueries({ queryKey: ["catalog-categories"] }),
       ]);
     },
-    onError: () => toast.error(t("detail.saveFailed")),
+    onError: (failure) => reportFailure(t("detail.saveFailed"), failure),
   });
   return [
     {
@@ -196,7 +198,7 @@ export function CatalogMetadataDialog({
         client.invalidateQueries({ queryKey: ["catalog-categories"] }),
       ]);
     },
-    onError: () => toast.error(t("detail.saveFailed")),
+    onError: (failure) => reportFailure(t("detail.saveFailed"), failure),
   });
   return (
     <FormDialog
@@ -283,13 +285,22 @@ export function CatalogNameCell({
   record,
   icon,
   hideCategory = false,
+  environment,
 }: {
   name: string;
   record: CatalogMetadataRecord | undefined;
   icon?: ReactNode;
   hideCategory?: boolean;
+  environment?: ConnectorEnvironment | null;
 }) {
-  const text = <CatalogNameText name={name} record={record} hideCategory={hideCategory} />;
+  const text = (
+    <CatalogNameText
+      name={name}
+      record={record}
+      hideCategory={hideCategory}
+      environment={environment ?? null}
+    />
+  );
   if (!icon) return text;
   return (
     <span className="flex min-w-0 items-start gap-3">
@@ -305,10 +316,12 @@ function CatalogNameText({
   name,
   record,
   hideCategory,
+  environment,
 }: {
   name: string;
   record: CatalogMetadataRecord | undefined;
   hideCategory: boolean;
+  environment: ConnectorEnvironment | null;
 }) {
   const { t } = useI18n();
   const category = recordCategory(record);
@@ -322,6 +335,7 @@ function CatalogNameText({
             {humanizeCategory(category, t("catalog.categoryOther"))}
           </Chip>
         ) : null}
+        {environment ? <EnvironmentChip environment={environment} /> : null}
         <span className="truncate">{description || t("catalogMeta.empty")}</span>
       </span>
     </span>
@@ -334,6 +348,7 @@ export function useCategoryFilter(kind: CatalogKind): {
   value: string;
   setValue(value: string): void;
   usage: CategoryCount[];
+  loading: boolean;
 } {
   const { t } = useI18n();
   const [value, setValue] = useSearchParamState("category", "all");
@@ -345,12 +360,20 @@ export function useCategoryFilter(kind: CatalogKind): {
     .map((entry) => ({ category: entry.category, count: entry.counts?.[kind] ?? 0 }))
     .filter((entry) => entry.count > 0);
   if (options.length === 0)
-    return { category: undefined, select: null, value, setValue, usage: options };
+    return {
+      category: undefined,
+      select: null,
+      value,
+      setValue,
+      usage: options,
+      loading: vocabulary.isPending,
+    };
   return {
     category: value === "all" ? undefined : value,
     value,
     setValue,
     usage: options,
+    loading: false,
     select: {
       value,
       onChange: setValue,

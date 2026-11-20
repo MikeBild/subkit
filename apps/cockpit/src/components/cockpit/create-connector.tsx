@@ -47,6 +47,8 @@ import { ChoiceField, TextField } from "@/components/cockpit/form-field";
 import {
   ChoiceCards,
   DataState,
+  type DialogError,
+  dialogFailure,
   FormDialog,
   SearchInput,
   WizardProgress,
@@ -217,7 +219,7 @@ export function CreateConnectorDialog({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [oauth, setOAuth] = useState<OAuthClientFields>(EMPTY_OAUTH_CLIENT);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DialogError>(null);
   const templates = useQuery({ queryKey: TEMPLATES_KEY, enabled: open, queryFn: fetchTemplates });
   const existing = useQuery({
     queryKey: ["connectors", "templates-in-use"],
@@ -278,7 +280,7 @@ export function CreateConnectorDialog({
       reset();
       await finish(connector, { keyed, tab });
     },
-    onError: (failure) => setError(refuse(failure)),
+    onError: (failure) => setError(dialogFailure(refuse(failure), failure)),
   });
   const connectManual = useMutation({
     mutationFn: async () => {
@@ -301,7 +303,7 @@ export function CreateConnectorDialog({
       reset();
       await finish(connector, { keyed: needsSecret(signIn), tab: afterCreateTab(target) });
     },
-    onError: (failure) => setError(refuse(failure)),
+    onError: (failure) => setError(dialogFailure(refuse(failure), failure)),
   });
   const pending = connectTemplate.isPending || connectManual.isPending;
   const close = (next: boolean) => {
@@ -501,7 +503,13 @@ export function CreateConnectorDialog({
       body: templates.isPending ? (
         <DataState state="loading" />
       ) : (
-        <DataState state="error" line={t("create.template.loadFailed")} />
+        <DataState
+          state="error"
+          line={t("create.template.loadFailed")}
+          error={templates.error}
+          onRetry={() => void templates.refetch()}
+          testId="create-template-load-failed"
+        />
       ),
       submit: { label: t("wizard.next"), disabled: true },
       onSubmit: () => undefined,

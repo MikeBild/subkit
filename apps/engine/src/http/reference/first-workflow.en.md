@@ -75,7 +75,7 @@ If the chat offers an approval, it opens the same dialog.
 | **Operations and external targets** | Which services and addresses the workflow reaches. Each service shows its provider's logo. |
 | **Validity** | How long the approval applies: **7 days**, **30 days** or **Until revoked**. **Until revoked** is preset. You get the same choice when you review a saved change in the chat. |
 
-**Starting from the chat.** In the chat mode **Asks first**, SubKit does not ask before a start when a valid approval covers exactly this run: the same version, the same environment and unchanged effects. The audit trail names the approval that covered the start. SubKit still asks in three cases: in the mode **Plan only**, when a run passes on data from an earlier run, and when you told the conversation to confirm every start.
+**Starting from the chat.** In the chat mode **Ask**, SubKit does not ask before a start when a valid approval covers exactly this run: the same version, the same environment and unchanged effects. The audit trail names the approval that covered the start. SubKit still asks in three cases: in the mode **Plan only**, when a run passes on data from an earlier run, and when you told the conversation to confirm every start.
 
 **When SubKit asks again without a new version.** An approval is tied to the connectors as they were reviewed. If a connector is signed in again or its configuration changes, the workflow needs a new review today, even though its steps are the same.
 

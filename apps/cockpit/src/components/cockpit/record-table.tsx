@@ -27,7 +27,7 @@ export function RecordTable<TData extends RowData>({
   emptyLine: string;
   emptyAction?: ReactNode;
   pending?: boolean;
-  error?: { line: string; onRetry(): void } | null;
+  error?: { line: string; cause?: unknown; onRetry(): void } | null;
   onOpen?(row: TData): void;
   rowHref?(row: TData): string | null;
   rowLabel?(row: TData): string;
@@ -59,6 +59,7 @@ export function RecordTable<TData extends RowData>({
         error
           ? {
               title: error.line,
+              cause: error.cause,
               description: "",
               retryLabel: t("pattern.retry"),
               onRetry: error.onRetry,

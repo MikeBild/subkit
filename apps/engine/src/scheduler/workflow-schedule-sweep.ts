@@ -10,9 +10,21 @@ import { inspectScheduleAutomation } from "./automation-status.ts";
 import { calendarGateSkipReason, readCalendarGates, stripCalendarGates } from "./calendar-gates.ts";
 import { isCronDue, parseCronExpression } from "./cron.ts";
 import type { EveryScheduleDefinition } from "./every-schedule-registry.ts";
+import { assessFailures } from "./failure-backoff.ts";
+import {
+  cronDueWindow,
+  everyDueWindow,
+  OCCURRENCE_RECORD_MIN_INTERVAL_MS,
+} from "./occurrence-window.ts";
 import { getSchedule, validateScheduleInput } from "./repo.ts";
 import { recordScheduleInputRequired } from "./schedule-admission-state.ts";
+import {
+  pauseScheduleForFailures,
+  readScheduledRunOutcomes,
+  SCHEDULE_PAUSED_REASON,
+} from "./schedule-failure-pause.ts";
 import { isScheduleAdmissionHeldError, logScheduleFireFailure } from "./schedule-fire-failure.ts";
+import { type OccurrenceEntry, recordScheduleOccurrence } from "./schedule-occurrences.ts";
 import {
   acquireSweepPage,
   boundedTransaction,
@@ -34,7 +46,7 @@ type ScheduleFire = (
     occurrence_after: Date;
     claimed_at: Date;
   },
-) => Promise<void>;
+) => Promise<{ execution_id: string } | undefined>;
 
 async function readScheduleDescriptor(db: Executor, identity: ScheduleIdentity) {
   const [row] = await db
@@ -48,6 +60,7 @@ async function readScheduleDescriptor(db: Executor, identity: ScheduleIdentity) 
       created_at: workflowsSchedules.created_at,
       last_enqueued_at: workflowsSchedules.last_enqueued_at,
       admission_hold: workflowsSchedules.admission_hold,
+      failures_reset_at: workflowsSchedules.failures_reset_at,
       last_exact: sql<string | null>`${workflowsSchedules.last_enqueued_at}::text`,
       updated_exact: sql<string>`${workflowsSchedules.updated_at}::text`,
     })
@@ -243,6 +256,20 @@ async function fireCandidate(
   );
   if (!body) return "visited" as const;
   const input = body.input ?? null;
+  const tz = row.timezone || "UTC";
+  const anchor = row.last_enqueued_at ?? row.created_at;
+  const note = (entry: OccurrenceEntry) =>
+    recordScheduleOccurrence(
+      db,
+      { tenant_id: row.tenant_id, workflow_id: row.workflow_id, schedule_id: row.id },
+      entry,
+      (after) => {
+        const from = after && after.getTime() > anchor.getTime() ? after : anchor;
+        return seconds === undefined
+          ? cronDueWindow(row.cron, tz, from, now)
+          : everyDueWindow(seconds, from, now);
+      },
+    );
   const inputError = await boundedTransaction(db, (tx) =>
     validateScheduleInput(tx, row.tenant_id, row.workflow_id, input),
   );
@@ -252,21 +279,46 @@ async function fireCandidate(
       { tenant_id: row.tenant_id, schedule_id: row.id, observed_at: now },
       inputError,
     );
+    await note({ state: "held", reason_code: "input_required" });
     return "visited" as const;
   }
-  if (
-    seconds === undefined &&
-    calendarGateSkipReason(now, row.timezone || "UTC", readCalendarGates(input)) !== null
-  )
+  const gate =
+    seconds === undefined ? calendarGateSkipReason(now, tz, readCalendarGates(input)) : null;
+  if (gate !== null) {
+    await note({ state: "skipped", reason_code: `calendar_${gate}` });
     return "visited" as const;
-  if (await remainsAuthorityHeld(db, row)) return "visited" as const;
+  }
+  if (await remainsAuthorityHeld(db, row)) {
+    await note({ state: "held", reason_code: row.admission_hold?.reason_code ?? null });
+    return "visited" as const;
+  }
+  const failures = assessFailures(
+    await boundedTransaction(db, (tx) => readScheduledRunOutcomes(tx, row)),
+    now,
+  );
+  if (failures.action === "pause") {
+    if (
+      await pauseScheduleForFailures(
+        db,
+        { tenant_id: row.tenant_id, schedule_id: row.id },
+        failures,
+        now,
+      )
+    )
+      await note({ state: "held", reason_code: SCHEDULE_PAUSED_REASON });
+    return "visited" as const;
+  }
+  if (failures.action === "backoff") {
+    await note({ state: "skipped", reason_code: "failure_backoff" });
+    return "visited" as const;
+  }
   const stamped = lease
     ? await withLiveSweepLease(lease, db, (tx) => claim(tx, row, input, now, lease))
     : await boundedTransaction(db, (tx) => claim(tx, row, input, now));
   if (typeof stamped === "object") return "deferred" as const;
   if (!stamped) return "visited" as const;
   try {
-    await fire(
+    const fired = await fire(
       `wf-schedule.${row.id}`,
       {
         tenant_id: row.tenant_id,
@@ -278,11 +330,18 @@ async function fireCandidate(
       {
         tenant_id: row.tenant_id,
         schedule_id: row.id,
-        tz: row.timezone || "UTC",
-        occurrence_after: row.last_enqueued_at ?? row.created_at,
+        tz,
+        occurrence_after: anchor,
         claimed_at: now,
       },
     );
+    if (seconds === undefined || seconds * 1000 >= OCCURRENCE_RECORD_MIN_INTERVAL_MS)
+      await note({
+        state: "ran",
+        reason_code: null,
+        started_at: now,
+        execution_id: fired?.execution_id ?? null,
+      });
   } catch (error) {
     if (lease)
       logScheduleFireFailure(
@@ -291,6 +350,7 @@ async function fireCandidate(
         "schedule.fanout_failed",
       );
     await restore(db, row, now);
+    if (isScheduleAdmissionHeldError(error)) await note({ state: "held", reason_code: error.code });
     throw error;
   }
   return "admitted" as const;

@@ -1,13 +1,22 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { browserSessionFromRequest, signBrowserCsrf } from "../../auth/browser-session.ts";
+import {
+  browserSessionFromRequest,
+  issueBrowserSession,
+  signBrowserCsrf,
+  verifyBrowserSession,
+} from "../../auth/browser-session.ts";
 import { cockpitInstallations } from "../../db/schema/cockpit-installations.ts";
+import { sessions } from "../../db/schema/identity.ts";
+import { createOrReuseDesktopInstallation } from "../../identity/index.ts";
 import {
   browserSessionHeaders,
   createHttpTestServer,
   createSecondaryTenant,
   type HttpTestServer,
 } from "../tests/setup.ts";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 let server: HttpTestServer;
 
@@ -104,7 +113,8 @@ test("revocation invalidates all installation sessions and a replacement gets a 
   const stale = await fetch(`${server.baseUrl}/cockpit/i/${body.id}/api/v1/cockpit/bootstrap`, {
     headers: { cookie: installationCookie },
   });
-  expect(stale.status).toBe(401);
+  expect(stale.status).toBe(403);
+  expect(JSON.stringify(await stale.json())).toContain("installation_revoked");
 
   const replacement = await createInstallation(rootHeaders);
   expect(replacement.status).toBe(200);
@@ -203,5 +213,147 @@ test("current installation management is private, owner-scoped and never issues 
   });
   expect(revoked.status).toBe(204);
   const empty = await fetch(`${server.baseUrl}/v1/cockpit/installations`, { headers: root });
-  expect(await empty.json()).toEqual({ installation: null });
+  expect(await empty.json()).toEqual({ installation: null, installations: [] });
+});
+
+const DEVICE_IDS: Record<string, string> = {
+  Laptop: "d0000000-0000-4000-8000-000000000001",
+  Studio: "d0000000-0000-4000-8000-000000000002",
+  Lifetime: "d0000000-0000-4000-8000-000000000003",
+  Capped: "d0000000-0000-4000-8000-000000000004",
+};
+
+async function desktopDevice(label: keyof typeof DEVICE_IDS & string) {
+  const { installation } = await createOrReuseDesktopInstallation(
+    server.db,
+    server.tenantId,
+    server.userId,
+    { device_id: DEVICE_IDS[label] ?? "", device_label: label },
+  );
+  const issued = await issueBrowserSession({
+    db: server.db,
+    tenantId: server.tenantId,
+    userId: server.userId,
+    installationId: installation.id,
+    redirectTo: `/cockpit/i/${installation.id}/`,
+    via: "desktop_login",
+  });
+  const setCookie = issued.headers.get("set-cookie") ?? "";
+  const cookie = setCookie.split(";")[0] ?? "";
+  const jwt = decodeURIComponent(cookie.slice(cookie.indexOf("=") + 1));
+  const payload = await verifyBrowserSession(jwt);
+  if (!payload) throw new Error("desktop session was not issued");
+  const csrf = await signBrowserCsrf(payload);
+  return {
+    id: installation.id,
+    sessionId: payload.session_id,
+    setCookie,
+    headers: { cookie, "x-subkit-csrf": csrf, "content-type": "application/json" },
+    api: `${server.baseUrl}/cockpit/i/${installation.id}/api`,
+  };
+}
+
+test("devices are listed with kind, label, last use and a marker for the asking one", async () => {
+  const root = await browserSessionHeaders(server, server.userId);
+  const laptop = await desktopDevice("Laptop");
+  const studio = await desktopDevice("Studio");
+  const fromBrowser = (await (
+    await fetch(`${server.baseUrl}/v1/cockpit/installations`, { headers: root })
+  ).json()) as {
+    installations: {
+      id: string;
+      kind: string;
+      device_label: string | null;
+      last_used_at: string | null;
+      current: boolean;
+    }[];
+  };
+  const listed = fromBrowser.installations.filter((entry) =>
+    [laptop.id, studio.id].includes(entry.id),
+  );
+  expect(listed.map((entry) => [entry.kind, entry.device_label, entry.current])).toEqual([
+    ["desktop", "Laptop", false],
+    ["desktop", "Studio", false],
+  ]);
+  expect(listed.every((entry) => typeof entry.last_used_at === "string")).toBe(true);
+
+  const fromDevice = await fetch(`${laptop.api}/v1/cockpit/installations`, {
+    headers: laptop.headers,
+  });
+  expect(fromDevice.status).toBe(200);
+  const own = (await fromDevice.json()) as {
+    installation: unknown;
+    installations: { id: string; current: boolean }[];
+  };
+  expect(own.installation).toBeNull();
+  expect(own.installations.filter((entry) => entry.current).map((entry) => entry.id)).toEqual([
+    laptop.id,
+  ]);
+
+  const foreign = await fetch(`${laptop.api}/v1/cockpit/installations/${studio.id}`, {
+    method: "DELETE",
+    headers: laptop.headers,
+  });
+  expect(foreign.status).toBe(403);
+  expect(((await foreign.json()) as { code: string }).code).toBe("own_installation_only");
+
+  const self = await fetch(`${laptop.api}/v1/cockpit/installations/${laptop.id}`, {
+    method: "DELETE",
+    headers: laptop.headers,
+  });
+  expect(self.status).toBe(204);
+  const after = await fetch(`${laptop.api}/v1/cockpit/bootstrap`, { headers: laptop.headers });
+  expect(after.status).toBe(403);
+  const other = await fetch(`${studio.api}/v1/cockpit/bootstrap`, { headers: studio.headers });
+  expect(other.status).toBe(200);
+  await fetch(`${server.baseUrl}/v1/cockpit/installations/${studio.id}`, {
+    method: "DELETE",
+    headers: root,
+  });
+});
+
+test("a desktop session lives 30 days without use and 90 days at most, and ends at once when revoked", async () => {
+  const device = await desktopDevice("Lifetime");
+  expect(device.setCookie).toContain(`Max-Age=${90 * 24 * 60 * 60}`);
+  const [row] = await server.db.select().from(sessions).where(eq(sessions.id, device.sessionId));
+  const issuedAt = row?.created_at.getTime() ?? 0;
+  expect((row?.absolute_expires_at?.getTime() ?? 0) - issuedAt).toBeGreaterThan(89 * DAY_MS);
+  expect((row?.absolute_expires_at?.getTime() ?? 0) - issuedAt).toBeLessThan(91 * DAY_MS);
+  const seen = async (daysAgo: number) => {
+    await server.db
+      .update(sessions)
+      .set({ last_seen_at: new Date(Date.now() - daysAgo * DAY_MS) }) // allow-wall-clock: the live server judges idle time against the real clock
+      .where(eq(sessions.id, device.sessionId));
+    return (await fetch(`${device.api}/v1/cockpit/bootstrap`, { headers: device.headers })).status;
+  };
+  expect(await seen(29)).toBe(200);
+  await Bun.sleep(50);
+  const [renewed] = await server.db
+    .select({ last_seen_at: sessions.last_seen_at })
+    .from(sessions)
+    .where(eq(sessions.id, device.sessionId));
+  expect(Date.now() - (renewed?.last_seen_at?.getTime() ?? 0)).toBeLessThan(60_000); // allow-wall-clock: the live server renews against the real clock
+  expect(await seen(31)).toBe(401);
+
+  const capped = await desktopDevice("Capped");
+  await server.db
+    .update(sessions)
+    .set({ absolute_expires_at: new Date(Date.now() - 1000) }) // allow-wall-clock: the live server judges the absolute end against the real clock
+    .where(eq(sessions.id, capped.sessionId));
+  expect(
+    (await fetch(`${capped.api}/v1/cockpit/bootstrap`, { headers: capped.headers })).status,
+  ).toBe(401);
+
+  const browser = await createInstallation(await browserSessionHeaders(server, server.userId));
+  const browserBody = (await browser.json()) as { id: string };
+  const browserCookie = (browser.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+  await server.db
+    .update(sessions)
+    .set({ last_seen_at: new Date(Date.now() - 9 * 60 * 60 * 1000) }) // allow-wall-clock: the live server judges idle time against the real clock
+    .where(eq(sessions.installation_id, browserBody.id));
+  const idleWebApp = await fetch(
+    `${server.baseUrl}/cockpit/i/${browserBody.id}/api/v1/cockpit/bootstrap`,
+    { headers: { cookie: browserCookie } },
+  );
+  expect(idleWebApp.status).toBe(401);
 });

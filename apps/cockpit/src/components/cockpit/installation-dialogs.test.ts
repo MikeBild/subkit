@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { translate } from "@/lib/i18n";
-import { installationDialogMode, notificationDialogState } from "./installation-dialogs";
+import {
+  desktopHintShown,
+  installationDialogMode,
+  notificationDialogState,
+} from "./installation-dialogs";
 
 const installation = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -136,5 +140,22 @@ describe("notification dialog states", () => {
     for (const locale of ["en", "de"] as const)
       for (const [key, text] of Object.entries(copy[locale]))
         expect(translate(locale, key as Parameters<typeof translate>[1])).toBe(text);
+  });
+});
+
+describe("what the install dialog says about the desktop app", () => {
+  test("it promises no download: the web app works today, the desktop app comes with the public release", () => {
+    const de = translate("de", "installation.desktopLater");
+    expect(de).toContain("als Web-App; das funktioniert schon jetzt");
+    expect(de).toContain("mit der öffentlichen Version von SubKit verfügbar");
+    const en = translate("en", "installation.desktopLater");
+    expect(en).toContain("available with the public release of SubKit");
+    for (const text of [de, en]) expect(text).not.toMatch(/https?:|download|herunterladen/i);
+  });
+
+  test("the hint shows where the web app is offered, not inside an installed app", () => {
+    expect(desktopHintShown({ kind: "install" }, null)).toBe(true);
+    expect(desktopHintShown({ kind: "install" }, installation.id)).toBe(false);
+    expect(desktopHintShown({ kind: "open", href: installation.start_url }, null)).toBe(false);
   });
 });

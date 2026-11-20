@@ -11,6 +11,29 @@ for (const size of [192, 512]) {
     .toFile(join(root, `apps/cockpit/public/app-icon-${size}.png`));
 }
 
+const GLYPH = /<g class="glyph"[^>]*>([\s\S]*?)<\/g>/.exec(readFileSync(source, "utf8"))?.[1];
+if (!GLYPH) throw new Error("favicon.svg no longer carries the mark as a glyph group");
+
+function markVariant(plate: string, stroke: string, scale: number): Buffer {
+  const offset = (32 - 24 * scale) / 2;
+  return Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">${plate}<g fill="none" stroke="${stroke}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" transform="translate(${offset} ${offset}) scale(${scale})">${GLYPH}</g></svg>`,
+  );
+}
+
+const MASKABLE = markVariant('<rect width="32" height="32" fill="#0f172a" />', "#f8fafc", 0.7);
+const MONOCHROME = markVariant("", "#000000", 0.9167);
+for (const size of [192, 512]) {
+  await sharp(MASKABLE, { density: 300 })
+    .resize(size, size)
+    .png()
+    .toFile(join(root, `apps/cockpit/public/app-icon-maskable-${size}.png`));
+}
+await sharp(MONOCHROME, { density: 300 })
+  .resize(512, 512, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+  .png()
+  .toFile(join(root, "apps/cockpit/public/app-icon-monochrome-512.png"));
+
 interface Source {
   icon: string;
   color?: string;

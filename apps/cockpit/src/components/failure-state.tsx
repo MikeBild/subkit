@@ -2,8 +2,8 @@ import type { ErrorComponentProps } from "@tanstack/react-router";
 import { Lock, RouteOff, TriangleExclamationPoint } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 import { absolute } from "@/app/links";
+import { ErrorNotice } from "@/components/cockpit/patterns/error-notice";
 import { FAMILY_UI_VERSION, FamilyFailureState } from "@/components/family-ui";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n-context";
 
@@ -22,36 +22,34 @@ export function LoadFailed({
   title,
   description,
   onRetry,
+  error,
   testId,
   children,
 }: {
   title: string;
   description?: string;
   onRetry?: () => void;
+  error?: unknown;
   testId: string;
   children?: ReactNode;
 }) {
   const { t } = useI18n();
   return (
-    <Alert
-      variant="destructive"
-      data-testid={testId}
-      data-family-slot="data-state"
-      data-family-state="error"
+    <ErrorNotice
+      testId={testId}
+      title={title}
+      body={description ?? t("resource.loadFailedDescription")}
+      error={error}
+      remedy={
+        onRetry ? (
+          <Button size="sm" onClick={onRetry} data-testid={`${testId}-retry`}>
+            {t("session.retry")}
+          </Button>
+        ) : undefined
+      }
     >
-      <AlertTitle>{title}</AlertTitle>
-      <AlertDescription>
-        <p>{description ?? t("resource.loadFailedDescription")}</p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {onRetry ? (
-            <Button variant="outline" size="sm" onClick={onRetry} data-testid={`${testId}-retry`}>
-              {t("session.retry")}
-            </Button>
-          ) : null}
-          {children}
-        </div>
-      </AlertDescription>
-    </Alert>
+      {children}
+    </ErrorNotice>
   );
 }
 

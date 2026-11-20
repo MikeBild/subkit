@@ -37,7 +37,7 @@ describe("recorded step identity facts", () => {
     expect(html).toContain("https://issuer.example.test");
     expect(html).toContain("Mail");
     expect(html.match(/data-slot="fact-list"/g)).toHaveLength(2);
-    expect(html).toContain("Produktion");
+    expect(html).toContain("Echtbetrieb");
     expect(html).toContain(">Test</dd>");
     expect(html).toContain(">3</dd>");
     expect(html).toContain(">5</dd>");

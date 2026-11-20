@@ -1,5 +1,6 @@
 import { parseMcpToolName } from "../../../connectors/drivers/mcp.ts";
 import { approvalAuditResource, recordApprovalApproved } from "../../../tools/approval.ts";
+import { noteApprovalForRuleOffer } from "../../approval-rules/offer.ts";
 import { resolveAttachmentSlugsInArgs, walkAndResolve } from "../../attachments.ts";
 import { relayGrantResult, usesDirectConnectorApproval } from "../../core/auto-persist.ts";
 import { connectorIdsBySlug } from "../../service/resource-lookups.ts";
@@ -92,7 +93,7 @@ export async function executeConfirmedToolCall(
     { db: p.db, tenant_id: p.tenant_id },
     new Map(),
   );
-  return gatedTool.execute(
+  const result = await gatedTool.execute(
     {
       ...ctx,
       principal: approver,
@@ -109,6 +110,19 @@ export async function executeConfirmedToolCall(
     },
     replayArgs,
   );
+  if (result.ok) {
+    await noteApprovalForRuleOffer({
+      db: p.db,
+      tenant_id: p.tenant_id,
+      approver,
+      answer_actor: p.answer_actor,
+      unattended: taskRun !== null,
+      tool: gatedToolName,
+      args: claim.args,
+      tool_call_id: p.elicitation.tool_call_id ?? null,
+    });
+  }
+  return result;
 }
 
 async function relayedToolBound(

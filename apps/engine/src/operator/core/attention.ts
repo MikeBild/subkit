@@ -41,6 +41,7 @@ export const ATTENTION_REASONS = [
   "version_awaiting_approval",
   "version_needs_repair",
   "approval_expiring",
+  "schedule_auto_paused",
   "scheduler_stale",
   "failing",
   "patch_proposed",
@@ -76,6 +77,18 @@ export const ATTENTION_SUBJECT_KINDS = [
   "task",
 ] as const;
 
+export const APPROVAL_NEEDED_REASONS: ReadonlySet<AttentionReason> = new Set([
+  "version_awaiting_approval",
+  "execution_authority_required",
+  "approval_expiring",
+  "task_grant_required",
+  "task_grant_expiring",
+]);
+
+export function needsApproval(item: { readonly reason: string }): boolean {
+  return (APPROVAL_NEEDED_REASONS as ReadonlySet<string>).has(item.reason);
+}
+
 export interface AttentionAction {
   verb: AttentionVerb;
   href: string;
@@ -97,6 +110,7 @@ export interface AttentionItem {
     kind: (typeof ATTENTION_SUBJECT_KINDS)[number];
     id: string;
     name: string | null;
+    environment?: "dev" | "prod";
   } | null;
   reason: AttentionReason;
   trigger: { kind: "schedule" | "inbound_hook"; name: string | null } | null;
@@ -126,6 +140,7 @@ export interface AttentionItem {
   since: string | null;
   deadline: string | null;
   detail: string | null;
+  waiting_on?: { user_id: string; name: string };
   actions: AttentionAction[];
 }
 

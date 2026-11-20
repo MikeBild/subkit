@@ -10,6 +10,12 @@ const erasure =
 const taskState =
   "Task run and standing-permission state without content (ids, closed states, reason codes, counters, each bounded by a check constraint): must stay writable so a tenant at its limit can still end or stop a run and revoke a permission; the task content is metered in tasks and the run conversation in conversations and conversation_messages.";
 
+const scheduleHistory =
+  "Schedule history without content (ids, instants, closed states, reason codes and a bounded counter, each held by a check constraint): must stay writable so a tenant at its limit still sees why a due run was skipped or held; repeated skips merge into one row and old rows are pruned by retention.";
+
+const personalPermissionState =
+  "Per-person confirmation settings and standing approval rules without content (closed states, counters, a scope and choices each bounded by a check constraint): must stay writable so a person at the tenant limit can still switch back to asking and revoke a rule.";
+
 export const HOSTED_METER_EXEMPTIONS: Readonly<Record<string, string>> = {
   caller_budget_units: ledger,
   external_call_metering: ledger,
@@ -20,6 +26,7 @@ export const HOSTED_METER_EXEMPTIONS: Readonly<Record<string, string>> = {
   connector_credential_setup_grants: authFlow,
   connector_oauth_start_grants: authFlow,
   connector_oauth_states: authFlow,
+  desktop_login_codes: authFlow,
   mcp_oauth_access_tokens: authFlow,
   mcp_oauth_authorization_codes: authFlow,
   mcp_oauth_grants: authFlow,
@@ -33,7 +40,10 @@ export const HOSTED_METER_EXEMPTIONS: Readonly<Record<string, string>> = {
   webhook_replay_seen: dedup,
   product_identity_tombstones: erasure,
   tenant_erasure_states: erasure,
+  schedule_occurrences: scheduleHistory,
   task_grants: taskState,
+  tool_approval_rules: personalPermissionState,
+  user_setup_preferences: personalPermissionState,
   task_runs: taskState,
   conversation_turns:
     "Turn scheduling state without content (one active turn per conversation); the conversation content is metered in conversations and conversation_messages.",

@@ -19,6 +19,7 @@ export async function renderRuntimeNotices(
   manifestPath: string,
   version: string,
   revision: string,
+  runtime = "Bun",
 ): Promise<string> {
   const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as RuntimeNoticeManifest;
   if (manifest.runtime?.version !== version || manifest.runtime?.revision !== revision)
@@ -33,7 +34,7 @@ export async function renderRuntimeNotices(
   const parts = [
     "",
     "NATIVE RUNTIME NOTICE DRAFT — NOT A DISTRIBUTION APPROVAL",
-    `Bun ${version} (${revision})`,
+    `${runtime} ${version} (${revision})`,
     manifest.scope,
   ];
   if (manifest.correspondingSource)

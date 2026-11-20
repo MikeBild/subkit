@@ -19,7 +19,9 @@ export type TaskPlan = components["schemas"]["TaskPlan"];
 export type TaskUsage = components["schemas"]["TaskUsageResponse"];
 export type TaskUsagePeriod = components["schemas"]["TaskUsagePeriod"];
 export type RunGlance = Pick<TaskLatestRun, "state" | "waiting_reason" | "next_check_at">;
-export type TaskInput = components["schemas"]["TaskCreateInput"];
+export type TaskInput = components["schemas"]["TaskCreateInput"] & {
+  environment: components["schemas"]["Task"]["environment"];
+};
 export type TaskRunState = TaskRun["state"];
 
 export const TASKS_PATH = "/tasks";

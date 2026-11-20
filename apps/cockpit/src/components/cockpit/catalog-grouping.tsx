@@ -68,16 +68,19 @@ export function CatalogCategoryChips({
   usage,
   value,
   onChange,
+  loading,
   testId = "catalog-category-chips",
 }: {
   usage: readonly CategoryCount[];
   value: string;
   onChange(value: string): void;
+  loading?: boolean;
   testId?: string;
 }) {
   const { t } = useI18n();
   return (
     <ChipFilter
+      loading={loading}
       label={t("catalog.block")}
       allLabel={t("common.all")}
       value={value}

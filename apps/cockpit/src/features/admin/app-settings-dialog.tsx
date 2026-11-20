@@ -106,6 +106,7 @@ export function AppSettingsDialog({
         testId: "apps-settings-submit",
       }}
       error={dialogError(tried, errors, save.error, t)}
+      failure={tried && errors.length > 0 ? undefined : save.error}
       onSubmit={() => {
         setTried(true);
         if (errors.length > 0) return;

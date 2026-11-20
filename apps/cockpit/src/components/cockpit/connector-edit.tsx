@@ -29,7 +29,14 @@ import {
   signInOf,
 } from "@/components/cockpit/create-connector-model";
 import { SelectField, TextAreaField, TextField } from "@/components/cockpit/form-field";
-import { Button, ConfirmDialog, FormDialog } from "@/components/cockpit/patterns";
+import {
+  Button,
+  ConfirmDialog,
+  type DialogError,
+  dialogFailure,
+  FormDialog,
+} from "@/components/cockpit/patterns";
+import { reportFailure } from "@/lib/action-failure";
 import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
 import { useI18n } from "@/lib/i18n-context";
 import { humanizeCategory } from "@/lib/workflow-category";
@@ -79,7 +86,7 @@ export function ConnectorEditDialog({
   const [headerValues, setHeaderValues] = useState<Record<string, string>>({});
   const [missingHeaders, setMissingHeaders] = useState<readonly string[]>([]);
   const everyHeader = replacesEveryHeader(prior);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DialogError>(null);
   const [description, setDescription] = useState(() => recordDescription(record));
   const [choice, setChoice] = useState(() => recordCategory(record));
   const [fresh, setFresh] = useState("");
@@ -111,7 +118,7 @@ export function ConnectorEditDialog({
       await client.invalidateQueries({ queryKey: ["catalog-detail", "connectors", id] });
       await client.invalidateQueries({ queryKey: ["catalog"] });
     },
-    onError: () => toast.error(t("detail.saveFailed")),
+    onError: (failure) => reportFailure(t("detail.saveFailed"), failure),
   });
   const draft: ConnectorEditDraft = {
     name,
@@ -161,7 +168,7 @@ export function ConnectorEditDialog({
           }
         } catch (failure) {
           onOpenChange(false);
-          toast.error(signInFailure(failure, t));
+          reportFailure(signInFailure(failure, t), failure);
           return;
         }
       }
@@ -170,9 +177,12 @@ export function ConnectorEditDialog({
     },
     onError: (failure) =>
       setError(
-        failure instanceof ApiError && failure.message
-          ? t("stepEditor.refused", { reason: failure.message })
-          : t("common.actionFailed"),
+        dialogFailure(
+          failure instanceof ApiError && failure.message
+            ? t("stepEditor.refused", { reason: failure.message })
+            : t("common.actionFailed"),
+          failure,
+        ),
       ),
   });
   return (
@@ -378,7 +388,7 @@ export function ConnectorDeleteDialog({
       await client.invalidateQueries({ queryKey: ["connectors", "lookup"] });
       void navigate({ to: "/connectors" });
     },
-    onError: () => toast.error(t("common.actionFailed")),
+    onError: (failure) => reportFailure(t("common.actionFailed"), failure),
   });
   return (
     <ConfirmDialog

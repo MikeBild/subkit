@@ -1,5 +1,6 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { toHonoRoute } from "../../../api/operations/hono.ts";
+import { getSetupOperation, putSetupOperation } from "../../../api/operations/identity-setup.ts";
 import {
   updateOwnProfileOperation,
   updateWorkspaceOperation,
@@ -9,6 +10,8 @@ import type { AppEnv } from "../../openapi.ts";
 
 export function registerWorkspaceRoutes(app: OpenAPIHono<AppEnv>): void {
   toHonoRoute(app, updateOwnProfileOperation);
+  toHonoRoute(app, getSetupOperation);
+  toHonoRoute(app, putSetupOperation);
   toHonoRoute(app, updateWorkspaceOperation);
   toHonoRoute(app, setWorkspaceAiAccessOperation);
 }

@@ -27,6 +27,7 @@ import { assertAdminRemains } from "./last-admin.ts";
 import { revokeConnectionsForUser } from "./oauth-connections.ts";
 import { assertTenantActive } from "./self-service.ts";
 import { type IssueApiKeyResult, issueApiKey, type UserRole, type UserStatus } from "./service.ts";
+import { linkJoinedApprover } from "./setup-preferences.ts";
 
 function auditActor(
   actorKind: PrincipalKind | "system" | undefined,
@@ -153,6 +154,7 @@ export async function createUser(input: CreateUserInput, db: Executor) {
       },
       tx,
     );
+    await linkJoinedApprover(tx, { tenant_id: input.tenant_id, id: row.id, email: row.email });
     return row;
   });
 }
@@ -737,10 +739,17 @@ export async function redeemInvite(
       tx,
     );
 
-    await tx
+    const [joined] = await tx
       .update(users)
       .set({ status: "active", updated_at: redeemedAt })
-      .where(and(eq(users.tenant_id, claimed.tenant_id), eq(users.id, claimed.user_id)));
+      .where(and(eq(users.tenant_id, claimed.tenant_id), eq(users.id, claimed.user_id)))
+      .returning({ id: users.id, email: users.email });
+    if (joined)
+      await linkJoinedApprover(tx, {
+        tenant_id: claimed.tenant_id,
+        id: joined.id,
+        email: joined.email,
+      });
 
     await auditAwait(
       {

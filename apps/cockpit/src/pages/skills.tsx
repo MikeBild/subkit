@@ -2,7 +2,7 @@ import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useRouter, useRouterState } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
-import { Cable, Inbox, type LucideIcon, MessageSquare, Workflow } from "lucide-react";
+import { Cable, Inbox, Workflow } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiCall } from "@/api/call";
@@ -42,7 +42,6 @@ import {
   type CockpitColumn,
   CollapsibleSection,
   ConfirmDialog,
-  chipClass,
   DataState,
   DataTable,
   DetailPage,
@@ -63,6 +62,7 @@ import {
 } from "@/components/cockpit/patterns";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
 import { ForbiddenState } from "@/components/failure-state";
+import { reportFailure } from "@/lib/action-failure";
 import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
@@ -72,7 +72,6 @@ import { useSearchParamState } from "@/lib/use-search-param-state";
 import { documentUnderTitle } from "@/pages/knowledge-sources-model";
 import {
   SKILL_TEMPLATES,
-  type SkillAppliesTo,
   type SkillTemplate,
   skillChangedAt,
   skillScope,
@@ -81,6 +80,7 @@ import {
   skillStateLabelKey,
   skillsListView,
   skillsLoadState,
+  skillsSummaryState,
   skillTemplateKeys,
   skillTemplates,
   skillVersionRows,
@@ -291,6 +291,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
     filtered,
     settled: !pending && !failed,
   });
+  const summaryState = skillsSummaryState({ pending, failed, summary: view.summary });
   const empty = view.onboarding;
   const newButton = (testId: string) =>
     canWrite ? (
@@ -336,14 +337,15 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
         <SkillsOnboarding canWrite={canWrite} />
       ) : (
         <div className="flex flex-col gap-3">
-          {view.summary ? (
+          {summaryState === "hidden" ? null : (
             <CatalogSummary
+              loading={summaryState === "loading"}
               text={skillsLine(t, list.total ?? list.items.length, view.proposals)}
               help={t("skills.summaryHelp")}
               testId="skills-summary"
               kind="skill"
             />
-          ) : null}
+          )}
           <DataTable
             columns={columns}
             data={view.rows}
@@ -370,6 +372,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
                   usage={categoryFilter.usage}
                   value={categoryFilter.value}
                   onChange={categoryFilter.setValue}
+                  loading={categoryFilter.loading}
                 />
               </>
             }
@@ -478,20 +481,6 @@ function editHref(id: string): string {
   return `${absolute(recordHref("skills", id))}?mode=edit`;
 }
 
-function Chip({ icon: Icon, children }: { icon?: LucideIcon; children: ReactNode }) {
-  return (
-    <span className={chipClass("md")}>
-      {Icon ? <Icon aria-hidden="true" className="text-muted-foreground" /> : null}
-      {children}
-    </span>
-  );
-}
-
-function whereChips(appliesTo: string | null | undefined): SkillAppliesTo[] {
-  if (appliesTo === "chat" || appliesTo === "authoring") return [appliesTo];
-  return ["chat", "authoring"];
-}
-
 function SkillRecord({ id, permissions }: { id: string; permissions: readonly string[] }) {
   const { t, dateTime, locale } = useI18n();
   const navigate = useNavigate();
@@ -534,7 +523,7 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
       void client.invalidateQueries({ queryKey: ["catalog"] });
       void navigate({ to: "/skills" });
     },
-    onError: () => toast.error(t("common.actionFailed")),
+    onError: (failure) => reportFailure(t("common.actionFailed"), failure),
   });
   const skill = query.data;
   const back = { to: "/skills", label: t("nav.skills") };
@@ -644,6 +633,7 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
         badge={skill ? <CatalogCategoryChip category={recordCategory(skill)} /> : undefined}
         purpose={skill ? <CatalogPurpose record={skill} /> : undefined}
         loading={query.isPending}
+        loadingPurpose
         action={
           skill && canWrite ? (
             <Button asChild>
@@ -657,6 +647,7 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
           menu.length > 0 ? <ActionMenu alwaysMenu items={menu} testId="detail-menu" /> : undefined
         }
         strip={strip ? { ...strip, testId: "skill-strip" } : null}
+        technical={skill ? <FactList items={technical} testId="skill-technical" /> : undefined}
         tabs={
           skill
             ? [
@@ -672,23 +663,11 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
                         where,
                         when: dateTime(skill.updated_at),
                       })}
-                      technical={<FactList items={technical} testId="skill-technical" />}
                     >
-                      <div className="flex flex-wrap items-center gap-2 text-sm">
-                        <span className="text-muted-foreground">{t("skills.column.scope")}</span>
-                        <Chip>{scope}</Chip>
-                        <span className="ml-2 text-muted-foreground">
-                          {t("skills.column.where")}
-                        </span>
-                        {whereChips(skill.applies_to).map((place) => (
-                          <Chip key={place} icon={place === "chat" ? MessageSquare : Workflow}>
-                            {t(skillWhereKey(place))}
-                          </Chip>
-                        ))}
-                      </div>
                       {skill.body.trim() ? (
                         <MarkdownDocument
                           text={documentUnderTitle(skill.body, skill.title)}
+                          source={skill.body}
                           testId="skill-preview"
                         />
                       ) : (

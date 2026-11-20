@@ -1,5 +1,6 @@
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
+import { useId } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 export const SECTION_LABEL = "text-xs font-medium text-muted-foreground";
@@ -41,11 +42,17 @@ export function Section({
   testId?: string;
   children: ReactNode;
 }) {
+  const heading = useId();
   return (
-    <section data-slot="section" data-testid={testId} className="flex flex-col gap-3">
+    <section
+      data-slot="section"
+      data-testid={testId}
+      aria-labelledby={label ? heading : undefined}
+      className="flex flex-col gap-3"
+    >
       {label || aside ? (
         <div className="flex items-center gap-2">
-          {label ? <SectionHeading>{label}</SectionHeading> : null}
+          {label ? <SectionHeading id={heading}>{label}</SectionHeading> : null}
           {aside ? <span className="ml-auto flex items-center gap-2">{aside}</span> : null}
         </div>
       ) : null}

@@ -95,6 +95,8 @@ const COCKPIT_STREAM_ID_KEYS = [
   "task_grant_id",
 ] as const;
 
+type CockpitStreamIdKey = (typeof COCKPIT_STREAM_ID_KEYS)[number];
+
 const ID_SHAPE = /^[A-Za-z0-9_-]{1,64}$/;
 
 export function projectCockpitPayload(payload: unknown): Record<string, string> {
@@ -105,6 +107,38 @@ export function projectCockpitPayload(payload: unknown): Record<string, string> 
     const value = record[key];
     if (typeof value === "string" && ID_SHAPE.test(value)) out[key] = value;
   }
+  return out;
+}
+
+type AttentionSubject = { subject: "connector" | "workflow" | "task"; key: CockpitStreamIdKey };
+
+const CONNECTOR_SUBJECT: AttentionSubject = { subject: "connector", key: "connector_id" };
+const WORKFLOW_SUBJECT: AttentionSubject = { subject: "workflow", key: "workflow_id" };
+const TASK_SUBJECT: AttentionSubject = { subject: "task", key: "task_id" };
+
+const WORKFLOW_ATTENTION_EVENTS = new Set(["workflow.automation_changed", "execution.failed"]);
+
+export function cockpitAttentionSubject(type: string): AttentionSubject | null {
+  if (type.startsWith("connector.")) return CONNECTOR_SUBJECT;
+  if (WORKFLOW_ATTENTION_EVENTS.has(type) || type.startsWith("patch.")) return WORKFLOW_SUBJECT;
+  if (type.startsWith("task.") || type.startsWith("task_run.")) return TASK_SUBJECT;
+  return null;
+}
+
+const ATTENTION_NEUTRAL_EVENT = /^execution\.(?:queued|started|running|abort_requested|step\.)/;
+
+export function cockpitEventTouchesAttention(type: string): boolean {
+  return !ATTENTION_NEUTRAL_EVENT.test(type);
+}
+
+export function projectCockpitEvent(row: {
+  type: string;
+  payload: unknown;
+}): Record<string, string> {
+  const out = projectCockpitPayload(row.payload);
+  const target = cockpitAttentionSubject(row.type);
+  const subjectId = target ? out[target.key] : undefined;
+  if (target && subjectId) out.attention_id = `${target.subject}:${subjectId}`;
   return out;
 }
 

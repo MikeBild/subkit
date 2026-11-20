@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import { workerSource } from "@/features/pwa/worker-fixture";
 
-const source = readFileSync(new URL("../../public/browser-worker.js", import.meta.url), "utf8");
+const source = workerSource("browser-worker.js");
 const origin = "https://app.example.test";
 const scope = `${origin}/cockpit/`;
 
@@ -254,7 +254,7 @@ describe("browser tab push worker", () => {
       notification: { close: () => {} },
     });
     expect(installed.focused || foreign.focused || lookalike.focused).toBeFalse();
-    expect(app.opened).toEqual(["/cockpit/"]);
+    expect(app.opened).toEqual([scope]);
   });
 
   test("the canonical /cockpit path counts as the Cockpit tab", async () => {

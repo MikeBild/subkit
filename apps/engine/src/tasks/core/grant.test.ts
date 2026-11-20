@@ -76,8 +76,9 @@ describe("taskGrantRemainingRuns", () => {
 describe("isTaskGrantExpiringSoon", () => {
   const cases: Array<[string, Partial<TaskGrantFacts>, boolean]> = [
     ["open-ended", {}, false],
-    ["ends in exactly three days", { valid_until: at(3 * DAY) }, true],
-    ["ends a moment after three days", { valid_until: at(3 * DAY + 1) }, false],
+    ["ends in exactly seven days", { valid_until: at(7 * DAY) }, true],
+    ["ends a moment after seven days", { valid_until: at(7 * DAY + 1) }, false],
+    ["ends in three days", { valid_until: at(3 * DAY) }, true],
     ["ends tomorrow", { valid_until: at(DAY) }, true],
     ["exactly a tenth of the runs left", { max_runs: 10, reserved_runs: 9 }, false],
     ["under a tenth of the runs left", { max_runs: 20, reserved_runs: 19 }, true],

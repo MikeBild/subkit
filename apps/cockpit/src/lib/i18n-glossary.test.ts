@@ -158,7 +158,7 @@ describe("redesign glossary", () => {
   test("a run starts on demand and a switched-off object is switched off", () => {
     expect(CATALOGS.de["workflows.trigger.request"]).toBe("Auf Abruf");
     expect(CATALOGS.de["connectorState.off"]).toBe("Ausgeschaltet");
-    expect(CATALOGS.de["workflowStrip.state.paused"]).toBe("Angehalten");
+    expect(CATALOGS.de["workflowStrip.state.paused"]).toBe("Pausiert");
     expect(CATALOGS.de["common.technical"]).toBe("Technische Angaben");
     expect(CATALOGS.de["run.environment.dev"]).toBe("Test");
   });
@@ -197,5 +197,72 @@ describe("redesign glossary", () => {
     );
     expect(loose).toEqual([]);
     expect(CATALOGS.de["usage.forecast.tight"]).toContain("{percent}\u00a0%");
+  });
+});
+
+describe("one word per stop", () => {
+  const PERSON_PAUSED = [
+    "automation.state.paused",
+    "schedule.isPaused",
+    "invocation.schedule.state.paused",
+    "workflowStrip.state.paused",
+    "notifications.paused",
+    "tasks.filter.paused",
+    "audit.reason.taskPaused",
+  ] as const;
+  const AUTO_PAUSED = [
+    "overview.state.autoPaused",
+    "overview.short.schedule_auto_paused",
+    "overview.short.task_owner_unavailable",
+    "overview.reason.schedule_auto_paused",
+    "overview.reason.task_owner_unavailable",
+    "notifications.event.schedule.auto_paused",
+    "scheduleAutoPause.title",
+    "tasks.strip.pausedOwner",
+    "scheduleHistory.reason.repeated_failures",
+  ] as const;
+  const HELD = [
+    "schedules.held.title",
+    "schedules.held.since",
+    "schedules.held.group",
+    "scheduleHistory.state.held",
+    "chat.schedule.pending",
+    "pwa.notify.title.stopped",
+    "operations.cause.held_for_review",
+    "overview.reason.execution_authority_unavailable",
+  ] as const;
+
+  test("what a person paused is paused", () => {
+    for (const key of PERSON_PAUSED) {
+      expect(CATALOGS.de[key], key).toBe("Pausiert");
+      expect(CATALOGS.en[key], key).toBe("Paused");
+    }
+  });
+
+  test("what SubKit paused by itself says automatically", () => {
+    for (const key of AUTO_PAUSED) {
+      expect(CATALOGS.de[key].toLowerCase(), key).toContain("automatisch pausiert");
+      expect(CATALOGS.en[key].toLowerCase(), key).toMatch(/paused automatically/);
+    }
+  });
+
+  test("what waits for an approval is on hold, never paused, blocked or stopped", () => {
+    for (const key of HELD) {
+      expect(CATALOGS.de[key].toLowerCase(), key).toMatch(/angehalten/);
+      expect(CATALOGS.en[key].toLowerCase(), key).toContain("on hold");
+      expect(CATALOGS.de[key], key).not.toMatch(/pausiert|blockiert/i);
+      expect(CATALOGS.en[key], key).not.toMatch(/paused|blocked|stopped/i);
+    }
+  });
+
+  test("no state is called by another state's word", () => {
+    const pausedAsHeld = Object.entries(CATALOGS.de).filter(
+      ([key, value]) => /paused/i.test(key) && /angehalten/i.test(value),
+    );
+    expect(pausedAsHeld).toEqual([]);
+    const heldAsPaused = Object.entries(CATALOGS.de).filter(
+      ([key, value]) => /\.held\b|held_/i.test(key) && /pausiert|blockiert/i.test(value),
+    );
+    expect(heldAsPaused).toEqual([]);
   });
 });

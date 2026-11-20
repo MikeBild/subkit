@@ -38,6 +38,7 @@ import {
   type PageTab,
   TabBody,
 } from "@/components/cockpit/patterns";
+import { reportFailure } from "@/lib/action-failure";
 import { connectorAuthState } from "@/lib/connector-auth-state";
 import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
 import {
@@ -173,7 +174,7 @@ export function ConnectorPage({
       await client.invalidateQueries({ queryKey: ["catalog-detail", "connectors", id] });
       await client.invalidateQueries({ queryKey: ["connector-credential", id] });
     },
-    onError: (failure) => toast.error(signInFailure(failure, t)),
+    onError: (failure) => reportFailure(signInFailure(failure, t), failure),
   });
   const credential = useConnectorCredential(id);
   const connectionRenew = useMutation({
@@ -181,7 +182,7 @@ export function ConnectorPage({
       apiCall("post", "/v1/connections/{id}/renew", { path: { id: connectionId } }),
 
     onSuccess: (result) => window.location.assign(result.authorization_url),
-    onError: () => toast.error(t("connectorCredentials.renewFailed")),
+    onError: (failure) => reportFailure(t("connectorCredentials.renewFailed"), failure),
   });
 
   const auth = connectorAuthState(
@@ -382,14 +383,6 @@ export function ConnectorPage({
               <ConnectorRuntimeSection record={record} latencyMs={latencyMs} />
             </CollapsibleSection>
           }
-          technical={
-            <ConnectorTechnicalFacts
-              record={record}
-              id={id}
-              headerNames={credential.data?.header_names ?? []}
-              speaksAs={credential.data?.speaks_as}
-            />
-          }
         >
           <ConnectionGraphic
             workspace={[session.tenant.display_name, environment].filter(Boolean).join(" · ")}
@@ -525,6 +518,14 @@ export function ConnectorPage({
             : undefined
         }
         menu={menu.length > 0 ? <ActionMenu items={menu} testId="connector-menu" /> : undefined}
+        technical={
+          <ConnectorTechnicalFacts
+            record={record}
+            id={id}
+            headerNames={credential.data?.header_names ?? []}
+            speaksAs={credential.data?.speaks_as}
+          />
+        }
         strip={{
           tone: strip.tone,
           testId: "connector-status-strip",

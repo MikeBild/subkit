@@ -3,7 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { issueBrowserSession } from "../auth/browser-session.ts";
-import { auditLog, hostedTenantUsage } from "../db/schema/index.ts";
+import { auditLog, hostedTenantUsage, notificationRules } from "../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../http/tests/setup.ts";
 import {
   createOrReuseCockpitInstallation,
@@ -38,6 +38,16 @@ test("a full hosted allowance still permits only bound installation revocation r
       }),
     ),
   );
+  await ctx.db.insert(notificationRules).values({
+    tenant_id: ctx.tenantId,
+    name: "hosted allowance headroom ".padEnd(8192, "x"),
+    event_pattern: "execution.failed",
+    workflow_pattern: "*",
+    severity: "info",
+    target_workspace_id: "_test",
+    target_channel_id: "_headroom",
+    active: false,
+  });
   const [before] = await ctx.db
     .select()
     .from(hostedTenantUsage)
@@ -72,7 +82,8 @@ test("a full hosted allowance still permits only bound installation revocation r
       ctx.baseUrl + "/cockpit/i/" + installation.id + "/api/v1/cockpit/bootstrap",
       { headers: { cookie: response.headers.get("set-cookie") ?? "" } },
     );
-    expect(rejected.status).toBe(401);
+    expect(rejected.status).toBe(403);
+    expect(((await rejected.json()) as { code?: string }).code).toBe("installation_revoked");
   }
   await expect(
     auditAwait(

@@ -30,6 +30,8 @@ function canonicalFacadePair(pair: string): string {
 }
 
 const EXCLUDED_ROUTES = new Set<string>([
+  "GET /v1/identity/desktop-login/confirm",
+  "POST /v1/identity/desktop-login/confirm",
   "GET /docs",
   "GET /openapi.json",
   "GET /metrics",

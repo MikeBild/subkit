@@ -1,3 +1,4 @@
+import { APPROVAL_WITH_CHANGE_MESSAGE, approvalChange } from "./confirm-change.ts";
 import { type FormFieldDefinition, validateFormFieldValue } from "./form.ts";
 import { interpretConfirmDecision } from "./interpret-confirm.ts";
 
@@ -27,6 +28,7 @@ export function validateElicitationAnswer(
   tool_name: string,
   input: unknown,
   output: unknown,
+  reason?: string | null,
 ): ValidateAnswerResult {
   const inputObj = asRecord(input);
   const outputObj = asRecord(output);
@@ -158,7 +160,12 @@ export function validateElicitationAnswer(
           ],
         };
       }
-      return { ok: true };
+      return approvalChange(inputObj, outputObj, reason) === null
+        ? { ok: true }
+        : {
+            ok: false,
+            field_errors: [{ name: "confirmed", message: APPROVAL_WITH_CHANGE_MESSAGE }],
+          };
     }
 
     default:

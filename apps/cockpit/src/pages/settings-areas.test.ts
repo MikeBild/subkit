@@ -196,20 +196,37 @@ describe("who sees which area", () => {
     return visibleSettingAreas({ permissions, origin, isOwner });
   };
 
-  test("everybody has a profile, and nothing else without a right", async () => {
-    expect(await see([], "self_service")).toEqual(["profile"]);
-    expect(await see([], "self_hosted")).toEqual(["profile"]);
+  test("everybody has a profile, their setup and their rules, and nothing else without a right", async () => {
+    expect(await see([], "self_service")).toEqual(["profile", "setup", "rules"]);
+    expect(await see([], "self_hosted")).toEqual(["profile", "setup", "rules"]);
   });
 
   test("the workspace belongs to its owner and to those who manage people", async () => {
-    expect(await see([], "self_hosted", true)).toEqual(["profile", "workspace"]);
-    expect(await see(["identity:write"], "self_hosted")).toEqual(["profile", "workspace"]);
-    expect(await see(["identity:read"], "self_service")).toEqual(["profile"]);
+    expect(await see([], "self_hosted", true)).toEqual(["profile", "setup", "rules", "workspace"]);
+    expect(await see(["identity:write"], "self_hosted")).toEqual([
+      "profile",
+      "setup",
+      "rules",
+      "workspace",
+    ]);
+    expect(await see(["identity:read"], "self_service")).toEqual(["profile", "setup", "rules"]);
   });
 
   test("a hosted workspace's AI access belongs to its owner and its administrators", async () => {
-    expect(await see([], "self_service", true)).toEqual(["profile", "workspace", "ai"]);
-    expect(await see(["identity:write"], "self_service")).toEqual(["profile", "workspace", "ai"]);
+    expect(await see([], "self_service", true)).toEqual([
+      "profile",
+      "setup",
+      "rules",
+      "workspace",
+      "ai",
+    ]);
+    expect(await see(["identity:write"], "self_service")).toEqual([
+      "profile",
+      "setup",
+      "rules",
+      "workspace",
+      "ai",
+    ]);
     const { workspaceAiEditable } = await import("@/pages/settings-areas");
     expect(workspaceAiEditable({ permissions: [], origin: "self_hosted", isOwner: true })).toBe(
       false,
@@ -227,27 +244,36 @@ describe("who sees which area", () => {
     const owner = ["settings:read", "settings:write", "notification:read", "identity:write"];
     expect(await see(owner, "self_service", true)).toEqual([
       "profile",
+      "setup",
+      "rules",
       "workspace",
       "ai",
       "notifications",
     ]);
   });
 
-  test("a hosted member sees the profile only, whatever settings right the role carries", async () => {
+  test("a hosted member sees only what is their own, whatever settings right the role carries", async () => {
     const member = ["settings:read", "settings:write", "workflow:read", "conversation:read"];
-    expect(await see(member, "self_service")).toEqual(["profile"]);
+    expect(await see(member, "self_service")).toEqual(["profile", "setup", "rules"]);
   });
 
   test("whoever can change the engine sees its areas, in either kind of workspace", async () => {
     for (const origin of ["self_hosted", "self_service"] as const)
       expect(await see(["settings:read", "settings:write:global"], origin)).toEqual([
         "profile",
+        "setup",
+        "rules",
         ...ENGINE,
       ]);
   });
 
   test("a self-hosted reader keeps the engine areas to look at", async () => {
-    expect(await see(["settings:read"], "self_hosted")).toEqual(["profile", ...ENGINE]);
+    expect(await see(["settings:read"], "self_hosted")).toEqual([
+      "profile",
+      "setup",
+      "rules",
+      ...ENGINE,
+    ]);
     const { engineSettingsAccess } = await import("@/pages/settings-areas");
     expect(
       engineSettingsAccess({
@@ -266,7 +292,12 @@ describe("who sees which area", () => {
   });
 
   test("notifications alone show for whoever reads rules and channels", async () => {
-    expect(await see(["notification:read"], "self_service")).toEqual(["profile", "notifications"]);
+    expect(await see(["notification:read"], "self_service")).toEqual([
+      "profile",
+      "setup",
+      "rules",
+      "notifications",
+    ]);
   });
 
   test("a deep link to a hidden area or to the full list falls back to the overview", async () => {

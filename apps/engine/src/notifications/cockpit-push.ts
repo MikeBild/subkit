@@ -22,6 +22,7 @@ export async function deliverCockpitPush(input: {
   db: Db;
   tenant_id: string;
   subscription_ids: string[];
+  payloads?: ReadonlyMap<string, string>;
   new_items: number;
   skipped_same_device?: number;
   subject: string | null;
@@ -41,6 +42,7 @@ export async function deliverCockpitPush(input: {
     db: input.db,
     tenant_id: input.tenant_id,
     subscription_ids: input.subscription_ids,
+    ...(input.payloads ? { payloads: input.payloads } : {}),
     subject: input.subject,
     ...(input.now ? { now: input.now } : {}),
     ...(input.send ? { send: input.send } : {}),

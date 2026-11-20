@@ -1,6 +1,7 @@
 import type { ConversationDetail } from "@/api/client";
 import type { TranslationKey } from "@/lib/i18n";
 import { toolOutcomeKey } from "@/lib/tool-presentation";
+import { type ApprovalBinding, approvalBinding, namedAccount } from "./chat-policy";
 import { type TaskAction, taskActionLine, taskActionOf } from "./chat-task-approval";
 import { runMarker } from "./chat-task-run";
 
@@ -23,6 +24,7 @@ export interface ChatApproval {
   subjects?: string[];
   transferBytes?: number;
   decidedByOthers?: boolean;
+  binding?: ApprovalBinding;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -62,6 +64,10 @@ export function chatApproval(
       ? call.tool
       : undefined;
   const taskAction = taskActionOf(gatedTool, call.input);
+  const bound = approvalBinding(call);
+  const binding = bound
+    ? { ...bound, action: namedAccount(bound.action, () => connectorCall?.connector) }
+    : null;
   const decidedByOthers =
     pending.prompt?.approval_backed === true &&
     viewerId !== undefined &&
@@ -81,6 +87,7 @@ export function chatApproval(
     ...(gatedTool ? { gatedTool } : {}),
     ...(taskAction ? { taskAction } : {}),
     ...(decidedByOthers ? { decidedByOthers } : {}),
+    ...(binding ? { binding } : {}),
     ...(pending.prompt?.subjects?.length ? { subjects: pending.prompt.subjects } : {}),
     ...(pending.prompt?.transfer_bytes ? { transferBytes: pending.prompt.transfer_bytes } : {}),
     savesInactiveWorkflow: intent.kind === "save_workflow_draft",

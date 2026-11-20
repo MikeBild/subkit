@@ -15,6 +15,7 @@ import {
 } from "@/components/cockpit/patterns";
 import { RecordTable } from "@/components/cockpit/record-table";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
+import { reportFailure } from "@/lib/action-failure";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useInfiniteList } from "@/lib/use-infinite-list";
@@ -248,10 +249,11 @@ function WorkflowVersionSheet({
       ]);
     },
     onError: (error) =>
-      toast.error(
+      reportFailure(
         error instanceof ApiError && error.status === 422
           ? t("workflowVersions.notRestorable")
           : t("common.actionFailed"),
+        error,
       ),
   });
   const copy = workflowVersionSheetCopy(view, access);

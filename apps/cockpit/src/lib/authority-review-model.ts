@@ -322,7 +322,7 @@ export function authorityReviewModel(input: {
       activated: input.carryOver ? "authority.adopted" : "authority.activatedOnly",
       activateOnlyHelp:
         input.automation.schedule || input.automation.webhook
-          ? "authority.review.help.activateOnlyPaused"
+          ? "authority.review.help.activateOnlyHeld"
           : "authority.review.help.activateOnly",
     },
   };

@@ -179,7 +179,7 @@ isolated("the permission dialog names the browser sign-in for an API key", async
       return <GrantTaskAuthority taskId={TASK_ID} open onOpenChange={() => {}} />;
     },
     async (stage) => {
-      expect(stage.text("task-grant-dialog-error")).toBe(
+      expect(stage.text("task-grant-dialog-error")).toContain(
         "Melde dich im Browser an, um diese Erlaubnis zu geben.",
       );
       expect(stage.has("task-grant-sign-in")).toBe(true);

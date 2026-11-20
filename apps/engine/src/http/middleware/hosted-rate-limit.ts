@@ -15,7 +15,7 @@ function unavailable(c: Context<AppEnv>) {
 
 function refused(
   c: Context<AppEnv>,
-  denial: { window: "minute" | "month"; retry_after_seconds: number },
+  denial: { window: "minute" | "ten_minutes" | "month"; retry_after_seconds: number },
 ) {
   c.header("Retry-After", String(denial.retry_after_seconds));
   return c.json(

@@ -11,6 +11,7 @@ const CsrfHeaderSchema = z.string().min(1).max(4096);
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const EXEMPT_PREFIXES = [
   "/v1/identity/login/",
+  "/v1/identity/desktop-login/",
   "/v1/identity/invites/redeem",
   "/v1/identity/invites/preview",
   "/v1/identity/invites/login",

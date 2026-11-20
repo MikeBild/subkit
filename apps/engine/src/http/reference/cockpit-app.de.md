@@ -30,6 +30,56 @@ Dieses Kapitel ist für alle, die täglich im Cockpit arbeiten und es nicht jede
 
 Die App heißt wie der Arbeitsbereich. Sie nutzt das hinterlegte App-Icon oder das SubKit-Symbol und übernimmt die Farbe der gewählten Farbpalette.
 
+### In Chrome, Edge und Safari installieren
+
+Den letzten Schritt der Installation macht dein Browser. Er sieht je Browser anders aus.
+
+| Browser | So geht es |
+| --- | --- |
+| Chrome und Edge auf dem Rechner | Wähle im Cockpit **App installieren** und bestätige den Dialog des Browsers. |
+| Safari auf dem Mac | Öffne in Safari das Menü „Ablage“ und wähle „Zum Dock hinzufügen“. |
+| Safari auf iPhone und iPad | Tippe in Safari auf „Teilen“ und dann auf „Zum Home-Bildschirm“. |
+| Andere Browser | Du liest „Installation nicht möglich“. Nutze das Cockpit weiter im Browser oder öffne es in einem der Browser oben. |
+
+Im **Benutzermenü** steht zusätzlich **SubKit installieren**, solange die App auf diesem Gerät nicht installiert ist. Der Eintrag öffnet dieselbe Anleitung.
+
+Ob die App installiert ist, siehst du unter **Einstellungen › Dein Profil** bei „Ist SubKit auf diesem Gerät installiert?“: **Installiert** oder **Nicht installiert**, dazu **Benachrichtigungen an** oder **Benachrichtigungen aus**.
+
+### Ohne Verbindung und nach einem Update
+
+Die App braucht deinen Server. Sie hält nur ihre Programmdateien vor, keine Daten.
+
+- **Ohne Verbindung** zeigt die App die Seite „Keine Verbindung zum Server“ mit **Erneut versuchen**. Daten siehst du dann nicht, und die App sammelt keine Eingaben, um sie später zu senden.
+- **Nach einem Update des Servers** erscheint der Hinweis „Neue Version verfügbar“ mit **Neu laden**. Bis dahin arbeitet das offene Fenster mit seinem bisherigen Stand weiter.
+- **Mit ungespeicherten Eingaben** lädt **Neu laden** nicht neu. Du liest „Erst speichern – beim Neuladen gingen die Eingaben verloren.“ Speichere und wähle **Neu laden** noch einmal.
+
+### Benachrichtigungen, Zahl am Symbol und Links
+
+- **Benachrichtigungen.** Je offenem Punkt bekommst du eine Benachrichtigung. Der Titel sagt, was passiert ist, zum Beispiel „Eine Entscheidung wartet auf dich“. Der Text sagt, was zu tun ist, zum Beispiel „Prüf die Änderung und entscheide.“ Mehr als drei auf einmal fasst die App zu „Neue Einträge brauchen dich“ zusammen.
+- **Klick.** Ein Klick auf die Benachrichtigung öffnet genau diesen Punkt in der App oder holt das offene Fenster dorthin.
+- **Offenes Fenster.** Ist die App sichtbar, erscheint keine Benachrichtigung des Betriebssystems. Der Hinweis steht dann in der App.
+- **Zahl am Symbol.** Das App-Symbol trägt die Zahl der offenen Punkte, höchstens 99. Ist nichts offen, verschwindet sie. Das geht nur, wo Browser und Betriebssystem es unterstützen.
+- **Links.** Links mit dem Schema `web+subkit` öffnen eine Seite in der App, zum Beispiel `web+subkit://tasks` oder `web+subkit://chat/{id}`. Ein unbekanntes Ziel führt auf die Startseite.
+
+Wann Benachrichtigungen kommen, legst du in „Benachrichtigungen und Ruhezeiten“ fest.
+
+### Web-App oder SubKit Desktop
+
+Neben der installierten Web-App gibt es SubKit Desktop, ein eigenes Programm für macOS, Windows und Linux. Beide zeigen dasselbe Cockpit deines Servers, und keine von beiden führt etwas auf deinem Gerät aus.
+
+| | Installierte Web-App | SubKit Desktop |
+| --- | --- | --- |
+| Installation | Aus dem Browser, je Arbeitsbereich eine App | Ein Programm, je Server ein Profil |
+| Geräte | Rechner und Handy | Rechner |
+| Benachrichtigungen | Push über den Browser | Benachrichtigungen des Betriebssystems, solange das Programm läuft |
+| Ruhezeiten | Unter **Einstellungen › Einrichtung** | In den Einstellungen des Programms |
+| Symbol in der Menüleiste oder im Infobereich | Nein | Ja, mit der Zahl der offenen Punkte |
+| Beim Anmelden am Computer starten | Nein | Ja |
+| Inhalte aus anderen Apps teilen | Ja | Nein |
+| Updates | Kommen mit dem Server | Eigene Updates des Programms |
+
+Mehr in „SubKit Desktop“.
+
 ### Mehrere Arbeitsbereiche als getrennte Apps nutzen
 
 Arbeitest du in mehreren Arbeitsbereichen, bekommt jeder seine eigene App.
@@ -65,7 +115,7 @@ Den App-Namen bestimmt der Name des Arbeitsbereichs, nicht der **Organisationsna
 ### Installierte App entfernen
 
 1. Öffne das normale Cockpit im Browser und wechsle zum Arbeitsbereich der App.
-2. Wähle im Menü des Arbeitsbereichs **Installation widerrufen** und bestätige. Die App ist damit auf allen ihren Geräten abgemeldet.
+2. Wähle im Menü des Arbeitsbereichs **Installation widerrufen** und bestätige. Die installierte Web-App ist damit sofort abgemeldet. Desktop-Geräte bleiben angemeldet; sie meldest du unter **Einstellungen** › **Dein Profil** › **Wo bist du angemeldet?** ab.
 3. Entferne die App danach wie jede andere App von deinem Gerät.
 
 Installierst du später neu, entsteht eine neue App-Adresse. Alte Links funktionieren nicht mehr.

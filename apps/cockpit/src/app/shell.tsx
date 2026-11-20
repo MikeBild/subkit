@@ -1,6 +1,8 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import {
   BookText,
+  Bug,
   ChevronsUpDown,
   History,
   Languages,
@@ -14,7 +16,6 @@ import {
   UserRound,
 } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import { logout } from "@/api/client";
 import { installationId } from "@/app/installation-context";
 import {
@@ -27,6 +28,7 @@ import {
   InstallationNotificationControl,
 } from "@/components/cockpit/installation-dialogs";
 import { InstallationImportDialog } from "@/components/cockpit/installation-import-dialog";
+import { ActionFailureHost } from "@/components/cockpit/patterns";
 import { ResponsiveWorkspace } from "@/components/cockpit/patterns/responsive-workspace";
 import { ReleaseNotesDialog } from "@/components/cockpit/release-notes-dialog";
 import { WorkspaceSwitcher } from "@/components/cockpit/workspace-switcher";
@@ -61,6 +63,15 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
+import {
+  FeedbackButton,
+  FeedbackHost,
+  FeedbackIconButton,
+  openFeedback,
+} from "@/features/feedback";
+import { releaseOnSignOut } from "@/features/pwa/device-state";
+import { PwaRuntime } from "@/features/pwa/pwa-runtime";
+import { clearFailure, reportFailure } from "@/lib/action-failure";
 import type { TranslationKey } from "@/lib/i18n";
 import { type LocalePreference, useI18n } from "@/lib/i18n-context";
 import { type Theme, useTheme } from "@/lib/theme";
@@ -68,6 +79,7 @@ import { cn } from "@/lib/utils";
 import { RunOverlays } from "@/pages/runs";
 import { AttentionNotice } from "./attention-notice";
 import { useAttentionFresh } from "./attention-seen";
+import { InstallMenuItem } from "./install-menu-item";
 import { cockpitBasePath } from "./installation-context";
 import { LiveEventsProvider, useLiveStatus } from "./live-events";
 import { AttentionDot, LiveStatusRow } from "./live-indicator";
@@ -87,6 +99,7 @@ import {
   triggerOwner,
   useShellHeaderState,
 } from "./shell-header";
+import { SidePanel, SidePanelProvider, SidePanelToggle } from "./side-panel";
 import { useAttention } from "./use-attention";
 import { VersionNotice } from "./version-notice";
 
@@ -187,7 +200,7 @@ export function AppShell() {
             ) : (
               <SidebarMenu>
                 <SidebarMenuItem data-testid="cockpit-wordmark">
-                  <SidebarMenuButton asChild size="lg" tooltip={brandName}>
+                  <SidebarMenuButton asChild size="lg" className="relative" tooltip={brandName}>
                     <Link to="/" data-testid="cockpit-home-link">
                       <BrandingWordmark />
                       <AttentionCounter />
@@ -198,11 +211,19 @@ export function AppShell() {
             )}
           </SidebarHeader>
 
-          <SidebarContent data-testid="cockpit-navigation" key={pathname}>
+          <SidebarContent
+            data-testid="cockpit-navigation"
+            key={pathname}
+            className="group-data-[collapsible=icon]:overflow-y-auto"
+          >
             <nav aria-label={t("nav.label")}>
               {groups.map((group) => (
                 <SidebarGroup key={group.id} data-testid={`nav-group-${group.id}`}>
-                  {group.labelKey && <SidebarGroupLabel>{t(group.labelKey)}</SidebarGroupLabel>}
+                  {group.labelKey && (
+                    <SidebarGroupLabel className="overflow-hidden group-data-[collapsible=icon]:mx-2 group-data-[collapsible=icon]:my-2 group-data-[collapsible=icon]:h-px group-data-[collapsible=icon]:bg-sidebar-border group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:text-transparent group-data-[collapsible=icon]:opacity-100">
+                      {t(group.labelKey)}
+                    </SidebarGroupLabel>
+                  )}
                   <SidebarGroupContent>
                     <SidebarMenu>
                       {group.items.map((item) => {
@@ -235,6 +256,7 @@ export function AppShell() {
               actions={
                 <>
                   <InstallationNotificationControl />
+                  <FeedbackIconButton />
                   <DesktopSidebarToggle />
                 </>
               }
@@ -254,13 +276,18 @@ export function AppShell() {
           />
         </Sidebar>
 
-        <SidebarInset className="min-h-0 min-w-0 overflow-clip" data-testid="cockpit-content">
-          <ShellContent />
-        </SidebarInset>
+        <SidePanelProvider>
+          <SidebarInset className="min-h-0 min-w-0 overflow-clip" data-testid="cockpit-content">
+            <ShellContent />
+          </SidebarInset>
+          <SidePanel pathname={pathname} />
+        </SidePanelProvider>
         <Toaster richColors position="bottom-right" />
         <InstallationImportDialog />
         <VersionNotice />
+        <FeedbackHost />
         <AttentionNotice />
+        <PwaRuntime />
       </SidebarProvider>
     </LiveEventsProvider>
   );
@@ -297,6 +324,7 @@ function ShellContent() {
             <div className={cn("flex min-h-8 items-start gap-2", CHAT_COLUMN)}>
               <MobileAttentionToggle className="-ml-1 shrink-0" mobile={isMobile} />
               <div ref={header.setSlot} className="min-w-0 flex-1" />
+              <SidePanelToggle className="-mr-1 shrink-0" />
             </div>
           </header>
         ) : (
@@ -305,6 +333,8 @@ function ShellContent() {
             data-testid="cockpit-header"
           >
             <MobileAttentionToggle className="-ml-1" mobile={isMobile} />
+            <FeedbackButton className="ml-auto" />
+            <SidePanelToggle className="-mr-1" />
           </header>
         ))}
       <ResponsiveWorkspace>
@@ -313,12 +343,28 @@ function ShellContent() {
           className="flex min-h-0 min-w-0 flex-1 flex-col overflow-clip"
           data-testid="page-content"
         >
+          <ActionFailureBase page={page} />
           <Outlet />
         </div>
         <RunOverlays />
       </ResponsiveWorkspace>
     </ShellHeaderProvider>
   );
+}
+
+function ActionFailureBase({ page }: { page: string }) {
+  const client = useQueryClient();
+  useEffect(() => {
+    if (page) clearFailure();
+  }, [page]);
+  useEffect(
+    () =>
+      client.getMutationCache().subscribe((event) => {
+        if (event.type === "updated" && event.action.type === "success") clearFailure();
+      }),
+    [client],
+  );
+  return <ActionFailureHost level="base" className="shrink-0 px-4 pt-3 sm:px-6" />;
 }
 
 function CloseNavigationOnRoute({ pathname }: { pathname: string }) {
@@ -351,16 +397,26 @@ function AttentionCounter() {
   const { query, badge } = useAttention(session.permissions);
   if (query.isError || badge === null || badge.count === 0) return null;
   return (
-    <span
-      className={cn(
-        "ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-sidebar-accent px-1.5 text-[11px] font-medium tabular-nums group-data-[collapsible=icon]:hidden",
-        badge.stopped && "text-destructive",
-      )}
-      data-testid="nav-overview-count"
-      data-attention-stopped={String(badge.stopped)}
-    >
-      {badge.count}
-    </span>
+    <>
+      <span
+        className={cn(
+          "ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-sidebar-accent px-1.5 text-[11px] font-medium tabular-nums group-data-[collapsible=icon]:hidden",
+          badge.stopped && "text-destructive",
+        )}
+        data-testid="nav-overview-count"
+        data-attention-stopped={String(badge.stopped)}
+      >
+        {badge.count}
+      </span>
+      <span
+        aria-hidden="true"
+        data-testid="nav-overview-dot"
+        className={cn(
+          "pointer-events-none absolute top-1 right-1 hidden size-2 rounded-full ring-2 ring-sidebar group-data-[collapsible=icon]:block",
+          badge.stopped ? "bg-destructive" : "bg-amber-500",
+        )}
+      />
+    </>
   );
 }
 
@@ -399,10 +455,11 @@ function AccountMenu() {
     setSigningOut(true);
     try {
       const { endSessionUrl } = await logout();
+      await releaseOnSignOut();
       window.location.assign(endSessionUrl ?? cockpitBasePath());
-    } catch {
-      toast.error(t("account.signOutFailed"), {
-        description: t("account.signOutFailedDescription"),
+    } catch (failure) {
+      reportFailure(t("account.signOutFailed"), failure, {
+        body: t("account.signOutFailedDescription"),
       });
       setSigningOut(false);
     }
@@ -492,6 +549,13 @@ function AccountMenu() {
               <BookText data-icon="inline-start" />
               {t("docs.menu")}
             </Link>
+          </DropdownMenuItem>
+
+          <InstallMenuItem />
+
+          <DropdownMenuItem onSelect={() => openFeedback()} data-testid="account-feedback">
+            <Bug data-icon="inline-start" />
+            {t("feedback.menu")}
           </DropdownMenuItem>
 
           <DropdownMenuItem

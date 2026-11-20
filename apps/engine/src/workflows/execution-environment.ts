@@ -33,7 +33,10 @@ export async function resolveWorkflowReviewEnvironment(
   db: Executor,
   tenant_id: string,
   workflow_id: string,
-  { version_id }: { version_id: string | null },
+  {
+    version_id,
+    personal_default,
+  }: { version_id: string | null; personal_default?: ExecutionEnvironment | null },
 ): Promise<{ environment: ExecutionEnvironment; source: ReviewEnvironmentSource }> {
   const triggered = await triggerEnvironment(db, tenant_id, workflow_id);
   if (triggered) return triggered;
@@ -42,7 +45,7 @@ export async function resolveWorkflowReviewEnvironment(
     : null;
   return bound
     ? { environment: bound, source: "bindings" }
-    : { environment: "dev", source: "default" };
+    : { environment: personal_default ?? "dev", source: "default" };
 }
 
 async function bindingEnvironment(

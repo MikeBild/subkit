@@ -13,6 +13,7 @@ import {
   Section,
   StatusBadge,
 } from "@/components/cockpit/patterns";
+import { reportFailure } from "@/lib/action-failure";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import {
@@ -94,10 +95,11 @@ export function WorkflowSpecCard({
         setEditing(false);
         return;
       }
-      toast.error(
+      reportFailure(
         error instanceof ApiError && error.message
           ? t("workflowSpec.refused", { reason: error.message })
           : t("common.actionFailed"),
+        error,
       );
     },
   });

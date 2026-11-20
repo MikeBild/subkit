@@ -395,16 +395,16 @@ test("the activate-only help names a pausing schedule only when a trigger exists
     { schedule: false, webhook: true },
   ])
     expect(authorityReviewModel({ ...base, automation }).messages.activateOnlyHelp).toBe(
-      "authority.review.help.activateOnlyPaused",
+      "authority.review.help.activateOnlyHeld",
     );
   expect(translate("de", "authority.review.help.activateOnly")).toBe("Aktiviert ohne Läufe.");
   expect(translate("en", "authority.review.help.activateOnly")).toBe(
     "Activates without allowing runs.",
   );
-  expect(translate("de", "authority.review.help.activateOnlyPaused")).toBe(
+  expect(translate("de", "authority.review.help.activateOnlyHeld")).toBe(
     "Schaltet ein, ohne Läufe zu erlauben; der Zeitplan ist angehalten.",
   );
-  expect(translate("en", "authority.review.help.activateOnlyPaused")).toBe(
+  expect(translate("en", "authority.review.help.activateOnlyHeld")).toBe(
     "Switches on without allowing runs; the schedule is on hold.",
   );
   expect(translate("de", "authority.adopted")).toBe(

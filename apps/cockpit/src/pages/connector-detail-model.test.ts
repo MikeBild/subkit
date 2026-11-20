@@ -51,7 +51,7 @@ describe("label maps", () => {
     expect(transportLabel("http", de)).toBe("Streamable HTTP");
     expect(transportLabel("sse", de)).toBe("Server-Sent Events");
     expect(transportLabel("stdio", de)).toBe("Lokaler Prozess");
-    expect(environmentLabel("prod", de)).toBe("Produktion");
+    expect(environmentLabel("prod", de)).toBe("Echtbetrieb");
     expect(environmentLabel("dev", de)).toBe("Test");
     expect(authLabel("none", [], de)).toBe("Ohne Anmeldung");
     expect(authLabel("query", [], de)).toBe("Schlüssel in der Adresse");

@@ -78,7 +78,7 @@ export function RepairRequiredHint({ count }: { count: number | null }) {
   const { tn } = useI18n();
   if (!count || count <= 0) return null;
   return (
-    <p className="text-sm text-muted-foreground" data-testid="overview-repair-required">
+    <span data-testid="overview-repair-required">
       <a
         className="font-medium text-foreground underline underline-offset-2"
         href={absolute(workflowsHref({ operatingStatus: "repair_required" }))}
@@ -86,7 +86,7 @@ export function RepairRequiredHint({ count }: { count: number | null }) {
       >
         {tn("overview.repairRequired", count)}
       </a>
-    </p>
+    </span>
   );
 }
 
@@ -166,22 +166,24 @@ export function OperationsBar({
 }) {
   const { t } = useI18n();
   return (
-    <section
-      aria-label={t("overview.operations.label")}
-      className={
-        ids.length === 4
-          ? "grid grid-cols-2 gap-2 lg:grid-cols-4"
-          : "grid grid-cols-2 gap-2 sm:grid-cols-3 2xl:grid-cols-6"
-      }
-      data-testid="operations-bar"
-      data-family-slot="operations-bar"
-    >
-      {pending
-        ? ids.map((id) => <TileSkeleton key={id} />)
-        : figures.map((figure) => (
-            <Figure key={figure.id} figure={figure} window={window} onRetry={onRetry} />
-          ))}
-    </section>
+    <div className="@container">
+      <section
+        aria-label={t("overview.operations.label")}
+        className={
+          ids.length === 4
+            ? "grid grid-cols-2 gap-2 lg:grid-cols-4"
+            : "grid grid-cols-2 gap-2 sm:grid-cols-3 2xl:grid-cols-6"
+        }
+        data-testid="operations-bar"
+        data-family-slot="operations-bar"
+      >
+        {pending
+          ? ids.map((id) => <TileSkeleton key={id} />)
+          : figures.map((figure) => (
+              <Figure key={figure.id} figure={figure} window={window} onRetry={onRetry} />
+            ))}
+      </section>
+    </div>
   );
 }
 

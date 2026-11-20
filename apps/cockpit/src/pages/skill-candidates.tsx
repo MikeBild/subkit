@@ -210,6 +210,9 @@ export function SkillCandidatesView({
 
   return (
     <div className="flex flex-col gap-3">
+      <p className="text-xs text-muted-foreground" data-testid="skill-candidates-footnote">
+        {t("skillCandidates.footnote")}
+      </p>
       {summary && summary.decided.length > 0 ? (
         <StatusStrip
           tone="ok"
@@ -270,9 +273,6 @@ export function SkillCandidatesView({
         pickColumns={false}
         collectionId="skill-candidates"
       />
-      <p className="text-xs text-muted-foreground" data-testid="skill-candidates-footnote">
-        {t("skillCandidates.footnote")}
-      </p>
       <ConfirmDialog
         open={discarding}
         onOpenChange={(open) => deciding === null && setDiscarding(open)}

@@ -25,6 +25,7 @@ import {
 } from "@/components/cockpit/patterns";
 import { PreparedChanges } from "@/components/cockpit/prepared-changes";
 import { LoadFailed, queryView } from "@/components/failure-state";
+import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 import { useTheme } from "@/lib/theme";
 import type { BrandingDraftHandle } from "@/pages/branding";
@@ -112,7 +113,9 @@ import {
   SettingsSectionNav,
   SettingsSummary,
 } from "@/pages/settings-rows";
+import { RulesArea } from "@/pages/settings-rules";
 import { applySettingsPatch, settingsReadQuery, settleSettings } from "@/pages/settings-save";
+import { SetupArea, SetupScheduleNote, usePersonalAreaCards } from "@/pages/settings-setup";
 import { WorkspaceArea } from "@/pages/settings-workspace";
 import { WorkspaceAiArea } from "@/pages/settings-workspace-ai";
 
@@ -365,7 +368,7 @@ export function SettingsPage() {
       if (error instanceof PersonalSaveError) {
         const reason = error.reason ? t(error.reason) : null;
         setFailed({ reason });
-        toast.error(reason ?? t("settings.saveFailedKeep"));
+        reportFailure(reason ?? t("settings.saveFailedKeep"), error);
         return;
       }
       void client.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY });
@@ -373,7 +376,10 @@ export function SettingsPage() {
       else {
         const reason = settingsSaveReason(error);
         setFailed({ reason });
-        toast.error(reason ? t("settings.saveRejected", { reason }) : t("settings.saveFailedKeep"));
+        reportFailure(
+          reason ? t("settings.saveRejected", { reason }) : t("settings.saveFailedKeep"),
+          error,
+        );
       }
     },
   });
@@ -428,6 +434,7 @@ export function SettingsPage() {
   const personalArea = level.kind === "area" && isPersonalArea(level.area) ? level.area : null;
   const profile = profileCard(session, { preference, theme }, t);
   const workspace = workspaceCard(session);
+  const personalCards = usePersonalAreaCards();
   const workspaceAiState = workspaceAiCard(session, t);
   const cards: AreaCard[] = [
     {
@@ -435,6 +442,7 @@ export function SettingsPage() {
       sentence: t(profile.sentence.key, profile.sentence.values),
       status: profile.status,
     },
+    ...personalCards,
     { id: "workspace" as const, sentence: t(workspace.key, workspace.values), status: null },
     ...(workspaceAi
       ? [
@@ -498,6 +506,7 @@ export function SettingsPage() {
       attention={marked}
       onNavigate={navigate}
     >
+      {area === "notifications" ? <SetupScheduleNote /> : null}
       {children}
     </SettingsAreaFrame>
   );
@@ -530,6 +539,10 @@ export function SettingsPage() {
               navigate={navigate}
             />,
           )
+        ) : personalArea === "setup" ? (
+          frame("setup", <SetupArea />)
+        ) : personalArea === "rules" ? (
+          frame("rules", <RulesArea />)
         ) : personalArea === "workspace" ? (
           frame(
             "workspace",
@@ -567,6 +580,7 @@ export function SettingsPage() {
               <LoadFailed
                 title={t("resource.loadFailed", { resource: t("resource.settings.title") })}
                 onRetry={() => void query.refetch()}
+                error={query.error}
                 testId="settings-load-failed"
               />
             ) : null}
@@ -579,6 +593,7 @@ export function SettingsPage() {
           <LoadFailed
             title={t("resource.loadFailed", { resource: t("resource.settings.title") })}
             onRetry={() => void query.refetch()}
+            error={query.error}
             testId="settings-load-failed"
           />
         ) : level.kind === "all" ? (

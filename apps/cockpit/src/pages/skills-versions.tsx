@@ -20,6 +20,7 @@ import {
   TabBody,
   Timeline,
 } from "@/components/cockpit/patterns";
+import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { keptVersionCount } from "@/pages/knowledge-versions-model";
@@ -65,10 +66,11 @@ export function SkillVersions({ skill, canWrite }: { skill: Skill; canWrite: boo
       setSelected("");
     },
     onError: (error) =>
-      toast.error(
+      reportFailure(
         error instanceof ApiError && error.status === 409
           ? t("skills.conflict")
           : t("common.actionFailed"),
+        error,
       ),
   });
   const rows = skillVersionRows(history.data?.items ?? [], skill.version);

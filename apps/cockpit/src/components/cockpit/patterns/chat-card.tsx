@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useId } from "react";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { type Fact, FactList } from "./fact-list";
 
@@ -19,11 +20,12 @@ export function ChatCard({
   testId?: string;
   children?: ReactNode;
 }) {
+  const heading = useId();
   const body = (facts && facts.length > 0) || children;
   return (
-    <Card data-slot="chat-card" data-testid={testId}>
+    <Card data-slot="chat-card" data-testid={testId} role="group" aria-labelledby={heading}>
       <CardHeader>
-        <CardTitle>{title}</CardTitle>
+        <CardTitle id={heading}>{title}</CardTitle>
         {line ? <p className="text-sm text-muted-foreground">{line}</p> : null}
       </CardHeader>
       {body ? (

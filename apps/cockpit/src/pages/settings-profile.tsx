@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { toast } from "sonner";
+import type { ReactNode } from "react";
 import { apiCall } from "@/api/call";
 import { absolute, peopleHref } from "@/app/links";
 import { visibleNavigation } from "@/app/navigation";
@@ -9,10 +9,22 @@ import {
   type NotificationDialogState,
   useDeviceNotifications,
 } from "@/components/cockpit/installation-dialogs";
-import { FieldError, Input, SegmentedControl, Switch } from "@/components/cockpit/patterns";
+import {
+  Button,
+  FieldError,
+  Input,
+  SegmentedControl,
+  StatusBadge,
+  Switch,
+} from "@/components/cockpit/patterns";
+import { feedbackBridge } from "@/features/feedback/desktop-bridge";
+import { type AppDeviceState, appDeviceState, runsInstalled } from "@/features/pwa/display-mode";
+import { openInstall } from "@/features/pwa/install-store";
+import { reportFailure } from "@/lib/action-failure";
 import { type LocalePreference, useI18n } from "@/lib/i18n-context";
 import { type Theme, useTheme } from "@/lib/theme";
 import { roleName } from "@/pages/admin-model";
+import { DevicesQuestion } from "@/pages/settings-devices";
 import { Question } from "@/pages/settings-guided";
 import { NAME_MAX } from "@/pages/welcome-model";
 
@@ -43,7 +55,7 @@ export function ProfileArea({
     onMutate: (hidden) => showSteps(!hidden),
     onError: (_error, hidden) => {
       showSteps(hidden);
-      toast.error(t("common.actionFailed"));
+      reportFailure(t("common.actionFailed"));
     },
   });
   function showSteps(shown: boolean) {
@@ -69,11 +81,19 @@ export function ProfileArea({
       onPreference={setPreference}
       theme={theme}
       onTheme={setTheme}
+      app={appDeviceState({
+        installed: runsInstalled(),
+        desktop: feedbackBridge() !== null,
+        secure: typeof window !== "undefined" && window.isSecureContext,
+        notifications: device.state.checked,
+      })}
+      onInstall={openInstall}
       device={device.state.bell ? device.state : null}
       onDevice={(checked) => void device.toggle(checked)}
       stepsShown={!session.start_steps.hidden}
       stepsPending={steps.isPending}
       onSteps={(shown) => steps.mutate(!shown)}
+      devices={<DevicesQuestion />}
     />
   );
 }
@@ -91,11 +111,14 @@ export function ProfileQuestions({
   onPreference,
   theme,
   onTheme,
+  app,
+  onInstall,
   device,
   onDevice,
   stepsShown,
   stepsPending,
   onSteps,
+  devices,
 }: {
   name: string;
   nameInvalid: boolean;
@@ -109,11 +132,14 @@ export function ProfileQuestions({
   onPreference(preference: LocalePreference): void;
   theme: Theme;
   onTheme(theme: Theme): void;
+  app?: AppDeviceState | null;
+  onInstall?(): void;
   device: NotificationDialogState | null;
   onDevice(checked: boolean): void;
   stepsShown: boolean;
   stepsPending: boolean;
   onSteps(shown: boolean): void;
+  devices?: ReactNode;
 }) {
   const { t } = useI18n();
   const [beforeLink, afterLink = ""] = t("settings.profile.roleHelp").split("{link}");
@@ -230,6 +256,43 @@ export function ProfileQuestions({
           }))}
         />
       </Question>
+      {app ? (
+        <Question title={t("settings.profile.app")} testId="settings-question-profile-app">
+          <div
+            className="flex min-h-8 flex-wrap items-center gap-2"
+            role="status"
+            data-testid="settings-profile-app-state"
+            data-installed={app.installed ? "true" : "false"}
+            data-notifications={app.notifications ? "true" : "false"}
+          >
+            <StatusBadge
+              state={app.installed ? "ok" : "neutral"}
+              label={t(app.installed ? "settings.profile.appInstalled" : "settings.profile.appNot")}
+              testId="settings-profile-app-installed"
+            />
+            <StatusBadge
+              state={app.notifications ? "ok" : "neutral"}
+              label={t(
+                app.notifications
+                  ? "settings.profile.appNotifyOn"
+                  : "settings.profile.appNotifyOff",
+              )}
+              testId="settings-profile-app-notifications"
+            />
+            {app.installable && onInstall ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-auto"
+                onClick={onInstall}
+                data-testid="settings-profile-app-install"
+              >
+                {t("pwa.install.menu")}
+              </Button>
+            ) : null}
+          </div>
+        </Question>
+      ) : null}
       {device ? (
         <Question title={t("settings.profile.device")} testId="settings-question-profile-device">
           <DeviceNotificationSwitch
@@ -240,6 +303,7 @@ export function ProfileQuestions({
           />
         </Question>
       ) : null}
+      {devices}
       <Question title={t("settings.profile.steps")} testId="settings-question-profile-steps">
         <div className="flex items-center justify-between gap-4">
           <p className="text-sm font-medium">{t("settings.profile.stepsSwitch")}</p>

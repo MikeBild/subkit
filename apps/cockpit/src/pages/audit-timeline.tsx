@@ -920,8 +920,8 @@ export function AuditTimelinePage() {
             onChange={(value) => setGroup(value as AuditGroup)}
             options={AUDIT_GROUPS.map((value) => ({ value, label: t(GROUP_KEYS[value]) }))}
           />
-          <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2 text-xs text-muted-foreground sm:px-6">
-            <span>{t("audit.timeline.loadedOnly")}</span>
+          <div className="flex shrink-0 items-center gap-x-3 gap-y-1 border-b px-4 py-2 text-xs text-muted-foreground max-sm:flex-wrap sm:px-6 sm:whitespace-nowrap">
+            <span className="min-w-0 sm:truncate">{t("audit.timeline.loadedOnly")}</span>
             <span aria-hidden>·</span>
             <span>{zone}</span>
             <span aria-hidden>·</span>
@@ -929,7 +929,7 @@ export function AuditTimelinePage() {
               {t(liveStatus.status === "live" ? "audit.timeline.live" : "audit.timeline.offline")}
             </span>
             {list.query.dataUpdatedAt ? (
-              <span>
+              <span className="min-w-0 sm:truncate">
                 {t("audit.timeline.lastUpdated", {
                   time: dateTime(new Date(list.query.dataUpdatedAt)),
                 })}

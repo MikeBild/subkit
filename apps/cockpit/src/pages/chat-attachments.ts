@@ -1,10 +1,10 @@
 import type { components } from "@cli-core/engine-api/openapi";
-import { toast } from "sonner";
 import { apiCall } from "@/api/call";
 import type { Conversation, ConversationTarget } from "@/api/client";
 import { tenantContentHref } from "@/api/tenant-context";
 import { absolute, settingsHref } from "@/app/links";
 import { fileRefusal, formatBytes } from "@/components/cockpit/patterns";
+import { reportFailure } from "@/lib/action-failure";
 import type { TranslationKey } from "@/lib/i18n";
 
 export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
@@ -77,7 +77,7 @@ export function takeAttachmentFiles(
   options: { notify?: AttachmentNotice; openPackages?(): void } = {},
 ): PendingAttachment[] {
   const notify: AttachmentNotice =
-    options.notify ?? ((message, extra) => void toast.error(message, extra));
+    options.notify ?? ((message, extra) => reportFailure(message, undefined, extra));
   const openPackages =
     options.openPackages ?? (() => window.location.assign(packagesSettingsHref()));
   const taken: PendingAttachment[] = [];

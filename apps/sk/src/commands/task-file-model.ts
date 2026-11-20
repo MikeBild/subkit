@@ -6,7 +6,9 @@ export interface TaskFileIssue {
   fix: string;
 }
 
-export type TaskDefinition = TaskCreateBody;
+export type TaskDefinition = TaskCreateBody & {
+  environment: NonNullable<TaskCreateBody["environment"]>;
+};
 
 export type TaskFileResult =
   | { ok: true; definition: TaskDefinition; expected_revision: number | null }

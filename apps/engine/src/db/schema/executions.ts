@@ -90,6 +90,7 @@ export const executions = pgTable(
       step_id: string | null;
       error_code: string;
       error_message: string;
+      error_class?: string;
       connector?: { connector_id: string | null; reason: string };
     } | null>(),
     output_contract: text("output_contract"),

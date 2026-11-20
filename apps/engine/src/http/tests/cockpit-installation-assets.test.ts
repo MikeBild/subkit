@@ -51,15 +51,71 @@ describe("Cockpit installation assets", () => {
     expect(manifest.headers.get("cache-control")).toBe("private, no-store");
     expect(manifest.headers.get("vary")).toBe("Cookie");
     const body = (await manifest.json()) as {
+      id: string;
       name: string;
       short_name: string;
       scope: string;
-      icons: Array<{ src: string }>;
+      start_url: string;
+      display: string;
+      lang: string;
+      theme_color: string;
+      icons: Array<{ src: string; purpose: string }>;
+      shortcuts: Array<{ name: string; url: string }>;
+      protocol_handlers: Array<{ protocol: string; url: string }>;
+      launch_handler: { client_mode: string[] };
+      share_target: { action: string };
     };
+    const base = `/cockpit/i/${installation.id}/`;
+    expect(manifest.headers.get("content-type")).toBe("application/manifest+json");
     expect(body.name).toBe("Test cockpit-installation-assets");
     expect(body.short_name).toBe(body.name);
-    expect(body.scope).toBe(`/cockpit/i/${installation.id}/`);
-    expect(body.icons).toHaveLength(2);
+    expect(body.scope).toBe(base);
+    expect(body.start_url).toBe(base);
+    expect(body.id).toBe(base);
+    expect(body.display).toBe("standalone");
+    expect(body.theme_color).toBe("#4f46e5");
+    expect(body.lang).toBe("en");
+    expect(body.icons.map((entry) => entry.purpose)).toEqual([
+      "any",
+      "any",
+      "maskable",
+      "maskable",
+      "monochrome",
+    ]);
+    expect(body.shortcuts.map((shortcut) => shortcut.url)).toEqual([
+      `${base}chat`,
+      `${base}tasks`,
+      `${base}intake`,
+    ]);
+    expect(body.protocol_handlers).toEqual([{ protocol: "web+subkit", url: `${base}?link=%s` }]);
+    expect(body.launch_handler.client_mode[0]).toBe("focus-existing");
+    expect(body.share_target.action).toBe(`${base}incoming/share`);
+
+    const german = await fetch(`${server.baseUrl}${installation.manifest_url}`, {
+      headers: { cookie: `${installation.cookie.split(";")[0]}; sk_locale=de` },
+    });
+    const germanBody = (await german.json()) as { lang: string; shortcuts: { name: string }[] };
+    expect(germanBody.lang).toBe("de");
+    expect(germanBody.shortcuts.map((shortcut) => shortcut.name)).toEqual([
+      "Chat",
+      "Aufgaben",
+      "Eingang",
+    ]);
+
+    for (const entry of body.icons) {
+      const variant = await fetch(`${server.baseUrl}${entry.src}`, {
+        headers: { cookie: installation.cookie },
+      });
+      expect(variant.status, entry.src).toBe(200);
+      expect(variant.headers.get("content-type")).toBe("image/png");
+      expect(variant.headers.get("cache-control")).toBe("private, no-store");
+    }
+    const signedOutIcon = await fetch(`${server.baseUrl}${body.icons[2]?.src}`);
+    expect(signedOutIcon.status).toBe(404);
+    const unknownIcon = await fetch(`${server.baseUrl}${base}icon/1024.png?revision=1`, {
+      headers: { cookie: installation.cookie },
+    });
+    expect(unknownIcon.status).toBe(404);
 
     const icon = await fetch(`${server.baseUrl}${body.icons[0]?.src}`, {
       headers: { cookie: installation.cookie },
@@ -88,7 +144,28 @@ describe("Cockpit installation assets", () => {
     expect(worker.headers.get("cache-control")).toBe("private, no-store");
     expect(worker.headers.get("service-worker-allowed")).toBe(`/cockpit/i/${installation.id}/`);
     expect(worker.headers.get("content-type")).toBe("application/javascript; charset=utf-8");
-    expect(await worker.text()).toContain("incoming/share");
+    const workerSource = await worker.text();
+    expect(workerSource).toContain("incoming/share");
+    expect(workerSource).toMatch(
+      /^self\.COCKPIT_BUILD = "[0-9a-f]{16}";\nself\.COCKPIT_SHELL = \[/,
+    );
+    expect(workerSource).toContain("self.subkitNotify = {");
+    expect(workerSource).not.toContain(installation.id);
+    expect(workerSource).not.toContain(server.tenantId);
+    const shellFiles = JSON.parse(
+      /^self\.COCKPIT_SHELL = (\[.*\]);$/m.exec(workerSource)?.[1] ?? "[]",
+    ) as string[];
+    expect(shellFiles.length).toBeGreaterThan(0);
+    for (const file of shellFiles) {
+      expect(file).toMatch(/^\/cockpit\/assets\/[A-Za-z0-9._-]+$/);
+      expect(shellHtml.includes(file) || file.includes("-")).toBeTrue();
+    }
+    const again = await fetch(`${server.baseUrl}/cockpit/i/${installation.id}/sw.js`);
+    expect(await again.text()).toBe(workerSource);
+    const policy = shell.headers.get("content-security-policy") ?? "";
+    expect(policy).toContain("worker-src 'self'");
+    expect(policy).toContain("manifest-src 'self'");
+    expect(policy).toContain("connect-src 'self'");
 
     const invalid = await fetch(`${server.baseUrl}/cockpit/i/not-a-uuid/sw.js`);
     expect(invalid.status).toBe(404);

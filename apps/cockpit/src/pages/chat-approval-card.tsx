@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { contextualHref } from "@/app/installation-context";
-import { Button, ChatCard, ContextHelp, Spinner } from "@/components/cockpit/patterns";
+import { Button, ChatCard, ContextHelp, ErrorNotice, Spinner } from "@/components/cockpit/patterns";
 import { formatBytes } from "@/components/cockpit/patterns/file-kinds";
 import { WorkflowReview } from "@/components/cockpit/workflow-review";
+import { ApprovalBinding } from "@/features/chat/policy";
 import { formatDateTime, LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
@@ -114,6 +115,7 @@ export function ChatApprovalCard({
           )
         }
       >
+        {approval.binding ? <ApprovalBinding binding={approval.binding} testId={testId} /> : null}
         {approval.authorizationUrl && !expired && (
           <Button asChild variant="outline" className="w-fit">
             <a
@@ -140,15 +142,21 @@ export function ChatApprovalCard({
             })}
           </p>
         )}
-        <p className="text-xs text-muted-foreground" data-testid={`${testId}-deadline`}>
+        <p
+          className="text-xs text-muted-foreground"
+          aria-live="polite"
+          data-testid={`${testId}-deadline`}
+        >
           {expired
             ? t("chat.decision.expired")
             : `${t("chat.decision.validUntil")} ${formatDateTime(locale, approval.expiresAt)}`}
         </p>
         {error && (
-          <p role="alert" className="text-sm text-destructive" data-testid={`${testId}-error`}>
-            {t("chat.decision.failed")}
-          </p>
+          <ErrorNotice
+            title={t("chat.decision.failed")}
+            body={t("chat.decision.failedBody")}
+            testId={`${testId}-error`}
+          />
         )}
       </ChatCard>
       {reviewable && conversationId && (

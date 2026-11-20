@@ -140,7 +140,7 @@ Schreiben braucht immer einen Menschen, und zwar an zwei Stellen:
 
 - **Schreiben in einem Workflow:** Ein Workflow schreibt erst wirklich, wenn eine Person ihn im Cockpit freigegeben hat. Ohne Freigabe ist der Lauf ein Probelauf: Schreibzugriffe werden zurückgehalten, nichts wird gesendet.
   Eine neue Version braucht keine neue Freigabe, solange sie nicht mehr Systeme, Adressen oder Schreibrechte anfasst als die freigegebene. Greift sie weiter, fragt SubKit erneut und nennt den Unterschied.
-  Im Chat fragt der Modus **Fragt vorher** vor jedem Schreiben, außer es gibt eine Freigabe, die genau diesen Lauf deckt: dieselbe Version, dieselbe Umgebung, noch gültig und mit unveränderter Wirkung. **Nur planen** fragt immer. Ebenso ein Lauf, der Daten aus einem früheren Lauf weitergibt, und eine Unterhaltung, der du gesagt hast, jeden Start zu bestätigen.
+  Im Chat fragt der Modus **Fragen** vor jedem Schreiben, außer es gibt eine Freigabe, die genau diesen Lauf deckt: dieselbe Version, dieselbe Umgebung, noch gültig und mit unveränderter Wirkung. **Nur planen** fragt immer. Ebenso ein Lauf, der Daten aus einem früheren Lauf weitergibt, und eine Unterhaltung, der du gesagt hast, jeden Start zu bestätigen.
 - **Schreibende Tools im Client:** Ein schreibendes Tool hält an und liefert einen Link.
   Öffne ihn, melde dich an, prüfe, was passieren wird, und wähle **Einmal erlauben** oder **Ablehnen**.
   Erst danach kann der Client den Aufruf mit `confirm_tool_call` abschließen.

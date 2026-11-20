@@ -7,7 +7,14 @@ import {
   renderLlmsIndex,
 } from "@shared/llms-index.ts";
 import type { Context } from "hono";
+import {
+  allowedDesktopLoginCallbacks,
+  DESKTOP_LOGIN_CALLBACK,
+  DESKTOP_LOGIN_START_PATH,
+  DESKTOP_SESSION_PATH,
+} from "../../auth/index.ts";
 import { getConfig } from "../../config/loader.ts";
+import { DESKTOP_MIN_VERSION_DEFAULT } from "../../config/schema.ts";
 import docsJson from "../llms/docs.json" with { type: "text" };
 import llmsFullTxt from "../llms/llms-full.txt" with { type: "text" };
 import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
@@ -53,6 +60,16 @@ function buildSectionMap(full: string): Map<string, string> {
 }
 
 const sections = buildSectionMap(llmsFullTxt);
+
+export const DESKTOP_FEEDBACK_PATH = "/cockpit?feedback=1";
+
+function desktopMinVersion(): string {
+  try {
+    return getConfig().server.desktop_min_version;
+  } catch {
+    return DESKTOP_MIN_VERSION_DEFAULT;
+  }
+}
 
 export function resolveOrigin(c: Context<AppEnv>): string {
   let configured = "";
@@ -186,6 +203,19 @@ export function registerLlmsTxtRoutes(app: OpenAPIHono<AppEnv>): void {
           url: `${origin}/install/skill/SKILL.md`,
           sha256: sha(SKILL_MD),
           updated_at: null,
+        },
+      },
+      clients: {
+        desktop: {
+          min_version: desktopMinVersion(),
+          login: {
+            start: DESKTOP_LOGIN_START_PATH,
+            session: DESKTOP_SESSION_PATH,
+            callback: DESKTOP_LOGIN_CALLBACK,
+            callbacks: allowedDesktopLoginCallbacks(),
+            code_challenge_methods: ["S256"],
+          },
+          feedback_path: DESKTOP_FEEDBACK_PATH,
         },
       },
       capabilities: [

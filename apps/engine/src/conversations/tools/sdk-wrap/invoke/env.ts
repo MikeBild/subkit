@@ -1,6 +1,7 @@
 import type { Db } from "../../../../db/client.ts";
 import { recordConversationToolCall } from "../../../../observability/instrumentation.ts";
 import type { PermissionMode, ToolPolicies } from "../../../../tools/types.ts";
+import type { PolicyRecord } from "../../../instruction-cover/gate.ts";
 import { updateToolCallOutput } from "../../../persistence/index.ts";
 import type { TurnEvent } from "../../../types.ts";
 import type { ConversationTool, ToolContext } from "../../index.ts";
@@ -16,6 +17,7 @@ export interface InvokeEnv {
   toolPolicies: ToolPolicies;
   permissionMode: PermissionMode | null;
   release: () => void;
+  because?: string | null;
 }
 
 export interface InvokeCall {
@@ -26,6 +28,7 @@ export interface InvokeCall {
   toolCallId: string;
   assistantMessageId: string;
   perCallCtx: ToolContext;
+  policyRecord?: PolicyRecord | null;
 }
 
 export function pushToolLog(env: InvokeEnv, call_id: string, message: string): void {
