@@ -1,7 +1,7 @@
 export type ReleaseNotes = { version: string; notes: string[] };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: string[] } = {
-  "source": "1203ca02558842d03472aa8efa0c4e358f0e3726",
+  "source": "df7da806a54c43a39cd14df895b3fd82e9b75b27",
   "releases": [
     {
       "version": "v1.0.0",
@@ -1812,22 +1812,7 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
     }
   ],
   "unpublished": [
-    "cockpit and desktop follow the new design, one control set, journeys cover the core",
-    "desktop notifications can be switched back on, a failed workspace switch can be skipped",
-    "the help area names its report action",
-    "settings show desktop updates, privacy, open at login and the sidebar start",
-    "a refused invitation offers one way on, sign-in only when signed out",
-    "people carry one name under settings, more options hide when empty",
-    "settings keep a fixed list of areas, people and devices live there, help links the docs",
-    "a refused invitation offers a way back and one action",
-    "the AI budget needs stats:read; get_ai_budget and {ai_budget} replace the token names",
-    "the monthly AI budget in the price currency is the only limit, the token budget goes",
-    "one settings row, the approval says early where it works, folder access behind the port",
-    "chat tool approvals use the one approval card, device refusals keep their code",
-    "a workflow run at the AI budget waits before its model step and continues by itself",
-    "the AI budget lives on the workspace, hosted admins set it, older ones start unlimited",
-    "a monthly AI budget in dollars pauses model work at the limit and asks an admin",
-    "pair requests reach the second person, mailed invite links use the configured address",
-    "two people can approve together, invitations send or hand back a link, pause alerts"
+    "local desktop runs, vault, usd budget",
+    "cockpit and desktop follow the new design, one control set, journeys cover the core"
   ]
 };
